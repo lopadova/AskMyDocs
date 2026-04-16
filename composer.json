@@ -13,6 +13,11 @@
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^9.0"
     },
+    "suggest": {
+        "predis/predis": "^2.0 — required when QUEUE_CONNECTION=redis (used by kb:ingest-folder and POST /api/kb/ingest)",
+        "laravel/horizon": "^5.0 — optional Redis queue dashboard for monitoring ingestion workers",
+        "league/flysystem-aws-s3-v3": "^3.0 — required when KB_FILESYSTEM_DISK=s3"
+    },
     "autoload": {
         "psr-4": {
             "App\\": "app/"
