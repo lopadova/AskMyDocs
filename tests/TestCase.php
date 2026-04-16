@@ -26,6 +26,7 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
+        $app['config']->set('queue.default', 'sync');
 
         $app['config']->set('auth.providers.users.model', \App\Models\User::class);
     }

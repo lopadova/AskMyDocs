@@ -74,6 +74,23 @@ return [
         'overlap_tokens' => env('KB_CHUNK_OVERLAP_TOKENS', 64),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Background ingestion (queue)
+    |--------------------------------------------------------------------------
+    |
+    | Controls how KbIngestFolderCommand and POST /api/kb/ingest dispatch
+    | their per-document jobs. The queue name is honoured by every driver
+    | (sync, database, redis). The default project_key is used when the
+    | command/API call omits one — handy for single-tenant deployments.
+    |
+    */
+
+    'ingest' => [
+        'queue' => env('KB_INGEST_QUEUE', 'kb-ingest'),
+        'default_project' => env('KB_INGEST_DEFAULT_PROJECT', 'default'),
+    ],
+
     'sources' => [
         /*
         | Laravel filesystem disk used to read KB markdown files.
