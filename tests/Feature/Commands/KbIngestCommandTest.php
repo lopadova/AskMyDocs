@@ -23,21 +23,31 @@ class KbIngestCommandTest extends TestCase
         config()->set('ai.default', 'openai');
         config()->set('ai.embeddings_provider', 'openai');
 
+        // Generate as many embeddings as the request contains inputs. The
+        // MarkdownChunker splits by blank lines — the number of chunks varies
+        // depending on line endings (LF on Linux, CRLF on Windows), so a
+        // static fixture would be flaky across CI runners.
         Http::fake([
-            'api.openai.com/*' => Http::response([
-                'model' => 'text-embedding-3-small',
-                'data' => [
-                    ['index' => 0, 'embedding' => [0.1, 0.2, 0.3]],
-                ],
-                'usage' => ['total_tokens' => 3],
-            ], 200),
+            'api.openai.com/*' => function ($request) {
+                $inputs = $request->data()['input'] ?? [];
+                $data = [];
+                foreach ($inputs as $i => $_text) {
+                    $data[] = ['index' => $i, 'embedding' => [0.1, 0.2, 0.3]];
+                }
+
+                return Http::response([
+                    'model' => 'text-embedding-3-small',
+                    'data' => $data,
+                    'usage' => ['total_tokens' => count($inputs)],
+                ], 200);
+            },
         ]);
     }
 
     public function test_reads_markdown_via_disk_and_ingests_document(): void
     {
         Storage::fake('kb');
-        Storage::disk('kb')->put('docs/hello.md', '# Title'.PHP_EOL.PHP_EOL.'Body paragraph.');
+        Storage::disk('kb')->put('docs/hello.md', "# Title\n\nBody paragraph.");
 
         config()->set('kb.sources.disk', 'kb');
         config()->set('kb.sources.path_prefix', '');

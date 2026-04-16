@@ -11,7 +11,6 @@
 /storage/logs/*
 !/storage/logs/.gitkeep
 composer.lock
-package-lock.json
 .idea/
 .vscode/
 .env
