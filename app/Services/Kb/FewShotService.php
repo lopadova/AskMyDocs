@@ -40,8 +40,15 @@ class FewShotService
             // Find the preceding user message in the same conversation
             $userMsg = Message::where('conversation_id', $assistantMsg->conversation_id)
                 ->where('role', 'user')
-                ->where('created_at', '<', $assistantMsg->created_at)
+                ->where(function ($q) use ($assistantMsg) {
+                    $q->where('created_at', '<', $assistantMsg->created_at)
+                        ->orWhere(function ($q2) use ($assistantMsg) {
+                            $q2->where('created_at', '=', $assistantMsg->created_at)
+                                ->where('id', '<', $assistantMsg->id);
+                        });
+                })
                 ->orderByDesc('created_at')
+                ->orderByDesc('id')
                 ->first();
 
             if (! $userMsg) {

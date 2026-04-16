@@ -157,4 +157,32 @@ class FewShotServiceTest extends TestCase
 
         $this->assertSame([], (new FewShotService())->getExamples($user->id));
     }
+
+    public function test_pairs_with_user_message_when_created_at_is_the_same_second(): void
+    {
+        $user = $this->makeUser();
+        $conv = $this->makeConversation($user);
+        $ts = now();
+
+        Message::create([
+            'conversation_id' => $conv->id,
+            'role' => 'user',
+            'content' => 'Same second question',
+            'created_at' => $ts,
+        ]);
+
+        Message::create([
+            'conversation_id' => $conv->id,
+            'role' => 'assistant',
+            'content' => 'Same second answer',
+            'rating' => 'positive',
+            'created_at' => $ts,
+        ]);
+
+        $examples = (new FewShotService())->getExamples($user->id);
+
+        $this->assertCount(1, $examples);
+        $this->assertSame('Same second question', $examples[0]['question']);
+        $this->assertSame('Same second answer', $examples[0]['answer']);
+    }
 }
