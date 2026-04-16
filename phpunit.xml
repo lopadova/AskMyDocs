@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          cacheDirectory=".phpunit.cache"
          executionOrder="random"
@@ -42,6 +42,9 @@
         <env name="GEMINI_CHAT_MODEL" value="gemini-2.0-flash"/>
         <env name="GEMINI_EMBEDDINGS_MODEL" value="text-embedding-004"/>
         <env name="OPENROUTER_API_KEY" value="sk-or-test-key"/>
-        <env name="OPENROUTER_CHAT_MODEL" value="anthropic/claude-sonnet-4-20250514"/>
+        <env name="OPENROUTER_CHAT_MODEL" value="openai/gpt-4o-mini"/>
+        <env name="REGOLO_API_KEY" value="regolo-test-key"/>
+        <env name="REGOLO_CHAT_MODEL" value="Llama-3.3-70B-Instruct"/>
+        <env name="REGOLO_EMBEDDINGS_MODEL" value="gte-Qwen2"/>
     </php>
 </phpunit>

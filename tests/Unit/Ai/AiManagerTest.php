@@ -7,6 +7,7 @@ use App\Ai\Providers\AnthropicProvider;
 use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
+use App\Ai\Providers\RegoloProvider;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -30,6 +31,17 @@ class AiManagerTest extends TestCase
         $this->assertInstanceOf(AnthropicProvider::class, $manager->provider('anthropic'));
         $this->assertInstanceOf(GeminiProvider::class, $manager->provider('gemini'));
         $this->assertInstanceOf(OpenRouterProvider::class, $manager->provider('openrouter'));
+        $this->assertInstanceOf(RegoloProvider::class, $manager->provider('regolo'));
+    }
+
+    public function test_regolo_supports_embeddings(): void
+    {
+        config()->set('ai.default', 'regolo');
+        config()->set('ai.embeddings_provider', 'regolo');
+
+        $manager = new AiManager();
+
+        $this->assertSame('regolo', $manager->embeddingsProvider()->name());
     }
 
     public function test_caches_resolved_providers(): void

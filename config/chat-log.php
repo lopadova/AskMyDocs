@@ -34,6 +34,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retention (days)
+    |--------------------------------------------------------------------------
+    |
+    | The scheduled chat-log:prune job removes rows whose `created_at` is
+    | older than this many days. Set to 0 to disable rotation entirely.
+    |
+    */
+
+    'retention_days' => (int) env('CHAT_LOG_RETENTION_DAYS', 90),
+
+    /*
+    |--------------------------------------------------------------------------
     | Driver-Specific Options
     |--------------------------------------------------------------------------
     */

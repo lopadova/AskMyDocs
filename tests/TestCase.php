@@ -8,6 +8,13 @@ abstract class TestCase extends OrchestraTestCase
 {
     protected function getEnvironmentSetUp($app): void
     {
+        // Manual registration (instead of getPackageProviders) avoids
+        // ProviderRepository's is_writable() check that fails on Windows
+        // for paths containing spaces.
+        $app->register(\App\Providers\AiServiceProvider::class);
+        $app->register(\App\Providers\ChatLogServiceProvider::class);
+        $app->register(\App\Providers\AppServiceProvider::class);
+
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
             'driver' => 'sqlite',

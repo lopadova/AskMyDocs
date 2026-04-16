@@ -6,6 +6,7 @@ use App\Ai\Providers\AnthropicProvider;
 use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
+use App\Ai\Providers\RegoloProvider;
 use InvalidArgumentException;
 
 class AiManager
@@ -68,6 +69,7 @@ class AiManager
             'anthropic' => new AnthropicProvider($config),
             'gemini' => new GeminiProvider($config),
             'openrouter' => new OpenRouterProvider($config),
+            'regolo' => new RegoloProvider($config),
             default => throw new InvalidArgumentException("Unknown AI provider [{$name}]."),
         };
     }
