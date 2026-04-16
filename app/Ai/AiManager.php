@@ -8,7 +8,7 @@ use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use InvalidArgumentException;
 
-final class AiManager
+class AiManager
 {
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];

@@ -67,6 +67,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [MCP Server](#mcp-server)
 - [Document Ingestion](#document-ingestion)
 - [Extending](#estensione)
+- [Testing](#testing)
 - [License](#license)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
@@ -1412,6 +1413,79 @@ MAIL_USERNAME=
 MAIL_PASSWORD=
 MAIL_FROM_ADDRESS=noreply@example.com
 ```
+
+---
+
+## Testing
+
+La suite di test copre i componenti core: DTO, provider AI, reranker, chunker, embedding cache, few-shot learning, chat logging, e il parsing dei rich-content artifacts (chart/action block) lato frontend.
+
+### Stack
+
+| Layer | Tool | Scope |
+|---|---|---|
+| **PHP** | PHPUnit 11 + Orchestra Testbench + Mockery | Unit + feature test (DB SQLite in-memory) |
+| **JS** | Vitest 2 | Test puri del modulo `resources/js/rich-content.mjs` (chart/action parsing, markdown pipeline) |
+
+### Installazione dipendenze
+
+```bash
+# PHP
+composer install
+
+# JavaScript
+npm install
+```
+
+### Lanciare i test
+
+```bash
+# Suite PHP completa (Unit + Feature)
+vendor/bin/phpunit
+
+# Solo Unit
+vendor/bin/phpunit --testsuite Unit
+
+# Solo Feature (DB-backed)
+vendor/bin/phpunit --testsuite Feature
+
+# Output "testdox" (leggibile)
+vendor/bin/phpunit --testdox
+
+# Suite JS
+npm test
+
+# Vitest watch mode
+npm run test:watch
+```
+
+### Configurazione test
+
+- **Database**: SQLite in-memory. Le migration di produzione usano `pgvector` (non compatibile con SQLite), quindi sono presenti migration dedicate in `tests/database/migrations/` che sostituiscono `vector(…)` con `text` JSON. Questo permette di testare la logica di caching embedding e FewShot senza dover avviare PostgreSQL.
+- **HTTP**: tutte le chiamate ai provider AI (OpenAI, Anthropic, Gemini, OpenRouter) sono intercettate con `Http::fake()` — nessuna chiamata esterna durante i test.
+- **Env di test**: definito direttamente in `phpunit.xml` (`<php><env ... /></php>`). Non richiede `.env.testing`.
+
+### Struttura
+
+```
+tests/
+├── TestCase.php                    # Base Orchestra Testbench con config/migrations custom
+├── Unit/
+│   ├── Ai/                         # AiResponse, EmbeddingsResponse, AiManager, tutti i Provider
+│   ├── ChatLog/                    # ChatLogEntry (DTO)
+│   └── Kb/                         # MarkdownChunker, Reranker
+├── Feature/
+│   ├── ChatLog/                    # ChatLogManager (persistenza DB, error swallowing)
+│   └── Kb/                         # EmbeddingCacheService, FewShotService
+├── database/migrations/            # Schema SQLite-compatibile
+└── js/
+    └── rich-content.spec.mjs       # Vitest per il modulo di rich-content parsing
+```
+
+### Coverage attuale
+
+- 69 test PHPUnit, 184 assertion
+- 18 test Vitest
 
 ---
 

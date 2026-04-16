@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="random"
+         failOnWarning="false"
+         failOnRisky="false"
+         failOnEmptyTestSuite="true"
+         beStrictAboutOutputDuringTests="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
+        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_DATABASE" value=":memory:"/>
+        <env name="CHAT_LOG_ENABLED" value="true"/>
+        <env name="CHAT_LOG_DRIVER" value="database"/>
+        <env name="KB_EMBEDDING_CACHE_ENABLED" value="true"/>
+        <env name="KB_RERANKING_ENABLED" value="true"/>
+        <env name="AI_PROVIDER" value="openai"/>
+        <env name="OPENAI_API_KEY" value="sk-test-key"/>
+        <env name="OPENAI_CHAT_MODEL" value="gpt-4o"/>
+        <env name="OPENAI_EMBEDDINGS_MODEL" value="text-embedding-3-small"/>
+        <env name="ANTHROPIC_API_KEY" value="sk-ant-test-key"/>
+        <env name="ANTHROPIC_CHAT_MODEL" value="claude-sonnet-4-20250514"/>
+        <env name="GEMINI_API_KEY" value="AIzaTestKey"/>
+        <env name="GEMINI_CHAT_MODEL" value="gemini-2.0-flash"/>
+        <env name="GEMINI_EMBEDDINGS_MODEL" value="text-embedding-004"/>
+        <env name="OPENROUTER_API_KEY" value="sk-or-test-key"/>
+        <env name="OPENROUTER_CHAT_MODEL" value="anthropic/claude-sonnet-4-20250514"/>
+    </php>
+</phpunit>
