@@ -60,7 +60,12 @@ return [
         |----------------------------------------------------------------------
         |
         | Requires: composer require league/flysystem-aws-s3-v3 "^3.0"
-        | Set KB_DISK_DRIVER=s3 in .env to activate.
+        |
+        | To serve KB docs from S3 set KB_FILESYSTEM_DISK=s3 in .env — this
+        | routes ingestion through the fully-configured "s3" disk below
+        | (which reads AWS_* env vars for credentials and bucket). Do NOT
+        | set KB_DISK_DRIVER=s3 on its own: the "kb" disk entry above does
+        | not carry S3 credential keys.
         |
         */
 

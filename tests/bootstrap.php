@@ -17,5 +17,10 @@ require __DIR__.'/../vendor/autoload.php';
 $cacheDir = __DIR__.'/../vendor/orchestra/testbench-core/laravel/bootstrap/cache';
 
 if (! is_dir($cacheDir)) {
-    @mkdir($cacheDir, 0777, true);
+    // Do not suppress errors — a silent failure here surfaces as an
+    // unrelated ProviderRepository exception deep inside the first test.
+    if (! mkdir($cacheDir, 0755, true) && ! is_dir($cacheDir)) {
+        fwrite(STDERR, "Failed to create Testbench cache dir: {$cacheDir}\n");
+        exit(1);
+    }
 }
