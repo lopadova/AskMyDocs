@@ -44,6 +44,7 @@ class KbSearchService
             ->with('document')
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
             ->orderByDesc('vector_score');
 
         if ($projectKey !== null && $projectKey !== '') {
@@ -109,6 +110,7 @@ class KbSearchService
                 "to_tsvector(?, chunk_text) @@ plainto_tsquery(?, ?)",
                 [$lang, $lang, $query]
             )
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
             ->orderByDesc('fts_score');
 
         if ($projectKey !== null && $projectKey !== '') {

@@ -82,6 +82,13 @@ class DocumentIngestor
                 ]
             );
 
+            KnowledgeDocument::query()
+                ->where('project_key', $projectKey)
+                ->where('source_path', $sourcePath)
+                ->where('id', '!=', $document->id)
+                ->where('status', '!=', 'archived')
+                ->update(['status' => 'archived']);
+
             foreach ($chunks as $index => $chunk) {
                 KnowledgeChunk::updateOrCreate(
                     [
