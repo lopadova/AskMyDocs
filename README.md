@@ -1,19 +1,20 @@
-# AskMyDocs - Enterprise AI Knowledge Base — Laravel
+# AskMyDocs — Enterprise AI Knowledge Base on Laravel
 
 <p align="center">
-  <img src="resources\cover-AskMyDocs.png" alt="AskMyDocs" width="100%" />
+  <img src="resources/cover-AskMyDocs.png" alt="AskMyDocs" width="100%" />
 </p>
 
 <p align="center">
-  <a href="#installazione"><img src="https://img.shields.io/badge/Laravel-11+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
-  <a href="#ai-provider"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude Compatible"></a>
-  <a href="#ai-provider"><img src="https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI Compatible"></a>
-  <a href="#ai-provider"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini Compatible"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/Laravel-11+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
+  <a href="#ai-provider"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude"></a>
+  <a href="#ai-provider"><img src="https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI"></a>
+  <a href="#ai-provider"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/OpenRouter-Multi--Model-6366f1?style=flat-square" alt="OpenRouter"></a>
+  <a href="#ai-provider"><img src="https://img.shields.io/badge/Regolo.ai-EU-10b981?style=flat-square" alt="Regolo.ai"></a>
   <a href="#mcp-server"><img src="https://img.shields.io/badge/MCP-Server-0ea5e9?style=flat-square" alt="MCP Server"></a>
-  <a href="#requisiti"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
-  <a href="#requisiti"><img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.2+"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.2+"></a>
 </p>
 
 <p align="center">
@@ -28,37 +29,42 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 | | Feature | Description |
 |---|---|---|
-| **Multi-Provider AI** | Swap between OpenAI, Anthropic Claude, Google Gemini, or OpenRouter with a single ENV change |
+| **Multi-Provider AI** | Swap between OpenAI, Anthropic Claude, Google Gemini, OpenRouter, or Regolo.ai with a single `.env` change |
 | **Hybrid Search** | Semantic vector search (pgvector) + full-text keyword search fused via Reciprocal Rank Fusion |
 | **Smart Reranking** | Over-retrieval + keyword/heading scoring to surface the most relevant chunks |
 | **Embedding Cache** | DB-backed cache eliminates redundant API calls on re-ingestion and repeated queries |
 | **Citations** | Every answer shows exactly which documents and sections were used — verify at the source |
-| **Visual Artifacts** | AI generates charts (Chart.js), enhanced tables, and action buttons (copy, download) when data warrants it |
+| **Visual Artifacts** | The AI generates charts (Chart.js), enhanced tables, and action buttons (copy, download) when the data justifies it |
 | **Feedback Learning** | Thumbs up/down on answers; positive examples are injected as few-shot context to improve future responses |
 | **Chat History** | Full conversation persistence with sidebar, rename, delete, auto-generated titles — like ChatGPT |
 | **Speech-to-Text** | Browser-native microphone input via Web Speech API — zero external services |
-| **Chat Logging** | Structured logging (DB, BigQuery, CloudWatch) of every interaction with token counts, latency, client info |
-| **MCP Server** | 5 read-only tools that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
-| **Auth** | Laravel session auth with login, logout, password reset — no registration (admin-created users) |
+| **Chat Logging** | Structured logging (DB, extensible to BigQuery/CloudWatch) of every interaction with token counts, latency, client info |
+| **Scheduler Hygiene** | Daily Laravel jobs to rotate chat logs and prune the embedding cache by configurable retention |
+| **Storage-Agnostic Ingestion** | KB documents are read through Laravel disks: `local` by default, S3 with a single env change |
+| **MCP Server** | Five read-only tools that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
+| **Auth** | Laravel session auth with login, logout, password reset — no registration (admin-created users); automatic redirect to `/chat` on login |
 
 ---
 
 ## Table of Contents
 
-- [Architecture](#architettura)
-- [Requirements](#requisiti)
-- [Installation](#installazione)
-- [Configuration](#configurazione)
+- [Architecture](#architecture)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+  - [Environment file](#environment-file)
   - [Database](#database)
   - [AI Provider](#ai-provider)
+  - [Storage (Laravel disks)](#storage-laravel-disks)
   - [Chat Logging](#chat-logging)
   - [Knowledge Base](#knowledge-base)
-- [Authentication](#autenticazione)
-- [Chat Interface](#interfaccia-chat)
+- [Scheduler](#scheduler)
+- [Authentication](#authentication)
+- [Chat Interface](#chat-interface)
   - [Chat History](#chat-history)
   - [Speech-to-Text](#speech-to-text)
-- [Smart Visualizations & Artifacts](#visualizzazioni-smart-e-artefatti)
-- [Feedback & Auto-Learning](#feedback-e-auto-learning)
+- [Smart Visualizations & Artifacts](#smart-visualizations--artifacts)
+- [Feedback & Auto-Learning](#feedback--auto-learning)
 - [Reranking](#reranking)
 - [Embedding Cache](#embedding-cache)
 - [Hybrid Search](#hybrid-search)
@@ -66,15 +72,16 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [API](#api)
 - [MCP Server](#mcp-server)
 - [Document Ingestion](#document-ingestion)
-- [Extending](#estensione)
+- [Extending](#extending)
 - [Testing](#testing)
+- [Continuous Integration](#continuous-integration)
 - [License](#license)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 
 ---
 
-## Architettura
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -84,14 +91,14 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│  KbChatController (orchestratore)                            │
+│  KbChatController (orchestrator)                             │
 │                                                              │
-│  1. Valida input                                             │
-│  2. KbSearchService → genera embedding query → pgvector      │
-│  3. Compone system prompt con chunk RAG                      │
-│  4. AiManager::chat() → provider configurato                 │
-│  5. ChatLogManager::log() → persiste interazione             │
-│  6. Risponde al client                                       │
+│  1. Validate input                                           │
+│  2. KbSearchService → embed query → pgvector                 │
+│  3. Compose system prompt with RAG chunks                    │
+│  4. AiManager::chat() → configured provider                  │
+│  5. ChatLogManager::log() → persist the interaction          │
+│  6. Respond to client                                        │
 └──────────────────────────────────────────────────────────────┘
                        │
           ┌────────────┼────────────────┐
@@ -102,105 +109,117 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
    │  Anthropic,│ │          │ │   CloudWatch)│
    │  Gemini,   │ │          │ │              │
    │  OpenRouter│ │          │ │              │
+   │  Regolo)   │ │          │ │              │
    └────────────┘ └──────────┘ └──────────────┘
 ```
 
-### Componenti principali
+### Main components
 
-| Componente | Path | Descrizione |
+| Component | Path | Description |
 |---|---|---|
-| **AiManager** | `app/Ai/AiManager.php` | Manager multi-provider AI (chat + embeddings) |
-| **Provider** | `app/Ai/Providers/*.php` | Implementazioni: OpenAI, Anthropic, Gemini, OpenRouter |
-| **KbSearchService** | `app/Services/Kb/KbSearchService.php` | Ricerca semantica via pgvector |
-| **DocumentIngestor** | `app/Services/Kb/DocumentIngestor.php` | Pipeline di ingestion documenti |
-| **ChatLogManager** | `app/Services/ChatLog/ChatLogManager.php` | Logging strutturato delle conversazioni |
-| **MCP Server** | `app/Mcp/Servers/KnowledgeBaseServer.php` | Server MCP read-only per Claude e altri AI agent |
+| **AiManager** | `app/Ai/AiManager.php` | Multi-provider AI manager (chat + embeddings) |
+| **Providers** | `app/Ai/Providers/*.php` | OpenAI, Anthropic, Gemini, OpenRouter, Regolo |
+| **KbSearchService** | `app/Services/Kb/KbSearchService.php` | Semantic search via pgvector |
+| **DocumentIngestor** | `app/Services/Kb/DocumentIngestor.php` | Document ingestion pipeline |
+| **ChatLogManager** | `app/Services/ChatLog/ChatLogManager.php` | Structured conversation logging |
+| **Scheduled commands** | `app/Console/Commands/*.php` | `kb:ingest`, `kb:prune-embedding-cache`, `chat-log:prune` |
+| **MCP Server** | `app/Mcp/Servers/KnowledgeBaseServer.php` | Read-only MCP server for Claude and other AI agents |
 
 ---
 
-## Requisiti
+## Requirements
 
 - **PHP** >= 8.2
 - **Laravel** >= 11.x
-- **PostgreSQL** >= 15 con estensione **pgvector**
+- **PostgreSQL** >= 15 with the **pgvector** extension
 - **Composer** >= 2.x
+- **Node.js** >= 20 (only for running the JS test suite; the app itself is server-rendered and uses CDN assets)
 
-### Estensione pgvector
+### pgvector extension
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-La migration `create_knowledge_chunks_table` chiama `Schema::ensureVectorExtensionExists()` automaticamente.
+The migration `create_knowledge_chunks_table` calls `Schema::ensureVectorExtensionExists()` automatically. A second migration ships a GIN index on `to_tsvector(chunk_text)` so hybrid search is performant out of the box on PostgreSQL (it is a no-op on SQLite and other drivers).
 
 ---
 
-## Installazione
+## Installation
 
 ```bash
-# 1. Clona il repository e posizionati nella directory Laravel
-cd 04_laravel
+# 1. Clone and enter the project
+git clone https://github.com/your-org/askmydocs.git
+cd askmydocs
 
-# 2. Installa le dipendenze PHP
+# 2. Install PHP dependencies
 composer install
 
-# 3. Copia il file di configurazione ambiente
+# 3. Create your .env (see the "Environment file" section below)
 cp .env.example .env
 
-# 4. Genera la chiave applicazione
+# 4. Generate the app key
 php artisan key:generate
 
-# 5. Configura il database PostgreSQL in .env (vedi sezione Database)
+# 5. Configure PostgreSQL credentials in .env (see Database section)
 
-# 6. Esegui le migration
+# 6. Run migrations
 php artisan migrate
 
-# 7. (Opzionale) Crea un utente per l'autenticazione API
+# 7. (Optional) Create a user for authentication
 php artisan tinker
-# > User::factory()->create(['email' => 'admin@example.com']);
+# > \App\Models\User::create(['name' => 'Admin', 'email' => 'admin@example.com', 'password' => bcrypt('password')]);
 
-# 8. Genera un token Sanctum per le chiamate API
+# 8. (Optional) Generate a Sanctum token for API access
 php artisan tinker
-# > User::first()->createToken('api')->plainTextToken;
+# > \App\Models\User::first()->createToken('api')->plainTextToken;
 
-# 9. Avvia il server di sviluppo
+# 9. Start the dev server
 php artisan serve
 ```
 
+Open `http://localhost:8000`, log in, and you will be redirected automatically to `/chat`.
+
 ---
 
-## Configurazione
+## Configuration
+
+### Environment file
+
+All configuration is driven by environment variables documented in `.env.example`. Copy it to `.env`, fill in the secrets, and you are done — every variable has a sensible default, so an empty key only matters when you actually use that provider or feature.
+
+The defaults are tuned for a **low-cost production** setup:
+
+- Chat via **OpenRouter** (`openai/gpt-4o-mini`, cheap and fast).
+- Embeddings via **OpenAI** (`text-embedding-3-small`, the lowest-cost 1536-dim embedding).
+- Reranking **on**, hybrid search **off** (enable when your corpus has codes / acronyms / legal refs).
+- Chat logging **off**, embedding cache **on**.
 
 ### Database
-
-In `.env`:
 
 ```env
 DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
-DB_DATABASE=enterprise_kb
+DB_DATABASE=askmydocs
 DB_USERNAME=postgres
 DB_PASSWORD=secret
 ```
 
 ### AI Provider
 
-Il sistema supporta 4 provider AI. Ogni provider viene chiamato via HTTP diretto (nessun SDK esterno, pieno controllo).
+The system supports **five providers**. Each is called via raw HTTP — no external SDK, full control over auth, retries, timeouts, and response parsing.
 
-File di configurazione: `config/ai.php`
+Config file: `config/ai.php`
 
-#### Provider di default
+#### Defaults
 
 ```env
-# Provider per le chat completion
-# Valori: openai, anthropic, gemini, openrouter
-AI_PROVIDER=openai
+# Chat provider. Supported: openai, anthropic, gemini, openrouter, regolo
+AI_PROVIDER=openrouter
 
-# Provider per la generazione embeddings (opzionale).
-# Se non impostato, usa lo stesso di AI_PROVIDER.
-# NOTA: Anthropic e OpenRouter NON supportano embeddings.
-# Per usarli per la chat, configurare un provider embeddings separato.
+# Embeddings provider. Must support embeddings (openai, gemini, regolo).
+# Anthropic and OpenRouter do NOT offer embeddings.
 AI_EMBEDDINGS_PROVIDER=openai
 ```
 
@@ -218,7 +237,7 @@ OPENAI_TIMEOUT=120
 
 #### Anthropic (Claude)
 
-Anthropic non offre un endpoint embeddings, quindi serve un provider embeddings dedicato.
+Anthropic has no embeddings endpoint, so pair it with OpenAI or Gemini.
 
 ```env
 AI_PROVIDER=anthropic
@@ -226,132 +245,212 @@ AI_EMBEDDINGS_PROVIDER=openai
 
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_CHAT_MODEL=claude-sonnet-4-20250514
-ANTHROPIC_MAX_TOKENS=4096
-ANTHROPIC_TEMPERATURE=0.2
-
-# Key per embeddings
 OPENAI_API_KEY=sk-...
 ```
 
 #### Google Gemini
 
-Gemini supporta sia chat che embeddings.
+Gemini supports both chat and embeddings. `text-embedding-004` is **768-dim**, so switching embedding providers requires updating `KB_EMBEDDINGS_DIMENSIONS` **and** re-indexing.
 
 ```env
 AI_PROVIDER=gemini
 GEMINI_API_KEY=AIza...
 GEMINI_CHAT_MODEL=gemini-2.0-flash
 GEMINI_EMBEDDINGS_MODEL=text-embedding-004
-GEMINI_TEMPERATURE=0.2
-GEMINI_MAX_TOKENS=4096
 ```
 
-#### OpenRouter (multi-modello)
+#### OpenRouter (multi-model gateway) — default
 
-OpenRouter funziona come gateway verso centinaia di modelli. Non supporta embeddings.
+OpenRouter proxies hundreds of models. It does not serve embeddings.
 
 ```env
 AI_PROVIDER=openrouter
 AI_EMBEDDINGS_PROVIDER=openai
 
 OPENROUTER_API_KEY=sk-or-...
-OPENROUTER_CHAT_MODEL=anthropic/claude-sonnet-4-20250514
-OPENROUTER_APP_NAME="Enterprise KB"
+OPENROUTER_CHAT_MODEL=openai/gpt-4o-mini
+OPENROUTER_APP_NAME="AskMyDocs"
 OPENROUTER_SITE_URL=https://kb.example.com
 
-# Key per embeddings
 OPENAI_API_KEY=sk-...
 ```
 
-#### Nota importante sulle dimensioni embedding
+#### Regolo.ai (by Seeweb)
 
-Se cambi provider di embeddings (es. da OpenAI 1536-dim a Gemini 768-dim):
-1. Aggiorna `KB_EMBEDDINGS_DIMENSIONS` in `.env`
-2. Crea una nuova migration per aggiornare la dimensione del campo `vector`
-3. Re-indicizza tutti i documenti esistenti
+EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports both chat and embeddings. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
+
+```env
+AI_PROVIDER=regolo
+AI_EMBEDDINGS_PROVIDER=regolo
+
+REGOLO_API_KEY=...
+REGOLO_BASE_URL=https://api.regolo.ai/v1
+REGOLO_CHAT_MODEL=Llama-3.3-70B-Instruct
+REGOLO_EMBEDDINGS_MODEL=gte-Qwen2
+```
+
+#### Embedding dimension gotcha
+
+If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini 768-dim):
+
+1. Update `KB_EMBEDDINGS_DIMENSIONS` in `.env`
+2. Create a new migration that resizes the `embedding` `vector(N)` column on `knowledge_chunks` and `embedding_cache`
+3. `php artisan kb:prune-embedding-cache --days=0` (then `--days=` reset) or `EmbeddingCacheService::flush()` to drop the old vectors
+4. Re-index all documents
+
+### Storage (Laravel disks)
+
+KB markdown files are read through a Laravel filesystem disk, so the ingestion pipeline is **storage-agnostic**: local for dev, S3 for production, MinIO for on-prem — no code change needed.
+
+Config file: `config/filesystems.php`. The dedicated `kb` disk defaults to `storage/app/kb`:
+
+```env
+# Disk used by kb:ingest and DocumentIngestor (see config/filesystems.php)
+KB_FILESYSTEM_DISK=kb
+KB_DISK_DRIVER=local
+# KB_DISK_ROOT=/absolute/path/to/markdown/root
+
+# Optional path prefix prepended to every ingested path
+KB_PATH_PREFIX=
+```
+
+#### Switching to S3
+
+Install the Flysystem S3 adapter once:
+
+```bash
+composer require league/flysystem-aws-s3-v3 "^3.0"
+```
+
+Then switch the disk driver and fill the AWS credentials:
+
+```env
+KB_FILESYSTEM_DISK=s3
+
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=eu-west-1
+AWS_BUCKET=askmydocs-kb
+AWS_URL=
+AWS_ENDPOINT=              # set for MinIO / R2 / Wasabi
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+#### Ingesting a document
+
+```bash
+# Reads storage/app/kb/docs/setup.md (local disk)
+php artisan kb:ingest docs/setup.md --project=erp-core --title="Installation Guide"
+
+# Override the disk ad-hoc
+php artisan kb:ingest docs/setup.md --project=erp-core --disk=s3
+```
 
 ### Chat Logging
 
-Il logging delle conversazioni e' disabilitato per default. Abilitalo per tracciare tutte le interazioni Q&A.
+Chat logging is **off by default**. Enable it to get structured analytics about every Q&A turn.
 
-File di configurazione: `config/chat-log.php`
+Config file: `config/chat-log.php`
 
 ```env
-# Abilita il logging
-CHAT_LOG_ENABLED=false
-
-# Driver di storage (supportato: database)
+CHAT_LOG_ENABLED=true
 CHAT_LOG_DRIVER=database
-
-# Connection DB dedicata per i log (opzionale)
-CHAT_LOG_DB_CONNECTION=
+CHAT_LOG_DB_CONNECTION=      # optional: dedicated DB connection
+CHAT_LOG_RETENTION_DAYS=90   # scheduler rotates rows older than N days
 ```
 
-#### Dati registrati per ogni interazione
+#### Fields persisted per interaction
 
-| Campo | Descrizione |
+| Field | Description |
 |---|---|
-| `session_id` | UUID della sessione (header `X-Session-Id` o auto-generato) |
-| `user_id` | ID utente autenticato (nullable) |
-| `question` | Domanda dell'utente |
-| `answer` | Risposta generata dall'agente |
-| `project_key` | Chiave progetto usata come filtro RAG |
-| `ai_provider` | Provider AI utilizzato (openai, anthropic, gemini, openrouter) |
-| `ai_model` | Modello specifico (gpt-4o, claude-sonnet-4-20250514, ...) |
-| `chunks_count` | Numero di chunk di contesto recuperati |
-| `sources` | Path dei documenti sorgente che hanno contribuito contesto |
-| `prompt_tokens` | Token consumati nel prompt |
-| `completion_tokens` | Token consumati nella risposta |
-| `total_tokens` | Token totali consumati |
-| `latency_ms` | Latenza end-to-end in millisecondi |
-| `client_ip` | IP del client |
-| `user_agent` | User-Agent del client |
-| `extra` | JSON estendibile per metadati custom |
+| `session_id` | Session UUID (from `X-Session-Id` header or auto-generated) |
+| `user_id` | Authenticated user id (nullable) |
+| `question` | User question |
+| `answer` | Assistant response |
+| `project_key` | Project key used as RAG filter |
+| `ai_provider` | openai / anthropic / gemini / openrouter / regolo |
+| `ai_model` | Specific model used |
+| `chunks_count` | Number of retrieved context chunks |
+| `sources` | Source document paths that contributed context |
+| `prompt_tokens` / `completion_tokens` / `total_tokens` | Token usage |
+| `latency_ms` | End-to-end latency |
+| `client_ip` / `user_agent` | Client metadata |
+| `extra` | JSON for custom fields (e.g. `few_shot_count`) |
 
-Il logging e' protetto da try/catch: un errore del driver non interrompe mai la risposta al client.
+Logging is wrapped in try/catch — a driver failure never breaks the user response.
 
 ### Knowledge Base
 
-File di configurazione: `config/kb.php`
+Config file: `config/kb.php`
 
 ```env
-# Dimensioni vettore embedding (match col modello)
 KB_EMBEDDINGS_DIMENSIONS=1536
-
-# Soglia minima di similarita' coseno (0.0 - 1.0)
 KB_MIN_SIMILARITY=0.30
-
-# Numero massimo di chunk per query
 KB_DEFAULT_LIMIT=8
 
-# Parametri chunking
+# Chunking
 KB_CHUNK_TARGET_TOKENS=512
 KB_CHUNK_HARD_CAP_TOKENS=1024
 KB_CHUNK_OVERLAP_TOKENS=64
 
-# Root directory documenti markdown
-KB_MARKDOWN_ROOT=/path/to/docs
+# Embedding cache
+KB_EMBEDDING_CACHE_ENABLED=true
+KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
 ---
 
-## Autenticazione
+## Scheduler
 
-Il sistema usa l'autenticazione standard di Laravel (session-based). Senza login non si accede a nessuna funzionalita'.
+Two daily hygiene jobs are registered in `bootstrap/app.php` and dispatched automatically when the Laravel scheduler runs.
 
-### Funzionalita'
+| Time | Command | Retention env | Description |
+|---|---|---|---|
+| 03:10 | `kb:prune-embedding-cache` | `KB_EMBEDDING_CACHE_RETENTION_DAYS` (default 30) | Deletes `embedding_cache` rows whose `last_used_at` is older than N days |
+| 03:20 | `chat-log:prune` | `CHAT_LOG_RETENTION_DAYS` (default 90) | Deletes `chat_logs` rows whose `created_at` is older than N days |
 
-| Funzione | Route | Descrizione |
+Set either env to `0` to disable the corresponding rotation. Both commands accept a `--days=` flag that wins over the env value for ad-hoc runs.
+
+Register the scheduler entry in your crontab:
+
+```cron
+* * * * * cd /path/to/askmydocs && php artisan schedule:run >> /dev/null 2>&1
+```
+
+List what is configured:
+
+```bash
+php artisan schedule:list
+```
+
+Both commands can also be invoked manually:
+
+```bash
+php artisan kb:prune-embedding-cache
+php artisan chat-log:prune --days=60
+```
+
+---
+
+## Authentication
+
+The system uses standard Laravel session-based auth. No route is public.
+
+### Features
+
+| Feature | Route | Description |
 |---|---|---|
-| **Login** | `GET /login` | Form di accesso |
-| **Login POST** | `POST /login` | Autentica con email + password |
-| **Logout** | `POST /logout` | Termina la sessione |
-| **Password dimenticata** | `GET /forgot-password` | Richiesta link di reset |
-| **Invio reset** | `POST /forgot-password` | Invia email con token di reset |
-| **Reset password** | `GET /reset-password/{token}` | Form per nuova password |
-| **Salva password** | `POST /reset-password` | Aggiorna la password |
+| **Login** | `GET /login` | Login form |
+| **Login POST** | `POST /login` | Authenticate with email + password → redirects to `/chat` |
+| **Logout** | `POST /logout` | End the session |
+| **Forgot password** | `GET /forgot-password` | Request a reset link |
+| **Send reset** | `POST /forgot-password` | Email a reset token |
+| **Reset password** | `GET /reset-password/{token}` | Set a new password |
+| **Save password** | `POST /reset-password` | Update the password |
 
-**Nota**: la registrazione di nuovi utenti NON e' implementata. Gli utenti vengono creati manualmente:
+> On successful login the controller redirects to `route('chat')` — visiting `/` when authenticated also redirects to the chat UI.
+
+**Note**: user registration is intentionally NOT implemented. Create users manually:
 
 ```bash
 php artisan tinker --execute="
@@ -363,7 +462,7 @@ php artisan tinker --execute="
 "
 ```
 
-Per il recupero password, configurare il mail driver in `.env`:
+For password reset, configure the mail driver:
 
 ```env
 MAIL_MAILER=smtp
@@ -376,336 +475,328 @@ MAIL_FROM_ADDRESS=noreply@example.com
 
 ---
 
-## Interfaccia Chat
+## Chat Interface
 
-L'applicazione include un'interfaccia chat completa in stile ChatGPT/Claude, accessibile a `/chat` dopo il login.
+The app ships a full ChatGPT/Claude-style chat UI at `/chat` after login.
 
 ### Layout
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Enterprise KB                                   Logout  │
+│  AskMyDocs                                       Logout  │
 ├──────────┬───────────────────────────────────────────────┤
 │          │                                               │
-│ + Nuova  │    [Area messaggi scrollabile]                │
+│ + New    │    [Scrollable messages area]                 │
 │   Chat   │                                               │
-│ ──────── │    Utente: Come funziona OAuth?               │
+│ ──────── │    User: How does OAuth work?                 │
 │ Chat 1   │                                               │
-│ Chat 2 ✎🗑│   Assistente: Secondo la documentazione...   │
+│ Chat 2 ✎🗑│    Assistant: According to the docs...       │
 │ Chat 3   │                                               │
 │          ├───────────────────────────────────────────────┤
-│ user@... │ [Messaggio...              ] [🎤] [Invio]    │
+│ user@... │ [Message...                 ] [🎤] [Send]     │
 └──────────┴───────────────────────────────────────────────┘
 ```
 
-### Funzionalita'
+### Features
 
-- **Nuova Chat**: crea una conversazione vuota
-- **Lista chat**: sidebar con tutte le conversazioni, ordinate per ultima attivita'
-- **Rinomina**: click sull'icona matita, edit inline, Enter per salvare
-- **Elimina**: click sull'icona cestino con conferma
-- **Salva titolo automatico**: dopo il primo messaggio, l'AI genera automaticamente un titolo descrittivo
-- **Persistenza**: ogni conversazione mantiene lo storico completo; cliccando su una chat precedente si ricaricano tutti i messaggi e il contesto RAG
-- **Multi-turn**: la cronologia completa viene inviata all'AI ad ogni messaggio, mantenendo il contesto della conversazione
-- **Rendering markdown**: le risposte dell'assistente vengono renderizzate con formattazione markdown (codice, liste, grassetto, ecc.)
-- **Metadati**: ogni risposta mostra il modello AI e la latenza
+- **New Chat**: start a fresh conversation.
+- **Chat list**: sidebar with every conversation, sorted by last activity.
+- **Rename**: click the pencil, inline edit, Enter to save.
+- **Delete**: click the trash icon (with confirmation).
+- **Auto title**: after the first message, the AI generates a descriptive title.
+- **Persistence**: each conversation keeps the full history; clicking an old chat reloads everything.
+- **Multi-turn**: the whole history is sent to the AI on every request.
+- **Markdown rendering**: code, lists, bold, tables.
+- **Metadata**: every response shows the model and the latency.
 
 ### Chat History
 
-Le conversazioni sono salvate nel database in due tabelle:
+Conversations live in two tables:
 
-- **`conversations`**: `id`, `user_id` (FK), `title`, `project_key`, timestamps
-- **`messages`**: `id`, `conversation_id` (FK), `role` (user/assistant), `content`, `metadata` (JSON con provider, model, tokens, latency)
+- **`conversations`** — `id`, `user_id` (FK), `title`, `project_key`, timestamps
+- **`messages`** — `id`, `conversation_id` (FK), `role` (user/assistant), `content`, `metadata` (JSON with provider/model/tokens/latency/citations), `rating`
 
-Ogni utente vede **solo le proprie conversazioni**. L'ownership e' verificata server-side su ogni operazione.
+Each user sees **only their own** conversations; ownership is enforced server-side on every operation.
 
-### Endpoint AJAX (session auth)
+### AJAX endpoints (session auth)
 
-| Metodo | Route | Descrizione |
+| Method | Route | Description |
 |---|---|---|
-| `GET` | `/conversations` | Lista conversazioni utente |
-| `POST` | `/conversations` | Crea nuova conversazione |
-| `PATCH` | `/conversations/{id}` | Rinomina |
-| `DELETE` | `/conversations/{id}` | Elimina (con tutti i messaggi) |
-| `GET` | `/conversations/{id}/messages` | Carica messaggi |
-| `POST` | `/conversations/{id}/messages` | Invia messaggio (trigger risposta AI) |
-| `POST` | `/conversations/{id}/generate-title` | Genera titolo via AI |
+| `GET` | `/conversations` | List user conversations |
+| `POST` | `/conversations` | Create a new conversation |
+| `PATCH` | `/conversations/{id}` | Rename |
+| `DELETE` | `/conversations/{id}` | Delete (with every message) |
+| `GET` | `/conversations/{id}/messages` | Load messages |
+| `POST` | `/conversations/{id}/messages` | Send a message (triggers AI response) |
+| `POST` | `/conversations/{id}/generate-title` | Generate an AI title |
 
 ### Speech-to-Text
 
-Il microfono usa la **Web Speech API nativa del browser** — nessun servizio esterno, nessun costo.
+The mic uses the browser-native **Web Speech API** — no external service, no cost.
 
-**Browser supportati**: Chrome, Edge, Safari (parziale). Firefox NON supportato.
+**Supported browsers**: Chrome, Edge, Safari (partial). Firefox is NOT supported.
 
-**Come funziona**:
-1. Click sul pulsante microfono (diventa rosso e pulsa)
-2. Parla — la trascrizione appare in tempo reale nel campo di input
-3. Click di nuovo per fermare, oppure il riconoscimento si ferma automaticamente alla pausa
-4. Il testo trascritto resta nel campo di input — puoi modificarlo prima di inviare
-5. Click "Invio" per mandare il messaggio
+**How it works**:
+1. Click the mic button (turns red and pulses).
+2. Speak — the transcription appears live in the input field.
+3. Click again to stop, or let it stop on pause.
+4. Edit the transcribed text if needed before sending.
+5. Click "Send".
 
-**Lingua**: configurata su italiano (`it-IT`) di default. Per cambiarla, modificare `this.recognition.lang` in `chat.blade.php`.
+**Language**: defaults to Italian (`it-IT`). Change `this.recognition.lang` in `chat.blade.php` to switch.
 
-Se il browser non supporta la Web Speech API, il pulsante microfono appare disabilitato.
+If the browser has no Web Speech API, the mic button is disabled.
 
 ---
 
-## Visualizzazioni Smart e Artefatti
+## Smart Visualizations & Artifacts
 
-L'AI non si limita a rispondere con testo — quando i dati lo giustificano, genera **artefatti visivi interattivi** direttamente nella chat.
+The AI doesn't just reply with text — when the data justifies it, it emits **interactive visual artifacts** right inside the chat.
 
-### Tipi di artefatti
+### Artifact types
 
-| Artefatto | Quando si attiva | Tecnologia |
+| Artifact | Triggered when | Tech |
 |---|---|---|
-| **Tabelle** | Confronti, configurazioni, dati strutturati | Markdown table con styling enhanced |
-| **Grafici** | Statistiche, distribuzioni, trend, confronti numerici | Chart.js (bar, line, pie, doughnut) |
-| **Code blocks** | Snippet di codice, configurazioni, comandi | Syntax highlight + pulsante "Copia" |
-| **Action buttons** | Contenuti copiabili, file scaricabili | Pulsanti interattivi (copy to clipboard, download file) |
+| **Tables** | Comparisons, config, structured data | Enhanced markdown tables |
+| **Charts** | Stats, distributions, trends, numeric comparisons | Chart.js (bar, line, pie, doughnut) |
+| **Code blocks** | Code snippets, configs, commands | Syntax highlight + "Copy" button |
+| **Action buttons** | Copyable content, downloadable files | Interactive buttons (clipboard, download) |
 
-### Come funzionano i grafici
+### How charts work
 
-Il system prompt istruisce l'AI a generare un blocco `~~~chart` con JSON strutturato quando la risposta contiene dati che beneficerebbero di una visualizzazione:
+The system prompt asks the AI to emit a `~~~chart` block with structured JSON whenever a visualization would help:
 
 ```
 ~~~chart
 {
     "type": "bar",
-    "title": "Ticket per categoria",
+    "title": "Tickets by category",
     "labels": ["Bug", "Feature", "Docs"],
-    "datasets": [{"label": "Conteggio", "data": [42, 28, 15]}]
+    "datasets": [{"label": "Count", "data": [42, 28, 15]}]
 }
 ~~~
 ```
 
-Il frontend:
-1. Intercetta i blocchi `~~~chart` durante il rendering markdown
-2. Li sostituisce con un `<canvas>` placeholder
-3. Inizializza un grafico Chart.js con i dati e lo stile automatico
-4. Supporta: `bar`, `line`, `pie`, `doughnut`
+The frontend:
+1. Intercepts `~~~chart` blocks while rendering markdown.
+2. Replaces them with `<canvas>` placeholders.
+3. Initializes a Chart.js chart with automatic styling.
+4. Supports: `bar`, `line`, `pie`, `doughnut`.
 
-### Come funzionano gli action button
-
-L'AI puo' generare pulsanti interattivi per contenuti che l'utente potrebbe voler copiare o scaricare:
+### How action buttons work
 
 ```
 ~~~actions
 [
-    {"label": "Copia configurazione", "action": "copy", "data": "DATABASE_URL=postgresql://..."},
-    {"label": "Scarica template YAML", "action": "download", "filename": "config.yml", "data": "server:\n  port: 8080"}
+    {"label": "Copy config", "action": "copy", "data": "DATABASE_URL=postgresql://..."},
+    {"label": "Download YAML", "action": "download", "filename": "config.yml", "data": "server:\n  port: 8080"}
 ]
 ~~~
 ```
 
-Tipi di azione:
-- **copy**: copia il contenuto nella clipboard con feedback visivo "Copiato!"
-- **download**: scarica il contenuto come file con il nome specificato
+Action types:
+- **copy** — copies the payload to the clipboard with a "Copied!" flash
+- **download** — saves the payload as a file with the given name
 
-### Code blocks con copia
+### Code blocks with copy
 
-Ogni blocco di codice nelle risposte ha un pulsante **"Copia"** nell'angolo in alto a destra. Click per copiare l'intero contenuto del blocco nella clipboard.
+Every code block inside responses gets a **"Copy"** button in the top-right corner — click to copy the full block to the clipboard.
 
 ---
 
-## Feedback e Auto-Learning
+## Feedback & Auto-Learning
 
-Il sistema impara dalle preferenze dell'utente attraverso un ciclo di feedback che migliora progressivamente la qualita' delle risposte.
+The system learns from user preferences through a feedback loop that progressively improves response quality.
 
-### Come funziona
+### How it works
 
 ```
-Utente riceve risposta
+User receives an answer
     │
-    ├── Click 👍 (positivo) → salva rating nel messaggio
+    ├── Click 👍 (positive) → save rating on the message
     │       │
-    │       └── Le prossime risposte includeranno questa Q&A
-    │           come "esempio di buona risposta" nel prompt
-    │           (few-shot learning)
+    │       └── Future responses will include this Q&A as a
+    │           "well-rated example" in the prompt (few-shot learning)
     │
-    └── Click 👎 (negativo) → salva rating nel messaggio
+    └── Click 👎 (negative) → save rating on the message
             │
-            └── Segnale per analytics (non usato nel prompt)
+            └── Analytics signal only (not injected into prompts)
 ```
 
 ### Few-Shot Learning
 
-Quando l'utente valuta positivamente una risposta, il sistema:
+When a user rates an answer positively:
 
-1. Salva il rating (`positive`) sul messaggio nel database
-2. Nelle richieste successive, il `FewShotService` recupera le ultime 3 Q&A positive dello stesso utente/progetto
-3. Queste vengono iniettate nel system prompt come "Examples of Well-Rated Answers"
-4. L'AI apprende tono, profondita' e formato che l'utente preferisce
+1. The rating (`positive`) is saved on the message in the database.
+2. On subsequent requests, `FewShotService` retrieves the last 3 positively-rated Q&As for the same user/project.
+3. They are injected into the system prompt as "Examples of Well-Rated Answers".
+4. The AI gradually adapts tone, depth, and format to the user's preferences.
 
-Questo permette al sistema di **adattarsi** a ciascun utente senza fine-tuning del modello:
-- Un utente che premia risposte dettagliate otterra' risposte piu' approfondite
-- Un utente che premia risposte concise otterra' risposte piu' brevi
-- Le preferenze di formato (tabelle vs. prose, tecnico vs. divulgativo) vengono apprese
+This lets the system **adapt per user** without fine-tuning:
+- A user who rewards detailed answers gets deeper answers.
+- A user who rewards concise answers gets shorter answers.
+- Formatting preferences (tables vs prose, technical vs plain) are learned.
 
 ### Toggle
 
-Il feedback e' un toggle: premere di nuovo lo stesso pollice rimuove il rating.
+Feedback is a toggle — clicking the same thumb twice removes the rating.
 
-### Feedback nei log
+### Feedback in logs
 
-Se il chat logging e' abilitato, ogni risposta registra nel campo `extra`:
-- `few_shot_count`: quanti esempi positivi sono stati iniettati nel prompt
-- `citations_count`: quante citazioni ha prodotto la risposta
+When chat logging is on, every response records in `extra`:
+- `few_shot_count` — number of positive examples injected into the prompt
+- `citations_count` — number of citations produced
 
-Questo permette di analizzare la correlazione tra few-shot examples e qualita' percepita.
+This enables correlating few-shot usage to perceived quality.
 
 ---
 
 ## Reranking
 
-Il sistema implementa **reranking ibrido** che migliora la qualita' dei risultati RAG combinando tre segnali di rilevanza:
+The system uses **hybrid reranking** that fuses three relevance signals:
 
-### Come funziona
+### How it works
 
 ```
-Query utente
+User query
     │
     ▼
-1. Over-retrieval: pgvector restituisce 3x candidati (es. 24 invece di 8)
-    │                con cosine similarity score
+1. Over-retrieval: pgvector returns 3× candidates (e.g. 24 instead of 8)
+    │                with a cosine similarity score
     ▼
-2. Reranking: per ogni candidato si calcolano 3 score:
-    ├── vector_score  (0-1): similarita' coseno originale da pgvector
-    ├── keyword_score (0-1): copertura keyword della query nel testo
-    └── heading_score (0-1): match keyword nel heading del chunk
+2. Reranking: for each candidate, 3 scores are computed:
+    ├── vector_score  (0-1): original cosine similarity from pgvector
+    ├── keyword_score (0-1): keyword coverage of the query in the text
+    └── heading_score (0-1): keyword match in the chunk heading
     │
     ▼
 3. Score fusion: combined = 0.6×vector + 0.3×keyword + 0.1×heading
     │
     ▼
-4. Top-K: i migliori 8 chunk (configurabile) vengono restituiti
+4. Top-K: the best 8 chunks (configurable) are returned
 ```
 
-### Perche' il reranking migliora i risultati
+### Why reranking helps
 
-La ricerca puramente vettoriale puo' perdere risultati che contengono le parole esatte della query. Il reranking keyword-based recupera questi chunk premiando la corrispondenza lessicale diretta.
+Pure vector search may miss results that contain the exact query terms. Keyword-based reranking recovers these by rewarding direct lexical matches.
 
-**Esempio**: la query "configurazione OAuth 2.0" potrebbe avere un match vettoriale forte con un chunk generico sull'autenticazione, ma il reranker favorira' il chunk che contiene esattamente "OAuth 2.0" nel testo o nel heading.
+**Example**: for "OAuth 2.0 configuration", a generic authentication chunk might beat the OAuth-specific one on pure cosine similarity; the reranker pushes the OAuth chunk up because its text and heading contain the exact phrase.
 
-### Configurazione
-
-In `.env`:
+### Configuration
 
 ```env
-# Abilita/disabilita reranking (default: abilitato)
 KB_RERANKING_ENABLED=true
-
-# Quanti candidati recuperare prima del reranking (multiplier × limit)
 KB_RERANK_CANDIDATE_MULTIPLIER=3
 
-# Pesi dei segnali (devono sommare a 1.0)
+# Weights must sum to 1.0
 KB_RERANK_VECTOR_WEIGHT=0.60
 KB_RERANK_KEYWORD_WEIGHT=0.30
 KB_RERANK_HEADING_WEIGHT=0.10
 ```
 
-### Dettagli tecnici
+### Implementation notes
 
-- **Zero costi aggiuntivi**: il reranker gira interamente in-process, nessuna API esterna
-- **Stop words**: filtra automaticamente stop words italiane e inglesi
-- **Whole-word bonus**: match di parole intere ricevono un bonus rispetto a match parziali (substring)
-- **Trasparente**: ogni chunk restituito include `rerank_detail` con i singoli score per debug
+- **Zero extra cost**: the reranker runs entirely in-process.
+- **Stop words**: Italian and English stop words are filtered automatically.
+- **Whole-word bonus**: full-word matches earn a bonus over substring matches.
+- **Transparent**: every returned chunk carries `rerank_detail` with the individual scores for debugging.
 
 ---
 
 ## Embedding Cache
 
-Il sistema di caching embeddings evita chiamate API ridondanti quando si re-indicizzano documenti invariati o si ripetono query di ricerca identiche.
+The embedding cache skips redundant API calls when the same content is re-ingested or the same query is searched again.
 
-### Come funziona
+### How it works
 
 ```
-Testo da embeddare
+Text to embed
     │
     ▼
 EmbeddingCacheService::generate([$text1, $text2, ...])
     │
-    ├── Per ogni testo: SHA-256 hash
+    ├── SHA-256 hash per text
     │
-    ├── Batch lookup su tabella embedding_cache
+    ├── Batch lookup on embedding_cache
     │     (hash + provider + model)
     │
-    ├── Cache HIT → embedding restituito da DB (zero API call)
+    ├── Cache HIT → embedding returned from DB (zero API call)
     │
-    ├── Cache MISS → solo i testi nuovi vanno all'API
-    │     └── risultato salvato in cache per riuso futuro
+    ├── Cache MISS → only the new texts hit the API
+    │     └── result stored back in cache
     │
-    └── Risultato finale: array di embeddings order-matched
+    └── Final result: order-matched array of embeddings
 ```
 
-### Quando e' utile
+### When it helps
 
-- **Re-ingestion**: re-indicizzare gli stessi documenti non consuma token API
-- **Query ripetute**: la stessa domanda di ricerca non genera embedding duplicati
-- **Sviluppo**: durante lo sviluppo si fanno molte query di test simili
+- **Re-ingestion**: re-indexing unchanged documents consumes no API tokens.
+- **Repeated queries**: the same search query produces no duplicate embeddings.
+- **Development**: during dev you run many similar test queries.
 
-### Tabella `embedding_cache`
+### `embedding_cache` table
 
 ```sql
 id              BIGINT PK
-text_hash       VARCHAR(64) UNIQUE    -- SHA-256 del testo input
-provider        VARCHAR(64)           -- openai, gemini, etc.
-model           VARCHAR(128)          -- text-embedding-3-small, etc.
-embedding       VECTOR(1536)          -- vettore cached
+text_hash       VARCHAR(64) UNIQUE    -- SHA-256 of the input text
+provider        VARCHAR(64)           -- openai, gemini, regolo, ...
+model           VARCHAR(128)          -- text-embedding-3-small, gte-Qwen2, ...
+embedding       VECTOR(1536)          -- cached vector
 created_at      TIMESTAMP
-last_used_at    TIMESTAMP             -- per pulizia LRU
+last_used_at    TIMESTAMP             -- for LRU-style pruning
 ```
 
-### Configurazione
+### Configuration
 
 ```env
-# Abilita/disabilita il caching embeddings (default: abilitato)
 KB_EMBEDDING_CACHE_ENABLED=true
+KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
-### Manutenzione
+### Maintenance
+
+Manual pruning / inspection via the service:
 
 ```php
 use App\Services\Kb\EmbeddingCacheService;
 
 $cache = app(EmbeddingCacheService::class);
 
-// Statistiche cache
-$cache->stats();
-// → ['total_entries' => 1234, 'providers' => [...]]
-
-// Pulisci entry non usate da 30+ giorni
-$cache->prune(now()->subDays(30));
-
-// Svuota tutta la cache
-$cache->flush();
-
-// Svuota solo cache di un provider
-$cache->flush('openai');
+$cache->stats();                          // ['total_entries' => 1234, 'providers' => [...]]
+$cache->prune(now()->subDays(30));        // manual prune
+$cache->flush();                          // wipe everything
+$cache->flush('openai');                  // wipe one provider only
 ```
 
-> **Nota**: quando si cambia provider di embeddings (es. da OpenAI a Gemini), la cache contiene vettori del vecchio provider. Fare `flush()` e re-indicizzare.
+Or via artisan:
+
+```bash
+php artisan kb:prune-embedding-cache --days=30
+```
+
+> **Heads up**: when you switch embedding providers (e.g. OpenAI → Gemini), the cache still holds old-provider vectors. Run `flush()` and re-index.
 
 ---
 
 ## Hybrid Search
 
-La hybrid search combina la ricerca semantica (pgvector) con la ricerca full-text tradizionale di PostgreSQL (tsvector/tsquery) per catturare casi in cui i termini esatti contano.
+Hybrid search combines semantic search (pgvector) with PostgreSQL's full-text search (tsvector / tsquery) to catch cases where exact terms matter.
 
-### Perche' serve
+### Why it matters
 
-La ricerca puramente semantica eccelle nel trovare contenuti concettualmente simili, ma puo' perdere:
+Pure semantic search excels at conceptually similar content but can miss:
 
-| Tipo di query | Semantica pura | Hybrid |
+| Query type | Pure semantic | Hybrid |
 |---|---|---|
-| "configurazione OAuth" | Trova bene | Trova bene |
-| "codice prodotto XR-4521" | Puo' mancare | Match esatto via FTS |
-| "art. 42 comma 3" | Puo' mancare | Match esatto via FTS |
-| "errore ENOMEM" | Puo' confondere | Match esatto via FTS |
+| "OAuth configuration" | Finds it | Finds it |
+| "product code XR-4521" | May miss | Exact match via FTS |
+| "article 42 paragraph 3" | May miss | Exact match via FTS |
+| "ENOMEM error" | May confuse | Exact match via FTS |
 
-### Come funziona
+### How it works
 
 ```
-Query utente
+User query
     │
     ├──────────────────────┐
     ▼                      ▼
@@ -721,82 +812,73 @@ Semantic Search         Full-Text Search
     score = Σ weight / (k + rank)
                │
                ▼
-    Merged ranked list → Reranker → Top-K
+    Merged list → Reranker → Top-K
 ```
 
-**Reciprocal Rank Fusion (RRF)** e' l'algoritmo standard per fondere due ranked list senza bisogno di normalizzare gli score. E' usato da Elasticsearch, Pinecone, e tutti i principali sistemi di ricerca ibrida.
+**Reciprocal Rank Fusion (RRF)** is the standard algorithm for merging two ranked lists without normalising scores. It is used by Elasticsearch, Pinecone, and most production hybrid-search systems.
 
-### Full-Text Search in PostgreSQL
+### PostgreSQL full-text search
 
-Usa le funzionalita' native di PostgreSQL:
+Native features only:
+- `to_tsvector(lang, text)` — tokenize the text
+- `plainto_tsquery(lang, query)` — safely parse the user query (no syntax errors)
+- `ts_rank()` — compute relevance
+- Configurable language: italian (default), english, german, french, spanish, ...
 
-- **`to_tsvector(lang, text)`** — converte testo in token searchabili
-- **`plainto_tsquery(lang, query)`** — converte query in modo sicuro (no errori di sintassi)
-- **`ts_rank()`** — calcola rilevanza
-- **Lingua configurabile**: italiano (default), inglese, tedesco, ecc.
+A GIN index on `to_tsvector(chunk_text)` is shipped as a migration — no manual SQL required:
 
-Non richiede indici GIN aggiuntivi per funzionare (ma raccomandati per performance su grandi dataset):
-
-```sql
--- Opzionale: indice GIN per performance su tabelle grandi
-CREATE INDEX idx_chunks_fts ON knowledge_chunks
-    USING GIN (to_tsvector('italian', chunk_text));
+```
+database/migrations/2026_01_01_000008_add_fts_gin_index_to_knowledge_chunks.php
 ```
 
-### Configurazione
+The migration uses the language from `KB_FTS_LANGUAGE` (whitelisted against SQL injection) and is a safe no-op on non-PostgreSQL drivers.
+
+### Configuration
 
 ```env
-# Abilita/disabilita hybrid search (default: disabilitato)
 KB_HYBRID_SEARCH_ENABLED=false
-
-# Lingua per il full-text search di PostgreSQL
-# Valori: italian, english, german, french, spanish, portuguese, ...
 KB_FTS_LANGUAGE=italian
-
-# Parametro K per RRF (default 60, standard del settore)
 KB_RRF_K=60
-
-# Pesi relativi nella fusione RRF
 KB_HYBRID_SEMANTIC_WEIGHT=0.70
 KB_HYBRID_FTS_WEIGHT=0.30
 ```
 
-### Quando abilitarlo
+### When to enable
 
-- **Abilitare** se i documenti contengono codici prodotto, riferimenti legali, sigle, numeri di pratica, o altri termini che devono essere trovati per match esatto
-- **Lasciare disabilitato** se il contenuto e' principalmente prosa e la ricerca semantica funziona bene da sola
-- Il costo computazionale e' minimo (una query SQL in piu')
+- **Enable** if your corpus contains product codes, legal refs, acronyms, or other terms that must be matched literally.
+- **Leave off** if the content is mostly prose and semantic search is doing fine.
+- Runtime cost is minimal (one extra SQL query per search).
 
 ---
 
 ## Citations
 
-Ogni risposta dell'assistente include le **citazioni** — i documenti sorgente che hanno fornito il contesto per la risposta. Questo permette all'utente di verificare l'informazione direttamente alla fonte.
+Every assistant answer ships the **citations** — the source documents that provided the retrieval context. Users can verify claims at the source.
 
-### Come funziona
+### How it works
 
-1. Il sistema RAG recupera N chunk da M documenti diversi
-2. I chunk vengono raggruppati per documento sorgente
-3. Per ogni documento si raccolgono: titolo, path, heading paths, numero di chunk usati
-4. Le citazioni vengono salvate nel metadata del messaggio assistente
-5. Il frontend le mostra in una sezione collassabile sotto la risposta
+1. The RAG system retrieves N chunks from M distinct documents.
+2. Chunks are grouped by source document.
+3. For each document we collect: title, path, heading paths, number of chunks used.
+4. Citations are persisted on the assistant message metadata.
+5. The frontend shows them as a collapsible section under the answer.
 
-### Formato citazioni (API)
+### Citation format (API)
 
 ```json
 {
-    "answer": "L'autenticazione OAuth si configura...",
+    "answer": "OAuth is configured by...",
     "citations": [
         {
             "document_id": 12,
-            "title": "Configurazione OAuth 2.0",
+            "title": "OAuth 2.0 Configuration",
             "source_path": "docs/auth/oauth.md",
-            "headings": ["Prerequisiti", "Configurazione Client"],
+            "headings": ["Prerequisites", "Client setup"],
             "chunks_used": 3
         },
         {
             "document_id": 8,
-            "title": "Architettura Sicurezza",
+            "title": "Security Architecture",
             "source_path": "docs/security/overview.md",
             "headings": ["Token Management"],
             "chunks_used": 1
@@ -806,26 +888,26 @@ Ogni risposta dell'assistente include le **citazioni** — i documenti sorgente 
 }
 ```
 
-### UI nel frontend
+### Frontend UI
 
-Sotto ogni risposta dell'assistente appare un link "N fonte/i" cliccabile:
+Under every assistant reply a clickable "N sources" row appears:
 
 ```
-Assistente: L'autenticazione OAuth si configura...
-   ▶ 2 fonte/i                          ← click per espandere
+Assistant: OAuth is configured by...
+   ▶ 2 sources                         ← click to expand
    ┌─────────────────────────────────┐
-   │ 📄 Configurazione OAuth 2.0    │
+   │ 📄 OAuth 2.0 Configuration     │
    │    docs/auth/oauth.md          │
-   │    [Prerequisiti] [Config...]  │
+   │    [Prerequisites] [Client...] │
    │                                 │
-   │ 📄 Architettura Sicurezza      │
+   │ 📄 Security Architecture       │
    │    docs/security/overview.md   │
    │    [Token Management]          │
    └─────────────────────────────────┘
-   gpt-4o · 2340ms · 4 chunk
+   gpt-4o · 2340ms · 4 chunks
 ```
 
-Le citazioni sono persistite nel campo `metadata.citations` della tabella `messages`, quindi sono disponibili anche quando si ricarica una conversazione precedente.
+Citations are stored in the `metadata.citations` column of the `messages` table so they survive a conversation reload.
 
 ---
 
@@ -833,41 +915,41 @@ Le citazioni sono persistite nel campo `metadata.citations` della tabella `messa
 
 ### POST `/api/kb/chat`
 
-Endpoint principale per interrogare la knowledge base (stateless, senza conversazione).
+Stateless endpoint to query the knowledge base (no conversation state).
 
-**Headers:**
+**Headers**
 
-| Header | Obbligatorio | Descrizione |
+| Header | Required | Description |
 |---|---|---|
-| `Authorization` | Si | `Bearer {sanctum-token}` |
-| `Content-Type` | Si | `application/json` |
-| `X-Session-Id` | No | UUID per raggruppare messaggi della stessa sessione |
+| `Authorization` | Yes | `Bearer {sanctum-token}` |
+| `Content-Type` | Yes | `application/json` |
+| `X-Session-Id` | No | UUID grouping messages of the same session |
 
-**Request body:**
+**Request body**
 
 ```json
 {
-    "question": "Come configuro il sistema di autenticazione?",
+    "question": "How do I configure the auth system?",
     "project_key": "erp-core"
 }
 ```
 
-| Campo | Tipo | Obbligatorio | Descrizione |
+| Field | Type | Required | Description |
 |---|---|---|---|
-| `question` | string | Si | Domanda in linguaggio naturale (max 10.000 char) |
-| `project_key` | string | No | Filtra la ricerca semantica per progetto |
+| `question` | string | Yes | Natural-language question (max 10,000 chars) |
+| `project_key` | string | No | Filters semantic search to a project |
 
-**Response 200:**
+**Response 200**
 
 ```json
 {
-    "answer": "Per configurare l'autenticazione nel modulo ERP-Core...",
+    "answer": "To configure authentication in ERP-Core...",
     "citations": [
         {
             "document_id": 12,
-            "title": "Configurazione Auth",
+            "title": "Auth Setup",
             "source_path": "docs/auth/setup.md",
-            "headings": ["OAuth 2.0", "Prerequisiti"],
+            "headings": ["OAuth 2.0", "Prerequisites"],
             "chunks_used": 2
         }
     ],
@@ -880,13 +962,13 @@ Endpoint principale per interrogare la knowledge base (stateless, senza conversa
 }
 ```
 
-**Autenticazione:** Laravel Sanctum (Bearer token).
+**Authentication**: Laravel Sanctum (Bearer token).
 
 ---
 
 ## MCP Server
 
-Il server MCP (Model Context Protocol) espone la knowledge base come set di tool read-only, permettendo a Claude e altri AI agent di interrogare la KB direttamente.
+The MCP (Model Context Protocol) server exposes the knowledge base as a set of read-only tools so Claude and other AI agents can query it directly.
 
 ### Endpoint
 
@@ -894,22 +976,21 @@ Il server MCP (Model Context Protocol) espone la knowledge base come set di tool
 /mcp/kb
 ```
 
-Protetto da `auth:sanctum` e `throttle:api`.
+Protected by `auth:sanctum` and `throttle:api`.
 
-### Tool disponibili
+### Available tools
 
-| Tool | Descrizione | Parametri |
+| Tool | Description | Parameters |
 |---|---|---|
-| `KbSearchTool` | Ricerca semantica | `query` (required), `project_key`, `limit` |
-| `KbReadDocumentTool` | Lettura documento completo | `document_id` (required) |
-| `KbReadChunkTool` | Lettura singolo chunk | `chunk_id` (required) |
-| `KbRecentChangesTool` | Documenti indicizzati di recente | `project_key`, `limit` |
-| `KbSearchByProjectTool` | Ricerca vincolata a progetto | `project_key` (required), `query` (required), `limit` |
+| `KbSearchTool` | Semantic search | `query` (required), `project_key`, `limit` |
+| `KbReadDocumentTool` | Read a full document | `document_id` (required) |
+| `KbReadChunkTool` | Read a single chunk | `chunk_id` (required) |
+| `KbRecentChangesTool` | Recently indexed documents | `project_key`, `limit` |
+| `KbSearchByProjectTool` | Search scoped to a project | `project_key`, `query`, `limit` |
 
-### Integrazione con Claude Desktop / Claude Code
+### Claude Desktop / Claude Code integration
 
 ```bash
-# Claude Code CLI
 claude mcp add --transport http kb http://localhost:8000/mcp/kb \
     --header "Authorization: Bearer {token}"
 ```
@@ -918,7 +999,17 @@ claude mcp add --transport http kb http://localhost:8000/mcp/kb \
 
 ## Document Ingestion
 
-### Ingestion Markdown via codice
+### Via CLI (recommended)
+
+```bash
+php artisan kb:ingest docs/auth/setup.md \
+    --project=erp-core \
+    --title="Auth Setup"
+```
+
+The command reads the file through the configured Laravel disk (`KB_FILESYSTEM_DISK`), so the same command works for `local` and `s3` backends.
+
+### Via code
 
 ```php
 use App\Services\Kb\DocumentIngestor;
@@ -928,124 +1019,126 @@ $ingestor = app(DocumentIngestor::class);
 $ingestor->ingestMarkdown(
     projectKey: 'erp-core',
     sourcePath: 'docs/auth/setup.md',
-    title: 'Configurazione Autenticazione',
-    markdown: file_get_contents('/path/to/setup.md'),
+    title: 'Auth Setup',
+    markdown: Storage::disk('kb')->get('docs/auth/setup.md'),
     metadata: [
-        'language' => 'it',
+        'language' => 'en',
         'access_scope' => 'internal',
         'author' => 'team-auth',
     ],
 );
 ```
 
-### Pipeline di ingestion
+### Pipeline
 
-1. **Hash** — SHA256 del contenuto per idempotenza
-2. **Chunking** — Split del markdown in chunk (predisposto per parser AST-aware)
-3. **Embedding** — Generazione embeddings via provider configurato
-4. **Storage** — Transazione atomica: `KnowledgeDocument` + N `KnowledgeChunk` con embedding
+1. **Hash** — SHA256 of the content for idempotency.
+2. **Chunking** — Split the markdown into chunks (ready for an AST-aware parser).
+3. **Embedding** — Generate embeddings via the configured provider (with cache).
+4. **Storage** — Atomic transaction: `KnowledgeDocument` + N `KnowledgeChunk` rows with embedding.
 
-### Idempotenza
+### Idempotency
 
-L'ingestion e' idempotente: re-ingerire lo stesso documento con lo stesso contenuto non crea duplicati. I constraint unique su `(project_key, source_path, version_hash)` e `(knowledge_document_id, chunk_hash)` garantiscono consistenza.
-
----
-
-## Estensione
-
-### Aggiungere un nuovo AI provider
-
-1. Crea `app/Ai/Providers/NuovoProvider.php` implementando `AiProviderInterface`
-2. Implementa i metodi: `chat()`, `generateEmbeddings()`, `name()`, `supportsEmbeddings()`
-3. Aggiungi il match case in `AiManager::resolve()`
-4. Aggiungi la sezione configurazione in `config/ai.php`
-
-### Aggiungere un driver di chat log
-
-1. Crea `app/Services/ChatLog/Drivers/NuovoDriver.php` implementando `ChatLogDriverInterface`
-2. Implementa il metodo `store(ChatLogEntry $entry): void`
-3. Aggiungi il match case in `ChatLogManager::resolveDriver()`
-4. Aggiungi la sezione configurazione in `config/chat-log.php`
-
-### Aggiungere un MCP tool
-
-1. Crea `app/Mcp/Tools/NuovoTool.php` estendendo `Laravel\Mcp\Server\Tool`
-2. Definisci schema e handler
-3. Registra la classe in `KnowledgeBaseServer::$tools`
+Ingestion is idempotent: re-ingesting the same document with the same content creates no duplicates. Unique constraints on `(project_key, source_path, version_hash)` and `(knowledge_document_id, chunk_hash)` enforce consistency.
 
 ---
 
-## Come funziona il RAG
+## Extending
 
-RAG (Retrieval-Augmented Generation) e' il pattern architetturale alla base di questo sistema. Invece di affidarsi solo alla conoscenza del modello AI, il sistema recupera informazioni rilevanti dalla knowledge base aziendale e le inietta nel prompt, garantendo risposte accurate, aggiornate e tracciate alle fonti.
+### Add a new AI provider
 
-### Flusso completo di una richiesta
+1. Create `app/Ai/Providers/NewProvider.php` implementing `AiProviderInterface`.
+2. Implement `chat()`, `chatWithHistory()`, `generateEmbeddings()`, `name()`, `supportsEmbeddings()`.
+3. Add a case to the `match` in `AiManager::resolve()`.
+4. Add a `providers.new` block to `config/ai.php`.
+5. Add env defaults to `.env.example`.
+6. Mirror `tests/Unit/Ai/OpenAiProviderTest.php` for test coverage.
+
+### Add a chat-log driver
+
+1. Create `app/Services/ChatLog/Drivers/NewDriver.php` implementing `ChatLogDriverInterface`.
+2. Implement `store(ChatLogEntry $entry): void`.
+3. Add a case to `ChatLogManager::resolveDriver()`.
+4. Add config in `config/chat-log.php`.
+
+### Add an MCP tool
+
+1. Create `app/Mcp/Tools/NewTool.php` extending `Laravel\Mcp\Server\Tool`.
+2. Define schema and handler.
+3. Register the class on `KnowledgeBaseServer::$tools`.
+
+---
+
+## How RAG works
+
+RAG (Retrieval-Augmented Generation) is the architectural pattern behind this system. Instead of relying only on the model's baked-in knowledge, we retrieve relevant passages from the company KB and inject them into the prompt, producing accurate, up-to-date, source-traceable answers.
+
+### Full request lifecycle
 
 ```
-Utente: "Come configuro OAuth nel modulo ERP?"
+User: "How do I configure OAuth in the ERP module?"
                 │
                 ▼
-┌─── 1. EMBEDDING DELLA QUERY ────────────────────────────────┐
-│  AiManager genera un vettore numerico (embedding) della     │
-│  domanda usando il provider embeddings configurato.         │
-│  Es: OpenAI text-embedding-3-small → vettore 1536-dim      │
+┌─── 1. QUERY EMBEDDING ──────────────────────────────────────┐
+│  AiManager computes a numeric embedding vector using the    │
+│  configured embeddings provider.                            │
+│  E.g. OpenAI text-embedding-3-small → 1536-dim vector.      │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
-┌─── 2. RICERCA SEMANTICA + RERANKING ────────────────────────┐
-│  pgvector confronta il vettore con tutti i chunk (coseno).   │
-│  Over-retrieval: recupera 3x candidati (es. 24).            │
-│  Reranker fonde: vector + keyword + heading score.           │
-│  Risultato: top-K chunk piu' rilevanti (default: 8).        │
+┌─── 2. SEMANTIC SEARCH + RERANK ─────────────────────────────┐
+│  pgvector compares the vector against every chunk (cosine). │
+│  Over-retrieval: 3× candidates (e.g. 24).                   │
+│  Reranker fuses vector + keyword + heading.                 │
+│  Result: top-K most relevant chunks (default: 8).           │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
-┌─── 3. COMPOSIZIONE PROMPT ──────────────────────────────────┐
-│  I chunk recuperati vengono iniettati nel system prompt      │
-│  (template Blade: resources/views/prompts/kb_rag.blade.php). │
-│  Il prompt contiene regole precise:                          │
-│  - Rispondi SOLO in base al contesto fornito                │
-│  - Includi citazioni (documento, path, heading)             │
-│  - Dichiara esplicitamente se il contesto e' insufficiente  │
+┌─── 3. PROMPT COMPOSITION ───────────────────────────────────┐
+│  Retrieved chunks are injected into the system prompt       │
+│  (Blade template: resources/views/prompts/kb_rag.blade.php).│
+│  The prompt enforces strict rules:                          │
+│  - Answer ONLY based on the provided context                │
+│  - Include citations (document, path, heading)              │
+│  - Say so explicitly if context is insufficient             │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
-┌─── 4. CHIAMATA AL MODELLO AI ───────────────────────────────┐
-│  AiManager::chat() invia il prompt al provider configurato.  │
-│  Il modello genera la risposta basandosi solo sul contesto   │
-│  fornito (grounded generation, no hallucination).            │
-│  La risposta include: contenuto, token usage, finish_reason. │
+┌─── 4. MODEL CALL ───────────────────────────────────────────┐
+│  AiManager::chat() sends the prompt to the configured       │
+│  provider. The model grounds its answer in the context      │
+│  (no hallucination). Response includes content, token       │
+│  usage, finish_reason.                                      │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
-┌─── 5. LOGGING (opzionale) ──────────────────────────────────┐
-│  Se CHAT_LOG_ENABLED=true, tutti i dati dell'interazione    │
-│  vengono persistiti: domanda, risposta, provider, modello,  │
-│  token, latenza, IP client, chunk usati. Protetto da        │
-│  try/catch: errori di logging non bloccano mai la risposta. │
+┌─── 5. LOGGING (optional) ───────────────────────────────────┐
+│  If CHAT_LOG_ENABLED=true, the interaction is persisted     │
+│  (question, answer, provider, model, tokens, latency, IP,   │
+│  chunks). Guarded by try/catch — logging errors never       │
+│  propagate to the user response.                            │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
-             Risposta JSON al client
+             JSON response to the client
 ```
 
-### Perche' RAG e non fine-tuning?
+### Why RAG over fine-tuning?
 
-| Aspetto | RAG | Fine-tuning |
+| Aspect | RAG | Fine-tuning |
 |---|---|---|
-| **Aggiornamento dati** | Immediato (re-ingest documento) | Richiede re-training |
-| **Tracciabilita'** | Citazioni esatte alle fonti | Nessuna |
-| **Costo** | Basso (solo API call) | Alto (training + hosting) |
-| **Hallucination** | Controllata (grounded) | Rischio maggiore |
-| **Multi-tenant** | Filtro per project_key | Un modello per tenant |
+| **Data updates** | Instant (re-ingest) | Needs re-training |
+| **Traceability** | Exact citations | None |
+| **Cost** | Low (API calls only) | High (training + hosting) |
+| **Hallucination** | Controlled (grounded) | Higher risk |
+| **Multi-tenant** | Filter by `project_key` | One model per tenant |
 
 ---
 
-## Come funziona il Multi-Provider AI
+## How the Multi-Provider AI layer works
 
-Il sistema e' progettato per non dipendere da nessun SDK AI esterno. Ogni provider viene chiamato via HTTP diretto (`Illuminate\Support\Facades\Http`), dando pieno controllo su autenticazione, retry, timeout, e formato delle risposte.
+The system deliberately does not depend on any AI SDK. Every provider is called via `Illuminate\Support\Facades\Http`, giving full control over auth, retries, timeouts, and response parsing.
 
-### Architettura del layer AI
+### AI layer architecture
 
 ```
 AiManager (singleton)
@@ -1053,58 +1146,58 @@ AiManager (singleton)
     ├── provider('openai')     → OpenAiProvider
     ├── provider('anthropic')  → AnthropicProvider
     ├── provider('gemini')     → GeminiProvider
-    └── provider('openrouter') → OpenRouterProvider
+    ├── provider('openrouter') → OpenRouterProvider
+    └── provider('regolo')     → RegoloProvider
     │
-    ├── chat()                 → usa il provider di default
-    ├── generateEmbeddings()   → usa il provider embeddings
-    └── embeddingsProvider()   → risolve il provider per embeddings
+    ├── chat()                 → uses the default provider
+    ├── generateEmbeddings()   → uses the embeddings provider
+    └── embeddingsProvider()   → resolves the embeddings provider
 ```
 
-### Provider separati per chat ed embeddings
+### Separate chat vs embeddings providers
 
-Il concetto chiave e' che **chat e embeddings possono usare provider diversi**. Questo e' necessario perche':
+Chat and embeddings **can** use different providers. This is useful because:
 
-- **Anthropic** (Claude) e' eccellente per la generazione testo, ma non offre un endpoint embeddings
-- **OpenRouter** fa da gateway multi-modello per chat, ma non gestisce embeddings
-- **OpenAI** e **Gemini** supportano entrambe le funzionalita'
+- **Anthropic** (Claude) is excellent for generation but has no embeddings endpoint.
+- **OpenRouter** is a multi-model gateway for chat, not for embeddings.
+- **OpenAI**, **Gemini**, and **Regolo** support both.
 
-Configurazione tipica enterprise:
+Typical enterprise setup:
 
 ```env
-# Chat via Anthropic (Claude per qualita' superiore)
 AI_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Embeddings via OpenAI (standard de facto, 1536-dim)
 AI_EMBEDDINGS_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 ```
 
-### Matrice compatibilita' provider
+### Provider compatibility matrix
 
-| Provider | Chat | Embeddings | Note |
+| Provider | Chat | Embeddings | Notes |
 |---|---|---|---|
-| **OpenAI** | Si | Si | Default. Supporta entrambi. |
-| **Anthropic** | Si | No | Richiede embeddings provider separato. |
-| **Gemini** | Si | Si | Embedding dim diverse da OpenAI (768 vs 1536). |
-| **OpenRouter** | Si | No | Gateway multi-modello. Richiede embeddings separato. |
+| **OpenAI** | Yes | Yes | Reference implementation. |
+| **Anthropic** | Yes | No | Requires a separate embeddings provider. |
+| **Gemini** | Yes | Yes | Embedding dim differs from OpenAI (768 vs 1536). |
+| **OpenRouter** | Yes | No | Multi-model gateway. Requires a separate embeddings provider. |
+| **Regolo.ai** | Yes | Yes | EU-based, OpenAI-compatible REST. |
 
-### DTO di risposta
+### Response DTOs
 
-Ogni chiamata AI restituisce un DTO tipizzato:
+Every AI call returns a typed DTO:
 
-- **`AiResponse`**: `content`, `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `finishReason`
-- **`EmbeddingsResponse`**: `embeddings` (array di vettori float), `provider`, `model`, `totalTokens`
+- **`AiResponse`** — `content`, `provider`, `model`, `promptTokens`, `completionTokens`, `totalTokens`, `finishReason`
+- **`EmbeddingsResponse`** — `embeddings` (list of float vectors), `provider`, `model`, `totalTokens`
 
-Questo permette al controller e al chat log di tracciare automaticamente quale provider/modello ha generato ogni risposta.
+The controller and chat log rely on these to automatically track which provider/model produced each response.
 
 ---
 
-## Come funziona il Chat Logging
+## How Chat Logging works
 
-Il sistema di chat logging e' un **servizio indipendente con architettura a driver**, simile ai pattern di Laravel per filesystem, cache e queue.
+The chat logging service is a **standalone, driver-based service** following the same pattern Laravel uses for filesystem, cache, and queue.
 
-### Architettura
+### Architecture
 
 ```
 KbChatController
@@ -1114,52 +1207,52 @@ ChatLogManager::log(ChatLogEntry)
     │
     ├── enabled? → No → return (no-op)
     │
-    ├── resolveDriver() → driver configurato
+    ├── resolveDriver() → configured driver
     │      │
     │      ├── 'database' → DatabaseChatLogDriver
     │      │                    └── ChatLog::create(...)
-    │      ├── 'bigquery' → (predisposto, da implementare)
-    │      └── 'cloudwatch' → (predisposto, da implementare)
+    │      ├── 'bigquery' → (stub — implement on demand)
+    │      └── 'cloudwatch' → (stub — implement on demand)
     │
-    └── try/catch → errori loggati su logger standard, mai propagati
+    └── try/catch → errors are logged to the standard logger, never propagated
 ```
 
-### Perche' un service dedicato e non Monolog?
+### Why a dedicated service instead of Monolog?
 
-I dati delle chat sono **dati strutturati** (domanda, risposta, token count, latenza, IP), non righe di log testuali. Un service dedicato permette:
+Chat data is **structured data** (question, answer, token count, latency, IP), not textual log lines. A dedicated service enables:
 
-- **Query SQL dirette**: "quante richieste per progetto X nell'ultimo mese?"
-- **Analytics strutturate**: costo per provider, latenza media, chunk usage
-- **Export pulito**: verso BI, dashboard, o sistemi di monitoring
-- **Separazione netta**: i log applicativi restano nel logger standard, le interazioni chat hanno il loro storage
+- **Direct SQL queries**: "how many requests for project X this month?"
+- **Structured analytics**: cost per provider, average latency, chunk usage.
+- **Clean export**: to BI, dashboards, monitoring.
+- **Separation of concerns**: app logs go to Monolog; interactions go to `chat_logs`.
 
-### Tabella `chat_logs`
+### `chat_logs` table
 
 ```sql
 id                  BIGINT PK AUTO
-session_id          UUID (indexed) — raggruppa messaggi di una sessione
+session_id          UUID (indexed)
 user_id             FK nullable → users
 question            TEXT
 answer              TEXT
 project_key         VARCHAR(120) nullable (indexed)
-ai_provider         VARCHAR(64) (indexed) — openai, anthropic, gemini, openrouter
-ai_model            VARCHAR(128) (indexed) — gpt-4o, claude-sonnet-4-20250514, ...
-chunks_count        SMALLINT — quanti chunk di contesto usati
-sources             JSON — path dei documenti sorgente
+ai_provider         VARCHAR(64) (indexed) — openai, anthropic, gemini, openrouter, regolo
+ai_model            VARCHAR(128) (indexed)
+chunks_count        SMALLINT
+sources             JSON
 prompt_tokens       INT nullable
 completion_tokens   INT nullable
 total_tokens        INT nullable
-latency_ms          INT — tempo end-to-end in ms
+latency_ms          INT
 client_ip           VARCHAR(45) nullable
 user_agent          VARCHAR(512) nullable
-extra               JSON nullable — metadati estendibili
+extra               JSON nullable
 created_at          TIMESTAMP (indexed)
 ```
 
-### Query di esempio
+### Example queries
 
 ```sql
--- Costo medio per provider nell'ultimo mese
+-- Average cost per provider this month
 SELECT ai_provider, ai_model,
        COUNT(*) as requests,
        AVG(total_tokens) as avg_tokens,
@@ -1169,7 +1262,7 @@ WHERE created_at >= NOW() - INTERVAL '30 days'
 GROUP BY ai_provider, ai_model
 ORDER BY requests DESC;
 
--- Sessioni con piu' interazioni
+-- Longest sessions
 SELECT session_id, COUNT(*) as messages,
        MIN(created_at) as started_at,
        MAX(created_at) as ended_at
@@ -1178,7 +1271,7 @@ GROUP BY session_id
 HAVING COUNT(*) > 1
 ORDER BY messages DESC;
 
--- Distribuzione chunk usage
+-- Chunk usage distribution
 SELECT chunks_count, COUNT(*) as frequency
 FROM chat_logs
 GROUP BY chunks_count
@@ -1187,28 +1280,30 @@ ORDER BY chunks_count;
 
 ---
 
-## Quick Start: Onboarding in 5 minuti
+## Quick Start: 5-minute onboarding
 
-Per chi vuole partire velocemente con la configurazione minima (OpenAI + PostgreSQL):
+For the fastest path (OpenRouter + OpenAI embeddings + PostgreSQL):
 
 ```bash
 # 1. Setup
-cd 04_laravel
+git clone https://github.com/your-org/askmydocs.git
+cd askmydocs
 composer install
 cp .env.example .env
 php artisan key:generate
 
-# 2. Database — configura PostgreSQL in .env
-#    DB_CONNECTION=pgsql
-#    DB_DATABASE=enterprise_kb
+# 2. Configure PostgreSQL in .env
+#    DB_DATABASE=askmydocs
+#    (make sure the pgvector extension is installed)
 
-# 3. AI — aggiungi la key OpenAI in .env
+# 3. Add your API keys in .env
+#    OPENROUTER_API_KEY=sk-or-...
 #    OPENAI_API_KEY=sk-...
 
-# 4. Migration
+# 4. Run migrations
 php artisan migrate
 
-# 5. Crea utente
+# 5. Create a user
 php artisan tinker --execute="
     \App\Models\User::create([
         'name' => 'Admin',
@@ -1217,14 +1312,14 @@ php artisan tinker --execute="
     ]);
 "
 
-# 6. Avvia
+# 6. Start the server
 php artisan serve
 
-# 7. Apri http://localhost:8000 → login con admin@example.com / password
-# 8. Inizia a chattare con la knowledge base!
+# 7. Open http://localhost:8000 → log in → you are redirected to /chat
+# 8. Start chatting with your knowledge base!
 ```
 
-Per l'accesso API programmatico (Sanctum token):
+For programmatic API access (Sanctum token):
 
 ```bash
 php artisan tinker --execute="echo \App\Models\User::first()->createToken('api')->plainTextToken;"
@@ -1232,16 +1327,16 @@ php artisan tinker --execute="echo \App\Models\User::first()->createToken('api')
 curl -X POST http://localhost:8000/api/kb/chat \
   -H 'Authorization: Bearer {token}' \
   -H 'Content-Type: application/json' \
-  -d '{"question": "Come funziona il sistema?"}'
+  -d '{"question": "How does the system work?"}'
 ```
 
-Per abilitare il chat logging, aggiungi in `.env`:
+Enable chat logging:
 
 ```env
 CHAT_LOG_ENABLED=true
 ```
 
-Per passare a Claude (Anthropic) per le risposte:
+Switch to Claude:
 
 ```env
 AI_PROVIDER=anthropic
@@ -1249,7 +1344,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 AI_EMBEDDINGS_PROVIDER=openai
 ```
 
-Per abilitare la hybrid search (utile se i documenti contengono codici prodotto, sigle, riferimenti legali):
+Enable hybrid search (useful if documents contain product codes, acronyms, legal refs):
 
 ```env
 KB_HYBRID_SEARCH_ENABLED=true
@@ -1258,36 +1353,42 @@ KB_FTS_LANGUAGE=italian
 
 ---
 
-## Struttura directory
+## Directory layout
 
 ```
-04_laravel/
+askmydocs/
 ├── app/
 │   ├── Ai/
-│   │   ├── AiManager.php                    # Manager multi-provider (singleton)
-│   │   ├── AiProviderInterface.php          # Contratto per tutti i provider
-│   │   ├── AiResponse.php                   # DTO risposta chat
-│   │   ├── EmbeddingsResponse.php           # DTO risposta embeddings
+│   │   ├── AiManager.php                    # Multi-provider manager (singleton)
+│   │   ├── AiProviderInterface.php          # Contract for all providers
+│   │   ├── AiResponse.php                   # Chat response DTO
+│   │   ├── EmbeddingsResponse.php           # Embeddings response DTO
 │   │   ├── Agents/
-│   │   │   └── KbAssistant.php              # Agent RAG (prompt builder)
+│   │   │   └── KbAssistant.php              # RAG agent (prompt builder)
 │   │   └── Providers/
 │   │       ├── OpenAiProvider.php            # OpenAI (chat + embeddings)
 │   │       ├── AnthropicProvider.php         # Anthropic (chat only)
 │   │       ├── GeminiProvider.php            # Gemini (chat + embeddings)
-│   │       └── OpenRouterProvider.php        # OpenRouter (chat, multi-model)
+│   │       ├── OpenRouterProvider.php        # OpenRouter (chat, multi-model)
+│   │       └── RegoloProvider.php            # Regolo.ai (chat + embeddings, EU)
+│   ├── Console/
+│   │   └── Commands/
+│   │       ├── KbIngestCommand.php           # Disk-driven ingestion CLI
+│   │       ├── PruneEmbeddingCacheCommand.php
+│   │       └── PruneChatLogsCommand.php
 │   ├── Http/Controllers/
 │   │   ├── Auth/
-│   │   │   ├── LoginController.php          # Login / logout
+│   │   │   ├── LoginController.php          # Login / logout (redirect to /chat)
 │   │   │   └── PasswordResetController.php  # Forgot / reset password
-│   │   ├── ChatController.php               # Chat web page
+│   │   ├── ChatController.php               # Chat UI
 │   │   └── Api/
-│   │       ├── KbChatController.php         # API stateless (Sanctum)
-│   │       ├── ConversationController.php   # CRUD conversazioni
-│   │       ├── MessageController.php        # Invio messaggi + AI response
-│   │       └── FeedbackController.php       # Rating thumbs up/down
+│   │       ├── KbChatController.php         # Stateless API (Sanctum)
+│   │       ├── ConversationController.php   # Conversations CRUD
+│   │       ├── MessageController.php        # Messages + AI response
+│   │       └── FeedbackController.php       # Thumbs up/down rating
 │   ├── Mcp/
 │   │   ├── Servers/KnowledgeBaseServer.php   # MCP server
-│   │   └── Tools/                            # 5 tool MCP read-only
+│   │   └── Tools/                            # 5 read-only MCP tools
 │   ├── Models/
 │   │   ├── User.php
 │   │   ├── Conversation.php
@@ -1297,26 +1398,31 @@ KB_FTS_LANGUAGE=italian
 │   │   ├── ChatLog.php
 │   │   └── EmbeddingCache.php
 │   ├── Providers/
+│   │   ├── AppServiceProvider.php           # Registers console commands
 │   │   ├── AiServiceProvider.php
 │   │   └── ChatLogServiceProvider.php
 │   └── Services/
 │       ├── ChatLog/
 │       │   ├── ChatLogDriverInterface.php
-│       │   ├── ChatLogEntry.php              # DTO immutabile
-│       │   ├── ChatLogManager.php            # Manager con driver pattern
+│       │   ├── ChatLogEntry.php              # Immutable DTO
+│       │   ├── ChatLogManager.php
 │       │   └── Drivers/
 │       │       └── DatabaseChatLogDriver.php
 │       └── Kb/
-│           ├── DocumentIngestor.php          # Pipeline ingestion (with cache)
+│           ├── DocumentIngestor.php
 │           ├── KbSearchService.php           # Hybrid search + reranking
-│           ├── EmbeddingCacheService.php     # Embedding cache (DB-backed)
-│           ├── FewShotService.php            # Few-shot examples from feedback
-│           ├── Reranker.php                  # Hybrid reranker (keyword + heading)
-│           └── MarkdownChunker.php           # Chunking strategy
+│           ├── EmbeddingCacheService.php
+│           ├── FewShotService.php
+│           ├── Reranker.php
+│           └── MarkdownChunker.php
+├── bootstrap/
+│   ├── app.php                              # Laravel 11 bootstrap + schedule
+│   └── providers.php
 ├── config/
-│   ├── ai.php                                # Config multi-provider
-│   ├── chat-log.php                          # Config chat logging
-│   └── kb.php                                # Config KB + reranking
+│   ├── ai.php                                # Multi-provider config
+│   ├── chat-log.php
+│   ├── filesystems.php                      # Disks (local, kb, s3)
+│   └── kb.php                                # KB + reranking + retention
 ├── database/migrations/
 │   ├── ..._create_users_table.php
 │   ├── ..._create_knowledge_documents_table.php
@@ -1325,109 +1431,51 @@ KB_FTS_LANGUAGE=italian
 │   ├── ..._create_conversations_table.php
 │   ├── ..._create_messages_table.php
 │   ├── ..._create_embedding_cache_table.php
-│   └── ..._add_rating_to_messages_table.php
-├── resources/views/
-│   ├── layouts/app.blade.php                 # Layout base (Tailwind CDN)
-│   ├── auth/
-│   │   ├── login.blade.php
-│   │   ├── forgot-password.blade.php
-│   │   └── reset-password.blade.php
-│   ├── chat.blade.php                        # Chat UI (Alpine.js + STT)
-│   └── prompts/
-│       └── kb_rag.blade.php                  # System prompt template
+│   ├── ..._add_rating_to_messages_table.php
+│   └── ..._add_fts_gin_index_to_knowledge_chunks.php   # pgvector GIN index
+├── resources/
+│   ├── js/
+│   │   └── rich-content.mjs                 # Chart/action parser (Vitest-tested)
+│   └── views/
+│       ├── layouts/app.blade.php             # Base layout (Tailwind CDN)
+│       ├── auth/
+│       ├── chat.blade.php                    # Chat UI (Alpine.js + STT)
+│       └── prompts/
+│           └── kb_rag.blade.php              # System prompt template
 ├── routes/
-│   ├── web.php                               # Auth + Chat UI + AJAX
-│   ├── api.php                               # API Sanctum (POST /api/kb/chat)
-│   └── ai.php                                # MCP server (/mcp/kb)
+│   ├── web.php                               # Auth + chat + AJAX
+│   ├── api.php                               # Sanctum API
+│   ├── ai.php                                # MCP server (/mcp/kb)
+│   └── console.php                           # Closure commands placeholder
+├── .env.example
+├── artisan
+├── composer.json
+├── package.json
+├── phpunit.xml
+├── vitest.config.mjs
 └── README.md
 ```
 
 ---
 
-## Riepilogo variabili d'ambiente
+## Environment variables
 
-```env
-# ── Applicazione ─────────────────────────────────────────────
-APP_KEY=
-APP_URL=http://localhost:8000
-
-# ── Database (PostgreSQL + pgvector) ─────────────────────────
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=enterprise_kb
-DB_USERNAME=postgres
-DB_PASSWORD=
-
-# ── AI Provider ──────────────────────────────────────────────
-AI_PROVIDER=openai
-AI_EMBEDDINGS_PROVIDER=
-
-OPENAI_API_KEY=
-OPENAI_CHAT_MODEL=gpt-4o
-OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small
-
-ANTHROPIC_API_KEY=
-ANTHROPIC_CHAT_MODEL=claude-sonnet-4-20250514
-
-GEMINI_API_KEY=
-GEMINI_CHAT_MODEL=gemini-2.0-flash
-GEMINI_EMBEDDINGS_MODEL=text-embedding-004
-
-OPENROUTER_API_KEY=
-OPENROUTER_CHAT_MODEL=anthropic/claude-sonnet-4-20250514
-OPENROUTER_APP_NAME="Enterprise KB"
-
-# ── Chat Logging ─────────────────────────────────────────────
-CHAT_LOG_ENABLED=false
-CHAT_LOG_DRIVER=database
-
-# ── Knowledge Base ───────────────────────────────────────────
-KB_EMBEDDINGS_DIMENSIONS=1536
-KB_MIN_SIMILARITY=0.30
-KB_DEFAULT_LIMIT=8
-KB_MARKDOWN_ROOT=
-
-# ── Embedding Cache ──────────────────────────────────────────
-KB_EMBEDDING_CACHE_ENABLED=true
-
-# ── Hybrid Search ────────────────────────────────────────────
-KB_HYBRID_SEARCH_ENABLED=false
-KB_FTS_LANGUAGE=italian
-KB_RRF_K=60
-KB_HYBRID_SEMANTIC_WEIGHT=0.70
-KB_HYBRID_FTS_WEIGHT=0.30
-
-# ── Reranking ────────────────────────────────────────────────
-KB_RERANKING_ENABLED=true
-KB_RERANK_CANDIDATE_MULTIPLIER=3
-KB_RERANK_VECTOR_WEIGHT=0.60
-KB_RERANK_KEYWORD_WEIGHT=0.30
-KB_RERANK_HEADING_WEIGHT=0.10
-
-# ── Mail (per recupero password) ─────────────────────────────
-MAIL_MAILER=smtp
-MAIL_HOST=smtp.example.com
-MAIL_PORT=587
-MAIL_USERNAME=
-MAIL_PASSWORD=
-MAIL_FROM_ADDRESS=noreply@example.com
-```
+The complete reference is in [`.env.example`](./.env.example). Every variable is documented inline with defaults tuned for a low-cost production setup.
 
 ---
 
 ## Testing
 
-La suite di test copre i componenti core: DTO, provider AI, reranker, chunker, embedding cache, few-shot learning, chat logging, e il parsing dei rich-content artifacts (chart/action block) lato frontend.
+The test suite covers the core components: DTOs, AI providers, reranker, chunker, embedding cache, few-shot learning, chat logging, scheduled commands (prune, rotate, ingest), the Regolo provider, the FTS migration, the login flow, and the frontend rich-content parser.
 
 ### Stack
 
 | Layer | Tool | Scope |
 |---|---|---|
-| **PHP** | PHPUnit 11 + Orchestra Testbench + Mockery | Unit + feature test (DB SQLite in-memory) |
-| **JS** | Vitest 2 | Test puri del modulo `resources/js/rich-content.mjs` (chart/action parsing, markdown pipeline) |
+| **PHP** | PHPUnit 11 + Orchestra Testbench + Mockery | Unit + feature tests (SQLite in-memory) |
+| **JS** | Vitest 2 | Pure tests for `resources/js/rich-content.mjs` |
 
-### Installazione dipendenze
+### Install dependencies
 
 ```bash
 # PHP
@@ -1437,121 +1485,158 @@ composer install
 npm install
 ```
 
-### Lanciare i test
+### Run the tests
 
 ```bash
-# Suite PHP completa (Unit + Feature)
+# Full PHP suite
 vendor/bin/phpunit
 
-# Solo Unit
+# Unit only
 vendor/bin/phpunit --testsuite Unit
 
-# Solo Feature (DB-backed)
+# Feature only (DB-backed)
 vendor/bin/phpunit --testsuite Feature
 
-# Output "testdox" (leggibile)
+# Readable testdox output
 vendor/bin/phpunit --testdox
 
-# Suite JS
+# JS suite
 npm test
 
 # Vitest watch mode
 npm run test:watch
 ```
 
-### Configurazione test
+### Test configuration
 
-- **Database**: SQLite in-memory. Le migration di produzione usano `pgvector` (non compatibile con SQLite), quindi sono presenti migration dedicate in `tests/database/migrations/` che sostituiscono `vector(…)` con `text` JSON. Questo permette di testare la logica di caching embedding e FewShot senza dover avviare PostgreSQL.
-- **HTTP**: tutte le chiamate ai provider AI (OpenAI, Anthropic, Gemini, OpenRouter) sono intercettate con `Http::fake()` — nessuna chiamata esterna durante i test.
-- **Env di test**: definito direttamente in `phpunit.xml` (`<php><env ... /></php>`). Non richiede `.env.testing`.
+- **Database**: SQLite in-memory. Production migrations use `pgvector` (not SQLite-compatible), so dedicated migrations in `tests/database/migrations/` replace `vector(...)` with JSON text. This lets embedding cache, FewShot, and command tests run without PostgreSQL.
+- **HTTP**: every AI provider call (OpenAI, Anthropic, Gemini, OpenRouter, Regolo) is intercepted with `Http::fake()` — no external calls during tests.
+- **Test env vars**: set directly in `phpunit.xml` (`<php><env ... /></php>`). No `.env.testing` required.
 
-### Struttura
+### Layout
 
 ```
 tests/
-├── TestCase.php                    # Base Orchestra Testbench con config/migrations custom
+├── bootstrap.php                          # Ensures Testbench cache dir exists
+├── TestCase.php                           # Orchestra Testbench base
 ├── Unit/
-│   ├── Ai/                         # AiResponse, EmbeddingsResponse, AiManager, tutti i Provider
-│   ├── ChatLog/                    # ChatLogEntry (DTO)
-│   └── Kb/                         # MarkdownChunker, Reranker
+│   ├── Ai/                                # DTOs, AiManager, providers (OpenAI/Anthropic/Gemini/OpenRouter/Regolo)
+│   ├── ChatLog/                           # ChatLogEntry DTO
+│   ├── Kb/                                # MarkdownChunker, Reranker
+│   └── Migrations/                        # FTS GIN migration safety
 ├── Feature/
-│   ├── ChatLog/                    # ChatLogManager (persistenza DB, error swallowing)
-│   └── Kb/                         # EmbeddingCacheService, FewShotService
-├── database/migrations/            # Schema SQLite-compatibile
+│   ├── Auth/                              # Login redirect regression
+│   ├── ChatLog/                           # ChatLogManager (persist, error swallowing)
+│   ├── Commands/                          # kb:ingest, kb:prune-embedding-cache, chat-log:prune
+│   └── Kb/                                # EmbeddingCacheService, FewShotService
+├── database/migrations/                   # SQLite-compatible schema
 └── js/
-    └── rich-content.spec.mjs       # Vitest per il modulo di rich-content parsing
+    └── rich-content.spec.mjs
 ```
 
-### Coverage attuale
+### Current coverage
 
-- 69 test PHPUnit, 184 assertion
-- 18 test Vitest
+- 93 PHPUnit tests, 251 assertions
+- 18 Vitest tests
+
+---
+
+## Continuous Integration
+
+A GitHub Actions workflow at `.github/workflows/tests.yml` runs both test suites on every push to `main` and on every pull request. The job:
+
+1. Installs PHP 8.2 with required extensions.
+2. Caches Composer and npm dependencies.
+3. `composer install --prefer-dist`.
+4. `npm ci`.
+5. Runs `vendor/bin/phpunit`.
+6. Runs `npm test`.
+
+No secrets are required — all provider HTTP calls are faked at the unit level.
 
 ---
 
 ## License
 
-This project is open-sourced under the [MIT License](LICENSE).
+This project is open-source under the [MIT License](LICENSE).
 
-You are free to use, modify, and distribute this software for any purpose, including commercial use.
+You are free to use, modify, and distribute it for any purpose, including commercial use.
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
+Contributions are welcome.
 
-1. **Fork** the repository
-2. **Create** a feature branch: `git checkout -b feature/my-feature`
-3. **Commit** your changes: `git commit -m 'Add my feature'`
-4. **Push** to the branch: `git push origin feature/my-feature`
-5. **Open** a Pull Request
+1. **Fork** the repository.
+2. **Create** a feature branch: `git checkout -b feature/my-feature`.
+3. **Commit** your changes: `git commit -m 'Add my feature'`.
+4. **Push** the branch: `git push origin feature/my-feature`.
+5. **Open** a Pull Request.
 
 ### Guidelines
 
-- Follow PSR-12 coding standards for PHP
-- Add or update tests for new features when applicable
-- Keep PRs focused — one feature or fix per PR
-- Update the README if your change adds or modifies user-facing features
-- Use English for code, comments, and commit messages
+- Follow PSR-12 for PHP.
+- Add or update tests when the change is meaningful.
+- Keep PRs focused — one feature or fix per PR.
+- Update the README when user-facing behaviour changes.
+- English for code, comments, and commit messages.
 
-### Reporting Issues
+### Reporting issues
 
-Use [GitHub Issues](../../issues) to report bugs or request features. Please include:
+Use [GitHub Issues](../../issues). Please include:
 - Steps to reproduce
 - Expected vs. actual behavior
-- Laravel version, PHP version, and AI provider used
+- Laravel version, PHP version, AI provider used
 
 ---
 
 ## Changelog
 
-### v1.0.0 — Initial Release
+### v1.1.0
+
+**New**
+- Regolo.ai provider (OpenAI-compatible REST, EU-based)
+- Laravel 11 bootstrap + scheduler
+- Daily scheduled commands: `kb:prune-embedding-cache`, `chat-log:prune`
+- CLI ingestion: `kb:ingest` reads through Laravel disks (local, S3)
+- `config/filesystems.php` with dedicated `kb` disk and S3 template
+- FTS GIN index migration (pgsql-only, SQLite-safe)
+- Complete `.env.example`
+- GitHub Actions CI for PHPUnit + Vitest
+- Full English README
+
+**Changed**
+- Default chat provider is now `openrouter` with `openai/gpt-4o-mini`
+- Default embeddings provider is `openai` with `text-embedding-3-small`
+- Chat log and embedding cache retention are configurable via env (`CHAT_LOG_RETENTION_DAYS`, `KB_EMBEDDING_CACHE_RETENTION_DAYS`)
+
+### v1.0.0 — Initial release
 
 **Core RAG Pipeline**
 - Document ingestion with markdown chunking and pgvector storage
 - Semantic search with cosine similarity on PostgreSQL + pgvector
 - Hybrid search (vector + full-text) with Reciprocal Rank Fusion
-- Hybrid reranking (vector + keyword + heading scoring)
+- Hybrid reranking (vector + keyword + heading)
 - Embedding cache to eliminate redundant API calls
 
 **Multi-Provider AI**
-- Support for OpenAI, Anthropic (Claude), Google Gemini, OpenRouter
-- Separate providers for chat and embeddings
-- Multi-turn conversation history sent to AI
+- OpenAI, Anthropic (Claude), Google Gemini, OpenRouter
+- Separate chat and embeddings providers
+- Multi-turn conversation history sent to the AI
 - HTTP-direct integration (no external SDKs)
 
 **Chat Interface**
-- ChatGPT-like UI with sidebar, conversation management
-- Speech-to-text via native Web Speech API
-- Smart visualizations: Chart.js charts, action buttons (copy, download), enhanced tables
-- Citations showing source documents used for each answer
+- ChatGPT-style UI with sidebar and conversation management
+- Speech-to-text via Web Speech API
+- Smart visualizations: Chart.js charts, action buttons, enhanced tables
+- Citations showing source documents per answer
 - Feedback loop with few-shot learning from positive ratings
 - Markdown rendering with syntax-highlighted code blocks + copy button
 
-**Enterprise Features**
-- Laravel session auth (login, logout, password reset — no registration)
+**Enterprise features**
+- Laravel session auth (login, logout, password reset — no public registration)
 - Structured chat logging (DB, extensible to BigQuery/CloudWatch)
 - Per-user conversation isolation
-- MCP Server with 5 read-only tools for Claude Desktop/Code integration
-- Full API (Sanctum) for programmatic access
+- MCP server with 5 read-only tools for Claude Desktop/Code
+- Full Sanctum API for programmatic access

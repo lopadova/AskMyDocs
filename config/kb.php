@@ -18,6 +18,12 @@ return [
 
     'embedding_cache' => [
         'enabled' => env('KB_EMBEDDING_CACHE_ENABLED', true),
+
+        /*
+        | Retention for the scheduled prune job (kb:prune-embedding-cache).
+        | Entries whose `last_used_at` is older than this are deleted.
+        */
+        'retention_days' => (int) env('KB_EMBEDDING_CACHE_RETENTION_DAYS', 30),
     ],
 
     /*
@@ -69,6 +75,23 @@ return [
     ],
 
     'sources' => [
-        'markdown_root' => env('KB_MARKDOWN_ROOT', base_path('../project/docs')),
+        /*
+        | Laravel filesystem disk used to read KB markdown files.
+        | Change to 's3' (and provide AWS_* env) to serve docs from S3.
+        | See config/filesystems.php for the disk definitions.
+        */
+        'disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+
+        /*
+        | Optional path prefix applied to every ingested path. Useful when
+        | multiple projects share the same bucket: set to e.g. "project-a/".
+        */
+        'path_prefix' => env('KB_PATH_PREFIX', ''),
+
+        /*
+        | Legacy absolute filesystem root. Kept for backward compatibility
+        | with setups that don't use disks. Prefer KB_FILESYSTEM_DISK.
+        */
+        'markdown_root' => env('KB_MARKDOWN_ROOT'),
     ],
 ];

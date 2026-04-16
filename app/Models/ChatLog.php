@@ -26,6 +26,7 @@ class ChatLog extends Model
         'client_ip',
         'user_agent',
         'extra',
+        'created_at',
     ];
 
     protected $casts = [

@@ -70,12 +70,22 @@ return [
         'openrouter' => [
             'api_key' => env('OPENROUTER_API_KEY'),
             'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
-            'chat_model' => env('OPENROUTER_CHAT_MODEL', 'anthropic/claude-sonnet-4-20250514'),
-            'app_name' => env('OPENROUTER_APP_NAME', 'Enterprise KB'),
+            'chat_model' => env('OPENROUTER_CHAT_MODEL', 'openai/gpt-4o-mini'),
+            'app_name' => env('OPENROUTER_APP_NAME', 'AskMyDocs'),
             'site_url' => env('OPENROUTER_SITE_URL'),
             'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),
             'max_tokens' => env('OPENROUTER_MAX_TOKENS', 4096),
             'timeout' => env('OPENROUTER_TIMEOUT', 120),
+        ],
+
+        'regolo' => [
+            'api_key' => env('REGOLO_API_KEY'),
+            'base_url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
+            'chat_model' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
+            'embeddings_model' => env('REGOLO_EMBEDDINGS_MODEL', 'gte-Qwen2'),
+            'temperature' => env('REGOLO_TEMPERATURE', 0.2),
+            'max_tokens' => env('REGOLO_MAX_TOKENS', 4096),
+            'timeout' => env('REGOLO_TIMEOUT', 120),
         ],
 
     ],
