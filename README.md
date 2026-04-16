@@ -1,4 +1,4 @@
-# Enterprise AI Knowledge Base — Laravel
+# AskMyDocs - Enterprise AI Knowledge Base — Laravel
 
 <p align="center">
   <img src="resources\cover-AskMyDocs.png" alt="AskMyDocs" width="100%" />
