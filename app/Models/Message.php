@@ -15,6 +15,7 @@ class Message extends Model
         'content',
         'metadata',
         'rating',
+        'created_at',
     ];
 
     protected $casts = [
