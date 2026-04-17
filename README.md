@@ -41,6 +41,8 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Chat Logging** | Structured logging (DB, extensible to BigQuery/CloudWatch) of every interaction with token counts, latency, client info |
 | **Scheduler Hygiene** | Daily Laravel jobs to rotate chat logs and prune the embedding cache by configurable retention |
 | **Storage-Agnostic Ingestion** | KB documents are read through Laravel disks: `local` by default, S3 with a single env change |
+| **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database` and `redis` queues (Horizon-ready) |
+| **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
 | **MCP Server** | Five read-only tools that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
 | **Auth** | Laravel session auth with login, logout, password reset — no registration (admin-created users); automatic redirect to `/chat` on login |
 
@@ -71,7 +73,12 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [Citations](#citations)
 - [API](#api)
 - [MCP Server](#mcp-server)
-- [Document Ingestion](#document-ingestion)
+- [Document Ingestion — two flows](#document-ingestion--two-flows)
+  - [Flow 1 — Local / S3 folder (queue-backed)](#flow-1--local--s3-folder-queue-backed)
+  - [Flow 2 — Remote push from another repo](#flow-2--remote-push-from-another-repo)
+  - [Queue drivers](#queue-drivers)
+  - [GitHub Action (reusable)](#github-action-reusable)
+  - [Idempotency & retries](#idempotency--retries)
 - [Extending](#extending)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
@@ -121,8 +128,11 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Providers** | `app/Ai/Providers/*.php` | OpenAI, Anthropic, Gemini, OpenRouter, Regolo |
 | **KbSearchService** | `app/Services/Kb/KbSearchService.php` | Semantic search via pgvector |
 | **DocumentIngestor** | `app/Services/Kb/DocumentIngestor.php` | Document ingestion pipeline |
+| **IngestDocumentJob** | `app/Jobs/IngestDocumentJob.php` | Queued job — reads from disk, delegates to `DocumentIngestor`, retries on failure |
+| **KbIngestController** | `app/Http/Controllers/Api/KbIngestController.php` | `POST /api/kb/ingest` — persists payload to disk and dispatches one job per document |
 | **ChatLogManager** | `app/Services/ChatLog/ChatLogManager.php` | Structured conversation logging |
-| **Scheduled commands** | `app/Console/Commands/*.php` | `kb:ingest`, `kb:prune-embedding-cache`, `chat-log:prune` |
+| **Console commands** | `app/Console/Commands/*.php` | `kb:ingest`, `kb:ingest-folder`, `kb:prune-embedding-cache`, `chat-log:prune` |
+| **GitHub Action** | `.github/actions/ingest-to-askmydocs/action.yml` | Reusable composite action to push markdown from any repo on every commit |
 | **MCP Server** | `app/Mcp/Servers/KnowledgeBaseServer.php` | Read-only MCP server for Claude and other AI agents |
 
 ---
@@ -964,6 +974,55 @@ Stateless endpoint to query the knowledge base (no conversation state).
 
 **Authentication**: Laravel Sanctum (Bearer token).
 
+### POST `/api/kb/ingest`
+
+Accepts one or many markdown documents and queues them for ingestion. Used by the shipped GitHub Action (Flow 2 in [Document Ingestion](#document-ingestion--two-flows)) and any client that can POST JSON.
+
+**Headers**
+
+| Header | Required | Description |
+|---|---|---|
+| `Authorization` | Yes | `Bearer {sanctum-token}` — same token format as `/api/kb/chat` |
+| `Content-Type` | Yes | `application/json` |
+
+**Request body** (single or batch — always an array, max 100 per call):
+
+```json
+{
+    "documents": [
+        {
+            "project_key": "erp-core",
+            "source_path": "docs/auth/oauth.md",
+            "title": "OAuth 2.0 Setup",
+            "content": "# OAuth 2.0\n\n...",
+            "metadata": { "language": "en", "author": "team-auth" }
+        }
+    ]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `documents` | array | Yes | 1 to 100 document descriptors |
+| `documents[].project_key` | string | No | Falls back to `KB_INGEST_DEFAULT_PROJECT` |
+| `documents[].source_path` | string | Yes | Relative path on the KB disk (e.g. `docs/auth/oauth.md`) |
+| `documents[].content` | string | Yes | Raw markdown, up to ~5 MB |
+| `documents[].title` | string | No | Defaults to the filename without extension |
+| `documents[].metadata` | object | No | Free-form; persisted on `KnowledgeDocument.metadata` |
+
+**Response 202** (the ingestion runs in the background):
+
+```json
+{
+    "queued": 1,
+    "documents": [
+        { "project_key": "erp-core", "source_path": "docs/auth/oauth.md", "status": "queued" }
+    ]
+}
+```
+
+The controller writes every `content` to the configured KB disk at `{KB_PATH_PREFIX}/{source_path}` and dispatches one `App\Jobs\IngestDocumentJob` per document on the `KB_INGEST_QUEUE`. The worker — or `sync` if `QUEUE_CONNECTION=sync` — calls `DocumentIngestor::ingestMarkdown()`, which is idempotent (see [Idempotency & retries](#idempotency--retries)).
+
 ---
 
 ## MCP Server
@@ -997,48 +1056,173 @@ claude mcp add --transport http kb http://localhost:8000/mcp/kb \
 
 ---
 
-## Document Ingestion
+## Document Ingestion — two flows
 
-### Via CLI (recommended)
+There are two ways to get markdown into the KB. Both end up calling the same `DocumentIngestor::ingestMarkdown()` — the only difference is **who** triggers the dispatch.
 
-```bash
-php artisan kb:ingest docs/auth/setup.md \
-    --project=erp-core \
-    --title="Auth Setup"
+```
+Flow 1 — Local / S3
+   kb:ingest-folder docs/ --project=erp-core
+        │ (walks disk, one file → one job)
+        ▼
+   IngestDocumentJob   ← queued on KB_INGEST_QUEUE
+        │
+        ▼
+Flow 2 — Remote HTTP
+   GitHub Action on push to main
+        │ (diff docs/*.md → curl POST /api/kb/ingest)
+        ▼
+   KbIngestController
+        │ (validate, write to disk, dispatch job)
+        ▼
+   IngestDocumentJob   ← same queue / same worker
+        │
+        ▼ (one execution path for both)
+   DocumentIngestor::ingestMarkdown()
 ```
 
-The command reads the file through the configured Laravel disk (`KB_FILESYSTEM_DISK`), so the same command works for `local` and `s3` backends.
+### Flow 1 — Local / S3 folder (queue-backed)
 
-### Via code
+Drop markdown onto the configured KB disk (local filesystem, S3, MinIO, …) and run:
+
+```bash
+# Single file (legacy, synchronous)
+php artisan kb:ingest docs/auth/setup.md --project=erp-core --title="Auth Setup"
+
+# Whole folder — one queued job per file, resumable on worker restart
+php artisan kb:ingest-folder docs/ --project=erp-core --recursive
+
+# Preview without dispatching
+php artisan kb:ingest-folder docs/ --project=erp-core --recursive --dry-run
+
+# Only .markdown files, max 50, run inline (no queue)
+php artisan kb:ingest-folder docs/ --project=erp-core --recursive \
+    --pattern=markdown --limit=50 --sync
+```
+
+`kb:ingest-folder` options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `path` | _(empty — prefix root)_ | Folder on the KB disk, **always resolved relative to `KB_PATH_PREFIX`**. E.g. with `KB_PATH_PREFIX=tenant-a/` and `path=docs`, the command scans `tenant-a/docs/`. |
+| `--project=` | `KB_INGEST_DEFAULT_PROJECT` | `project_key` stored on each document. |
+| `--disk=` | `KB_FILESYSTEM_DISK` | Override the disk just for this run (e.g. `--disk=s3`). |
+| `--pattern=` | `md,markdown` | Comma-separated extensions. |
+| `--recursive` | off | Walk sub-directories with `allFiles()`. |
+| `--sync` | off | Call the ingestor inline — skips the queue entirely. Handy for dev or when the batch is tiny. |
+| `--limit=N` | `0` (unlimited) | Stop after N files. |
+| `--dry-run` | off | List matches without dispatching jobs. |
+
+With `QUEUE_CONNECTION=sync` (the default) every dispatch runs inline, so `kb:ingest-folder docs/` is effectively a progress-tracked version of running `kb:ingest` N times. With `database` or `redis` it returns immediately after enqueuing — start a worker with `php artisan queue:work --queue=kb-ingest`.
+
+### Flow 2 — Remote push from another repo
+
+When the documents live in another Git repo (typical: each project carries its own `docs/` folder) you don't need SSH, SFTP or MCP — just a bearer token and an HTTP POST.
+
+1. Mint a Sanctum token on the AskMyDocs server:
+
+   ```bash
+   php artisan tinker --execute="echo \App\Models\User::first()->createToken('docs-ingest')->plainTextToken;"
+   ```
+
+2. On the consumer repo, add:
+   - GitHub Actions **secret** `ASKMYDOCS_TOKEN` → the bearer token above.
+   - GitHub Actions **variable** `ASKMYDOCS_URL` → e.g. `https://kb.example.com`.
+
+3. Drop the workflow below into `.github/workflows/ingest-docs.yml` (copy is shipped at [`docs/examples/github-workflow-ingest.yml`](./docs/examples/github-workflow-ingest.yml)):
+
+   ```yaml
+   name: Push docs to AskMyDocs
+   on:
+     push:
+       branches: [main]
+       paths: ['docs/**/*.md']
+   jobs:
+     ingest:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+           with: { fetch-depth: 2 }
+         - uses: padosoft/askmydocs/.github/actions/ingest-to-askmydocs@main
+           with:
+             server_url:  ${{ vars.ASKMYDOCS_URL }}
+             api_token:   ${{ secrets.ASKMYDOCS_TOKEN }}
+             project_key: my-project
+             docs_path:   docs/
+   ```
+
+Every push to `main` now diffs `docs/**/*.md` against the previous commit and POSTs the changed files in batches of 50 (configurable, API hard-cap 100) to `POST /api/kb/ingest`. The controller persists each payload onto the KB disk and queues one `IngestDocumentJob` per document, so the ingestion throttles itself behind the worker — GitHub runners return in seconds regardless of batch size.
+
+Set the action input `full_sync: 'true'` to push every markdown file (useful on first adoption or after a catastrophic KB wipe).
+
+### Queue drivers
+
+| Driver | Setup | When to pick it |
+|---|---|---|
+| `sync` | Nothing — it's the default. | Dev / tiny corpora. Every dispatch blocks the caller. |
+| `database` | `php artisan migrate` (ships the `jobs` + `failed_jobs` tables), then a worker `php artisan queue:work --queue=kb-ingest`. | Zero-infra production up to a few thousand jobs/day. |
+| `redis` | `composer require predis/predis`, set `QUEUE_CONNECTION=redis`, run `php artisan queue:work`. Optional UI: `composer require laravel/horizon && php artisan horizon`. | High-throughput production with fan-out and retry visibility. |
+
+All three honour the same `KB_INGEST_QUEUE` name (default `kb-ingest`) — swap the driver without touching application code.
+
+Supervisor snippet for a production worker (redis or database):
+
+```ini
+[program:askmydocs-kb-ingest]
+command=php /var/www/askmydocs/artisan queue:work --queue=kb-ingest --sleep=3 --tries=3 --timeout=300
+autostart=true
+autorestart=true
+user=www-data
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/var/log/askmydocs/kb-ingest.log
+stopwaitsecs=330
+```
+
+### GitHub Action (reusable)
+
+The repo ships a composite action at [`.github/actions/ingest-to-askmydocs/action.yml`](./.github/actions/ingest-to-askmydocs/action.yml). It:
+
+1. Reads the changed markdown under `docs_path` via `git diff --name-only HEAD^..HEAD` (falls back to `find` when there is no parent commit or `full_sync=true`).
+2. Batches the files (default 50 per POST, capped at 100).
+3. `curl`s each batch to `$server_url/api/kb/ingest` with the `Authorization: Bearer $api_token` header.
+4. Fails the job on any non-2xx response, so a broken push never silently skips documents.
+
+Inputs:
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `server_url` | Yes | — | Base URL of the AskMyDocs server. |
+| `api_token` | Yes | — | Sanctum bearer token. |
+| `project_key` | Yes | — | `project_key` written on every ingested document. |
+| `docs_path` | No | `docs/` | Folder (relative to the repo root) to watch. |
+| `pattern` | No | `*.md` | Extension filter for the `full_sync` path. |
+| `full_sync` | No | `false` | Ignore the diff and push every matching file. |
+| `batch_size` | No | `50` | Documents per POST (max 100). |
+
+### Idempotency & retries
+
+Every document is hashed (SHA-256 over the markdown) before insert. The `KnowledgeDocument` table has a unique `(project_key, source_path, version_hash)` constraint, so **re-pushing identical content is a no-op** — the chunks and embeddings survive untouched.
+
+Combined with `$tries = 3` and an exponential backoff of `[10, 30, 60]` seconds on `IngestDocumentJob`, this gives you:
+
+- Safe retries — a transient 500 from the LLM provider never produces duplicates.
+- Safe duplicate dispatches — if the GitHub Action fires twice (e.g. a squash-merge + a tag push), the second run just bumps `indexed_at`.
+- Safe worker restarts — a SIGTERM mid-job simply re-enqueues it.
+
+### Via code (still available)
 
 ```php
 use App\Services\Kb\DocumentIngestor;
 
-$ingestor = app(DocumentIngestor::class);
-
-$ingestor->ingestMarkdown(
+app(DocumentIngestor::class)->ingestMarkdown(
     projectKey: 'erp-core',
     sourcePath: 'docs/auth/setup.md',
     title: 'Auth Setup',
     markdown: Storage::disk('kb')->get('docs/auth/setup.md'),
-    metadata: [
-        'language' => 'en',
-        'access_scope' => 'internal',
-        'author' => 'team-auth',
-    ],
+    metadata: ['language' => 'en', 'author' => 'team-auth'],
 );
 ```
-
-### Pipeline
-
-1. **Hash** — SHA256 of the content for idempotency.
-2. **Chunking** — Split the markdown into chunks (ready for an AST-aware parser).
-3. **Embedding** — Generate embeddings via the configured provider (with cache).
-4. **Storage** — Atomic transaction: `KnowledgeDocument` + N `KnowledgeChunk` rows with embedding.
-
-### Idempotency
-
-Ingestion is idempotent: re-ingesting the same document with the same content creates no duplicates. Unique constraints on `(project_key, source_path, version_hash)` and `(knowledge_document_id, chunk_hash)` enforce consistency.
 
 ---
 
@@ -1351,6 +1535,71 @@ KB_HYBRID_SEARCH_ENABLED=true
 KB_FTS_LANGUAGE=italian
 ```
 
+### Quick Start: ingest a whole folder (onboarding recipe)
+
+You have a `docs/` folder full of markdown and want everything in the KB — no UI clicking, no one-by-one runs.
+
+```bash
+# 1. Tell the app where to find the markdown. Easiest: drop it under
+#    storage/app/kb (the built-in `kb` disk) or point to S3 via KB_DISK_DRIVER.
+cp -r ~/my-project/docs/. storage/app/kb/docs/
+
+# 2. Pick a queue driver. For dev, keep the default:
+#      QUEUE_CONNECTION=sync     # every dispatch is inline — no worker needed
+#    For a real batch on prod, switch to database (or redis) and start a worker:
+#      QUEUE_CONNECTION=database
+#      php artisan migrate
+#      php artisan queue:work --queue=kb-ingest &
+
+# 3. Walk the folder and enqueue one job per markdown file.
+php artisan kb:ingest-folder docs/ --project=my-project --recursive
+
+# 4. (Optional) Preview first. Lists every match without touching the DB:
+php artisan kb:ingest-folder docs/ --project=my-project --recursive --dry-run
+
+# 5. (Optional) Skip the queue altogether for a small batch:
+php artisan kb:ingest-folder docs/ --project=my-project --recursive --sync
+```
+
+Re-running the command is safe — unchanged documents are detected by SHA-256 and skipped.
+
+### Quick Start: push docs from another repo on every commit
+
+Want your product repo to keep its `docs/` folder in sync with AskMyDocs automatically? Two steps.
+
+```bash
+# On the AskMyDocs server — mint a bearer token:
+php artisan tinker --execute="echo \App\Models\User::first()->createToken('docs-ingest')->plainTextToken;"
+```
+
+Then on the **consumer** repo (e.g. `acme/erp-core`):
+
+1. Settings → Secrets and variables → Actions:
+   - secret `ASKMYDOCS_TOKEN` → the token from step 1.
+   - variable `ASKMYDOCS_URL` → `https://kb.example.com`.
+2. Add `.github/workflows/ingest-docs.yml`:
+   ```yaml
+   name: Push docs to AskMyDocs
+   on:
+     push:
+       branches: [main]
+       paths: ['docs/**/*.md']
+   jobs:
+     ingest:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+           with: { fetch-depth: 2 }
+         - uses: padosoft/askmydocs/.github/actions/ingest-to-askmydocs@main
+           with:
+             server_url:  ${{ vars.ASKMYDOCS_URL }}
+             api_token:   ${{ secrets.ASKMYDOCS_TOKEN }}
+             project_key: erp-core
+             docs_path:   docs/
+   ```
+
+Every push to `main` now diffs the markdown in `docs/`, POSTs the changes, and the server queues them for RAG. See the full walkthrough in [Flow 2 — Remote push from another repo](#flow-2--remote-push-from-another-repo).
+
 ---
 
 ## Directory layout
@@ -1373,7 +1622,8 @@ askmydocs/
 │   │       └── RegoloProvider.php            # Regolo.ai (chat + embeddings, EU)
 │   ├── Console/
 │   │   └── Commands/
-│   │       ├── KbIngestCommand.php           # Disk-driven ingestion CLI
+│   │       ├── KbIngestCommand.php           # Single-file ingestion CLI
+│   │       ├── KbIngestFolderCommand.php     # Folder walker → queued jobs
 │   │       ├── PruneEmbeddingCacheCommand.php
 │   │       └── PruneChatLogsCommand.php
 │   ├── Http/Controllers/
@@ -1382,10 +1632,13 @@ askmydocs/
 │   │   │   └── PasswordResetController.php  # Forgot / reset password
 │   │   ├── ChatController.php               # Chat UI
 │   │   └── Api/
-│   │       ├── KbChatController.php         # Stateless API (Sanctum)
+│   │       ├── KbChatController.php         # Stateless chat API (Sanctum)
+│   │       ├── KbIngestController.php       # Remote ingestion API (Sanctum)
 │   │       ├── ConversationController.php   # Conversations CRUD
 │   │       ├── MessageController.php        # Messages + AI response
 │   │       └── FeedbackController.php       # Thumbs up/down rating
+│   ├── Jobs/
+│   │   └── IngestDocumentJob.php            # ShouldQueue — reads disk, calls DocumentIngestor
 │   ├── Mcp/
 │   │   ├── Servers/KnowledgeBaseServer.php   # MCP server
 │   │   └── Tools/                            # 5 read-only MCP tools
@@ -1422,7 +1675,13 @@ askmydocs/
 │   ├── ai.php                                # Multi-provider config
 │   ├── chat-log.php
 │   ├── filesystems.php                      # Disks (local, kb, s3)
-│   └── kb.php                                # KB + reranking + retention
+│   ├── kb.php                                # KB + reranking + retention + ingest queue
+│   └── queue.php                             # Queue driver connections (sync/database/redis)
+├── .github/
+│   └── actions/
+│       └── ingest-to-askmydocs/action.yml    # Reusable composite GitHub Action
+├── docs/examples/
+│   └── github-workflow-ingest.yml            # Drop-in consumer workflow example
 ├── database/migrations/
 │   ├── ..._create_users_table.php
 │   ├── ..._create_knowledge_documents_table.php
@@ -1525,9 +1784,11 @@ tests/
 │   ├── Kb/                                # MarkdownChunker, Reranker
 │   └── Migrations/                        # FTS GIN migration safety
 ├── Feature/
+│   ├── Api/                               # KbIngestController (validation, disk write, dispatch)
 │   ├── Auth/                              # Login redirect regression
 │   ├── ChatLog/                           # ChatLogManager (persist, error swallowing)
-│   ├── Commands/                          # kb:ingest, kb:prune-embedding-cache, chat-log:prune
+│   ├── Commands/                          # kb:ingest, kb:ingest-folder, prune commands
+│   ├── Jobs/                              # IngestDocumentJob (queue retries, disk read, metadata)
 │   └── Kb/                                # EmbeddingCacheService, FewShotService
 ├── database/migrations/                   # SQLite-compatible schema
 └── js/
@@ -1536,7 +1797,7 @@ tests/
 
 ### Current coverage
 
-- 93 PHPUnit tests, 251 assertions
+- 115 PHPUnit tests, 317 assertions
 - 18 Vitest tests
 
 ---
@@ -1592,6 +1853,25 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v1.2.0
+
+**New**
+- `kb:ingest-folder` artisan command — walks the configured KB disk and dispatches one queued `IngestDocumentJob` per markdown file. Supports `--recursive`, `--pattern`, `--sync`, `--limit`, `--dry-run`, and a per-run `--disk` override.
+- `App\Jobs\IngestDocumentJob` — `ShouldQueue` job with `$tries=3` + exponential backoff, driven by the `KB_INGEST_QUEUE` name.
+- `POST /api/kb/ingest` — Sanctum-authenticated endpoint that accepts 1–100 markdown documents per call, persists them on the KB disk, and queues the ingestion.
+- `.github/actions/ingest-to-askmydocs/action.yml` — reusable GitHub composite action. Any consumer repo can push its `docs/` folder to the KB on every commit to `main`. Copy-paste workflow shipped at `docs/examples/github-workflow-ingest.yml`.
+- Queue config (`config/queue.php`) with `sync` / `database` / `redis` connections out of the box, plus the `jobs` + `failed_jobs` migrations for the database driver.
+- New env: `KB_INGEST_QUEUE`, `KB_INGEST_DEFAULT_PROJECT`, `REDIS_CLIENT`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_QUEUE_CONNECTION`, `REDIS_QUEUE`.
+- New config section `kb.ingest` (`queue`, `default_project`).
+- `composer.json` `suggest` section for `predis/predis`, `laravel/horizon`, `league/flysystem-aws-s3-v3`.
+
+**Changed**
+- README: the "Document Ingestion" section is now split into *Flow 1 — Local / S3 folder* and *Flow 2 — Remote push from another repo*, with a queue-driver comparison, a Supervisor template, and two new jr-friendly onboarding recipes.
+- `tests/TestCase.php` pins `queue.default = sync` so the suite never touches a real queue backend.
+
+**Tests**
+- +20 new tests (5 for `IngestDocumentJob`, 8 for `KbIngestFolderCommand`, 7 for `KbIngestController`) — suite is now **115 PHPUnit tests / 317 assertions** plus **18 Vitest tests**.
 
 ### v1.1.0
 

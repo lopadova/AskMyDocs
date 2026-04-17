@@ -1,0 +1,41 @@
+# Copy this file into your consumer repo at `.github/workflows/ingest-docs.yml`.
+# It pushes changed markdown from ./docs to your AskMyDocs server on every push to main.
+#
+# Prerequisites on the consumer repo:
+#   Settings → Secrets and variables → Actions
+#     - secret `ASKMYDOCS_TOKEN`  → Sanctum bearer token (generated via `php artisan tinker`)
+#     - variable `ASKMYDOCS_URL`  → e.g. https://kb.example.com
+#
+name: Push docs to AskMyDocs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/**/*.markdown'
+  workflow_dispatch:
+    inputs:
+      full_sync:
+        description: "Push every markdown file (not just the diff)"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with history for diff)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Ingest to AskMyDocs
+        uses: padosoft/askmydocs/.github/actions/ingest-to-askmydocs@main
+        with:
+          server_url:  ${{ vars.ASKMYDOCS_URL }}
+          api_token:   ${{ secrets.ASKMYDOCS_TOKEN }}
+          project_key: my-project
+          docs_path:   docs/
+          full_sync:   ${{ github.event_name == 'workflow_dispatch' && inputs.full_sync || 'false' }}
