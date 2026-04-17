@@ -91,6 +91,30 @@ return [
         'default_project' => env('KB_INGEST_DEFAULT_PROJECT', 'default'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Document deletion
+    |--------------------------------------------------------------------------
+    |
+    | When `soft_delete` is true (default), kb:delete marks documents as
+    | deleted (deleted_at timestamp + cascade soft-delete of chunks), but
+    | the original file and the row itself are retained. The scheduled
+    | `kb:prune-deleted` command purges soft-deleted documents older than
+    | `retention_days`, also removing the original file on the KB disk.
+    |
+    | When `soft_delete` is false, kb:delete purges immediately (hard
+    | delete of the document + chunks + physical file).
+    |
+    | The API endpoint DELETE /api/kb/documents and the GitHub Action
+    | honor the same defaults but accept an explicit `force` flag.
+    |
+    */
+
+    'deletion' => [
+        'soft_delete' => env('KB_SOFT_DELETE_ENABLED', true),
+        'retention_days' => (int) env('KB_SOFT_DELETE_RETENTION_DAYS', 30),
+    ],
+
     'sources' => [
         /*
         | Laravel filesystem disk used to read KB markdown files.

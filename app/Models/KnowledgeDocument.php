@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class KnowledgeDocument extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'project_key',
         'source_type',
@@ -27,6 +30,7 @@ class KnowledgeDocument extends Model
         'metadata' => 'array',
         'source_updated_at' => 'datetime',
         'indexed_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public function chunks(): HasMany

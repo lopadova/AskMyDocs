@@ -1,15 +1,17 @@
 name: Ingest docs to AskMyDocs
 description: >
-  Detects markdown files changed by the current push (or every file, when
-  full_sync=true) and POSTs them to an AskMyDocs server for queued RAG
-  ingestion. Authenticates with a Sanctum bearer token.
+  Detects markdown files changed (and removed) by the current push, or every
+  file when full_sync=true, and POSTs them to an AskMyDocs server for queued
+  RAG ingestion. Removed files are sent to DELETE /api/kb/documents so the
+  RAG store stays in sync with the repository. Authenticates with a Sanctum
+  bearer token.
 
 inputs:
   server_url:
     description: Base URL of the AskMyDocs server (e.g. https://kb.example.com).
     required: true
   api_token:
-    description: Sanctum bearer token with permission to hit /api/kb/ingest.
+    description: Sanctum bearer token with permission to hit /api/kb/ingest and /api/kb/documents.
     required: true
   project_key:
     description: project_key under which the documents will be indexed.
@@ -30,6 +32,13 @@ inputs:
     description: Max number of documents per POST (API hard-cap is 100).
     required: false
     default: "50"
+  force_delete:
+    description: >
+      When "true", deletions are sent with {"force": true} so the server
+      hard-deletes (bypasses KB_SOFT_DELETE_ENABLED). Default honours the
+      server-side soft-delete config.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -57,6 +66,9 @@ runs:
           fi
         }
 
+        : > /tmp/askmydocs-files.txt
+        : > /tmp/askmydocs-deletions.txt
+
         if [ "$FULL_SYNC" = "true" ]; then
           if [ "$PATTERN" = "*.md" ]; then
             echo "Mode: full sync (every *.md and *.markdown under $DOCS_PATH)."
@@ -64,27 +76,46 @@ runs:
             echo "Mode: full sync (every $PATTERN under $DOCS_PATH)."
           fi
           mapfile -t FILES < <(collect_full_sync_files)
+          DELETED=()
         else
           echo "Mode: diff against previous commit."
           BASE_REF=$(git rev-parse HEAD^ 2>/dev/null || echo "")
           if [ -z "$BASE_REF" ]; then
             echo "No parent commit — falling back to full sync."
             mapfile -t FILES < <(collect_full_sync_files)
+            DELETED=()
           else
             mapfile -t FILES < <(git diff --name-only --diff-filter=AM "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
+            mapfile -t DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
+            # A rename is modelled by git as "delete old + add new"; the
+            # --diff-filter=R case is resolved above via AM for the new name
+            # and R for the old name. Treat renamed-from paths as deletions
+            # so the old source_path is removed from the RAG store.
+            mapfile -t RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei '\.(md|markdown)$' || true)
+            if [ "${#RENAMED_OLD[@]}" -gt 0 ]; then
+              DELETED+=("${RENAMED_OLD[@]}")
+            fi
           fi
         fi
 
-        if [ "${#FILES[@]}" -eq 0 ]; then
-          echo "Nothing to push."
-          echo "count=0" >> "$GITHUB_OUTPUT"
-          exit 0
+        if [ "${#FILES[@]}" -gt 0 ]; then
+          printf 'Changed/added (%d):\n' "${#FILES[@]}"
+          printf '  - %s\n' "${FILES[@]}"
+          printf '%s\n' "${FILES[@]}" > /tmp/askmydocs-files.txt
         fi
 
-        printf 'Found %d file(s):\n' "${#FILES[@]}"
-        printf '  - %s\n' "${FILES[@]}"
-        printf '%s\n' "${FILES[@]}" > /tmp/askmydocs-files.txt
+        if [ "${#DELETED[@]}" -gt 0 ]; then
+          printf 'Deleted (%d):\n' "${#DELETED[@]}"
+          printf '  - %s\n' "${DELETED[@]}"
+          printf '%s\n' "${DELETED[@]}" > /tmp/askmydocs-deletions.txt
+        fi
+
+        if [ "${#FILES[@]}" -eq 0 ] && [ "${#DELETED[@]}" -eq 0 ]; then
+          echo "Nothing to push."
+        fi
+
         echo "count=${#FILES[@]}" >> "$GITHUB_OUTPUT"
+        echo "deleted_count=${#DELETED[@]}" >> "$GITHUB_OUTPUT"
 
     - name: POST documents to AskMyDocs
       if: steps.collect.outputs.count != '0'
@@ -163,5 +194,87 @@ runs:
         done
 
         flush_batch
+
+        echo "Done."
+
+    - name: DELETE removed documents from AskMyDocs
+      if: steps.collect.outputs.deleted_count != '0'
+      shell: bash
+      env:
+        SERVER_URL: ${{ inputs.server_url }}
+        API_TOKEN: ${{ inputs.api_token }}
+        PROJECT_KEY: ${{ inputs.project_key }}
+        BATCH_SIZE: ${{ inputs.batch_size }}
+        FORCE_DELETE: ${{ inputs.force_delete }}
+      run: |
+        set -euo pipefail
+
+        command -v jq >/dev/null || { sudo apt-get update -y && sudo apt-get install -y jq; }
+
+        SERVER_URL="${SERVER_URL%/}"
+        ENDPOINT="$SERVER_URL/api/kb/documents"
+
+        mapfile -t DELETED < /tmp/askmydocs-deletions.txt
+
+        FORCE_FLAG="false"
+        [ "$FORCE_DELETE" = "true" ] && FORCE_FLAG="true"
+
+        send_deletion_batch() {
+          local payload_file="$1"
+          local count
+          count=$(jq '.documents | length' "$payload_file")
+          echo "DELETing $count document(s) via $ENDPOINT"
+
+          local http_status
+          http_status=$(curl -sS -o /tmp/askmydocs-delete-response.json -w "%{http_code}" \
+            -X DELETE "$ENDPOINT" \
+            -H "Authorization: Bearer $API_TOKEN" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data-binary "@$payload_file")
+
+          if [ "$http_status" -lt 200 ] || [ "$http_status" -ge 300 ]; then
+            echo "!! Delete failed with HTTP $http_status" >&2
+            cat /tmp/askmydocs-delete-response.json >&2 || true
+            exit 1
+          fi
+
+          echo "   ↳ server replied $http_status"
+        }
+
+        BATCH_SIZE_INT=${BATCH_SIZE:-50}
+        [ "$BATCH_SIZE_INT" -gt 100 ] && BATCH_SIZE_INT=100
+        [ "$BATCH_SIZE_INT" -lt 1 ] && BATCH_SIZE_INT=1
+
+        BATCH='[]'
+        COUNT_IN_BATCH=0
+
+        flush_deletion_batch() {
+          if [ "$COUNT_IN_BATCH" -gt 0 ]; then
+            jq -n \
+              --argjson docs "$BATCH" \
+              --argjson force "$FORCE_FLAG" \
+              '{documents: $docs, force: $force}' > /tmp/askmydocs-delete-payload.json
+            send_deletion_batch /tmp/askmydocs-delete-payload.json
+            BATCH='[]'
+            COUNT_IN_BATCH=0
+          fi
+        }
+
+        for file in "${DELETED[@]}"; do
+          doc=$(jq -n \
+            --arg project_key "$PROJECT_KEY" \
+            --arg source_path "$file" \
+            '{project_key: $project_key, source_path: $source_path}')
+
+          BATCH=$(jq --argjson item "$doc" '. + [$item]' <<<"$BATCH")
+          COUNT_IN_BATCH=$((COUNT_IN_BATCH + 1))
+
+          if [ "$COUNT_IN_BATCH" -ge "$BATCH_SIZE_INT" ]; then
+            flush_deletion_batch
+          fi
+        done
+
+        flush_deletion_batch
 
         echo "Done."

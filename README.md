@@ -79,6 +79,13 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [Queue drivers](#queue-drivers)
   - [GitHub Action (reusable)](#github-action-reusable)
   - [Idempotency & retries](#idempotency--retries)
+- [Document Deletion](#document-deletion)
+  - [Soft vs hard delete](#soft-vs-hard-delete)
+  - [Artisan command](#artisan-command)
+  - [Orphan pruning on resync](#orphan-pruning-on-resync)
+  - [DELETE API endpoint](#delete-api-endpoint)
+  - [GitHub Action integration](#github-action-integration)
+  - [Scheduled retention sweep](#scheduled-retention-sweep)
 - [Extending](#extending)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
@@ -418,8 +425,9 @@ Two daily hygiene jobs are registered in `bootstrap/app.php` and dispatched auto
 |---|---|---|---|
 | 03:10 | `kb:prune-embedding-cache` | `KB_EMBEDDING_CACHE_RETENTION_DAYS` (default 30) | Deletes `embedding_cache` rows whose `last_used_at` is older than N days |
 | 03:20 | `chat-log:prune` | `CHAT_LOG_RETENTION_DAYS` (default 90) | Deletes `chat_logs` rows whose `created_at` is older than N days |
+| 03:30 | `kb:prune-deleted` | `KB_SOFT_DELETE_RETENTION_DAYS` (default 30) | Hard-deletes soft-deleted `knowledge_documents` (and their files on the KB disk) older than N days |
 
-Set either env to `0` to disable the corresponding rotation. Both commands accept a `--days=` flag that wins over the env value for ad-hoc runs.
+Set any env to `0` to disable the corresponding rotation. All commands accept a `--days=` flag that wins over the env value for ad-hoc runs.
 
 Register the scheduler entry in your crontab:
 
@@ -433,11 +441,12 @@ List what is configured:
 php artisan schedule:list
 ```
 
-Both commands can also be invoked manually:
+All three commands can also be invoked manually:
 
 ```bash
 php artisan kb:prune-embedding-cache
 php artisan chat-log:prune --days=60
+php artisan kb:prune-deleted --days=14
 ```
 
 ---
@@ -1023,6 +1032,51 @@ Accepts one or many markdown documents and queues them for ingestion. Used by th
 
 The controller writes every `content` to the configured KB disk at `{KB_PATH_PREFIX}/{source_path}` and dispatches one `App\Jobs\IngestDocumentJob` per document on the `KB_INGEST_QUEUE`. The worker — or `sync` if `QUEUE_CONNECTION=sync` — calls `DocumentIngestor::ingestMarkdown()`, which is idempotent (see [Idempotency & retries](#idempotency--retries)).
 
+### DELETE `/api/kb/documents`
+
+Removes one or many documents from the RAG store (chunks + embeddings + optionally the original file on the KB disk). Used by the shipped GitHub Action when it detects files removed from the consumer repo, and by any client that can send an HTTP `DELETE`.
+
+**Headers** — identical to `/api/kb/ingest`.
+
+**Request body** (batch, max 100 per call):
+
+```json
+{
+    "force": false,
+    "documents": [
+        { "project_key": "erp-core", "source_path": "docs/auth/oauth.md" }
+    ]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `documents` | array | Yes | 1 to 100 descriptors |
+| `documents[].project_key` | string | No | Falls back to `KB_INGEST_DEFAULT_PROJECT` |
+| `documents[].source_path` | string | Yes | Same path that was sent to `/api/kb/ingest` |
+| `force` | bool | No | When `true`, hard-deletes regardless of `KB_SOFT_DELETE_ENABLED`. Default follows the server config. |
+
+**Response 200**:
+
+```json
+{
+    "deleted": 1,
+    "missing": 0,
+    "documents": [
+        {
+            "project_key": "erp-core",
+            "source_path": "docs/auth/oauth.md",
+            "document_id": 42,
+            "mode": "soft",
+            "file_deleted": false,
+            "status": "deleted"
+        }
+    ]
+}
+```
+
+Unknown `source_path` values return `status: "not_found"` without failing the whole request — this keeps the GitHub Action green when a file was deleted from the repo but never existed in the KB. See [Document Deletion](#document-deletion) for the full flow.
+
 ---
 
 ## MCP Server
@@ -1112,6 +1166,8 @@ php artisan kb:ingest-folder docs/ --project=erp-core --recursive \
 | `--sync` | off | Call the ingestor inline — skips the queue entirely. Handy for dev or when the batch is tiny. |
 | `--limit=N` | `0` (unlimited) | Stop after N files. |
 | `--dry-run` | off | List matches without dispatching jobs. |
+| `--prune-orphans` | off | Delete documents in the same folder whose source file no longer exists on disk. Uses soft-delete by default (see [Document Deletion](#document-deletion)). |
+| `--force-delete` | off | When combined with `--prune-orphans`, hard-deletes orphans (bypasses `KB_SOFT_DELETE_ENABLED`). |
 
 With `QUEUE_CONNECTION=sync` (the default) every dispatch runs inline, so `kb:ingest-folder docs/` is effectively a progress-tracked version of running `kb:ingest` N times. With `database` or `redis` it returns immediately after enqueuing — start a worker with `php artisan queue:work --queue=kb-ingest`.
 
@@ -1153,6 +1209,8 @@ When the documents live in another Git repo (typical: each project carries its o
 
 Every push to `main` now diffs `docs/**/*.md` against the previous commit and POSTs the changed files in batches of 50 (configurable, API hard-cap 100) to `POST /api/kb/ingest`. The controller persists each payload onto the KB disk and queues one `IngestDocumentJob` per document, so the ingestion throttles itself behind the worker — GitHub runners return in seconds regardless of batch size.
 
+The action also detects **deletions** on the same diff (files removed or renamed between `HEAD^` and `HEAD`) and batches them to `DELETE /api/kb/documents` so the RAG store stays in sync. Deletion behaviour (soft vs hard) follows the server-side `KB_SOFT_DELETE_ENABLED` flag; set the action input `force_delete: 'true'` to force a hard delete from the consumer repo — see [Document Deletion](#document-deletion).
+
 Set the action input `full_sync: 'true'` to push every markdown file (useful on first adoption or after a catastrophic KB wipe).
 
 ### Queue drivers
@@ -1193,12 +1251,13 @@ Inputs:
 | Input | Required | Default | Description |
 |---|---|---|---|
 | `server_url` | Yes | — | Base URL of the AskMyDocs server. |
-| `api_token` | Yes | — | Sanctum bearer token. |
+| `api_token` | Yes | — | Sanctum bearer token (must be allowed to hit `/api/kb/ingest` **and** `/api/kb/documents`). |
 | `project_key` | Yes | — | `project_key` written on every ingested document. |
 | `docs_path` | No | `docs/` | Folder (relative to the repo root) to watch. |
 | `pattern` | No | `*.md` | Extension filter for the `full_sync` path. |
-| `full_sync` | No | `false` | Ignore the diff and push every matching file. |
+| `full_sync` | No | `false` | Ignore the diff and push every matching file. Deletions are **not** detected in full-sync mode — rely on [Orphan pruning](#orphan-pruning-on-resync) instead. |
 | `batch_size` | No | `50` | Documents per POST (max 100). |
+| `force_delete` | No | `false` | When `true`, deletions are sent with `{"force": true}` so the server hard-deletes (ignores `KB_SOFT_DELETE_ENABLED`). |
 
 ### Idempotency & retries
 
@@ -1222,6 +1281,107 @@ app(DocumentIngestor::class)->ingestMarkdown(
     markdown: Storage::disk('kb')->get('docs/auth/setup.md'),
     metadata: ['language' => 'en', 'author' => 'team-auth'],
 );
+```
+
+---
+
+## Document Deletion
+
+Original markdown is persisted on the configured KB disk (local, S3, …) when it is first ingested — the `DocumentIngestor` reads, chunks and embeds it, but never removes the source file. Deleting a document therefore touches **three** places that must stay in sync:
+
+1. The `knowledge_documents` row and its metadata.
+2. The `knowledge_chunks` rows (and their pgvector embeddings).
+3. The original file on the KB disk.
+
+`App\Services\Kb\DocumentDeleter` is the single entry point that keeps those three in sync for every deletion flow (artisan, API, orphan pruning, scheduled purge).
+
+### Soft vs hard delete
+
+Two env vars drive the default behaviour for every deletion path:
+
+| Env | Default | Purpose |
+|---|---|---|
+| `KB_SOFT_DELETE_ENABLED` | `true` | When `true`, `kb:delete` / the DELETE endpoint mark the document as deleted (cascade soft-delete) and **keep the original file** on disk. When `false`, deletions are immediately hard. |
+| `KB_SOFT_DELETE_RETENTION_DAYS` | `30` | How many days a soft-deleted document survives before `kb:prune-deleted` hard-removes it (file + row + chunks). |
+
+Because `KnowledgeDocument` uses Eloquent's `SoftDeletes` trait, a soft-deleted document is automatically hidden from `KbSearchService`, the MCP tools and every controller query — no changes are needed in the chat path. You can always recover it with `KnowledgeDocument::withTrashed()->restore()` within the retention window.
+
+### Artisan command
+
+```bash
+# Default: honours KB_SOFT_DELETE_ENABLED
+php artisan kb:delete docs/auth/oauth.md --project=erp-core
+
+# Force a hard delete (DB + chunks + file) regardless of config
+php artisan kb:delete docs/auth/oauth.md --project=erp-core --force
+
+# Force a soft delete even when KB_SOFT_DELETE_ENABLED=false
+php artisan kb:delete docs/auth/oauth.md --project=erp-core --soft
+```
+
+Signature:
+
+| Arg / flag | Default | Description |
+|---|---|---|
+| `path` | — | Source path relative to `KB_PATH_PREFIX` (matches `KnowledgeDocument.source_path`). |
+| `--project=` | `KB_INGEST_DEFAULT_PROJECT` | Project scope. |
+| `--force` | off | Hard delete (DB + file). |
+| `--soft` | off | Soft delete (deleted_at only). Mutually exclusive with `--force`. |
+
+Returns exit code 1 when no matching document is found so CI pipelines can flag typos.
+
+### Orphan pruning on resync
+
+When you re-sync a whole folder (Flow 1), the ingestor has no way to know about files that were **removed** from the source since the last run. Pass `--prune-orphans` to `kb:ingest-folder` to delete every document under that folder whose source file no longer exists on disk:
+
+```bash
+# Soft-delete the orphans (default — uses KB_SOFT_DELETE_ENABLED)
+php artisan kb:ingest-folder docs/ --project=erp-core --recursive --prune-orphans
+
+# Hard-delete the orphans (bypass the soft-delete default)
+php artisan kb:ingest-folder docs/ --project=erp-core --recursive --prune-orphans --force-delete
+```
+
+The scope is always the folder passed as the first argument — siblings outside of it are never touched. An empty folder still triggers the sweep (useful when every file was just removed from the repo).
+
+### DELETE API endpoint
+
+The `DELETE /api/kb/documents` endpoint (see the [API](#api) section) exposes the same pipeline over HTTP so remote pushers — typically the shipped GitHub Action — can keep the RAG store in sync with a repository without needing shell access.
+
+Minimal cURL example:
+
+```bash
+curl -X DELETE "$ASKMYDOCS_URL/api/kb/documents" \
+    -H "Authorization: Bearer $ASKMYDOCS_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data '{"documents":[{"project_key":"erp-core","source_path":"docs/auth/oauth.md"}]}'
+```
+
+### GitHub Action integration
+
+The composite action at `.github/actions/ingest-to-askmydocs/action.yml` now runs a second pass that detects **removed** and **renamed** markdown files between `HEAD^` and `HEAD` (via `git diff --diff-filter=D` and `--diff-filter=R`) and batches them to `DELETE /api/kb/documents` with the same batch size as ingestion. The run fails on any non-2xx response, so an expired token or a rejected path produces a red CI badge instead of silent drift.
+
+By default the deletion inherits the server-side `KB_SOFT_DELETE_ENABLED` flag. Set the action input `force_delete: 'true'` when you want a consumer repo to always hard-delete (e.g. compliance deletion of sensitive docs):
+
+```yaml
+- uses: padosoft/askmydocs/.github/actions/ingest-to-askmydocs@main
+  with:
+    server_url:   ${{ vars.ASKMYDOCS_URL }}
+    api_token:    ${{ secrets.ASKMYDOCS_TOKEN }}
+    project_key:  my-project
+    docs_path:    docs/
+    force_delete: 'true'
+```
+
+### Scheduled retention sweep
+
+The scheduled `kb:prune-deleted` command (see [Scheduler](#scheduler)) runs daily at 03:30, finds every soft-deleted document whose `deleted_at` is older than `KB_SOFT_DELETE_RETENTION_DAYS`, and **hard-deletes** it — the row disappears from `withTrashed()` queries, the chunks are wiped via the FK cascade, and the original file is removed from the KB disk.
+
+Set `KB_SOFT_DELETE_RETENTION_DAYS=0` to disable the sweep entirely (soft-deleted rows live forever). You can also invoke it ad-hoc:
+
+```bash
+php artisan kb:prune-deleted            # uses KB_SOFT_DELETE_RETENTION_DAYS
+php artisan kb:prune-deleted --days=14  # one-off override
 ```
 
 ---
@@ -1853,6 +2013,23 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v1.3.0
+
+**New**
+- Document deletion pipeline — see the [Document Deletion](#document-deletion) section.
+- `App\Services\Kb\DocumentDeleter` — single entry point for soft/hard delete, orphan cleanup on folder resync, and scheduled retention purge. Keeps `knowledge_documents`, `knowledge_chunks`, and the original file on the KB disk in sync.
+- `SoftDeletes` on `KnowledgeDocument` — soft-deleted documents are automatically hidden from `KbSearchService`, MCP tools, and all read paths.
+- `kb:delete {path} --project= --force|--soft` artisan command.
+- `kb:prune-deleted --days=` scheduled command (runs daily at 03:30). Hard-deletes soft-deleted documents older than `KB_SOFT_DELETE_RETENTION_DAYS` and removes their files from the KB disk.
+- `DELETE /api/kb/documents` Sanctum endpoint — accepts batch of `{project_key, source_path}` descriptors and an optional `force` flag.
+- `kb:ingest-folder --prune-orphans [--force-delete]` — detects documents whose source file was removed between runs and deletes them (respects the folder scope).
+- GitHub Action now detects `--diff-filter=D` and `--diff-filter=R` (deletions + renames) and batches them to `DELETE /api/kb/documents`. New `force_delete` input.
+- New env: `KB_SOFT_DELETE_ENABLED` (default `true`), `KB_SOFT_DELETE_RETENTION_DAYS` (default `30`).
+- New config section `kb.deletion` (`soft_delete`, `retention_days`).
+
+**Tests**
+- +29 new PHPUnit tests (11 `DocumentDeleterTest`, 6 `KbDeleteControllerTest`, 5 `KbDeleteCommandTest`, 3 `PruneDeletedDocumentsCommandTest`, 4 `KbIngestFolderPruneOrphansTest`) — suite is now **149 PHPUnit tests / 442 assertions**.
 
 ### v1.2.0
 

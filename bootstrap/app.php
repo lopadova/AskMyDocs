@@ -30,5 +30,14 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('03:20')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // Soft-deleted document retention (default: 30 days,
+        // env KB_SOFT_DELETE_RETENTION_DAYS). Hard-deletes rows that have
+        // been soft-deleted longer than the retention window and removes
+        // their original files from the KB disk.
+        $schedule->command('kb:prune-deleted')
+            ->dailyAt('03:30')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->create();
