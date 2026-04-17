@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\IngestDocumentJob;
+use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\DocumentIngestor;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
@@ -26,11 +27,13 @@ class KbIngestFolderCommand extends Command
                             {--recursive : Walk sub-directories}
                             {--sync : Run ingestion inline without touching the queue}
                             {--limit=0 : Stop after N files (0 = unlimited)}
-                            {--dry-run : Print matches without dispatching}';
+                            {--dry-run : Print matches without dispatching}
+                            {--prune-orphans : Delete documents under this folder whose source file no longer exists}
+                            {--force-delete : When pruning orphans, hard-delete instead of using the KB_SOFT_DELETE_ENABLED default}';
 
     protected $description = 'Walk a folder on the KB disk and dispatch a queued ingestion job per markdown file.';
 
-    public function handle(DocumentIngestor $ingestor): int
+    public function handle(DocumentIngestor $ingestor, DocumentDeleter $deleter): int
     {
         $disk = (string) ($this->option('disk') ?: config('kb.sources.disk', 'kb'));
         $projectKey = (string) ($this->option('project') ?: config('kb.ingest.default_project', 'default'));
@@ -64,6 +67,12 @@ class KbIngestFolderCommand extends Command
 
         if ($total === 0) {
             $this->warn("No markdown files matched under disk [{$disk}] path [{$basePath}].");
+
+            // An empty folder can still have orphans to prune (e.g. every
+            // file was just removed from the repo).
+            if ((bool) $this->option('prune-orphans') && ! $dryRun) {
+                $this->pruneOrphans($deleter, $projectKey, $pathArg, $matching, $prefix);
+            }
 
             return self::SUCCESS;
         }
@@ -121,7 +130,48 @@ class KbIngestFolderCommand extends Command
         $verb = $sync ? 'Ingested' : 'Queued';
         $this->info("{$verb} {$dispatched} document(s)".($failed > 0 ? " — {$failed} failure(s)." : '.'));
 
+        if ((bool) $this->option('prune-orphans')) {
+            $this->pruneOrphans($deleter, $projectKey, $pathArg, $matching, $prefix);
+        }
+
         return $failed === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * @param  array<int,string>  $fullPathsOnDisk
+     */
+    private function pruneOrphans(
+        DocumentDeleter $deleter,
+        string $projectKey,
+        string $pathArg,
+        array $fullPathsOnDisk,
+        string $prefix,
+    ): void {
+        $force = $this->option('force-delete') ? true : null;
+
+        $existing = array_map(
+            fn (string $full) => $this->stripPrefix($full, $prefix),
+            $fullPathsOnDisk,
+        );
+
+        $removed = $deleter->deleteOrphans(
+            projectKey: $projectKey,
+            basePath: trim($pathArg, '/'),
+            existingRelativePaths: $existing,
+            force: $force,
+        );
+
+        if ($removed === []) {
+            $this->info('No orphan documents to prune.');
+
+            return;
+        }
+
+        $mode = ($force === true) ? 'hard' : (config('kb.deletion.soft_delete', true) ? 'soft' : 'hard');
+        $this->info(sprintf('Pruned %d orphan document(s) [%s delete].', count($removed), $mode));
+        foreach ($removed as $row) {
+            $this->line("  - {$row['source_path']}");
+        }
     }
 
     /**
