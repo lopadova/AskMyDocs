@@ -128,4 +128,58 @@ class KbDeleteCommandTest extends TestCase
             ->expectsOutputToContain('Cannot combine --force and --soft')
             ->assertFailed();
     }
+
+    public function test_normalizes_path_before_lookup_so_unexpected_slashes_still_match(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        Storage::disk('kb')->put('docs/sample.md', 'hi');
+        $doc = $this->seedDocument();
+
+        // The document was stored with the normalised source_path "docs/sample.md".
+        // A user typing "docs//sample.md" or "/docs/sample.md" must still find it.
+        $this->artisan('kb:delete', [
+            'path' => '/docs//sample.md',
+            '--project' => 'demo',
+        ])
+            ->expectsOutputToContain('soft-deleted')
+            ->assertSuccessful();
+
+        $this->assertNull(KnowledgeDocument::find($doc->id));
+    }
+
+    public function test_rejects_paths_containing_parent_traversal(): void
+    {
+        $this->artisan('kb:delete', [
+            'path' => '../etc/passwd',
+            '--project' => 'demo',
+        ])
+            ->expectsOutputToContain('must be a relative path without')
+            ->assertFailed();
+    }
+
+    public function test_force_can_hard_delete_already_soft_deleted_document(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        Storage::disk('kb')->put('docs/sample.md', 'hi');
+        $doc = $this->seedDocument();
+
+        // Soft delete first.
+        $this->artisan('kb:delete', [
+            'path' => 'docs/sample.md',
+            '--project' => 'demo',
+        ])->assertSuccessful();
+
+        // Then escalate to hard delete. Previously this reported "No document
+        // found" because the row was hidden by the SoftDeletes global scope.
+        $this->artisan('kb:delete', [
+            'path' => 'docs/sample.md',
+            '--project' => 'demo',
+            '--force' => true,
+        ])
+            ->expectsOutputToContain('hard-deleted')
+            ->assertSuccessful();
+
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($doc->id));
+        Storage::disk('kb')->assertMissing('docs/sample.md');
+    }
 }

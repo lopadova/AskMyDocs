@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\IngestDocumentJob;
+use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -41,7 +42,13 @@ class KbIngestController extends Controller
 
         foreach ($validated['documents'] as $doc) {
             $projectKey = (string) ($doc['project_key'] ?? $defaultProject);
-            $sourcePath = $this->normalizePath((string) $doc['source_path']);
+            try {
+                $sourcePath = KbPath::normalize((string) $doc['source_path']);
+            } catch (\InvalidArgumentException $e) {
+                throw ValidationException::withMessages([
+                    'documents' => [$e->getMessage()],
+                ]);
+            }
             $storedPath = ltrim($prefix.'/'.$sourcePath, '/');
 
             // The kb disk is configured with throw => false, so put() returns
@@ -73,28 +80,5 @@ class KbIngestController extends Controller
             'queued' => count($results),
             'documents' => $results,
         ], 202);
-    }
-
-    private function normalizePath(string $path): string
-    {
-        $path = str_replace('\\', '/', $path);
-        $path = preg_replace('#/+#', '/', $path) ?? $path;
-        $path = trim($path, '/');
-
-        if ($path === '') {
-            throw ValidationException::withMessages([
-                'documents' => ['Each source_path must be a non-empty relative path.'],
-            ]);
-        }
-
-        foreach (explode('/', $path) as $segment) {
-            if ($segment === '.' || $segment === '..') {
-                throw ValidationException::withMessages([
-                    'documents' => ['Each source_path must be a relative path without "." or ".." segments.'],
-                ]);
-            }
-        }
-
-        return $path;
     }
 }

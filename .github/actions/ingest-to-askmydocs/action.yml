@@ -85,12 +85,17 @@ runs:
             mapfile -t FILES < <(collect_full_sync_files)
             DELETED=()
           else
-            mapfile -t FILES < <(git diff --name-only --diff-filter=AM "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
+            # With rename detection (git's default), a rename is a single R
+            # record rather than a D + A pair. We therefore:
+            #   1. Collect added/modified/renamed destinations in FILES so
+            #      the new path is re-ingested.
+            #   2. Collect deleted paths in DELETED so the RAG store loses
+            #      the old document.
+            #   3. Extract the old path of every rename (field 2 of
+            #      --name-status "R<sim>\told\tnew") and append it to
+            #      DELETED, so the old source_path is purged as well.
+            mapfile -t FILES < <(git diff --name-only --diff-filter=AMR "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
             mapfile -t DELETED < <(git diff --name-only --diff-filter=D "$BASE_REF" HEAD -- "$DOCS_PATH" | grep -Ei '\.(md|markdown)$' || true)
-            # A rename is modelled by git as "delete old + add new"; the
-            # --diff-filter=R case is resolved above via AM for the new name
-            # and R for the old name. Treat renamed-from paths as deletions
-            # so the old source_path is removed from the RAG store.
             mapfile -t RENAMED_OLD < <(git diff --name-status --diff-filter=R "$BASE_REF" HEAD -- "$DOCS_PATH" | awk '{print $2}' | grep -Ei '\.(md|markdown)$' || true)
             if [ "${#RENAMED_OLD[@]}" -gt 0 ]; then
               DELETED+=("${RENAMED_OLD[@]}")

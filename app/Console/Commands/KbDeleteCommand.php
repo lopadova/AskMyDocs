@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
+use App\Support\KbPath;
 use Illuminate\Console\Command;
 
 /**
@@ -26,14 +26,21 @@ class KbDeleteCommand extends Command
 
     public function handle(DocumentDeleter $deleter): int
     {
-        $sourcePath = trim((string) $this->argument('path'), '/');
-        $projectKey = (string) ($this->option('project') ?: config('kb.ingest.default_project', 'default'));
-
         if ($this->option('force') && $this->option('soft')) {
             $this->error('Cannot combine --force and --soft.');
 
             return self::FAILURE;
         }
+
+        try {
+            $sourcePath = KbPath::normalize((string) $this->argument('path'));
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $projectKey = (string) ($this->option('project') ?: config('kb.ingest.default_project', 'default'));
 
         $force = null;
         if ($this->option('force')) {
@@ -42,18 +49,13 @@ class KbDeleteCommand extends Command
             $force = false;
         }
 
-        $document = KnowledgeDocument::query()
-            ->where('project_key', $projectKey)
-            ->where('source_path', $sourcePath)
-            ->first();
+        $result = $deleter->deleteByPath($projectKey, $sourcePath, $force);
 
-        if ($document === null) {
+        if ($result === null) {
             $this->error("No document found for project [{$projectKey}] at [{$sourcePath}].");
 
             return self::FAILURE;
         }
-
-        $result = $deleter->delete($document, $force);
 
         $mode = $result['mode'] === 'hard' ? 'hard-deleted' : 'soft-deleted';
         $fileNote = $result['mode'] === 'hard'

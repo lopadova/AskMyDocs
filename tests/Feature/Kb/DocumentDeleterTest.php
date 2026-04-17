@@ -147,6 +147,49 @@ class DocumentDeleterTest extends TestCase
         $this->assertNull(KnowledgeDocument::find($document->id));
     }
 
+    public function test_delete_by_path_force_hard_deletes_already_soft_deleted_row(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        Storage::disk('kb')->put('docs/sample.md', 'hi');
+        $document = $this->makeDocument();
+
+        $deleter = new DocumentDeleter;
+        $first = $deleter->deleteByPath($document->project_key, $document->source_path);
+        $this->assertSame('soft', $first['mode']);
+
+        // Force a hard delete on the already-soft-deleted row. With the
+        // previous implementation this would return null.
+        $second = $deleter->deleteByPath($document->project_key, $document->source_path, force: true);
+
+        $this->assertNotNull($second);
+        $this->assertSame('hard', $second['mode']);
+        $this->assertTrue($second['file_deleted']);
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
+        Storage::disk('kb')->assertMissing('docs/sample.md');
+    }
+
+    public function test_delete_by_path_is_idempotent_on_already_soft_deleted_row(): void
+    {
+        config()->set('kb.deletion.soft_delete', true);
+        Storage::disk('kb')->put('docs/sample.md', 'hi');
+        $document = $this->makeDocument();
+
+        $deleter = new DocumentDeleter;
+        $deleter->deleteByPath($document->project_key, $document->source_path);
+        $originalDeletedAt = KnowledgeDocument::withTrashed()->find($document->id)->deleted_at;
+
+        // A second soft-delete must not bump deleted_at nor touch the file.
+        $result = $deleter->deleteByPath($document->project_key, $document->source_path);
+
+        $this->assertSame('soft', $result['mode']);
+        $this->assertFalse($result['file_deleted']);
+        $this->assertSame(
+            $originalDeletedAt?->toIso8601String(),
+            KnowledgeDocument::withTrashed()->find($document->id)->deleted_at?->toIso8601String(),
+        );
+        Storage::disk('kb')->assertExists('docs/sample.md');
+    }
+
     public function test_delete_orphans_removes_only_rows_whose_file_is_missing(): void
     {
         config()->set('kb.deletion.soft_delete', true);

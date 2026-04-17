@@ -35,20 +35,36 @@ class DocumentDeleter
 
     /**
      * Locate a document by project+source_path and delete it. Returns null
-     * when no matching document exists. Matches non-trashed rows only so
-     * repeated calls are idempotent.
+     * when no row exists at all. Already-soft-deleted rows are still
+     * reachable so `force=true` can promote a soft delete to a hard delete,
+     * and repeated soft-deletes are idempotent (no-op returning a soft
+     * result).
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}|null
      */
     public function deleteByPath(string $projectKey, string $sourcePath, ?bool $force = null): ?array
     {
-        $document = KnowledgeDocument::query()
+        $document = KnowledgeDocument::withTrashed()
             ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->first();
 
         if ($document === null) {
             return null;
+        }
+
+        $shouldForce = $force ?? ! (bool) config('kb.deletion.soft_delete', true);
+
+        if ($document->trashed() && ! $shouldForce) {
+            // Idempotent: the row is already soft-deleted, surface it as
+            // such without touching anything.
+            return [
+                'mode' => 'soft',
+                'document_id' => (int) $document->id,
+                'project_key' => (string) $document->project_key,
+                'source_path' => (string) $document->source_path,
+                'file_deleted' => false,
+            ];
         }
 
         return $this->delete($document, $force);
@@ -85,14 +101,22 @@ class DocumentDeleter
             });
         }
 
-        $orphans = $query->get()->filter(
-            static fn (KnowledgeDocument $doc) => ! in_array($doc->source_path, $existing, true),
-        );
+        // Push the "not in existing" filter into SQL so we don't load
+        // every document for the project into memory. Chunk the array to
+        // keep individual IN lists bounded when a folder tracks tens of
+        // thousands of files.
+        if ($existing !== []) {
+            foreach (array_chunk($existing, 1000) as $chunk) {
+                $query->whereNotIn('source_path', $chunk);
+            }
+        }
 
         $results = [];
-        foreach ($orphans as $orphan) {
-            $results[] = $this->delete($orphan, $force);
-        }
+        $query->orderBy('id')->chunkById(100, function ($orphans) use (&$results, $force) {
+            foreach ($orphans as $orphan) {
+                $results[] = $this->delete($orphan, $force);
+            }
+        });
 
         return $results;
     }
@@ -103,15 +127,19 @@ class DocumentDeleter
      */
     public function pruneSoftDeleted(DateTimeInterface $before): int
     {
-        $rows = KnowledgeDocument::onlyTrashed()
-            ->where('deleted_at', '<', $before)
-            ->get();
-
         $count = 0;
-        foreach ($rows as $row) {
-            $this->forceDelete($row);
-            $count++;
-        }
+
+        // chunkById uses `id > ?` cursoring, so it remains correct even
+        // though forceDelete() removes each row as we iterate.
+        KnowledgeDocument::onlyTrashed()
+            ->where('deleted_at', '<', $before)
+            ->orderBy('id')
+            ->chunkById(100, function ($rows) use (&$count) {
+                foreach ($rows as $row) {
+                    $this->forceDelete($row);
+                    $count++;
+                }
+            });
 
         return $count;
     }
