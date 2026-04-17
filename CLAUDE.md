@@ -76,15 +76,18 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 ## 4. Key schemas (condensed)
 
 ### `knowledge_documents`
-`id`, `project_key`, `source_path`, `title`, `version_hash` (SHA-256),
-`metadata` JSON, `indexed_at`, `created_at`, `updated_at`, `deleted_at` (soft
-delete).
+`id`, `project_key`, `source_type`, `title`, `source_path`, `mime_type`,
+`language`, `access_scope`, `status`, `document_hash`, `version_hash` (both
+SHA-256), `metadata` JSON, `source_updated_at`, `indexed_at`, `created_at`,
+`updated_at`, `deleted_at` (soft delete).
 **Uniqueness:** `(project_key, source_path, version_hash)` — the idempotency
 anchor.
 
 ### `knowledge_chunks`
-`id`, `knowledge_document_id` FK (ON DELETE CASCADE), `chunk_index`,
-`chunk_text`, `heading_path`, `embedding vector(N)`. GIN index on
+`id`, `knowledge_document_id` FK (ON DELETE CASCADE), `project_key`,
+`chunk_order`, `chunk_hash` (SHA-256), `heading_path`, `chunk_text`,
+`metadata` JSON, `embedding vector(N)`. UNIQUE
+`(knowledge_document_id, chunk_hash)` (`uq_kb_chunk_doc_hash`). GIN index on
 `to_tsvector(<lang>, chunk_text)` (pgsql only, no-op elsewhere).
 
 ### `embedding_cache`
@@ -123,6 +126,9 @@ from every read path. `kb:prune-deleted` (03:30) hard-deletes soft rows older
 than `KB_SOFT_DELETE_RETENTION_DAYS` (default 30) and wipes the file on disk.
 
 ### Scheduler (bootstrap/app.php)
+
+| Time  | Command                    |
+| ----- | -------------------------- |
 | 03:10 | `kb:prune-embedding-cache` |
 | 03:20 | `chat-log:prune`           |
 | 03:30 | `kb:prune-deleted`         |
@@ -179,8 +185,10 @@ no-op — see Copilot PR #6.
 Any code path that can see more than a few hundred rows at once
 (`DocumentDeleter::deleteOrphans`, `pruneSoftDeleted`, full-corpus sweeps, CI
 batches) **must** use `chunkById(100)` or `cursor()` and **push filters into
-SQL** (`whereNotIn` over `array_chunk($existing, 1000)`) rather than loading
-everything into memory and filtering in PHP.
+SQL** rather than loading everything into memory and filtering in PHP. When
+the filter list itself is large, split it with `array_chunk($existing, 1000)`
+and apply one `whereNotIn()` clause per chunk so each generated `IN` list
+stays ≤ 1000 values (parser-friendly across drivers, readable EXPLAIN plans).
 → See `.claude/skills/memory-safe-bulk-ops/`.
 
 ### R4 — Never ignore a return value on a side-effecting call
@@ -217,6 +225,17 @@ return cleanly) on failure. This applies equally to test bootstrap code.
 `KB_PATH_PREFIX`, because the queued job re-applies the prefix when reading.
 Any new CLI/API that walks the disk must either honour the prefix or reject
 absolute paths. Document whichever you choose.
+
+### R9 — Docs must match code
+Every column name, env var, config key, command flag and route quoted in
+`CLAUDE.md`, `.github/copilot-instructions.md`, `README.md`, or any
+`SKILL.md` must be copied from the source of truth — the migration, the
+config file, the `php artisan <cmd> --help` output, the routes file. A
+wrong schema in `CLAUDE.md` is load-bearing damage: future PRs trust the
+file as a quick reference and propagate the mistake into queries and tests.
+Copilot caught the `chunk_index` vs `chunk_order` drift on PR #7 — it
+should never have shipped.
+→ See `.claude/skills/docs-match-code/`.
 
 ---
 

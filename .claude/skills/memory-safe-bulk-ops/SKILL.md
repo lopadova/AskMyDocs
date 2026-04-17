@@ -15,8 +15,11 @@ Any sweep that can iterate more than a few hundred rows **must**:
    with `in_array()` / `array_filter()`.
 3. When the filter set itself is large (e.g. orphan detection with a list of
    existing files), chunk the bound parameters with `array_chunk($list, 1000)`
-   and apply multiple `whereNotIn()` clauses so you never pass > 1000 bindings
-   to PostgreSQL.
+   and apply multiple `whereNotIn()` clauses so each individual `IN` list stays
+   ≤ 1000 values. This keeps the generated SQL parser-friendly across drivers
+   (PostgreSQL is generous, MySQL/SQL-Server far less so) and the EXPLAIN plans
+   readable. The total bindings for the query can still exceed 1000 — the goal
+   is bounded per-clause lists, not bounded total parameters.
 
 ## Why this exists
 

@@ -46,9 +46,11 @@ retention `KB_SOFT_DELETE_RETENTION_DAYS=30`).
 
 **Scheduler** (`bootstrap/app.php`):
 
+| Time  | Command                    |
+| ----- | -------------------------- |
 | 03:10 | `kb:prune-embedding-cache` |
-| 03:20 | `chat-log:prune` |
-| 03:30 | `kb:prune-deleted` |
+| 03:20 | `chat-log:prune`           |
+| 03:30 | `kb:prune-deleted`         |
 
 All with `onOneServer()->withoutOverlapping()`. `--days=N` flag overrides the
 env retention for ad-hoc runs; `0` disables.
@@ -76,12 +78,16 @@ env retention for ad-hoc runs; `0` disables.
 
 ## 4. Schemas to know
 
-- **`knowledge_documents`** — `project_key`, `source_path`, `title`,
-  `version_hash` (SHA-256), `metadata` JSON, `indexed_at`, `deleted_at`
-  (SoftDeletes). UNIQUE `(project_key, source_path, version_hash)`.
+- **`knowledge_documents`** — `project_key`, `source_type`, `title`,
+  `source_path`, `mime_type`, `language`, `access_scope`, `status`,
+  `document_hash`, `version_hash` (both SHA-256), `metadata` JSON,
+  `source_updated_at`, `indexed_at`, `deleted_at` (SoftDeletes). UNIQUE
+  `(project_key, source_path, version_hash)`.
 - **`knowledge_chunks`** — `knowledge_document_id` FK ON DELETE CASCADE,
-  `chunk_index`, `chunk_text`, `heading_path`, `embedding vector(N)`. GIN
-  index on `to_tsvector(<lang>, chunk_text)` (pgsql only).
+  `project_key`, `chunk_order`, `chunk_hash` (SHA-256), `heading_path`,
+  `chunk_text`, `metadata` JSON, `embedding vector(N)`. UNIQUE
+  `(knowledge_document_id, chunk_hash)`. GIN index on
+  `to_tsvector(<lang>, chunk_text)` (pgsql only).
 - **`embedding_cache`** — `text_hash` UNIQUE (SHA-256), `provider`, `model`,
   `embedding vector(N)`, `last_used_at` (LRU prune).
 - **`chat_logs`** — structured analytics; never the app log.
@@ -129,8 +135,11 @@ diagnostics — has to `withTrashed()` / `onlyTrashed()`. The read path
 
 ### R3 — Memory-safe bulk ops
 `chunkById(100)` / `cursor()` instead of `->get()` + `foreach` for any sweep
-that can exceed a few hundred rows. Push filters into SQL. Chunk large
-binding lists with `array_chunk($list, 1000)` before `whereNotIn()`.
+that can exceed a few hundred rows. Push filters into SQL. When the filter
+list itself is large, split it with `array_chunk($list, 1000)` and apply one
+`whereNotIn()` per chunk so each generated `IN` list stays ≤ 1000 values.
+The aim is bounded per-clause lists for portability and readable plans, not
+bounded total bindings.
 
 ### R4 — Never ignore a return value on a side-effecting call
 `Storage::put/delete/copy`, `mkdir`, `file_put_contents`, `copy`, `rename`,
@@ -159,6 +168,14 @@ ages badly.
 `KB_PATH_PREFIX` because the queued job re-applies the prefix on read. New
 CLIs/APIs that walk the disk must honour the prefix or explicitly reject
 absolute paths. Whichever you pick, document it in the help text and README.
+
+### R9 — Docs must match code
+Column names, env vars, config keys, command flags, and routes quoted in
+this file (or in `CLAUDE.md`, `README.md`, any `SKILL.md`) must be copied
+from the real source — the migration, the config, the routes file, the
+`php artisan <cmd> --help` output. Stale docs are worse than missing docs:
+they survive grep and propagate into queries and tests. Copilot caught
+`chunk_index` vs `chunk_order` drift on PR #7 — verify before quoting.
 
 ---
 
@@ -205,4 +222,6 @@ Before approving a PR, quickly verify:
       in the same diff.
 - [ ] R7: no `@`-silenced calls, no `0777`.
 - [ ] R8: any disk walker is explicit about `KB_PATH_PREFIX` handling.
+- [ ] R9: every column / env / flag / route quoted in the diff exists in
+      the migration / config / routes / `--help` output it claims to mirror.
 - [ ] Tests: feature test added when the RAG hot path changed.
