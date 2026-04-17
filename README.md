@@ -1104,7 +1104,7 @@ php artisan kb:ingest-folder docs/ --project=erp-core --recursive \
 
 | Flag | Default | Description |
 |---|---|---|
-| `path` | `KB_PATH_PREFIX` | Base folder on the KB disk. Empty = the disk root. |
+| `path` | _(empty — prefix root)_ | Folder on the KB disk, **always resolved relative to `KB_PATH_PREFIX`**. E.g. with `KB_PATH_PREFIX=tenant-a/` and `path=docs`, the command scans `tenant-a/docs/`. |
 | `--project=` | `KB_INGEST_DEFAULT_PROJECT` | `project_key` stored on each document. |
 | `--disk=` | `KB_FILESYSTEM_DISK` | Override the disk just for this run (e.g. `--disk=s3`). |
 | `--pattern=` | `md,markdown` | Comma-separated extensions. |

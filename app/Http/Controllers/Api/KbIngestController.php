@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Remote ingestion endpoint.
@@ -43,7 +44,15 @@ class KbIngestController extends Controller
             $sourcePath = $this->normalizePath((string) $doc['source_path']);
             $storedPath = ltrim($prefix.'/'.$sourcePath, '/');
 
-            $storage->put($storedPath, (string) $doc['content']);
+            // The kb disk is configured with throw => false, so put() returns
+            // false on failure instead of raising. Check explicitly so we
+            // don't enqueue a job that will immediately fail with "not found".
+            if ($storage->put($storedPath, (string) $doc['content']) === false) {
+                return response()->json([
+                    'error' => 'Failed to write document to KB disk.',
+                    'source_path' => $sourcePath,
+                ], 500);
+            }
 
             IngestDocumentJob::dispatch(
                 projectKey: $projectKey,
@@ -70,7 +79,22 @@ class KbIngestController extends Controller
     {
         $path = str_replace('\\', '/', $path);
         $path = preg_replace('#/+#', '/', $path) ?? $path;
+        $path = trim($path, '/');
 
-        return ltrim($path, '/');
+        if ($path === '') {
+            throw ValidationException::withMessages([
+                'documents' => ['Each source_path must be a non-empty relative path.'],
+            ]);
+        }
+
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                throw ValidationException::withMessages([
+                    'documents' => ['Each source_path must be a relative path without "." or ".." segments.'],
+                ]);
+            }
+        }
+
+        return $path;
     }
 }

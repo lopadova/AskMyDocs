@@ -163,4 +163,33 @@ class KbIngestFolderCommandTest extends TestCase
             return $job->projectKey === 'fallback-project';
         });
     }
+
+    public function test_path_argument_is_resolved_relative_to_configured_prefix(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('kb.sources.path_prefix', 'tenant-a');
+
+        // Files live under the prefix on disk.
+        Storage::disk('kb')->put('tenant-a/docs/a.md', 'alpha');
+        Storage::disk('kb')->put('tenant-a/docs/b.md', 'bravo');
+        // A same-named file outside the prefix must not be picked up.
+        Storage::disk('kb')->put('docs/outside.md', 'outside');
+
+        $this->artisan('kb:ingest-folder', [
+            'path' => 'docs',
+            '--project' => 'demo',
+        ])->assertSuccessful();
+
+        Queue::assertPushed(IngestDocumentJob::class, 2);
+
+        // The dispatched relative paths are un-prefixed so the job can
+        // re-apply the prefix and still find the files on disk.
+        Queue::assertPushed(IngestDocumentJob::class, function ($job) {
+            return $job->relativePath === 'docs/a.md';
+        });
+        Queue::assertPushed(IngestDocumentJob::class, function ($job) {
+            return $job->relativePath === 'docs/b.md';
+        });
+    }
 }

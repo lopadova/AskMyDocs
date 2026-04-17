@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Storage;
 class KbIngestFolderCommand extends Command
 {
     protected $signature = 'kb:ingest-folder
-                            {path? : Base folder on the KB disk (defaults to KB_PATH_PREFIX or "")}
+                            {path? : Folder on the KB disk, relative to KB_PATH_PREFIX (defaults to the prefix root)}
                             {--project= : Project key for multi-tenant filtering (defaults to KB_INGEST_DEFAULT_PROJECT)}
                             {--disk= : Override KB_FILESYSTEM_DISK for this run}
                             {--pattern= : Comma-separated extension patterns (default: md,markdown)}
@@ -34,14 +34,16 @@ class KbIngestFolderCommand extends Command
     {
         $disk = (string) ($this->option('disk') ?: config('kb.sources.disk', 'kb'));
         $projectKey = (string) ($this->option('project') ?: config('kb.ingest.default_project', 'default'));
-        $prefix = (string) config('kb.sources.path_prefix', '');
-        $basePath = (string) ($this->argument('path') ?? '');
+        $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
+        $pathArg = trim((string) ($this->argument('path') ?? ''), '/');
 
-        if ($basePath === '') {
-            $basePath = $prefix;
-        }
+        // The path argument is always interpreted relative to the configured
+        // prefix so the job (which re-applies the prefix when reading) can
+        // always find the file on disk.
+        $basePath = $prefix === ''
+            ? $pathArg
+            : ($pathArg === '' ? $prefix : $prefix.'/'.$pathArg);
 
-        $basePath = ltrim($basePath, '/');
         $recursive = (bool) $this->option('recursive');
         $dryRun = (bool) $this->option('dry-run');
         $sync = (bool) $this->option('sync');

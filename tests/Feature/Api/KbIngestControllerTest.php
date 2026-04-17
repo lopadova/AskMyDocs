@@ -172,4 +172,78 @@ class KbIngestControllerTest extends TestCase
 
         Queue::assertNothingPushed();
     }
+
+    public function test_rejects_source_path_with_parent_directory_traversal(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [
+                ['source_path' => '../etc/passwd', 'content' => 'pwn'],
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['documents']);
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertDirectoryEmpty('/');
+    }
+
+    public function test_rejects_source_path_with_current_directory_segment(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [
+                ['source_path' => 'docs/./a.md', 'content' => 'x'],
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['documents']);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_rejects_source_path_that_normalizes_to_empty(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [
+                ['source_path' => '///', 'content' => 'x'],
+            ],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['documents']);
+
+        Queue::assertNothingPushed();
+    }
+
+    public function test_returns_500_when_disk_write_fails_and_does_not_queue_job(): void
+    {
+        Queue::fake();
+
+        // Swap the kb disk for a stub that simulates a silent write failure
+        // (the kb disk is configured with throw => false in production).
+        $fake = new class
+        {
+            public function put(string $path, string $contents): bool
+            {
+                return false;
+            }
+        };
+        Storage::shouldReceive('disk')->with('kb')->andReturn($fake);
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [
+                ['source_path' => 'docs/a.md', 'content' => 'hello'],
+            ],
+        ])->assertStatus(500)
+            ->assertJson(['source_path' => 'docs/a.md']);
+
+        Queue::assertNothingPushed();
+    }
 }
