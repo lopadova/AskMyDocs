@@ -3,10 +3,12 @@
 /*
  * PHPUnit bootstrap — ensure Orchestra Testbench working directories exist.
  *
- * Testbench v11 compiles a services manifest into its fixture "bootstrap/cache"
- * folder the first time the Laravel container is created. On a freshly
- * installed repo that folder does not exist yet and the ProviderRepository
- * throws "The ... bootstrap/cache directory must be present and writable."
+ * Testbench v11 compiles a services manifest into the Laravel skeleton bundled
+ * in `vendor/orchestra/testbench-core/laravel`, specifically its
+ * `bootstrap/cache` directory, the first time the Laravel container is
+ * created. On a freshly installed repo that directory may not exist yet and
+ * the ProviderRepository throws "The ... bootstrap/cache directory must be
+ * present and writable."
  *
  * Creating it here (idempotent) fixes the error without requiring developers
  * to run a post-install script.
