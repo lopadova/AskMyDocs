@@ -31,7 +31,7 @@ class MarkdownChunker
 {
     private const FRONTMATTER_RE = '/\A---\r?\n.*?\r?\n---\r?\n?/s';
     private const HEADING_RE = '/^(#{1,6})\s+(.*?)\s*$/';
-    private const HAS_HEADING_RE = '/^#{1,6}\s+\S/m';
+    private const FENCE_TOGGLE_RE = '/^\s{0,3}(`{3,}|~{3,})/';
     private const PARAGRAPH_SEP = '/\n{2,}/';
     private const CHARS_PER_TOKEN = 4;
 
@@ -52,31 +52,46 @@ class MarkdownChunker
             return collect();
         }
 
-        $sections = $this->splitIntoSections($body);
-        $strategy = $this->isSectionAware($body) ? 'section_aware' : 'paragraph_split';
+        $sectionAware = $this->hasRealHeading($body);
+        $sections = $sectionAware ? $this->splitBySections($body) : $this->splitByParagraphs($body);
+        $strategy = $sectionAware ? 'section_aware' : 'paragraph_split';
         $hardCap = $this->hardCapTokens();
 
         return $this->buildChunks($sections, $strategy, $hardCap, $filename);
     }
 
     // -----------------------------------------------------------------
-    // section / paragraph split dispatch
+    // fence-aware heading detection
     // -----------------------------------------------------------------
 
-    private function isSectionAware(string $body): bool
+    /**
+     * Does the document contain at least one ATX heading OUTSIDE fenced
+     * code blocks? Lines inside ```...``` or ~~~...~~~ fences that start
+     * with `#` (shell prompts, `#include`, example markdown) are NOT
+     * treated as headings.
+     */
+    private function hasRealHeading(string $body): bool
     {
-        return preg_match(self::HAS_HEADING_RE, $body) === 1;
+        $lines = preg_split('/\r?\n/', $body) ?: [];
+        $inFence = false;
+        foreach ($lines as $line) {
+            if ($this->isFenceToggle($line)) {
+                $inFence = ! $inFence;
+                continue;
+            }
+            if ($inFence) {
+                continue;
+            }
+            if (preg_match(self::HEADING_RE, $line) === 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    /**
-     * @return list<array{text:string, heading_path:string|null}>
-     */
-    private function splitIntoSections(string $body): array
+    private function isFenceToggle(string $line): bool
     {
-        if ($this->isSectionAware($body)) {
-            return $this->splitBySections($body);
-        }
-        return $this->splitByParagraphs($body);
+        return preg_match(self::FENCE_TOGGLE_RE, $line) === 1;
     }
 
     /**
@@ -135,15 +150,23 @@ class MarkdownChunker
     // -----------------------------------------------------------------
 
     /**
-     * Walk lines, accumulate section bodies between ATX headings, maintain
-     * a heading stack to compose `heading_path` breadcrumbs.
+     * Walk lines, accumulate section bodies between ATX headings (respecting
+     * fenced code blocks so `#` inside a ``` fence is not treated as a
+     * heading), maintain a heading stack to compose `heading_path`
+     * breadcrumbs.
      *
      * @return list<array{text:string, heading_path:string}>
      */
     private function splitBySections(string $body): array
     {
         $lines = preg_split('/\r?\n/', $body) ?: [];
-        $state = ['stack' => array_fill(0, 6, null), 'path' => '', 'buffer' => '', 'sections' => []];
+        $state = [
+            'stack' => array_fill(0, 6, null),
+            'path' => '',
+            'buffer' => '',
+            'sections' => [],
+            'inFence' => false,
+        ];
 
         foreach ($lines as $line) {
             $state = $this->advanceSectionState($state, $line);
@@ -154,11 +177,26 @@ class MarkdownChunker
     /**
      * Advance the one-line finite-state-machine for splitBySections.
      *
-     * @param  array{stack: array<int, string|null>, path: string, buffer: string, sections: list<array>}  $state
-     * @return array{stack: array<int, string|null>, path: string, buffer: string, sections: list<array>}
+     * Three disjoint paths (bad/edge cases first, happy path last):
+     *  - fence toggle → flip inFence, keep line in the buffer
+     *  - inside a fence → keep line in the buffer, no heading detection
+     *  - heading outside fence → flush previous section + update stack
+     *  - prose → append to buffer
+     *
+     * @param  array{stack: array<int, string|null>, path: string, buffer: string, sections: list<array>, inFence: bool}  $state
+     * @return array{stack: array<int, string|null>, path: string, buffer: string, sections: list<array>, inFence: bool}
      */
     private function advanceSectionState(array $state, string $line): array
     {
+        if ($this->isFenceToggle($line)) {
+            $state['inFence'] = ! $state['inFence'];
+            $state['buffer'] .= $line . "\n";
+            return $state;
+        }
+        if ($state['inFence']) {
+            $state['buffer'] .= $line . "\n";
+            return $state;
+        }
         if (preg_match(self::HEADING_RE, $line, $m) !== 1) {
             $state['buffer'] .= $line . "\n";
             return $state;

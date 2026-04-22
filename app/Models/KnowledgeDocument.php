@@ -67,10 +67,14 @@ class KnowledgeDocument extends Model
 
     /**
      * Only canonical documents in `accepted` status.
+     *
+     * Composes with `canonical()` so a stray `canonical_status='accepted'`
+     * on a non-canonical row (manual update, partial backfill) cannot
+     * leak into retrieval. `accepted()` always implies canonical.
      */
     public function scopeAccepted(Builder $query): Builder
     {
-        return $query->where('canonical_status', 'accepted');
+        return $query->canonical()->where('canonical_status', 'accepted');
     }
 
     /**

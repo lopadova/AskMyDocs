@@ -98,6 +98,39 @@ Future phases: dispatch subagents only when the task genuinely benefits from iso
 
 ---
 
+## 2026-04-22 — Copilot review on PR #9 surfaced 4 architectural issues (Phase 2)
+
+**What we found:** Copilot reviewed PR #9 and flagged (consolidated) 4 substantive issues plus a process issue. All legitimate.
+
+### Issue 1 — heading regex not fence-aware (MarkdownChunker)
+A line like `# this is a comment` inside a ```` ```bash ```` fence was incorrectly treated as an H1 heading, breaking section boundaries on any docs with shell/code examples. **Fix:** added a fence-state FSM (`FENCE_TOGGLE_RE = /^\s{0,3}(\`{3,}|~{3,})/`) in both `hasRealHeading()` and `advanceSectionState()`. Lines between fence toggles are copied to the buffer unchanged, never interpreted as headings. Tested with shell comments, tilde fences, and mixed real-heading + fenced-code cases.
+
+### Issue 2 — `node_uid` / `edge_uid` globally unique breaks multi-tenancy
+`kb_nodes.node_uid->unique()` and `kb_edges.edge_uid->unique()` are globally scoped. Two projects with the same canonical slug (e.g. `dec-cache-v2`) would collide. **Fix:** dropped global unique, added composite unique `(project_key, node_uid)` on kb_nodes and `(project_key, edge_uid)` on kb_edges. Regression test: `test_same_node_uid_coexists_in_two_projects` + `test_duplicate_node_uid_within_same_project_is_rejected`.
+
+### Issue 3 — kb_edges FK cannot prevent cross-tenant edges
+With globally-unique node_uid the FK `kb_edges.from_node_uid → kb_nodes.node_uid` works but relies on the global uniqueness. Once node_uid is per-project, the FK can't enforce tenant boundaries anymore. **Fix:** switched to **composite FKs** `(project_key, from_node_uid) → kb_nodes(project_key, node_uid)` and same for `to_node_uid`. Cross-tenant edges are now structurally impossible; regression test `test_cross_tenant_edge_is_structurally_impossible` verifies an attempted insert fails with a `QueryException`.
+
+### Issue 4 — column naming inconsistent (`project_code` vs `project_key`)
+Repository convention is `project_key` (knowledge_documents, knowledge_chunks, chat_logs, kb_canonical_audit). My kb_nodes/kb_edges migrations used `project_code`. R9 violation. **Fix:** renamed everywhere — migrations (prod + test mirror), models, test fixtures.
+
+### Issue 5 — `scopeAccepted()` did not imply `canonical()`
+A stray `canonical_status='accepted'` on an `is_canonical=false` row would leak into retrieval. **Fix:** `scopeAccepted()` now chains `canonical()` first. Regression test: `test_accepted_scope_implies_is_canonical`.
+
+### Issue 6 (process) — PR title/body didn't match scope
+PR #9 was titled "phase 0 foundations" but grew to include Phase 1 + Phase 2 parsing group. Updated title/body to reflect "phases 0–2 parsing group".
+
+**Why it matters:** all 4 code issues would have been real bugs in production — fence-heading misparses on common docs, multi-tenant data leakage, silent schema inconsistency. Copilot is an effective review ally; DO take its suggestions seriously. **Also:** when a PR grows past its original scope, update its title/body immediately — reviewers assess risk based on what the PR claims to do.
+
+**How to apply going forward:**
+- Any migration that references tenant data uses `project_key` (NOT `project_code`, `tenant_id`, `workspace`, etc.). This is the repository's canonical name.
+- Any relation between tenant-scoped tables uses a composite FK, not a single-column FK, when both tables hold the tenant column.
+- Any new chunker / parser that looks at line-starting characters must track fenced code blocks.
+- Any scope that narrows a "typed" row (canonical_status, canonical_type) must also assert the base flag (`is_canonical=true`) — compose scopes, don't rely on single-column filters.
+- When a PR exceeds its announced scope, update the PR metadata before pushing.
+
+---
+
 ## 2026-04-22 — CI PHP matrix 8.3/8.4/8.5 (Phase 2, CI hardening)
 
 **What we found:** User asked to ensure the package is ready to ship for PHP 8.3, 8.4, and 8.5 — not just the default 8.3. Single-version CI means a dependency that silently requires a newer PHP (like symfony/yaml 8.x → PHP 8.4+) can pass CI on the single version and fail for consumers on other versions.

@@ -165,6 +165,42 @@ class MarkdownChunkerTest extends TestCase
         $this->assertSame([], $chunks[0]['metadata']['wikilinks']);
     }
 
+    // -------------------------------------------------------------
+    // v2 — fence-aware heading detection (Copilot review PR #9)
+    // -------------------------------------------------------------
+
+    public function test_hash_lines_inside_fenced_code_block_are_not_treated_as_headings(): void
+    {
+        // No ATX heading outside the fence → must fall back to paragraph_split.
+        $md = "Intro text.\n\n```bash\n# this is a shell comment, NOT a heading\necho hi\n```\n\nMore prose.";
+        $chunks = $this->chunker->chunk('f.md', $md);
+
+        $this->assertSame('paragraph_split', $chunks[0]['metadata']['strategy']);
+        foreach ($chunks as $chunk) {
+            $this->assertNull($chunk['heading_path']);
+        }
+    }
+
+    public function test_real_heading_wins_even_when_fence_contains_hash_lines(): void
+    {
+        $md = "# Real H1\n\nProse.\n\n```\n# comment inside fence\n```\n\nMore prose.";
+        $chunks = $this->chunker->chunk('f.md', $md);
+
+        $this->assertSame('section_aware', $chunks[0]['metadata']['strategy']);
+        // All chunks belong to the single real H1 — the fence content must
+        // stay inside the same section, never start a new one.
+        foreach ($chunks as $chunk) {
+            $this->assertSame('Real H1', $chunk['heading_path']);
+        }
+    }
+
+    public function test_tilde_fence_is_also_respected(): void
+    {
+        $md = "Intro.\n\n~~~\n# not a heading\n~~~\n\nOutro.";
+        $chunks = $this->chunker->chunk('f.md', $md);
+        $this->assertSame('paragraph_split', $chunks[0]['metadata']['strategy']);
+    }
+
     public function test_wikilinks_in_code_blocks_are_ignored(): void
     {
         $md = "# A\n\nProse [[keep]].\n\n```\n[[ignore]]\n```\n\nMore [[keep2]].";

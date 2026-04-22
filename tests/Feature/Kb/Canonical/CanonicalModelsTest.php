@@ -23,7 +23,7 @@ class CanonicalModelsTest extends TestCase
             'node_uid' => 'dec-cache-v2',
             'node_type' => 'decision',
             'label' => 'Cache invalidation v2',
-            'project_code' => 'acme',
+            'project_key' => 'acme',
             'source_doc_id' => 'DEC-2026-0001',
             'payload_json' => ['dangling' => false, 'tags' => ['cache']],
         ]);
@@ -34,14 +34,14 @@ class CanonicalModelsTest extends TestCase
 
     public function test_kb_node_outgoing_edges_relation(): void
     {
-        KbNode::create(['node_uid' => 'a', 'node_type' => 'module', 'label' => 'A', 'project_code' => 'acme']);
-        KbNode::create(['node_uid' => 'b', 'node_type' => 'decision', 'label' => 'B', 'project_code' => 'acme']);
+        KbNode::create(['node_uid' => 'a', 'node_type' => 'module', 'label' => 'A', 'project_key' => 'acme']);
+        KbNode::create(['node_uid' => 'b', 'node_type' => 'decision', 'label' => 'B', 'project_key' => 'acme']);
         KbEdge::create([
             'edge_uid' => 'a->b',
             'from_node_uid' => 'a',
             'to_node_uid' => 'b',
             'edge_type' => 'decision_for',
-            'project_code' => 'acme',
+            'project_key' => 'acme',
             'weight' => 1.0,
             'provenance' => 'wikilink',
         ]);
@@ -56,9 +56,9 @@ class CanonicalModelsTest extends TestCase
 
     public function test_kb_node_scopes_filter_by_project_and_type(): void
     {
-        KbNode::create(['node_uid' => 'a', 'node_type' => 'decision', 'label' => 'A', 'project_code' => 'acme']);
-        KbNode::create(['node_uid' => 'b', 'node_type' => 'module', 'label' => 'B', 'project_code' => 'acme']);
-        KbNode::create(['node_uid' => 'c', 'node_type' => 'decision', 'label' => 'C', 'project_code' => 'beta']);
+        KbNode::create(['node_uid' => 'a', 'node_type' => 'decision', 'label' => 'A', 'project_key' => 'acme']);
+        KbNode::create(['node_uid' => 'b', 'node_type' => 'module', 'label' => 'B', 'project_key' => 'acme']);
+        KbNode::create(['node_uid' => 'c', 'node_type' => 'decision', 'label' => 'C', 'project_key' => 'beta']);
 
         $this->assertSame(2, KbNode::forProject('acme')->count());
         $this->assertSame(2, KbNode::ofType('decision')->count());
@@ -71,14 +71,14 @@ class CanonicalModelsTest extends TestCase
 
     public function test_kb_edge_belongs_to_both_nodes(): void
     {
-        KbNode::create(['node_uid' => 'x', 'node_type' => 'decision', 'label' => 'X', 'project_code' => 'acme']);
-        KbNode::create(['node_uid' => 'y', 'node_type' => 'module', 'label' => 'Y', 'project_code' => 'acme']);
+        KbNode::create(['node_uid' => 'x', 'node_type' => 'decision', 'label' => 'X', 'project_key' => 'acme']);
+        KbNode::create(['node_uid' => 'y', 'node_type' => 'module', 'label' => 'Y', 'project_key' => 'acme']);
         $edge = KbEdge::create([
             'edge_uid' => 'x->y',
             'from_node_uid' => 'x',
             'to_node_uid' => 'y',
             'edge_type' => 'decision_for',
-            'project_code' => 'acme',
+            'project_key' => 'acme',
             'weight' => 0.75,
             'provenance' => 'frontmatter_related',
         ]);
@@ -90,10 +90,10 @@ class CanonicalModelsTest extends TestCase
 
     public function test_kb_edge_scopes_filter_correctly(): void
     {
-        KbNode::create(['node_uid' => 'n1', 'node_type' => 'decision', 'label' => 'N1', 'project_code' => 'acme']);
-        KbNode::create(['node_uid' => 'n2', 'node_type' => 'module', 'label' => 'N2', 'project_code' => 'acme']);
-        KbEdge::create(['edge_uid' => 'n1->n2', 'from_node_uid' => 'n1', 'to_node_uid' => 'n2', 'edge_type' => 'decision_for', 'project_code' => 'acme', 'weight' => 1.0, 'provenance' => 'wikilink']);
-        KbEdge::create(['edge_uid' => 'n2->n1', 'from_node_uid' => 'n2', 'to_node_uid' => 'n1', 'edge_type' => 'related_to', 'project_code' => 'acme', 'weight' => 0.5, 'provenance' => 'wikilink']);
+        KbNode::create(['node_uid' => 'n1', 'node_type' => 'decision', 'label' => 'N1', 'project_key' => 'acme']);
+        KbNode::create(['node_uid' => 'n2', 'node_type' => 'module', 'label' => 'N2', 'project_key' => 'acme']);
+        KbEdge::create(['edge_uid' => 'n1->n2', 'from_node_uid' => 'n1', 'to_node_uid' => 'n2', 'edge_type' => 'decision_for', 'project_key' => 'acme', 'weight' => 1.0, 'provenance' => 'wikilink']);
+        KbEdge::create(['edge_uid' => 'n2->n1', 'from_node_uid' => 'n2', 'to_node_uid' => 'n1', 'edge_type' => 'related_to', 'project_key' => 'acme', 'weight' => 0.5, 'provenance' => 'wikilink']);
 
         $this->assertSame(2, KbEdge::forProject('acme')->count());
         $this->assertSame(1, KbEdge::ofType('decision_for')->count());
@@ -141,6 +141,20 @@ class CanonicalModelsTest extends TestCase
         $this->seedCanonicalDoc(['slug' => 'c', 'canonical_status' => 'superseded']);
 
         $this->assertSame(1, KnowledgeDocument::accepted()->count());
+    }
+
+    public function test_accepted_scope_implies_is_canonical(): void
+    {
+        // Regression for Copilot review on PR #9: a non-canonical row with
+        // a stray canonical_status='accepted' must NOT leak into accepted()
+        // because the scope now implies canonical() first.
+        $this->seedCanonicalDoc([
+            'slug' => 'ghost',
+            'canonical_status' => 'accepted',
+            'is_canonical' => false,  // simulate a bad backfill / manual update
+        ]);
+
+        $this->assertSame(0, KnowledgeDocument::accepted()->count());
     }
 
     public function test_knowledge_document_byType_scope(): void

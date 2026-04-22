@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $from_node_uid
  * @property string $to_node_uid
  * @property string $edge_type    One of the 10 {@see \App\Support\Canonical\EdgeType} values
- * @property string $project_code
+ * @property string $project_key  Tenant scope — same convention as knowledge_documents.project_key
  * @property string|null $source_doc_id
  * @property float $weight
  * @property string $provenance   wikilink | frontmatter_related | frontmatter_supersedes | inferred
@@ -34,7 +34,7 @@ class KbEdge extends Model
         'from_node_uid',
         'to_node_uid',
         'edge_type',
-        'project_code',
+        'project_key',
         'source_doc_id',
         'weight',
         'provenance',
@@ -46,19 +46,30 @@ class KbEdge extends Model
         'payload_json' => 'array',
     ];
 
+    /**
+     * From-endpoint. Scoped by THIS edge's `project_key` so the lookup
+     * picks the correct row when the same `node_uid` slug exists in
+     * multiple projects (legitimate under tenant-scoped uniqueness).
+     *
+     * The DB composite FK (project_key, from_node_uid) → (project_key,
+     * node_uid) is the source-of-truth guarantee; this scoping mirrors
+     * it at the Eloquent layer.
+     */
     public function fromNode(): BelongsTo
     {
-        return $this->belongsTo(KbNode::class, 'from_node_uid', 'node_uid');
+        return $this->belongsTo(KbNode::class, 'from_node_uid', 'node_uid')
+            ->where('kb_nodes.project_key', $this->project_key);
     }
 
     public function toNode(): BelongsTo
     {
-        return $this->belongsTo(KbNode::class, 'to_node_uid', 'node_uid');
+        return $this->belongsTo(KbNode::class, 'to_node_uid', 'node_uid')
+            ->where('kb_nodes.project_key', $this->project_key);
     }
 
     public function scopeForProject(Builder $query, string $projectKey): Builder
     {
-        return $query->where('project_code', $projectKey);
+        return $query->where('project_key', $projectKey);
     }
 
     public function scopeOfType(Builder $query, string $type): Builder

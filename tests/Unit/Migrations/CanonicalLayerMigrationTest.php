@@ -137,7 +137,7 @@ class CanonicalLayerMigrationTest extends TestCase
     public function test_kb_nodes_table_exists_with_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('kb_nodes'));
-        foreach (['node_uid', 'node_type', 'label', 'project_code', 'source_doc_id', 'payload_json', 'created_at', 'updated_at'] as $col) {
+        foreach (['node_uid', 'node_type', 'label', 'project_key', 'source_doc_id', 'payload_json', 'created_at', 'updated_at'] as $col) {
             $this->assertTrue(Schema::hasColumn('kb_nodes', $col), "kb_nodes.$col missing");
         }
     }
@@ -145,7 +145,7 @@ class CanonicalLayerMigrationTest extends TestCase
     public function test_kb_edges_table_exists_with_expected_columns(): void
     {
         $this->assertTrue(Schema::hasTable('kb_edges'));
-        foreach (['edge_uid', 'from_node_uid', 'to_node_uid', 'edge_type', 'project_code', 'source_doc_id', 'weight', 'provenance', 'payload_json', 'created_at', 'updated_at'] as $col) {
+        foreach (['edge_uid', 'from_node_uid', 'to_node_uid', 'edge_type', 'project_key', 'source_doc_id', 'weight', 'provenance', 'payload_json', 'created_at', 'updated_at'] as $col) {
             $this->assertTrue(Schema::hasColumn('kb_edges', $col), "kb_edges.$col missing");
         }
     }
@@ -153,15 +153,15 @@ class CanonicalLayerMigrationTest extends TestCase
     public function test_can_insert_nodes_and_edges_across_project_scope(): void
     {
         DB::table('kb_nodes')->insert([
-            ['node_uid' => 'dec-cache-v2', 'node_type' => 'decision', 'label' => 'Cache v2', 'project_code' => 'acme', 'created_at' => now(), 'updated_at' => now()],
-            ['node_uid' => 'module-cache', 'node_type' => 'module', 'label' => 'Cache module', 'project_code' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'dec-cache-v2', 'node_type' => 'decision', 'label' => 'Cache v2', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'module-cache', 'node_type' => 'module', 'label' => 'Cache module', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('kb_edges')->insert([
             'edge_uid' => 'dec-cache-v2->module-cache',
             'from_node_uid' => 'dec-cache-v2',
             'to_node_uid' => 'module-cache',
             'edge_type' => 'decision_for',
-            'project_code' => 'acme',
+            'project_key' => 'acme',
             'weight' => 1.0,
             'provenance' => 'wikilink',
             'created_at' => now(),
@@ -172,18 +172,70 @@ class CanonicalLayerMigrationTest extends TestCase
         $this->assertSame(1, DB::table('kb_edges')->count());
     }
 
+    public function test_same_node_uid_coexists_in_two_projects(): void
+    {
+        // Tenant-scoped uniqueness: the same slug is a legitimate node in
+        // two different projects — the composite UNIQUE (project_key,
+        // node_uid) must allow this.
+        DB::table('kb_nodes')->insert([
+            ['node_uid' => 'dec-cache-v2', 'node_type' => 'decision', 'label' => 'Cache', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'dec-cache-v2', 'node_type' => 'decision', 'label' => 'Cache', 'project_key' => 'beta', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $this->assertSame(2, DB::table('kb_nodes')->where('node_uid', 'dec-cache-v2')->count());
+    }
+
+    public function test_duplicate_node_uid_within_same_project_is_rejected(): void
+    {
+        DB::table('kb_nodes')->insert([
+            'node_uid' => 'dup', 'node_type' => 'decision', 'label' => 'A',
+            'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        DB::table('kb_nodes')->insert([
+            'node_uid' => 'dup', 'node_type' => 'module', 'label' => 'B',
+            'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    public function test_cross_tenant_edge_is_structurally_impossible(): void
+    {
+        // Node in project A, node in project B — an edge trying to link
+        // (from in A, to in B) under a single project_key cannot resolve
+        // both endpoints via the composite FK, so the insert must fail.
+        DB::table('kb_nodes')->insert([
+            ['node_uid' => 'a', 'node_type' => 'decision', 'label' => 'A', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'b', 'node_type' => 'module', 'label' => 'B', 'project_key' => 'beta', 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        DB::table('kb_edges')->insert([
+            'edge_uid' => 'a->b',
+            'from_node_uid' => 'a',
+            'to_node_uid' => 'b',
+            'edge_type' => 'decision_for',
+            'project_key' => 'acme',  // only ('acme','a') resolves; ('acme','b') does not
+            'weight' => 1.0,
+            'provenance' => 'wikilink',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_cascade_delete_from_node_removes_its_edges(): void
     {
         DB::table('kb_nodes')->insert([
-            ['node_uid' => 'a', 'node_type' => 'decision', 'label' => 'A', 'project_code' => 'acme', 'created_at' => now(), 'updated_at' => now()],
-            ['node_uid' => 'b', 'node_type' => 'module', 'label' => 'B', 'project_code' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'a', 'node_type' => 'decision', 'label' => 'A', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
+            ['node_uid' => 'b', 'node_type' => 'module', 'label' => 'B', 'project_key' => 'acme', 'created_at' => now(), 'updated_at' => now()],
         ]);
         DB::table('kb_edges')->insert([
             'edge_uid' => 'a->b',
             'from_node_uid' => 'a',
             'to_node_uid' => 'b',
             'edge_type' => 'decision_for',
-            'project_code' => 'acme',
+            'project_key' => 'acme',
             'weight' => 1.0,
             'provenance' => 'wikilink',
             'created_at' => now(),
