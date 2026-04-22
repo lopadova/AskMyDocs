@@ -98,6 +98,35 @@ Future phases: dispatch subagents only when the task genuinely benefits from iso
 
 ---
 
+## 2026-04-22 — Copilot review on PR #10 surfaced 4 real bugs + 2 cleanups (Phase 2 integration)
+
+**What we found:** Copilot flagged 6 issues on PR #10, 4 real bugs + 2 code-quality cleanups:
+
+### Real bugs
+
+1. **DocumentIngestor canonical re-ingest with changed content violates uq_kb_doc_slug / uq_kb_doc_doc_id.** The upsert is keyed on `(project_key, source_path, version_hash)` — when content changes, a NEW row is inserted. But the archived prior version still holds the canonical `slug` / `doc_id`, so the composite uniques reject the insert. Result: canonical docs could be ingested once but never updated. **Fix:** added `vacateCanonicalIdentifiersOnPreviousVersions()` — before the new `updateOrCreate`, null out `doc_id` / `slug` / `canonical_status` / `is_canonical` on any prior version for the same `(project_key, source_path)`. Preserves `canonical_type` + `frontmatter_json` on the archived row so history queries still reconstruct what was there.
+
+2. **CanonicalIndexerJob rebuilt the graph from archived rows.** When a new version is ingested, the old version gets `status=archived` but the job doesn't check that flag. If it fires (late delivery, manual re-dispatch), it rebuilds edges from stale content. **Fix:** added `if ($doc->status === 'archived') return;` guard after the canonical checks.
+
+3. **`ensureTargetNode()` race condition under concurrent jobs.** Read-then-create: two workers see "missing" → both `create()` → one wins, the other throws on the composite unique. **Fix:** replaced with `firstOrCreate` (atomic at the DB level). Regression test simulates two indexer runs targeting the same shared slug; asserts one node + two edges.
+
+4. **DocumentDeleter cascade fails when canonical doc has slug but no doc_id.** `CanonicalParser::validate()` does NOT require `id` — a doc can legitimately have `slug: dec-x` with no `id`. Indexer creates a node with `source_doc_id=null`. Old cascade matched only `source_doc_id`, so the node was orphaned on hard delete. **Fix:** two-tier cascade — prefer `source_doc_id` match, fall back to `(project_key, node_uid=slug)`.
+
+### Cleanups
+
+5. **DocumentIngestor dead code — `firstLine(body)` always overwritten** by caller-supplied `$title`. Removed the first-line fallback + the helper method.
+
+6. **Test helper `fakeEmbeddingCache(int $chunkCount)` never used the param.** Removed; added a docblock explaining it adapts to any input text count.
+
+### Test counts
+- Pre-fix: 271 / 787
+- Post-fix: **275 / 803** (4 new regression tests).
+
+### Key takeaway
+Content-changing re-ingest of canonical docs was a **silent bug**: the first ingest works, every subsequent update fails. It would have shipped to users and broken the first editorial workflow ("I fixed a typo in my decision doc"). Copilot caught it via schema analysis — worth running Copilot reviews on every canonical-path PR.
+
+---
+
 ## 2026-04-22 — Copilot review on PR #9 surfaced 4 architectural issues (Phase 2)
 
 **What we found:** Copilot reviewed PR #9 and flagged (consolidated) 4 substantive issues plus a process issue. All legitimate.

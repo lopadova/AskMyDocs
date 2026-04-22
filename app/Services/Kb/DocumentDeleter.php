@@ -2,6 +2,8 @@
 
 namespace App\Services\Kb;
 
+use App\Models\KbCanonicalAudit;
+use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
@@ -182,11 +184,15 @@ class DocumentDeleter
             : (string) config('kb.sources.path_prefix', '');
         $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
 
+        $canonicalSnapshot = $this->canonicalSnapshot($document);
+
         DB::transaction(function () use ($document) {
             // Explicit chunk delete keeps the intent clear even though the FK
             // cascade would do the same thing.
             $document->chunks()->delete();
+            $this->cascadeGraphFor($document);
             $document->forceDelete();
+            $this->writeDeprecationAudit($document);
         });
 
         $fileDeleted = $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
@@ -197,7 +203,74 @@ class DocumentDeleter
             'project_key' => $projectKey,
             'source_path' => $sourcePath,
             'file_deleted' => $fileDeleted,
+            'canonical' => $canonicalSnapshot,
         ];
+    }
+
+    /**
+     * Remove the kb_node(s) this document owns. The composite FK on
+     * kb_edges cascades both outgoing AND incoming edges automatically.
+     *
+     * Preferred match is by `source_doc_id` (the stable business id), which
+     * is what {@see \App\Jobs\CanonicalIndexerJob} stamps on the node it
+     * creates. When the canonical doc has a slug but no `id` (the
+     * CanonicalParser validator does not require `id`), we fall back to
+     * matching by `(project_key, node_uid = slug)` so cascade still happens.
+     *
+     * No-op only when BOTH `doc_id` and `slug` are null (truly non-canonical).
+     */
+    private function cascadeGraphFor(KnowledgeDocument $document): void
+    {
+        if ($document->doc_id !== null) {
+            KbNode::where('project_key', $document->project_key)
+                ->where('source_doc_id', $document->doc_id)
+                ->delete();
+            return;
+        }
+        if ($document->slug !== null) {
+            KbNode::where('project_key', $document->project_key)
+                ->where('node_uid', $document->slug)
+                ->delete();
+            return;
+        }
+        // Truly non-canonical document — nothing in the graph to remove.
+    }
+
+    /**
+     * @return array{is_canonical: bool, doc_id: ?string, slug: ?string, canonical_type: ?string, canonical_status: ?string}
+     */
+    private function canonicalSnapshot(KnowledgeDocument $document): array
+    {
+        return [
+            'is_canonical' => (bool) $document->is_canonical,
+            'doc_id' => $document->doc_id,
+            'slug' => $document->slug,
+            'canonical_type' => $document->canonical_type,
+            'canonical_status' => $document->canonical_status,
+        ];
+    }
+
+    private function writeDeprecationAudit(KnowledgeDocument $document): void
+    {
+        if (! (bool) config('kb.canonical.audit_enabled', true)) {
+            return;
+        }
+        if ($document->doc_id === null && $document->slug === null) {
+            return;
+        }
+        KbCanonicalAudit::create([
+            'project_key' => $document->project_key,
+            'doc_id' => $document->doc_id,
+            'slug' => $document->slug,
+            'event_type' => 'deprecated',
+            'actor' => 'document-deleter',
+            'before_json' => [
+                'canonical_type' => $document->canonical_type,
+                'canonical_status' => $document->canonical_status,
+            ],
+            'after_json' => null,
+            'metadata_json' => ['source_path' => $document->source_path],
+        ]);
     }
 
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
