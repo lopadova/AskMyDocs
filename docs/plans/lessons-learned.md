@@ -98,6 +98,20 @@ Future phases: dispatch subagents only when the task genuinely benefits from iso
 
 ---
 
+## 2026-04-22 — CI PHP matrix 8.3/8.4/8.5 (Phase 2, CI hardening)
+
+**What we found:** User asked to ensure the package is ready to ship for PHP 8.3, 8.4, and 8.5 — not just the default 8.3. Single-version CI means a dependency that silently requires a newer PHP (like symfony/yaml 8.x → PHP 8.4+) can pass CI on the single version and fail for consumers on other versions.
+
+**Why it matters:** Prevents the exact class of bug that showed up on PR #9 (symfony/yaml constraint). Also: keeping all 3 supported PHP versions green is a hard quality gate before advertising multi-version support in the README.
+
+**How to handle:**
+- `.github/workflows/tests.yml` now uses `matrix.php: ['8.3', '8.4', '8.5']` with `fail-fast: false` so one failing version still reports status for the others.
+- Composer cache is keyed per-PHP-version (`~/.composer/cache` + `php${{ matrix.php }}`) to avoid cross-pollution of resolved dependencies.
+- Vitest job stays single-instance (Node 20) — JS tests are PHP-agnostic.
+- README + CLAUDE.md should advertise "PHP 8.3+" (not "PHP 8.3") now that we have matrix coverage. Update in Phase 7.
+
+---
+
 ## 2026-04-22 — symfony/yaml ^8.0 requires PHP 8.4; CI runs PHP 8.3 (Phase 2, CI)
 
 **What we found:** PR #9 CI failed on `composer install` with:
