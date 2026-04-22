@@ -39,5 +39,15 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('03:30')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // Canonical graph consistency sweep. Dispatches one
+        // CanonicalIndexerJob per canonical doc so kb_nodes + kb_edges
+        // stay in sync even if a queue backlog or schema change has
+        // left some docs with stale graph rows. No-op when no canonical
+        // documents exist in any project.
+        $schedule->command('kb:rebuild-graph')
+            ->dailyAt('03:40')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->create();
