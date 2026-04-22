@@ -135,4 +135,97 @@ return [
         */
         'markdown_root' => env('KB_MARKDOWN_ROOT'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Canonical knowledge layer (OmegaWiki-inspired compilation)
+    |--------------------------------------------------------------------------
+    |
+    | Canonical markdown has YAML frontmatter declaring `type`, `status`,
+    | `slug`, `id` (business id). When enabled, DocumentIngestor parses the
+    | frontmatter and populates the canonical columns on knowledge_documents
+    | (doc_id, slug, canonical_type, canonical_status, is_canonical, ...).
+    | Non-canonical markdown (no frontmatter) continues to ingest as before.
+    |
+    | Reranker applies a small boost based on retrieval_priority and
+    | status-based penalties for superseded/deprecated/archived docs.
+    |
+    */
+
+    'canonical' => [
+        'enabled' => env('KB_CANONICAL_ENABLED', true),
+        'default_type' => env('KB_CANONICAL_DEFAULT_TYPE', null),
+        'priority_weight' => (float) env('KB_CANONICAL_PRIORITY_WEIGHT', 0.003),
+        'superseded_penalty' => (float) env('KB_CANONICAL_SUPERSEDED_PENALTY', 0.40),
+        'deprecated_penalty' => (float) env('KB_CANONICAL_DEPRECATED_PENALTY', 0.40),
+        'archived_penalty' => (float) env('KB_CANONICAL_ARCHIVED_PENALTY', 0.60),
+        'audit_enabled' => env('KB_CANONICAL_AUDIT_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Knowledge graph (wikilink-derived, project-scoped)
+    |--------------------------------------------------------------------------
+    |
+    | At retrieval time, after the base vector+FTS+Reranker pipeline returns
+    | the top-K chunks, GraphExpander walks the wikilink graph 1 hop (by
+    | default) and pulls in the best chunk of each neighbor document. No-op
+    | when no canonical docs / wikilinks exist.
+    |
+    */
+
+    'graph' => [
+        'expansion_enabled' => env('KB_GRAPH_EXPANSION_ENABLED', true),
+        'expansion_hops' => (int) env('KB_GRAPH_EXPANSION_HOPS', 1),
+        'expansion_max_nodes' => (int) env('KB_GRAPH_EXPANSION_MAX_NODES', 20),
+        'expansion_edge_types' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('KB_GRAPH_EXPANSION_EDGE_TYPES', 'depends_on,implements,decision_for,related_to,supersedes'))
+        ))),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Anti-repetition memory (rejected-approach injection)
+    |--------------------------------------------------------------------------
+    |
+    | When the user's query correlates (cosine >= min_similarity) with one or
+    | more documents of type "rejected-approach", those docs are injected into
+    | the prompt under a clearly-labeled block so the LLM does NOT re-propose
+    | already-dismissed options.
+    |
+    */
+
+    'rejected' => [
+        'injection_enabled' => env('KB_REJECTED_INJECTION_ENABLED', true),
+        'injection_max_docs' => (int) env('KB_REJECTED_INJECTION_MAX_DOCS', 3),
+        'min_similarity' => (float) env('KB_REJECTED_MIN_SIMILARITY', 0.45),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Promotion pipeline (raw -> curated -> canonical)
+    |--------------------------------------------------------------------------
+    |
+    | POST /api/kb/promotion/{suggest|candidates|promote} endpoints let Claude
+    | skills propose and validate canonical drafts; human-gated step `promote`
+    | is the only one that writes markdown to the KB disk. Each canonical type
+    | has a conventional folder under the KB root.
+    |
+    */
+
+    'promotion' => [
+        'enabled' => env('KB_PROMOTION_ENABLED', true),
+        'path_conventions' => [
+            'decision' => 'decisions',
+            'module-kb' => 'modules',
+            'runbook' => 'runbooks',
+            'standard' => 'standards',
+            'incident' => 'incidents',
+            'integration' => 'integrations',
+            'domain-concept' => 'domain-concepts',
+            'rejected-approach' => 'rejected',
+            'project-index' => '.',
+        ],
+    ],
 ];

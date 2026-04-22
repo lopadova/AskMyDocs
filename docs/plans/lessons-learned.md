@@ -83,6 +83,31 @@ Format per entry:
 
 ---
 
+## 2026-04-22 — Phase 0 agent 0.2 entered plan mode, did no edits (Phase 0, Task 0.2)
+
+**What we found:** When dispatching a `general-purpose` subagent to edit `config/kb.php` + `.env.example`, the subagent unexpectedly entered Plan mode and produced a plan file instead of applying the edits. Same run: agent 0.3 (for ADRs) completed its file writes before plan mode kicked in.
+
+**Why it matters:** For simple deterministic "add N blocks to a file" tasks, dispatching a subagent is actually *slower* and less reliable than doing the edit inline via `Edit` — the subagent may get into plan-mode gating or other meta-behaviors.
+
+**How to handle:** For purely mechanical config/env edits, the orchestrator applies them directly. Reserve subagents for:
+- Larger multi-file builds (e.g. "create 5 Tool classes with their tests").
+- Research/exploration tasks (Explore agents).
+- Reviews (code-reviewer agent).
+
+Future phases: dispatch subagents only when the task genuinely benefits from isolation (multiple files, independent tests, parallelizable work).
+
+---
+
+## 2026-04-22 — commonmark + yaml were already installed transitively (Phase 0, Task 0.1)
+
+**What we found:** `composer update league/commonmark symfony/yaml` said "Nothing to install". Verified via `composer show`: `league/commonmark 2.8.2` (pulled by a Laravel 13 dep) and `symfony/yaml 8.0.8` (pulled by Symfony Console polyfill chain) were already present. Adding them to `require` just promotes them from transitive to direct dependencies — correct behavior for a project that explicitly relies on them.
+
+**Why it matters:** No new packages actually downloaded. `composer.lock` was still regenerated (promotion changes the lock's "packages" section), so we still commit lock changes.
+
+**How to handle:** When adding a dep that's already transitive, don't be surprised by "Nothing to install". Confirm via `composer show <pkg>`. Still commit `composer.json` because the promotion IS a semantic change.
+
+---
+
 ## 2026-04-22 — Skills are templates, not active in this repo
 
 **What we found:** User chose "Solo nel repo AskMyDocs come template" for the 5 Claude skills. They live under `.claude/skills/kb-canonical/` as reference, not as active skills.
