@@ -98,6 +98,24 @@ Future phases: dispatch subagents only when the task genuinely benefits from iso
 
 ---
 
+## 2026-04-22 — SQLite `dropColumn` fails if the column still has an index (Phase 1, migrations)
+
+**What we found:** The first migration iteration for `knowledge_documents` canonical columns failed on `RefreshDatabase` rollback with:
+
+```
+SQLSTATE[HY000]: General error: 1 error in index knowledge_documents_doc_id_index
+after drop column: no such column: "doc_id"
+SQL: alter table "knowledge_documents" drop column "doc_id"
+```
+
+Laravel 13 Blueprint's `dropColumn` on SQLite does NOT automatically drop per-column indexes created via `->index()`. Composite unique constraints dropped with `dropUnique()` work fine, but plain `->index()` indexes must be dropped explicitly with `dropIndex('<table>_<column>_index')` **before** `dropColumn`.
+
+**Why it matters:** every migration that adds `->index()` on a column on an *existing* table (i.e. `Schema::table`, not `Schema::create`) needs symmetric `dropIndex` calls in `down()`. Missing these breaks rollback and therefore `RefreshDatabase` tests. On pgsql the same down() works fine — only SQLite is affected.
+
+**How to handle:** In every future Phase 1+ migration that touches an existing table and adds a per-column index, include the explicit `dropIndex('<table>_<column>_index')` calls in `down()` before `dropColumn`. Laravel's default index name convention is `<table>_<col>_index` (plain) and `<table>_<col>_unique` (unique).
+
+---
+
 ## 2026-04-22 — commonmark + yaml were already installed transitively (Phase 0, Task 0.1)
 
 **What we found:** `composer update league/commonmark symfony/yaml` said "Nothing to install". Verified via `composer show`: `league/commonmark 2.8.2` (pulled by a Laravel 13 dep) and `symfony/yaml 8.0.8` (pulled by Symfony Console polyfill chain) were already present. Adding them to `require` just promotes them from transitive to direct dependencies — correct behavior for a project that explicitly relies on them.
