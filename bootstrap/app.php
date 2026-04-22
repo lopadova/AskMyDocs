@@ -13,7 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Default Laravel 11 middleware stack — customize here if needed.
+        // Default Laravel 13 middleware stack — customize here if needed.
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

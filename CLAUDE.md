@@ -8,13 +8,13 @@ findings live in `.claude/skills/`.
 
 ## 1. What this project is
 
-AskMyDocs is an **enterprise-grade RAG** system built on **Laravel 11 +
+AskMyDocs is an **enterprise-grade RAG** system built on **Laravel 13 +
 PostgreSQL/pgvector**. Users ingest markdown, ask questions via a chat UI (or a
 stateless JSON API), and get grounded answers with citations.
 
-- **PHP** `^8.2`, **Laravel** `^11.0`, **Sanctum** `^4.0`.
+- **PHP** `^8.3`, **Laravel** `^13.0`, **Sanctum** `^4.2`.
 - **PostgreSQL ≥ 15** with the `pgvector` extension (FTS GIN index shipped).
-- Tests: PHPUnit 11 + Orchestra Testbench + Vitest. SQLite is used in tests —
+- Tests: PHPUnit 12 + Orchestra Testbench 11 + Vitest. SQLite is used in tests —
   `vector(N)` columns swap to JSON text via the migrations under
   `tests/database/migrations/`.
 - No AI SDKs: every provider is called via `Illuminate\Support\Facades\Http`.

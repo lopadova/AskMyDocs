@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Laravel-11+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
+  <a href="#installation"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"></a>
@@ -14,7 +14,7 @@
   <a href="#mcp-server"><img src="https://img.shields.io/badge/MCP-Server-0ea5e9?style=flat-square" alt="MCP Server"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/PHP-8.2+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.2+"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
 </p>
 
 <p align="center">
@@ -146,8 +146,8 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ## Requirements
 
-- **PHP** >= 8.2
-- **Laravel** >= 11.x
+- **PHP** >= 8.3
+- **Laravel** >= 13.x
 - **PostgreSQL** >= 15 with the **pgvector** extension
 - **Composer** >= 2.x
 - **Node.js** >= 20 (only for running the JS test suite; the app itself is server-rendered and uses CDN assets)
@@ -1829,7 +1829,7 @@ askmydocs/
 │           ├── Reranker.php
 │           └── MarkdownChunker.php
 ├── bootstrap/
-│   ├── app.php                              # Laravel 11 bootstrap + schedule
+│   ├── app.php                              # Laravel 13 bootstrap + schedule
 │   └── providers.php
 ├── config/
 │   ├── ai.php                                # Multi-provider config
@@ -1891,7 +1891,7 @@ The test suite covers the core components: DTOs, AI providers, reranker, chunker
 
 | Layer | Tool | Scope |
 |---|---|---|
-| **PHP** | PHPUnit 11 + Orchestra Testbench + Mockery | Unit + feature tests (SQLite in-memory) |
+| **PHP** | PHPUnit 12 + Orchestra Testbench 11 + Mockery | Unit + feature tests (SQLite in-memory) |
 | **JS** | Vitest 2 | Pure tests for `resources/js/rich-content.mjs` |
 
 ### Install dependencies
@@ -1966,7 +1966,7 @@ tests/
 
 A GitHub Actions workflow at `.github/workflows/tests.yml` runs both test suites on every push to `main` and on every pull request. The job:
 
-1. Installs PHP 8.2 with required extensions.
+1. Installs PHP 8.3 with required extensions.
 2. Caches Composer and npm dependencies.
 3. `composer install --prefer-dist`.
 4. `npm ci`.
