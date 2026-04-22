@@ -8,17 +8,25 @@ on:
 
 jobs:
   phpunit:
-    name: PHPUnit
+    name: PHPUnit (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Laravel 13 floor is PHP 8.3; we also guarantee 8.4 and 8.5 so
+        # the package can ship against the next two PHP minors without
+        # regression surprises.
+        php: ['8.3', '8.4', '8.5']
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ matrix.php }}
           extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
           coverage: none
           tools: composer:v2
@@ -27,8 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.composer/cache
-          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.json') }}
-          restore-keys: ${{ runner.os }}-composer-
+          key: ${{ runner.os }}-php${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: ${{ runner.os }}-php${{ matrix.php }}-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
