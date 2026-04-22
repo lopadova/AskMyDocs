@@ -13,8 +13,8 @@
 
 | Phase | Title | PR | Status | Tests (at merge) |
 |---|---|---|---|---|
-| 0 | Foundations (deps + config + env + ADRs) | #9 | ✅ green (PR pending) | 162/470 |
-| 1 | Data model extension (8 cols + 3 tables + models) | #10 | ⏸ pending | — |
+| 0 | Foundations (deps + config + env + ADRs) | #9 | ✅ green (PR open) | 162/470 |
+| 1 | Data model extension (8 cols + 3 tables + models) | #10 | ✅ green (PR pending) | 202/621 |
 | 2 | Canonical parsing + chunker v2 + indexer | #11 | ⏸ pending | — |
 | 3 | Graph-aware retrieval + rejected injection | #12 | ⏸ pending | — |
 | 4 | Promotion API + CLI | #13 | ⏸ pending | — |
