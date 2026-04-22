@@ -15,8 +15,10 @@ answers with citations — over a **typed knowledge base** with a lightweight
 graph, anti-repetition memory, and a human-gated promotion pipeline.
 
 - **PHP** `^8.3`, **Laravel** `^13.0`, **Sanctum** `^4.2`.
-- **league/commonmark** `^2.5` + **symfony/yaml** `^7.4|^8.0` for canonical
-  markdown parsing (frontmatter + section-aware chunking).
+- **symfony/yaml** `^7.4|^8.0` for canonical YAML frontmatter parsing
+  (`CanonicalParser`). Section-aware markdown chunking is implemented
+  in-house (`MarkdownChunker` — line-based fence-aware FSM); no external
+  markdown parser library.
 - **laravel/mcp** `^0.7` as a suggest (required only when exposing the
   `enterprise-kb` MCP server with its 10 tools).
 - **PostgreSQL ≥ 15** with the `pgvector` extension (FTS GIN index shipped).

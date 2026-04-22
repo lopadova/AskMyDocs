@@ -30,26 +30,50 @@ class CanonicalDocsIntegrityTest extends TestCase
         $this->copilot = (string) file_get_contents(self::PROJECT_ROOT . '/.github/copilot-instructions.md');
     }
 
-    public function test_all_three_docs_advertise_9_canonical_types(): void
+    public function test_all_three_docs_advertise_9_canonical_types_with_phrase(): void
     {
-        // README uses "9 types", CLAUDE uses "9 node types" / "9 canonical
-        // types", copilot uses "9 values" / "9 types". Match the digit.
+        // Match the INVARIANT — a specific phrase like "9 canonical types" /
+        // "9 node types" / "9 types" / "9 values" — not just an incidental
+        // standalone digit (a changelog date or version could otherwise pass).
+        $pattern = '/\b9\s+(?:canonical\s+types?|node\s+types?|types?|values?)\b/i';
         foreach (['README.md' => $this->readme, 'CLAUDE.md' => $this->claude, 'copilot-instructions.md' => $this->copilot] as $name => $body) {
             $this->assertMatchesRegularExpression(
-                '/\b9\b/',
+                $pattern,
                 $body,
-                "[$name] must mention the number 9 somewhere (9 canonical types)"
+                "[$name] must advertise 9 canonical types with a phrase like '9 types', '9 canonical types', '9 node types', or '9 values'"
             );
         }
     }
 
-    public function test_all_three_docs_advertise_10_edge_types(): void
+    public function test_all_three_docs_advertise_10_edge_types_with_phrase(): void
     {
+        // Match "10 edge types" / "10 relations" / "10 values" specifically.
+        // Must NOT accept "10 total tools" — that's a separate invariant
+        // covered below. Splitting the two assertions prevents a drift where
+        // the docs stop describing edges but the test still passes because
+        // MCP tool count is mentioned.
+        $pattern = '/\b10\s+(?:relations|values|edge\s+types?)\b/i';
         foreach (['README.md' => $this->readme, 'CLAUDE.md' => $this->claude, 'copilot-instructions.md' => $this->copilot] as $name => $body) {
             $this->assertMatchesRegularExpression(
-                '/10\s+(relations|values|edge\s+types|total\s+tools)/i',
+                $pattern,
                 $body,
-                "[$name] must mention 10 edge types or 10 tools somewhere"
+                "[$name] must advertise the 10 edge types with a phrase like '10 edge types', '10 relations', or '10 values'"
+            );
+        }
+    }
+
+    public function test_all_three_docs_advertise_10_total_tools_on_mcp_server(): void
+    {
+        // Separate invariant: the MCP server registers exactly 10 tools
+        // (5 base retrieval + 5 canonical/promote). This assertion is
+        // independent from the edge-type count above so either can drift
+        // without masking the other.
+        $pattern = '/\b10\s+(?:total\s+)?tools?\b|\b10\s+tools\b|MCP-10/i';
+        foreach (['README.md' => $this->readme, 'CLAUDE.md' => $this->claude, 'copilot-instructions.md' => $this->copilot] as $name => $body) {
+            $this->assertMatchesRegularExpression(
+                $pattern,
+                $body,
+                "[$name] must mention the 10-tool MCP surface (e.g. '10 total tools', '10 tools', 'MCP-10')"
             );
         }
     }

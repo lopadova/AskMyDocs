@@ -949,13 +949,17 @@ explicitly dismissed.
 
 When AskMyDocs ingests this file:
 
-1. **Frontmatter parsing** — `CanonicalParser` validates against 9 type
-   schemas and 6 status enums (via `league/commonmark` + `symfony/yaml`).
-   Invalid frontmatter degrades gracefully to non-canonical (R4).
-2. **Section-aware chunking** — `MarkdownChunker v2` splits on H1/H2/H3
+1. **Frontmatter parsing** — `CanonicalParser` parses YAML frontmatter
+   (via `symfony/yaml`) and validates that `type` is one of the 9
+   canonical types, `status` is one of the 6 statuses, `slug` matches
+   the slug regex, and `retrieval_priority` is in `[0, 100]`. Invalid
+   frontmatter degrades gracefully to non-canonical (R4).
+2. **Section-aware chunking** — `MarkdownChunker` splits on H1/H2/H3
    while preserving `heading_path` breadcrumbs and stripping the
-   frontmatter block. Fence-aware: `#` inside a ``` ```bash ``` ``` fence
-   is NOT treated as a heading.
+   frontmatter block. Implemented as a custom line-based fence-aware
+   state machine (no external markdown parser library): `#` inside a
+   fenced code block like `~~~bash ... ~~~` or with triple-backtick
+   fences is NOT treated as a heading.
 3. **Wikilink extraction** — every `[[slug]]` becomes an edge in
    `kb_edges` with `provenance='wikilink'`. Frontmatter `related:`
    entries become edges with `provenance='frontmatter_related'`.
