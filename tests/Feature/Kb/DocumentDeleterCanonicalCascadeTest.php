@@ -107,6 +107,42 @@ class DocumentDeleterCanonicalCascadeTest extends TestCase
         $this->assertSame(0, KbCanonicalAudit::count());
     }
 
+    public function test_cascade_falls_back_to_slug_when_doc_id_is_null(): void
+    {
+        // Regression for Copilot PR #10 comment: a canonical doc can have
+        // a slug without a doc_id (CanonicalParser doesn't require `id`).
+        // The indexer would create a kb_node with source_doc_id=null,
+        // so cascade must also match by (project_key, node_uid=slug).
+        $doc = KnowledgeDocument::create([
+            'project_key' => 'acme',
+            'source_type' => 'markdown',
+            'title' => 'No ID canonical',
+            'source_path' => 'decisions/dec-no-id.md',
+            'language' => 'en',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => str_repeat('q', 64),
+            'version_hash' => str_repeat('q', 64),
+            'doc_id' => null,
+            'slug' => 'dec-no-id',
+            'canonical_type' => 'decision',
+            'canonical_status' => 'accepted',
+            'is_canonical' => true,
+        ]);
+        KbNode::create([
+            'node_uid' => 'dec-no-id',
+            'node_type' => 'decision',
+            'label' => 'No ID canonical',
+            'project_key' => 'acme',
+            'source_doc_id' => null,
+            'payload_json' => ['dangling' => false],
+        ]);
+
+        (new DocumentDeleter())->delete($doc, force: true);
+
+        $this->assertSame(0, KbNode::where('node_uid', 'dec-no-id')->count());
+    }
+
     public function test_multi_tenant_isolation_on_graph_cascade(): void
     {
         // Same doc_id shape in two projects — must delete only one tenant's nodes.

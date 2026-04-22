@@ -130,6 +130,14 @@ class DocumentIngestor
         $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
     ): KnowledgeDocument {
+        // If this is a canonical re-ingest with changed content, previous
+        // versions still hold the (project_key, slug) / (project_key, doc_id)
+        // unique slots. We must vacate those slots BEFORE the updateOrCreate
+        // below, otherwise the insert violates `uq_kb_doc_slug` / `uq_kb_doc_doc_id`.
+        if ($canonical !== null) {
+            $this->vacateCanonicalIdentifiersOnPreviousVersions($projectKey, $sourcePath, $versionHash);
+        }
+
         $attributes = $this->buildDocumentAttributes($title, $metadata, $documentHash, $canonical);
         $document = KnowledgeDocument::updateOrCreate(
             [
@@ -147,6 +155,36 @@ class DocumentIngestor
     }
 
     /**
+     * Only the latest (live) version of a canonical document holds its
+     * `doc_id` / `slug` / `is_canonical=true` identity. Older versions for
+     * the same (project_key, source_path) get their canonical identifiers
+     * nulled here so the composite uniques `(project_key, slug)` and
+     * `(project_key, doc_id)` can accept the new version.
+     *
+     * Without this step, re-ingesting a canonical doc with changed content
+     * would try to INSERT a new row that collides on the unique slots still
+     * occupied by the archived-but-not-yet-vacated sibling row.
+     */
+    private function vacateCanonicalIdentifiersOnPreviousVersions(
+        string $projectKey,
+        string $sourcePath,
+        string $newVersionHash,
+    ): void {
+        KnowledgeDocument::where('project_key', $projectKey)
+            ->where('source_path', $sourcePath)
+            ->where('version_hash', '!=', $newVersionHash)
+            ->update([
+                'doc_id' => null,
+                'slug' => null,
+                'canonical_status' => null,
+                'is_canonical' => false,
+                // `canonical_type` is preserved on the archived row so
+                // audit/history queries can still reconstruct its type.
+                // `frontmatter_json` is preserved for the same reason.
+            ]);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function buildDocumentAttributes(
@@ -157,7 +195,7 @@ class DocumentIngestor
     ): array {
         $base = [
             'source_type' => 'markdown',
-            'title' => $canonical !== null ? ($this->firstLine($canonical->body) ?? $title) : $title,
+            'title' => $title,
             'mime_type' => 'text/markdown',
             'language' => $metadata['language'] ?? 'it',
             'access_scope' => $metadata['access_scope'] ?? 'internal',
@@ -179,7 +217,6 @@ class DocumentIngestor
         }
 
         return array_merge($base, [
-            'title' => $title,   // caller-supplied title always wins; parse() summary is separate
             'is_canonical' => true,
             'doc_id' => $canonical->docId,
             'slug' => $canonical->slug,
@@ -197,16 +234,6 @@ class DocumentIngestor
                 ],
             ]),
         ]);
-    }
-
-    private function firstLine(string $text): ?string
-    {
-        $line = strtok($text, "\n");
-        if ($line === false) {
-            return null;
-        }
-        $trimmed = trim(ltrim($line, '# '));
-        return $trimmed === '' ? null : $trimmed;
     }
 
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void

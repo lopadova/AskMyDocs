@@ -63,6 +63,13 @@ class CanonicalIndexerJob implements ShouldQueue
         if ($doc->slug === null || $doc->canonical_type === null) {
             return;
         }
+        // Do not index a doc that has already been archived — the ingest
+        // pipeline marks prior versions as `archived` when a newer version
+        // takes over, and retrieval filters them out. Indexing the archived
+        // row would rebuild the graph from stale content.
+        if ($doc->status === 'archived') {
+            return;
+        }
 
         DB::transaction(function () use ($doc) {
             $this->replaceEdgesFor($doc);
@@ -241,27 +248,27 @@ class CanonicalIndexerJob implements ShouldQueue
     }
 
     /**
-     * Create a target node as "dangling" if it doesn't exist yet. Never
-     * overwrites an already-canonicalized node (whose own indexer run
-     * populated label / source_doc_id / non-dangling marker).
+     * Create a target node as "dangling" if it doesn't exist yet. Atomic
+     * under concurrent indexer runs — `firstOrCreate` uses the composite
+     * unique `uq_kb_nodes_project_uid(project_key, node_uid)` as the
+     * existence check, so two workers trying to insert the same target
+     * converge safely (one wins, the other gets the existing row). Never
+     * overwrites an already-canonicalized node.
      */
     private function ensureTargetNode(string $projectKey, string $slug): void
     {
-        $existing = KbNode::where('project_key', $projectKey)
-            ->where('node_uid', $slug)
-            ->first();
-        if ($existing !== null) {
-            return;
-        }
-
-        KbNode::create([
-            'project_key' => $projectKey,
-            'node_uid' => $slug,
-            'node_type' => 'unknown',
-            'label' => $slug,
-            'source_doc_id' => null,
-            'payload_json' => ['dangling' => true],
-        ]);
+        KbNode::firstOrCreate(
+            [
+                'project_key' => $projectKey,
+                'node_uid' => $slug,
+            ],
+            [
+                'node_type' => 'unknown',
+                'label' => $slug,
+                'source_doc_id' => null,
+                'payload_json' => ['dangling' => true],
+            ]
+        );
     }
 
     // -----------------------------------------------------------------

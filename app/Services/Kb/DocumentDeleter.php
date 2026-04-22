@@ -210,16 +210,30 @@ class DocumentDeleter
     /**
      * Remove the kb_node(s) this document owns. The composite FK on
      * kb_edges cascades both outgoing AND incoming edges automatically.
-     * No-op on non-canonical documents (doc_id is null).
+     *
+     * Preferred match is by `source_doc_id` (the stable business id), which
+     * is what {@see \App\Jobs\CanonicalIndexerJob} stamps on the node it
+     * creates. When the canonical doc has a slug but no `id` (the
+     * CanonicalParser validator does not require `id`), we fall back to
+     * matching by `(project_key, node_uid = slug)` so cascade still happens.
+     *
+     * No-op only when BOTH `doc_id` and `slug` are null (truly non-canonical).
      */
     private function cascadeGraphFor(KnowledgeDocument $document): void
     {
-        if ($document->doc_id === null) {
+        if ($document->doc_id !== null) {
+            KbNode::where('project_key', $document->project_key)
+                ->where('source_doc_id', $document->doc_id)
+                ->delete();
             return;
         }
-        KbNode::where('project_key', $document->project_key)
-            ->where('source_doc_id', $document->doc_id)
-            ->delete();
+        if ($document->slug !== null) {
+            KbNode::where('project_key', $document->project_key)
+                ->where('node_uid', $document->slug)
+                ->delete();
+            return;
+        }
+        // Truly non-canonical document — nothing in the graph to remove.
     }
 
     /**

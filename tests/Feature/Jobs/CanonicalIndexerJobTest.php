@@ -159,6 +159,42 @@ class CanonicalIndexerJobTest extends TestCase
         ]);
     }
 
+    public function test_no_op_when_document_is_archived(): void
+    {
+        // Regression for Copilot PR #10 comment: an archived row must not
+        // rebuild the graph from stale content.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-x', 'decision', 'X', [
+            '_derived' => ['related_slugs' => ['m1'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
+        ]);
+        $doc->update(['status' => 'archived']);
+
+        (new CanonicalIndexerJob($doc->id))->handle();
+
+        $this->assertSame(0, KbNode::count());
+        $this->assertSame(0, KbEdge::count());
+        $this->assertSame(0, KbCanonicalAudit::count());
+    }
+
+    public function test_ensureTargetNode_is_race_safe_under_concurrent_runs(): void
+    {
+        // Simulate two workers that both tried to create the same target
+        // node. The second call must NOT raise — firstOrCreate short-circuits
+        // on the composite unique.
+        $docA = $this->seedCanonicalDoc('acme', 'dec-a', 'decision', 'A', [
+            '_derived' => ['related_slugs' => ['shared-target'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
+        ]);
+        $docB = $this->seedCanonicalDoc('acme', 'dec-b', 'decision', 'B', [
+            '_derived' => ['related_slugs' => ['shared-target'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
+        ]);
+
+        (new CanonicalIndexerJob($docA->id))->handle();
+        (new CanonicalIndexerJob($docB->id))->handle();
+
+        $this->assertSame(1, KbNode::where('node_uid', 'shared-target')->count());
+        // Both edges reach the same target.
+        $this->assertSame(2, KbEdge::where('to_node_uid', 'shared-target')->count());
+    }
+
     public function test_no_op_for_non_canonical_document(): void
     {
         $doc = KnowledgeDocument::create([
