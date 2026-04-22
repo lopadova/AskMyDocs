@@ -98,6 +98,25 @@ Future phases: dispatch subagents only when the task genuinely benefits from iso
 
 ---
 
+## 2026-04-22 — symfony/yaml ^8.0 requires PHP 8.4; CI runs PHP 8.3 (Phase 2, CI)
+
+**What we found:** PR #9 CI failed on `composer install` with:
+```
+symfony/yaml[v8.0.0, ..., v8.0.8] require php >=8.4 -> your php version (8.3.30) does not satisfy that requirement.
+```
+composer.lock is gitignored in this repo so CI resolves dependencies fresh. My initial `"symfony/yaml": "^8.0"` constraint was too strict: v8.x only runs on PHP 8.4+, but Laravel 13's floor is PHP 8.3 and CI uses 8.3.
+
+**Why it matters:** Any dependency added in future phases must be checked against **both PHP 8.3 and PHP 8.4**. Don't write `^8.0`-style constraints on Symfony components without checking their PHP floor — Symfony 8.x bumped PHP requirement from 8.2 to 8.4.
+
+**How to handle:**
+- When adding a Symfony component, check its PHP requirement:
+  - Symfony 7.x → PHP 8.2+ (safe for PHP 8.3+)
+  - Symfony 8.x → PHP 8.4+ (NOT safe for PHP 8.3)
+- Use the **bi-version constraint pattern** `^7.4|^8.0` — composer's SAT solver picks the right major per platform. orchestra/testbench uses this pattern and it works cleanly.
+- Alternative: commit `composer.lock` (applications conventionally do). Not the path chosen here (gitignore still excludes it), but an option if the constraint matrix gets too complex.
+
+---
+
 ## 2026-04-22 — SQLite `dropColumn` fails if the column still has an index (Phase 1, migrations)
 
 **What we found:** The first migration iteration for `knowledge_documents` canonical columns failed on `RefreshDatabase` rollback with:
