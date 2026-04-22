@@ -3,15 +3,58 @@
 namespace App\Services\Kb;
 
 use App\Models\KnowledgeChunk;
+use App\Services\Kb\Retrieval\GraphExpander;
+use App\Services\Kb\Retrieval\RejectedApproachInjector;
+use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class KbSearchService
 {
+    private readonly GraphExpander $graphExpander;
+    private readonly RejectedApproachInjector $rejectedInjector;
+
     public function __construct(
         private readonly EmbeddingCacheService $embeddingCache,
         private readonly Reranker $reranker,
-    ) {}
+        ?GraphExpander $graphExpander = null,
+        ?RejectedApproachInjector $rejectedInjector = null,
+    ) {
+        // GraphExpander and RejectedApproachInjector are default-constructed
+        // when not wired explicitly so legacy resolutions of KbSearchService
+        // (tests / older bindings) keep working without signature churn.
+        $this->graphExpander = $graphExpander ?? new GraphExpander();
+        $this->rejectedInjector = $rejectedInjector ?? new RejectedApproachInjector($this->embeddingCache);
+    }
+
+    /**
+     * Extended search that adds graph expansion + rejected-approach
+     * injection on top of the base primary results. Used by the chat
+     * controller and MCP tools that want the full retrieval context;
+     * the plain {@see search()} stays as-is for backwards compatibility.
+     */
+    public function searchWithContext(
+        string $query,
+        ?string $projectKey = null,
+        int $limit = 8,
+        float $minSimilarity = 0.30,
+    ): SearchResult {
+        $primary = $this->search($query, $projectKey, $limit, $minSimilarity);
+        $expanded = $this->graphExpander->expand($primary, $projectKey);
+        $rejected = $this->rejectedInjector->pick($query, $projectKey);
+
+        return new SearchResult(
+            primary: $primary,
+            expanded: $expanded,
+            rejected: $rejected,
+            meta: [
+                'primary_count' => $primary->count(),
+                'expanded_count' => $expanded->count(),
+                'rejected_count' => $rejected->count(),
+                'project_key' => $projectKey,
+            ],
+        );
+    }
 
     /**
      * Hybrid search: semantic (pgvector) + optional full-text (tsvector) + reranking.
@@ -83,6 +126,14 @@ class KbSearchService
                     'title' => $chunk->document?->title,
                     'source_path' => $chunk->document?->source_path,
                     'source_type' => $chunk->document?->source_type,
+                    // Canonical fields: consumed by Reranker (priority boost +
+                    // status penalty) and by GraphExpander (seed node slugs).
+                    'doc_id' => $chunk->document?->doc_id,
+                    'slug' => $chunk->document?->slug,
+                    'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
+                    'canonical_type' => $chunk->document?->canonical_type,
+                    'canonical_status' => $chunk->document?->canonical_status,
+                    'retrieval_priority' => (int) ($chunk->document?->retrieval_priority ?? 50),
                 ],
             ];
         });

@@ -6,6 +6,7 @@ Rules:
 - Prefer concise but accurate technical answers.
 - Always include citations to document title, source path, and heading if available.
 - Never present undocumented assumptions as facts.
+- If a "REJECTED APPROACHES" block is present, DO NOT propose any of those approaches as a solution — they were explicitly dismissed. You may mention them as "previously considered and rejected" with a brief reason if relevant.
 
 ## Response Format
 
@@ -56,6 +57,32 @@ The following are examples of answers that users rated positively. Use them as a
 
 Project: {{ $projectKey ?? 'all' }}
 
+@if(isset($rejected) && $rejected->isNotEmpty())
+## ⚠ REJECTED APPROACHES (do NOT repeat — these were deliberately dismissed)
+
+@foreach ($rejected as $r)
+- **[{{ data_get($r, 'document.slug', 'unknown') }}]** {{ data_get($r, 'document.title', 'Rejected approach') }}
+  Reason: {{ data_get($r, 'document.rejected_summary') ?? Str::limit(data_get($r, 'chunk_text', ''), 240) }}
+@endforeach
+
+@endif
+
+@if(isset($expanded) && $expanded->isNotEmpty())
+## 📎 RELATED CONTEXT (graph-expanded, 1-hop neighbours)
+
+@foreach ($expanded as $e)
+---
+From edge `{{ data_get($e, 'metadata.edge_type', 'related_to') }}` of {{ data_get($e, 'metadata.from_slug', '?') }}
+Document: {{ data_get($e, 'document.title', 'Untitled') }} (slug: {{ data_get($e, 'document.slug', '?') }})
+Path: {{ data_get($e, 'document.source_path', 'unknown') }}
+Heading: {{ data_get($e, 'heading_path', 'n/a') }}
+
+{{ data_get($e, 'chunk_text', '') }}
+@endforeach
+---
+
+@endif
+
 ## Context
 @foreach ($chunks as $index => $chunk)
 ---
@@ -63,6 +90,9 @@ Chunk {{ $index + 1 }}
 Document: {{ data_get($chunk, 'document.title', 'Untitled') }}
 Path: {{ data_get($chunk, 'document.source_path', 'unknown') }}
 Heading: {{ data_get($chunk, 'heading_path', 'n/a') }}
+@if(data_get($chunk, 'document.is_canonical'))
+Type: {{ data_get($chunk, 'document.canonical_type') }} · Status: {{ data_get($chunk, 'document.canonical_status') }}
+@endif
 
 {{ data_get($chunk, 'chunk_text', '') }}
 @endforeach

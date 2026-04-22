@@ -66,20 +66,28 @@ class Reranker
         $keywordWeight = (float) config('kb.reranking.keyword_weight', 0.30);
         $headingWeight = (float) config('kb.reranking.heading_weight', 0.10);
 
+        $priorityWeight = (float) config('kb.canonical.priority_weight', 0.003);
+
         return $chunks
-            ->map(function (array $chunk) use ($queryTokens, $vectorWeight, $keywordWeight, $headingWeight) {
+            ->map(function (array $chunk) use ($queryTokens, $vectorWeight, $keywordWeight, $headingWeight, $priorityWeight) {
                 $vectorScore = (float) ($chunk['vector_score'] ?? 0.0);
                 $keywordScore = $this->keywordScore($queryTokens, $chunk['chunk_text'] ?? '');
                 $headingScore = $this->keywordScore($queryTokens, $chunk['heading_path'] ?? '');
 
-                $chunk['rerank_score'] = ($vectorWeight * $vectorScore)
+                $baseScore = ($vectorWeight * $vectorScore)
                     + ($keywordWeight * $keywordScore)
                     + ($headingWeight * $headingScore);
 
+                $canonicalAdjustment = $this->canonicalAdjustment($chunk, $priorityWeight);
+
+                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'];
                 $chunk['rerank_detail'] = [
                     'vector' => round($vectorScore, 4),
                     'keyword' => round($keywordScore, 4),
                     'heading' => round($headingScore, 4),
+                    'base' => round($baseScore, 4),
+                    'canonical_boost' => round($canonicalAdjustment['boost'], 4),
+                    'canonical_penalty' => round($canonicalAdjustment['penalty'], 4),
                     'combined' => round($chunk['rerank_score'], 4),
                 ];
 
@@ -88,6 +96,49 @@ class Reranker
             ->sortByDesc('rerank_score')
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * Additive score delta from the canonical layer.
+     *
+     *   boost   = +priorityWeight × retrieval_priority       (0..0.30 at default weight)
+     *   penalty = -configured penalty per non-retrievable status
+     *
+     * Non-canonical chunks get zero adjustment (delta = 0) so legacy
+     * documents rank identically to pre-canonical behaviour.
+     *
+     * @return array{delta: float, boost: float, penalty: float}
+     */
+    private function canonicalAdjustment(array $chunk, float $priorityWeight): array
+    {
+        $doc = $chunk['document'] ?? [];
+        if (! (bool) ($doc['is_canonical'] ?? false)) {
+            return ['delta' => 0.0, 'boost' => 0.0, 'penalty' => 0.0];
+        }
+
+        $priority = (int) ($doc['retrieval_priority'] ?? 50);
+        $boost = $priorityWeight * $priority;
+        $penalty = $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
+
+        return [
+            'delta' => $boost - $penalty,
+            'boost' => $boost,
+            'penalty' => $penalty,
+        ];
+    }
+
+    private function statusPenalty(string $status): float
+    {
+        if ($status === 'superseded') {
+            return (float) config('kb.canonical.superseded_penalty', 0.40);
+        }
+        if ($status === 'deprecated') {
+            return (float) config('kb.canonical.deprecated_penalty', 0.40);
+        }
+        if ($status === 'archived') {
+            return (float) config('kb.canonical.archived_penalty', 0.60);
+        }
+        return 0.0;
     }
 
     /**
