@@ -8,17 +8,17 @@ this repo, the rules are identical. Skills with detailed examples live under
 
 ## 1. Project at a glance
 
-AskMyDocs is an **enterprise RAG system** on **Laravel 11 + PostgreSQL +
+AskMyDocs is an **enterprise RAG system** on **Laravel 13 + PostgreSQL +
 pgvector**. Markdown in, grounded answers with citations out. Optional chat
 history, feedback/few-shot, hybrid (semantic + FTS) search, MCP server, and a
 GitHub-Action-based cross-repo ingestion pipeline.
 
-- PHP `^8.2`, Laravel `^11.0`, Sanctum `^4.0`.
+- PHP `^8.3`, Laravel `^13.0`, Sanctum `^4.2`.
 - PostgreSQL ≥ 15 + `pgvector`. FTS GIN index migration ships pgsql-only.
 - No AI SDK — every provider is reached via `Illuminate\Support\Facades\Http`
   (keeps auth/retries/timeouts under our control and makes `Http::fake()`
   trivial).
-- Tests: PHPUnit 11 + Orchestra Testbench (SQLite) + Vitest for JS.
+- Tests: PHPUnit 12 + Orchestra Testbench 11 (SQLite) + Vitest for JS.
 
 ---
 
