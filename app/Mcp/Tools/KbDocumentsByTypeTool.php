@@ -52,7 +52,11 @@ class KbDocumentsByTypeTool extends Tool
         }
 
         $statusFilter = (string) ($request->get('status_filter') ?? 'accepted');
-        $limit = min((int) ($request->get('limit') ?? self::DEFAULT_LIMIT), self::MAX_LIMIT);
+        // Clamp on BOTH sides — a negative limit would pass through as
+        // `LIMIT -1` on PostgreSQL, which disables the cap and returns an
+        // unbounded result set.
+        $rawLimit = (int) ($request->get('limit') ?? self::DEFAULT_LIMIT);
+        $limit = max(1, min($rawLimit, self::MAX_LIMIT));
 
         $query = KnowledgeDocument::query()
             ->where('project_key', $projectKey)

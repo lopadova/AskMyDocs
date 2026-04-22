@@ -50,17 +50,26 @@ class KbGraphNeighborsTool extends Tool
             return Response::json(['error' => 'node_uid and project_key are required', 'neighbours' => []]);
         }
 
-        $limit = min((int) ($request->get('limit') ?? self::DEFAULT_LIMIT), self::MAX_LIMIT);
-        $edgeTypes = $this->normalizeEdgeTypes($request->get('edge_types'));
+        // Clamp on BOTH sides — a negative limit becomes `LIMIT -1` on
+        // PostgreSQL which effectively disables the cap and would return
+        // an unbounded result set. `max(1, ...)` blocks that.
+        $rawLimit = (int) ($request->get('limit') ?? self::DEFAULT_LIMIT);
+        $limit = max(1, min($rawLimit, self::MAX_LIMIT));
 
-        $query = KbEdge::query()
-            ->where('project_key', $projectKey)
-            ->where('from_node_uid', $nodeUid);
-        if ($edgeTypes !== []) {
-            $query->whereIn('edge_type', $edgeTypes);
+        $edgeTypes = $this->resolveAllowedEdgeTypes($request->get('edge_types'));
+        if ($edgeTypes === []) {
+            // User or config allowlist ends up empty — return an empty result
+            // rather than falling back to "every edge type in the DB".
+            return Response::json(['neighbours' => [], 'count' => 0]);
         }
 
-        $edges = $query->orderByDesc('weight')->limit($limit)->get();
+        $edges = KbEdge::query()
+            ->where('project_key', $projectKey)
+            ->where('from_node_uid', $nodeUid)
+            ->whereIn('edge_type', $edgeTypes)
+            ->orderByDesc('weight')
+            ->limit($limit)
+            ->get();
         if ($edges->isEmpty()) {
             return Response::json(['neighbours' => [], 'count' => 0]);
         }
@@ -85,19 +94,67 @@ class KbGraphNeighborsTool extends Tool
     }
 
     /**
+     * Resolve the effective edge-type allowlist.
+     *
+     * Always intersects with `kb.graph.expansion_edge_types` so the tool
+     * cannot surface edges outside the operator-allowed set (the contract
+     * promised in the schema description: "Empty = all allowed types from
+     * config"). When the user passes a non-empty list, we keep only the
+     * entries that are ALSO in the operator allowlist; an empty user input
+     * falls back to the full operator allowlist.
+     *
      * @param  mixed  $raw
      * @return list<string>
      */
-    private function normalizeEdgeTypes(mixed $raw): array
+    private function resolveAllowedEdgeTypes(mixed $raw): array
+    {
+        $operatorAllowlist = $this->operatorAllowlist();
+        if ($operatorAllowlist === []) {
+            return [];
+        }
+        $userRequested = $this->normalizeStringList($raw);
+        if ($userRequested === []) {
+            return $operatorAllowlist;
+        }
+        $intersection = array_values(array_intersect($userRequested, $operatorAllowlist));
+        return $intersection;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function operatorAllowlist(): array
+    {
+        $raw = config('kb.graph.expansion_edge_types', [
+            'depends_on',
+            'implements',
+            'decision_for',
+            'related_to',
+            'supersedes',
+        ]);
+        return $this->normalizeStringList($raw);
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return list<string>
+     */
+    private function normalizeStringList(mixed $raw): array
     {
         if (! is_array($raw)) {
             return [];
         }
         $out = [];
-        foreach ($raw as $type) {
-            if (is_string($type) && $type !== '') {
-                $out[] = $type;
+        $seen = [];
+        foreach ($raw as $entry) {
+            if (! is_string($entry) || $entry === '') {
+                continue;
             }
+            if (isset($seen[$entry])) {
+                continue;
+            }
+            $seen[$entry] = true;
+            $out[] = $entry;
         }
         return $out;
     }

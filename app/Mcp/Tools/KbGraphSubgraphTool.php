@@ -53,7 +53,7 @@ class KbGraphSubgraphTool extends Tool
         $hops = max(1, min((int) ($request->get('hops') ?? self::DEFAULT_HOPS), self::MAX_HOPS));
         $maxNodes = max(1, min((int) ($request->get('max_nodes') ?? self::DEFAULT_MAX_NODES), self::HARD_MAX_NODES));
 
-        [$visitedNodes, $collectedEdges] = $this->walkBfs($projectKey, $seed, $hops, $maxNodes);
+        [$visitedNodes, $collectedEdges, $truncated] = $this->walkBfs($projectKey, $seed, $hops, $maxNodes);
 
         $nodeRows = KbNode::where('project_key', $projectKey)
             ->whereIn('node_uid', array_keys($visitedNodes))
@@ -74,20 +74,24 @@ class KbGraphSubgraphTool extends Tool
             'hops' => $hops,
             'nodes' => $nodeRows,
             'edges' => array_values($collectedEdges),
-            'truncated' => count($visitedNodes) >= $maxNodes,
+            'truncated' => $truncated,
         ]);
     }
 
     /**
-     * Breadth-first walk bounded by hops + max_nodes.
+     * Breadth-first walk bounded by hops + max_nodes. Returns a third
+     * element indicating whether the walk actually HIT the cap (i.e. at
+     * least one unvisited neighbour was skipped). A reachable subgraph
+     * that naturally contains exactly max_nodes is NOT truncation.
      *
-     * @return array{0: array<string, int>, 1: array<string, array>}  visited[node_uid]=>hopLevel, edges keyed by edge_uid
+     * @return array{0: array<string, int>, 1: array<string, array>, 2: bool}
      */
     private function walkBfs(string $projectKey, string $seed, int $hops, int $maxNodes): array
     {
         $visited = [$seed => 0];
         $edgesByUid = [];
         $frontier = [$seed];
+        $truncated = false;
 
         for ($depth = 1; $depth <= $hops; $depth++) {
             if ($frontier === []) {
@@ -109,17 +113,21 @@ class KbGraphSubgraphTool extends Tool
                     'weight' => (float) $edge->weight,
                     'provenance' => $edge->provenance,
                 ];
-                if (! isset($visited[$edge->to_node_uid])) {
-                    if (count($visited) >= $maxNodes) {
-                        break;
-                    }
-                    $visited[$edge->to_node_uid] = $depth;
-                    $nextFrontier[] = $edge->to_node_uid;
+                if (isset($visited[$edge->to_node_uid])) {
+                    continue;
                 }
+                if (count($visited) >= $maxNodes) {
+                    // An actually-new neighbour we had to skip because the
+                    // cap is full. This is real truncation.
+                    $truncated = true;
+                    break;
+                }
+                $visited[$edge->to_node_uid] = $depth;
+                $nextFrontier[] = $edge->to_node_uid;
             }
             $frontier = $nextFrontier;
         }
 
-        return [$visited, $edgesByUid];
+        return [$visited, $edgesByUid, $truncated];
     }
 }

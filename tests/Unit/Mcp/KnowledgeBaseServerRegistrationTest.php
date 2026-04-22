@@ -79,10 +79,9 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
     {
         $reflection = new ReflectionClass(KnowledgeBaseServer::class);
 
-        $nameAttributes = $reflection->getAttributes(\Laravel\Mcp\Server\Attributes\Name::class);
-        // The Name attribute class itself may not exist when laravel/mcp is
-        // not installed — but PHP stores the attribute metadata as strings
-        // regardless. Read by class string to avoid triggering autoload.
+        // Read attributes by class string to avoid triggering autoload of
+        // the Name/Version/Description attribute classes when laravel/mcp
+        // isn't installed in the environment.
         $allAttributes = $reflection->getAttributes();
         $attributeNames = array_map(fn ($attr) => $attr->getName(), $allAttributes);
 

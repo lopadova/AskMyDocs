@@ -17,6 +17,8 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
 class KbPromotionSuggestTool extends Tool
 {
     private const MAX_TRANSCRIPT_CHARS = 50_000;
+    private const MAX_EXISTING_SLUGS = 100;
+    private const SLUG_RE = '/^[a-z0-9][a-z0-9\-]*$/';
 
     public function schema(JsonSchema $schema): array
     {
@@ -28,7 +30,7 @@ class KbPromotionSuggestTool extends Tool
                 ->description('Optional project context; used to tailor slug suggestions and filter existing_slugs.')
                 ->nullable(),
             'existing_slugs' => $schema->array()
-                ->description('Optional list of slugs already canonicalized in the project — the LLM will prefer them when proposing "related" links.')
+                ->description('Optional list of slugs already canonicalized in the project — the LLM will prefer them when proposing "related" links. Capped at 100 entries; non-slug-shaped strings are dropped.')
                 ->nullable(),
         ];
     }
@@ -42,7 +44,9 @@ class KbPromotionSuggestTool extends Tool
         $transcript = mb_substr($transcript, 0, self::MAX_TRANSCRIPT_CHARS);
 
         $projectKey = $request->get('project_key');
-        $existingSlugs = $this->normalizeStringList($request->get('existing_slugs'));
+        // Bound + dedupe + slug-normalize so a client can't blow up the LLM
+        // prompt (size / cost / latency) with a gigantic or malformed list.
+        $existingSlugs = $this->normalizeSlugList($request->get('existing_slugs'));
 
         $result = $svc->suggest(
             transcript: $transcript,
@@ -57,18 +61,37 @@ class KbPromotionSuggestTool extends Tool
     }
 
     /**
+     * Bound + dedupe + slug-shape-validate. Matches the same slug regex
+     * enforced everywhere else in the canonical pipeline (CanonicalParser,
+     * WikilinkExtractor, PromotionSuggestService). Entries that don't
+     * match are dropped silently; the list is capped at MAX_EXISTING_SLUGS
+     * so a malicious or buggy client can't inflate the LLM prompt.
+     *
      * @param  mixed  $raw
      * @return list<string>
      */
-    private function normalizeStringList(mixed $raw): array
+    private function normalizeSlugList(mixed $raw): array
     {
         if (! is_array($raw)) {
             return [];
         }
         $out = [];
+        $seen = [];
         foreach ($raw as $entry) {
-            if (is_string($entry) && $entry !== '') {
-                $out[] = $entry;
+            if (! is_string($entry)) {
+                continue;
+            }
+            $trimmed = trim($entry);
+            if ($trimmed === '' || isset($seen[$trimmed])) {
+                continue;
+            }
+            if (preg_match(self::SLUG_RE, $trimmed) !== 1) {
+                continue;
+            }
+            $seen[$trimmed] = true;
+            $out[] = $trimmed;
+            if (count($out) >= self::MAX_EXISTING_SLUGS) {
+                break;
             }
         }
         return $out;
