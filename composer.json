@@ -11,14 +11,16 @@
         "symfony/yaml": "^7.4|^8.0"
     },
     "require-dev": {
-        "phpunit/phpunit": "^12.0",
+        "laravel/mcp": "^0.7",
         "mockery/mockery": "^1.6",
-        "orchestra/testbench": "^11.0"
+        "orchestra/testbench": "^11.0",
+        "phpunit/phpunit": "^12.0"
     },
     "suggest": {
         "predis/predis": "^2.0 — required when QUEUE_CONNECTION=redis (used by kb:ingest-folder and POST /api/kb/ingest)",
         "laravel/horizon": "^5.0 — optional Redis queue dashboard for monitoring ingestion workers",
-        "league/flysystem-aws-s3-v3": "^3.0 — required when KB_FILESYSTEM_DISK=s3"
+        "league/flysystem-aws-s3-v3": "^3.0 — required when KB_FILESYSTEM_DISK=s3",
+        "laravel/mcp": "^0.7 — required when exposing the enterprise-kb MCP server (app/Mcp/Servers/KnowledgeBaseServer.php + 10 total tools under app/Mcp/Tools/: 5 retrieval + 5 canonical/promote)"
     },
     "autoload": {
         "psr-4": {
