@@ -11,7 +11,10 @@
   <a href="#ai-provider"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/OpenRouter-Multi--Model-6366f1?style=flat-square" alt="OpenRouter"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/Regolo.ai-EU-10b981?style=flat-square" alt="Regolo.ai"></a>
-  <a href="#mcp-server"><img src="https://img.shields.io/badge/MCP-Server-0ea5e9?style=flat-square" alt="MCP Server"></a>
+  <a href="#mcp-server"><img src="https://img.shields.io/badge/MCP-10%20tools-0ea5e9?style=flat-square" alt="MCP Server"></a>
+  <a href="#canonical-knowledge-compilation-knowledge-graph--anti-repetition-memory"><img src="https://img.shields.io/badge/Canonical--KB-9%20types-ff7a00?style=flat-square" alt="Canonical KB"></a>
+  <a href="#canonical-knowledge-compilation-knowledge-graph--anti-repetition-memory"><img src="https://img.shields.io/badge/Knowledge%20Graph-10%20relations-7c3aed?style=flat-square" alt="Knowledge Graph"></a>
+  <a href="#canonical-knowledge-compilation-knowledge-graph--anti-repetition-memory"><img src="https://img.shields.io/badge/Anti--Repetition-%E2%9A%A0%EF%B8%8F%20built--in-dc2626?style=flat-square" alt="Anti-Repetition Memory"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
@@ -867,6 +870,336 @@ KB_HYBRID_FTS_WEIGHT=0.30
 - **Enable** if your corpus contains product codes, legal refs, acronyms, or other terms that must be matched literally.
 - **Leave off** if the content is mostly prose and semantic search is doing fine.
 - Runtime cost is minimal (one extra SQL query per search).
+
+---
+
+## Canonical Knowledge Compilation (Knowledge Graph + Anti-Repetition Memory)
+
+> **What a normal RAG can't do for you — and what AskMyDocs now does.**
+
+A plain Retrieval-Augmented Generation system treats your documentation as
+a pile of interchangeable chunks. It embeds them, searches by cosine
+similarity, stuffs the top-K into a prompt, and calls an LLM. Every query
+rediscovers the answer from zero. There is no typed memory, no navigation,
+no persistence of what your team has **already decided**. Rejected
+approaches get re-proposed. Decisions drift silently. The knowledge base
+is read-only — nothing is ever *promoted*.
+
+AskMyDocs `1.3+` adds a **canonical knowledge compilation layer** on top
+of the RAG pipeline, inspired by Karpathy's LLM-Wiki idea and adapted for
+enterprise Git-based workflows. The result is a system that behaves less
+like "semantic search" and more like a **living, typed, navigable corporate
+brain**.
+
+### Key capabilities
+
+| Capability | Plain RAG | Wiki + CLI-AI (Obsidian / OmegaWiki + Claude CLI) | **AskMyDocs Canonical** |
+|---|:---:|:---:|:---:|
+| Semantic search over markdown | ✓ | partial | ✓ |
+| Typed documents (decision, runbook, standard, ...) | ✗ | partial | **✓ (9 types)** |
+| Stable business IDs (`DEC-2026-0001`) | ✗ | partial | ✓ |
+| Canonical statuses (draft/accepted/superseded/...) | ✗ | partial | **✓ (6 statuses)** |
+| Retrieval priority per document | ✗ | ✗ | ✓ |
+| Lightweight knowledge graph (wikilinks → edges) | ✗ | partial | **✓ (10 relations)** |
+| 1-hop graph expansion at retrieval | ✗ | ✗ | **✓** |
+| Rejected-approach anti-repetition memory | ✗ | ✗ | **✓ (prompt-level)** |
+| Human-gated promotion pipeline (raw → canonical) | ✗ | ✗ | **✓ (REST + CLI)** |
+| Scalable indexed projection (pgvector + FTS) | ✓ | ✗ | ✓ |
+| Multi-tenant (per-project slug + FK isolation) | partial | ✗ | ✓ |
+| Multi-provider AI (OpenAI / Anthropic / Gemini / ...) | partial | ✗ | ✓ |
+| MCP server with typed graph tools | ✗ | ✗ | **✓ (10 tools)** |
+| Auditable editorial events (`kb_canonical_audit`) | ✗ | ✗ | **✓** |
+| Git-based source-of-truth | ✗ | ✓ | ✓ |
+| Self-hosted / on-prem / EU-sovereign | varies | ✓ | ✓ |
+| Enterprise auth (Sanctum) | ✗ | ✗ | ✓ |
+| Cross-repo GitHub composite action | ✗ | ✗ | ✓ |
+
+### How it works
+
+Your team writes **canonical markdown** with a small YAML frontmatter:
+
+```yaml
+---
+id: DEC-2026-0001
+slug: dec-cache-invalidation-v2
+type: decision
+project: ecommerce-core
+module: cache
+status: accepted
+owners: [platform-team]
+retrieval_priority: 90
+tags: [cache, invalidation, redis]
+related:
+  - "[[module-cache-layer]]"
+  - "[[runbook-purge-failure]]"
+summary: Official cache invalidation strategy using tagged and secondary keys.
+---
+
+# Decision: Cache invalidation v2
+
+## Context
+...
+
+## Decision
+Use tagged invalidation with fallback to secondary keys. See
+[[module-cache-layer]] for the implementation and
+[[rejected-direct-cache-full-purge-on-price-change]] for what we
+explicitly dismissed.
+```
+
+When AskMyDocs ingests this file:
+
+1. **Frontmatter parsing** — `CanonicalParser` validates against 9 type
+   schemas and 6 status enums (via `league/commonmark` + `symfony/yaml`).
+   Invalid frontmatter degrades gracefully to non-canonical (R4).
+2. **Section-aware chunking** — `MarkdownChunker v2` splits on H1/H2/H3
+   while preserving `heading_path` breadcrumbs and stripping the
+   frontmatter block. Fence-aware: `#` inside a ``` ```bash ``` ``` fence
+   is NOT treated as a heading.
+3. **Wikilink extraction** — every `[[slug]]` becomes an edge in
+   `kb_edges` with `provenance='wikilink'`. Frontmatter `related:`
+   entries become edges with `provenance='frontmatter_related'`.
+   Dangling links (target not yet canonicalized) are tracked as
+   placeholder `kb_nodes` with `payload_json.dangling = true`.
+4. **Canonical projection** — `knowledge_documents` row carries the 8
+   canonical columns (`doc_id`, `slug`, `canonical_type`,
+   `canonical_status`, `is_canonical`, `retrieval_priority`,
+   `source_of_truth`, `frontmatter_json`). `kb_nodes` + `kb_edges` form
+   the graph, fully **tenant-scoped** (two projects can share
+   `dec-cache-v2`).
+5. **Audit trail** — every promote/update/deprecate/hard-delete is
+   logged to `kb_canonical_audit`.
+
+### Graph-aware retrieval
+
+When a user asks a question:
+
+```
+                  ┌─────────────────┐
+user query ──────►│ vector + FTS    │──► top-K chunks (primary)
+                  │ Reranker fusion │    + canonical boost + status penalty
+                  └────────┬────────┘
+                           │
+                           ├──► GraphExpander (1-hop)
+                           │    walks kb_edges: depends_on,
+                           │    decision_for, related_to,
+                           │    implements, supersedes
+                           │    → best chunk of each neighbour
+                           │
+                           └──► RejectedApproachInjector
+                                cosine-searches rejected-approach docs
+                                → top-3 injected with ⚠ marker
+
+                  ┌─────────────────┐
+prompt    ◄───────│  primary +      │
+                  │  expanded +     │
+                  │  rejected       │
+                  └─────────────────┘
+```
+
+The reranker applies a **canonical boost** (priority × 0.003) and
+**status penalties** (superseded −0.4, deprecated −0.4, archived −0.6)
+on top of the existing vector/keyword/heading fusion. Non-canonical
+chunks get zero adjustment (legacy behaviour preserved exactly).
+
+### Anti-repetition memory — the feature everyone forgets
+
+This is the feature that makes the system **learn from what didn't work**.
+When a question correlates (cosine ≥ `KB_REJECTED_MIN_SIMILARITY`, default
+0.45) with a `type: rejected-approach` document, that document is injected
+into the prompt under a clearly-labeled block:
+
+```
+⚠ REJECTED APPROACHES (do NOT repeat — these were deliberately dismissed):
+- [rejected-direct-cache-full-purge-on-price-change]
+  Reason: Too expensive and noisy CDN-side and backend-side. Flooded the
+  origin during flash sales.
+```
+
+The LLM sees the rejected options **before** generating its answer. It
+stops proposing them. This single change is why your team stops re-hashing
+the same tradeoffs every quarter.
+
+### Promotion pipeline — from session to canonical (human-gated)
+
+Conversations, incident post-mortems and code reviews produce knowledge
+that usually evaporates. The promotion pipeline captures it **without
+trusting the LLM to write canonical storage directly** (ADR 0003):
+
+```
+  raw session transcript
+         │
+         ▼
+  POST /api/kb/promotion/suggest
+         │ (LLM extracts candidate artifacts as structured JSON;
+         │  writes NOTHING)
+         ▼
+  [ candidate: { type: 'decision', slug_proposal: 'dec-X',
+                 title_proposal: '...', reason: '...' } ]
+         │
+         ▼
+  Claude skill promote-decision renders a full draft with frontmatter
+         │ (writes to developer filesystem as draft — still NOT canonical)
+         ▼
+  Human reviews, adjusts, commits to Git
+         │
+         ▼
+  GitHub Action ingest-to-askmydocs v2 detects canonical folder patterns
+         │
+         ▼
+  POST /api/kb/ingest  ─►  DocumentIngestor  ─►  CanonicalIndexerJob
+         │
+         ▼
+  Knowledge is now persistent, typed, linked, and retrievable.
+```
+
+Three rules:
+
+- **No skill writes directly to canonical storage.** Drafts only.
+- **Every promotion produces a `kb_canonical_audit` row.**
+- **Rejected approaches are first-class citizens** — the `rejected/`
+  folder is as important as `decisions/`.
+
+### Promotion API endpoints (all Sanctum-protected)
+
+| Endpoint | Purpose | Writes? |
+|---|---|---|
+| `POST /api/kb/promotion/suggest` | LLM extracts candidate artifacts from a transcript | ✗ |
+| `POST /api/kb/promotion/candidates` | Validates a markdown draft against `CanonicalParser` | ✗ |
+| `POST /api/kb/promotion/promote` | Writes markdown to KB disk + dispatches ingest (HTTP 202) | ✓ |
+
+### Multi-project & non-software domains
+
+`project_key` is the primary tenant isolator — present on every canonical
+table. A single AskMyDocs deployment can host N projects of any domain.
+The 9 canonical types are **deliberately domain-agnostic**: 7 apply
+equally to software, HR, legal, finance, operations, customer-success:
+
+| Type | Software | HR | Legal | Finance | Ops |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `decision` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `runbook` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `standard` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `incident` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `domain-concept` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `rejected-approach` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `project-index` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `module-kb` | ✓ | partial | — | — | partial |
+| `integration` | ✓ | partial | — | partial | partial |
+
+Adding a domain-specific type (e.g. `policy`, `process`, `sla`,
+`product-spec`) is a **1-file change** to `app/Support/Canonical/CanonicalType.php`
++ one entry in `config('kb.promotion.path_conventions')`. No migration.
+
+### Roles & permissions — hooks in place, implementation deferred
+
+The data model already provisions the hook points for a future RBAC layer:
+`knowledge_documents.access_scope` column, canonical frontmatter
+`owners` / `reviewers`, `project_key` tenant boundary, Sanctum auth.
+When RBAC ships it needs only:
+- 1 new `project_memberships` / `roles` table,
+- 1 Eloquent global scope on `KnowledgeDocument`,
+- 1 middleware on `/api/kb/*` routes.
+
+All retrieval services (`KbSearchService`, `GraphExpander`,
+`RejectedApproachInjector`, MCP tools) query through Eloquent, so the
+global scope propagates automatically. **Zero structural debt.**
+
+### The 5 Claude skill templates
+
+Shipped under `.claude/skills/kb-canonical/` as **consumer-side templates**.
+Copy into your own `.claude/skills/` to activate:
+
+| Skill | Produces | Trigger |
+|---|---|---|
+| `promote-decision` | ADR-style canonical decision | "we decided to X" |
+| `promote-module-kb` | `module-kb` with 9 standard sections | "document the checkout module" |
+| `promote-runbook` | `runbook` (trigger / actions / rollback / escalation) | "turn this into a runbook" |
+| `link-kb-note` | Wikilink additions to existing notes | "connect these docs" |
+| `session-close` | Shortlist of candidate artifacts | session wrap-up |
+
+Every skill is **human-gated**: it produces drafts, never commits.
+
+Plus `.claude/skills/canonical-awareness/` (R10) — triggers when editing
+AskMyDocs itself, carries the 10-point checklist for keeping canonical
+invariants intact.
+
+### MCP tools (10 total — 5 base retrieval + 5 canonical/promote)
+
+AskMyDocs's `enterprise-kb` MCP server (v2.0.0, `laravel/mcp ^0.7`):
+
+| Tool | Use |
+|---|---|
+| `kb.search` | Vector + FTS + Reranker search (legacy, still works) |
+| `kb.read_document` | Fetch a document by id |
+| `kb.read_chunk` | Fetch a chunk by id |
+| `kb.recent_changes` | List recently-ingested docs |
+| `kb.search_by_project` | Project-scoped search |
+| `kb.graph.neighbours` | 1-hop neighbours of a node, filtered by edge type |
+| `kb.graph.subgraph` | BFS subgraph from a seed (≤ 2 hops, capped) |
+| `kb.documents.by_slug` | Lookup canonical doc by project-scoped slug |
+| `kb.documents.by_type` | List canonical docs of type X, filtered by status |
+| `kb.promotion.suggest` | Extract candidate artifacts from a transcript (writes nothing) |
+
+### New Artisan commands (3)
+
+| Command | Purpose |
+|---|---|
+| `kb:promote {path} [--project=] [--dry-run]` | Operator-side CLI promotion (not used by skills) |
+| `kb:validate-canonical [--project=] [--from-disk] [--disk=]` | Walk canonical docs and validate frontmatter; prints per-file errors |
+| `kb:rebuild-graph [--project=] [--no-truncate] [--sync]` | Rebuild `kb_nodes` + `kb_edges` from canonical documents. **Scheduled daily at 03:40.** No-op when no canonical docs exist. |
+
+### New env vars (18)
+
+```bash
+# Canonical layer
+KB_CANONICAL_ENABLED=true
+KB_CANONICAL_PRIORITY_WEIGHT=0.003
+KB_CANONICAL_SUPERSEDED_PENALTY=0.40
+KB_CANONICAL_DEPRECATED_PENALTY=0.40
+KB_CANONICAL_ARCHIVED_PENALTY=0.60
+KB_CANONICAL_AUDIT_ENABLED=true
+
+# Knowledge graph
+KB_GRAPH_EXPANSION_ENABLED=true
+KB_GRAPH_EXPANSION_HOPS=1
+KB_GRAPH_EXPANSION_MAX_NODES=20
+KB_GRAPH_EXPANSION_EDGE_TYPES=depends_on,implements,decision_for,related_to,supersedes
+
+# Anti-repetition memory
+KB_REJECTED_INJECTION_ENABLED=true
+KB_REJECTED_INJECTION_MAX_DOCS=3
+KB_REJECTED_MIN_SIMILARITY=0.45
+
+# Promotion
+KB_PROMOTION_ENABLED=true
+```
+
+### When AskMyDocs Canonical is the right fit
+
+Choose AskMyDocs Canonical **over a plain RAG** when:
+- You care about **stable answers** for questions your team answers repeatedly.
+- You need a **system of record** for architectural decisions, runbooks, standards.
+- You want LLMs to **stop re-proposing** already-rejected options.
+- You need **per-tenant** isolation and **audit trails**.
+
+Choose AskMyDocs Canonical **over wiki + CLI-AI** (Obsidian / OmegaWiki + Claude CLI) when:
+- You need a **scalable backend** with proper indexing, not in-memory file walks.
+- You need **multi-tenant** separation.
+- You need **multi-provider AI** with swappable transport (OpenAI, Anthropic, Gemini, OpenRouter, Regolo).
+- You want **HTTP/MCP APIs** for cross-system integration, not a local CLI only.
+- You need **enterprise auth**, logging, retention, auditability.
+- You want the **wiki as source of truth AND** a scalable searchable projection.
+
+Choose AskMyDocs Canonical **over SaaS** (Glean, Notion AI, ...) when:
+- You need **on-prem / EU-sovereign** hosting.
+- You refuse vendor lock-in and want your KB in **Git**.
+- You want **open source** (MIT) with full control of the prompt surface.
+
+### What this does NOT replace
+- Your IDE / code editor. AskMyDocs is a knowledge system, not a developer tool.
+- A formal ticketing system. Incident documents here are *post-incident* records.
+- A human. The promotion gate is deliberate — LLM output is always a draft.
 
 ---
 

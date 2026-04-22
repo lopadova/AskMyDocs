@@ -13,14 +13,15 @@
 
 | Phase | Title | PR | Status | Tests (at merge) |
 |---|---|---|---|---|
-| 0 | Foundations (deps + config + env + ADRs) | #9 | ✅ green (PR open) | 162/470 |
-| 1 | Data model extension (8 cols + 3 tables + models) | #10 | ✅ green (PR pending) | 202/621 |
-| 2 | Canonical parsing + chunker v2 + indexer | #11 | ⏸ pending | — |
-| 3 | Graph-aware retrieval + rejected injection | #12 | ⏸ pending | — |
-| 4 | Promotion API + CLI | #13 | ⏸ pending | — |
-| 5 | 5 new MCP tools | #14 | ⏸ pending | — |
-| 6 | Claude skill templates + GH action v2 | #15 | ⏸ pending | — |
-| 7 | README + CLAUDE.md + copilot instructions | #16 | ⏸ pending | — |
+| 0 | Foundations (deps + config + env + ADRs) | #9 | ✅ merged | — |
+| 1 | Data model extension (8 cols + 3 tables + models) | #9 | ✅ merged with phases 0+2 parsing in one PR | — |
+| 2 parsing | WikilinkExtractor + CanonicalParser + MarkdownChunker v2 | #9 | ✅ merged | — |
+| 2 integration | CanonicalIndexerJob + ingestor wiring + deleter cascade | #10 | ✅ merged | 271/787 |
+| 3 | Graph-aware retrieval + rejected injection | #11 | ✅ merged | 314/871 |
+| 4 | Promotion API + CLI | #12 | ✅ merged | 355/958 |
+| 5 | 5 new MCP tools | #13 | ✅ merged | 365/1003 |
+| 6 | Claude skill templates + GH action v2 | #14 | ✅ merged | 383/1101 |
+| 7 | README + CLAUDE.md + copilot instructions | #15 | ⏳ in progress | — |
 
 **Status legend:** ⏸ pending · ⏳ in progress · ✅ green / merged · ❌ blocked (see notes)
 

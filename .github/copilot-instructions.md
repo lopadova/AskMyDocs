@@ -8,12 +8,19 @@ this repo, the rules are identical. Skills with detailed examples live under
 
 ## 1. Project at a glance
 
-AskMyDocs is an **enterprise RAG system** on **Laravel 13 + PostgreSQL +
-pgvector**. Markdown in, grounded answers with citations out. Optional chat
-history, feedback/few-shot, hybrid (semantic + FTS) search, MCP server, and a
-GitHub-Action-based cross-repo ingestion pipeline.
+AskMyDocs is an **enterprise RAG + canonical knowledge compilation** system
+on **Laravel 13 + PostgreSQL + pgvector**. Markdown in, grounded answers
+with citations out — over a **typed knowledge base** with a lightweight
+graph, anti-repetition memory, and a human-gated promotion pipeline.
+Optional chat history, feedback/few-shot, hybrid (semantic + FTS) search,
+MCP server (10 tools), and a GitHub-Action-based cross-repo ingestion
+pipeline.
 
 - PHP `^8.3`, Laravel `^13.0`, Sanctum `^4.2`.
+- `league/commonmark ^2.5` + `symfony/yaml ^7.4|^8.0` for canonical
+  markdown parsing (frontmatter + section-aware chunking).
+- `laravel/mcp ^0.7` as a suggest (required only when exposing the
+  `enterprise-kb` MCP server).
 - PostgreSQL ≥ 15 + `pgvector`. FTS GIN index migration ships pgsql-only.
 - No AI SDK — every provider is reached via `Illuminate\Support\Facades\Http`
   (keeps auth/retries/timeouts under our control and makes `Http::fake()`
@@ -24,10 +31,17 @@ GitHub-Action-based cross-repo ingestion pipeline.
 
 ## 2. Core flows
 
-**Chat** — `KbChatController` → `KbSearchService` (pgvector + optional FTS +
-`Reranker` fusion `0.6·vec + 0.3·kw + 0.1·head`) → prompt from
-`resources/views/prompts/kb_rag.blade.php` → `AiManager::chat()` →
-`ChatLogManager::log()` (try/catch, never propagates).
+**Chat** — `KbChatController` → `KbSearchService::searchWithContext()`
+(pgvector + optional FTS + `Reranker` fusion `0.6·vec + 0.3·kw + 0.1·head`
++ canonical boost + status penalty) → `GraphExpander` (1-hop walk of
+`kb_edges` from canonical seeds, config-gated) → `RejectedApproachInjector`
+(cosine-correlates query vs `rejected-approach` canonical docs) →
+`SearchResult{ primary, expanded, rejected, meta }` → prompt from
+`resources/views/prompts/kb_rag.blade.php` (typed blocks: `⚠ REJECTED
+APPROACHES` + `📎 RELATED CONTEXT` + primary `## Context`) →
+`AiManager::chat()` → `ChatLogManager::log()` (try/catch, never
+propagates). Graph expansion + rejected injection no-op when no canonical
+docs exist (zero regression for non-canonical consumers).
 
 **Ingest** — two entrypoints converge on one execution path:
 
@@ -39,10 +53,33 @@ GitHub-Action-based cross-repo ingestion pipeline.
   `DocumentIngestor::ingestMarkdown()` (SHA-256 upsert on
   `(project_key, source_path, version_hash)` — idempotent by construction).
 
+**Canonical branch** — when the markdown has a valid YAML frontmatter,
+`DocumentIngestor` populates the 8 canonical columns (`doc_id`, `slug`,
+`canonical_type`, `canonical_status`, `is_canonical`, `retrieval_priority`,
+`source_of_truth`, `frontmatter_json` with `_derived` slugs). Prior
+canonical identifiers are vacated before the new version is inserted to
+avoid violating the per-project composite uniques. After commit,
+`CanonicalIndexerJob` populates `kb_nodes` + `kb_edges` from the
+frontmatter `_derived` slug lists and every chunk's `metadata.wikilinks`.
+Invalid frontmatter degrades gracefully to non-canonical (R4).
+
+**Promotion pipeline** (ADR 0003, human-gated):
+- `POST /api/kb/promotion/suggest` → LLM extracts candidates. Writes nothing.
+- `POST /api/kb/promotion/candidates` → validates a draft. Writes nothing.
+- `POST /api/kb/promotion/promote` → writes markdown + dispatches ingest.
+  Returns 202.
+
+Operator CLI equivalent: `kb:promote {path} --project=…`. Claude skills
+stop at `suggest` / `candidates`. Only humans (git commit → GH action →
+ingest) and operators (`kb:promote`) commit canonical storage.
+
 **Delete** — `kb:delete` / `DELETE /api/kb/documents` /
 `kb:ingest-folder --prune-orphans` / scheduled `kb:prune-deleted` all fan in
 to `DocumentDeleter`. Default is soft delete (`KB_SOFT_DELETE_ENABLED=true`,
-retention `KB_SOFT_DELETE_RETENTION_DAYS=30`).
+retention `KB_SOFT_DELETE_RETENTION_DAYS=30`). Hard delete **cascades the
+graph**: `kb_nodes` owned by the doc are removed (`source_doc_id` match,
+fallback `node_uid = slug`); the composite FK on `kb_edges` cascades both
+directions. Every hard delete writes a `kb_canonical_audit` row.
 
 **Scheduler** (`bootstrap/app.php`):
 
@@ -51,9 +88,11 @@ retention `KB_SOFT_DELETE_RETENTION_DAYS=30`).
 | 03:10 | `kb:prune-embedding-cache` |
 | 03:20 | `chat-log:prune`           |
 | 03:30 | `kb:prune-deleted`         |
+| 03:40 | `kb:rebuild-graph`         |
 
 All with `onOneServer()->withoutOverlapping()`. `--days=N` flag overrides the
-env retention for ad-hoc runs; `0` disables.
+env retention for ad-hoc runs; `0` disables. `kb:rebuild-graph` is a no-op
+when no canonical docs exist.
 
 ---
 
@@ -64,15 +103,22 @@ env retention for ad-hoc runs; `0` disables.
 | AI abstraction | `app/Ai/AiManager.php`, `app/Ai/Providers/*.php` (OpenAI, Anthropic, Gemini, OpenRouter, Regolo) |
 | DTOs | `app/Ai/AiResponse.php`, `app/Ai/EmbeddingsResponse.php` |
 | RAG retrieval | `app/Services/Kb/KbSearchService.php`, `Reranker.php` |
+| Graph-aware retrieval | `app/Services/Kb/Retrieval/GraphExpander.php`, `RejectedApproachInjector.php`, `CosineCalculator.php`, `SearchResult.php` |
 | Ingestion | `app/Services/Kb/DocumentIngestor.php`, `MarkdownChunker.php`, `EmbeddingCacheService.php` |
+| Canonical parsing | `app/Services/Kb/Canonical/CanonicalParser.php`, `WikilinkExtractor.php`, `CanonicalParsedDocument.php`, `ValidationResult.php` |
+| Promotion pipeline | `app/Services/Kb/Canonical/CanonicalWriter.php`, `PromotionSuggestService.php`, `app/Http/Controllers/Api/KbPromotionController.php` |
+| Canonical enums + audit | `app/Support/Canonical/{CanonicalType,CanonicalStatus,EdgeType}.php`, `app/Models/{KbNode,KbEdge,KbCanonicalAudit}.php` |
+| Canonical indexer | `app/Jobs/CanonicalIndexerJob.php` |
 | Deletion | `app/Services/Kb/DocumentDeleter.php` |
 | Queued pipeline | `app/Jobs/IngestDocumentJob.php` |
 | Shared helpers | `app/Support/KbPath.php` |
 | Controllers | `app/Http/Controllers/Api/*.php` |
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` |
-| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` |
-| GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` |
+| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (10 tools: 5 retrieval + 5 canonical/promote) |
+| GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |
+| Claude skill templates | `.claude/skills/kb-canonical/*` (CONSUMER-SIDE), `.claude/skills/canonical-awareness/` (R10, in-repo) |
+| ADRs | `docs/adr/0001..0003.md` |
 
 ---
 
@@ -81,15 +127,39 @@ env retention for ad-hoc runs; `0` disables.
 - **`knowledge_documents`** — `project_key`, `source_type`, `title`,
   `source_path`, `mime_type`, `language`, `access_scope`, `status`,
   `document_hash`, `version_hash` (both SHA-256), `metadata` JSON,
-  `source_updated_at`, `indexed_at`, `deleted_at` (SoftDeletes). UNIQUE
-  `(project_key, source_path, version_hash)`.
+  `source_updated_at`, `indexed_at`, `deleted_at` (SoftDeletes).
+  **Canonical columns**: `doc_id`, `slug`, `canonical_type`,
+  `canonical_status`, `is_canonical` (default false),
+  `retrieval_priority` (0-100, default 50), `source_of_truth` (default
+  true), `frontmatter_json` (parsed YAML + `_derived` pre-validated
+  slug lists). UNIQUE `(project_key, source_path, version_hash)` +
+  composite uniques `(project_key, doc_id)` and `(project_key, slug)` —
+  canonical identifiers are tenant-scoped.
 - **`knowledge_chunks`** — `knowledge_document_id` FK ON DELETE CASCADE,
   `project_key`, `chunk_order`, `chunk_hash` (SHA-256), `heading_path`,
-  `chunk_text`, `metadata` JSON, `embedding vector(N)`. UNIQUE
-  `(knowledge_document_id, chunk_hash)`. GIN index on
-  `to_tsvector(<lang>, chunk_text)` (pgsql only).
+  `chunk_text`, `metadata` JSON (includes `wikilinks` array for canonical
+  chunks), `embedding vector(N)`. UNIQUE `(knowledge_document_id,
+  chunk_hash)`. GIN index on `to_tsvector(<lang>, chunk_text)` (pgsql
+  only).
+- **`kb_nodes`** — canonical graph node. `node_uid`, `node_type` (9 values),
+  `label`, `project_key`, `source_doc_id`, `payload_json` (includes
+  `dangling: true` for not-yet-canonicalized targets). UNIQUE
+  `(project_key, node_uid)`.
+- **`kb_edges`** — typed relation between nodes. `edge_uid`,
+  `from_node_uid`, `to_node_uid`, `edge_type` (10 values), `project_key`,
+  `source_doc_id`, `weight` (decimal 8,4), `provenance` (wikilink |
+  frontmatter_* | inferred). UNIQUE `(project_key, edge_uid)`. **Composite
+  FKs** tenant-scoped: `(project_key, from/to_node_uid)` →
+  `kb_nodes.(project_key, node_uid)` with ON DELETE CASCADE. Cross-tenant
+  edges are **structurally impossible**.
+- **`kb_canonical_audit`** — immutable forensic trail. `project_key`,
+  `doc_id?`, `slug?`, `event_type` (promoted | updated | deprecated |
+  superseded | rejected_injection_used | graph_rebuild), `actor`,
+  `before_json`, `after_json`, `metadata_json`, `created_at`. No
+  `updated_at`; no FK to `knowledge_documents` so rows survive hard deletes.
 - **`embedding_cache`** — `text_hash` UNIQUE (SHA-256), `provider`, `model`,
-  `embedding vector(N)`, `last_used_at` (LRU prune).
+  `embedding vector(N)`, `last_used_at` (LRU prune). Intentionally NOT
+  tenant-scoped — same text across projects reuses the embedding.
 - **`chat_logs`** — structured analytics; never the app log.
 - **`conversations` / `messages`** — user-scoped history; `messages.metadata`
   stores citations + provider/model telemetry; `messages.rating` feeds
@@ -114,13 +184,33 @@ env retention for ad-hoc runs; `0` disables.
   try/catch; errors go to the app log, not the client.
 - **Two ingestion entrypoints, one execution path.** Never add a third path
   that skips `IngestDocumentJob` or `DocumentIngestor::ingestMarkdown()`.
+- **Canonical markdown is source-of-truth; DB is a projection.** The
+  canonical `kb/` folders in consumer repos are authoritative; `kb_nodes` +
+  `kb_edges` are rebuildable from Git via `kb:rebuild-graph` + re-ingest.
+  Never design features that require DB-only state unreconstructible from
+  markdown. Only `kb_canonical_audit` is an exception (immutable forensic
+  trail).
+- **Promotion is always human-gated.** Claude skills and
+  `suggest` / `candidates` produce drafts; only humans (via git → GH
+  action) and operators (`kb:promote`) commit canonical storage (ADR 0003).
+- **Rejected-approach injection is by design.** The prompt surfaces
+  rejected options under `⚠` so the LLM stops re-proposing them. Disable
+  via `KB_REJECTED_INJECTION_ENABLED=false` only when prompt-token budget
+  is critical.
+- **Graph expansion + rejected injection degrade to no-op** when a tenant
+  has zero canonical docs. Code MUST NOT assume either feature is
+  populated.
+- **Canonical slug + doc_id are tenant-scoped.** Two projects can share
+  `dec-cache-v2`. Composite FKs on `kb_edges` make cross-tenant edges
+  impossible. Never assume global uniqueness in new code.
 
 ---
 
-## 6. Review rules (R1–R8) — read this before reviewing or coding
+## 6. Review rules (R1–R10) — read this before reviewing or coding
 
-These are distilled from actual Copilot comments on PRs #4, #5, #6. The
-skills in `.claude/skills/<name>/SKILL.md` carry worked examples.
+These are distilled from actual Copilot comments on PRs #4, #5, #6 and the
+canonical compilation series PRs #9–#14. The skills in
+`.claude/skills/<name>/SKILL.md` carry worked examples.
 
 ### R1 — Use `App\Support\KbPath::normalize()` for every KB source path
 Never re-implement path trimming. `KbPath::normalize()` collapses `//`,
@@ -176,6 +266,32 @@ from the real source — the migration, the config, the routes file, the
 `php artisan <cmd> --help` output. Stale docs are worse than missing docs:
 they survive grep and propagate into queries and tests. Copilot caught
 `chunk_index` vs `chunk_order` drift on PR #7 — verify before quoting.
+
+### R10 — Canonical awareness
+Every query, scope, retrieval step, promotion path, and delete path that
+touches `knowledge_documents` or `kb_nodes` / `kb_edges` / `kb_canonical_audit`
+MUST handle BOTH states (canonical / non-canonical) deliberately.
+
+Checklist:
+1. Use dedicated Eloquent scopes (`canonical()`, `accepted()`, `byType()`,
+   `bySlug()`) instead of raw WHERE on canonical columns.
+2. `scopeAccepted()` implies `canonical()` — don't re-derive status filters.
+3. Tenant-scoped composite FKs on `kb_edges` — cross-tenant edges are
+   impossible; FK errors are bugs, not noise.
+4. Slug + doc_id are unique PER PROJECT, not globally. Two projects can
+   share `dec-cache-v2`.
+5. Hard delete cascades via `DocumentDeleter::forceDelete()`; soft delete
+   leaves the graph intact.
+6. Canonical re-ingest must vacate prior identifiers first (handled by
+   `DocumentIngestor::vacateCanonicalIdentifiersOnPreviousVersions()`).
+7. `Reranker` applies canonical boost + status penalty; new retrieval
+   services honour these knobs or add an ADR.
+8. Graph expansion + rejected injection are config-gated.
+9. Every canonical mutation writes to `kb_canonical_audit`.
+10. Never hard-code global slug uniqueness.
+
+Distilled from the canonical compilation series (PRs #9–#14). See
+`.claude/skills/canonical-awareness/`.
 
 ---
 
