@@ -6,6 +6,7 @@ use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Canonical\CanonicalWriter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\TestCase;
 
 class CanonicalWriterTest extends TestCase
@@ -18,12 +19,20 @@ class CanonicalWriterTest extends TestCase
         Storage::fake('kb');
     }
 
+    protected function tearDown(): void
+    {
+        // One test uses `Storage::shouldReceive(...)` — flush Mockery's
+        // expectations here so they don't leak to subsequent tests.
+        Mockery::close();
+        parent::tearDown();
+    }
+
     public function test_writes_decision_under_decisions_folder(): void
     {
         $markdown = $this->validDecisionMarkdown('dec-cache-v2');
         $parsed = (new CanonicalParser())->parse($markdown);
 
-        $path = (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        $path = (new CanonicalWriter())->write($parsed, $markdown);
 
         $this->assertSame('decisions/dec-cache-v2.md', $path);
         Storage::disk('kb')->assertExists('decisions/dec-cache-v2.md');
@@ -35,7 +44,7 @@ class CanonicalWriterTest extends TestCase
         $markdown = "---\nslug: runbook-x\ntype: runbook\nstatus: accepted\n---\n\n# Runbook X";
         $parsed = (new CanonicalParser())->parse($markdown);
 
-        $path = (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        $path = (new CanonicalWriter())->write($parsed, $markdown);
 
         $this->assertSame('runbooks/runbook-x.md', $path);
     }
@@ -45,7 +54,7 @@ class CanonicalWriterTest extends TestCase
         $markdown = "---\nslug: rej-full-purge\ntype: rejected-approach\nstatus: accepted\n---\n\n# Rejected";
         $parsed = (new CanonicalParser())->parse($markdown);
 
-        $path = (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        $path = (new CanonicalWriter())->write($parsed, $markdown);
 
         $this->assertSame('rejected/rej-full-purge.md', $path);
     }
@@ -56,7 +65,7 @@ class CanonicalWriterTest extends TestCase
         $markdown = $this->validDecisionMarkdown('dec-x');
         $parsed = (new CanonicalParser())->parse($markdown);
 
-        $path = (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        $path = (new CanonicalWriter())->write($parsed, $markdown);
 
         Storage::disk('kb')->assertExists('tenants/acme/decisions/dec-x.md');
         $this->assertSame('decisions/dec-x.md', $path, 'Returned path is always relative to the prefix');
@@ -75,7 +84,7 @@ class CanonicalWriterTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('no path convention');
 
-        (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        (new CanonicalWriter())->write($parsed, $markdown);
     }
 
     public function test_throws_runtime_exception_when_disk_put_returns_false(): void
@@ -103,7 +112,7 @@ class CanonicalWriterTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('Failed to write');
 
-        (new CanonicalWriter())->write('acme', $parsed, $markdown);
+        (new CanonicalWriter())->write($parsed, $markdown);
     }
 
     public function test_throws_when_doc_has_no_slug(): void
@@ -129,7 +138,7 @@ class CanonicalWriterTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('slug');
 
-        (new CanonicalWriter())->write('acme', $parsed, '# x');
+        (new CanonicalWriter())->write($parsed, '# x');
     }
 
     public function test_throws_when_doc_has_no_type(): void
@@ -153,7 +162,7 @@ class CanonicalWriterTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('type');
 
-        (new CanonicalWriter())->write('acme', $parsed, '# x');
+        (new CanonicalWriter())->write($parsed, '# x');
     }
 
     private function validDecisionMarkdown(string $slug): string

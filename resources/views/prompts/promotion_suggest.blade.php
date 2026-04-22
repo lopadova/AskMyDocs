@@ -7,7 +7,7 @@ Return ONLY a strict JSON object in this exact shape, with no commentary:
 {
     "candidates": [
         {
-            "type": "decision|module-kb|runbook|standard|incident|integration|domain-concept|rejected-approach",
+            "type": "decision|module-kb|runbook|standard|incident|integration|domain-concept|rejected-approach|project-index",
             "slug_proposal": "kebab-case-slug",
             "title_proposal": "Short human title",
             "reason": "Why this is promotion-worthy (1-2 sentences)",

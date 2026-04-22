@@ -31,7 +31,11 @@ abstract class TestCase extends OrchestraTestCase
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)
         // resolvable from Orchestra Testbench. Without this, any service that
         // renders a view under tests throws "View [...] not found".
-        $app['config']->set('view.paths', [realpath(__DIR__.'/../resources/views')]);
+        // `realpath()` returns false when the directory is missing (some
+        // minimal test environments); fall back to the non-resolved string
+        // so we never end up with `view.paths = [false]`.
+        $viewPath = __DIR__.'/../resources/views';
+        $app['config']->set('view.paths', [realpath($viewPath) ?: $viewPath]);
 
         $app['config']->set('auth.providers.users.model', \App\Models\User::class);
     }

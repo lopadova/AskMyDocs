@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Canonical;
 
+use App\Support\KbPath;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -29,7 +30,7 @@ class CanonicalWriter
      * @throws \RuntimeException         when no path convention exists or
      *                                   when the disk write reports failure
      */
-    public function write(string $projectKey, CanonicalParsedDocument $doc, string $originalMarkdown): string
+    public function write(CanonicalParsedDocument $doc, string $originalMarkdown): string
     {
         $this->guardDocumentShape($doc);
 
@@ -94,13 +95,20 @@ class CanonicalWriter
         return (string) $conventions[$type];
     }
 
+    /**
+     * Normalize via {@see KbPath::normalize()} so the resulting key is
+     * byte-identical to what the ingest read path expects. Without this, a
+     * trailing-slash in KB_PATH_PREFIX would produce `foo//decisions/x.md`
+     * on write while ingest reads `foo/decisions/x.md` — a silent miss on
+     * S3 and other key-based disks (see R1).
+     */
     private function applyPathPrefix(string $relativePath): string
     {
-        $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
+        $prefix = (string) config('kb.sources.path_prefix', '');
         if ($prefix === '') {
-            return ltrim($relativePath, '/');
+            return KbPath::normalize($relativePath);
         }
-        return $prefix . '/' . ltrim($relativePath, '/');
+        return KbPath::normalize($prefix . '/' . $relativePath);
     }
 
     private function resolveDisk(): string

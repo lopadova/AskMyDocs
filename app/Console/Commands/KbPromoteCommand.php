@@ -42,8 +42,15 @@ class KbPromoteCommand extends Command
             return self::FAILURE;
         }
 
-        $markdown = (string) file_get_contents($path);
-        if ($markdown === '') {
+        // `file_get_contents()` returns `false` on a read error (missing
+        // permissions, locked file, OS-level failure). Distinguish that
+        // from a genuinely empty file so operators see the real cause.
+        $markdown = @file_get_contents($path);
+        if ($markdown === false) {
+            $this->error("File is unreadable (permission denied or OS error): {$path}");
+            return self::FAILURE;
+        }
+        if (trim($markdown) === '') {
             $this->error("File is empty: {$path}");
             return self::FAILURE;
         }
@@ -66,15 +73,25 @@ class KbPromoteCommand extends Command
         }
 
         if ($dryRun) {
+            // Resolve the destination path the same way the real write
+            // would, but without touching disk. Gives operators a
+            // concrete preview of what --no-dry-run would produce.
+            $folder = (string) (config('kb.promotion.path_conventions.' . ($parsed->type?->value ?? ''), '?'));
+            $destination = $folder === '.' || $folder === ''
+                ? ($parsed->slug . '.md')
+                : (trim($folder, '/') . '/' . $parsed->slug . '.md');
+
             $this->info("[dry-run] Would write to project '{$projectKey}' as:");
             $this->line("  slug: {$parsed->slug}");
             $this->line("  type: {$parsed->type?->value}");
             $this->line("  status: {$parsed->status?->value}");
+            $this->line("  destination: {$destination}");
+            $this->line("  disk: " . (string) config('kb.sources.disk', 'kb'));
             return self::SUCCESS;
         }
 
         try {
-            $relativePath = $writer->write($projectKey, $parsed, $markdown);
+            $relativePath = $writer->write($parsed, $markdown);
         } catch (\RuntimeException $e) {
             $this->error('Write failed: ' . $e->getMessage());
             return self::FAILURE;

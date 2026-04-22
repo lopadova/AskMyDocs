@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
-use App\Support\KbPath;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -38,6 +37,14 @@ class KbValidateCanonicalCommand extends Command
         $disk = (string) ($this->option('disk') ?? config('kb.sources.disk', 'kb'));
 
         if ($fromDisk) {
+            if ($projectKey !== '') {
+                // Disk mode walks folders by canonical-type convention. Per-
+                // project scoping would require a project-specific path
+                // layout (e.g. tenant subfolders), which we do not enforce
+                // here. Warn the operator so the flag combination is
+                // explicit rather than a silent no-op.
+                $this->warn('--project is ignored when --from-disk is set (disk walk is not project-scoped). Use DB mode (default) for per-project validation.');
+            }
             return $this->walkDisk($parser, $disk);
         }
         return $this->walkDatabase($parser, $projectKey);

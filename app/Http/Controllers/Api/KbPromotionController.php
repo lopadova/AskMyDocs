@@ -116,10 +116,24 @@ class KbPromotionController extends Controller
         }
 
         try {
-            $relativePath = $writer->write($validated['project_key'], $parsed, $validated['markdown']);
+            $relativePath = $writer->write($parsed, $validated['markdown']);
         } catch (\RuntimeException $e) {
-            Log::error('KbPromotion: write failed', ['error' => $e->getMessage(), 'slug' => $parsed->slug]);
-            return response()->json(['error' => 'write_failed', 'message' => $e->getMessage()], 500);
+            // Never leak the disk name / full storage path to API clients —
+            // that would expose internal layout. Log the full exception
+            // server-side and surface a correlation id the client can
+            // report to support without revealing infrastructure details.
+            $correlationId = bin2hex(random_bytes(8));
+            Log::error('KbPromotion: write failed', [
+                'correlation_id' => $correlationId,
+                'project_key' => $validated['project_key'],
+                'slug' => $parsed->slug,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'error' => 'write_failed',
+                'message' => 'Failed to write promoted document.',
+                'correlation_id' => $correlationId,
+            ], 500);
         }
 
         $title = $validated['title'] ?? ($this->firstHeading($parsed->body) ?? ((string) $parsed->slug));

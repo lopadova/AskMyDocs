@@ -222,7 +222,14 @@ MD);
     {
         $path = tempnam(sys_get_temp_dir(), 'kb_promote_') . '.md';
         file_put_contents($path, $content);
-        $this->beforeApplicationDestroyed(fn () => @unlink($path));
+        // Cleanup: avoid `@unlink` (repo rule R7: no @-silenced errors).
+        // Skip the delete if the file is already gone; otherwise call
+        // unlink() and ignore its return value explicitly.
+        $this->beforeApplicationDestroyed(function () use ($path): void {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        });
         return $path;
     }
 }
