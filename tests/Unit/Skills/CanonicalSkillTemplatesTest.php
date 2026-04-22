@@ -123,12 +123,24 @@ class CanonicalSkillTemplatesTest extends TestCase
     {
         $path = self::SKILLS_ROOT . '/' . $relativePath;
         $content = (string) file_get_contents($path);
+
+        // CRLF-tolerant regex — git's autocrlf setting on Windows can turn
+        // these SKILL.md files into CRLF on checkout. The runtime parser
+        // (CanonicalParser::FRONTMATTER_RE) is already `\r?\n`, so we match it here.
+        $pattern = '/\A---\r?\n(.+?)\r?\n---\r?\n/s';
+
         $this->assertMatchesRegularExpression(
-            '/\A---\n(.+?)\n---\n/s',
+            $pattern,
             $content,
             "[$relativePath] missing YAML frontmatter block"
         );
-        preg_match('/\A---\n(.+?)\n---\n/s', $content, $m);
-        return Yaml::parse($m[1]);
+        preg_match($pattern, $content, $m);
+
+        $parsed = Yaml::parse($m[1]);
+        if (! is_array($parsed)) {
+            $type = get_debug_type($parsed);
+            $this->fail("[$relativePath] YAML frontmatter must parse to a mapping/array, got {$type}.");
+        }
+        return $parsed;
     }
 }

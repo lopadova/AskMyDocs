@@ -6,12 +6,15 @@ description: >
   RAG store stays in sync with the repository. Authenticates with a Sanctum
   bearer token.
 
-  Canonical-aware (v2): logs a per-category breakdown when files live under
-  the conventional canonical folders (decisions/, modules/, runbooks/,
-  standards/, incidents/, integrations/, domain-concepts/, rejected/).
+  Canonical-aware (v2): logs a per-category breakdown for the 9 canonical
+  types:
+    - 8 folder-based: decisions/, modules/, runbooks/, standards/,
+      incidents/, integrations/, domain-concepts/, rejected/
+    - 1 filename-based: project-index (matches project-index.md and
+      *-index.md, since its path convention is "." — the KB root)
   The action does NOT parse YAML frontmatter — that's the server's job via
-  CanonicalParser — but surfacing the folder breakdown at CI time gives
-  operators immediate visibility into what kind of content is flowing.
+  CanonicalParser — but surfacing the breakdown at CI time gives operators
+  immediate visibility into what kind of content is flowing.
 
 inputs:
   server_url:
@@ -143,17 +146,27 @@ runs:
 
         canonical_type_for() {
           local f="$1"
+          # Folder-based conventions (8 of the 9 canonical types).
           case "$f" in
-            */decisions/*)         echo "decision" ;;
-            */modules/*)           echo "module-kb" ;;
-            */runbooks/*)          echo "runbook" ;;
-            */standards/*)         echo "standard" ;;
-            */incidents/*)         echo "incident" ;;
-            */integrations/*)      echo "integration" ;;
-            */domain-concepts/*)   echo "domain-concept" ;;
-            */rejected/*)          echo "rejected-approach" ;;
-            *)                     echo "plain" ;;
+            */decisions/*)         echo "decision"; return ;;
+            */modules/*)           echo "module-kb"; return ;;
+            */runbooks/*)          echo "runbook"; return ;;
+            */standards/*)         echo "standard"; return ;;
+            */incidents/*)         echo "incident"; return ;;
+            */integrations/*)      echo "integration"; return ;;
+            */domain-concepts/*)   echo "domain-concept"; return ;;
+            */rejected/*)          echo "rejected-approach"; return ;;
           esac
+          # Filename-based convention for the 9th canonical type:
+          # project-index lives at the KB root (path_convention = "."),
+          # so there is no folder pattern. We recognize it by filename —
+          # `project-index.md` or any `*-index.md` (e.g. `ecommerce-index.md`)
+          # — so it still shows up in the breakdown without frontmatter parsing.
+          case "$(basename "$f")" in
+            project-index.md)      echo "project-index"; return ;;
+            *-index.md)            echo "project-index"; return ;;
+          esac
+          echo "plain"
         }
 
         breakdown() {

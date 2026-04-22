@@ -53,24 +53,50 @@ class IngestToAskMyDocsActionTest extends TestCase
         );
     }
 
-    public function test_categorizer_recognizes_all_9_canonical_folders(): void
+    public function test_categorizer_recognizes_all_8_folder_based_canonical_patterns(): void
     {
         foreach (['decisions/', 'modules/', 'runbooks/', 'standards/', 'incidents/', 'integrations/', 'domain-concepts/', 'rejected/'] as $folder) {
             $this->assertStringContainsString(
                 $folder,
                 $this->content,
-                "Categorizer must recognize folder pattern: {$folder}"
+                "Categorizer must recognize folder-based pattern: {$folder}"
             );
         }
     }
 
-    public function test_categorizer_maps_folders_to_canonical_type_strings(): void
+    public function test_categorizer_recognizes_the_project_index_filename_convention(): void
+    {
+        // 9th canonical type — lives at path convention '.' (KB root) so no
+        // folder pattern. Detected by filename instead.
+        $this->assertStringContainsString(
+            'project-index.md)',
+            $this->content,
+            'Categorizer must match exact filename project-index.md'
+        );
+        $this->assertStringContainsString(
+            '*-index.md)',
+            $this->content,
+            'Categorizer must match *-index.md (e.g. ecommerce-index.md) for multi-project KBs'
+        );
+    }
+
+    public function test_categorizer_emits_all_9_canonical_type_strings(): void
     {
         // The case statement must emit the exact enum-value strings used by
         // CanonicalType / config('kb.promotion.path_conventions'). A drift
         // here (e.g. labelling "decisions/" as "adr" instead of "decision")
         // would break the operator's mental model vs the server log.
-        foreach (['decision', 'module-kb', 'runbook', 'standard', 'incident', 'integration', 'domain-concept', 'rejected-approach'] as $type) {
+        foreach ([
+            'decision',
+            'module-kb',
+            'runbook',
+            'standard',
+            'incident',
+            'integration',
+            'domain-concept',
+            'rejected-approach',
+            'project-index',
+        ] as $type) {
             $this->assertStringContainsString(
                 'echo "' . $type . '"',
                 $this->content,
