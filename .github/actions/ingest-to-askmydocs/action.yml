@@ -1,10 +1,17 @@
-name: Ingest docs to AskMyDocs
+name: Ingest docs to AskMyDocs (v2)
 description: >
   Detects markdown files changed (and removed) by the current push, or every
   file when full_sync=true, and POSTs them to an AskMyDocs server for queued
   RAG ingestion. Removed files are sent to DELETE /api/kb/documents so the
   RAG store stays in sync with the repository. Authenticates with a Sanctum
   bearer token.
+
+  Canonical-aware (v2): logs a per-category breakdown when files live under
+  the conventional canonical folders (decisions/, modules/, runbooks/,
+  standards/, incidents/, integrations/, domain-concepts/, rejected/).
+  The action does NOT parse YAML frontmatter — that's the server's job via
+  CanonicalParser — but surfacing the folder breakdown at CI time gives
+  operators immediate visibility into what kind of content is flowing.
 
 inputs:
   server_url:
@@ -121,6 +128,47 @@ runs:
 
         echo "count=${#FILES[@]}" >> "$GITHUB_OUTPUT"
         echo "deleted_count=${#DELETED[@]}" >> "$GITHUB_OUTPUT"
+
+    - name: Categorize canonical content (observability only)
+      if: steps.collect.outputs.count != '0' || steps.collect.outputs.deleted_count != '0'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Observability-only step. We log the per-canonical-type breakdown
+        # for the changed + deleted file sets so operators can see what
+        # kind of content the action is shipping (decisions vs runbooks
+        # vs rejected vs …) without parsing frontmatter client-side.
+        # The server does the real canonical resolution via CanonicalParser.
+
+        canonical_type_for() {
+          local f="$1"
+          case "$f" in
+            */decisions/*)         echo "decision" ;;
+            */modules/*)           echo "module-kb" ;;
+            */runbooks/*)          echo "runbook" ;;
+            */standards/*)         echo "standard" ;;
+            */incidents/*)         echo "incident" ;;
+            */integrations/*)      echo "integration" ;;
+            */domain-concepts/*)   echo "domain-concept" ;;
+            */rejected/*)          echo "rejected-approach" ;;
+            *)                     echo "plain" ;;
+          esac
+        }
+
+        breakdown() {
+          local file="$1"
+          local label="$2"
+          [ -s "$file" ] || return 0
+          echo "$label breakdown:"
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            canonical_type_for "$line"
+          done < "$file" | sort | uniq -c | awk '{printf "  %4d  %s\n", $1, $2}'
+        }
+
+        breakdown /tmp/askmydocs-files.txt "Canonical categories for changed/added"
+        breakdown /tmp/askmydocs-deletions.txt "Canonical categories for deletions"
 
     - name: POST documents to AskMyDocs
       if: steps.collect.outputs.count != '0'
