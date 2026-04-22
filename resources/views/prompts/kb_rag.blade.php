@@ -62,7 +62,7 @@ Project: {{ $projectKey ?? 'all' }}
 
 @foreach ($rejected as $r)
 - **[{{ data_get($r, 'document.slug', 'unknown') }}]** {{ data_get($r, 'document.title', 'Rejected approach') }}
-  Reason: {{ data_get($r, 'document.rejected_summary') ?? Str::limit(data_get($r, 'chunk_text', ''), 240) }}
+  Reason: {{ data_get($r, 'document.rejected_summary') ?? \Illuminate\Support\Str::limit(data_get($r, 'chunk_text', ''), 240) }}
 @endforeach
 
 @endif

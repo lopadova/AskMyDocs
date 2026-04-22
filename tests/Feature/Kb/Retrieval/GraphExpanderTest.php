@@ -158,6 +158,32 @@ class GraphExpanderTest extends TestCase
         $this->assertSame(2, $this->expander()->expand($seed, 'acme')->count());
     }
 
+    public function test_expansion_is_bounded_to_constant_queries_regardless_of_neighbour_count(): void
+    {
+        // Regression for Copilot PR #11 comment: pre-fix, pickRepresentativeChunk
+        // ran one query per target → N+1. This asserts we scale linearly in
+        // queries-per-request: 1 edge query + 1 doc query + 1 batch chunk query,
+        // independent of the neighbour fan-out.
+        $decision = $this->seedCanonicalDoc('acme', 'dec-a', 'decision', 'A');
+        foreach (range(1, 8) as $i) {
+            $mod = $this->seedCanonicalDoc('acme', "m$i", 'module-kb', "M$i");
+            $this->seedChunk($mod, 0, "body $i");
+            $this->wireGraph('acme', 'dec-a', $decision->doc_id, "m$i", 'decision_for', 1.0 - $i * 0.01);
+        }
+        $seed = collect([$this->seedSearchResult($decision, 'd')]);
+
+        \DB::enableQueryLog();
+        $expanded = $this->expander()->expand($seed, 'acme');
+        $queryCount = count(\DB::getQueryLog());
+        \DB::disableQueryLog();
+
+        $this->assertSame(8, $expanded->count());
+        // Budget: 1 (edges) + 1 (target docs) + 1 (batch chunks) = 3 queries.
+        // Leave a small buffer for Laravel internals; the key is it must
+        // not scale with neighbour count. Pre-fix this would be ~10.
+        $this->assertLessThanOrEqual(4, $queryCount, "Expected ≤4 queries, got $queryCount (N+1 regression).");
+    }
+
     public function test_multi_tenant_isolation_on_expansion(): void
     {
         // Same slug in both tenants, each with its own edge target. Seed

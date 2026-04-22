@@ -8,6 +8,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Anti-repetition memory: surface rejected-approach documents that
@@ -78,12 +79,26 @@ class RejectedApproachInjector
     // -----------------------------------------------------------------
 
     /**
+     * Load candidate chunks for rejected-approach injection.
+     *
+     * Performance-critical: runs on every chat request. To keep it bounded:
+     *   - `chunk_order = 0` restricts to the **summary chunk** of each
+     *     rejected-approach document. The summary/reason in a rejected-
+     *     approach doc is conventionally at the head, and rejected docs
+     *     are usually short — loading all chunks would be wasteful and
+     *     unbounded as the tenant grows.
+     *   - `project_key` is filtered on `knowledge_chunks` directly (not
+     *     just via `whereHas`) so the chunks-table index on `project_key`
+     *     is used and the full index scan is avoided.
+     *
      * @return Collection<int, KnowledgeChunk>
      */
     private function loadCandidateChunks(string $projectKey): Collection
     {
         return KnowledgeChunk::query()
             ->with('document')
+            ->where('project_key', $projectKey)
+            ->where('chunk_order', 0)
             ->whereHas('document', function ($query) use ($projectKey) {
                 $query->where('project_key', $projectKey)
                     ->where('is_canonical', true)
@@ -108,8 +123,10 @@ class RejectedApproachInjector
     // -----------------------------------------------------------------
 
     /**
-     * Groups chunks by document, keeps only the highest-similarity chunk
-     * per doc, filters by threshold, sorts by similarity desc.
+     * Compute similarity for each candidate, filter by threshold, sort by
+     * similarity desc. `loadCandidateChunks()` already returns ONE chunk
+     * per rejected-approach doc (the chunk_order=0 summary), so no
+     * per-doc deduplication is needed here.
      *
      * @param  Collection<int, KnowledgeChunk>  $candidates
      * @param  list<float>  $queryEmbedding
@@ -120,14 +137,13 @@ class RejectedApproachInjector
         array $queryEmbedding,
         float $threshold,
     ): Collection {
-        $bestByDoc = $this->pickBestChunkPerDocument($candidates, $queryEmbedding);
-
         $qualified = [];
-        foreach ($bestByDoc as $entry) {
-            if ($entry['similarity'] < $threshold) {
+        foreach ($candidates as $chunk) {
+            $similarity = $this->safeSimilarity($queryEmbedding, $chunk);
+            if ($similarity < $threshold) {
                 continue;
             }
-            $qualified[] = $entry;
+            $qualified[] = ['chunk' => $chunk, 'similarity' => $similarity];
         }
 
         usort($qualified, static fn ($a, $b) => $b['similarity'] <=> $a['similarity']);
@@ -136,26 +152,25 @@ class RejectedApproachInjector
     }
 
     /**
-     * @param  Collection<int, KnowledgeChunk>  $candidates
+     * Compute similarity for a single chunk without letting a corrupted
+     * embedding (wrong dimension, typically after a provider switch) crash
+     * the whole pick() call. Logs the mismatch and returns 0 so the chunk
+     * is simply excluded from the result set.
+     *
      * @param  list<float>  $queryEmbedding
-     * @return list<array{chunk: KnowledgeChunk, similarity: float}>
      */
-    private function pickBestChunkPerDocument(Collection $candidates, array $queryEmbedding): array
+    private function safeSimilarity(array $queryEmbedding, KnowledgeChunk $chunk): float
     {
-        $bestByDoc = [];
-        foreach ($candidates as $chunk) {
-            $similarity = $this->cosine->similarity(
-                $queryEmbedding,
-                $this->chunkEmbedding($chunk),
-            );
-            $docId = (int) $chunk->knowledge_document_id;
-            $existing = $bestByDoc[$docId] ?? null;
-            if ($existing !== null && $existing['similarity'] >= $similarity) {
-                continue;
-            }
-            $bestByDoc[$docId] = ['chunk' => $chunk, 'similarity' => $similarity];
+        try {
+            return $this->cosine->similarity($queryEmbedding, $this->chunkEmbedding($chunk));
+        } catch (\InvalidArgumentException $e) {
+            Log::warning('RejectedApproachInjector: skipping chunk with dimension mismatch', [
+                'chunk_id' => $chunk->id,
+                'document_id' => $chunk->knowledge_document_id,
+                'error' => $e->getMessage(),
+            ]);
+            return 0.0;
         }
-        return array_values($bestByDoc);
     }
 
     /**

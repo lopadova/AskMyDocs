@@ -215,6 +215,8 @@ class GraphExpander
      */
     private function buildExpandedChunks(Collection $edges, Collection $targetDocsBySlug): Collection
     {
+        $chunksByDocId = $this->batchFetchRepresentativeChunks($targetDocsBySlug->pluck('id')->all());
+
         $emitted = [];
         $out = [];
         foreach ($edges as $edge) {
@@ -225,7 +227,7 @@ class GraphExpander
             if ($targetDoc === null) {
                 continue;
             }
-            $chunk = $this->pickRepresentativeChunk($targetDoc);
+            $chunk = $chunksByDocId[$targetDoc->id] ?? null;
             if ($chunk === null) {
                 continue;
             }
@@ -235,15 +237,35 @@ class GraphExpander
         return collect($out);
     }
 
-    private function pickRepresentativeChunk(KnowledgeDocument $doc): ?KnowledgeChunk
+    /**
+     * Fetch the representative chunk (lowest chunk_order) for each target
+     * document in a SINGLE query to avoid the N+1 pattern that one per-edge
+     * `pickRepresentativeChunk()` call would produce. With
+     * `kb.graph.expansion_max_nodes` at its default of 20 this saves up to
+     * 19 queries per chat request.
+     *
+     * The query selects all chunks for the target docs, ordered by
+     * (document_id, chunk_order). The PHP `groupBy(document_id)->first()`
+     * then keeps only the lowest-ordered chunk per doc — deterministic and
+     * index-friendly (the existing `idx_kb_chunks_doc_order` covers both
+     * the filter and the sort).
+     *
+     * @param  list<int>  $docIds
+     * @return array<int, KnowledgeChunk>  keyed by knowledge_document_id
+     */
+    private function batchFetchRepresentativeChunks(array $docIds): array
     {
-        // Heuristic: the first chunk (chunk_order=0) is almost always the
-        // document's summary/intro in a section-aware chunking strategy.
-        // Cheap (indexed), deterministic, and good enough for 1-hop expansion
-        // — a future iteration may re-score against the query embedding.
-        return KnowledgeChunk::where('knowledge_document_id', $doc->id)
+        if ($docIds === []) {
+            return [];
+        }
+        return KnowledgeChunk::query()
+            ->whereIn('knowledge_document_id', $docIds)
+            ->orderBy('knowledge_document_id')
             ->orderBy('chunk_order')
-            ->first();
+            ->get()
+            ->groupBy('knowledge_document_id')
+            ->map(static fn ($group) => $group->first())
+            ->all();
     }
 
     /**

@@ -121,6 +121,54 @@ class RejectedApproachInjectorTest extends TestCase
         $this->assertSame('rej-accepted', $result->first()['document']['slug']);
     }
 
+    public function test_load_is_bounded_to_summary_chunks_only(): void
+    {
+        // Regression for Copilot PR #11 comment: loadCandidateChunks used to
+        // do an unbounded ->get() of every chunk of every rejected doc.
+        // With the chunk_order=0 restriction, an N-chunks-per-doc scenario
+        // loads exactly N docs (one summary chunk each), not N×chunks.
+        $doc = $this->seedRejected('acme', 'rej-big', 'summary chunk');
+        // Add 40 non-summary chunks — they must NOT appear in candidates.
+        for ($i = 1; $i <= 40; $i++) {
+            $this->seedChunk($doc, $i, "body part $i");
+        }
+
+        $result = $this->injector([0.1, 0.2, 0.3])->pick('q', 'acme');
+
+        $this->assertSame(1, $result->count());
+        $this->assertSame('summary chunk', $result->first()['chunk_text']);
+    }
+
+    public function test_chunk_with_mismatched_embedding_dimensions_is_skipped_gracefully(): void
+    {
+        // Regression for Copilot PR #11 comment (CosineCalculator).
+        // Simulates a bad embedding dimension on one rejected chunk.
+        // The injector must skip it (log) and keep processing other docs.
+        $bad = $this->seedRejected('acme', 'rej-bad', 'bad body');
+        $good = $this->seedRejected('acme', 'rej-good', 'good body');
+        // Overwrite one chunk's embedding to a different dimension.
+        $bad->chunks()->first()->update(['embedding' => [0.1]]);  // 1 dim vs 3-dim query
+
+        // Real CosineCalculator → will throw on the bad chunk internally.
+        $cache = Mockery::mock(EmbeddingCacheService::class);
+        $cache->shouldReceive('generate')->andReturn(new \App\Ai\EmbeddingsResponse(
+            embeddings: [[0.1, 0.2, 0.3]],
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+        ));
+        $injector = new \App\Services\Kb\Retrieval\RejectedApproachInjector(
+            $cache,
+            new \App\Services\Kb\Retrieval\CosineCalculator(),
+        );
+
+        // Must not throw; good doc still surfaces.
+        $result = $injector->pick('q', 'acme');
+
+        $slugs = $result->pluck('document.slug')->all();
+        $this->assertContains('rej-good', $slugs);
+        $this->assertNotContains('rej-bad', $slugs);
+    }
+
     public function test_multi_tenant_isolation(): void
     {
         $this->seedRejected('acme', 'rej-x', 'acme rejected body');
