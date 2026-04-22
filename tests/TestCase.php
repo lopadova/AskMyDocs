@@ -28,6 +28,11 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
         $app['config']->set('queue.default', 'sync');
 
+        // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)
+        // resolvable from Orchestra Testbench. Without this, any service that
+        // renders a view under tests throws "View [...] not found".
+        $app['config']->set('view.paths', [realpath(__DIR__.'/../resources/views')]);
+
         $app['config']->set('auth.providers.users.model', \App\Models\User::class);
     }
 
