@@ -14,54 +14,29 @@ use Symfony\Component\Yaml\Yaml;
  * validates the extracted fields against the canonical schema.
  *
  * Contract:
- *   parse()    → null  when no `---\n...\n---` frontmatter block at the top
- *              → DTO   otherwise (even if YAML is malformed — parseErrors
- *                      populated, so the caller can log)
+ *   parse()    → null   when no `---\n...\n---` frontmatter block at the top
+ *              → DTO    otherwise (even if YAML is malformed — parseErrors
+ *                       populated, so the caller can log)
  *   validate() → ValidationResult with per-field error lists
  *
- * The two methods are separate so the caller can distinguish
- * "not a canonical doc" (null parse result) from "canonical intent, invalid"
- * (DTO with errors). DocumentIngestor uses this distinction to degrade
- * gracefully (R4): invalid frontmatter does NOT fail ingestion — the doc is
- * ingested as non-canonical and the validation errors are logged.
+ * DocumentIngestor uses the parse/validate split to degrade gracefully:
+ * invalid frontmatter does NOT fail ingestion — the doc is ingested as
+ * non-canonical and the validation errors are logged (R4).
  */
 class CanonicalParser
 {
-    /**
-     * Slug shape — mirrored from {@see WikilinkExtractor::SLUG_RE}. Kept in
-     * sync deliberately: wikilink targets and frontmatter slugs share the
-     * same namespace.
-     */
     private const SLUG_RE = '/^[a-z0-9][a-z0-9\-]*$/';
-
-    /**
-     * Frontmatter block detection — must begin with `---` on line 1 and
-     * close with another `---` on its own line. Captures inner YAML and
-     * trailing body.
-     */
     private const FRONTMATTER_RE = '/\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\z/s';
+    private const WIKILINK_WRAPPER_RE = '/^\[\[([^\]]+)\]\]$/';
 
     public function parse(string $markdown): ?CanonicalParsedDocument
     {
-        if (! preg_match(self::FRONTMATTER_RE, $markdown, $m)) {
+        if (preg_match(self::FRONTMATTER_RE, $markdown, $matches) !== 1) {
             return null;
         }
 
-        [$yamlRaw, $bodyRaw] = [$m[1], $m[2]];
-        $body = ltrim($bodyRaw, "\r\n");
-
-        $frontmatter = [];
-        $parseErrors = [];
-        try {
-            $parsed = Yaml::parse($yamlRaw);
-            if (is_array($parsed)) {
-                $frontmatter = $parsed;
-            } else {
-                $parseErrors[] = 'Frontmatter YAML did not decode to a map.';
-            }
-        } catch (ParseException $e) {
-            $parseErrors[] = 'YAML parse error: ' . trim($e->getMessage());
-        }
+        [$frontmatter, $parseErrors] = $this->decodeYaml($matches[1]);
+        $body = ltrim($matches[2], "\r\n");
 
         return new CanonicalParsedDocument(
             frontmatter: $frontmatter,
@@ -88,59 +63,129 @@ class CanonicalParser
         if ($doc->parseErrors !== []) {
             $errors['frontmatter'] = $doc->parseErrors;
         }
+        $errors = array_merge_recursive($errors, $this->validateSlug($doc));
+        $errors = array_merge_recursive($errors, $this->validateType($doc));
+        $errors = array_merge_recursive($errors, $this->validateStatus($doc));
+        $errors = array_merge_recursive($errors, $this->validateRetrievalPriority($doc));
 
-        if ($doc->slug === null || $doc->slug === '') {
-            $errors['slug'][] = 'Missing required field `slug`.';
-        } elseif (preg_match(self::SLUG_RE, $doc->slug) !== 1) {
-            $errors['slug'][] = "Slug `{$doc->slug}` does not match /[a-z0-9][a-z0-9-]*/.";
+        if ($errors === []) {
+            return ValidationResult::valid();
         }
-
-        if ($doc->type === null) {
-            $errors['type'][] = 'Missing or invalid `type`. Must be one of the 9 canonical types.';
-        }
-
-        if ($doc->status === null) {
-            $errors['status'][] = 'Missing or invalid `status`. Must be one of draft/review/accepted/superseded/deprecated/archived.';
-        }
-
-        if ($doc->retrievalPriority < 0 || $doc->retrievalPriority > 100) {
-            $errors['retrieval_priority'][] = "retrieval_priority must be in [0, 100]; got {$doc->retrievalPriority}.";
-        }
-
-        return $errors === [] ? ValidationResult::valid() : ValidationResult::invalid($errors);
+        return ValidationResult::invalid($errors);
     }
 
-    // ---------------------------------------------------------------
-    // helpers
-    // ---------------------------------------------------------------
+    // -----------------------------------------------------------------
+    // YAML decoding
+    // -----------------------------------------------------------------
 
+    /**
+     * @return array{0: array<string, mixed>, 1: list<string>}
+     */
+    private function decodeYaml(string $yaml): array
+    {
+        try {
+            $parsed = Yaml::parse($yaml);
+        } catch (ParseException $e) {
+            return [[], ['YAML parse error: ' . trim($e->getMessage())]];
+        }
+
+        if (! is_array($parsed)) {
+            return [[], ['Frontmatter YAML did not decode to a map.']];
+        }
+        return [$parsed, []];
+    }
+
+    // -----------------------------------------------------------------
+    // Per-field validators (each returns ['field' => ['error', ...]] or [])
+    // -----------------------------------------------------------------
+
+    /** @return array<string, list<string>> */
+    private function validateSlug(CanonicalParsedDocument $doc): array
+    {
+        if ($doc->slug === null || $doc->slug === '') {
+            return ['slug' => ['Missing required field `slug`.']];
+        }
+        if (preg_match(self::SLUG_RE, $doc->slug) !== 1) {
+            return ['slug' => ["Slug `{$doc->slug}` does not match /[a-z0-9][a-z0-9-]*/."]];
+        }
+        return [];
+    }
+
+    /** @return array<string, list<string>> */
+    private function validateType(CanonicalParsedDocument $doc): array
+    {
+        if ($doc->type === null) {
+            return ['type' => ['Missing or invalid `type`. Must be one of the 9 canonical types.']];
+        }
+        return [];
+    }
+
+    /** @return array<string, list<string>> */
+    private function validateStatus(CanonicalParsedDocument $doc): array
+    {
+        if ($doc->status === null) {
+            return ['status' => ['Missing or invalid `status`. Must be one of draft/review/accepted/superseded/deprecated/archived.']];
+        }
+        return [];
+    }
+
+    /** @return array<string, list<string>> */
+    private function validateRetrievalPriority(CanonicalParsedDocument $doc): array
+    {
+        if ($doc->retrievalPriority < 0 || $doc->retrievalPriority > 100) {
+            return ['retrieval_priority' => ["retrieval_priority must be in [0, 100]; got {$doc->retrievalPriority}."]];
+        }
+        return [];
+    }
+
+    // -----------------------------------------------------------------
+    // Frontmatter field resolution helpers
+    // -----------------------------------------------------------------
+
+    /** @param array<string, mixed> $frontmatter */
     private function resolveType(array $frontmatter): ?CanonicalType
     {
         $raw = $frontmatter['type'] ?? null;
-        return is_string($raw) ? CanonicalType::tryFrom($raw) : null;
+        if (! is_string($raw)) {
+            return null;
+        }
+        return CanonicalType::tryFrom($raw);
     }
 
+    /** @param array<string, mixed> $frontmatter */
     private function resolveStatus(array $frontmatter): ?CanonicalStatus
     {
         $raw = $frontmatter['status'] ?? null;
-        return is_string($raw) ? CanonicalStatus::tryFrom($raw) : null;
+        if (! is_string($raw)) {
+            return null;
+        }
+        return CanonicalStatus::tryFrom($raw);
     }
 
+    /** @param array<string, mixed> $frontmatter */
     private function stringOrNull(array $frontmatter, string $key): ?string
     {
         $v = $frontmatter[$key] ?? null;
-        return is_string($v) && $v !== '' ? $v : null;
+        if (! is_string($v) || $v === '') {
+            return null;
+        }
+        return $v;
     }
 
+    /** @param array<string, mixed> $frontmatter */
     private function resolveInt(array $frontmatter, string $key, int $default): int
     {
         $v = $frontmatter[$key] ?? null;
-        return is_int($v) ? $v : (is_numeric($v) ? (int) $v : $default);
+        if (is_int($v)) {
+            return $v;
+        }
+        if (is_numeric($v)) {
+            return (int) $v;
+        }
+        return $default;
     }
 
     /**
-     * Normalize a YAML list-of-strings, dropping non-strings and empties.
-     *
      * @param  mixed  $input
      * @return list<string>
      */
@@ -151,23 +196,19 @@ class CanonicalParser
         }
         $out = [];
         foreach ($input as $v) {
-            if (is_string($v) && $v !== '') {
-                $out[] = $v;
+            if (! is_string($v) || $v === '') {
+                continue;
             }
+            $out[] = $v;
         }
         return $out;
     }
 
     /**
-     * Extract slugs from a frontmatter list that may contain:
-     *   - plain strings: "module-cache"
-     *   - wikilink strings: "[[module-cache]]"
-     *   - YAML-unquoted wikilinks which parse to nested arrays: [[module-cache]]
-     *     → YAML sees this as array(array('module-cache'))
+     * Extract slugs from a YAML list that may contain plain strings,
+     * "[[slug]]" wrapped strings, or YAML-unquoted [[slug]] nested arrays.
      *
-     * Any string matching the wikilink shape `[[slug]]` is unwrapped; the
-     * resulting slug must match SLUG_RE or it's silently dropped.
-     *
+     * @param  array<string, mixed>  $frontmatter
      * @return list<string>
      */
     private function extractSlugList(array $frontmatter, string $key): array
@@ -176,16 +217,18 @@ class CanonicalParser
         if (! is_array($raw)) {
             return [];
         }
-
-        $out = [];
         $seen = [];
-
+        $out = [];
         foreach ($raw as $entry) {
             $slug = $this->unwrapSlug($entry);
-            if ($slug !== null && ! isset($seen[$slug])) {
-                $seen[$slug] = true;
-                $out[] = $slug;
+            if ($slug === null) {
+                continue;
             }
+            if (isset($seen[$slug])) {
+                continue;
+            }
+            $seen[$slug] = true;
+            $out[] = $slug;
         }
         return $out;
     }
@@ -193,25 +236,60 @@ class CanonicalParser
     private function unwrapSlug(mixed $entry): ?string
     {
         if (is_string($entry)) {
-            $s = trim($entry);
-            // strip [[...]] wrapper if present
-            if (preg_match('/^\[\[([^\]]+)\]\]$/', $s, $m)) {
-                $s = trim($m[1]);
-            }
-            return preg_match(self::SLUG_RE, $s) === 1 ? $s : null;
+            return $this->unwrapSlugFromString($entry);
         }
-        // YAML `[[foo]]` unquoted → array<array<string>>
         if (is_array($entry)) {
-            foreach ($entry as $inner) {
-                if (is_array($inner)) {
-                    foreach ($inner as $candidate) {
-                        if (is_string($candidate) && preg_match(self::SLUG_RE, trim($candidate)) === 1) {
-                            return trim($candidate);
-                        }
-                    }
-                } elseif (is_string($inner) && preg_match(self::SLUG_RE, trim($inner)) === 1) {
-                    return trim($inner);
-                }
+            return $this->unwrapSlugFromNestedArray($entry);
+        }
+        return null;
+    }
+
+    private function unwrapSlugFromString(string $s): ?string
+    {
+        $trimmed = trim($s);
+        if (preg_match(self::WIKILINK_WRAPPER_RE, $trimmed, $m) === 1) {
+            $trimmed = trim($m[1]);
+        }
+        if (preg_match(self::SLUG_RE, $trimmed) !== 1) {
+            return null;
+        }
+        return $trimmed;
+    }
+
+    /**
+     * YAML parses `[[foo]]` unquoted as a nested array structure. Flatten
+     * one level and look for a slug-shaped string anywhere inside.
+     */
+    private function unwrapSlugFromNestedArray(array $entry): ?string
+    {
+        foreach ($entry as $inner) {
+            $slug = $this->firstSlugInValue($inner);
+            if ($slug !== null) {
+                return $slug;
+            }
+        }
+        return null;
+    }
+
+    private function firstSlugInValue(mixed $value): ?string
+    {
+        if (is_string($value)) {
+            $trimmed = trim($value);
+            if (preg_match(self::SLUG_RE, $trimmed) === 1) {
+                return $trimmed;
+            }
+            return null;
+        }
+        if (! is_array($value)) {
+            return null;
+        }
+        foreach ($value as $deeper) {
+            if (! is_string($deeper)) {
+                continue;
+            }
+            $trimmed = trim($deeper);
+            if (preg_match(self::SLUG_RE, $trimmed) === 1) {
+                return $trimmed;
             }
         }
         return null;
