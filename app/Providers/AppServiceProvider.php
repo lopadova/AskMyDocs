@@ -11,6 +11,7 @@ use App\Console\Commands\KbValidateCanonicalCommand;
 use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
+use App\Console\Commands\PruneOrphanFilesCommand;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -27,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
                 PruneEmbeddingCacheCommand::class,
                 PruneChatLogsCommand::class,
                 PruneDeletedDocumentsCommand::class,
+                PruneOrphanFilesCommand::class,
                 KbIngestCommand::class,
                 KbIngestFolderCommand::class,
                 KbDeleteCommand::class,
