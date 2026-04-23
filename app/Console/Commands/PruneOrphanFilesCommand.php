@@ -33,12 +33,15 @@ class PruneOrphanFilesCommand extends Command
     public function handle(): int
     {
         $disk = $this->resolveDisk();
-        $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
+        $prefix = $this->normalizePrefix((string) config('kb.sources.path_prefix', ''));
         $dryRun = (bool) $this->option('dry-run');
 
         $storage = Storage::disk($disk);
 
-        $allFiles = $storage->allFiles();
+        // Scope the listing to the configured prefix so we never report or
+        // delete files outside the KB subtree (R8). On bucket-backed disks
+        // this is also a large performance win (avoid a full bucket walk).
+        $allFiles = $prefix === '' ? $storage->allFiles() : $storage->allFiles($prefix);
         $markdownFiles = $this->filterMarkdown($allFiles);
 
         if ($markdownFiles === []) {
@@ -210,6 +213,25 @@ class PruneOrphanFilesCommand extends Command
         }
 
         return $path;
+    }
+
+    /**
+     * Normalise the KB_PATH_PREFIX with the same slash rules applied to the
+     * paths we compare against (R8, R1): convert backslashes, collapse
+     * duplicate slashes, trim leading/trailing slashes. Empty prefix is
+     * preserved (meaning "scan the whole disk").
+     *
+     * Without this, a Windows-style prefix such as `kb\\proj` would never
+     * match paths normalised via `KbPath::normalize()` and the prefix-strip
+     * step would silently leak — producing false positives in the orphan
+     * list and, in non-dry-run mode, unwanted deletions.
+     */
+    private function normalizePrefix(string $prefix): string
+    {
+        $prefix = str_replace('\\', '/', $prefix);
+        $prefix = preg_replace('#/+#', '/', $prefix) ?? $prefix;
+
+        return trim($prefix, '/');
     }
 
     private function applyPrefix(string $relative, string $prefix): string

@@ -157,4 +157,62 @@ class PruneOrphanFilesCommandTest extends TestCase
         Storage::disk('kb-hr')->assertMissing('docs/hr-orphan.md');
         Storage::disk('kb')->assertExists('docs/decoy.md');
     }
+
+    /**
+     * R8: when KB_PATH_PREFIX is configured the command must scope its
+     * listing to that subtree. Files outside the prefix are never scanned,
+     * never reported as orphans, and never deleted — even if they have no
+     * DB row. This protects shared buckets that host more than just the KB.
+     */
+    public function test_path_prefix_scopes_listing_and_orphan_detection(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.path_prefix', 'kb/proj');
+
+        // Inside the prefix: one tracked file + one orphan.
+        Storage::disk('kb')->put('kb/proj/docs/kept.md', 'k');
+        Storage::disk('kb')->put('kb/proj/docs/orphan.md', 'o');
+
+        // Outside the prefix: unrelated markdown files without DB rows.
+        // They must NOT be reported as orphans and NOT be deleted.
+        Storage::disk('kb')->put('other/outside.md', 'x');
+        Storage::disk('kb')->put('outside-root.md', 'y');
+
+        // DocumentIngestor stores source_path without the prefix.
+        $this->seedDoc('docs/kept.md', 'hk');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('kb/proj/docs/kept.md');
+        Storage::disk('kb')->assertMissing('kb/proj/docs/orphan.md');
+        // Outside-prefix files remain untouched.
+        Storage::disk('kb')->assertExists('other/outside.md');
+        Storage::disk('kb')->assertExists('outside-root.md');
+    }
+
+    /**
+     * Windows operators sometimes set KB_PATH_PREFIX=kb\proj. The command
+     * must normalise backslashes before scoping the listing and stripping
+     * the prefix, otherwise prefix-strip silently leaks and every file
+     * looks like an orphan (potentially deleting the whole corpus).
+     */
+    public function test_windows_style_backslashes_in_prefix_are_normalized(): void
+    {
+        Storage::fake('kb');
+        config()->set('kb.sources.path_prefix', 'kb\\proj');
+
+        Storage::disk('kb')->put('kb/proj/docs/kept.md', 'k');
+        Storage::disk('kb')->put('kb/proj/docs/orphan.md', 'o');
+
+        $this->seedDoc('docs/kept.md', 'hk');
+
+        $this->artisan('kb:prune-orphan-files')
+            ->expectsOutputToContain('scanned=2 orphans=1 deleted=1 failed=0')
+            ->assertSuccessful();
+
+        Storage::disk('kb')->assertExists('kb/proj/docs/kept.md');
+        Storage::disk('kb')->assertMissing('kb/proj/docs/orphan.md');
+    }
 }
