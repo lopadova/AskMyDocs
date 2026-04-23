@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Console\Commands\AuthGrantCommand;
 use App\Console\Commands\KbDeleteCommand;
 use App\Console\Commands\KbIngestCommand;
 use App\Console\Commands\KbIngestFolderCommand;
@@ -52,6 +53,8 @@ class AppServiceProvider extends ServiceProvider
             KbPromoteCommand::class,
             KbValidateCanonicalCommand::class,
             KbRebuildGraphCommand::class,
+            // PR3 — RBAC
+            AuthGrantCommand::class,
         ]);
     }
 
