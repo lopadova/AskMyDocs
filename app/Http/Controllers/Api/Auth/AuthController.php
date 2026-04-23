@@ -73,6 +73,15 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        $projects = $user->projectMemberships()
+            ->get(['project_key', 'role', 'scope_allowlist'])
+            ->map(fn ($membership) => [
+                'project_key' => $membership->project_key,
+                'role' => $membership->role,
+                'scope' => $membership->scope_allowlist ?? [],
+            ])
+            ->values();
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
@@ -80,11 +89,9 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'email_verified_at' => $user->email_verified_at,
             ],
-            // PR3 will populate these from Spatie (HasRoles) + the
-            // project_memberships / knowledge_document_acl tables.
-            'roles' => [],
-            'permissions' => [],
-            'projects' => [],
+            'roles' => $user->getRoleNames(),
+            'permissions' => $user->getAllPermissions()->pluck('name'),
+            'projects' => $projects,
             'preferences' => [
                 'theme' => 'dark',
                 'density' => 'balanced',
