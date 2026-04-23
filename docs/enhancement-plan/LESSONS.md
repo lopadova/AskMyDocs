@@ -97,6 +97,97 @@
 
 ---
 
+## PR4 — Phase D (general-purpose agent, 2026-04-22)
+
+- **React 18.3.1 (not 19) is the right baseline today.** React 19 stable
+  is on npm, but the design reference bundle pins 18.3.1 via CDN and
+  TanStack Router/Query's peerDeps still list `react@^18` at the time of
+  this PR (`@tanstack/react-router@1.168.23`, `@tanstack/react-query@5.x`).
+  Landing on 19 now means chasing peer-warnings and a future ReactDOM
+  API rewrite in the chat port. PR5 can re-evaluate; for now 18.3.1
+  keeps the dependency graph clean.
+- **Root-level `vite.config.ts` is mandatory for `laravel-vite-plugin`.**
+  The plugin resolves `public/build/` relative to the Laravel project
+  root, so the config must live at repo root, not inside `frontend/`.
+  The `frontend/` directory is purely a logical source folder —
+  `package.json`, `vite.config.ts`, `tailwind.config.ts`, `postcss.config.js`,
+  and `vitest.config.ts` all sit at root. Input points at
+  `frontend/src/main.tsx`.
+- **Two vitest configs coexist.** The legacy `vitest.config.mjs` runs
+  the existing `tests/js/*.spec.mjs` suite (Node env, MJS modules,
+  `resources/js/rich-content.mjs`). The new `vitest.config.ts` runs
+  React specs (jsdom env, TSX). Exposed via `npm run test` (new) and
+  `npm run test:legacy` (old) — CI runs both via `npm run test:all`.
+  Do NOT remove the legacy one; PR5 migrates rich-content to TS.
+- **CSS `@import` must precede `@tailwind` directives.** Vite's PostCSS
+  pipeline warns "@import must precede all other statements" if the
+  order is wrong, then silently drops the import in production. The
+  fix lives in `frontend/src/styles/globals.css` — tokens first, then
+  the three Tailwind directives. Cost me one build iteration.
+- **Project-referenced `tsconfig.node.json` needs `rootDir: ".."` when
+  it includes files from outside `frontend/`.** Otherwise `tsc -b`
+  aborts with `TS6059: File ... is not under 'rootDir'`. Also set
+  `noEmit: false` + `emitDeclarationOnly: true` so the referenced
+  project complies with `TS6310: Referenced project ... may not
+  disable emit`. The emitted `.d.ts` files are ignored via
+  `frontend/.gitignore` and the root `.gitignore`.
+- **`withoutVite()` is the right neutraliser in feature tests.**
+  Testbench has no `public/build/manifest.json`, so `@vite` blows up
+  with "Vite manifest not found". `$this->withoutVite()` in `setUp()`
+  replaces the directive with a no-op and lets `view('app')` render
+  the HTML shell unchanged.
+- **TestCase already wires `view.paths` — don't re-check existence.**
+  The first version of `SpaControllerTest` called `File::exists(base_path('resources/views/app.blade.php'))`
+  which fails because Testbench's `base_path()` doesn't point at the
+  project root. Since `TestCase::getEnvironmentSetUp` sets
+  `view.paths` to `__DIR__.'/../resources/views'`, `view('app')` Just
+  Works — no need for a filesystem precheck.
+- **Axios + Sanctum: `withCredentials: true` + `X-Requested-With`
+  header.** With both set, axios auto-forwards the `XSRF-TOKEN` cookie
+  as `X-XSRF-TOKEN` and Laravel's `EnsureFrontendRequestsAreStateful`
+  recognises the call as an SPA request. Without the
+  `X-Requested-With` header Sanctum may fall through to the bearer-
+  token code path. `ensureCsrfCookie()` runs once per app mount; a
+  `resetCsrf()` helper forces re-prime after logout or a 419.
+- **TanStack Router v1 code-based config: module declaration
+  augmentation is mandatory.** Without
+  `declare module '@tanstack/react-router' { interface Register { router: typeof router; } }`
+  every `useNavigate()` / `useSearch()` call is typed as `unknown` and
+  you lose autocomplete. Put it at the bottom of `routes/index.tsx`
+  right after `createRouter()`.
+- **`validateSearch` with zod catches malformed reset links early.**
+  `?token=&email=` is required by the reset flow; with
+  `z.object({ token: z.string().default(''), email: z.string().default('') })`
+  the search schema is typed AND sanitised — missing params surface
+  as empty strings that the page then shows as "Invalid reset link".
+- **Storybook-style seed in `frontend/src/lib/seed.ts`.** Dev-only data
+  typed as `Project` / `SeedUser` — the Sidebar/Topbar/ProjectSwitcher
+  consume it directly for now; PR5-I wire real `/api/admin/*` calls.
+  Keep this file minimal (no API pretending) and clearly labelled.
+- **Inline `style={{...}}` + `var(--token)` is the primary styling
+  path.** Not Tailwind utilities. The design bundle expresses every
+  layout as inline styles; converting them to utility classes would
+  mean maintaining a Tailwind-vs-tokens mapping that drifts. Tailwind
+  sits alongside as the escape hatch for things the design doesn't
+  already express (rare).
+- **Raccomandazione per PR5 (Chat React):**
+  - Move `resources/js/rich-content.mjs` to `frontend/src/lib/rich-content.ts`
+    AND keep `tests/js/rich-content.spec.mjs` running via legacy config
+    until the TS test covers the same surface. Don't delete the MJS
+    file until the TS version is at feature parity.
+  - Replace the `~~~chart` regex block with real recharts components —
+    cleaner than the current canvas + Chart.js call, and the design
+    bundle's DIY SVG charts already prove the visual target.
+  - Wire `/api/kb/resolve-wikilink?project=&slug=` for the chat
+    wikilink hover card; plan listed it as a backend endpoint to add
+    in this PR.
+  - Replace the seed `PROJECTS` with the real store's `projects` list
+    in Sidebar/Topbar. The auth store already carries it; AppShell
+    currently falls back to seed when the store is empty — that path
+    can go away once the full admin wiring lands.
+
+---
+
 ## PR3 — Phase C (general-purpose agent, 2026-04-23)
 
 - **Spatie `^6.25` is the Laravel 13 sweet spot.** Version `7.x` dropped
