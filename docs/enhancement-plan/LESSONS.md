@@ -5,6 +5,100 @@
 
 ---
 
+## PR5 — Phase E (general-purpose agent, 2026-04-22)
+
+- **Playwright + Orchestra Testbench sanity**: the E2E contract needs
+  `APP_ENV=testing` at runtime so the `/testing/reset` and
+  `/testing/seed` routes exist at all. Gate them BOTH in `routes/web.php`
+  (conditional on `app()->environment('testing')`) AND in the controller
+  (`abort_unless(app()->environment('testing'), 403)`). Defense in
+  depth — if someone removes the routes-level guard in a refactor, the
+  controller still 403s.
+- **`Artisan::call('migrate:fresh')` inside `RefreshDatabase` trips
+  SQLite**: the real endpoint runs migrate:fresh, which VACUUMs, which
+  blows up under the SQLite :memory: transaction. Tests around the
+  controller can't mock the Artisan facade either (Testbench's
+  `Orchestra\Testbench\Console\Kernel` is `final` and Mockery refuses).
+  Workaround: expose `protected function runMigrateFresh()` +
+  `runDbSeed()` hooks in the controller and subclass them in the test
+  file with a spy that records the intent without invoking artisan.
+  The seam is tiny and the real controller stays one `$this->runX()`
+  line away from the primary API call.
+- **Custom remark node types need `RootContent` casts under strict TS.**
+  Plain `as Text` on the first mapped segment is fine, but the custom
+  `WikilinkNode` / `TagNode` / `CalloutNode` shapes don't satisfy
+  mdast's `RootContent` union. Cast the full splice array to
+  `RootContent[]` with a single `as unknown as RootContent` on the
+  custom shape and TypeScript stops complaining without weakening the
+  source-level typing (the node shape is still strictly enforced at
+  the builder site).
+- **`react-markdown` v10 + custom `hName` components**: pass custom
+  node types through `data.hName` + `data.hProperties` so rehype emits
+  a custom tag react-markdown picks up via its `components` map. The
+  `components` map value prop names follow the emitted tag (i.e. we
+  wrote `components={{ wikilink: …, tag: …, callout: … }}`). TypeScript
+  can't type the custom tags so cast the map to `as never` at the call
+  site — the types are enforced at the component boundary.
+- **`recharts` is heavy**: dropping it into the main chunk bumped the
+  gzipped bundle from 131kB → 192kB. PR5 does NOT yet render a
+  recharts chart (the chat ~~~chart artifact path is ready but unused
+  by default), so it's bundled for readiness. Recommendation for PR6:
+  code-split the admin dashboard's chart usage via `React.lazy()` so
+  recharts only loads on `/app/dashboard`, dropping the chat entry
+  back under 150kB gz.
+- **Wikilink resolver caching strategy**: TanStack Query's
+  `queryKey: ['wikilink', project, slug]` + `enabled: hover` keeps the
+  network quiet until the user actually hovers, and a 5-minute
+  `staleTime` collapses repeated hovers on the same slug into one
+  request. On a 100-message thread with 6 wikilinks per message, this
+  cuts the request count from 600 potential fetches to ≤ `uniqueSlugs`.
+- **Zustand + TanStack Query separation**: the store carries UI-only
+  state (draft, isListening, showGraph, sidebarOpen, activeConversationId).
+  Everything the server owns lives in the TanStack cache. The chat
+  mutation hook does optimistic updates into `['messages', id]` then
+  invalidates on success so the server's canonical message ids
+  replace the negative placeholder. Don't duplicate server state in
+  the store — it drifts.
+- **DemoSeeder must bypass the AccessScopeScope**: under RBAC-enforced
+  mode, `KnowledgeDocument::query()` returns nothing for an
+  unauthenticated request (no memberships ⇒ `whereRaw('1=0')`). The
+  seeder uses `withoutGlobalScopes()->where(slug, …)` to check existence
+  before inserting; without that the seeder would keep creating
+  duplicate rows.
+- **Legacy rich-content kept around**: `npm run test:legacy` still
+  imports `resources/js/rich-content.mjs`. Deleting it would break
+  PR11's staged rollout (the Blade `/chat-legacy` route still uses
+  the module). The TS port lives alongside; both are CI-gated.
+- **React 18.3.1 + TanStack Router v1 `useParams({ strict: false })`**:
+  the ChatView reads `conversationId` from the URL via
+  `useParams({ strict: false })` so it works both at `/app/chat` (no
+  param) and at `/app/chat/:conversationId`. Strict mode would
+  reject the no-param case.
+- **Playwright storage state + /testing endpoints**: the `setup`
+  project POSTs to /testing/reset + /testing/seed BEFORE navigating
+  to /login. That sequence gives us a clean demo DB + known admin
+  credentials for the auth flow. Storage state is then written once
+  to `playwright/.auth/admin.json` (gitignored) and every chromium
+  test reuses it — no per-test login.
+- **SSE streaming deferred**: the briefing flagged SSE as a bonus. It
+  did not ship in PR5 because `/api/chat/stream` requires either a
+  separate dispatcher pattern around the existing AiManager (no
+  streaming contract today) or provider-level adapters. The React
+  Composer falls back to the existing JSON POST, which is already
+  fast enough in the demo seeded corpus. Candidate for PR5.1 if a
+  non-blocking follow-up slot opens.
+- **Raccomandazione per PR6 (Admin Dashboard)**: the chat endpoint
+  contract is now the template — every new feature under
+  `frontend/src/features/<x>/` must ship (1) a typed `x.api.ts`, (2)
+  a TanStack Query hook file, (3) a Zustand store for UI-only state,
+  (4) an `x.store.test.ts`, (5) a feature folder with testids on every
+  actionable element, and (6) an `e2e/<x>.spec.ts` with at least one
+  happy + one failure scenario. Don't regress to "Vitest only" — the
+  Playwright gate is the user-facing contract. Also: code-split
+  recharts via `React.lazy()` when adding the KPI charts.
+
+---
+
 ## Bootstrap (orchestrator, 2026-04-23)
 
 - **Worktree path:** `C:\Users\lopad\Documents\DocLore\Visual Basic\AskMyDocs-enh` (branch `feature/enh-orchestrator` è la zona safe, NON toccarlo — è qui solo per state).
