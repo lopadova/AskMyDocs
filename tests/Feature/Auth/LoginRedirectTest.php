@@ -3,9 +3,9 @@
 namespace Tests\Feature\Auth;
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Requests\Auth\LoginRequest;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
@@ -32,7 +32,7 @@ class LoginRedirectTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        $request = Request::create('/login', 'POST', [
+        $request = LoginRequest::create('/login', 'POST', [
             'email' => $user->email,
             'password' => 'secret123',
         ]);
@@ -53,7 +53,7 @@ class LoginRedirectTest extends TestCase
             'password' => Hash::make('secret123'),
         ]);
 
-        $request = Request::create('/login', 'POST', [
+        $request = LoginRequest::create('/login', 'POST', [
             'email' => 'test@example.com',
             'password' => 'wrong-password',
         ]);
