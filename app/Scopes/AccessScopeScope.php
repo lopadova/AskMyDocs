@@ -68,14 +68,28 @@ class AccessScopeScope implements Scope
 
     private function excludeDeniedDocuments(Builder $builder, Model $model, User $user): void
     {
-        $builder->whereNotIn(
-            $model->qualifyColumn('id'),
-            DB::table('knowledge_document_acl')
-                ->where('subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
-                ->where('subject_id', (string) $user->getKey())
-                ->where('effect', KnowledgeDocumentAcl::EFFECT_DENY)
-                ->where('permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
-                ->select('knowledge_document_id'),
-        );
+        $roleNames = $user->getRoleNames()->all();
+
+        $deniedIds = DB::table('knowledge_document_acl')
+            ->where('effect', KnowledgeDocumentAcl::EFFECT_DENY)
+            ->where('permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
+            ->where(function ($query) use ($user, $roleNames) {
+                $query->where(function ($q) use ($user) {
+                    $q->where('subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
+                        ->where('subject_id', (string) $user->getKey());
+                });
+
+                if ($roleNames === []) {
+                    return;
+                }
+
+                $query->orWhere(function ($q) use ($roleNames) {
+                    $q->where('subject_type', KnowledgeDocumentAcl::SUBJECT_ROLE)
+                        ->whereIn('subject_id', $roleNames);
+                });
+            })
+            ->select('knowledge_document_id');
+
+        $builder->whereNotIn($model->qualifyColumn('id'), $deniedIds);
     }
 }

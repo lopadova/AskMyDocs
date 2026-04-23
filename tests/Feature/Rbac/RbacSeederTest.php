@@ -49,7 +49,9 @@ class RbacSeederTest extends TestCase
         $this->assertCount(count($expectedPermissions), $superAdmin->permissions);
 
         $viewer = Role::findByName('viewer', 'web');
-        $this->assertTrue($viewer->hasPermissionTo('kb.read.any'));
+        // viewer intentionally has NO kb.read.any — KB access flows through
+        // project memberships only. See Copilot review on PR #18.
+        $this->assertFalse($viewer->hasPermissionTo('kb.read.any'));
         $this->assertTrue($viewer->hasPermissionTo('logs.view'));
         $this->assertFalse($viewer->hasPermissionTo('kb.edit.any'));
     }
@@ -63,7 +65,7 @@ class RbacSeederTest extends TestCase
         $this->assertSame(11, Permission::count());
     }
 
-    public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void
+    public function test_seeder_backfills_existing_users_with_viewer_role_only(): void
     {
         $user = User::create([
             'name' => 'Existing',
@@ -85,13 +87,18 @@ class RbacSeederTest extends TestCase
 
         $user->refresh();
         $this->assertTrue($user->hasRole('viewer'));
-        $this->assertDatabaseHas('project_memberships', [
-            'user_id' => $user->id,
-            'project_key' => 'hr-portal',
-        ]);
+
+        // Project memberships must NOT be auto-created by the seeder. In a
+        // multi-tenant deployment that would open every tenant to every
+        // pre-existing user. Admins grant memberships explicitly via the
+        // auth:grant CLI or the Users admin UI (Phase F2).
+        $this->assertSame(
+            0,
+            ProjectMembership::where('user_id', $user->id)->count(),
+        );
     }
 
-    public function test_seeder_backfill_does_not_duplicate_memberships_on_rerun(): void
+    public function test_seeder_backfill_is_idempotent_on_role_assignment(): void
     {
         $user = User::create([
             'name' => 'Repeat',
@@ -112,8 +119,14 @@ class RbacSeederTest extends TestCase
         $this->seed(RbacSeeder::class);
         $this->seed(RbacSeeder::class);
 
+        $user->refresh();
+
+        // Idempotent: viewer role assigned exactly once despite two runs.
+        $this->assertSame(1, $user->roles()->where('name', 'viewer')->count());
+
+        // And still no spurious project memberships on re-runs.
         $this->assertSame(
-            1,
+            0,
             ProjectMembership::where('user_id', $user->id)->count(),
         );
     }

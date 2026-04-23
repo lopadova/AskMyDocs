@@ -26,9 +26,12 @@ return new class extends Migration
             $table->string('effect', 8)->default('allow');
             $table->timestamps();
 
+            // Mirror of the production index — see the main migration for
+            // rationale (access-check pattern is (doc_id, permission,
+            // subject_type, subject_id)).
             $table->index(
-                ['knowledge_document_id', 'subject_type', 'subject_id'],
-                'ix_kb_doc_acl_doc_subject'
+                ['knowledge_document_id', 'permission', 'subject_type', 'subject_id'],
+                'ix_kb_doc_acl_doc_perm_subject'
             );
             $table->index(
                 ['subject_type', 'subject_id'],

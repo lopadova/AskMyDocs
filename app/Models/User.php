@@ -110,7 +110,9 @@ class User extends Authenticatable
      */
     public function hasDocumentAccess(KnowledgeDocument $doc, string $permission = 'view'): bool
     {
-        if ($this->can("kb.{$permission}.any")) {
+        $globalPermission = 'kb.'.self::canonicalPermissionName($permission).'.any';
+
+        if ($this->can($globalPermission)) {
             return true;
         }
 
@@ -215,12 +217,50 @@ class User extends Authenticatable
     private function matchesAnyGlob(string $path, array $globs): bool
     {
         foreach ($globs as $glob) {
-            if (fnmatch($glob, $path)) {
+            if ($this->matchesGlob($path, $glob)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Glob matcher with explicit globstar (`**`) semantics:
+     *   - `**` alone matches everything.
+     *   - `prefix/**` matches anything under prefix (recursive).
+     *   - Other globs go through fnmatch with FNM_PATHNAME so `*` never
+     *     crosses a `/` — `decisions/*` matches `decisions/foo.md` but NOT
+     *     `decisions/sub/foo.md`. Critical: without FNM_PATHNAME fnmatch
+     *     would silently widen scope_allowlist into other folders.
+     */
+    private function matchesGlob(string $path, string $glob): bool
+    {
+        if ($glob === '**') {
+            return true;
+        }
+
+        if (str_ends_with($glob, '/**')) {
+            $prefix = substr($glob, 0, -3);
+
+            return $path === $prefix || str_starts_with($path, $prefix.'/');
+        }
+
+        return fnmatch($glob, $path, FNM_PATHNAME);
+    }
+
+    /**
+     * Map a policy verb ("view", "edit", ...) to the canonical Spatie
+     * permission name used by the seeder ("read", "edit", ...). Without
+     * this mapping `hasDocumentAccess($doc, 'view')` would look for the
+     * non-existent permission `kb.view.any` instead of `kb.read.any`.
+     */
+    private static function canonicalPermissionName(string $action): string
+    {
+        return match ($action) {
+            'view' => 'read',
+            default => $action,
+        };
     }
 
     /**

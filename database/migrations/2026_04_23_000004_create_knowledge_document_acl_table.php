@@ -26,10 +26,16 @@ return new class extends Migration
             $table->string('effect', 8)->default('allow');
             $table->timestamps();
 
+            // Primary access-check pattern in User::evaluateAclDecision
+            // and AccessScopeScope::excludeDeniedDocuments:
+            //   WHERE knowledge_document_id = ? AND permission = ?
+            //     AND subject_type = ? AND subject_id IN (...)
+            // So the most selective composite index has permission second.
             $table->index(
-                ['knowledge_document_id', 'subject_type', 'subject_id'],
-                'ix_kb_doc_acl_doc_subject'
+                ['knowledge_document_id', 'permission', 'subject_type', 'subject_id'],
+                'ix_kb_doc_acl_doc_perm_subject'
             );
+            // Reverse lookup: "what documents deny this subject?".
             $table->index(
                 ['subject_type', 'subject_id'],
                 'ix_kb_doc_acl_subject'
