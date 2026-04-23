@@ -13,7 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // Default Laravel 13 middleware stack — customize here if needed.
+        // Route aliases exposed to routes/*.php and feature tests.
+        $middleware->alias([
+            'project.access' => \App\Http\Middleware\EnsureProjectAccess::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

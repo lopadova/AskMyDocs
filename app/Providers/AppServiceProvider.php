@@ -12,8 +12,11 @@ use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
+use App\Models\KnowledgeDocument;
+use App\Policies\KnowledgeDocumentPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->registerCommands();
         $this->registerRateLimiters();
+        $this->registerPolicies();
     }
 
     private function registerCommands(): void
@@ -49,6 +53,17 @@ class AppServiceProvider extends ServiceProvider
             KbValidateCanonicalCommand::class,
             KbRebuildGraphCommand::class,
         ]);
+    }
+
+    /**
+     * Register authorization policies. This project's bootstrap/providers.php
+     * uses explicit registration (no package auto-discovery), so policies
+     * need an explicit Gate::policy mapping here — Laravel 13's convention
+     * auto-discovery only kicks in when the provider list is scanned.
+     */
+    private function registerPolicies(): void
+    {
+        Gate::policy(KnowledgeDocument::class, KnowledgeDocumentPolicy::class);
     }
 
     /**
