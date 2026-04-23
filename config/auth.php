@@ -29,6 +29,14 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        // Sanctum registers its own guard programmatically in its
+        // service provider; declaring the key here guarantees the guard
+        // survives a `config(['auth' => ...])` overwrite (e.g. during
+        // test bootstrap) and keeps `auth:sanctum` middleware resolvable.
+        'sanctum' => [
+            'driver' => 'sanctum',
+            'provider' => 'users',
+        ],
     ],
 
     /*
