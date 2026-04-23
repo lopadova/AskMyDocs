@@ -1,5 +1,10 @@
 /vendor/
 /node_modules/
+/public/build/
+/public/hot
+/tailwind.config.d.ts
+/vite.config.d.ts
+/vitest.config.d.ts
 /.phpunit.cache/
 /.phpunit.result.cache
 /bootstrap/cache/*

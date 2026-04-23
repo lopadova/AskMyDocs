@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\SpaController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
@@ -49,3 +50,19 @@ Route::middleware('auth')->group(function () {
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
     });
 });
+
+/*
+|--------------------------------------------------------------------------
+| React SPA (catch-all for /app/*)
+|--------------------------------------------------------------------------
+|
+| Serves the React application. Authentication is handled inside React
+| via `/api/auth/me` + guard components, so the route itself has no
+| middleware — the SPA redirects to /login when the me endpoint returns
+| 401. The legacy `/chat` Blade flow is untouched.
+|
+*/
+
+Route::get('/app/{any?}', SpaController::class)
+    ->where('any', '.*')
+    ->name('spa');
