@@ -40,8 +40,9 @@ class LoginRequest extends FormRequest
 
     /**
      * Throttle bucket key used by both the Blade and JSON flows.
-     * Pairs the hashed email with the client IP so a single malicious actor
-     * can't lock out a legitimate user simply by hammering their email.
+     * Pairs the lower-cased email with the client IP so a single malicious
+     * actor can't lock out a legitimate user simply by hammering their email
+     * (case variants collapse to the same bucket).
      */
     public function throttleKey(): string
     {

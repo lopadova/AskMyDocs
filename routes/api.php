@@ -22,8 +22,13 @@ use Illuminate\Support\Facades\Route;
 |
 */
 Route::middleware('web')->prefix('auth')->group(function () {
+    // Login throttling is implemented in AuthController@login as a
+    // failure-only counter (hit on bad credentials, clear on success) so
+    // legitimate users are never rate-limited by their own success. The
+    // route-level `throttle:login` middleware would rate-limit EVERY
+    // request (success + failure) against a different cache key, causing
+    // double-counting and spurious 429s — hence intentionally omitted.
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:login')
         ->name('api.auth.login');
 
     Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
