@@ -228,4 +228,28 @@ return [
             'project-index' => '.',
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Per-project disk override
+    |--------------------------------------------------------------------------
+    |
+    | Map `project_key => disk_name` to route specific projects to dedicated
+    | disks. Falls back to `canonical_disk` (below) for projects not listed.
+    |
+    | Env format: KB_PROJECT_DISKS='{"hr-portal":"kb-hr","legal-vault":"kb-legal"}'
+    */
+    'project_disks' => env('KB_PROJECT_DISKS') ? json_decode((string) env('KB_PROJECT_DISKS'), true) : [],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Raw vs canonical pipeline disks
+    |--------------------------------------------------------------------------
+    |
+    | OmegaWiki-inspired raw → curated → canonical pipeline. `raw_disk` holds
+    | unprocessed PDFs/Word/notes; `canonical_disk` (the existing "kb" disk)
+    | holds promoted markdown ready for indexing.
+    */
+    'raw_disk' => env('KB_RAW_DISK', 'kb-raw'),
+    'canonical_disk' => env('KB_FILESYSTEM_DISK', 'kb'),
 ];
