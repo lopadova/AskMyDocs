@@ -8,8 +8,8 @@
 | PR | Phase | Branch | Status | PR # | Branch parent | Ultimo aggiornamento | Note |
 |----|-------|--------|--------|------|---------------|---------------------|------|
 | 1  | A — Storage & Scheduler | `feature/enh-a-storage-scheduler` | ✅ PR opened | TBD | `origin/main` | 2026-04-23 | backend-only; 409 tests green |
-| 2  | B — Auth JSON API + Sanctum SPA | `feature/enh-b-auth-api` | ⏳ ready | — | PR1 | — | può partire dal branch PR1 |
-| 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ⏳ blocked | — | PR2 | — | |
+| 2  | B — Auth JSON API + Sanctum SPA | `feature/enh-b-auth-api` | ✅ PR opened | TBD | PR1 | 2026-04-23 | 433 tests green; Sanctum stateful + 7 Api/Auth tests |
+| 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ⏳ ready | — | PR2 | — | parte dal branch PR2 |
 | 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ⏳ blocked | — | PR3 | — | |
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ⏳ blocked | — | PR4 | — | |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ blocked | — | PR5 | — | |
@@ -45,6 +45,26 @@ Copiata dal template a inizio lavoro, spunta man mano.
 - [x] Aggiornato `LESSONS.md` con scoperte (notifications:prune, Mockery Storage, scheduler baseline)
 - [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
 - [x] Commit su branch, push, `gh pr create` verso `main`
+
+### PR2 — Phase B checklist
+
+- [x] Checkout worktree sul branch `feature/enh-b-auth-api` da `feature/enh-a-storage-scheduler`
+- [x] `config/sanctum.php` — stateful domains parse da `SANCTUM_STATEFUL_DOMAINS`, guard `['web']`
+- [x] `config/cors.php` — `supports_credentials=true`, paths `api/*` + `sanctum/csrf-cookie` + auth routes, origins parse da `CORS_ALLOWED_ORIGINS`
+- [x] `config/auth.php` — declare `guards.sanctum` + `two_factor.enabled` flag
+- [x] `.env.example` — `SANCTUM_STATEFUL_DOMAINS`, `CORS_ALLOWED_ORIGINS`, `AUTH_2FA_ENABLED`
+- [x] `app/Http/Requests/Auth/{Login,ForgotPassword,ResetPassword,TwoFactor}Request.php`
+- [x] Refactor Blade `Auth/{Login,PasswordReset}Controller` per type-hint FormRequest
+- [x] `app/Http/Controllers/Api/Auth/{Auth,PasswordReset,TwoFactor}Controller.php`
+- [x] `routes/api.php` — gruppo `auth/*` con middleware `web`, throttle login (5/min) + forgot (3/min)
+- [x] `AppServiceProvider::boot` — registra RateLimiter `login` + `forgot`
+- [x] TestCase — registra `SanctumServiceProvider`, carica sanctum/cors/auth config
+- [x] Test migrations — aggiunte `sessions` + `password_reset_tokens`
+- [x] Tests `tests/Feature/Api/Auth/*Test.php` (22 test totali su 7 file)
+- [x] `vendor/bin/phpunit` → **433/433 verdi** (0 regressioni, 24 test nuovi)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase B (Sanctum guard survive, defineRoutes + api prefix, etc.)
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch, push, `gh pr create` verso `feature/enh-a-storage-scheduler`
 
 ## Comando rapido per stato
 
