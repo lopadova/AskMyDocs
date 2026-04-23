@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Http\Requests\Auth\LoginRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -15,22 +16,17 @@ class LoginController extends Controller
         return view('auth.login');
     }
 
-    public function login(Request $request): RedirectResponse
+    public function login(LoginRequest $request): RedirectResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
-            'password' => ['required'],
-        ]);
-
-        if (Auth::attempt($credentials, $request->boolean('remember'))) {
-            $request->session()->regenerate();
-
-            return redirect()->intended(route('chat'));
+        if (! Auth::attempt($request->credentials(), $request->boolean('remember'))) {
+            return back()->withErrors([
+                'email' => __('auth.failed'),
+            ])->onlyInput('email');
         }
 
-        return back()->withErrors([
-            'email' => __('auth.failed'),
-        ])->onlyInput('email');
+        $request->session()->regenerate();
+
+        return redirect()->intended(route('chat'));
     }
 
     public function logout(Request $request): RedirectResponse
