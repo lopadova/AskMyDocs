@@ -49,5 +49,37 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('03:40')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // Rotate the failed_jobs table so a noisy week doesn't keep
+        // growing the table forever. Default: drop rows older than 48h.
+        $schedule->command('queue:prune-failed --hours=48')
+            ->dailyAt('04:00')
+            ->onOneServer()
+            ->withoutOverlapping();
+
+        // TODO PR3 (RBAC): when spatie/laravel-activitylog is installed,
+        //   enable:
+        //   $schedule->command('activitylog:clean --days=90')
+        //       ->dailyAt('04:20')->onOneServer()->withoutOverlapping();
+
+        // TODO PR9 (Admin audit): when admin_command_audit migration ships,
+        //   enable:
+        //   $schedule->command('admin-audit:prune --days=365')
+        //       ->dailyAt('04:30')->onOneServer()->withoutOverlapping();
+
+        // NOTE: Laravel 13 does NOT ship a `notifications:prune` artisan
+        //   command out of the box (only `notifications:table`). When the
+        //   app installs a DatabaseNotification model that implements the
+        //   `Prunable` trait, wire `model:prune --model=\\App\\Models\\DatabaseNotification`
+        //   at 04:10 here instead.
+
+        // Orphan scan (files on the KB disk with no matching DB row).
+        // Runs in dry-run mode so nothing is deleted automatically —
+        // operators review the output and run the command manually
+        // without --dry-run if they want to purge the reported orphans.
+        $schedule->command('kb:prune-orphan-files --dry-run')
+            ->dailyAt('04:40')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->create();
