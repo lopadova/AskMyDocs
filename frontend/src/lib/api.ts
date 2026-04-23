@@ -26,8 +26,14 @@ export const api: AxiosInstance = axios.create({
 let csrfPrimed = false;
 
 /**
- * Prime the `XSRF-TOKEN` cookie before any state-changing request. Must
- * be called at app bootstrap AND after a 419 (CSRF mismatch) response.
+ * Prime the `XSRF-TOKEN` cookie before any state-changing request.
+ *
+ * Call sites:
+ *   - `useAuthBootstrap()` in routes/guards.tsx — primed once at app
+ *     mount so even the first logout cannot 419.
+ *   - `login()` / `forgot()` / `reset()` — defensively re-primed.
+ *   - After a 419 response, trigger `resetCsrf()` and retry once.
+ *
  * Idempotent within a single app mount — resets only via `resetCsrf()`.
  */
 export async function ensureCsrfCookie(): Promise<void> {

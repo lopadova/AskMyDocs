@@ -5,6 +5,7 @@ import {
     Outlet,
     redirect,
     useNavigate,
+    useParams,
     useSearch,
 } from '@tanstack/react-router';
 import { z } from 'zod';
@@ -71,14 +72,20 @@ const forgotRoute = createRoute({
     component: ForgotRoute,
 });
 
+// Laravel's default password-reset notification generates URLs of the
+// form `/reset-password/{token}?email=…`. Matching that shape here
+// keeps the default ResetPassword notification working without a
+// backend override (route name `password.reset` is preserved in
+// routes/web.php). The SPA reads `token` from the path param and
+// `email` from the query — same contract as the Blade reset page.
 const resetSearchSchema = z.object({
-    token: z.string().default(''),
     email: z.string().default(''),
 });
 
 function ResetRoute() {
     const navigate = useNavigate();
-    const { token, email } = useSearch({ from: '/reset-password' });
+    const { token } = useParams({ from: '/reset-password/$token' });
+    const { email } = useSearch({ from: '/reset-password/$token' });
     return (
         <RedirectIfAuth>
             <ResetPasswordPage token={token} email={email} onDone={() => navigate({ to: '/login' })} />
@@ -88,7 +95,7 @@ function ResetRoute() {
 
 const resetRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/reset-password',
+    path: '/reset-password/$token',
     validateSearch: resetSearchSchema,
     component: ResetRoute,
 });

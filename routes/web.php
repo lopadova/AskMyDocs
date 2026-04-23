@@ -16,12 +16,25 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::middleware('guest')->group(function () {
-    Route::get('/login', [LoginController::class, 'showForm'])->name('login');
+    // React SPA serves the guest auth screens. The React router handles
+    // /login, /forgot-password and /reset-password/{token} internally,
+    // so every GET on these paths returns the same SPA shell. Direct
+    // navigation / page refresh / password-reset email links all land
+    // on the React flow. The POST endpoints below still feed the Blade
+    // controllers as a no-JS fallback — the FormRequests introduced in
+    // PR2 validate the same payload so both flows stay in sync.
+    Route::get('/login', SpaController::class)->name('login');
     Route::post('/login', [LoginController::class, 'login']);
 
-    Route::get('/forgot-password', [PasswordResetController::class, 'showRequestForm'])->name('password.request');
+    Route::get('/forgot-password', SpaController::class)->name('password.request');
     Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->name('password.email');
-    Route::get('/reset-password/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+
+    // Laravel's default password-reset notification points at
+    // `/reset-password/{token}?email=…`. The SPA route
+    // `/reset-password/$token` reads the token from the path param and
+    // the email from the query. Keep the matching name so
+    // `Password::sendResetLink` continues to generate the correct URL.
+    Route::get('/reset-password/{token}', SpaController::class)->name('password.reset');
     Route::post('/reset-password', [PasswordResetController::class, 'reset'])->name('password.update');
 });
 

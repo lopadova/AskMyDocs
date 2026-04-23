@@ -8,6 +8,22 @@ export type BarStackProps = {
 };
 
 export function BarStack({ data, width = 520, height = 160, labels = [] }: BarStackProps) {
+    // Empty-data guard: without this, `Math.max(...[])` returns -Infinity
+    // and `width / data.length - 6` returns Infinity, producing invalid
+    // SVG coordinates. Render an empty placeholder instead.
+    if (data.length === 0) {
+        return (
+            <svg
+                width="100%"
+                viewBox={`0 0 ${width} ${height}`}
+                style={{ display: 'block' }}
+                role="img"
+                aria-label="No data"
+                data-testid="bar-stack-empty"
+            />
+        );
+    }
+
     const max = Math.max(...data.map((d) => d.a + d.b + d.c)) * 1.15 || 1;
     const bw = width / data.length - 6;
     return (

@@ -9,6 +9,12 @@ export type AreaChartProps = {
 
 export function AreaChart({ data, width = 520, height = 180, labels = [] }: AreaChartProps) {
     const { line, area, pts, yticks } = useMemo(() => {
+        // `Math.max(...[])` returns `-Infinity` which cascades into NaN
+        // coordinates and broken SVG output. Bail out early with empty
+        // shapes so the caller can render an empty-state placeholder.
+        if (data.length === 0) {
+            return { line: '', area: '', pts: [] as [number, number][], yticks: [] };
+        }
         const max = Math.max(...data) * 1.1 || 1;
         const min = 0;
         const stepX = width / (data.length - 1 || 1);
@@ -26,6 +32,19 @@ export function AreaChart({ data, width = 520, height = 180, labels = [] }: Area
         }));
         return { line: l, area: a, pts: p, yticks: yt };
     }, [data, width, height]);
+
+    if (data.length === 0) {
+        return (
+            <svg
+                width="100%"
+                viewBox={`0 0 ${width} ${height}`}
+                style={{ display: 'block' }}
+                role="img"
+                aria-label="No data"
+                data-testid="area-chart-empty"
+            />
+        );
+    }
 
     return (
         <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>

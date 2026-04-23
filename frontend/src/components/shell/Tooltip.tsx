@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 export type TooltipProps = {
     children: ReactNode;
@@ -8,6 +8,7 @@ export type TooltipProps = {
 
 export function Tooltip({ children, label, side = 'bottom' }: TooltipProps) {
     const [open, setOpen] = useState(false);
+    const tooltipId = useId();
     const offset = 'calc(100% + 6px)';
     const tooltipPosition: Record<string, string | number> =
         side === 'top'
@@ -17,16 +18,23 @@ export function Tooltip({ children, label, side = 'bottom' }: TooltipProps) {
                 : side === 'right'
                     ? { left: offset, top: '50%', transform: 'translateY(-50%)' }
                     : { top: offset, left: '50%', transform: 'translateX(-50%)' };
+    // Keyboard users must be able to discover tooltips. onFocus/onBlur
+    // mirror the mouse events, and aria-describedby wires the label to
+    // the focused child so screen readers announce it.
     return (
         <span
             style={{ position: 'relative', display: 'inline-flex' }}
             onMouseEnter={() => setOpen(true)}
             onMouseLeave={() => setOpen(false)}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setOpen(false)}
+            aria-describedby={open ? tooltipId : undefined}
         >
             {children}
             {open && (
                 <span
                     role="tooltip"
+                    id={tooltipId}
                     style={{
                         position: 'absolute',
                         ...tooltipPosition,

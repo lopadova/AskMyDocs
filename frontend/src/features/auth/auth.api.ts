@@ -17,6 +17,11 @@ export async function login(email: string, password: string, remember: boolean):
 }
 
 export async function logout(): Promise<void> {
+    // Prime the XSRF-TOKEN cookie in case the bootstrap call has not run
+    // yet for this session (e.g. deep link into a stale tab that never
+    // hit any other state-changing endpoint). Without this, logout can
+    // fail with 419 on fresh loads.
+    await ensureCsrfCookie();
     await api.post('/api/auth/logout');
     resetCsrf();
 }

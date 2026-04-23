@@ -3,11 +3,20 @@ import { useNavigate } from '@tanstack/react-router';
 import axios from 'axios';
 import { useAuthStore } from '../lib/auth-store';
 import { me } from '../features/auth/auth.api';
+import { ensureCsrfCookie } from '../lib/api';
 
 /**
- * Kicks a `/api/auth/me` call on mount. When the response is 401, the
- * store is cleared so guarded routes bounce the user to /login. When it
- * succeeds the store is populated with the PR3 shape.
+ * Runs once at app mount. Two jobs:
+ *   1. Prime the XSRF-TOKEN cookie so every subsequent state-changing
+ *      request (including logout from an already-authed session) has a
+ *      valid CSRF header and never 419s on a cold page load.
+ *   2. Kick `/api/auth/me`. When 401, the store is cleared so guarded
+ *      routes bounce to /login. When 200, the store is populated with
+ *      the PR3 shape (user + roles + permissions + projects).
+ *
+ * The CSRF prime is deliberately best-effort and non-blocking for the
+ * `me()` call — a transient network failure on csrf-cookie shouldn't
+ * stop auth bootstrap (the user just retries once they try to act).
  */
 export function useAuthBootstrap(): void {
     const setMe = useAuthStore((s) => s.setMe);
@@ -17,6 +26,15 @@ export function useAuthBootstrap(): void {
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
+
+        // Fire the CSRF prime in parallel with the me() call. We don't
+        // await it so a slow csrf-cookie doesn't block auth resolution,
+        // but the promise must be referenced to avoid an unhandled
+        // rejection if it errors.
+        ensureCsrfCookie().catch(() => {
+            /* best-effort: re-primed lazily on next state-changing call */
+        });
+
         me()
             .then((payload) => {
                 if (cancelled) {
