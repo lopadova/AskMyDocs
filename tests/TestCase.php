@@ -14,6 +14,10 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // Sanctum powers the JSON auth endpoints exercised by
+        // tests/Feature/Api/Auth/*. Registered under the same manual
+        // pattern as the other project providers above.
+        $app->register(\Laravel\Sanctum\SanctumServiceProvider::class);
 
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
@@ -26,6 +30,9 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
+        $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
+        $app['config']->set('cors', require __DIR__.'/../config/cors.php');
+        $app['config']->set('auth', require __DIR__.'/../config/auth.php');
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)

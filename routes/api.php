@@ -1,10 +1,55 @@
 <?php
 
+use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
+use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use Illuminate\Support\Facades\Route;
+
+/*
+|--------------------------------------------------------------------------
+| Sanctum SPA — Auth endpoints
+|--------------------------------------------------------------------------
+|
+| Routes under routes/api.php are NOT in the `web` middleware group by
+| default, so session + CSRF handling must be opted in explicitly. That's
+| why the auth group below declares `web` middleware: Sanctum's
+| EnsureFrontendRequestsAreStateful fires for requests under the `web`
+| group, enabling the session cookie + XSRF-TOKEN round-trip the SPA needs.
+|
+*/
+Route::middleware('web')->prefix('auth')->group(function () {
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:login')
+        ->name('api.auth.login');
+
+    Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
+        ->middleware('throttle:forgot')
+        ->name('api.auth.forgot');
+
+    Route::post('/reset-password', [ApiPasswordResetController::class, 'reset'])
+        ->name('api.auth.reset');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/logout', [AuthController::class, 'logout'])
+            ->name('api.auth.logout');
+
+        Route::get('/me', [AuthController::class, 'me'])
+            ->name('api.auth.me');
+
+        Route::prefix('2fa')->group(function () {
+            Route::post('/enable', [TwoFactorController::class, 'enable'])
+                ->name('api.auth.2fa.enable');
+            Route::post('/verify', [TwoFactorController::class, 'verify'])
+                ->name('api.auth.2fa.verify');
+            Route::post('/disable', [TwoFactorController::class, 'disable'])
+                ->name('api.auth.2fa.disable');
+        });
+    });
+});
 
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/kb/chat', KbChatController::class);
