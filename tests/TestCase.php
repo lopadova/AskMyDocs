@@ -18,6 +18,11 @@ abstract class TestCase extends OrchestraTestCase
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.
         $app->register(\Laravel\Sanctum\SanctumServiceProvider::class);
+        // Spatie permissions — registered via the same manual pattern because
+        // bootstrap/providers.php uses explicit registration (no package
+        // discovery). Without this the Role / Permission models throw
+        // "class not registered" under auth:sanctum-protected feature tests.
+        $app->register(\Spatie\Permission\PermissionServiceProvider::class);
 
         $app['config']->set('database.default', 'sqlite');
         $app['config']->set('database.connections.sqlite', [
@@ -33,6 +38,8 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');
+        $app['config']->set('permission', require __DIR__.'/../config/permission.php');
+        $app['config']->set('rbac', require __DIR__.'/../config/rbac.php');
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)
