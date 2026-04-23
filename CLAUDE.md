@@ -394,6 +394,30 @@ deliberately. 10-point operational checklist:
 
 → See `.claude/skills/canonical-awareness/`.
 
+### R11 — Frontend components must be test-friendly (from PR5 onward)
+Every React component in `frontend/src/` must expose stable
+`data-testid` attributes on actionable elements, meaningful ARIA
+semantics (`role`, `aria-label`, `aria-live`), and observable async
+states (`data-state="idle|loading|ready|error|empty"`, `aria-busy`).
+API errors MUST surface in the DOM (no silent `useMutation` failures);
+validation errors MUST appear next to each input with
+`data-testid="<field>-error"`. Naming: `<feature>-<role>-<id?>`,
+kebab case. Applied from PR5 (Chat React) onward. Copilot cannot
+enforce this post-hoc — it starts at the component writing.
+→ See `.claude/skills/frontend-testid-conventions/`.
+
+### R12 — Every user-visible UI change ships Playwright E2E coverage
+From PR5 onward, a PR that touches any file under `frontend/src/` or
+any route/controller that renders into the SPA must include at least
+one `*.spec.ts` file under `frontend/e2e/` covering the happy path and
+at least one failure path (validation / 422 / 429 / network error /
+empty state) for the changed feature. Scenarios use `getByTestId` or
+`getByRole` + accessible name — never CSS selectors. They wait on
+`data-state`, never on `waitForTimeout`. CI gate: `npm run e2e` green.
+Authed tests reuse `playwright/.auth/admin.json` storage state — no
+per-test login.
+→ See `.claude/skills/playwright-e2e/`.
+
 ---
 
 ## 8. Testing & CI
@@ -430,8 +454,8 @@ deliberately. 10-point operational checklist:
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow the **eight rules above (R1–R8)** before opening a PR — they exist
-  because Copilot caught them the first time.
+- Follow the **twelve rules above (R1–R12)** before opening a PR — they
+  exist because Copilot caught them the first time.
 - Keep the README, `.env.example`, and `config/*.php` in sync whenever a knob
   changes.
 - Commits go on the designated feature branch; never force-push `main`.
