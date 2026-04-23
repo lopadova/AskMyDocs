@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist-types",
+    "rootDir": "..",
+    "types": ["node"]
+  },
+  "include": ["../vite.config.ts", "../tailwind.config.ts", "../vitest.config.ts", "../postcss.config.js"]
+}

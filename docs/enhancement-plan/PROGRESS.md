@@ -10,8 +10,8 @@
 | 1  | A — Storage & Scheduler | `feature/enh-a-storage-scheduler` | ✅ PR opened | TBD | `origin/main` | 2026-04-23 | backend-only; 409 tests green |
 | 2  | B — Auth JSON API + Sanctum SPA | `feature/enh-b-auth-api` | ✅ PR opened | TBD | PR1 | 2026-04-23 | 433 tests green; Sanctum stateful + 7 Api/Auth tests |
 | 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ✅ PR opened | TBD | PR2 | 2026-04-23 | 457 tests green; Spatie ^6.25 + 25 Rbac tests + AccessScopeScope + Policy + middleware |
-| 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ⏳ ready | — | PR3 | — | parte dal branch PR3 |
-| 5  | E — Chat UI React | `feature/enh-e-chat-react` | ⏳ blocked | — | PR4 | — | |
+| 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ✅ PR opened | TBD | PR3 | 2026-04-22 | 460 tests green (+3 Spa) + 21 Vitest + 18 legacy rich-content; Vite build verified (421 kB JS gz 131 kB) |
+| 5  | E — Chat UI React | `feature/enh-e-chat-react` | ⏳ ready | — | PR4 | — | parte dal branch PR4 |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ blocked | — | PR5 | — | |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ⏳ blocked | — | PR6 | — | |
 | 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
@@ -45,6 +45,34 @@ Copiata dal template a inizio lavoro, spunta man mano.
 - [x] Aggiornato `LESSONS.md` con scoperte (notifications:prune, Mockery Storage, scheduler baseline)
 - [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
 - [x] Commit su branch, push, `gh pr create` verso `main`
+
+### PR4 — Phase D checklist
+
+- [x] Checkout worktree sul branch `feature/enh-d-frontend-scaffold` da `feature/enh-c-rbac-foundation`
+- [x] `package.json` (root) — React 18.3.1, TanStack Router/Query, Zustand, axios, react-hook-form, zod, Tailwind 3.4, Vite 5, Vitest 2, Testing Library; legacy `vitest.config.mjs` preserved via `npm run test:legacy`
+- [x] `vite.config.ts` (root) con `laravel-vite-plugin`, input `frontend/src/main.tsx`, dev proxy `/api` + `/sanctum` + legacy auth paths
+- [x] `tailwind.config.ts` + `postcss.config.js` — dark attribute selector, content glob su `frontend/src/**/*.{ts,tsx}`
+- [x] `vitest.config.ts` — jsdom env, setup `@testing-library/jest-dom/vitest`
+- [x] `frontend/tsconfig.json` + `tsconfig.node.json` (con rootDir `..` per i config root-level)
+- [x] `frontend/src/styles/tokens.css` — copiato as-is da `design-reference/project/styles/tokens.css`
+- [x] `frontend/src/components/Icons.tsx` — 47 icons tipizzate (IconName union esportato)
+- [x] `frontend/src/components/charts/{Sparkline,AreaChart,BarStack,Donut}.tsx` — port TS con useMemo
+- [x] `frontend/src/components/shell/{AppShell,Sidebar,Topbar,CommandPalette,TweaksPanel,ProjectSwitcher,Avatar,Tooltip,SegmentedControl}.tsx` + `hooks.ts` (useTheme/useDensity/useFontPair)
+- [x] `frontend/src/components/sections/*Placeholder.tsx` — 7 placeholder tipizzati sotto `Placeholder` condiviso
+- [x] `frontend/src/features/auth/{AuthLayout,LoginPage,ForgotPasswordPage,ResetPasswordPage}.tsx` + `auth.api.ts`
+- [x] `frontend/src/lib/{api,auth-store,query-client,seed}.ts` — axios + CSRF bootstrap, Zustand store, TanStack Query client, dev seed
+- [x] `frontend/src/routes/{index,guards}.tsx` — TanStack Router code-based, RequireAuth/RedirectIfAuth, zod `validateSearch` su /reset-password
+- [x] `frontend/src/{App,main}.tsx` — QueryClientProvider > RouterProvider
+- [x] `app/Http/Controllers/SpaController.php` + `resources/views/app.blade.php` + `routes/web.php` (catch-all `/app/{any?}`)
+- [x] `.gitignore` — `public/build/`, `public/hot`, TS build artefacts root-level
+- [x] Test Vitest (21 totali su 7 file): Icons, charts, Sidebar, CommandPalette, TweaksPanel, auth-store, LoginPage
+- [x] Test legacy vitest (`tests/js/rich-content.spec.mjs`, 18 test) preservati via `npm run test:legacy`
+- [x] Test PHPUnit `tests/Feature/Spa/SpaControllerTest.php` (3 test, 6 assertions) — `withoutVite()` per non leggere il manifest
+- [x] `vendor/bin/phpunit` → **460/460 verdi** (da 457 baseline + 3 nuovi)
+- [x] `npm run build` → manifest + bundle (~421 kB JS gz 131 kB) scritti in `public/build/`
+- [x] Aggiornato `LESSONS.md` con scoperte Phase D
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch, push, `gh pr create` verso `feature/enh-c-rbac-foundation`
 
 ### PR3 — Phase C checklist
 
