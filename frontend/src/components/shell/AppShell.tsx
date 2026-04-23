@@ -70,6 +70,8 @@ export function AppShell() {
 
     return (
         <div
+            data-testid="appshell-root"
+            data-section={section}
             style={{
                 display: 'flex',
                 height: '100vh',

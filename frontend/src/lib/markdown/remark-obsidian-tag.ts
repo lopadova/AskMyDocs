@@ -1,5 +1,5 @@
 import { visit } from 'unist-util-visit';
-import type { Root, Text, Parent } from 'mdast';
+import type { Root, Text, Parent, RootContent } from 'mdast';
 import type { Plugin } from 'unified';
 
 /**
@@ -31,15 +31,12 @@ export const remarkObsidianTag: Plugin<[], Root> = () => {
             if (segments.length === 1 && segments[0].type === 'text') {
                 return;
             }
-            parent.children.splice(
-                index,
-                1,
-                ...segments.map((seg) =>
-                    seg.type === 'text'
-                        ? ({ type: 'text', value: seg.value } as Text)
-                        : buildTagNode(seg.label),
-                ),
+            const replacements: RootContent[] = segments.map((seg) =>
+                seg.type === 'text'
+                    ? ({ type: 'text', value: seg.value } as Text)
+                    : (buildTagNode(seg.label) as unknown as RootContent),
             );
+            parent.children.splice(index, 1, ...replacements);
         });
     };
 };

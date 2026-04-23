@@ -1,5 +1,5 @@
 import { visit } from 'unist-util-visit';
-import type { Root, Text, Parent } from 'mdast';
+import type { Root, Text, Parent, RootContent } from 'mdast';
 import type { Plugin } from 'unified';
 
 /**
@@ -38,15 +38,12 @@ export const remarkWikilink: Plugin<[], Root> = () => {
                 return;
             }
 
-            parent.children.splice(
-                index,
-                1,
-                ...segments.map((seg) =>
-                    seg.type === 'text'
-                        ? ({ type: 'text', value: seg.value } as Text)
-                        : buildWikilinkNode(seg.slug, seg.label),
-                ),
+            const replacements: RootContent[] = segments.map((seg) =>
+                seg.type === 'text'
+                    ? ({ type: 'text', value: seg.value } as Text)
+                    : (buildWikilinkNode(seg.slug, seg.label) as unknown as RootContent),
             );
+            parent.children.splice(index, 1, ...replacements);
         });
     };
 };
