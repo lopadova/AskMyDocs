@@ -9,8 +9,8 @@
 |----|-------|--------|--------|------|---------------|---------------------|------|
 | 1  | A — Storage & Scheduler | `feature/enh-a-storage-scheduler` | ✅ PR opened | TBD | `origin/main` | 2026-04-23 | backend-only; 409 tests green |
 | 2  | B — Auth JSON API + Sanctum SPA | `feature/enh-b-auth-api` | ✅ PR opened | TBD | PR1 | 2026-04-23 | 433 tests green; Sanctum stateful + 7 Api/Auth tests |
-| 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ⏳ ready | — | PR2 | — | parte dal branch PR2 |
-| 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ⏳ blocked | — | PR3 | — | |
+| 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ✅ PR opened | TBD | PR2 | 2026-04-23 | 457 tests green; Spatie ^6.25 + 25 Rbac tests + AccessScopeScope + Policy + middleware |
+| 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ⏳ ready | — | PR3 | — | parte dal branch PR3 |
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ⏳ blocked | — | PR4 | — | |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ blocked | — | PR5 | — | |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ⏳ blocked | — | PR6 | — | |
@@ -45,6 +45,32 @@ Copiata dal template a inizio lavoro, spunta man mano.
 - [x] Aggiornato `LESSONS.md` con scoperte (notifications:prune, Mockery Storage, scheduler baseline)
 - [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
 - [x] Commit su branch, push, `gh pr create` verso `main`
+
+### PR3 — Phase C checklist
+
+- [x] Checkout worktree sul branch `feature/enh-c-rbac-foundation` da `feature/enh-b-auth-api`
+- [x] `composer require spatie/laravel-permission:^6.25` (supports Laravel 13 + PHP 8.3)
+- [x] `config/permission.php` (copiato da vendor; bootstrap/providers.php usa registrazione esplicita)
+- [x] `config/rbac.php` — `enforced` master switch (env `RBAC_ENFORCED`, default true)
+- [x] Migrazione Spatie `2026_04_23_000000_create_permission_tables.php` + mirror test
+- [x] 4 migrazioni custom: project_memberships, kb_tags, knowledge_document_tags, knowledge_document_acl
+- [x] Modelli `ProjectMembership`, `KbTag`, `KnowledgeDocumentAcl`
+- [x] `User.php` — `HasRoles` trait + `projectMemberships()` + `allowedProjects()` + `allowedScopesFor()` + `hasDocumentAccess()`
+- [x] `KnowledgeDocument.php` — global scope `AccessScopeScope` + relazioni `tags()` + `acl()`
+- [x] `app/Scopes/AccessScopeScope.php` — project_key whitelist + deny-wins exclusion
+- [x] `app/Http/Middleware/EnsureProjectAccess.php` + alias `project.access` in `bootstrap/app.php`
+- [x] `app/Policies/KnowledgeDocumentPolicy.php` (view/edit/delete/promote) + `Gate::policy` in AppServiceProvider
+- [x] `database/seeders/RbacSeeder.php` — 4 ruoli + 11 permessi + backfill viewer per utenti esistenti
+- [x] `app/Console/Commands/AuthGrantCommand.php` — `php artisan auth:grant {email} {role} [--project=]`
+- [x] `AuthController@me` ora popola `roles`, `permissions`, `projects` (era vuoto in PR2)
+- [x] `tests/TestCase.php` — registra `SpatiePermissionServiceProvider` + carica `permission` + `rbac` config
+- [x] `composer.json` — aggiunto `Database\\Seeders\\` al psr-4 autoload
+- [x] `.env.example` — `RBAC_ENFORCED=true`
+- [x] Tests `tests/Feature/Rbac/*Test.php` (23 test totali su 5 file) + `MeTest` esteso
+- [x] `vendor/bin/phpunit` → **457/457 verdi** (0 regressioni, 24 test nuovi)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase C
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch, push, `gh pr create` verso `feature/enh-b-auth-api`
 
 ### PR2 — Phase B checklist
 

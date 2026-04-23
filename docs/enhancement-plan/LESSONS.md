@@ -97,6 +97,77 @@
 
 ---
 
+## PR3 — Phase C (general-purpose agent, 2026-04-23)
+
+- **Spatie `^6.25` is the Laravel 13 sweet spot.** Version `7.x` dropped
+  support for Laravel 11 and older; `6.25` spans `^8.12|^9|^10|^11|^12|^13`
+  and still exposes the exact API we need (`HasRoles`, `Role::findByName`,
+  `findOrCreate`, `syncPermissions`, `PermissionRegistrar::forgetCachedPermissions`).
+  Pin with `^6.25` so patch updates stay available.
+- **No package discovery in this repo.** `bootstrap/providers.php` lists
+  providers explicitly (same reason TestCase registers Sanctum manually).
+  Consequence: `php artisan vendor:publish --provider=Spatie\\...\\Permission\\PermissionServiceProvider`
+  prints "No publishable resources" because the provider never booted.
+  **Workaround:** copy `vendor/spatie/laravel-permission/config/permission.php`
+  into `config/permission.php` and `vendor/.../database/migrations/create_permission_tables.php.stub`
+  into `database/migrations/2026_04_23_000000_create_permission_tables.php`
+  by hand. Also mirror the migration under `tests/database/migrations/`.
+- **`tests/TestCase.php` needs the Spatie provider AND the config**: register
+  `PermissionServiceProvider` alongside Sanctum and also
+  `$app['config']->set('permission', require config/permission.php)` — the
+  PR2 trick of rewriting the `auth` config after providers boot applies
+  equally to `permission` (otherwise Spatie reads default array keys
+  that don't exist in the overwritten config and throws "Target class
+  [Spatie\\Permission\\Models\\Permission] does not exist"-style errors
+  during role resolution).
+- **`Database\\Seeders\\` namespace needs explicit PSR-4 registration.**
+  Fresh Laravel 13 skeletons ship with `database/seeders/DatabaseSeeder.php`
+  and an implicit namespace — this repo never had seeders. Added
+  `"Database\\Seeders\\": "database/seeders/"` to `composer.json`'s
+  autoload map and ran `composer dump-autoload`. Without that,
+  `$this->seed(RbacSeeder::class)` in tests throws "Class not found".
+- **`Spatie HasRoles` composes cleanly with `Authenticatable + HasApiTokens + Notifiable`.** The trait order doesn't matter, but if you forget
+  to call `PermissionRegistrar::forgetCachedPermissions()` after a seeder
+  that runs inside the same request lifecycle, the second test in the
+  same file sees the previous run's cached permission list and role
+  resolution silently returns `false` on `->can('kb.read.any')`. The
+  RbacSeeder explicitly flushes the cache at the end of `run()` to avoid
+  this flake.
+- **Global scope compose order matters.** `SoftDeletes` trait registers
+  its own scope in `booted()`. Calling `parent::booted()` in the
+  override is NOT needed when `KnowledgeDocument` doesn't extend any
+  class that defines a custom `booted()` — the SoftDeletes trait
+  registers on its own via `static::bootSoftDeletes()`. Adding the
+  `AccessScopeScope` via `static::addGlobalScope(new AccessScopeScope)`
+  in the new `booted()` is enough; both scopes compose in the WHERE
+  clause at query time.
+- **`AccessScopeScope` must `$builder->whereRaw('1=0')` when the user has
+  zero allowed projects.** Returning without filtering would leak all
+  rows; returning `$builder->whereIn('project_key', [])` is ignored by
+  some drivers (Laravel emits a no-op IN clause). `whereRaw('1=0')` is
+  the explicit, portable "block everything" primitive.
+- **Policy registration needs `Gate::policy()` here.** Laravel 13's
+  convention auto-discovery only scans discovered providers; with
+  explicit registration it's safer to call `Gate::policy(Model::class,
+  Policy::class)` in `AppServiceProvider::boot()`. Don't try to call
+  `$this->policies = [...]` — that property is only honoured by
+  AuthServiceProvider's `registerPolicies()` which this repo doesn't use.
+- **Raccomandazione per PR4 (Frontend)**: the React auth store should
+  treat `roles`, `permissions` and `projects` as authoritative. The
+  dashboard's Project Switcher reads the `projects` list; if empty,
+  render "No projects — ask your admin for a membership" rather than
+  silently sending every request with `X-Project-Key: default`. The
+  `EnsureProjectAccess` middleware is fail-open on missing keys, so a
+  missing header is NOT a hard error — use it only to scope UIs.
+- **Raccomandazione per future PR di search/retrieval**: the global
+  scope is a pure SQL filter. It does NOT apply the scope_allowlist
+  folder_globs / tag intersection — that's in `KnowledgeDocumentPolicy::view()`.
+  Bulk-listing endpoints that return 50+ rows must either paginate and
+  apply the policy in PHP, or push a second SQL pass that joins
+  `knowledge_document_tags` when the membership has tag filters.
+
+---
+
 ## Template per nuova entry
 
 ```
