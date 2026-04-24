@@ -15,6 +15,7 @@ import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
 import { LogsView } from '../features/admin/logs/LogsView';
+import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -185,6 +186,24 @@ const maintenanceRoute = createRoute({
     component: MaintenancePlaceholder,
 });
 
+// Phase H2 — admin Maintenance panel route. Same flat RBAC pattern as
+// AdminLogsRoute / AdminKbRoute: RequireRole gate lives inside the
+// component so a viewer hitting /app/admin/maintenance sees
+// <AdminForbidden /> instead of a crash.
+function AdminMaintenanceRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <MaintenanceView />
+        </RequireRole>
+    );
+}
+
+const adminMaintenanceRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/maintenance',
+    component: AdminMaintenanceRoute,
+});
+
 // Flat admin route — same shape as `chatRoute` to keep PR #20's
 // Copilot #11 rule: no nesting inside a component-less parent. The
 // RBAC gate lives inside the component so a viewer hitting the URL
@@ -276,6 +295,7 @@ const routeTree = rootRoute.addChildren([
         adminRolesRoute,
         adminKbRoute,
         adminLogsRoute,
+        adminMaintenanceRoute,
     ]),
 ]);
 
