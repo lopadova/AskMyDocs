@@ -1,4 +1,5 @@
 import type { KbDocument } from '../admin.api';
+import { useDocumentAiSuggestions } from '../insights/insights.api';
 
 /*
  * Phase G2 — Meta tab. Shows every canonical column plus the cheap
@@ -154,6 +155,80 @@ export function MetaTab({ doc }: MetaTabProps) {
                         ))}
                     </div>
                 )}
+            </div>
+
+            <AiSuggestionsBlock documentId={doc.id} />
+        </div>
+    );
+}
+
+/*
+ * Phase I — per-doc AI tag suggestions. Calls the insights endpoint
+ * on demand (one LLM call per mount). Render nothing when the hook is
+ * still loading on first mount or returns zero tags — don't litter
+ * the tab with "no suggestions yet" cruft.
+ */
+function AiSuggestionsBlock({ documentId }: { documentId: number }) {
+    const q = useDocumentAiSuggestions(documentId);
+    if (q.isLoading) {
+        return (
+            <div
+                data-testid="kb-meta-ai-suggestions"
+                data-state="loading"
+                style={{ fontSize: 11.5, color: 'var(--fg-3)' }}
+            >
+                Loading AI suggestions…
+            </div>
+        );
+    }
+    if (q.isError) {
+        return (
+            <div
+                data-testid="kb-meta-ai-suggestions"
+                data-state="error"
+                style={{ fontSize: 11.5, color: 'var(--fg-3)' }}
+            >
+                AI suggestions unavailable.
+            </div>
+        );
+    }
+    const tags = q.data?.data.tags_proposed ?? [];
+    if (tags.length === 0) {
+        return null;
+    }
+    return (
+        <div
+            data-testid="kb-meta-ai-suggestions"
+            data-state="ready"
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+            <div
+                style={{
+                    fontSize: 11,
+                    color: 'var(--fg-3)',
+                    fontFamily: 'var(--font-mono)',
+                }}
+            >
+                AI suggestions for this doc
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {tags.map((name) => (
+                    <span
+                        key={name}
+                        data-testid={`kb-meta-ai-suggestion-${name}`}
+                        style={{
+                            padding: '2px 8px',
+                            borderRadius: 999,
+                            border: '1px dashed var(--accent, #3b82f6)',
+                            background: 'var(--bg-0)',
+                            fontSize: 11,
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--accent, #3b82f6)',
+                        }}
+                    >
+                        #{name}
+                    </span>
+                ))}
             </div>
         </div>
     );
