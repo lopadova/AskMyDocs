@@ -49,11 +49,34 @@ export function SourceTab({ documentId }: SourceTabProps) {
 
     // Reset saved baseline whenever the raw document changes (id swap or
     // post-save cache invalidation bringing a fresh content_hash).
+    //
+    // Copilot #3 fix: before this, we only updated the `savedRef` /
+    // `bufferRef` + flipped `isDirty=false` when the raw content
+    // changed — but the `EditorView`'s internal doc state was seeded
+    // once at mount and NEVER refreshed. After a save-triggered
+    // refetch (or a docId swap), the editor could display stale
+    // bytes while `isDirty=false` lied "nothing to save". Pressing
+    // Save then would have posted the OLD content back, overwriting
+    // the fresh version. Dispatch a full-doc replacement into the
+    // existing view so the UI state, `bufferRef`, and CodeMirror
+    // document stay in lockstep.
     useEffect(() => {
         if (!raw.data) return;
-        savedRef.current = raw.data.content;
-        bufferRef.current = raw.data.content;
+        const nextContent = raw.data.content;
+        savedRef.current = nextContent;
+        bufferRef.current = nextContent;
         setIsDirty(false);
+
+        const view = viewRef.current;
+        if (view && view.state.doc.toString() !== nextContent) {
+            view.dispatch({
+                changes: {
+                    from: 0,
+                    to: view.state.doc.length,
+                    insert: nextContent,
+                },
+            });
+        }
     }, [raw.data?.content_hash]);
 
     // Mount CodeMirror once the host div exists + raw content has loaded.

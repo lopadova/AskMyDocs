@@ -8,19 +8,21 @@ import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 import { ToastHost } from '../shared/Toast';
 
 /*
- * Phase G1 + G2 — KB Explorer shell.
+ * Phase G1 + G2 + G3 — KB Explorer shell.
  *
- * G1 shipped the tree + placeholder. G2 replaces the placeholder with
- * the full DocumentDetail pane: Preview / Meta / History tabs, header
- * actions (Download / Print / Restore / Delete / Force delete).
+ * G1 shipped the tree + placeholder. G2 replaced the placeholder with
+ * the full DocumentDetail pane (Preview / Meta / History) plus header
+ * actions (Download / Print / Restore / Delete / Force delete). G3
+ * added the Source tab (CodeMirror editor + PATCH /raw save pipeline),
+ * so `VALID_TABS` now covers `preview / source / meta / history`.
  *
  * Selection + tab state persist in the URL via `doc` and `tab` search
  * params so operators can deep-link to a specific view. We parse the
  * current URL once on mount and write back through history.replaceState
  * so TanStack Router stays in charge of navigation elsewhere.
  *
- * Editor (G3) + graph/PDF (G4) slot next to the existing tabs when
- * those microphases land.
+ * Graph + PDF export (G4) slot next to the existing four tabs when
+ * that microphase lands.
  */
 
 const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history'];

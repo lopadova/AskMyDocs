@@ -143,16 +143,39 @@ class KbDocumentController extends Controller
 
         $sourcePath = KbPath::normalize((string) $document->source_path);
 
+        // Parsed frontmatter survives past the validation block so the
+        // audit row can stamp identifier *edits* (e.g. `id:` change in
+        // the YAML) with the NEW doc_id / slug — otherwise the audit
+        // trail would key on the pre-edit identifiers and the row
+        // would vanish from History once the re-ingest lands with the
+        // new doc_id (history prefers doc_id, Copilot #5).
+        $parsed = null;
+
         if (str_starts_with($content, '---')) {
             $parsed = $parser->parse($content);
-            if ($parsed !== null) {
-                $validation = $parser->validate($parsed);
-                if (! $validation->valid) {
-                    return response()->json([
-                        'message' => 'Invalid canonical frontmatter.',
-                        'errors' => ['frontmatter' => $validation->errors],
-                    ], Response::HTTP_UNPROCESSABLE_ENTITY);
-                }
+            // Copilot #4 fix: when the content opens with `---` but
+            // `parse()` returns null, the frontmatter fence is broken
+            // (e.g. missing closing `---`, malformed YAML scalar).
+            // Previously we silently skipped validation and wrote the
+            // malformed block to disk — the next ingest then crashed
+            // on CanonicalParser. Treat "opens with --- but can't
+            // parse" as a 422 so the editor can surface the failure
+            // to the author before bytes hit the disk.
+            if ($parsed === null) {
+                return response()->json([
+                    'message' => 'Invalid canonical frontmatter.',
+                    'errors' => ['frontmatter' => [
+                        'Frontmatter block must be a complete --- ... --- section with valid YAML.',
+                    ]],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $validation = $parser->validate($parsed);
+            if (! $validation->valid) {
+                return response()->json([
+                    'message' => 'Invalid canonical frontmatter.',
+                    'errors' => ['frontmatter' => $validation->errors],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
             }
         }
 
@@ -171,28 +194,45 @@ class KbDocumentController extends Controller
         }
 
         // R10: stamp the audit row with the identifiers that survive a
-        // hard delete (project_key, doc_id, slug). `doc_id` may be null
-        // for raw (non-canonical) docs — that is fine; the audit trail
-        // will still key on project + slug when present.
+        // hard delete (project_key, doc_id, slug).
+        //
+        // Copilot #5 fix: when the author edits `id:` / `slug:` in the
+        // YAML, the next ingest will materialise a KnowledgeDocument
+        // with the NEW identifiers. Keying the audit on the pre-edit
+        // identifiers would leave this `updated` row invisible from
+        // the new doc's History tab (history prefers `doc_id` and
+        // falls back to `slug`). Prefer the parsed frontmatter's
+        // identifiers when present; capture the prior ones inside
+        // `before_json` so the trail stays reversible. Raw
+        // (non-canonical) edits keep `$document->...` as-is.
         $newVersionHash = hash('sha256', $content);
         $actor = (string) (auth()->user()?->email ?? 'system');
 
+        $nextDocId = $parsed?->docId ?? $document->doc_id;
+        $nextSlug = $parsed?->slug ?? $document->slug;
+
         $audit = KbCanonicalAudit::create([
             'project_key' => $document->project_key,
-            'doc_id' => $document->doc_id,
-            'slug' => $document->slug,
+            'doc_id' => $nextDocId,
+            'slug' => $nextSlug,
             'event_type' => 'updated',
             'actor' => $actor,
             'before_json' => [
                 'version_hash' => $document->version_hash,
                 'metadata' => $document->metadata,
+                'doc_id' => $document->doc_id,
+                'slug' => $document->slug,
             ],
             'after_json' => [
                 'version_hash' => $newVersionHash,
                 'size_bytes' => strlen($content),
+                'doc_id' => $nextDocId,
+                'slug' => $nextSlug,
             ],
             'metadata_json' => [
                 'route' => 'api.admin.kb.documents.update_raw',
+                'identifier_changed' => ($nextDocId !== $document->doc_id)
+                    || ($nextSlug !== $document->slug),
             ],
         ]);
 

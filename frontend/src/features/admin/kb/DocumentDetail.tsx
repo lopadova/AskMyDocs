@@ -12,12 +12,14 @@ import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 
 /*
- * Phase G2 — KB document detail pane.
+ * Phase G2/G3 — KB document detail pane.
  *
- * Three tabs only at this phase: Preview / Meta / History. Source
- * editor (CodeMirror) lands in G3; Graph viewer + PDF Export land
- * in G4. The `activeTab` + `tab` URL search param are kept in
- * lockstep so deep-links reopen the correct pane.
+ * Tabs: Preview / Source / Meta / History. G2 shipped the three
+ * read-only tabs; G3 added Source (CodeMirror editor with PATCH
+ * /raw save pipeline). Graph viewer + PDF Export land in G4 —
+ * they'll slot in next to the existing four without further
+ * restructure. The `activeTab` + `tab` URL search param are kept
+ * in lockstep so deep-links reopen the correct pane.
  *
  * Destructive actions (delete / force-delete) go through a
  * controlled confirmation dialog so R11 (testids) stay stable
