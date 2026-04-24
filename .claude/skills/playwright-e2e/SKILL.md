@@ -5,122 +5,137 @@ description: Author and maintain Playwright end-to-end scenarios for the AskMyDo
 
 # Playwright E2E scenario authoring
 
-## Rule
+## The three hard rules
 
-Every PR that ships a user-visible frontend change must include at
-least one Playwright scenario that:
+1. **Every user-visible FE change ships one happy + one failure scenario**
+   (R12). No exceptions; "it's just a small tweak" is not an exception.
+2. **E2E exercises the real stack** — real Laravel, real DB (SQLite
+   in CI), real Eloquent, real Sanctum cookies, real controllers
+   (R13). `page.route(...)` is **only** for calls that leave the
+   app boundary.
+3. **Selectors and waits are semantic, not structural**. `getByTestId`,
+   `getByRole` + accessible name, `toHaveAttribute('data-state', ...)`.
+   Never CSS selectors, never `waitForTimeout`.
 
-1. Signs in (or is already authed via a reusable storage state fixture)
-2. Navigates to the feature's route
-3. Exercises the happy path with realistic data
-4. Exercises at least one failure path (validation, 422, 429, network error)
-5. Asserts on user-observable DOM, never on internals or timing
+If the PR breaks any of the three, it does not ship.
 
-E2E runs in CI before merge; local `npm run e2e` is the pre-push gate.
+## R13 — real-data rule in detail
 
-## The real-data rule (R13) — non-negotiable
+Allowed stubs (`page.route(...)`):
 
-E2E tests are end-to-end *on purpose*. They must run against the
-**real Laravel app**, the **real database** (SQLite in CI), **real
-Sanctum cookies**, **real controllers**, and **real Eloquent
-queries**. The `webServer` block in `playwright.config.ts` boots
-`php artisan serve` with `APP_ENV=testing` so every scenario has a
-working back-end automatically; per-scenario state is reset through
-`/testing/reset` + `/testing/seed` via the `seeded` auto-fixture
-(see the `fixtures.ts` recipe below).
+| Target | Why it's OK |
+|---|---|
+| `**/api.openrouter.ai/**`, `**/api.openai.com/**`, `**/api.anthropic.com/**`, `**/generativelanguage.googleapis.com/**`, `**/regolo.ai/**` | AI providers — cost money, require prod creds, non-deterministic |
+| `**/mailgun.net/**`, `**/sendgrid.com/**`, `**/api.mailersend.com/**` | Email senders |
+| `**/s3.amazonaws.com/**`, `**/storage.googleapis.com/**`, `**/*.r2.cloudflarestorage.com/**` | Remote object storage (when `Storage::fake` isn't in play) |
+| Any `**/api.stripe.com/**`, payment / billing rails | Money |
+| OCR / speech / vision APIs | Money + non-determinism |
+| **Controller paths that invoke one of the above internally** — e.g. `**/conversations/*/messages` (POST triggers the AI provider), `**/api/kb/promotion/promote` (dispatches ingestion that embeds via provider) | The external call is the reason |
 
-`page.route(...)` is reserved for **external-service boundaries
-only** — outgoing calls that:
+Forbidden stubs — these are real-data territory:
 
-- cost money or quota (AI providers: OpenRouter, OpenAI, Anthropic,
-  Gemini, Regolo; embedding providers; OCR APIs)
-- require production credentials unavailable in CI (Mailgun, SES,
-  Twilio, S3 if not using `Storage::fake`, payment rails)
-- introduce non-determinism (external clocks, rate limiters on
-  third-party APIs)
+| Target | Why it's a bug |
+|---|---|
+| `**/sanctum/csrf-cookie` | The CSRF round-trip is part of the user journey |
+| `**/api/auth/me`, `**/api/auth/login`, `**/api/auth/logout` | Auth flows must run for real |
+| `**/api/admin/metrics/**` (happy path) | Metrics aggregation is literally what the dashboard asserts |
+| `**/api/admin/users`, `**/api/admin/roles` | CRUD is the feature |
+| `**/api/kb/resolve-wikilink` (happy path) | Resolver talks only to local DB |
+| `**/conversations` (GET, PATCH, DELETE) | No external call; local Eloquent only |
+| Any `**/api/kb/*` that reads (search, show, tree) | Local DB + pgvector/FTS only |
 
-Intercepting internal routes — `/api/conversations`,
-`/api/admin/*`, `/api/kb/*`, `/sanctum/csrf-cookie`, `/login`,
-`/api/auth/me` — turns an E2E into a unit test in E2E clothing
-and stops catching the exact kind of integration regressions E2E
-exists for. **Not allowed.**
+**Exception:** stubbing an internal route to inject a failure mode
+(`500`, `422`, timeout) is allowed because the real data path was
+already covered by the happy-path scenario in the same file, and
+the goal of the failure test is to prove the UI degrades. Mark
+that test with a `/* R13: failure injection — real path tested in
+"<happy test name>" */` comment so the intent is explicit.
 
-Quick check before committing a `.spec.ts`:
+### Pre-commit sanity check
 
-```bash
-rg 'page\.route' frontend/e2e/ -n
-```
-
-Every match must be a route to a third-party host (or a controller
-path that itself calls one — e.g. `/conversations/*/messages` is
-allowed to be stubbed *because it invokes the AI provider*). If a
-match intercepts an internal-only route, replace it with real
-seeded data via `/testing/seed`.
-
-## Why this exists
-
-Unit tests prove components render; E2E prove the whole stack
-(SPA ↔ Laravel ↔ DB ↔ AI providers) cooperates. The AskMyDocs admin
-surface is large and stateful — login → dashboard → tree → editor →
-PDF export → maintenance wizard — and the only practical way to regress-
-test it is against a running app. User requested (Apr 23) that E2E be
-professional-grade from PR5 onward.
-
-## Setup (one-time per PR that bootstraps E2E)
+The repo ships `scripts/verify-e2e-real-data.sh` (see below). It
+greps `page.route(` under `frontend/e2e/` and flags any target
+that doesn't match the allowed-external allowlist. Run it before
+`git commit`:
 
 ```bash
-cd frontend
-npm install --save-dev @playwright/test
-npx playwright install chromium firefox webkit --with-deps
+bash scripts/verify-e2e-real-data.sh
 ```
 
-Add to `frontend/package.json`:
+CI runs the same script. A red exit is a merge block.
 
-```json
-"scripts": {
-  "e2e": "playwright test",
-  "e2e:ui": "playwright test --ui",
-  "e2e:headed": "playwright test --headed",
-  "e2e:report": "playwright show-report"
-}
-```
+## Directory layout
 
-### Directory layout
+**Current repo layout** (after PR #20):
 
 ```
 frontend/
-├── playwright.config.ts
 ├── e2e/
-│   ├── fixtures.ts              # shared fixtures (authedPage, admin DB seed)
-│   ├── helpers.ts               # testid getters, API wait helpers
-│   ├── auth.spec.ts
-│   ├── chat.spec.ts
-│   ├── admin-dashboard.spec.ts
-│   ├── admin-users.spec.ts
-│   ├── admin-kb.spec.ts
-│   ├── admin-logs.spec.ts
-│   ├── admin-maintenance.spec.ts
-│   └── admin-insights.spec.ts
-└── playwright/.auth/            # per-user storage state (gitignored)
+│   ├── auth.setup.ts         ← one-time admin login → playwright/.auth/admin.json
+│   ├── fixtures.ts           ← seeded auto-fixture via /testing/reset + /testing/seed
+│   ├── helpers.ts            ← testid getters, data-state waits
+│   └── chat.spec.ts
+playwright.config.ts           ← repo root; webServer block boots php artisan serve (R13)
+playwright/.auth/              ← gitignored
 ```
 
-### `playwright.config.ts` skeleton
+**Target layout** as admin/KB/logs/maintenance surfaces land in
+PR6–PR10. Add each file only when the corresponding PR introduces
+it — don't bootstrap empty files ahead of the feature:
+
+```
+frontend/e2e/
+├── auth.setup.ts
+├── viewer.setup.ts           ← ADD in the first PR that needs RBAC-split tests (PR6)
+├── fixtures.ts
+├── helpers.ts
+├── auth.spec.ts              ← ADD when login/forgot/reset get real-flow coverage
+├── chat.spec.ts
+├── admin-dashboard.spec.ts           ← PR6 Phase F1
+├── admin-dashboard-viewer.spec.ts    ← PR6, uses viewer storage state
+├── admin-users.spec.ts               ← PR7 Phase F2
+├── admin-kb.spec.ts                  ← PR8 Phase G
+├── admin-logs.spec.ts                ← PR9 Phase H
+├── admin-maintenance.spec.ts         ← PR9 Phase H
+└── admin-insights.spec.ts            ← PR10 Phase I
+```
+
+## `playwright.config.ts` — current shape (post PR #20)
+
+The repo ships with a **single-role** config today. Use it as-is
+when the scenario only needs the admin storage state:
 
 ```ts
+// playwright.config.ts — current shape
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
+const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './frontend/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:8000',
+    baseURL,
     trace: 'on-first-retry',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
+  },
+  // R13: real backend. Playwright boots php artisan serve on the
+  // same worktree and shuts it down after the suite. SKIP only
+  // when an external server is already serving baseURL.
+  webServer: skipWebServer ? undefined : {
+    command: 'php artisan serve --host=127.0.0.1 --port=8000',
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+    env: { APP_ENV: 'testing' },
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
   projects: [
     { name: 'setup', testMatch: /.*\.setup\.ts/ },
@@ -128,155 +143,240 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/admin.json' },
       dependencies: ['setup'],
-    },
-  ],
-  webServer: [
-    {
-      command: 'php artisan serve --host=127.0.0.1 --port=8000',
-      url: 'http://127.0.0.1:8000',
-      reuseExistingServer: !process.env.CI,
-      cwd: '..',
-    },
-    {
-      command: 'npm run dev',
-      url: 'http://127.0.0.1:5173',
-      reuseExistingServer: !process.env.CI,
+      testIgnore: /.*\.setup\.ts/,
     },
   ],
 });
 ```
 
-## Conventions
+### Multi-role upgrade (apply in PR #6 when the first RBAC-split test lands)
 
-### 1. Always select via `data-testid` or `getByRole` + name
+When a PR first needs to verify an admin-only route returns
+`admin-forbidden` to a viewer, extend the config to this shape —
+this is a **template**, not the current state:
 
 ```ts
-await page.getByTestId('login-email').fill('admin@acme.io');
-await page.getByTestId('login-submit').click();
-await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
+// Multi-role projects — add in the PR that ships the first
+// *-viewer.spec.ts. The admin branch above remains unchanged.
+projects: [
+  { name: 'admin-setup',  testMatch: /auth\.setup\.ts/ },
+  { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
+  {
+    name: 'chromium-admin',
+    use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/admin.json' },
+    dependencies: ['admin-setup'],
+    testIgnore: /.*\.setup\.ts|.*-viewer\.spec\.ts/,
+  },
+  {
+    name: 'chromium-viewer',
+    use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/viewer.json' },
+    dependencies: ['viewer-setup'],
+    testMatch: /.*-viewer\.spec\.ts/,
+  },
+],
 ```
 
-Never `page.click('.btn-primary:nth-child(2)')` — that's drift bait.
+Keep `auth.setup.ts` as-is (just rename its project to `admin-setup`)
+and add a parallel `viewer.setup.ts`. Both write to
+`playwright/.auth/*.json` so the two browser projects pick the
+correct identity automatically.
 
-### 2. Wait on data-state, not arbitrary timeouts
-
-```ts
-const usersTable = page.getByTestId('users-table');
-await expect(usersTable).toHaveAttribute('data-state', 'ready');
-```
-
-### 3. Backend fixture resets
-
-Use `@playwright/test` fixtures to seed DB state before scenarios:
+## `frontend/e2e/fixtures.ts` — the `seeded` auto-fixture
 
 ```ts
+import { test as base, expect } from '@playwright/test';
+
+// R13: every test resets the DB via /testing/reset and reseeds
+// DemoSeeder before the scenario runs. No shared mutable state,
+// no manual page.route() on /api/* to "fix" dirty data — fix the
+// data instead.
 export const test = base.extend<{ seeded: void }>({
   seeded: [async ({ request }, use) => {
-    // Laravel exposes a `/testing/reset` endpoint in APP_ENV=testing
-    await request.post('/testing/reset');
-    await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    const reset = await request.post('/testing/reset');
+    expect(reset.ok()).toBeTruthy();
+    const seed = await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    expect(seed.ok()).toBeTruthy();
     await use();
   }, { auto: true }],
 });
+
+export { expect };
 ```
 
-Ship the `TestingController` behind `APP_ENV=testing` guard and never
-enable in production.
+`app/Http/Controllers/TestingController.php` is registered in
+`routes/web.php` ONLY when `APP_ENV=testing` — never in prod.
 
-### 4. Auth storage state
-
-Create a `auth.setup.ts` that signs in once and writes storageState:
+## `frontend/e2e/helpers.ts` — semantic waits
 
 ```ts
-import { test as setup } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
+
+export const testid = (page: Page, id: string): Locator => page.getByTestId(id);
+
+// Canonical pattern for data-state waits. No MutationObserver
+// plumbing, no custom evaluate — Playwright's expect polls
+// attributes correctly.
+export async function waitForReady(page: Page, testId: string, timeout = 15_000): Promise<void> {
+  const el = page.getByTestId(testId);
+  await el.waitFor({ state: 'visible', timeout });
+  await expect(el).not.toHaveAttribute('data-state', 'loading', { timeout });
+}
+```
+
+## `frontend/e2e/auth.setup.ts` — one-time login
+
+```ts
+import { test as setup, expect } from '@playwright/test';
+
+const adminStorage = 'playwright/.auth/admin.json';
 
 setup('authenticate as admin', async ({ page }) => {
   await page.goto('/login');
   await page.getByTestId('login-email').fill('admin@acme.io');
   await page.getByTestId('login-password').fill('secret123');
   await page.getByTestId('login-submit').click();
-  await page.waitForURL('**/app');
-  await page.context().storageState({ path: 'playwright/.auth/admin.json' });
+  await expect(page).toHaveURL(/\/app/);
+  await page.context().storageState({ path: adminStorage });
 });
 ```
 
-All subsequent scenarios reuse this state — no re-login per test.
+`viewer.setup.ts` is the same with `viewer@acme.io` / `secret123`
+and `playwright/.auth/viewer.json`. DemoSeeder must seed both.
 
-### 5. Scenario template
+## Scenario templates — copy & adapt
+
+### Happy path (admin dashboard)
 
 ```ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures';
+import { testid, waitForReady } from './helpers';
 
-test.describe('Admin KB — document editing', () => {
-  test('author edits source and re-ingest triggers', async ({ page }) => {
-    await page.goto('/app/admin/kb');
-    await page.getByTestId('kb-tree').waitFor();
-    await page.getByTestId('kb-tree-node-remote-work-policy.md').click();
-    await page.getByTestId('kb-tab-source').click();
-    await page.getByTestId('kb-editor').fill(/* new markdown */);
-    await page.getByTestId('kb-editor-save').click();
-    await expect(page.getByTestId('toast-success')).toBeVisible();
-    await expect(page.getByTestId('kb-tab-history')).toContainText('re-ingested');
-  });
-
-  test('422 validation surfaces per-field errors', async ({ page }) => {
-    await page.goto('/app/admin/kb');
-    await page.getByTestId('kb-tree-node-remote-work-policy.md').click();
-    await page.getByTestId('kb-editor').fill('invalid yaml front matter');
-    await page.getByTestId('kb-editor-save').click();
-    await expect(page.getByTestId('kb-editor-error')).toContainText('frontmatter');
+test.describe('Admin dashboard', () => {
+  test('renders KPIs + health + charts from real seeded data', async ({ page }) => {
+    await page.goto('/app/admin');
+    await waitForReady(page, 'dashboard-kpi-strip');
+    // 6 KPI cards, real numbers from DemoSeeder
+    for (const k of ['docs','chunks','chats','latency','cache','canonical']) {
+      await expect(testid(page, `kpi-card-${k}`)).toHaveAttribute('data-state', 'ready');
+    }
+    // Health strip — at least 5 green concerns in a clean seed
+    const health = testid(page, 'dashboard-health');
+    await expect(health).toHaveAttribute('data-state', 'ok');
+    // Charts are lazy-loaded — wait for the recharts SVG
+    await waitForReady(page, 'dashboard-chat-volume');
+    await expect(page.locator('[data-testid="dashboard-chat-volume"] svg')).toBeVisible();
   });
 });
 ```
 
-### 6. Network interception for failure injection
+### Failure injection on an internal route (R13 exception)
 
 ```ts
-test('dashboard handles metrics 500', async ({ page }) => {
-  await page.route('**/api/admin/metrics**', route => route.fulfill({ status: 500 }));
-  await page.goto('/app/admin');
-  await expect(page.getByTestId('dashboard-error')).toBeVisible();
+test.describe('Admin dashboard — failure modes', () => {
+  test('/* R13: failure injection — real path tested above */ metrics 500', async ({ page }) => {
+    await page.route('**/api/admin/metrics/**', (route) => route.fulfill({ status: 500 }));
+    await page.goto('/app/admin');
+    await expect(testid(page, 'dashboard-error')).toBeVisible();
+    await expect(testid(page, 'dashboard-error')).toContainText(/couldn.?t load/i);
+  });
 });
 ```
 
-### 7. CI integration
+### Happy path (chat) — stub ONLY the AI provider boundary
 
-Add to `.github/workflows/tests.yml`:
-
-```yaml
-- name: Install Playwright
-  run: cd frontend && npx playwright install --with-deps chromium
-- name: Run E2E
-  run: cd frontend && npm run e2e
-  env:
-    APP_ENV: testing
+```ts
+test('user asks question and the assistant reply renders', async ({ page }) => {
+  // Allowed (R13): POST /conversations/*/messages triggers the AI
+  // provider. Stub the CONTROLLER endpoint because the external
+  // call it makes is expensive + non-deterministic.
+  await page.route('**/conversations/*/messages', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        id: 1001, role: 'assistant',
+        content: 'Answer with a [[remote-work-policy]] citation.',
+        metadata: { provider: 'mock', model: 'mock', citations: [] },
+        rating: null, created_at: new Date().toISOString(),
+      }),
+    });
+  });
+  await page.goto('/app/chat');
+  await testid(page, 'chat-composer-input').fill('How does the stipend work?');
+  await testid(page, 'chat-composer-send').click();
+  await waitForReady(page, 'chat-thread', 45_000);
+  await expect(page.locator('[data-testid^="chat-message-"][data-role="assistant"]').first()).toBeVisible();
+});
 ```
 
-Expected test time: ~2-4 minutes for a full admin suite on one browser.
+### Failure path (chat) — validation, no stub needed
 
-## Failure patterns that MUST be covered per feature
+```ts
+test('empty message surfaces a 422-style validation error', async ({ page }) => {
+  await page.goto('/app/chat');
+  await testid(page, 'chat-composer-send').click();
+  const err = testid(page, 'message-error');
+  await expect(err).toBeVisible();
+  await expect(err).toContainText(/required/i);
+});
+```
 
-| Feature          | Happy path                          | Failure paths                                    |
-|------------------|-------------------------------------|--------------------------------------------------|
-| Login            | valid creds → /app                  | bad creds → 422; 5x bad → 429                    |
-| Forgot password  | real email → success                | throttle → 429                                   |
-| Chat             | question → streamed answer          | provider error → inline error; 0 citations state |
-| Dashboard        | KPIs + sparklines render            | metrics endpoint 500 → error card                |
-| Users CRUD       | create / edit / delete              | duplicate email → 422; unauthorized → 403        |
-| KB tree + editor | browse / open / edit / save / PDF   | invalid frontmatter → 422; file lock → 409       |
-| Logs             | tail + filter + export CSV          | log file missing → empty-state                    |
-| Maintenance      | wizard preview / confirm / run      | destructive without confirm → 400                |
-| Insights         | snapshot renders, action one-click  | stale snapshot → regen pending banner            |
+### CRUD happy path (users admin) — no stubs at all
 
-## Quick checklist before PR
+```ts
+test('admin creates a user and the table shows the new row', async ({ page }) => {
+  await page.goto('/app/admin/users');
+  await testid(page, 'users-add').click();
+  await testid(page, 'user-form-email').fill('new@acme.io');
+  await testid(page, 'user-form-name').fill('New Hire');
+  await testid(page, 'user-form-role').click();
+  await page.getByRole('option', { name: 'Viewer' }).click();
+  await testid(page, 'user-form-submit').click();
+  await expect(testid(page, 'toast-success')).toBeVisible();
+  const row = page.locator('[data-testid^="users-row-"]', { hasText: 'new@acme.io' });
+  await expect(row).toBeVisible();
+});
+```
 
-- [ ] Each new feature has `e2e/<feature>.spec.ts` with >= 1 happy + >= 1 failure
+## Coverage matrix — every admin feature in PR6–PR10
+
+| Feature | Happy | Failure injection | Empty/edge state |
+|---|---|---|---|
+| Login | valid creds → /app | bad creds → 422; 5× bad → 429 | — |
+| Forgot password | real email → success | throttle → 429 | — |
+| Chat | question → streamed answer (AI-provider stub ok) | provider 500 → inline error | 0 citations state |
+| Dashboard | real KPIs + charts + health | `/api/admin/metrics/**` 500 → dashboard-error | zero chats → chart-empty; queue > 10 → health degraded |
+| Users CRUD | create / edit / delete | duplicate email → 422; unauthorized → 403 | admin deleting self → dialog |
+| Roles | assign / revoke | removing last super-admin → 409 | — |
+| KB tree + editor | browse / open / edit / save / PDF | invalid frontmatter → 422; file lock → 409 | empty project → "no docs" empty state |
+| Logs | tail + filter + export CSV | log file missing → empty-state | 0 results → zero-state |
+| Maintenance | wizard preview / confirm / run | destructive without confirm → 400 | long-running → progress spinner |
+| Insights | snapshot renders, action one-click | stale snapshot → regen pending banner | zero insights → onboarding tip |
+
+## Pre-PR checklist
+
+- [ ] `bash scripts/verify-e2e-real-data.sh` — 0 findings
+- [ ] Every new feature has `e2e/<feature>.spec.ts` with ≥ 1 happy + ≥ 1 failure
 - [ ] All selectors use `getByTestId` or `getByRole` + accessible name
-- [ ] No `waitForTimeout` calls (use `data-state` waits instead)
+- [ ] No `waitForTimeout`; use `waitForReady(page, testId)` or `toHaveAttribute('data-state', ...)`
 - [ ] Uses authed storage state — no per-test login
-- [ ] Network failure injected via `page.route(...)` for at least one error case
-- [ ] CI workflow updated if new dependency (browser) added
-- [ ] `npm run e2e` green locally before push
+- [ ] Failure paths that stub an internal route carry the `/* R13: failure injection */` marker comment
+- [ ] `npm run e2e` green locally
+- [ ] CI workflow updated if you added a new browser or a new setup project
 
-See also `.claude/skills/frontend-testid-conventions/SKILL.md` for the
-DOM contract consumed by these scenarios.
+## What a reviewer should reject
+
+1. A test that runs fast and always passes — check for stubbed internal routes.
+2. A scenario that calls `expect(locator).toBeVisible()` without any state assertion — likely watching nothing meaningful.
+3. `await page.waitForTimeout(1000)` — always wrong.
+4. Selectors like `.cursor-pointer > div:nth-child(2)` — will break on any CSS refactor.
+5. A test file without a failure-path scenario — R12 violation.
+6. `page.route('**/api/admin/*', ...)` on a happy path — R13 violation.
+
+## Cross-reference
+
+- DOM contract: `.claude/skills/frontend-testid-conventions/SKILL.md`
+- Failure surfacing in components: R11 in `CLAUDE.md`
+- Verification script: `scripts/verify-e2e-real-data.sh`
+- Template archive: `.claude/skills/playwright-e2e-templates/` (copy the closest template and adapt)

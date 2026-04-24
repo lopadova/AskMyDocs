@@ -112,6 +112,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Verify E2E real-data rule (R13)
+        # Enforces CLAUDE.md §R13: page.route() is only allowed against
+        # external-service boundaries (AI providers, email, payments,
+        # remote storage) or with an explicit "R13: failure injection"
+        # marker. Blocks merging scenarios that silently stub internal
+        # routes and turn E2E into unit tests in E2E clothing.
+        run: bash scripts/verify-e2e-real-data.sh
+
       - name: Build frontend bundle
         run: npm run build
 
