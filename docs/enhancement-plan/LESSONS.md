@@ -5,6 +5,48 @@
 
 ---
 
+## PR14 — Phase I (ai-insights agent, 2026-04-24)
+
+- **Pre-computed snapshot vs on-demand is the ONLY viable design
+  at LLM cost.** The naive version of "AI insights" is a service
+  that accepts a request and fires N LLM calls on the spot — which
+  at 10 tag proposals + 1 coverage-gap clustering per page load
+  would cost $0.50 minimum per view on a production corpus and
+  scale linearly with operator activity. Moving the compute into a
+  scheduled `insights:compute` command that writes ONE row per
+  calendar day and letting the SPA read that row turns the per-view
+  cost into O(1) DB read. The `admin_insights_snapshots` table is
+  the entire point of the phase — not a caching optimisation but
+  the actual product shape. Future phases that add "real-time
+  insights" would need an ADR overriding this boundary and the
+  provider-bill math to back it.
+- **Partial-failure null-column beats abort-on-any-failure.** Any
+  single LLM call in `AiInsightsService` can trip on a provider
+  timeout, quota, or 5xx. If the compute command aborted on the
+  first failure, one flaky provider would zero the entire day's
+  insights — the operator sees nothing. Instead the command wraps
+  each function in try/catch at the boundary (`runInsight()`) and
+  writes `null` to the affected column; the other 5 columns still
+  populate. The migration's `->nullable()` on every payload column
+  is load-bearing for this contract — drop it and the first
+  timeout takes down the whole row. This is the same pattern
+  H2's `CommandRunnerService::run()` uses for the audit row:
+  write everything you can, record what you couldn't, never pretend.
+- **Compose existing services, don't duplicate the prompt surface.**
+  `AiInsightsService` is 700 lines not because its logic is novel
+  but because six aggregation queries are intrinsically verbose.
+  The LLM calls themselves go through the existing `AiManager` and
+  `PromotionSuggestService` — the promotion scoring is the same code
+  path the canonical pipeline's `/suggest` endpoint already uses;
+  tag proposal is a small one-shot `AiManager::chat()` call. Do NOT
+  inline a new provider transport here, do NOT copy the JSON-decode
+  prompt stripping from `PromotionSuggestService`, do NOT build a
+  second retry layer. Composition keeps the insights service
+  dependency-free (two constructor args) and lets future phases
+  swap the provider globally without revisiting this module.
+
+---
+
 ## PR13 — Phase H2 (maintenance-panel agent, 2026-04-24)
 
 - **Audit-before-execute is the invariant, not the optimisation.**
