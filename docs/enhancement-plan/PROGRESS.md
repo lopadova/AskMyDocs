@@ -13,7 +13,7 @@
 | 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ✅ PR opened | TBD | PR3 | 2026-04-22 | 460 tests green (+3 Spa) + 21 Vitest + 18 legacy rich-content; Vite build verified (421 kB JS gz 131 kB) |
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
-| 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 545/545 PHP (+45) · 70/70 Vitest (+11) · 12 Playwright scenarios (9 admin + 3 viewer) · R13 green |
+| 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 551/551 PHP (+45 Admin suites) · 70/70 Vitest (+11) · 12 new Playwright scenarios (9 admin + 3 viewer) · R13 green |
 | 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
 | 9  | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR8 | — | |
 | 10 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR9 | — | |
@@ -52,7 +52,7 @@ Copiata dal template a inizio lavoro, spunta man mano.
 - [x] `frontend/e2e/admin-roles.spec.ts` (3 scenarios: 2 happy + 1 failure)
 - [x] `frontend/e2e/admin-users-viewer.spec.ts` (3 scenarios: 2 UI forbidden + 1 API 403)
 - [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
-- [x] `php vendor/bin/phpunit` (F2 suites) → **45/45**
+- [x] `php vendor/bin/phpunit` → **551/551** (F2 suites 45/45; full suite 506 baseline + 45 new)
 - [x] `npm test` → **70/70** (59 PR6 baseline + 11 new)
 - [x] `npx playwright test --list` → 21 scenarios across 5 files
 - [x] Aggiornato `LESSONS.md` con scoperte Phase F2
