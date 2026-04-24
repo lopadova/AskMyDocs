@@ -5,6 +5,61 @@
 
 ---
 
+## PR12 — Phase H1 (log-viewer agent, 2026-04-24)
+
+- **Reverse-seek via `SplFileObject::seek()` is the right tailer for
+  an unbounded log file.** `file_get_contents()` / `file()` would
+  load the whole log into memory — a multi-GB `laravel.log` on a
+  production box would OOM the worker. `SplFileObject::seek(PHP_INT_MAX)`
+  positions the iterator at one index past the last line; `key()`
+  returns that index; then we walk backwards line-by-line via a
+  decrementing `seek($cursor)` loop, accumulating only the lines
+  we need. Note two subtleties: (a) a trailing `\n` makes
+  `key()` return one past the last real line, so the first
+  iteration returns an empty string which we silently skip;
+  (b) `total_scanned` counts every iteration incl. the empty
+  tail-sentinel, so test expectations should use
+  `assertGreaterThanOrEqual($maxLines)` rather than an exact match.
+  Line-number-based seek is `O(n)` in line-count (SplFileObject
+  has no line-index cache), but for the 2000-line hard cap this is
+  still pleasantly fast on ordinary disks.
+- **Filename whitelist as a regex is more defensible than a
+  string-comparison allowlist.** The LogTailService accepts only
+  `laravel.log` / `laravel-YYYY-MM-DD.log`. A trivial allowlist
+  check (`in_array($name, ['laravel.log'])`) would have forced us
+  to enumerate every rotated daily file ahead of time; the regex
+  `/^laravel(-\d{4}-\d{2}-\d{2})?\.log$/` expresses "today's log
+  OR any dated rotation" in one line and blocks every
+  path-traversal and null-byte-injection variant as a side effect.
+  The test suite seeds a dozen rejection cases (`../`, trailing
+  space, embedded `\0`, uppercase) to keep the regex honest —
+  do this whenever a user-supplied filename is going to be
+  concatenated with `storage_path()`.
+- **Spatie laravel-activitylog v5 is the minimum version for
+  Laravel 13.** v4.12 still caps at `illuminate/config ^11.0`, so
+  composer refuses the install with a "requirements could not be
+  resolved" message pointing at the Laravel constraint. v5.0.0
+  (released late 2025) is the first release with Laravel 12/13
+  support. Also: the package ships migrations in its own
+  `database/migrations` folder but does NOT publish them (the
+  `hasMigrations()` call auto-discovers them at framework load).
+  To get the table into our SQLite test DB we needed to copy the
+  stub into `database/migrations` + mirror it in
+  `tests/database/migrations/` with the same shape — which has
+  the bonus of letting the activity tab's "table missing" branch
+  be exercised by `Schema::dropIfExists('activity_log')` in a
+  feature test without touching the vendor dir.
+- **The R13 verify script false-positives on any comment line
+  that contains the literal substring `page.route(`.** I wrote the
+  spec's file-header comment as "Failure-path scenarios that
+  require a 5xx response use \`page.route(...)\` and …" — the
+  scanner sees the substring in a comment and flags it alongside
+  the actual failure injection. Rephrase to "request interception"
+  (or similar) to pass the strict literal-string check. The
+  scanner is deliberately dumb; that's the contract.
+
+---
+
 ## PR11 — Phase G4 (kb-graph-pdf agent, 2026-04-24)
 
 - **Strategy pattern + `class_exists()` guard keeps optional PDF
