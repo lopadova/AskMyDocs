@@ -221,8 +221,8 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             Route::post('/compute', [AdminInsightsController::class, 'compute'])
                 ->middleware(['permission:commands.destructive', 'throttle:3,5'])
                 ->name('api.admin.insights.compute');
-            Route::get('/document/{document}/ai-suggestions', [AdminInsightsController::class, 'documentSuggestions'])
-                ->whereNumber('document')
+            Route::get('/document/{documentId}/ai-suggestions', [AdminInsightsController::class, 'documentSuggestions'])
+                ->whereNumber('documentId')
                 ->middleware('throttle:6,1')
                 ->name('api.admin.insights.document.ai-suggestions');
             // `/{date}` must come AFTER the literal prefixes above so

@@ -66,13 +66,25 @@ class InsightsComputeCommand extends Command
             'computed_duration_ms' => $durationMs,
         ]);
 
-        // Upsert keyed on `snapshot_date` — unique index guarantees
-        // at most one row per day. updateOrCreate is the cleanest
-        // Eloquent shape that honours the no-timestamps table.
-        AdminInsightsSnapshot::updateOrCreate(
-            ['snapshot_date' => $targetDate->toDateString()],
-            $attributes,
-        );
+        // Upsert keyed on `snapshot_date`. Use `whereDate()` on the
+        // lookup side because the `date` Eloquent cast round-trips
+        // the column through Carbon — on SQLite the stored TEXT value
+        // preserves the Y-m-d shape, but mixing Carbon and string
+        // comparisons in a plain `where()` can miss the match. Branch
+        // explicitly on existence so we never fall back to INSERT
+        // against a unique-index collision.
+        $dateString = $targetDate->toDateString();
+        $row = AdminInsightsSnapshot::query()
+            ->whereDate('snapshot_date', $dateString)
+            ->first();
+        if ($row !== null) {
+            $row->update($attributes);
+        } else {
+            AdminInsightsSnapshot::create(array_merge(
+                ['snapshot_date' => $dateString],
+                $attributes,
+            ));
+        }
 
         $this->info("Insights snapshot for {$targetDate->toDateString()} written in {$durationMs} ms.");
 

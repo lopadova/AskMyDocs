@@ -163,6 +163,11 @@ class AdminInsightsController extends Controller
      */
     public function documentSuggestions(Request $request, int $documentId): JsonResponse
     {
+        // Explicit `withTrashed()` lookup — we use `{documentId}` (not
+        // `{document}`) in the route so the admin group's binding shim
+        // doesn't preempt the viewer-403 middleware chain. Soft-deleted
+        // docs are still valid targets for tag suggestions (the Meta
+        // tab opens on trashed docs for forensic inspection).
         $doc = KnowledgeDocument::withTrashed()->find($documentId);
         if ($doc === null) {
             return response()->json([
