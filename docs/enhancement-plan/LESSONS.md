@@ -5,6 +5,41 @@
 
 ---
 
+## PR8 — Phase G1 (kb-tree agent, 2026-04-24)
+
+- **Assoc-then-positional tree walker**: `KbTreeService::build()` first
+  writes into a string-keyed associative structure (one entry per
+  segment name) during the `chunkById(100)` walk so every new doc
+  lands in O(1), then `finaliseTree()` converts to a positional,
+  sorted array (folders-first, alphabetical) just before the response
+  leaves the controller. If you try to build the positional array
+  directly you either end up with O(n) scans for every insertion or
+  you drop the `chunkById` walker to a second pass. The two-stage
+  shape is what keeps the 150-row memory-safe test green *and*
+  deterministic.
+- **DB is the source of truth for the tree, not the KB disk**: the
+  canonical KB directories in consumer repos are authoritative on
+  Git, but the admin-facing tree reads directly from
+  `knowledge_documents`. Rationale: the DB is what
+  `KbSearchService` + the graph tables query, so the explorer must
+  match exactly what the RAG stack sees — including soft-deleted
+  rows when `with_trashed=1`. A filesystem walker would drift from
+  the retrieval plane the moment a `kb:prune-deleted` run happened
+  without re-ingesting.
+- **Phase G split into four microphases**: trying to ship
+  tree + document detail + editor + graph + PDF in one PR (the
+  original Phase G scope) produces an 8k-line patch that nobody
+  reviews properly and has too many surfaces changing at once.
+  G1 ships browsing; G2 adds detail tabs (Preview / Source / Graph
+  placeholder / Meta / History); G3 adds the CodeMirror editor;
+  G4 adds the graph viewer + PDF renderer (with the PdfRenderer
+  scaffold that's currently in `git stash` — left there by a prior
+  agent run, preserved for G4 as a checkpoint). Each microphase has
+  its own ≤15-file PR that reviewers can actually hold in their
+  heads.
+
+---
+
 ## PR7 — Phase F2 (users-roles agent, 2026-04-24)
 
 - **Spatie `$guard_name = 'web'` pin on `User`**: without it,

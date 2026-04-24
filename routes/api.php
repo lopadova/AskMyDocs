@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
+use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
@@ -135,4 +136,12 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             ->name('api.admin.memberships.update');
         Route::delete('/memberships/{membership}', [ProjectMembershipController::class, 'destroy'])
             ->name('api.admin.memberships.destroy');
+
+        // Phase G1 — KB tree explorer. Browsing only; document detail +
+        // source editor + graph/PDF live in G2/G3/G4 under their own
+        // endpoints.
+        Route::get('/kb/tree', [KbTreeController::class, 'index'])
+            ->name('api.admin.kb.tree');
+        Route::get('/kb/projects', [KbTreeController::class, 'projects'])
+            ->name('api.admin.kb.projects');
     });
