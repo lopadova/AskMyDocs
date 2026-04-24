@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
+use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
@@ -142,4 +143,30 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
         // endpoints.
         Route::get('/kb/tree', [KbTreeController::class, 'index'])
             ->name('api.admin.kb.tree');
+
+        // Phase G2 — KB document detail (read-only). Admin-only binding
+        // shim resolves trashed rows via `withTrashed()` — the default
+        // Eloquent binding would 404 on a soft-deleted doc (R2). The
+        // shim is registered inside the admin group so user-facing
+        // routes continue to see the default-scoped model.
+        Route::bind('document', function ($id) {
+            return \App\Models\KnowledgeDocument::withTrashed()->findOrFail($id);
+        });
+
+        Route::apiResource('kb/documents', KbDocumentController::class)
+            ->only(['show', 'destroy'])
+            ->names([
+                'show' => 'api.admin.kb.documents.show',
+                'destroy' => 'api.admin.kb.documents.destroy',
+            ]);
+        Route::get('/kb/documents/{document}/raw', [KbDocumentController::class, 'raw'])
+            ->name('api.admin.kb.documents.raw');
+        Route::get('/kb/documents/{document}/download', [KbDocumentController::class, 'download'])
+            ->name('api.admin.kb.documents.download');
+        Route::get('/kb/documents/{document}/print', [KbDocumentController::class, 'printable'])
+            ->name('api.admin.kb.documents.print');
+        Route::post('/kb/documents/{document}/restore', [KbDocumentController::class, 'restore'])
+            ->name('api.admin.kb.documents.restore');
+        Route::get('/kb/documents/{document}/history', [KbDocumentController::class, 'history'])
+            ->name('api.admin.kb.documents.history');
     });
