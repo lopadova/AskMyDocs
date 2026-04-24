@@ -5,6 +5,49 @@
 
 ---
 
+## PR9 — Phase G2 (kb-detail agent, 2026-04-24)
+
+- **Route-model binding + withTrashed() = admin-group-scoped override**:
+  Laravel's implicit `Route::bind('document', ...)` attached to a
+  `Model` class uses the default Eloquent scope (SoftDeletes hides
+  trashed rows), which is the correct behaviour for user-facing
+  endpoints. To let the admin's detail view inspect a soft-deleted
+  doc, we register a `Route::bind('document', fn($id) =>
+  KnowledgeDocument::withTrashed()->findOrFail($id))` **inside** the
+  `role:admin|super-admin` group — it only affects routes declared
+  after the `bind()` call within that group. User-side routes
+  (`/api/kb/*`, `/api/kb/chat`) keep the default scoped binding
+  because they're declared in the outer `auth:sanctum` group. R2
+  is preserved precisely because the override is scoped: global
+  `Route::bind()` in `app/Providers` would have leaked the trashed
+  rows into chat.
+- **Frontmatter pill-pack pattern**: extracting YAML scalars into
+  small key-value pills ABOVE the rendered Markdown body gives the
+  reader a tactile summary (`id`, `type`, `status`, `project`) at a
+  glance without forcing them to read the fence. The parser is
+  deliberately naive — only column-0 `key: value` lines become pills;
+  nested blocks + lists are ignored and surface instead on the Meta
+  tab via `frontmatter_json._derived`. The split prevents overloading
+  the Preview header when a decision doc has 20-item `supersedes`
+  lists, but still lets the user see the canonical stamps without
+  tabbing away. A hand-rolled splitter is enough (12 lines) because
+  remark-frontmatter already strips the fence from the body — no
+  need for a full YAML parser on the client.
+- **Audit pagination ordering + survival of hard-deletes**:
+  `kb_canonical_audit` has **no FK** to `knowledge_documents` by
+  design (CLAUDE.md §4). The history endpoint filters on
+  `(project_key, doc_id, slug)`, NOT on `knowledge_document_id`,
+  which is the column that would die with the parent row on force
+  delete. The controller also ORDER BYs `(created_at desc, id desc)`
+  — the `id desc` tiebreaker matters because audits written in the
+  same second (e.g. when a bulk rebuild fires in one transaction)
+  must still come back in a stable order or the paginator will
+  produce out-of-order page seams that make reviewers think the
+  trail is corrupt. `->paginate(20)` (R3) naturally carries the
+  ordering because it's applied before limit/offset.
+
+---
+
 ## PR8 — Phase G1 (kb-tree agent, 2026-04-24)
 
 - **Assoc-then-positional tree walker**: `KbTreeService::build()` first

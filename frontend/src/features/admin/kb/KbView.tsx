@@ -1,30 +1,67 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
 import type { KbTreeMode, KbTreeNode } from '../admin.api';
 import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
+import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 
 /*
- * Phase G1 — KB Explorer shell.
+ * Phase G1 + G2 — KB Explorer shell.
  *
- * Intentionally narrow: a left panel holding the folder/doc tree and
- * a right panel carrying a placeholder prompt. G2 fills the right
- * panel with document detail (Preview / Source / Graph / Meta / History
- * tabs), G3 adds the source editor, G4 adds graph + PDF viewers.
+ * G1 shipped the tree + placeholder. G2 replaces the placeholder with
+ * the full DocumentDetail pane: Preview / Meta / History tabs, header
+ * actions (Download / Print / Restore / Delete / Force delete).
  *
- * The split-panel layout is load-bearing now so the route is usable
- * without a follow-up FE re-shuffle; right-panel placeholder stays
- * until G2 lands the detail renderer.
+ * Selection + tab state persist in the URL via `doc` and `tab` search
+ * params so operators can deep-link to a specific view. We parse the
+ * current URL once on mount and write back through history.replaceState
+ * so TanStack Router stays in charge of navigation elsewhere.
+ *
+ * Editor (G3) + graph/PDF (G4) slot next to the existing tabs when
+ * those microphases land.
  */
 
+const VALID_TABS: KbDetailTab[] = ['preview', 'meta', 'history'];
+
+function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
+    if (typeof window === 'undefined') {
+        return { docId: null, tab: 'preview' };
+    }
+    const params = new URLSearchParams(window.location.search);
+    const rawDoc = params.get('doc');
+    const rawTab = params.get('tab');
+    const docId = rawDoc !== null && /^\d+$/.test(rawDoc) ? Number(rawDoc) : null;
+    const tab = (VALID_TABS as string[]).includes(rawTab ?? '')
+        ? (rawTab as KbDetailTab)
+        : 'preview';
+    return { docId, tab };
+}
+
+function syncUrl(docId: number | null, tab: KbDetailTab) {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (docId === null) {
+        params.delete('doc');
+    } else {
+        params.set('doc', String(docId));
+    }
+    params.set('tab', tab);
+    const next = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState(null, '', next);
+}
+
 export function KbView() {
+    const initial = useMemo(parseInitialUrl, []);
+
     const [project, setProject] = useState<string>('');
     const [mode, setMode] = useState<KbTreeMode>('all');
     const [q, setQ] = useState('');
     const [withTrashed, setWithTrashed] = useState(false);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [selectedNode, setSelectedNode] = useState<KbTreeNode | null>(null);
+    const [selectedDocId, setSelectedDocId] = useState<number | null>(initial.docId);
+    const [activeTab, setActiveTab] = useState<KbDetailTab>(initial.tab);
 
     const treeQuery = useKbTree({
         project: project || null,
@@ -39,6 +76,13 @@ export function KbView() {
     const projectsQuery = useKbProjects();
     const projectOptions = projectsQuery.data?.projects ?? [];
 
+    // Keep the URL in sync with (selectedDocId, activeTab). Runs on every
+    // state change — history.replaceState is cheap and idempotent, so
+    // this also covers the restore→trash toggle round-trip.
+    useEffect(() => {
+        syncUrl(selectedDocId, activeTab);
+    }, [selectedDocId, activeTab]);
+
     const state: TreeState = treeQuery.isLoading
         ? 'loading'
         : treeQuery.isError
@@ -50,6 +94,19 @@ export function KbView() {
     function handleSelect(path: string | null, node: KbTreeNode | null) {
         setSelectedPath(path);
         setSelectedNode(node);
+        if (node !== null && node.type === 'doc') {
+            setSelectedDocId(node.meta.id);
+            // Default to preview when jumping to a new doc.
+            setActiveTab('preview');
+        } else {
+            setSelectedDocId(null);
+        }
+    }
+
+    function handleDeleted() {
+        // Force the tree to refetch so the deleted row disappears (or
+        // flips to trashed badge when with_trashed is on).
+        treeQuery.refetch();
     }
 
     return (
@@ -158,23 +215,43 @@ export function KbView() {
                     />
 
                     <div
-                        data-testid="kb-detail-placeholder"
+                        data-testid="kb-detail-pane"
                         style={{
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 12,
-                            padding: 16,
-                            border: '1px solid var(--hairline)',
-                            borderRadius: 10,
-                            background: 'var(--bg-1)',
                             minHeight: 0,
-                            overflow: 'auto',
+                            overflow: 'hidden',
                         }}
                     >
-                        {selectedNode === null || selectedNode.type !== 'doc' ? (
-                            <EmptyDetail />
+                        {selectedDocId === null ? (
+                            <div
+                                data-testid="kb-detail-placeholder"
+                                style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 12,
+                                    padding: 16,
+                                    border: '1px solid var(--hairline)',
+                                    borderRadius: 10,
+                                    background: 'var(--bg-1)',
+                                    minHeight: 0,
+                                    overflow: 'auto',
+                                }}
+                            >
+                                {selectedNode === null || selectedNode.type !== 'doc' ? (
+                                    <EmptyDetail />
+                                ) : (
+                                    <DocSummary node={selectedNode} />
+                                )}
+                            </div>
                         ) : (
-                            <DocSummary node={selectedNode} />
+                            <DocumentDetail
+                                documentId={selectedDocId}
+                                activeTab={activeTab}
+                                onTabChange={setActiveTab}
+                                onDeleted={handleDeleted}
+                            />
                         )}
                     </div>
                 </div>
@@ -203,7 +280,7 @@ function EmptyDetail() {
                 Select a document to view its details
             </div>
             <div style={{ fontSize: 11, color: 'var(--fg-3)', maxWidth: 360 }}>
-                Preview, source editor, graph and PDF render land in Phases G2, G3 and G4.
+                Source editor lands in Phase G3; graph + PDF renderers in G4.
             </div>
         </div>
     );
@@ -229,9 +306,6 @@ function DocSummary({ node }: { node: KbTreeNode }) {
                 {meta.canonical_type ? <Chip label={`type: ${meta.canonical_type}`} /> : null}
                 {meta.canonical_status ? <Chip label={`status: ${meta.canonical_status}`} /> : null}
                 {meta.deleted_at ? <Chip label="deleted" danger /> : null}
-            </div>
-            <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                Detail view (preview / source / graph / history) lands in Phase G2.
             </div>
         </div>
     );

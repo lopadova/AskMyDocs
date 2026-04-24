@@ -3,12 +3,17 @@
 namespace Database\Seeders;
 
 use App\Models\Conversation;
+use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\KbPath;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -144,6 +149,17 @@ class DemoSeeder extends Seeder
             ]);
         }
 
+        // Write the markdown body to the KB disk so the G2 Preview tab
+        // can fetch it through `/api/admin/kb/documents/{id}/raw`.
+        // Idempotent: Storage::put() overwrites, which is what we want
+        // when the seeder is re-run against an already-populated disk.
+        $this->writeMarkdownForDoc($projectKey, $sourcePath, $title, $canonicalType, $preview);
+
+        // Seed a single canonical audit row per doc so the History tab
+        // has something to render on first open. Idempotent via the
+        // composite `(project_key, slug, event_type)` uniqueness check.
+        $this->seedPromotionAudit($projectKey, $slug, $canonicalType);
+
         if ($doc->chunks()->count() > 0) {
             return;
         }
@@ -213,5 +229,88 @@ class DemoSeeder extends Seeder
                 'created_at' => $now->copy()->subHours($idx)->toDateTimeString(),
             ]);
         }
+    }
+
+    /**
+     * Write the canonical markdown body to the KB disk so the G2
+     * Preview tab can fetch it via `/api/admin/kb/documents/{id}/raw`.
+     * Uses the same frontmatter fence the CanonicalParser expects, so
+     * a re-ingest through `kb:ingest-folder` would keep the row
+     * canonical — no drift between the seeded DB state and the
+     * markdown-as-source-of-truth invariant (CLAUDE.md §6).
+     */
+    private function writeMarkdownForDoc(
+        string $projectKey,
+        string $sourcePath,
+        string $title,
+        string $canonicalType,
+        string $preview,
+    ): void {
+        $disk = (string) config('kb.sources.disk', 'kb');
+        $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
+        // Copilot #3 fix (R1 + R4): every disk write must go through
+        // `KbPath::normalize()` so we collapse `//`, strip accidental
+        // leading slashes, and reject `.`/`..` segments — the same
+        // contract every other KB writer honours. The raw
+        // concatenation used to let `policies//remote.md` through
+        // (broken key on S3, silent near-miss on local).
+        $rawPath = $prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath;
+        $fullPath = KbPath::normalize($rawPath);
+
+        $slug = pathinfo($sourcePath, PATHINFO_FILENAME);
+        $fm = "---\n"
+            ."id: demo-{$slug}\n"
+            ."type: {$canonicalType}\n"
+            ."status: accepted\n"
+            ."project: {$projectKey}\n"
+            ."---\n\n";
+        $body = "# {$title}\n\n{$preview}\n";
+
+        // R4: `Storage::put()` returns false on failure. Surface it:
+        // log loudly and throw — a silent seeder-level write failure
+        // produces a DB row that claims to be canonical while there
+        // is no markdown on disk for the admin UI or ingest to read.
+        $ok = Storage::disk($disk)->put($fullPath, $fm.$body);
+        if ($ok === false) {
+            $message = sprintf(
+                'DemoSeeder: failed to write seeded markdown to disk "%s" path "%s".',
+                $disk,
+                $fullPath,
+            );
+            Log::error($message);
+            throw new RuntimeException($message);
+        }
+    }
+
+    /**
+     * Seed one canonical audit row per doc so the G2 History tab has
+     * something to render on first open. Idempotent: only inserts if
+     * no `promoted` audit already exists for (project, slug).
+     */
+    private function seedPromotionAudit(string $projectKey, string $slug, string $canonicalType): void
+    {
+        $exists = KbCanonicalAudit::query()
+            ->where('project_key', $projectKey)
+            ->where('slug', $slug)
+            ->where('event_type', 'promoted')
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        KbCanonicalAudit::create([
+            'project_key' => $projectKey,
+            'doc_id' => 'demo-'.$slug,
+            'slug' => $slug,
+            'event_type' => 'promoted',
+            'actor' => 'demo-seeder',
+            'before_json' => null,
+            'after_json' => [
+                'canonical_type' => $canonicalType,
+                'canonical_status' => 'accepted',
+            ],
+            'metadata_json' => ['source' => 'DemoSeeder'],
+            'created_at' => now(),
+        ]);
     }
 }

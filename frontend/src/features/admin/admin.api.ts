@@ -393,3 +393,115 @@ export const adminKbApi = {
         return data;
     },
 };
+
+// ---------------------------------------------------------------------------
+// Phase G2 — KB document detail (read-only)
+// ---------------------------------------------------------------------------
+
+export interface KbAudit {
+    id: number;
+    project_key: string;
+    doc_id: string | null;
+    slug: string | null;
+    event_type: string;
+    actor: string;
+    before_json: Record<string, unknown> | null;
+    after_json: Record<string, unknown> | null;
+    metadata_json: Record<string, unknown> | null;
+    created_at: string | null;
+}
+
+export interface KbDocument {
+    id: number;
+    project_key: string;
+    source_type: string | null;
+    title: string | null;
+    source_path: string;
+    mime_type: string | null;
+    language: string | null;
+    access_scope: string | null;
+    status: string | null;
+    document_hash: string | null;
+    version_hash: string | null;
+    doc_id: string | null;
+    slug: string | null;
+    canonical_type: string | null;
+    canonical_status: string | null;
+    is_canonical: boolean;
+    retrieval_priority: number | null;
+    source_of_truth: boolean;
+    frontmatter: Record<string, unknown> | null;
+    source_updated_at: string | null;
+    indexed_at: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    deleted_at: string | null;
+    metadata_tags: string[];
+    tags: Array<{ id: number; name: string }>;
+    chunks_count: number;
+    audits_count: number;
+    recent_audits: KbAudit[];
+}
+
+export interface KbRawResponse {
+    path: string;
+    disk: string;
+    mime: string;
+    content: string;
+    content_hash: string;
+}
+
+export interface KbHistoryResponse {
+    data: KbAudit[];
+    meta: AdminPaginatedMeta;
+    links?: Record<string, string | null>;
+}
+
+export interface KbDestroyResponse {
+    ok: boolean;
+    mode: 'soft' | 'hard';
+    document_id: number;
+    file_deleted: boolean;
+}
+
+export const adminKbDocumentApi = {
+    async show(id: number, withTrashed = true): Promise<KbDocument> {
+        const { data } = await api.get<{ data: KbDocument }>(
+            `/api/admin/kb/documents/${id}`,
+            { params: withTrashed ? { with_trashed: 1 } : {} },
+        );
+        return data.data;
+    },
+    async raw(id: number): Promise<KbRawResponse> {
+        const { data } = await api.get<KbRawResponse>(
+            `/api/admin/kb/documents/${id}/raw`,
+        );
+        return data;
+    },
+    async history(id: number, page = 1): Promise<KbHistoryResponse> {
+        const { data } = await api.get<KbHistoryResponse>(
+            `/api/admin/kb/documents/${id}/history`,
+            { params: { page } },
+        );
+        return data;
+    },
+    downloadUrl(id: number): string {
+        return `/api/admin/kb/documents/${id}/download`;
+    },
+    printUrl(id: number): string {
+        return `/api/admin/kb/documents/${id}/print`;
+    },
+    async restore(id: number): Promise<KbDocument> {
+        const { data } = await api.post<{ data: KbDocument }>(
+            `/api/admin/kb/documents/${id}/restore`,
+        );
+        return data.data;
+    },
+    async destroy(id: number, force = false): Promise<KbDestroyResponse> {
+        const { data } = await api.delete<KbDestroyResponse>(
+            `/api/admin/kb/documents/${id}`,
+            { params: force ? { force: 1 } : {} },
+        );
+        return data;
+    },
+};

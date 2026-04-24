@@ -14,8 +14,8 @@
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 551/551 PHP (+45 Admin suites) · 70/70 Vitest (+11) · 12 new Playwright scenarios (9 admin + 3 viewer) · R13 green |
-| 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🔨 in_progress | #24 | feature/enh-f2-users-roles (PR7) | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
-| 9  | G2 — KB Document Detail | `feature/enh-g2-kb-detail` | ⏳ blocked | — | PR8 | — | Preview / Source / Graph / Meta / History tabs |
+| 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🎉 merged | #24 | feature/enh-f2-users-roles (PR7) | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
+| 9  | G2 — KB Document Detail | `feature/enh-g2-kb-document-detail` | ✅ PR opened | #25 | PR8 (G1) | 2026-04-24 | 575/575 PHP (+13) · 94/94 Vitest (+16) · 4 new Playwright scenarios · R13 green · read-only Preview/Meta/History; editor + graph + PDF deferred to G3/G4 |
 | 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ⏳ blocked | — | PR9 | — | CodeMirror + save pipeline |
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ⏳ blocked | — | PR10 | — | Graph viewer + PDF renderer (PdfRenderer stashed) |
 | 12 | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR11 | — | |
@@ -27,6 +27,49 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR9 — Phase G2 (KB Document Detail) checklist
+
+Microphase 2 of 4 of Phase G. Strictly read-only: Preview / Meta /
+History tabs only. Source editor (G3), Graph tab + Export PDF (G4)
+explicitly deferred. Target ≤ 15 files touched — this PR lands 14.
+
+- [x] `app/Http/Controllers/Api/Admin/KbDocumentController.php` — show /
+      raw / download / print / restore / destroy / history read endpoints
+- [x] `app/Http/Resources/Admin/Kb/KbDocumentResource.php` — canonical-aware
+      shape with chunks_count / audits_count / recent_audits aggregates
+- [x] `app/Http/Resources/Admin/Kb/KbAuditResource.php` — immutable audit row
+- [x] `resources/views/print/kb-doc.blade.php` — CSS @page print view with
+      `id="doc-print"` (no external deps)
+- [x] `routes/api.php` — admin-scoped `withTrashed()` binding shim +
+      apiResource(['show','destroy']) + raw/download/print/restore/history
+- [x] `tests/Feature/Api/Admin/Kb/KbDocumentControllerTest.php` — 13 scenarios
+- [x] `database/seeders/DemoSeeder.php` — seed canonical markdown to KB disk
+      and one `promoted` audit per canonical doc so G2 tabs paint on first open
+- [x] `frontend/src/features/admin/admin.api.ts` — KbDocument / KbAudit /
+      KbRaw / KbHistory types + `adminKbDocumentApi` client
+- [x] `frontend/src/features/admin/kb/kb-document.api.ts` — 5 TanStack hooks
+- [x] `frontend/src/features/admin/kb/DocumentDetail.tsx` — header + pills +
+      actions + tab strip + confirm dialog
+- [x] `frontend/src/features/admin/kb/PreviewTab.tsx` — frontmatter pill
+      pack via `extractFrontmatterPills()` + Markdown body
+- [x] `frontend/src/features/admin/kb/MetaTab.tsx` — canonical meta grid +
+      tag chips (metadata.tags ∪ pivot tags)
+- [x] `frontend/src/features/admin/kb/HistoryTab.tsx` — paginated audit
+      list with expandable diff details
+- [x] `frontend/src/features/admin/kb/KbView.tsx` — wire DocumentDetail;
+      URL search params `?doc=ID&tab=preview|meta|history`
+- [x] `frontend/src/features/admin/kb/DocumentDetail.test.tsx` (6 scenarios)
+- [x] `frontend/src/features/admin/kb/PreviewTab.test.tsx` (6 scenarios)
+- [x] `frontend/src/features/admin/kb/HistoryTab.test.tsx` (4 scenarios)
+- [x] `frontend/e2e/admin-kb-detail.spec.ts` (4 scenarios)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
+- [x] `php vendor/bin/phpunit` → **575/575** (562 baseline + 13 new)
+- [x] `npm test` → **94/94** (78 baseline + 16 new)
+- [x] `npx playwright test --list` → 32 scenarios across 11 files (+4 new)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase G2
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch + `gh pr create` verso `feature/enh-g1-kb-tree`
 
 ### PR8 — Phase G1 (KB Tree Explorer) checklist
 
