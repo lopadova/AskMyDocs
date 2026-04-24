@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Exceptions\PdfEngineDisabledException;
 use App\Http\Requests\Admin\Kb\UpdateRawRequest;
 use App\Http\Resources\Admin\Kb\KbAuditResource;
 use App\Http\Resources\Admin\Kb\KbDocumentResource;
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
+use App\Models\KbEdge;
+use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
+use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\KbDiskResolver;
@@ -17,9 +21,11 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * PR9 / Phase G2 — admin KB document detail endpoints (READ-ONLY).
@@ -402,6 +408,227 @@ class KbDocumentController extends Controller
             ->paginate($perPage);
 
         return KbAuditResource::collection($page);
+    }
+
+    /**
+     * GET /api/admin/kb/documents/{document}/graph
+     *
+     * PR11 / Phase G4 — tenant-scoped subgraph rooted at this document.
+     *
+     * Seed node resolution (R10):
+     *   1. Canonical doc → `kb_nodes` row with `source_doc_id = $doc->doc_id`.
+     *   2. Audit-compatible fallback → `node_uid = $doc->slug` when step 1 misses.
+     *   3. Raw doc (no canonical identifiers, or seed node not yet indexed) →
+     *      return an empty subgraph with HTTP 200 (not 404). The SPA renders
+     *      an "empty" state so the operator knows the doc exists but has no
+     *      graph presence yet.
+     *
+     * Expansion: 1 hop in BOTH directions (from_node_uid ∈ {seed} OR
+     * to_node_uid ∈ {seed}), then load every node touched by those edges
+     * in a single `whereIn()` lookup. Cap at 50 nodes + 100 edges to
+     * protect large clusters; this is generous enough for the current
+     * consumers (HR + Engineering) and can be lifted later.
+     *
+     * Tenant isolation (R10): every query starts with
+     * `where('project_key', $doc->project_key)`. The composite FKs on
+     * `kb_edges` already guarantee (project_key, node_uid) pairs never
+     * cross tenants, so this filter plus the composite FK make cross-
+     * tenant leakage structurally impossible.
+     */
+    public function graph(KnowledgeDocument $document): JsonResponse
+    {
+        $project = (string) $document->project_key;
+        $meta = [
+            'project_key' => $project,
+            'center_node_uid' => null,
+            'generated_at' => now()->toIso8601String(),
+        ];
+
+        // Seed resolution — prefer source_doc_id (the stable canonical
+        // identifier), fall back to node_uid=slug for audit-compatible
+        // lookups (older canonical rows may have been indexed before
+        // source_doc_id was populated). When neither is available we
+        // return an empty graph — the SPA renders an empty-state card.
+        $seed = null;
+        if ($document->doc_id !== null) {
+            $seed = KbNode::query()
+                ->where('project_key', $project)
+                ->where('source_doc_id', $document->doc_id)
+                ->first();
+        }
+        if ($seed === null && $document->slug !== null) {
+            $seed = KbNode::query()
+                ->where('project_key', $project)
+                ->where('node_uid', $document->slug)
+                ->first();
+        }
+
+        if ($seed === null) {
+            return response()->json([
+                'nodes' => [],
+                'edges' => [],
+                'meta' => $meta,
+            ]);
+        }
+
+        $meta['center_node_uid'] = $seed->node_uid;
+
+        $edgeCap = 100;
+        $nodeCap = 50;
+
+        // One hop in both directions. We ORDER BY weight desc then id so
+        // the cap takes the heaviest edges first — matching the same
+        // ordering used by GraphExpander in the retrieval pipeline
+        // (CLAUDE.md §3, Retrieval/GraphExpander).
+        $edges = KbEdge::query()
+            ->where('project_key', $project)
+            ->where(function ($q) use ($seed) {
+                $q->where('from_node_uid', $seed->node_uid)
+                    ->orWhere('to_node_uid', $seed->node_uid);
+            })
+            ->orderBy('weight', 'desc')
+            ->orderBy('id')
+            ->limit($edgeCap)
+            ->get();
+
+        // Collect every uid touched by the returned edges PLUS the seed
+        // itself. A single whereIn() keeps the lookup memory-safe
+        // regardless of fan-out (R3); the uniqueness of node_uid per
+        // project guarantees one row per uid here.
+        $uids = [$seed->node_uid];
+        foreach ($edges as $edge) {
+            $uids[] = $edge->from_node_uid;
+            $uids[] = $edge->to_node_uid;
+        }
+        $uids = array_values(array_unique($uids));
+
+        $nodes = KbNode::query()
+            ->where('project_key', $project)
+            ->whereIn('node_uid', $uids)
+            ->limit($nodeCap)
+            ->get();
+
+        $nodePayload = $nodes->map(function (KbNode $node) use ($seed) {
+            $payload = [
+                'uid' => $node->node_uid,
+                'type' => $node->node_type,
+                'label' => $node->label,
+                'source_doc_id' => $node->source_doc_id,
+                'role' => $node->node_uid === $seed->node_uid ? 'center' : 'neighbor',
+            ];
+            // `dangling: true` is how CanonicalIndexerJob stamps wikilink
+            // targets that point at a slug no canonical doc provides yet.
+            // Surfacing it lets the SPA render a dimmed "pending"
+            // node so operators see what needs canonicalizing next.
+            if (is_array($node->payload_json) && ($node->payload_json['dangling'] ?? false) === true) {
+                $payload['dangling'] = true;
+            }
+            return $payload;
+        })->values();
+
+        // Guard against the (extremely unlikely) case where `whereIn` hit
+        // the cap and dropped one of an edge's endpoints. Drop any edge
+        // whose endpoint isn't in the returned node set so the SPA never
+        // tries to draw a line to a ghost.
+        $nodeUidSet = array_flip($nodePayload->pluck('uid')->all());
+        $edgePayload = $edges->filter(
+            fn (KbEdge $edge) => isset($nodeUidSet[$edge->from_node_uid], $nodeUidSet[$edge->to_node_uid]),
+        )->map(fn (KbEdge $edge) => [
+            'uid' => $edge->edge_uid,
+            'from' => $edge->from_node_uid,
+            'to' => $edge->to_node_uid,
+            'type' => $edge->edge_type,
+            'weight' => (float) $edge->weight,
+            'provenance' => $edge->provenance,
+        ])->values();
+
+        return response()->json([
+            'nodes' => $nodePayload,
+            'edges' => $edgePayload,
+            'meta' => $meta,
+        ]);
+    }
+
+    /**
+     * POST /api/admin/kb/documents/{document}/export-pdf
+     *
+     * PR11 / Phase G4 — export the current markdown as PDF bytes.
+     *
+     * Pipeline:
+     *   1. Normalise `source_path` via {@see KbPath::normalize()} (R1) so
+     *      the disk read targets the exact same key the ingest flow wrote.
+     *   2. Read the markdown from the resolved KB disk; missing → 404,
+     *      read failure → 500 (R4 — do not silently coerce to empty).
+     *   3. Hand the doc + body to the injected {@see PdfRenderer}. The
+     *      concrete implementation is resolved by
+     *      {@see \App\Services\Admin\Pdf\PdfRendererFactory} from
+     *      `config('admin.pdf_engine')` (default: 'disabled').
+     *   4. `PdfEngineDisabledException` → 501 JSON so the SPA can surface
+     *      the actionable "enable ADMIN_PDF_ENGINE" message.
+     *   5. Any other error from the engine → 500 (log for ops triage).
+     */
+    public function exportPdf(
+        Request $request,
+        PdfRenderer $renderer,
+        KnowledgeDocument $document,
+    ): Response|JsonResponse {
+        $sourcePath = KbPath::normalize((string) $document->source_path);
+        $disk = $this->resolveDiskFor($document);
+        $fullPath = $this->fullPathFor($document, $sourcePath);
+
+        $storage = Storage::disk($disk);
+
+        if (! $storage->exists($fullPath)) {
+            return response()->json([
+                'message' => 'Markdown file not found on disk.',
+                'path' => $fullPath,
+                'disk' => $disk,
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $body = null;
+        try {
+            $body = $storage->get($fullPath);
+        } catch (Throwable) {
+            // Fall through — handled by the is_string() check below.
+        }
+
+        if (! is_string($body)) {
+            // R4: Storage::get returned null (or threw) → surface as 500
+            // with the same shape as raw() / printable() so the SPA error
+            // UX is uniform.
+            return response()->json([
+                'message' => 'Failed to read markdown file from disk.',
+                'path' => $fullPath,
+                'disk' => $disk,
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        try {
+            $pdfBytes = $renderer->render($document, $body);
+        } catch (PdfEngineDisabledException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'engine' => (string) config('admin.pdf_engine', 'disabled'),
+            ], Response::HTTP_NOT_IMPLEMENTED);
+        } catch (Throwable $e) {
+            Log::error('PDF export failed', [
+                'document_id' => $document->id,
+                'engine' => (string) config('admin.pdf_engine', 'disabled'),
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'message' => 'PDF rendering failed.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        $filename = basename($sourcePath, '.md').'.pdf';
+
+        return response($pdfBytes, Response::HTTP_OK, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Length' => (string) strlen($pdfBytes),
+        ]);
     }
 
     // ------------------------------------------------------------------
