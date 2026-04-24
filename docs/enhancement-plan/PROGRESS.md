@@ -14,16 +14,47 @@
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 551/551 PHP (+45 Admin suites) · 70/70 Vitest (+11) · 12 new Playwright scenarios (9 admin + 3 viewer) · R13 green |
-| 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
-| 9  | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR8 | — | |
-| 10 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR9 | — | |
-| 11 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR10 | — | |
+| 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🔨 in_progress | — | PR7 | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
+| 9  | G2 — KB Document Detail | `feature/enh-g2-kb-detail` | ⏳ blocked | — | PR8 | — | Preview / Source / Graph / Meta / History tabs |
+| 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ⏳ blocked | — | PR9 | — | CodeMirror + save pipeline |
+| 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ⏳ blocked | — | PR10 | — | Graph viewer + PDF renderer (PdfRenderer stashed) |
+| 12 | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR11 | — | |
+| 13 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR12 | — | |
+| 14 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR13 | — | |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
 
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR8 — Phase G1 (KB Tree Explorer) checklist
+
+Phase G has been split into four microphases — G1 (tree browsing)
+ships here; G2 adds document detail tabs; G3 the source editor;
+G4 the graph viewer + PDF renderer (the stashed PdfRenderer lands
+in G4, not here).
+
+- [x] `app/Services/Admin/KbTreeService.php` — pure tree builder, canonical-aware scopes (R10), `chunkById(100)` walker (R3), soft-delete opt-in (R2)
+- [x] `app/Http/Controllers/Api/Admin/KbTreeController.php` — GET `/api/admin/kb/tree?project=&mode=canonical|raw|all&with_trashed=0|1`
+- [x] `routes/api.php` — `kb/tree` inside the admin `role:admin|super-admin` group
+- [x] `tests/Feature/Api/Admin/Kb/KbTreeControllerTest.php` — 11 scenarios (empty / mode / with_trashed / project scope / 150-doc memory-safe walk / invalid mode 422 / RBAC 403 / guest 401)
+- [x] `frontend/src/features/admin/admin.api.ts` — KbTree* types + `adminKbApi.tree`
+- [x] `frontend/src/features/admin/kb/kb-tree.api.ts` — `useKbTree(q)` TanStack hook
+- [x] `frontend/src/features/admin/kb/TreeView.tsx` — filter bar + expandable tree, `data-state` + `data-testid="kb-tree-node-<path>"` per node, canonical + trashed badges
+- [x] `frontend/src/features/admin/kb/KbView.tsx` — split-panel shell, right panel shows placeholder or `DocSummary` (detail tabs land in G2)
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` — rail "Knowledge" pivots to `/app/admin/kb`
+- [x] `frontend/src/routes/index.tsx` — flat `adminKbRoute` at `/app/admin/kb` wrapped in `RequireRole`
+- [x] `frontend/src/features/admin/kb/TreeView.test.tsx` — 8 Vitest scenarios (states / selection / filter / badge / trashed)
+- [x] `frontend/e2e/admin-kb.spec.ts` — 2 scenarios (happy: seeded canonical node; failure: mode=canonical hides non-canonical draft)
+- [x] `frontend/e2e/admin-kb-viewer.spec.ts` — 1 scenario (viewer → admin-forbidden)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
+- [x] `php vendor/bin/phpunit` → **562/562** (551 baseline + 11 KbTreeControllerTest)
+- [x] `npm test` → **78/78** (70 baseline + 8 TreeView.test.tsx)
+- [x] `npx playwright test --list` → 28 scenarios across 10 files (+3 new)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase G1
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → 🔨 in_progress → ✅ al merge
+- [x] Commit su branch + `gh pr create` verso `feature/enh-f2-users-roles`
 
 ### PR7 — Phase F2 checklist
 
