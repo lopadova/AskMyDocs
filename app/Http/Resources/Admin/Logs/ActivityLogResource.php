@@ -48,6 +48,13 @@ class ActivityLogResource extends JsonResource
      * The Activity model casts `properties` / `attribute_changes` to a
      * Collection — we return plain arrays so the SPA JSON payload is
      * predictable.
+     *
+     * Copilot #8 fix: when the rows come from `DB::table('activity_log')`
+     * (e.g. the activitylog-not-installed fallback path that hand-rolls
+     * the query without Eloquent casts), `$value` is still a raw JSON
+     * string. The FE types expect objects. Decode on the way out and
+     * return null when the payload isn't parseable so downstream
+     * consumers don't crash on a malformed row.
      */
     private function jsonishValue(mixed $value): mixed
     {
@@ -56,6 +63,11 @@ class ActivityLogResource extends JsonResource
         }
         if (is_object($value) && method_exists($value, 'toArray')) {
             return $value->toArray();
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+
+            return is_array($decoded) ? $decoded : null;
         }
 
         return $value;

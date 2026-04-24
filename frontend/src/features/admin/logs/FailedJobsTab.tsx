@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useFailedJobs } from './logs.api';
 
 /*
@@ -20,12 +20,17 @@ export function FailedJobsTab() {
     const q = useFailedJobs({ page });
     const notInstalled = q.data?.note === 'failed_jobs table not installed';
 
-    const state: 'loading' | 'ready' | 'empty' | 'error' | 'not-installed' = q.isLoading
+    // Copilot #11 fix: keep `data-state` inside the project-wide
+    // `{idle, loading, ready, empty, error}` contract — "not-installed"
+    // is a business state, not an async state. Surfaced via a
+    // dedicated `data-failed-jobs-installed` attribute so E2E can
+    // assert the install hint separately.
+    const state: 'loading' | 'ready' | 'empty' | 'error' = q.isLoading
         ? 'loading'
         : q.isError
           ? 'error'
           : notInstalled
-            ? 'not-installed'
+            ? 'empty'
             : (q.data?.data.length ?? 0) === 0
               ? 'empty'
               : 'ready';
@@ -37,6 +42,7 @@ export function FailedJobsTab() {
         <div
             data-testid="failed-jobs"
             data-state={state}
+            data-failed-jobs-installed={notInstalled ? 'false' : 'true'}
             style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 0' }}
         >
             {state === 'loading' ? (
@@ -52,7 +58,7 @@ export function FailedJobsTab() {
                     Failed to load failed jobs.
                 </div>
             ) : null}
-            {state === 'not-installed' ? (
+            {notInstalled ? (
                 <div
                     data-testid="failed-jobs-not-installed"
                     style={{
@@ -89,9 +95,10 @@ export function FailedJobsTab() {
                     </thead>
                     <tbody>
                         {rows.map((row) => (
-                            <>
+                            // Copilot #10 fix: key must be on the
+                            // Fragment itself when mapping to siblings.
+                            <Fragment key={row.id}>
                                 <tr
-                                    key={row.id}
                                     data-testid={`failed-job-row-${row.id}`}
                                     onClick={() =>
                                         setExpandedId(expandedId === row.id ? null : row.id)
@@ -139,7 +146,7 @@ export function FailedJobsTab() {
                                         </td>
                                     </tr>
                                 ) : null}
-                            </>
+                            </Fragment>
                         ))}
                     </tbody>
                 </table>
@@ -170,7 +177,17 @@ function Pagination({
             data-testid={`${testidPrefix}-pagination`}
             style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}
         >
-            <button type="button" disabled={meta.current_page <= 1} onClick={() => onPage(meta.current_page - 1)}>
+            {/*
+              Copilot #2 fix: add stable testids on prev/next actionable
+              buttons so Playwright + Vitest can key off them consistently
+              with ChatLogsTab's pagination (R11).
+            */}
+            <button
+                type="button"
+                data-testid={`${testidPrefix}-pagination-prev`}
+                disabled={meta.current_page <= 1}
+                onClick={() => onPage(meta.current_page - 1)}
+            >
                 ← Prev
             </button>
             <span>
@@ -178,6 +195,7 @@ function Pagination({
             </span>
             <button
                 type="button"
+                data-testid={`${testidPrefix}-pagination-next`}
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >

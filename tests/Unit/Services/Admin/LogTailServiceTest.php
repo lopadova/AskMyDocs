@@ -96,7 +96,9 @@ class LogTailServiceTest extends TestCase
             // positions were inspected.
             $this->assertGreaterThanOrEqual(3, $result['total_scanned']);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -111,7 +113,9 @@ class LogTailServiceTest extends TestCase
             $this->assertSame(['line 1', 'line 2', 'line 3'], $result['lines']);
             $this->assertFalse($result['truncated']);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -128,7 +132,9 @@ class LogTailServiceTest extends TestCase
             $this->assertCount(50, $result['lines']);
             $this->assertFalse($result['truncated']);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -154,7 +160,9 @@ class LogTailServiceTest extends TestCase
             $this->assertCount(1, $lower['lines']);
             $this->assertStringContainsString('WARNING', $lower['lines'][0]);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -170,7 +178,9 @@ class LogTailServiceTest extends TestCase
             $result = $this->svc->tail('laravel.log', 500, null);
             $this->assertCount(2, $result['lines']);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -184,7 +194,9 @@ class LogTailServiceTest extends TestCase
             $this->assertSame([], $result['lines']);
             $this->assertFalse($result['truncated']);
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 

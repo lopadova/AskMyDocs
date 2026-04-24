@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useAuditLogs, type AuditLogsQuery } from './logs.api';
 
 /*
@@ -126,9 +126,14 @@ export function AuditTab() {
                     </thead>
                     <tbody>
                         {rows.map((row) => (
-                            <>
+                            // Copilot #9 fix: the row expansion renders
+                            // two sibling <tr> elements. A bare `<>`
+                            // fragment can't carry `key`, so React's
+                            // reconciler was matching on the first <tr>
+                            // only and warning about missing keys on the
+                            // second. Named Fragment takes the key.
+                            <Fragment key={row.id}>
                                 <tr
-                                    key={row.id}
                                     data-testid={`audit-row-${row.id}`}
                                     onClick={() =>
                                         setExpandedId(expandedId === row.id ? null : row.id)
@@ -170,7 +175,7 @@ export function AuditTab() {
                                         </td>
                                     </tr>
                                 ) : null}
-                            </>
+                            </Fragment>
                         ))}
                     </tbody>
                 </table>
@@ -233,8 +238,10 @@ function Pagination({
             data-testid={`${testidPrefix}-pagination`}
             style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}
         >
+            {/* Copilot #13 fix: testid parity with ChatLogsTab (R11). */}
             <button
                 type="button"
+                data-testid={`${testidPrefix}-pagination-prev`}
                 disabled={meta.current_page <= 1}
                 onClick={() => onPage(meta.current_page - 1)}
             >
@@ -245,6 +252,7 @@ function Pagination({
             </span>
             <button
                 type="button"
+                data-testid={`${testidPrefix}-pagination-next`}
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >

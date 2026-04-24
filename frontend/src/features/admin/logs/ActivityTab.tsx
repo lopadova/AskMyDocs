@@ -27,12 +27,19 @@ export function ActivityTab() {
     const q = useActivityLogs(query);
     const notInstalled = q.data?.note === 'activitylog not installed';
 
-    const state: 'loading' | 'ready' | 'empty' | 'error' | 'not-installed' = q.isLoading
+    // Copilot #12 fix: keep `data-state` inside the codebase-wide
+    // `{idle, loading, ready, empty, error}` contract so E2E
+    // assertions stay uniform. `not-installed` is a BUSINESS state,
+    // not an async state — it's surfaced via a dedicated
+    // `data-activitylog-installed="false"` attribute + the existing
+    // `activity-not-installed` testid. `data-state` flips to `empty`
+    // while the dedicated hint element carries the install copy.
+    const state: 'loading' | 'ready' | 'empty' | 'error' = q.isLoading
         ? 'loading'
         : q.isError
           ? 'error'
           : notInstalled
-            ? 'not-installed'
+            ? 'empty'
             : (q.data?.data.length ?? 0) === 0
               ? 'empty'
               : 'ready';
@@ -44,9 +51,10 @@ export function ActivityTab() {
         <div
             data-testid="activity-logs"
             data-state={state}
+            data-activitylog-installed={notInstalled ? 'false' : 'true'}
             style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '12px 0' }}
         >
-            {state === 'not-installed' ? (
+            {notInstalled ? (
                 <div
                     data-testid="activity-not-installed"
                     style={{
@@ -67,7 +75,7 @@ export function ActivityTab() {
                 </div>
             ) : null}
 
-            {state !== 'not-installed' ? (
+            {!notInstalled ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span style={labelStyle}>Subject type</span>
@@ -183,7 +191,13 @@ function Pagination({
             data-testid={`${testidPrefix}-pagination`}
             style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}
         >
-            <button type="button" disabled={meta.current_page <= 1} onClick={() => onPage(meta.current_page - 1)}>
+            {/* Copilot #14 fix: testid parity with ChatLogsTab (R11). */}
+            <button
+                type="button"
+                data-testid={`${testidPrefix}-pagination-prev`}
+                disabled={meta.current_page <= 1}
+                onClick={() => onPage(meta.current_page - 1)}
+            >
                 ← Prev
             </button>
             <span>
@@ -191,6 +205,7 @@ function Pagination({
             </span>
             <button
                 type="button"
+                data-testid={`${testidPrefix}-pagination-next`}
                 disabled={meta.current_page >= meta.last_page}
                 onClick={() => onPage(meta.current_page + 1)}
             >

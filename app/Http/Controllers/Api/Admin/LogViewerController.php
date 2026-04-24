@@ -18,8 +18,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Services\Admin\Exceptions\LogFileNotFoundException;
+use App\Services\Admin\Exceptions\LogFileUnreadableException;
 use InvalidArgumentException;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -156,19 +157,15 @@ class LogViewerController extends Controller
                 'message' => $e->getMessage(),
                 'errors' => ['file' => [$e->getMessage()]],
             ], Response::HTTP_UNPROCESSABLE_ENTITY);
-        } catch (RuntimeException $e) {
-            // R4 — surface the failure loudly instead of faking success.
-            // 404 for a genuinely-missing file, 500 for any other
-            // RuntimeException (permissions, unexpected I/O). We
-            // distinguish via message prefix because the service
-            // throws the same exception class for both cases.
-            $status = str_starts_with($e->getMessage(), 'Log file not found')
-                ? Response::HTTP_NOT_FOUND
-                : Response::HTTP_INTERNAL_SERVER_ERROR;
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], $status);
+        } catch (LogFileNotFoundException $e) {
+            // Copilot #7 fix: distinct exception types replace the
+            // previous message-prefix sniffing branch. The mapping
+            // stays stable when copy changes ("Log file not found"
+            // → "Missing file" — refactor safe).
+            return response()->json(['message' => $e->getMessage()], Response::HTTP_NOT_FOUND);
+        } catch (LogFileUnreadableException $e) {
+            // R4 — I/O failure surfaces loudly as 500, not faked as success.
+            return response()->json(['message' => $e->getMessage()], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
         return response()->json([

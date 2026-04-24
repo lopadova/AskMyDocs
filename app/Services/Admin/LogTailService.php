@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Admin;
 
+use App\Services\Admin\Exceptions\LogFileNotFoundException;
+use App\Services\Admin\Exceptions\LogFileUnreadableException;
 use InvalidArgumentException;
-use RuntimeException;
 use SplFileObject;
 
 /**
@@ -60,10 +61,10 @@ class LogTailService
 
         $path = $this->resolveFullPath($filename);
         if (! is_file($path)) {
-            throw new RuntimeException("Log file not found: {$filename}");
+            throw new LogFileNotFoundException("Log file not found: {$filename}");
         }
         if (! is_readable($path)) {
-            throw new RuntimeException("Log file not readable: {$filename}");
+            throw new LogFileUnreadableException("Log file not readable: {$filename}");
         }
 
         return $this->readTail($path, $maxLines, $levelFilter);
@@ -108,13 +109,24 @@ class LogTailService
      */
     private function readTail(string $path, int $maxLines, ?string $levelFilter): array
     {
+        // Copilot #1 fix: detect emptiness via `filesize()`, not via
+        // `SplFileObject->key() === 0`. A file with exactly one line
+        // would key at 0 too, so the previous branch silently dropped
+        // the only line. `filesize()` returns false on stat failure
+        // (e.g. permission drop mid-call) — treat that as a hard
+        // error because the later `SplFileObject` call would also
+        // fail and a caller expects a deterministic result.
+        $size = filesize($path);
+        if ($size === false) {
+            throw new LogFileUnreadableException('Unable to stat log file: '.$path);
+        }
+        if ($size === 0) {
+            return ['lines' => [], 'truncated' => false, 'total_scanned' => 0];
+        }
+
         $file = new SplFileObject($path, 'rb');
         $file->seek(PHP_INT_MAX);
         $totalLines = $file->key();
-
-        if ($totalLines === 0) {
-            return ['lines' => [], 'truncated' => false, 'total_scanned' => 0];
-        }
 
         // SplFileObject->key() returns the *index* of the last line, but
         // when the file ends without a newline that index is the last
