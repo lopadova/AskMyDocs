@@ -502,9 +502,19 @@ class KbDocumentController extends Controller
         }
         $uids = array_values(array_unique($uids));
 
+        // Copilot #4 fix: the node cap used to apply `->limit($nodeCap)`
+        // to an unordered `whereIn` query. On fan-outs above $nodeCap
+        // the DB returned an arbitrary subset that could drop the
+        // SEED ITSELF, leaving `meta.center_node_uid` pointing at a
+        // missing vertex (and the client rendering a graph without a
+        // center). Force the seed to sort first, then alphabetical
+        // tiebreaker — deterministic across drivers. The edge filter
+        // below trims any edge whose endpoint didn't make the cut.
         $nodes = KbNode::query()
             ->where('project_key', $project)
             ->whereIn('node_uid', $uids)
+            ->orderByRaw('CASE WHEN node_uid = ? THEN 0 ELSE 1 END', [$seed->node_uid])
+            ->orderBy('node_uid')
             ->limit($nodeCap)
             ->get();
 
@@ -622,7 +632,12 @@ class KbDocumentController extends Controller
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
 
-        $filename = basename($sourcePath, '.md').'.pdf';
+        // Copilot #5 fix: the KB ingest pipeline accepts both `.md` and
+        // `.markdown`, but `basename($path, '.md')` only strips the
+        // former — a `runbook.markdown` source would download as
+        // `runbook.markdown.pdf`. `pathinfo` peels the real extension
+        // regardless, so the output is consistently `<name>.pdf`.
+        $filename = pathinfo($sourcePath, PATHINFO_FILENAME).'.pdf';
 
         return response($pdfBytes, Response::HTTP_OK, [
             'Content-Type' => 'application/pdf',

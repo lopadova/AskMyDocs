@@ -49,6 +49,18 @@ final class DompdfPdfRenderer implements PdfRenderer
 
         $output = $dompdf->output();
 
-        return is_string($output) ? $output : '';
+        // Copilot #2 fix: silently returning an empty string when
+        // Dompdf's output is non-string would send a 200 with a
+        // zero-byte PDF to the client. Throw instead so the controller
+        // can return 500 + log the failure with enough context to
+        // diagnose it.
+        if (! is_string($output)) {
+            throw new \RuntimeException(sprintf(
+                'Dompdf render failed: expected string output, got %s.',
+                get_debug_type($output),
+            ));
+        }
+
+        return $output;
     }
 }

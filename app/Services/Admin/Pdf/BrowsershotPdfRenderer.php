@@ -44,6 +44,18 @@ final class BrowsershotPdfRenderer implements PdfRenderer
 
         $bytes = $browsershot->pdf();
 
-        return is_string($bytes) ? $bytes : '';
+        // Copilot #3 fix: a non-string return means either the
+        // underlying Chromium process crashed or Browsershot's shape
+        // changed. Either way, 200+zero-byte would be an invalid PDF
+        // in the client's hands. Throw so the controller surfaces a
+        // 500 and the failure is logged with enough context for ops.
+        if (! is_string($bytes)) {
+            throw new \UnexpectedValueException(sprintf(
+                'Browsershot::pdf() returned an unexpected [%s] value.',
+                get_debug_type($bytes),
+            ));
+        }
+
+        return $bytes;
     }
 }

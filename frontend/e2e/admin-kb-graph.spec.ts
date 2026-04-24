@@ -64,28 +64,17 @@ test.describe('Admin KB Graph + Export PDF', () => {
         await expect(edge).toHaveAttribute('data-edge-type', 'related_to');
     });
 
-    test('empty — raw doc surfaces kb-graph-empty state', async ({ page }) => {
-        // DemoSeeder only seeds canonical docs; there's no raw doc we
-        // can reliably click. Instead we open a canonical doc whose
-        // source_doc_id does NOT match any kb_nodes row — the seeder
-        // only created 3 nodes, so any additional canonical doc would
-        // render empty. We force the scenario by navigating directly
-        // to a canonical doc we KNOW has no node (engineering's
-        // `incident-response` HAS a seeded node, so we pick a
-        // non-existent doc id path instead).
-        //
-        // Simplest reliable empty: open the engineering runbook which
-        // only has ONE node + ZERO edges — the wrapper still flips to
-        // "ready" because nodes.length > 0. So we need a different
-        // approach: navigate to a canonical doc with no seeded node.
-        //
-        // DemoSeeder doesn't ship a "canonical without node" case, so
-        // we assert the wrapper state machine by selecting the
-        // engineering runbook and checking it enters "ready" (1 node,
-        // 0 edges — still non-empty). The true empty-state surface is
-        // covered by the Vitest `empty` scenario; here we smoke-test
-        // the ready-with-1-node case to prove the Graph tab works on
-        // the OTHER hr-portal doc too.
+    test('engineering runbook — graph ready with only the center node (no edges)', async ({ page }) => {
+        // Copilot #1 fix: this scenario was originally mislabeled as
+        // "empty state" but it actually asserts `data-state="ready"`
+        // with a seeded center node visible — DemoSeeder's engineering
+        // runbook has one `kb_nodes` row and zero `kb_edges`, so the
+        // wrapper never enters `empty`. Renamed + repurposed to what
+        // the body actually verifies: the Graph tab handles the
+        // "ready with a singleton subgraph" case correctly. True
+        // empty-state (no seed node found) is exercised by the
+        // Vitest `GraphTab empty` scenario where we can stub the
+        // hook deterministically.
         await page.goto('/app/admin/kb');
         await expect(page.getByTestId('kb-tree')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
@@ -104,10 +93,13 @@ test.describe('Admin KB Graph + Export PDF', () => {
         await page.getByTestId('kb-tab-graph').click();
 
         // The engineering runbook has a kb_node but no edges — the
-        // wrapper is "ready" with just the center node visible.
+        // wrapper is "ready" with just the center node visible and
+        // no `kb-graph-empty` surface (the latter renders only when
+        // the endpoint returns zero nodes).
         await expect(page.getByTestId('kb-graph')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,
         });
+        await expect(page.getByTestId('kb-graph-empty')).toHaveCount(0);
         await expect(
             page.getByTestId('kb-graph-node-incident-response'),
         ).toHaveAttribute('data-role', 'center');
