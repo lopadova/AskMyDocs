@@ -5,6 +5,47 @@
 
 ---
 
+## PR10 — Phase G3 (kb-editor agent, 2026-04-24)
+
+- **Disk-write-FIRST, audit-AFTER ordering**: the PATCH /raw pipeline
+  runs `Storage::put()` BEFORE `KbCanonicalAudit::create()` and BEFORE
+  `IngestDocumentJob::dispatch()`. Inverting the order produces a
+  "liar audit row": a forensic record that claims the doc was updated
+  while the file on disk still holds the previous bytes, and a queued
+  ingest job that crashes with `file not found on disk`. R4 is the
+  first gate — if `Storage::disk($disk)->put(...)` returns false we
+  return 500 immediately with `{message, path, disk}`, with NO audit
+  row and NO dispatch. The audit is the compliance record; it must
+  reflect what actually happened, not what we attempted. Re-trying
+  the save after an operator fixes the disk is the correct recovery
+  path; rolling back a ghost audit row is not.
+- **CodeMirror 6 minimal bundle**: `@codemirror/state` +
+  `@codemirror/view` + `@codemirror/lang-markdown` is all we need
+  for a source editor with line numbers, line wrap, and markdown
+  highlighting. Dropping `@codemirror/basic-setup` saves ~150 KB
+  gzipped because it transitively pulls in `lang-javascript`,
+  `lang-html`, `lang-css`, `autocomplete`, `search`, `commands`,
+  `lint` etc. that have no role in a markdown-only editor. The
+  toolbar buttons (Save / Cancel / Diff) render in plain React so
+  we don't pay for a CM toolbar package either. `EditorView.updateListener.of`
+  is the only extension point needed to flip `isDirty` — keep the
+  buffer in a `useRef` and only publish `setState(isDirty)` when it
+  actually changes, so keystrokes don't re-render the React tree
+  and reset the CM cursor.
+- **Hand-rolled diff panel vs external dep**: a line-by-line
+  `max(left.length, right.length)` walk with "equal / changed /
+  added / removed" classification is ~20 LOC and is enough for a
+  "did I change what I think I changed" audit before Save. A real
+  structural diff (LCS / Myers) would pull in `diff` or
+  `diff-match-patch` — both >20 KB minified for a single feature.
+  The naive approach misaligns when a block shifts by one line,
+  but that's a feature for the editor's audit use-case: any
+  realignment would hide "I accidentally nuked this paragraph"
+  events. Keep it simple until someone actually asks for structural
+  diff; then escalate in a separate PR with its own ADR.
+
+---
+
 ## PR9 — Phase G2 (kb-detail agent, 2026-04-24)
 
 - **Route-model binding + withTrashed() = admin-group-scoped override**:
