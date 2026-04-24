@@ -3,6 +3,7 @@ import { Icon } from '../../../components/Icons';
 import { adminKbDocumentApi, type KbDocument } from '../admin.api';
 import {
     useDeleteKbDocument,
+    useExportPdf,
     useKbDocument,
     useRestoreKbDocument,
 } from './kb-document.api';
@@ -10,23 +11,25 @@ import { PreviewTab } from './PreviewTab';
 import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
+import { GraphTab } from './GraphTab';
+import { useToast } from '../shared/Toast';
 
 /*
- * Phase G2/G3 — KB document detail pane.
+ * Phase G2/G3/G4 — KB document detail pane.
  *
- * Tabs: Preview / Source / Meta / History. G2 shipped the three
- * read-only tabs; G3 added Source (CodeMirror editor with PATCH
- * /raw save pipeline). Graph viewer + PDF Export land in G4 —
- * they'll slot in next to the existing four without further
- * restructure. The `activeTab` + `tab` URL search param are kept
- * in lockstep so deep-links reopen the correct pane.
+ * Tabs: Preview / Source / Meta / History / Graph. G2 shipped the
+ * three read-only tabs; G3 added Source (CodeMirror editor with
+ * PATCH /raw save pipeline); G4 adds Graph (1-hop canonical
+ * subgraph) + an Export-PDF header action. The `activeTab` + `tab`
+ * URL search param are kept in lockstep so deep-links reopen the
+ * correct pane.
  *
  * Destructive actions (delete / force-delete) go through a
  * controlled confirmation dialog so R11 (testids) stay stable
  * for Playwright.
  */
 
-export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history';
+export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history' | 'graph';
 
 export interface DocumentDetailProps {
     documentId: number;
@@ -42,6 +45,8 @@ export function DocumentDetail(props: DocumentDetailProps) {
     const query = useKbDocument(documentId);
     const restoreMut = useRestoreKbDocument();
     const deleteMut = useDeleteKbDocument();
+    const exportMut = useExportPdf(documentId);
+    const toast = useToast();
 
     const [confirm, setConfirm] = useState<null | { mode: 'soft' | 'force' }>(null);
 
@@ -101,6 +106,49 @@ export function DocumentDetail(props: DocumentDetailProps) {
         );
     }
 
+    function handleExportPdf() {
+        exportMut.mutate(undefined, {
+            onSuccess: async (blob) => {
+                // Browser download — synthesize a transient <a> and click it.
+                const url = URL.createObjectURL(blob);
+                const doc = query.data;
+                const base = doc?.source_path
+                    ? (doc.source_path.split('/').pop() ?? 'document').replace(/\.md$/, '')
+                    : `document-${documentId}`;
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${base}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                // Release the blob URL on the next tick so Safari doesn't
+                // cancel the download mid-flight.
+                setTimeout(() => URL.revokeObjectURL(url), 5_000);
+                toast.success('PDF export ready', 'toast-success');
+            },
+            onError: async (err) => {
+                // Parse the 501 / 5xx payload. axios wraps the response
+                // on err.response.data (Blob when responseType=blob), so
+                // we coerce via Blob.text() → JSON.parse.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const response = (err as unknown as { response?: { data?: Blob } }).response;
+                let message = 'PDF export failed.';
+                if (response?.data && typeof (response.data as Blob).text === 'function') {
+                    try {
+                        const text = await (response.data as Blob).text();
+                        const parsed = JSON.parse(text) as { message?: string };
+                        if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+                            message = parsed.message;
+                        }
+                    } catch {
+                        // Non-JSON payload — keep the default message.
+                    }
+                }
+                toast.error(message, 'toast-error');
+            },
+        });
+    }
+
     return (
         <div
             data-testid="kb-detail"
@@ -113,7 +161,9 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 doc={doc}
                 onRestore={handleRestore}
                 onAskDelete={(mode) => setConfirm({ mode })}
+                onExportPdf={handleExportPdf}
                 isRestoring={restoreMut.isPending}
+                isExporting={exportMut.isPending}
             />
 
             <TabStrip activeTab={activeTab} onTabChange={onTabChange} />
@@ -135,6 +185,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 {activeTab === 'source' ? <SourceTab documentId={doc.id} /> : null}
                 {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
                 {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
+                {activeTab === 'graph' ? <GraphTab documentId={doc.id} /> : null}
             </div>
 
             {confirm !== null ? (
@@ -153,12 +204,16 @@ function DocHeader({
     doc,
     onRestore,
     onAskDelete,
+    onExportPdf,
     isRestoring,
+    isExporting,
 }: {
     doc: KbDocument;
     onRestore: () => void;
     onAskDelete: (mode: 'soft' | 'force') => void;
+    onExportPdf: () => void;
     isRestoring: boolean;
+    isExporting: boolean;
 }) {
     const trashed = doc.deleted_at !== null;
     return (
@@ -234,6 +289,12 @@ function DocHeader({
                     label="Print"
                     icon={<Icon.File size={13} />}
                 />
+                <HeaderButton
+                    testId="kb-action-export-pdf"
+                    label={isExporting ? 'Exporting…' : 'Export PDF'}
+                    onClick={onExportPdf}
+                    disabled={isExporting}
+                />
                 {trashed ? (
                     <HeaderButton
                         testId="kb-action-restore"
@@ -272,6 +333,7 @@ function TabStrip({
         { key: 'source', label: 'Source' },
         { key: 'meta', label: 'Meta' },
         { key: 'history', label: 'History' },
+        { key: 'graph', label: 'Graph' },
     ];
     return (
         <div

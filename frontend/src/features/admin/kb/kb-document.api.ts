@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     adminKbDocumentApi,
+    adminKbGraphApi,
     type KbDocument,
+    type KbGraphResponse,
     type KbHistoryResponse,
     type KbRawResponse,
     type KbUpdateRawResponse,
@@ -95,6 +97,40 @@ export function useDeleteKbDocument() {
         onSuccess: (_data, v) => {
             qc.invalidateQueries({ queryKey: KB_TREE_KEY });
             qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'show', v.id] });
+        },
+    });
+}
+
+/**
+ * Phase G4 — 1-hop subgraph rooted at this doc's canonical node.
+ * `staleTime` is small because promotions / edits change the graph.
+ * `retry: false` so a 500 surfaces in `isError` immediately — the
+ * SPA renders a stable `data-state="error"` wrapper instead of
+ * flashing between loading states during the retry chain.
+ */
+export function useKbGraph(id: number | null) {
+    return useQuery<KbGraphResponse>({
+        queryKey: [...KB_DOC_KEY, 'graph', id],
+        queryFn: () => adminKbGraphApi.graph(id as number),
+        enabled: typeof id === 'number',
+        staleTime: 10_000,
+        retry: false,
+    });
+}
+
+/**
+ * Phase G4 — server-side PDF render. On success we trigger a blob
+ * download so the user gets the file; on error we surface the 501
+ * message (or generic 500 text) as a toast. The mutation does NOT
+ * invalidate any query — the doc's content is unchanged.
+ */
+export function useExportPdf(id: number | null) {
+    return useMutation<Blob, Error, void>({
+        mutationFn: async () => {
+            if (typeof id !== 'number') {
+                throw new Error('useExportPdf called without an id');
+            }
+            return adminKbGraphApi.exportPdf(id);
         },
     });
 }

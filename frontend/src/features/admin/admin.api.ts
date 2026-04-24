@@ -530,3 +530,67 @@ export interface KbUpdateRawResponse {
     audit_id: number;
     queued: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Phase G4 — KB graph subgraph + PDF export
+// ---------------------------------------------------------------------------
+
+export interface KbGraphNode {
+    uid: string;
+    type: string;
+    label: string;
+    source_doc_id: string | null;
+    role: 'center' | 'neighbor';
+    dangling?: boolean;
+}
+
+export interface KbGraphEdge {
+    uid: string;
+    from: string;
+    to: string;
+    type: string;
+    weight: number;
+    provenance: string;
+}
+
+export interface KbGraphMeta {
+    project_key: string;
+    center_node_uid: string | null;
+    generated_at: string;
+}
+
+export interface KbGraphResponse {
+    nodes: KbGraphNode[];
+    edges: KbGraphEdge[];
+    meta: KbGraphMeta;
+}
+
+// 501 surface from the export-pdf endpoint: we parse the JSON body to
+// echo the operator-facing message in a toast ("enable ADMIN_PDF_ENGINE…").
+export interface KbExportPdfDisabledResponse {
+    message: string;
+    engine: string;
+}
+
+export const adminKbGraphApi = {
+    async graph(id: number): Promise<KbGraphResponse> {
+        const { data } = await api.get<KbGraphResponse>(
+            `/api/admin/kb/documents/${id}/graph`,
+        );
+        return data;
+    },
+    /**
+     * POSTs to /export-pdf; on success returns the PDF Blob so the
+     * caller can trigger a download. On failure the axios interceptor
+     * preserves the response body so the hook can surface the 501
+     * message.
+     */
+    async exportPdf(id: number): Promise<Blob> {
+        const response = await api.post(
+            `/api/admin/kb/documents/${id}/export-pdf`,
+            {},
+            { responseType: 'blob' },
+        );
+        return response.data as Blob;
+    },
+};
