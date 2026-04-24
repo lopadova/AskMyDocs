@@ -14,8 +14,17 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         // Route aliases exposed to routes/*.php and feature tests.
+        //
+        // `role` / `permission` / `role_or_permission` are Spatie's RBAC
+        // filters — the package does NOT auto-register the alias in
+        // Laravel 11+ bootstrap style, so we do it here. Without these,
+        // `Route::middleware('role:admin')` throws `Target class [role]
+        // does not exist.` at request-time.
         $middleware->alias([
             'project.access' => \App\Http\Middleware\EnsureProjectAccess::class,
+            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
+            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

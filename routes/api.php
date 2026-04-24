@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -74,3 +75,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/kb/promotion/candidates', [KbPromotionController::class, 'candidates']);
     Route::post('/kb/promotion/promote', [KbPromotionController::class, 'promote']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Dashboard metrics (Phase F1)
+|--------------------------------------------------------------------------
+|
+| RBAC-guarded reads that feed the React admin shell. Spatie's
+| `role:<name>|<name>` middleware accepts pipe-separated role names —
+| admin OR super-admin is admitted; viewer / editor get 403.
+|
+*/
+Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
+    ->prefix('admin')
+    ->group(function () {
+        Route::get('/metrics/overview', [DashboardMetricsController::class, 'overview'])
+            ->name('api.admin.metrics.overview');
+        Route::get('/metrics/series', [DashboardMetricsController::class, 'series'])
+            ->name('api.admin.metrics.series');
+        Route::get('/metrics/health', [DashboardMetricsController::class, 'health'])
+            ->name('api.admin.metrics.health');
+    });

@@ -52,6 +52,16 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('view.paths', [realpath($viewPath) ?: $viewPath]);
 
         $app['config']->set('auth.providers.users.model', \App\Models\User::class);
+
+        // bootstrap/app.php registers these aliases in production but
+        // Orchestra Testbench does not execute that file, so `role:` /
+        // `permission:` / `role_or_permission:` middleware declarations
+        // would throw `Target class [role] does not exist.` without a
+        // manual alias here. Keep the list in sync with bootstrap/app.php.
+        $router = $app->make(\Illuminate\Routing\Router::class);
+        $router->aliasMiddleware('role', \Spatie\Permission\Middleware\RoleMiddleware::class);
+        $router->aliasMiddleware('permission', \Spatie\Permission\Middleware\PermissionMiddleware::class);
+        $router->aliasMiddleware('role_or_permission', \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class);
     }
 
     protected function defineDatabaseMigrations(): void
