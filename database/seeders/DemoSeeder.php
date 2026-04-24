@@ -46,9 +46,26 @@ class DemoSeeder extends Seeder
             $admin->assignRole('super-admin');
         }
 
+        // Viewer account for the Playwright chromium-viewer project
+        // (PR6 Phase F1). Seeded here — not as its own seeder — so every
+        // E2E run has a known-quantity viewer available without needing
+        // a separate `/testing/seed` call.
+        $viewer = User::firstOrCreate(
+            ['email' => 'viewer@demo.local'],
+            [
+                'name' => 'Demo Viewer',
+                'password' => Hash::make('password'),
+            ],
+        );
+        if (! $viewer->hasRole('viewer')) {
+            $viewer->assignRole('viewer');
+        }
+
         $this->seedProjectMemberships($admin);
+        $this->seedProjectMemberships($viewer);
         $this->seedKnowledgeDocuments();
         $this->seedConversations($admin);
+        $this->seedChatLogs($admin);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
@@ -153,5 +170,48 @@ class DemoSeeder extends Seeder
             'title' => 'Welcome — remote work questions',
             'project_key' => 'hr-portal',
         ]);
+    }
+
+    /**
+     * Seed a handful of ChatLog rows so the admin dashboard KPIs +
+     * charts render populated on first load. Without this, the
+     * Playwright happy-path spec would have to wait for a real chat
+     * round-trip before any tile leaves the `empty` state.
+     *
+     * Idempotent: no-op when rows already exist for this seed session.
+     */
+    private function seedChatLogs(User $admin): void
+    {
+        if (\App\Models\ChatLog::query()->count() > 0) {
+            return;
+        }
+
+        $now = \Illuminate\Support\Carbon::now();
+        $samples = [
+            ['hr-portal', 'openai', 'gpt-4o', 1200, 120, 240],
+            ['hr-portal', 'openai', 'gpt-4o', 900, 90, 180],
+            ['hr-portal', 'anthropic', 'claude-3-5-sonnet', 1500, 110, 200],
+            ['engineering', 'openai', 'gpt-4o', 800, 80, 160],
+            ['engineering', 'anthropic', 'claude-3-5-sonnet', 1100, 95, 190],
+        ];
+
+        foreach ($samples as $idx => [$project, $provider, $model, $latency, $promptTokens, $completionTokens]) {
+            \App\Models\ChatLog::create([
+                'session_id' => (string) \Illuminate\Support\Str::uuid(),
+                'user_id' => $admin->id,
+                'question' => 'Demo question #'.($idx + 1),
+                'answer' => 'Demo answer.',
+                'project_key' => $project,
+                'ai_provider' => $provider,
+                'ai_model' => $model,
+                'chunks_count' => 3,
+                'sources' => [],
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
+                'total_tokens' => $promptTokens + $completionTokens,
+                'latency_ms' => $latency,
+                'created_at' => $now->copy()->subHours($idx)->toDateTimeString(),
+            ]);
+        }
     }
 }
