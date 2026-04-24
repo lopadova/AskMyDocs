@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApplicationLog } from './logs.api';
 
 /*
@@ -24,12 +24,34 @@ function readLiveFlag(): boolean {
     return params.get('live') === '1';
 }
 
+function syncLiveFlagToUrl(live: boolean): void {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (live) {
+        params.set('live', '1');
+    } else {
+        params.delete('live');
+    }
+    const qs = params.toString();
+    const next = qs === '' ? window.location.pathname : `${window.location.pathname}?${qs}`;
+    window.history.replaceState(null, '', next);
+}
+
 export function ApplicationLogTab() {
     const [file, setFile] = useState('laravel.log');
     const [customFile, setCustomFile] = useState('');
     const [level, setLevel] = useState('');
     const [tail, setTail] = useState(500);
     const [live, setLive] = useState<boolean>(readLiveFlag);
+
+    // Copilot #6 fix: the toggle reads `?live=1` on mount but never
+    // wrote it back on flip, so deep-linking + share-URL semantics
+    // were broken (LogsView uses the same `?tab=` pattern). Write
+    // via `history.replaceState` so the URL stays consistent and the
+    // admin can copy-paste a URL that preserves live mode.
+    useEffect(() => {
+        syncLiveFlagToUrl(live);
+    }, [live]);
 
     // When the user types a custom filename (e.g. a rotated daily log
     // not in the dropdown) the custom field wins over the dropdown.

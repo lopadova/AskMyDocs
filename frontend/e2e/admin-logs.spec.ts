@@ -45,11 +45,22 @@ test.describe('Admin Log Viewer — Phase H1', () => {
         // DemoSeeder's 5 rows mix gpt-4o + claude-3-5-sonnet. Filtering
         // to only claude should leave strictly fewer rows than the full
         // set but still at least one.
-        await page.getByTestId('chat-filter-model').fill('claude-3-5-sonnet');
-
-        // Wait for TanStack Query to settle after the filter change —
-        // the request is debounced through state, so give it a beat.
-        await page.waitForTimeout(500);
+        //
+        // Copilot #3 fix: instead of `waitForTimeout(500)` (flaky under
+        // CI load), wait on the exact network response whose query
+        // string matches the applied filter. The DOM is guaranteed to
+        // have re-rendered by the time the response resolves, and the
+        // deterministic signal survives slow machines without bloating
+        // the timeout budget on fast ones.
+        await Promise.all([
+            page.waitForResponse((response) => {
+                const url = new URL(response.url());
+                return url.pathname.includes('/api/admin/logs/chat')
+                    && url.searchParams.get('model') === 'claude-3-5-sonnet'
+                    && response.ok();
+            }),
+            page.getByTestId('chat-filter-model').fill('claude-3-5-sonnet'),
+        ]);
         await expect(page.getByTestId('chat-logs')).toHaveAttribute('data-state', 'ready', {
             timeout: 10_000,
         });

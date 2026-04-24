@@ -187,7 +187,10 @@ class LogViewerControllerTest extends TestCase
         $admin = $this->makeAdmin();
 
         $path = storage_path('logs/laravel.log');
-        @mkdir(dirname($path), 0755, true);
+        // Copilot #5 fix: no @-silenced filesystem calls (R7).
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0755, true);
+        }
         $lines = [];
         for ($i = 0; $i < 10; $i++) {
             $lines[] = '[2025-01-01 10:0'.$i.':00] local.INFO: line '.$i;
@@ -203,7 +206,9 @@ class LogViewerControllerTest extends TestCase
             $this->assertSame('laravel.log', $res->json('file'));
             $this->assertCount(5, $res->json('lines'));
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
@@ -212,7 +217,10 @@ class LogViewerControllerTest extends TestCase
         $admin = $this->makeAdmin();
 
         $path = storage_path('logs/laravel.log');
-        @mkdir(dirname($path), 0755, true);
+        // Copilot #5 fix: no @-silenced filesystem calls (R7).
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0755, true);
+        }
         file_put_contents($path,
             "[2025-01-01 10:00:00] local.INFO: normal line\n".
             "[2025-01-01 10:01:00] local.ERROR: broken thing\n".
@@ -230,7 +238,9 @@ class LogViewerControllerTest extends TestCase
                 $this->assertStringContainsString('ERROR', $line);
             }
         } finally {
-            @unlink($path);
+            if (is_file($path)) {
+                unlink($path);
+            }
         }
     }
 
