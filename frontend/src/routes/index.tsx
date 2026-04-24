@@ -14,12 +14,12 @@ import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
+import { LogsView } from '../features/admin/logs/LogsView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
 import { InsightsPlaceholder } from '../components/sections/InsightsPlaceholder';
 import { UsersPlaceholder } from '../components/sections/UsersPlaceholder';
-import { LogsPlaceholder } from '../components/sections/LogsPlaceholder';
 import { MaintenancePlaceholder } from '../components/sections/MaintenancePlaceholder';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
@@ -157,10 +157,27 @@ const usersRoute = createRoute({
     path: 'users',
     component: UsersPlaceholder,
 });
+// Phase H1 — admin Log Viewer route. Same flat RBAC pattern as
+// AdminKbRoute: the RequireRole gate lives inside the component so
+// a viewer hitting /app/admin/logs directly sees <AdminForbidden />.
+function AdminLogsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <LogsView />
+        </RequireRole>
+    );
+}
+
 const logsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'logs',
-    component: LogsPlaceholder,
+    component: AdminLogsRoute,
+});
+
+const adminLogsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/logs',
+    component: AdminLogsRoute,
 });
 const maintenanceRoute = createRoute({
     getParentRoute: () => appRoute,
@@ -258,6 +275,7 @@ const routeTree = rootRoute.addChildren([
         adminUsersRoute,
         adminRolesRoute,
         adminKbRoute,
+        adminLogsRoute,
     ]),
 ]);
 
