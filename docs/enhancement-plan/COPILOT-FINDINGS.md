@@ -204,6 +204,27 @@
 | `KbDocumentController::graph` | `r3-bulk` | `whereIn(...)->limit(cap)` unordered — can drop seed | `d079942` |
 | `KbDocumentController::exportPdf` | `hardcoded-subset` | `basename($path, '.md')` misses `.markdown` | `d079942` |
 
+### PR #28 — Phase H1 (Log Viewer)
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `LogTailService::readTail` | `silent-200` | `key() === 0` drops single-line file; use `filesize()` | (pending) |
+| `FailedJobsTab` | `r11-testid` | Pagination prev/next lack testids | (pending) |
+| `admin-logs.spec.ts` | `test-ordering-assumption` | `waitForTimeout(500)` flaky; use `waitForResponse` | (pending) |
+| `LogTailServiceTest` | `r7-silence` | `@unlink()` hides failure (R7 ban on @-silenced calls) | (pending) |
+| `LogViewerControllerTest` | `r7-silence` | `@mkdir/@unlink` hides filesystem errors | (pending) |
+| `ApplicationLogTab` | `doc-drift` | `?live=1` toggle reads URL but never writes it on flip | (pending) |
+| `LogViewerController::application` | `silent-200` | 404/500 chosen by message-prefix sniffing; brittle | (pending) |
+| `ActivityLogResource::jsonishValue` | `silent-200` | Returns raw JSON string when DB::table bypasses Eloquent casts | (pending) |
+| `AuditTab.tsx` rows.map | `render-stale` | `<>` fragment can't carry key; React warning + reconcile drift | (pending) |
+| `FailedJobsTab.tsx` rows.map | `render-stale` | Same React fragment key issue | (pending) |
+| `FailedJobsTab` | `r11-testid` | `data-state="not-installed"` outside `{idle,loading,ready,empty,error}` contract | (pending) |
+| `ActivityTab` | `r11-testid` | Same `not-installed` state contract drift | (pending) |
+| `AuditTab` | `r11-testid` | Pagination prev/next lack testids | (pending) |
+| `ActivityTab` | `r11-testid` | Same pagination testid gap | (pending) |
+
+**New category surfaced this PR**: `r7-silence` — `@`-silenced filesystem calls. Already covered by CLAUDE.md R7 but hadn't appeared as a standalone tag in the taxonomy until H1 tests. Not a new rule, just a tag the taxonomy table was missing.
+
 ---
 
 ## Category frequency snapshot (PR #16 → PR #27)
