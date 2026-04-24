@@ -27,7 +27,7 @@ Copiata dal template a inizio lavoro, spunta man mano.
 
 ### PR7 — Phase F2 checklist
 
-- [x] `database/migrations/2026_05_01_000001_add_soft_deletes_and_active_to_users.php` — SoftDeletes + is_active boolean default true
+- [x] `database/migrations/2026_04_24_000001_add_soft_deletes_and_active_to_users.php` — SoftDeletes + is_active boolean default true
 - [x] `app/Models/User.php` — SoftDeletes trait + `$guard_name = 'web'` + `$attributes = ['is_active' => true]` + cast `is_active` boolean
 - [x] `app/Http/Controllers/Api/Admin/UserController.php` — index (q/role/active/with_trashed/only_trashed filters, `->paginate()`), show, store, update (409 last super-admin guard), destroy (soft + force), restore, resendInvite (202 stub until B2), toggleActive
 - [x] `app/Http/Controllers/Api/Admin/RoleController.php` — Spatie-backed CRUD, protected `super-admin`/`admin` names

@@ -290,11 +290,31 @@ export function RoleDialog({ mode, open, role, catalogue, onClose }: RoleDialogP
                                                             borderRadius: 999,
                                                         }}
                                                     >
+                                                        {/*
+                                                          Copilot #5 a11y fix: `display: none`
+                                                          removes the input from the
+                                                          accessibility tree, so screen
+                                                          readers never perceive it as a
+                                                          checkbox. Visually-hide instead
+                                                          — the input stays focusable and
+                                                          discoverable, while the label
+                                                          chip provides the visual state.
+                                                        */}
                                                         <input
                                                             type="checkbox"
                                                             checked={active}
                                                             onChange={() => togglePermission(p.name)}
-                                                            style={{ display: 'none' }}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                width: 1,
+                                                                height: 1,
+                                                                padding: 0,
+                                                                margin: -1,
+                                                                overflow: 'hidden',
+                                                                clip: 'rect(0, 0, 0, 0)',
+                                                                whiteSpace: 'nowrap',
+                                                                border: 0,
+                                                            }}
                                                         />
                                                         {p.name}
                                                     </label>

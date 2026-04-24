@@ -46,10 +46,17 @@ class UserController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $like = '%'.str_replace('%', '\\%', mb_strtolower($search)).'%';
+            // Copilot #3 fix: escape every LIKE meta-char (`%`, `_`,
+            // and the escape `\\` itself) and pin the escape symbol
+            // via `ESCAPE '\\'`. Previously only `%` was handled, so a
+            // query containing `_` would match any character in that
+            // position (e.g. `a_b` matched `acb` / `a1b`). Portable
+            // across Postgres, MySQL, and SQLite — all three honour
+            // the ESCAPE clause in a LIKE expression.
+            $like = '%'.addcslashes(mb_strtolower($search), '\\%_').'%';
             $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
+                $q->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$like])
+                    ->orWhereRaw("LOWER(email) LIKE ? ESCAPE '\\'", [$like]);
             });
         }
 

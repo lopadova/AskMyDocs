@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import type { AdminRole, AdminUser } from '../admin.api';
@@ -113,24 +113,30 @@ export function UserForm({
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
         >
             <Field label="Name" error={errors.name?.message} testid="user-form-name-error">
-                <input
-                    data-testid="user-form-name"
-                    {...register('name')}
-                    className="focus-ring"
-                    style={inputStyle}
-                    autoComplete="off"
-                />
+                {({ id }) => (
+                    <input
+                        id={id}
+                        data-testid="user-form-name"
+                        {...register('name')}
+                        className="focus-ring"
+                        style={inputStyle}
+                        autoComplete="off"
+                    />
+                )}
             </Field>
 
             <Field label="Email" error={errors.email?.message} testid="user-form-email-error">
-                <input
-                    data-testid="user-form-email"
-                    type="email"
-                    {...register('email')}
-                    className="focus-ring"
-                    style={inputStyle}
-                    autoComplete="off"
-                />
+                {({ id }) => (
+                    <input
+                        id={id}
+                        data-testid="user-form-email"
+                        type="email"
+                        {...register('email')}
+                        className="focus-ring"
+                        style={inputStyle}
+                        autoComplete="off"
+                    />
+                )}
             </Field>
 
             <Field
@@ -138,20 +144,35 @@ export function UserForm({
                 error={errors.password?.message}
                 testid="user-form-password-error"
             >
-                <input
-                    data-testid="user-form-password"
-                    type="password"
-                    {...register('password')}
-                    className="focus-ring"
-                    style={inputStyle}
-                    autoComplete="new-password"
-                />
+                {({ id }) => (
+                    <input
+                        id={id}
+                        data-testid="user-form-password"
+                        type="password"
+                        {...register('password')}
+                        className="focus-ring"
+                        style={inputStyle}
+                        autoComplete="new-password"
+                    />
+                )}
             </Field>
 
-            <div>
-                <div style={labelStyle}>Roles</div>
+            {/*
+              Roles is a multi-select chip group — not a single input.
+              `<fieldset>` + `<legend>` is the correct a11y semantic
+              here: screen readers announce the group name ("Roles")
+              before each toggle. Each chip carries `aria-pressed` to
+              describe its binary state.
+            */}
+            <fieldset
+                style={{ border: 'none', padding: 0, margin: 0 }}
+                aria-describedby={errors.roles?.message ? 'user-form-roles-error' : undefined}
+            >
+                <legend style={labelStyle}>Roles</legend>
                 <div
                     data-testid="user-form-roles"
+                    role="group"
+                    aria-label="Assigned roles"
                     style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}
                 >
                     {roles.length === 0 ? (
@@ -168,6 +189,7 @@ export function UserForm({
                                     className="focus-ring"
                                     data-testid={`user-form-role-${r.name}`}
                                     data-active={active ? 'true' : 'false'}
+                                    aria-pressed={active}
                                     onClick={() => toggleRole(r.name)}
                                     style={{
                                         padding: '4px 10px',
@@ -186,11 +208,15 @@ export function UserForm({
                     )}
                 </div>
                 {errors.roles?.message ? (
-                    <div data-testid="user-form-roles-error" style={errorStyle}>
+                    <div
+                        id="user-form-roles-error"
+                        data-testid="user-form-roles-error"
+                        style={errorStyle}
+                    >
                         {errors.roles.message}
                     </div>
                 ) : null}
-            </div>
+            </fieldset>
 
             <label
                 style={{
@@ -242,14 +268,21 @@ interface FieldProps {
     label: string;
     error?: string;
     testid: string;
-    children: React.ReactNode;
+    // Render prop so consumers receive the generated `id` and can
+    // apply it to their input. The `<label htmlFor={id}>` wraps the
+    // provided label text so screen readers announce the name of
+    // every control (Copilot #4 a11y fix).
+    children: (props: { id: string }) => React.ReactNode;
 }
 
 function Field({ label, error, testid, children }: FieldProps) {
+    const id = useId();
     return (
         <div>
-            <div style={labelStyle}>{label}</div>
-            {children}
+            <label htmlFor={id} style={labelStyle}>
+                {label}
+            </label>
+            {children({ id })}
             {error ? (
                 <div data-testid={testid} style={errorStyle}>
                     {error}
