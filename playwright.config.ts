@@ -14,6 +14,10 @@ import { defineConfig, devices } from '@playwright/test';
  * Copilot #2/#3 fix: `webServer` boots `php artisan serve` automatically
  * so `npm run e2e` is self-contained in CI and locally. Set
  * `E2E_SKIP_WEBSERVER=1` when an external server is already running.
+ *
+ * PR6 Phase F1 — added the `viewer-setup` + `chromium-viewer` projects
+ * so the admin-dashboard RBAC scenarios can run as a non-admin without
+ * trampling the admin storage state.
  */
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
 const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
@@ -43,7 +47,8 @@ export default defineConfig({
               stderr: 'pipe',
           },
     projects: [
-        { name: 'setup', testMatch: /.*\.setup\.ts/ },
+        { name: 'setup', testMatch: /auth\.setup\.ts/ },
+        { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
         {
             name: 'chromium',
             use: {
@@ -51,7 +56,19 @@ export default defineConfig({
                 storageState: 'playwright/.auth/admin.json',
             },
             dependencies: ['setup'],
-            testIgnore: /.*\.setup\.ts/,
+            testIgnore: [/.*\.setup\.ts/, /admin-dashboard-viewer\.spec\.ts/],
+        },
+        {
+            // Non-admin project — runs ONLY the admin-dashboard-viewer
+            // scenarios. Uses a separate storage state so the admin
+            // cookie from `auth.setup.ts` does not leak in.
+            name: 'chromium-viewer',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: 'playwright/.auth/viewer.json',
+            },
+            dependencies: ['viewer-setup'],
+            testMatch: /admin-dashboard-viewer\.spec\.ts/,
         },
     ],
 });

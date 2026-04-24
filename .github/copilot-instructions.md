@@ -294,6 +294,42 @@ Checklist:
 Distilled from the canonical compilation series (PRs #9–#14). See
 `.claude/skills/canonical-awareness/`.
 
+### R11 — Frontend testid / ARIA / observable state contract
+Every React component under `frontend/src/` exposes stable
+`data-testid` values on actionable elements, proper ARIA (`role`,
+`aria-label`, `aria-live`), and observable async states
+(`data-state="idle|loading|ready|error|empty"`, `aria-busy`).
+Validation errors render next to their input with
+`data-testid="<field>-error"`. API failures surface in the DOM —
+no swallowed `useMutation` failures. See
+`.claude/skills/frontend-testid-conventions/`.
+
+### R12 — User-visible UI changes ship Playwright E2E coverage
+From PR5 onward, every PR touching `frontend/src/` or a route that
+renders into the SPA must include `frontend/e2e/<feature>.spec.ts`
+with at least one happy path and one failure path. Selectors use
+`getByTestId` or `getByRole` + accessible name. Waits use
+`data-state` / `toHaveAttribute`, never `waitForTimeout`. See
+`.claude/skills/playwright-e2e/`.
+
+### R13 — E2E scenarios exercise real data; stub only external services
+Playwright boots `php artisan serve` with `APP_ENV=testing` via
+`playwright.config.ts` webServer block. Tests hit the real DB
+(SQLite, reset+seeded via `/testing/reset` + `/testing/seed`).
+`page.route(...)` is reserved for external-service boundaries
+only — AI providers (OpenRouter, OpenAI, Anthropic, Gemini,
+Regolo), email senders, payment rails, remote object storage,
+OCR APIs. Intercepting `/api/admin/*`, `/api/kb/*`,
+`/api/auth/*`, `/sanctum/csrf-cookie`, `/conversations`, or any
+internal route turns E2E into a unit test in E2E clothing. The
+only exception is explicit failure injection on an internal
+route, which must carry an `R13: failure injection` marker
+comment so the intent is auditable.
+`scripts/verify-e2e-real-data.sh` is wired into the CI workflow
+and fails the build on any unmarked internal interception. See
+`.claude/skills/playwright-e2e/` and
+`.claude/skills/playwright-e2e-templates/`.
+
 ---
 
 ## 7. Testing & CI

@@ -29,6 +29,8 @@ class TestingController extends Controller
     private const SEEDER_ALIASES = [
         'DemoSeeder' => \Database\Seeders\DemoSeeder::class,
         'RbacSeeder' => \Database\Seeders\RbacSeeder::class,
+        'EmptyAdminSeeder' => \Database\Seeders\EmptyAdminSeeder::class,
+        'AdminDegradedSeeder' => \Database\Seeders\AdminDegradedSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

@@ -5,6 +5,54 @@
 
 ---
 
+## PR6 — Phase F1 (admin-dashboard agent, 2026-04-24)
+
+- **Spatie `role:` middleware is NOT auto-registered in Laravel 11+
+  bootstrap style.** The `PermissionServiceProvider::boot()` registers
+  `Route::macro('role', ...)` but does NOT call `aliasMiddleware('role', ...)`,
+  so `Route::middleware('role:admin')` throws `Target class [role] does
+  not exist.` at request time. Register the alias explicitly in
+  `bootstrap/app.php` (and mirror in `tests/TestCase.php` — Testbench
+  does not execute `bootstrap/app.php`). Three aliases to register:
+  `role`, `permission`, `role_or_permission`.
+- **Recharts code-splitting pattern**: per-chart-card `React.lazy()`
+  wrappers that build the full chart tree inside the `lazy()` factory
+  (rather than lazy-loading each recharts primitive separately) yields
+  one clean chunk per card. Exposing the loaded body as a named export
+  + a single `<Suspense>` per card is enough — no need for
+  `import('recharts')` boilerplate at every call site. Build confirmed
+  the main bundle stayed at 645 kB gz 198 kB while recharts split into
+  its own ~400 kB chunk.
+- **`Cache::remember` with RefreshDatabase**: tests that exercise the
+  cache path (e.g. `test_overview_is_cached_for_30_seconds`) MUST call
+  `Cache::flush()` in `setUp()` — the default cache store is `array`
+  under Testbench and survives `RefreshDatabase` rollbacks (it's not a
+  DB table). Flush it or cross-test leakage will make cache hits look
+  like data aggregation bugs.
+- **Playwright `viewer-setup` + storage state isolation**: running an
+  RBAC denial scenario alongside the admin happy path requires a
+  separate `storageState` file — trying to reuse `admin.json` means the
+  viewer request carries the admin cookie. Split into two storage
+  files (`playwright/.auth/admin.json` + `.auth/viewer.json`) driven
+  by two setup projects (`setup` → `chromium`, `viewer-setup` →
+  `chromium-viewer`) with matching `testMatch` + `testIgnore` so each
+  chromium project runs only its relevant spec file.
+- **Seeders for E2E branching**: the three-seeder triad
+  (`DemoSeeder` / `EmptyAdminSeeder` / `AdminDegradedSeeder`) lets the
+  happy/empty/degraded Playwright scenarios switch datasets via the
+  existing `/testing/seed` endpoint with zero ad-hoc model creation in
+  the test code. Keep the `TestingController::SEEDER_ALIASES` allowlist
+  in lock-step or `/testing/seed` returns 422. Each new seeder must
+  also guard against missing roles via `RbacSeeder` fallback.
+- **`Cache::remember` key shape**: tuple-style keys
+  (`admin.metrics.<kind>.<project-or-all>.<days>`) beat JSON-encoded
+  keys — they're readable in `cache:clear` diagnostics and let you
+  target a single dimension when pruning. `?? 'all'` for the nullable
+  project is load-bearing: two cache slots (`hr-portal` vs global)
+  must never collide.
+
+---
+
 ## PR5 — Phase E (general-purpose agent, 2026-04-22)
 
 - **Playwright + Orchestra Testbench sanity**: the E2E contract needs

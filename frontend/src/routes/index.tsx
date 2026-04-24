@@ -10,7 +10,9 @@ import {
 import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
 import { ChatView } from '../features/chat/ChatView';
+import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
+import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
 import { InsightsPlaceholder } from '../components/sections/InsightsPlaceholder';
 import { UsersPlaceholder } from '../components/sections/UsersPlaceholder';
@@ -163,6 +165,24 @@ const maintenanceRoute = createRoute({
     component: MaintenancePlaceholder,
 });
 
+// Flat admin route — same shape as `chatRoute` to keep PR #20's
+// Copilot #11 rule: no nesting inside a component-less parent. The
+// RBAC gate lives inside the component so a viewer hitting the URL
+// sees <AdminForbidden /> instead of a crash.
+function AdminRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <DashboardView />
+        </RequireRole>
+    );
+}
+
+const adminRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin',
+    component: AdminRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -178,6 +198,7 @@ const routeTree = rootRoute.addChildren([
         usersRoute,
         logsRoute,
         maintenanceRoute,
+        adminRoute,
     ]),
 ]);
 
