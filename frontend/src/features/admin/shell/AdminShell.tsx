@@ -30,10 +30,12 @@ interface RailEntry {
     to: string;
 }
 
+// PR7 / Phase F2 — Users + Roles pivot to their new dedicated routes
+// under /app/admin/. Dashboard stays at /app/admin for backwards compat.
 const RAIL: RailEntry[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'Grid', to: '/app/admin' },
-    { id: 'users', label: 'Users', icon: 'Users', to: '/app/users' },
-    { id: 'roles', label: 'Roles', icon: 'Shield', to: '/app/users' },
+    { id: 'users', label: 'Users', icon: 'Users', to: '/app/admin/users' },
+    { id: 'roles', label: 'Roles', icon: 'Shield', to: '/app/admin/roles' },
     { id: 'kb', label: 'Knowledge', icon: 'Book', to: '/app/kb' },
     { id: 'logs', label: 'Logs', icon: 'Activity', to: '/app/logs' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', to: '/app/maintenance' },

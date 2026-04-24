@@ -11,6 +11,8 @@ import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
 import { ChatView } from '../features/chat/ChatView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
+import { UsersView } from '../features/admin/users/UsersView';
+import { RolesView } from '../features/admin/roles/RolesView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -183,6 +185,42 @@ const adminRoute = createRoute({
     component: AdminRoute,
 });
 
+// PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
+// vs `chatConversationRoute` in PR20: component-less parents do
+// not render an <Outlet /> for children, so we declare siblings
+// under `appRoute` with deeper paths ("admin/users", "admin/roles")
+// and guard the actual content with RequireRole inside the
+// component. The rail in AdminShell navigates to the flat path;
+// the RBAC gate matches `AdminRoute` — a viewer hitting the URL
+// sees <AdminForbidden /> instead of a crash.
+function AdminUsersRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <UsersView />
+        </RequireRole>
+    );
+}
+
+function AdminRolesRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <RolesView />
+        </RequireRole>
+    );
+}
+
+const adminUsersRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/users',
+    component: AdminUsersRoute,
+});
+
+const adminRolesRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/roles',
+    component: AdminRolesRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -199,6 +237,8 @@ const routeTree = rootRoute.addChildren([
         logsRoute,
         maintenanceRoute,
         adminRoute,
+        adminUsersRoute,
+        adminRolesRoute,
     ]),
 ]);
 

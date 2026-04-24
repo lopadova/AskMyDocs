@@ -118,3 +118,202 @@ export const adminApi = {
         return data;
     },
 };
+
+// ---------------------------------------------------------------------------
+// Phase F2 — Users / Roles / Permissions / Memberships
+// ---------------------------------------------------------------------------
+
+export interface AdminUser {
+    id: number;
+    name: string;
+    email: string;
+    email_verified_at: string | null;
+    is_active: boolean;
+    deleted_at: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    roles: string[];
+    permissions: string[];
+}
+
+export interface AdminPaginatedMeta {
+    current_page: number;
+    per_page: number;
+    total: number;
+    last_page: number;
+}
+
+export interface AdminPaginated<T> {
+    data: T[];
+    meta: AdminPaginatedMeta;
+    links?: Record<string, string | null>;
+}
+
+export interface AdminUsersQuery {
+    q?: string;
+    role?: string;
+    active?: boolean | null;
+    with_trashed?: boolean;
+    only_trashed?: boolean;
+    page?: number;
+    per_page?: number;
+}
+
+export interface AdminUserInput {
+    name: string;
+    email: string;
+    password?: string | null;
+    is_active?: boolean;
+    roles?: string[];
+}
+
+export interface AdminRole {
+    id: number;
+    name: string;
+    guard_name: string;
+    permissions: string[];
+    users_count: number;
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+export interface AdminRoleInput {
+    name: string;
+    permissions?: string[];
+}
+
+export interface AdminPermission {
+    id: number;
+    name: string;
+    guard_name: string;
+}
+
+export interface AdminPermissionCatalogue {
+    data: AdminPermission[];
+    grouped: Record<string, AdminPermission[]>;
+}
+
+export interface AdminMembership {
+    id: number;
+    user_id: number;
+    project_key: string;
+    role: 'member' | 'admin' | 'owner' | string;
+    scope_allowlist: null | {
+        folder_globs?: string[];
+        tags?: string[];
+    };
+    created_at: string | null;
+    updated_at: string | null;
+}
+
+export interface AdminMembershipInput {
+    project_key: string;
+    role?: 'member' | 'admin' | 'owner';
+    scope_allowlist?: AdminMembership['scope_allowlist'];
+}
+
+function buildUserParams(q: AdminUsersQuery): Record<string, string> {
+    const p: Record<string, string> = {};
+    if (q.q && q.q.trim() !== '') p.q = q.q;
+    if (q.role && q.role.trim() !== '') p.role = q.role;
+    if (typeof q.active === 'boolean') p.active = q.active ? '1' : '0';
+    if (q.with_trashed) p.with_trashed = '1';
+    if (q.only_trashed) p.only_trashed = '1';
+    if (typeof q.page === 'number') p.page = String(q.page);
+    if (typeof q.per_page === 'number') p.per_page = String(q.per_page);
+    return p;
+}
+
+export const adminUsersApi = {
+    async list(q: AdminUsersQuery = {}): Promise<AdminPaginated<AdminUser>> {
+        const { data } = await api.get<AdminPaginated<AdminUser>>('/api/admin/users', {
+            params: buildUserParams(q),
+        });
+        return data;
+    },
+    async show(id: number): Promise<AdminUser> {
+        const { data } = await api.get<{ data: AdminUser }>(`/api/admin/users/${id}`);
+        return data.data;
+    },
+    async create(input: AdminUserInput): Promise<AdminUser> {
+        const { data } = await api.post<{ data: AdminUser }>('/api/admin/users', input);
+        return data.data;
+    },
+    async update(id: number, input: Partial<AdminUserInput>): Promise<AdminUser> {
+        const { data } = await api.patch<{ data: AdminUser }>(`/api/admin/users/${id}`, input);
+        return data.data;
+    },
+    async destroy(id: number, force = false): Promise<void> {
+        await api.delete(`/api/admin/users/${id}`, { params: force ? { force: 1 } : {} });
+    },
+    async restore(id: number): Promise<AdminUser> {
+        const { data } = await api.post<{ data: AdminUser }>(`/api/admin/users/${id}/restore`);
+        return data.data;
+    },
+    async toggleActive(id: number, nextActive?: boolean): Promise<AdminUser> {
+        const payload = typeof nextActive === 'boolean' ? { is_active: nextActive } : {};
+        const { data } = await api.patch<{ data: AdminUser }>(`/api/admin/users/${id}/active`, payload);
+        return data.data;
+    },
+    async resendInvite(id: number): Promise<{ message: string }> {
+        const { data } = await api.post<{ message: string }>(`/api/admin/users/${id}/resend-invite`);
+        return data;
+    },
+    async listMemberships(userId: number): Promise<AdminPaginated<AdminMembership>> {
+        const { data } = await api.get<AdminPaginated<AdminMembership>>(
+            `/api/admin/users/${userId}/memberships`,
+        );
+        return data;
+    },
+    async upsertMembership(userId: number, input: AdminMembershipInput): Promise<AdminMembership> {
+        const { data } = await api.post<{ data: AdminMembership }>(
+            `/api/admin/users/${userId}/memberships`,
+            input,
+        );
+        return data.data;
+    },
+    async updateMembership(
+        membershipId: number,
+        input: Partial<Omit<AdminMembershipInput, 'project_key'>>,
+    ): Promise<AdminMembership> {
+        const { data } = await api.patch<{ data: AdminMembership }>(
+            `/api/admin/memberships/${membershipId}`,
+            input,
+        );
+        return data.data;
+    },
+    async deleteMembership(membershipId: number): Promise<void> {
+        await api.delete(`/api/admin/memberships/${membershipId}`);
+    },
+};
+
+export const adminRolesApi = {
+    async list(perPage = 50): Promise<AdminPaginated<AdminRole>> {
+        const { data } = await api.get<AdminPaginated<AdminRole>>('/api/admin/roles', {
+            params: { per_page: perPage },
+        });
+        return data;
+    },
+    async show(id: number): Promise<AdminRole> {
+        const { data } = await api.get<{ data: AdminRole }>(`/api/admin/roles/${id}`);
+        return data.data;
+    },
+    async create(input: AdminRoleInput): Promise<AdminRole> {
+        const { data } = await api.post<{ data: AdminRole }>('/api/admin/roles', input);
+        return data.data;
+    },
+    async update(id: number, input: Partial<AdminRoleInput>): Promise<AdminRole> {
+        const { data } = await api.patch<{ data: AdminRole }>(`/api/admin/roles/${id}`, input);
+        return data.data;
+    },
+    async destroy(id: number): Promise<void> {
+        await api.delete(`/api/admin/roles/${id}`);
+    },
+};
+
+export const adminPermissionsApi = {
+    async catalogue(): Promise<AdminPermissionCatalogue> {
+        const { data } = await api.get<AdminPermissionCatalogue>('/api/admin/permissions');
+        return data;
+    },
+};
