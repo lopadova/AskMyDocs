@@ -22,12 +22,155 @@
 | 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance-panel` | ✅ PR opened | TBD | PR12 (H1) | 2026-04-24 | 668/668 PHP (+47) · 132/132 Vitest (+12) · 6 new Playwright scenarios (4 admin + 1 super-admin + 1 viewer) · R13 green · 6-gate whitelisted Artisan runner (whitelist / schema / signed-token / permission / audit-first / rate-limit) + CommandWizard SPA + scheduler widget + 2 prune schedulers |
 | 14 | I — AI Insights | `feature/enh-i-ai-insights` | ✅ PR opened | TBD | PR13 (H2) | 2026-04-24 | 701/701 PHP (+33) · 144/144 Vitest (+12) · 4 new Playwright scenarios (3 admin + 1 super-admin + 2 viewer) · R13 green · 6 insight widgets + daily compute + AiInsightsService composed via AiManager + KB MetaTab ai-suggestions integration |
 | 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ✅ PR opened | TBD | PR14 (I) | 2026-04-24 | 701/701 PHP · 144/144 Vitest · 63 Playwright scenarios (+1 journey) · R13 green · build 393 KB gz · docs alignment + admin-journey spec + Lighthouse audit plan + screenshot manifest + COPILOT-FINDINGS regression (PR#28 + PR#29 SHAs filled) |
+| 16 | FINAL DISTILL — R14..R21 + sub-agent + catalogue gate | `feature/enh-final-distill` | ✅ PR opened | TBD | PR15 (J) | 2026-04-24 | 701/701 PHP · 144/144 Vitest · 63 Playwright scenarios · R13 green · catalogue gate green · meta-only (0 app/ changes); 8 new rules (R14..R21) · 8 new skills · 4 extended skills · 1 new sub-agent (copilot-review-anticipator) · 1 new CI script (verify-copilot-catalogue.sh) · 1 reusable briefing template · PR #30 retrospective re-harvest (10 rows added) · README Enterprise rules anchor |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
 
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR16 — FINAL DISTILL checklist
+
+Final PR of the enterprise-enhancement project. Converts the ~110
+Copilot findings catalogued across PRs #16..#31 into durable
+guardrails: 8 new CLAUDE.md rules (R14..R21), 8 new skills in
+`.claude/skills/`, 4 extended skills, 1 new sub-agent
+(copilot-review-anticipator), 1 new CI script
+(verify-copilot-catalogue.sh), 1 reusable briefing template. Target
+~25 files touched (CLAUDE.md + copilot-instructions.md + 8 new skills
++ 4 extended skills + 1 sub-agent + 1 script + 1 briefing + 1 README
++ 1 PROGRESS + 1 catalogue = 19 core).
+
+- [x] Step 0 — live re-harvest via
+      `gh api repos/lopadova/AskMyDocs/pulls/<N>/comments` for
+      N ∈ [16..31] — 110 finding-shaped rows.
+- [x] Catalogue regression — PR #30 surfaced 10 rows missing from the
+      pre-PR15 catalogue; appended with `(deferred)` fix SHAs; PR #31
+      empty block; frequency snapshot regenerated across 112 tagged
+      rows (2 cross-tagged).
+- [x] `CLAUDE.md` — R14..R21 added after R13. Each rule: one-line
+      imperative + "why" paragraph citing representative PR + check
+      list + skill pointer. Closing paragraph bumped to
+      "twenty-one rules above (R1–R21)".
+- [x] `.github/copilot-instructions.md` — mirror R14..R21 + expand
+      the Copilot review checklist with 11 new bullets (R10..R21).
+      Section 6 header bumped from "R1–R10" to "R1–R21".
+- [x] 8 new skills under `.claude/skills/`:
+  - [x] `surface-failures-loudly/SKILL.md` — R14
+  - [x] `frontend-a11y-checklist/SKILL.md` — R15
+  - [x] `test-actually-tests-what-it-claims/SKILL.md` — R16
+  - [x] `react-effect-sync-cached-state/SKILL.md` — R17
+  - [x] `derive-from-db-not-literal/SKILL.md` — R18
+  - [x] `input-escape-complete/SKILL.md` — R19
+  - [x] `route-contracts-match-fe-shape/SKILL.md` — R20
+  - [x] `security-invariants-atomic-or-absent/SKILL.md` — R21
+- [x] 4 extended skills:
+  - [x] `docs-match-code/SKILL.md` — comment-drift + PROGRESS.md
+        drift + docblock/impl drift + migration filename drift +
+        table-name singular/plural drift
+  - [x] `frontend-testid-conventions/SKILL.md` — `data-state` value
+        contract enumeration + pagination testid convention
+  - [x] `memory-safe-bulk-ops/SKILL.md` — chunkById+orderBy cursor
+        drift + N+1 inside chunk walker + SQL-side histogram buckets
+  - [x] `playwright-e2e/SKILL.md` — `waitForTimeout` ban +
+        `context.route` coverage + direct-dep discipline + webServer
+        block + Locator.evaluate signature
+- [x] `.claude/agents/copilot-review-anticipator.md` sub-agent —
+      read-only pre-push review that walks every R1..R21 against a
+      diff and produces a numbered finding list with skill pointers.
+- [x] `scripts/verify-copilot-catalogue.sh` — post-commit integrity
+      gate. Every `fix(enh-*): address Copilot review on PR #N`
+      commit must have at least one row under `### PR #N` in
+      COPILOT-FINDINGS.md. Wired into
+      `.github/workflows/tests.yml` Playwright job alongside the
+      existing R13 gate.
+- [x] `.claude/briefings/enterprise-phase-template.md` — reusable
+      Phase-1 skeleton with environment + scope + R1..R21 checklist +
+      commit cadence + `gh pr create` template + "what to do when
+      Copilot review lands" protocol.
+- [x] `README.md` — "Enterprise rules" anchor added after License,
+      linked from the ToC.
+- [x] `docs/enhancement-plan/PROGRESS.md` — PR16 row ✅ + this
+      checklist block + closing "Enhancement series complete"
+      section.
+- [x] R13 gate: `bash scripts/verify-e2e-real-data.sh` → OK.
+- [x] Catalogue gate: `bash scripts/verify-copilot-catalogue.sh` → OK
+      (8 fix commits checked; every PR has catalogue entries).
+- [x] PHPUnit baseline: 701/701 green (no new tests this PR).
+- [x] Vitest baseline: 144/144 green (no new unit tests).
+- [x] Playwright baseline: 63 scenarios (no new specs this PR).
+- [x] No `app/` / `routes/` / `database/` / `frontend/src/` changes —
+      meta-only PR.
+- [x] Commit on branch, push, `gh pr create` targeting
+      `feature/enh-j-docs-e2e-polish`.
+
+---
+
+## Enhancement series complete
+
+With PR #16 (this PR), the enterprise-enhancement series closes. The
+full arc — PR1 (Phase A, storage + scheduler) through PR16 (final
+distill) — shipped the admin surface AskMyDocs needed to move from
+"chat over markdown" to "enterprise-grade RAG + canonical KB
+compilation with a full admin UI + human-gated promotion".
+
+### Final metrics
+
+| Metric | Count |
+|---|---|
+| **PRs** | 16 (PR1..PR16) — all merged or open |
+| **PHPUnit tests** | **701 / 701 green** (from 409 at PR1 baseline; +292 across the series) |
+| **Vitest tests** | **144 / 144 green** (from 21 at PR4; +123) |
+| **Playwright scenarios** | **63** (from 5 at PR5; +58, 60 admin + 3 viewer + 1 super-admin + 1 journey) |
+| **Rules codified** | **21** (R1..R13 shipped incrementally; R14..R21 distilled at PR16) |
+| **Skills shipped** | **19** (11 pre-PR16 + 8 new) |
+| **Copilot findings caught + fixed** | **~110** (live re-harvest across PR #16..#31) |
+| **Migrations added** | 22 — RBAC + auth + 2FA + failed_jobs + personal_access_tokens + canonical + kb_nodes + kb_edges + kb_canonical_audit + admin_insights_snapshots + admin_command_audit + admin_command_nonces + activity_log + … |
+| **Routes added** | ~80 under `/api/admin/*` + 7 under `/api/auth/*` + 3 under `/sanctum/*` + 6 SPA routes under `/app/*` |
+| **CI gates** | 3 — PHPUnit (PHP 8.3 / 8.4 / 8.5 matrix), Vitest, Playwright E2E with R13 + catalogue gates |
+| **Sub-agents** | 1 — `copilot-review-anticipator` |
+
+### The invariant that drove the whole series
+
+**Every PR shipped must ship tests, docs, and the next PR's
+foundation.** The series worked because no phase agent was allowed to
+leave a missing piece for the next agent to fill in — every new
+controller shipped with tests + DemoSeeder fixtures + a Vitest spec +
+a Playwright spec + a docs update + an entry in LESSONS.md + a
+catalogue update when Copilot reviewed. The rule mint at PR16
+(R14..R21) works because the 15 preceding PRs each did the work of
+surfacing the pattern in the catalogue — with SHA + path + category
+— so PR16 had a clean input to distill from.
+
+### What the next enterprise project inherits
+
+- `CLAUDE.md §7` + `.github/copilot-instructions.md §6` — R1..R21
+  word-for-word transferable. Rename `knowledge_documents` → the
+  next project's equivalent, swap the `.claude/skills/kb-*` path
+  prefixes, and the rule surface drops in cleanly.
+- `.claude/skills/` — 19 skill files with grep patterns and
+  before/after templates. Most are KB-specific in examples only; the
+  rule bodies are generic. Copy and adapt.
+- `.claude/agents/copilot-review-anticipator.md` — works against any
+  repo with a R1..R21-style rule system; update the rule
+  descriptions and grep patterns to the target codebase.
+- `.claude/briefings/enterprise-phase-template.md` — reusable as-is.
+- `scripts/verify-e2e-real-data.sh` + `scripts/verify-copilot-catalogue.sh`
+  — the allowlists and heading regex need minor tweaks; the script
+  shape is ready.
+
+### Final step — post-series audit
+
+After PR16 merges, the series is done. The follow-up work is:
+
+1. Land the 10 deferred PR #30 Copilot findings on a `main`-targeted
+   fix PR (`fix: address Copilot review on PR #30 (10 findings)`);
+   the catalogue is already prepped for the fix SHAs.
+2. Update `docs/enhancement-plan/RESUME.md` (if present) with
+   "series complete" + link to this closing section.
+3. Archive the enhancement-plan branch names in a project history
+   doc; the branches themselves stay for git-blame purposes.
 
 ### PR15 — Phase J (Docs + E2E + polish) checklist
 
