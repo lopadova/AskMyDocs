@@ -4,8 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { PromotionSuggestionsCard } from './PromotionSuggestionsCard';
 
 describe('PromotionSuggestionsCard', () => {
-    const originalAssign = window.location.assign;
-
     beforeEach(() => {
         // jsdom doesn't allow reassigning `location.assign` directly;
         // spy via Object.defineProperty so the test can assert the
