@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
+use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
@@ -205,5 +206,26 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
                 ->name('api.admin.logs.activity');
             Route::get('/failed-jobs', [LogViewerController::class, 'failedJobs'])
                 ->name('api.admin.logs.failed-jobs');
+        });
+
+        // Phase H2 — Maintenance command runner. Write-path actions
+        // behind a strict whitelist + signed confirm_token for
+        // destructive commands. /run is rate-limited per authenticated
+        // user (throttle:10,1) so a rogue admin can't DoS the worker.
+        // Every invocation writes an AdminCommandAudit row BEFORE
+        // Artisan::call() runs — forensic trail survives even a
+        // crashing command.
+        Route::prefix('commands')->group(function () {
+            Route::get('/catalogue', [MaintenanceCommandController::class, 'catalogue'])
+                ->name('api.admin.commands.catalogue');
+            Route::post('/preview', [MaintenanceCommandController::class, 'preview'])
+                ->name('api.admin.commands.preview');
+            Route::post('/run', [MaintenanceCommandController::class, 'run'])
+                ->middleware('throttle:10,1')
+                ->name('api.admin.commands.run');
+            Route::get('/history', [MaintenanceCommandController::class, 'history'])
+                ->name('api.admin.commands.history');
+            Route::get('/scheduler-status', [MaintenanceCommandController::class, 'schedulerStatus'])
+                ->name('api.admin.commands.scheduler-status');
         });
     });
