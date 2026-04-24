@@ -34,6 +34,11 @@ abstract class TestCase extends OrchestraTestCase
 
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
+        // Load the project's filesystems config so `config('filesystems.disks.kb.driver')`
+        // resolves during tests (Testbench's default skeleton has no `kb` disk).
+        // HealthCheckService::kbDiskOk reads this to decide whether to hit
+        // the disk or validate the config shape.
+        $app['config']->set('filesystems', require __DIR__.'/../config/filesystems.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');

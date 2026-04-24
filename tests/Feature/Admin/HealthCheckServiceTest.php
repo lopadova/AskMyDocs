@@ -69,6 +69,36 @@ class HealthCheckServiceTest extends TestCase
         $this->assertSame('ok', $svc->kbDiskOk());
     }
 
+    public function test_kb_disk_ok_skips_network_call_on_remote_driver(): void
+    {
+        // Copilot #2 fix guard: when the disk uses a remote driver
+        // (s3 / gcs / r2 / minio), the probe validates the config
+        // shape instead of issuing a network request every poll.
+        config()->set('kb.sources.disk', 'kb-remote');
+        config()->set('filesystems.disks.kb-remote', [
+            'driver' => 's3',
+            'key' => 'fake',
+            'secret' => 'fake',
+            'region' => 'eu-west-1',
+            'bucket' => 'fake-bucket',
+        ]);
+
+        $svc = new HealthCheckService;
+        $this->assertSame('ok', $svc->kbDiskOk());
+    }
+
+    public function test_kb_disk_ok_degraded_when_driver_missing(): void
+    {
+        config()->set('kb.sources.disk', 'kb-unregistered');
+        // No entry for `kb-unregistered` under filesystems.disks — the
+        // probe treats a missing driver as `degraded` rather than
+        // crashing trying to resolve the disk.
+        config()->set('filesystems.disks.kb-unregistered', null);
+
+        $svc = new HealthCheckService;
+        $this->assertSame('degraded', $svc->kbDiskOk());
+    }
+
     public function test_embedding_provider_ok_when_default_provider_is_configured(): void
     {
         config([

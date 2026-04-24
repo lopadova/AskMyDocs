@@ -52,9 +52,20 @@ class AdminMetricsService
         $totalDocs = (int) $docsQuery->count();
         $canonicalDocs = (int) (clone $docsQuery)->where('is_canonical', true)->count();
 
-        $chunksQuery = DB::table('knowledge_chunks');
+        // Copilot #4 fix: count chunks only for non-soft-deleted
+        // documents (R2). `knowledge_chunks` doesn't have its own
+        // SoftDeletes trait — chunks are only wiped on hard delete,
+        // so a bare count inflated the KPI after every soft delete.
+        $chunksQuery = DB::table('knowledge_chunks')
+            ->join(
+                'knowledge_documents',
+                'knowledge_chunks.knowledge_document_id',
+                '=',
+                'knowledge_documents.id'
+            )
+            ->whereNull('knowledge_documents.deleted_at');
         if ($projectKey !== null) {
-            $chunksQuery->where('project_key', $projectKey);
+            $chunksQuery->where('knowledge_documents.project_key', $projectKey);
         }
 
         $totalChunks = (int) $chunksQuery->count();
@@ -194,18 +205,30 @@ class AdminMetricsService
     }
 
     /**
-     * Top N projects by chat volume in the last 7 days.
+     * Top N projects by chat volume within the rolling window.
+     *
+     * Copilot #1 fix: accept `$projectKey` + `$days` so this metric
+     * stays consistent with the `(project, days)` cache key used by
+     * DashboardMetricsController::series(). Previously hard-coded
+     * to 7 days and no project filter, which meant two different
+     * cache entries could return the same top_projects payload.
      *
      * @return array<int, array{project_key:string,count:int}>
      */
-    public function topProjects(int $limit = 10): array
+    public function topProjects(int $limit = 10, ?string $projectKey = null, int $days = 7): array
     {
-        $since = Carbon::now()->subDays(7);
+        $since = Carbon::now()->subDays(max(1, $days));
 
-        $rows = DB::table('chat_logs')
+        $query = DB::table('chat_logs')
             ->selectRaw('project_key, COUNT(*) as cnt')
             ->where('created_at', '>=', $since)
-            ->whereNotNull('project_key')
+            ->whereNotNull('project_key');
+
+        if ($projectKey !== null) {
+            $query->where('project_key', $projectKey);
+        }
+
+        $rows = $query
             ->groupBy('project_key')
             ->orderByDesc('cnt')
             ->limit($limit)
@@ -230,11 +253,16 @@ class AdminMetricsService
      *   created_at:string
      * }>
      */
-    public function activityFeed(int $limit = 20): array
+    public function activityFeed(int $limit = 20, ?string $projectKey = null): array
     {
+        // Copilot #1 fix: honour the `$projectKey` filter so the feed
+        // stays consistent with the `(project, days)` cache key in
+        // DashboardMetricsController::series(). Without this a user
+        // scoped to `hr-portal` would see audit rows and chats from
+        // every other tenant mixed in.
         $half = max(1, (int) ceil($limit / 2));
 
-        $chats = DB::table('chat_logs as cl')
+        $chatsQuery = DB::table('chat_logs as cl')
             ->leftJoin('users as u', 'u.id', '=', 'cl.user_id')
             ->select([
                 'cl.id',
@@ -244,7 +272,13 @@ class AdminMetricsService
                 'cl.created_at',
                 'u.name as user_name',
                 'u.email as user_email',
-            ])
+            ]);
+
+        if ($projectKey !== null) {
+            $chatsQuery->where('cl.project_key', $projectKey);
+        }
+
+        $chats = $chatsQuery
             ->orderByDesc('cl.created_at')
             ->limit($half)
             ->get()
@@ -261,7 +295,11 @@ class AdminMetricsService
 
         $audits = [];
         if (Schema::hasTable('kb_canonical_audit')) {
-            $audits = DB::table('kb_canonical_audit')
+            $auditQuery = DB::table('kb_canonical_audit');
+            if ($projectKey !== null) {
+                $auditQuery->where('project_key', $projectKey);
+            }
+            $audits = $auditQuery
                 ->orderByDesc('created_at')
                 ->limit($half)
                 ->get()
@@ -303,15 +341,27 @@ class AdminMetricsService
 
     private function storageUsedMb(?string $projectKey): float
     {
-        $query = DB::table('knowledge_chunks');
+        // Copilot #5 fix: sum chunk text only for non-soft-deleted
+        // documents (R2). Without the join, the KPI would drift
+        // upward after soft deletes because chunks stay until the
+        // document is hard-deleted.
+        $query = DB::table('knowledge_chunks')
+            ->join(
+                'knowledge_documents',
+                'knowledge_chunks.knowledge_document_id',
+                '=',
+                'knowledge_documents.id'
+            )
+            ->whereNull('knowledge_documents.deleted_at');
+
         if ($projectKey !== null) {
-            $query->where('project_key', $projectKey);
+            $query->where('knowledge_documents.project_key', $projectKey);
         }
 
         // SQLite doesn't support LENGTH() on TEXT columns returning bytes the
         // same way Postgres does; both return character counts for non-binary
         // text which is a reasonable approximation at the MB scale.
-        $bytes = (int) $query->sum(DB::raw('LENGTH(chunk_text)'));
+        $bytes = (int) $query->sum(DB::raw('LENGTH(knowledge_chunks.chunk_text)'));
 
         return round($bytes / (1024 * 1024), 2);
     }

@@ -93,10 +93,34 @@ class HealthCheckService
         }
     }
 
+    /**
+     * KB disk health probe. Copilot #2 fix: only touch the disk when
+     * it's a LOCAL driver. Remote drivers (`s3`, `gcs`, `r2`, `minio`
+     * via aws-style S3) would otherwise issue a network request on
+     * every dashboard poll (15s), which contradicts the "no network
+     * calls" guarantee in the service docblock and racks up egress
+     * cost for no real benefit — a misconfigured remote disk would
+     * surface on the first ingest anyway.
+     *
+     * For remote drivers we validate the config block instead: if the
+     * disk is declared in `config/filesystems.php`, report `ok`;
+     * otherwise `degraded`. Same shape as `providerConfigured()`.
+     */
     public function kbDiskOk(): string
     {
         try {
             $disk = (string) config('kb.sources.disk', 'kb');
+            $driver = (string) config("filesystems.disks.{$disk}.driver", '');
+
+            if ($driver === '') {
+                return 'degraded';
+            }
+
+            if ($driver !== 'local') {
+                // Remote driver — don't hit the network. If the disk is
+                // declared with a driver, accept the config as healthy.
+                return 'ok';
+            }
 
             return Storage::disk($disk)->exists('.') ? 'ok' : 'degraded';
         } catch (Throwable) {

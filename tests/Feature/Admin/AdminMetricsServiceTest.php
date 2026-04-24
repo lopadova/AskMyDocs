@@ -243,6 +243,102 @@ class AdminMetricsServiceTest extends TestCase
         $this->assertSame(50.0, $overview['cache_hit_rate']);
     }
 
+    public function test_total_chunks_excludes_soft_deleted_documents(): void
+    {
+        // Copilot #4 fix: chunks belonging to a soft-deleted doc
+        // must not inflate the KPI until the doc is hard-deleted.
+        $this->seedDoc('hr-portal', 'policy.md');
+        $softDeleted = $this->seedDoc('hr-portal', 'retired.md');
+        $this->seedChunk(1);
+        $this->seedChunk(2);
+
+        $svc = new AdminMetricsService;
+        $this->assertSame(2, $svc->kpiOverview()['total_chunks']);
+
+        $softDeleted->delete();
+
+        $this->assertSame(1, $svc->kpiOverview()['total_chunks']);
+    }
+
+    public function test_storage_used_mb_excludes_soft_deleted_documents(): void
+    {
+        // Copilot #5 fix: storage-used KPI must not drift up on soft
+        // delete; chunks stay on disk until the doc is hard-deleted.
+        // Use a large chunk_text payload so the MB-scale aggregation
+        // resolves above 0.00 after the rounding step in the service.
+        $this->seedDoc('hr-portal', 'policy.md');
+        $retired = $this->seedDoc('hr-portal', 'retired.md');
+        $payload = str_repeat('X', 2 * 1024 * 1024); // ~2 MB each
+
+        KnowledgeChunk::create([
+            'knowledge_document_id' => 1,
+            'project_key' => 'hr-portal',
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'one'),
+            'heading_path' => '#',
+            'chunk_text' => $payload,
+            'metadata' => [],
+        ]);
+        KnowledgeChunk::create([
+            'knowledge_document_id' => 2,
+            'project_key' => 'hr-portal',
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', 'two'),
+            'heading_path' => '#',
+            'chunk_text' => $payload,
+            'metadata' => [],
+        ]);
+
+        $svc = new AdminMetricsService;
+        $withBoth = $svc->kpiOverview()['storage_used_mb'];
+
+        $retired->delete();
+
+        $withoutRetired = $svc->kpiOverview()['storage_used_mb'];
+        $this->assertGreaterThan(0.0, $withBoth);
+        $this->assertLessThan($withBoth, $withoutRetired);
+    }
+
+    public function test_top_projects_respects_project_and_days_filters(): void
+    {
+        // Copilot #1 fix: topProjects() now takes project+days so
+        // different cache keys can no longer return identical payloads.
+        $this->seedChatLog(projectKey: 'hr-portal', at: Carbon::now()->subHour());
+        $this->seedChatLog(projectKey: 'hr-portal', at: Carbon::now()->subHour());
+        $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subHour());
+        $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subDays(10));
+
+        $svc = new AdminMetricsService;
+
+        $allSevenDays = $svc->topProjects(10, null, 7);
+        $this->assertSame('hr-portal', $allSevenDays[0]['project_key']);
+        $this->assertSame(2, $allSevenDays[0]['count']);
+
+        $scoped = $svc->topProjects(10, 'engineering', 7);
+        $this->assertCount(1, $scoped);
+        $this->assertSame('engineering', $scoped[0]['project_key']);
+
+        $widerWindow = $svc->topProjects(10, 'engineering', 30);
+        $this->assertSame(2, $widerWindow[0]['count']);
+    }
+
+    public function test_activity_feed_respects_project_filter(): void
+    {
+        // Copilot #1 fix: activityFeed() now takes projectKey so a
+        // scoped user does not see chat + audit rows from other tenants.
+        $this->seedChatLog(projectKey: 'hr-portal', at: Carbon::now()->subHour());
+        $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subHour());
+
+        $svc = new AdminMetricsService;
+
+        $scoped = $svc->activityFeed(20, 'hr-portal');
+        foreach ($scoped as $row) {
+            if ($row['source'] === 'chat') {
+                $this->assertSame('hr-portal', $row['project']);
+            }
+        }
+    }
+
     private function makeUser(): User
     {
         return User::create([

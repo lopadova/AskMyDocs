@@ -36,6 +36,19 @@ function stateFromQuery(
     return hasData ? 'ready' : 'empty';
 }
 
+// Roll up the section states into a single container state. Precedence
+// is error > loading > empty > ready: a single erroring section turns
+// the whole dashboard red, a single loading section keeps it loading,
+// and the container only reports `ready` when every section has real
+// data. Keeps Playwright `waitForReady(page, 'admin-dashboard')` from
+// returning too early.
+function rollupStates(states: ChartState[]): ChartState {
+    if (states.includes('error')) return 'error';
+    if (states.includes('loading')) return 'loading';
+    if (states.includes('empty')) return 'empty';
+    return 'ready';
+}
+
 export function DashboardView() {
     const overview = useAdminOverview({ days: DAYS });
     const series = useAdminSeries({ days: DAYS });
@@ -55,11 +68,22 @@ export function DashboardView() {
     );
     const healthState = health.isError ? 'error' : health.isLoading ? 'loading' : 'ready';
 
+    // Copilot #3 fix: roll up the three section states with a clear
+    // precedence — error > loading > empty > ready — so the container
+    // `data-state` never under-reports. Previously the expression
+    // `kpiState === 'ready' && seriesState === 'ready' ? 'ready' : kpiState`
+    // fell back to kpiState, which meant "kpi ready + series still
+    // loading" was labelled `ready` and Playwright would move on
+    // before the charts hydrated. The rollup also makes an E2E
+    // `waitForReady(page, 'admin-dashboard')` gate every section,
+    // not just the first.
+    const dashboardState = rollupStates([kpiState, seriesState, healthState]);
+
     return (
         <AdminShell section="dashboard">
             <div
                 data-testid="admin-dashboard"
-                data-state={kpiState === 'ready' && seriesState === 'ready' ? 'ready' : kpiState}
+                data-state={dashboardState}
                 style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
             >
                 <div style={{ marginBottom: 12 }}>
