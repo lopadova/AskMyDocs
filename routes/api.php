@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
+use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
@@ -185,4 +186,24 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             ->name('api.admin.kb.documents.graph');
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
+
+        // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
+        // canonical audit, application log tail, activity log
+        // (Spatie soft-dep), failed jobs. Write-path actions (retry
+        // failed job, maintenance wizard, command runner) land in H2.
+        Route::prefix('logs')->group(function () {
+            Route::get('/chat', [LogViewerController::class, 'chat'])
+                ->name('api.admin.logs.chat');
+            Route::get('/chat/{id}', [LogViewerController::class, 'chatShow'])
+                ->whereNumber('id')
+                ->name('api.admin.logs.chat.show');
+            Route::get('/canonical-audit', [LogViewerController::class, 'canonicalAudit'])
+                ->name('api.admin.logs.canonical-audit');
+            Route::get('/application', [LogViewerController::class, 'application'])
+                ->name('api.admin.logs.application');
+            Route::get('/activity', [LogViewerController::class, 'activity'])
+                ->name('api.admin.logs.activity');
+            Route::get('/failed-jobs', [LogViewerController::class, 'failedJobs'])
+                ->name('api.admin.logs.failed-jobs');
+        });
     });
