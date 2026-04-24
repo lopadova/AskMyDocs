@@ -28,6 +28,10 @@ class RbacSeederTest extends TestCase
 
         $expectedPermissions = [
             'admin.access',
+            // Phase H2 — `commands.destructive` gates destructive
+            // maintenance commands (kb:prune-*, kb:ingest-folder,
+            // kb:delete). super-admin gets it; admin does NOT.
+            'commands.destructive',
             'commands.run',
             'insights.view',
             'kb.delete.any',
@@ -60,7 +64,8 @@ class RbacSeederTest extends TestCase
         $this->seed(RbacSeeder::class);
 
         $this->assertSame(4, Role::count());
-        $this->assertSame(11, Permission::count());
+        // 11 pre-H2 + `commands.destructive` = 12.
+        $this->assertSame(12, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void

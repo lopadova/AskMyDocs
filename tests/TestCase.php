@@ -45,6 +45,11 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');
         $app['config']->set('permission', require __DIR__.'/../config/permission.php');
         $app['config']->set('rbac', require __DIR__.'/../config/rbac.php');
+        // Phase G4 / H2 — admin config carries both the PDF engine knob
+        // and the H2 allowed_commands whitelist that CommandRunnerService
+        // reads at every preview/run call. Without this set, tests get a
+        // null config array and every command looks unknown (404).
+        $app['config']->set('admin', require __DIR__.'/../config/admin.php');
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)

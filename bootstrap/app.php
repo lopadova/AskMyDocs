@@ -74,10 +74,19 @@ return Application::configure(basePath: dirname(__DIR__))
         //   $schedule->command('activitylog:clean --days=90')
         //       ->dailyAt('04:20')->onOneServer()->withoutOverlapping();
 
-        // TODO PR9 (Admin audit): when admin_command_audit migration ships,
-        //   enable:
-        //   $schedule->command('admin-audit:prune --days=365')
-        //       ->dailyAt('04:30')->onOneServer()->withoutOverlapping();
+        // PR13 / Phase H2 — admin_command_audit forensic table rotation.
+        // 1-year retention by default (env ADMIN_AUDIT_RETENTION_DAYS).
+        $schedule->command('admin-audit:prune')
+            ->dailyAt('04:30')
+            ->onOneServer()
+            ->withoutOverlapping();
+
+        // PR13 / Phase H2 — confirm-token nonces cleanup (TTL 5min +
+        // single-use). Default retention 1 day; env ADMIN_NONCE_RETENTION_DAYS.
+        $schedule->command('admin-nonces:prune')
+            ->dailyAt('04:50')
+            ->onOneServer()
+            ->withoutOverlapping();
 
         // NOTE: Laravel 13 does NOT ship a `notifications:prune` artisan
         //   command out of the box (only `notifications:table`). When the

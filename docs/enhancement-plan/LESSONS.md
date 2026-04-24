@@ -5,6 +5,64 @@
 
 ---
 
+## PR13 — Phase H2 (maintenance-panel agent, 2026-04-24)
+
+- **Audit-before-execute is the invariant, not the optimisation.**
+  `CommandRunnerService::run()` INSERTS the `admin_command_audit`
+  row with `status='started'` **before** calling `Artisan::call()`.
+  If the artisan call crashes (segfault, OOM, PHP fatal), the row
+  survives with status=started and exit_code=null — forensically
+  visible in the history table. Invert the ordering (insert after
+  Artisan returns) and you lose the trail of the one class of
+  failures you most want to investigate: the ones that kill the
+  worker. The post-Artisan `update()` call can safely flip status
+  to `completed` or `failed`; the invariant only requires the row
+  to exist first. Every test in `CommandRunnerServiceTest.php`
+  asserts the audit row exists even on exception paths — this is
+  why.
+- **Whitelist + signed confirm_token + args_hash are three
+  INDEPENDENT gates, not a defence-in-depth joke.** Any one of
+  them alone would be insufficient for an RCE-adjacent surface
+  like arbitrary Artisan invocation. The whitelist (gate 1)
+  ensures the command string is an array key in
+  `config('admin.allowed_commands')` — shell metacharacters
+  (`&&`, `$()`, etc.) will never match because they are not valid
+  array keys. The confirm_token (gate 3) is a 64-char random
+  string whose sha256 is stored in `admin_command_nonces`; the
+  row carries an `args_hash` which lets `consumeConfirmToken()`
+  reject the same token used with different args (bypass attempt).
+  The permission gate (gate 4) applies the Spatie check AFTER the
+  whitelist so "does this command exist" doesn't leak to a caller
+  without permission. Collapsing any of these three into a single
+  check would let an attacker who compromises one layer (e.g.
+  steals a confirm_token via XSS) escalate all the way to Artisan.
+- **Rate limit per-user, not per-IP.** `throttle:10,1` applied to
+  the `POST /run` route defaults to per-user scope for authenticated
+  routes — this is the right choice for an admin panel because
+  the threat model is a rogue admin DoS'ing the worker with
+  destructive commands, not an external attacker flooding from
+  one IP. Per-IP throttling would paradoxically let the rogue
+  admin rotate through VPNs to keep running commands, while
+  blocking a legitimate admin+operations team sharing an office
+  IP. Keep the docstring on `routes/api.php` explicit about this
+  so the next reader doesn't "improve" it to `throttle:10,1,ip`.
+- **Super-admin vs admin is a PERMISSION split, not just a role
+  label.** The admin role holds `commands.run` (runs
+  non-destructive commands like `kb:validate-canonical`). Only
+  super-admin holds `commands.destructive` (required for
+  `kb:prune-deleted`, `chat-log:prune`, etc.). This means
+  destructive commands need their own Playwright project + storage
+  state (`chromium-super-admin`) because admin storage state
+  simply returns 403 on the preview path — it can't even get a
+  confirm_token. Do NOT grant `commands.destructive` to the admin
+  role "for convenience" — the entire point of Phase H2's two-tier
+  design is that a compromised admin account cannot wipe the
+  corpus. The separate DemoSeeder account (`super@demo.local`)
+  exists so E2E coverage of the destructive path is possible
+  without weakening the production RBAC invariant.
+
+---
+
 ## PR12 — Phase H1 (log-viewer agent, 2026-04-24)
 
 - **Reverse-seek via `SplFileObject::seek()` is the right tailer for

@@ -225,6 +225,21 @@
 
 **New category surfaced this PR**: `r7-silence` — `@`-silenced filesystem calls. Already covered by CLAUDE.md R7 but hadn't appeared as a standalone tag in the taxonomy until H1 tests. Not a new rule, just a tag the taxonomy table was missing.
 
+### PR #29 — Phase H2 (Maintenance Panel)
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `CommandRunnerService::invokeArtisan` | `route-model-binding` | `--` prepended to every arg key; positional args never populate (kb:delete {path}, queue:retry {id}, kb:ingest-folder {path?}) | (pending) |
+| `MaintenanceCommandController::schedulerStatus` | `doc-drift` | Returned `admin-audit:prune --days=365` but scheduler runs bare `admin-audit:prune` | (pending) |
+| `config/admin.php` command_runner docblock | `doc-drift` | Said tokens are `Crypt::encryptString + sha256 nonce` + TTL=0 disables; real impl is plain random + TTL=0 ≠ disable | (pending) |
+| `CommandHistoryTable` rows.map | `render-stale` | `<>` fragment can't carry key; key-on-inner-<tr> is a React reconciliation bug | (pending) |
+| `LESSONS.md` | `doc-drift` | Table name `admin_command_audits` (plural) vs real `admin_command_audit` (singular) | (pending) |
+| `migration docblock` | `doc-drift` | Said `token_hash` is sha256 of encrypted signed body; real impl is sha256 of raw random | (pending) |
+| `PROGRESS.md` | `doc-drift` | Migration filenames without timestamp prefix, don't match the real files on disk | (pending) |
+| `CommandRunnerService::consumeConfirmToken` | **`security`** (NEW) | `lockForUpdate()` inside transaction, `used_at` update OUTSIDE → race window where 2 concurrent /run succeed with same token, breaking single-use guarantee | (pending) |
+
+**New category surfaced this PR**: **`security`** — concurrency or crypto invariant violations that turn into RCE / single-use bypasses. Highest priority tag. Any future finding tagged `security` MUST land in a distilled skill + dedicated rule at PR16 (not a "nice to have" anecdote). The concurrent-consume bug here is a textbook instance — documented at length in the fix commit message so the pattern is searchable.
+
 ---
 
 ## Category frequency snapshot (PR #16 → PR #27)

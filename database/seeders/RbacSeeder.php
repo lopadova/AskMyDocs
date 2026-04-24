@@ -50,6 +50,12 @@ class RbacSeeder extends Seeder
         'kb.delete.any',
         'kb.promote.any',
         'commands.run',
+        // Phase H2 — destructive admin commands (kb:ingest-folder,
+        // kb:delete, kb:prune-*). Split from `commands.run` so a
+        // regular admin can run read-path maintenance (validate,
+        // rebuild-graph, queue:retry) but not `rm -rf`-equivalent
+        // operations. Only super-admin gets this by default.
+        'commands.destructive',
         'logs.view',
         'insights.view',
         'admin.access',
@@ -96,6 +102,11 @@ class RbacSeeder extends Seeder
             'kb.edit.any',
             'kb.delete.any',
             'kb.promote.any',
+            // admin gets commands.run (kb:validate-canonical,
+            // kb:rebuild-graph, queue:retry) but intentionally NOT
+            // commands.destructive — destructive maintenance is
+            // super-admin-only. See config/admin.php for the full
+            // per-command permission matrix.
             'commands.run',
             'logs.view',
             'insights.view',

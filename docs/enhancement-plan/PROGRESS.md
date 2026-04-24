@@ -19,7 +19,7 @@
 | 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ✅ PR opened | TBD | PR9 (G2) | 2026-04-24 | 580/580 PHP (+5) · 101/101 Vitest (+7) · 4 new Playwright scenarios · R13 green · CodeMirror source editor + PATCH /raw pipeline (validate → write → audit → dispatch) |
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ✅ PR opened | TBD | PR10 (G3) | 2026-04-24 | 593/593 PHP (+13) · 106/106 Vitest (+5) · 4 new Playwright scenarios · R13 green · 1-hop tenant-scoped graph endpoint + SVG radial GraphTab + PdfRenderer strategy (Disabled/Dompdf/Browsershot) |
 | 12 | H1 — Log Viewer (read-only) | `feature/enh-h1-log-viewer` | ✅ PR opened | TBD | PR11 (G4) | 2026-04-24 | 621/621 PHP (+28) · 120/120 Vitest (+14) · 8 new Playwright scenarios (6 admin + 2 viewer) · R13 green · Phase H split into H1 (read-only log viewer) + H2 (maintenance wizard + command runner) · adds spatie/laravel-activitylog ^5.0 as soft dep |
-| 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance` | ⏳ blocked | — | PR12 (H1) | — | Adds CommandRunnerService, retry failed jobs, AdminCommandAudit table, scheduler status widget |
+| 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance-panel` | ✅ PR opened | TBD | PR12 (H1) | 2026-04-24 | 668/668 PHP (+47) · 132/132 Vitest (+12) · 6 new Playwright scenarios (4 admin + 1 super-admin + 1 viewer) · R13 green · 6-gate whitelisted Artisan runner (whitelist / schema / signed-token / permission / audit-first / rate-limit) + CommandWizard SPA + scheduler widget + 2 prune schedulers |
 | 14 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR13 (H2) | — | |
 | 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR14 (I) | — | |
 
@@ -28,6 +28,86 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR13 — Phase H2 (Maintenance + command runner) checklist
+
+Second microphase 2 of 2 of Phase H. Writes-path admin Maintenance
+panel under `/app/admin/maintenance` — whitelisted Artisan runner
+with six security gates enforced by `CommandRunnerService` + a
+three-step React wizard (Preview → [Confirm type-in] →
+Run → Result). 10-commit plan (backend first, then FE, then tests,
+then docs + PR).
+
+- [x] `config/admin.php` — `allowed_commands` whitelist (9 commands,
+      3 non-destructive + 6 destructive) with per-command args_schema
+      (`type`/`required`/`nullable`/`min`/`max`/`enum`) +
+      `requires_permission` (`commands.run` or `commands.destructive`)
+      + `command_runner` TTL / retention knobs
+- [x] `database/migrations/2026_04_24_000010_create_admin_command_audit.php` +
+      `2026_04_24_000011_create_admin_command_nonces.php` + mirror test
+      migrations — audit trail survives hard delete; nonces are
+      single-use + TTL-scoped
+- [x] `app/Models/{AdminCommandAudit,AdminCommandNonce}.php`
+- [x] `app/Services/Admin/CommandRunnerService.php` — **6-gate
+      runner**: 1) whitelist (unknown → 404 via CommandRunnerUnknown)
+      2) args_schema validation (422 via CommandRunnerValidation)
+      3) signed confirm_token (random 64-char + DB-backed single-use)
+      4) permission gate (Spatie `commands.run` / `commands.destructive`)
+      5) audit-before-execute (row flips started → completed|failed)
+      6) rate-limit (throttle:10,1 route middleware)
+- [x] `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php` —
+      thin: five endpoints (catalogue, preview, run, history,
+      scheduler-status), exception mapping to 404/403/422/500
+- [x] `routes/api.php` — five named routes under the existing
+      admin group (role:admin|super-admin) prefixed `/commands`
+- [x] `database/seeders/RbacSeeder.php` — `commands.run` (admin +
+      super-admin) + `commands.destructive` (super-admin only)
+      permissions
+- [x] `app/Console/Commands/{AdminAuditPrune,AdminNoncesPrune}Command.php`
+      + bootstrap/app.php scheduler entries (04:30 audit, 04:50
+      nonces) — both R3 memory-safe via chunkById
+- [x] `tests/Feature/Api/Admin/MaintenanceCommandControllerTest.php` +
+      `tests/Unit/Services/Admin/CommandRunnerServiceTest.php`
+      (47 scenarios — every unhappy path covered: 401/403/404/422/500,
+      token reuse, expired token, args_hash mismatch, etc.)
+- [x] `frontend/src/features/admin/maintenance/maintenance.api.ts` —
+      5 TanStack hooks mirroring the 5 endpoints
+- [x] `frontend/src/features/admin/maintenance/MaintenanceView.tsx` —
+      tabs (Commands / History) + grid of CommandCards grouped by
+      category (KB / Pruning / Queue / Other) + SchedulerStatusCard
+- [x] `frontend/src/features/admin/maintenance/CommandCard.tsx` +
+      `CommandWizard.tsx` + `CommandHistoryTable.tsx` +
+      `SchedulerStatusCard.tsx`
+- [x] `frontend/src/routes/index.tsx` — `/app/admin/maintenance`
+      route + RequireRole(admin|super-admin) guard
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` —
+      Maintenance rail entry retargeted from placeholder to real
+      route
+- [x] `frontend/src/features/admin/maintenance/{CommandWizard,MaintenanceView}.test.tsx`
+      (12 Vitest scenarios — Preview → Run happy path, Preview → Confirm
+      → Run destructive path, type-to-confirm input validation, 422
+      preview error, 500 run error, catalogue error state, permission
+      filtering)
+- [x] `frontend/e2e/super-admin.setup.ts` + `playwright.config.ts`
+      `chromium-super-admin` project — dedicated storage state so
+      destructive flows don't leak into the admin-scoped scenarios
+- [x] `frontend/e2e/admin-maintenance.spec.ts` (4 scenarios — happy
+      non-destructive run + 403 on destructive without permission +
+      404 unknown command + 500 failure injection marked R13)
+- [x] `frontend/e2e/admin-maintenance-super-admin.spec.ts` — full
+      destructive round-trip (preview → confirm type-in → run → result)
+- [x] `frontend/e2e/admin-maintenance-viewer.spec.ts` — RBAC denial
+      (admin-forbidden + /catalogue 403)
+- [x] R13 gate: `bash scripts/verify-e2e-real-data.sh` → OK
+- [x] PHPUnit baseline: 668/668 green (621 PR12 baseline + 47 new)
+- [x] Vitest baseline: 132/132 green (120 PR12 baseline + 12 new)
+- [x] `.env.example` — `ADMIN_COMMAND_TOKEN_TTL` + `ADMIN_AUDIT_RETENTION_DAYS`
+      + `ADMIN_NONCE_RETENTION_DAYS` documented
+- [x] `LESSONS.md` — PR13 entry with 4 bullets
+      (audit-before-execute invariant / three-gate cryptographic
+      contract / per-user rate limit / super-admin vs admin split)
+- [x] `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch, push, `gh pr create` verso `feature/enh-h1-log-viewer`
 
 ### PR12 — Phase H1 (Log Viewer, read-only) checklist
 
