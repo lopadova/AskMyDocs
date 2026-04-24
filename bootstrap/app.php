@@ -102,5 +102,15 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('04:40')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // PR14 / Phase I — AI insights snapshot. Runs ONE pass per day
+        // at 05:00 — LLM-bearing, so it is deliberately the last job
+        // in the overnight window (lets the prune jobs stabilise the
+        // corpus first) and --force is NOT passed (idempotent reruns
+        // no-op, avoiding duplicate provider spend on retries).
+        $schedule->command('insights:compute')
+            ->dailyAt('05:00')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->create();
