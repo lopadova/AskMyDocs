@@ -142,4 +142,6 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
         // endpoints.
         Route::get('/kb/tree', [KbTreeController::class, 'index'])
             ->name('api.admin.kb.tree');
+        Route::get('/kb/projects', [KbTreeController::class, 'projects'])
+            ->name('api.admin.kb.projects');
     });

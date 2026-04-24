@@ -14,7 +14,7 @@
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 551/551 PHP (+45 Admin suites) · 70/70 Vitest (+11) · 12 new Playwright scenarios (9 admin + 3 viewer) · R13 green |
-| 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🔨 in_progress | — | PR7 | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
+| 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🔨 in_progress | #24 | feature/enh-f2-users-roles (PR7) | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
 | 9  | G2 — KB Document Detail | `feature/enh-g2-kb-detail` | ⏳ blocked | — | PR8 | — | Preview / Source / Graph / Meta / History tabs |
 | 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ⏳ blocked | — | PR9 | — | CodeMirror + save pipeline |
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ⏳ blocked | — | PR10 | — | Graph viewer + PDF renderer (PdfRenderer stashed) |

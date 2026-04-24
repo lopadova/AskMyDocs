@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Models\KnowledgeDocument;
 use App\Services\Admin\KbTreeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -49,5 +50,28 @@ class KbTreeController extends Controller
             'counts' => $result['counts'],
             'generated_at' => Carbon::now()->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Copilot #5 fix: the project filter on the FE used to be hard-coded
+     * to `hr-portal` / `engineering`. This endpoint returns the distinct
+     * set of `project_key` values actually present in the DB (including
+     * soft-deleted rows — an admin restoring a trashed doc still needs
+     * to see its project even when the live-only list wouldn't expose
+     * it). The FE `<select>` renders one `<option>` per entry.
+     */
+    public function projects(): JsonResponse
+    {
+        $projects = KnowledgeDocument::query()
+            ->withTrashed()
+            ->whereNotNull('project_key')
+            ->distinct()
+            ->orderBy('project_key')
+            ->pluck('project_key')
+            ->filter(fn ($k) => is_string($k) && trim($k) !== '')
+            ->values()
+            ->all();
+
+        return response()->json(['projects' => $projects]);
     }
 }
