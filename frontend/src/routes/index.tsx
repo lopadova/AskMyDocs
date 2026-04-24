@@ -13,6 +13,7 @@ import { ChatView } from '../features/chat/ChatView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
+import { KbView } from '../features/admin/kb/KbView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -209,6 +210,17 @@ function AdminRolesRoute() {
     );
 }
 
+// PR8 / Phase G1 — Admin KB explorer. Same flat pattern as
+// AdminUsersRoute: RBAC gate inside the component, flat path
+// under appRoute.
+function AdminKbRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <KbView />
+        </RequireRole>
+    );
+}
+
 const adminUsersRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/users',
@@ -219,6 +231,12 @@ const adminRolesRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/roles',
     component: AdminRolesRoute,
+});
+
+const adminKbRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb',
+    component: AdminKbRoute,
 });
 
 const routeTree = rootRoute.addChildren([
@@ -239,6 +257,7 @@ const routeTree = rootRoute.addChildren([
         adminRoute,
         adminUsersRoute,
         adminRolesRoute,
+        adminKbRoute,
     ]),
 ]);
 

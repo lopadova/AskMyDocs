@@ -36,7 +36,7 @@ const RAIL: RailEntry[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'Grid', to: '/app/admin' },
     { id: 'users', label: 'Users', icon: 'Users', to: '/app/admin/users' },
     { id: 'roles', label: 'Roles', icon: 'Shield', to: '/app/admin/roles' },
-    { id: 'kb', label: 'Knowledge', icon: 'Book', to: '/app/kb' },
+    { id: 'kb', label: 'Knowledge', icon: 'Book', to: '/app/admin/kb' },
     { id: 'logs', label: 'Logs', icon: 'Activity', to: '/app/logs' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', to: '/app/maintenance' },
     { id: 'insights', label: 'Insights', icon: 'Sparkles', to: '/app/insights' },

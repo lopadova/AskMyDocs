@@ -317,3 +317,71 @@ export const adminPermissionsApi = {
         return data;
     },
 };
+
+// ---------------------------------------------------------------------------
+// Phase G1 — KB tree explorer
+// ---------------------------------------------------------------------------
+
+export type KbTreeMode = 'canonical' | 'raw' | 'all';
+
+export interface KbTreeDocMeta {
+    id: number;
+    project_key: string;
+    slug: string | null;
+    canonical_type: string | null;
+    canonical_status: string | null;
+    is_canonical: boolean;
+    indexed_at: string | null;
+    deleted_at: string | null;
+}
+
+export interface KbTreeDocNode {
+    type: 'doc';
+    name: string;
+    path: string;
+    meta: KbTreeDocMeta;
+}
+
+export interface KbTreeFolderNode {
+    type: 'folder';
+    name: string;
+    path: string;
+    children: KbTreeNode[];
+}
+
+export type KbTreeNode = KbTreeDocNode | KbTreeFolderNode;
+
+export interface KbTreeCounts {
+    docs: number;
+    canonical: number;
+    trashed: number;
+}
+
+export interface KbTreeResponse {
+    tree: KbTreeNode[];
+    counts: KbTreeCounts;
+    generated_at: string;
+}
+
+export interface KbTreeQuery {
+    project?: string | null;
+    mode?: KbTreeMode;
+    with_trashed?: boolean;
+}
+
+function buildKbTreeParams(q: KbTreeQuery): Record<string, string> {
+    const p: Record<string, string> = {};
+    if (q.project && q.project.trim() !== '') p.project = q.project;
+    if (q.mode) p.mode = q.mode;
+    if (q.with_trashed) p.with_trashed = '1';
+    return p;
+}
+
+export const adminKbApi = {
+    async tree(q: KbTreeQuery = {}): Promise<KbTreeResponse> {
+        const { data } = await api.get<KbTreeResponse>('/api/admin/kb/tree', {
+            params: buildKbTreeParams(q),
+        });
+        return data;
+    },
+};
