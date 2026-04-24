@@ -5,6 +5,7 @@ import type { KbTreeMode, KbTreeNode } from '../admin.api';
 import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
+import { ToastHost } from '../shared/Toast';
 
 /*
  * Phase G1 + G2 — KB Explorer shell.
@@ -22,7 +23,7 @@ import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
  * those microphases land.
  */
 
-const VALID_TABS: KbDetailTab[] = ['preview', 'meta', 'history'];
+const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history'];
 
 function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
     if (typeof window === 'undefined') {
@@ -256,6 +257,7 @@ export function KbView() {
                     </div>
                 </div>
             </div>
+            <ToastHost />
         </AdminShell>
     );
 }

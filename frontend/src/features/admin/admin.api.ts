@@ -504,4 +504,29 @@ export const adminKbDocumentApi = {
         );
         return data;
     },
+    // Phase G3 — updateRaw. Returns 202 Accepted; the freshly computed
+    // version_hash + audit_id echo back so the SPA can invalidate its
+    // caches deterministically.
+    async updateRaw(id: number, content: string): Promise<KbUpdateRawResponse> {
+        const { data } = await api.patch<KbUpdateRawResponse>(
+            `/api/admin/kb/documents/${id}/raw`,
+            { content },
+        );
+        return data;
+    },
 };
+
+// Phase G3 — validation error envelope surfaced by CanonicalParser
+// when the submitted body carries a `---` fence with invalid frontmatter.
+export interface KbUpdateRawErrorShape {
+    message: string;
+    errors?: {
+        frontmatter?: Record<string, string[]>;
+    };
+}
+
+export interface KbUpdateRawResponse {
+    version_hash: string;
+    audit_id: number;
+    queued: boolean;
+}

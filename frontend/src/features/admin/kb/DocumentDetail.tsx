@@ -7,6 +7,7 @@ import {
     useRestoreKbDocument,
 } from './kb-document.api';
 import { PreviewTab } from './PreviewTab';
+import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 
@@ -23,7 +24,7 @@ import { HistoryTab } from './HistoryTab';
  * for Playwright.
  */
 
-export type KbDetailTab = 'preview' | 'meta' | 'history';
+export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history';
 
 export interface DocumentDetailProps {
     documentId: number;
@@ -129,6 +130,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 {activeTab === 'preview' ? (
                     <PreviewTab documentId={doc.id} project={doc.project_key} />
                 ) : null}
+                {activeTab === 'source' ? <SourceTab documentId={doc.id} /> : null}
                 {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
                 {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
             </div>
@@ -265,6 +267,7 @@ function TabStrip({
 }) {
     const tabs: Array<{ key: KbDetailTab; label: string }> = [
         { key: 'preview', label: 'Preview' },
+        { key: 'source', label: 'Source' },
         { key: 'meta', label: 'Meta' },
         { key: 'history', label: 'History' },
     ];
