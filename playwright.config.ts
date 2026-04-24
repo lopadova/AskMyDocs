@@ -49,6 +49,12 @@ export default defineConfig({
     projects: [
         { name: 'setup', testMatch: /auth\.setup\.ts/ },
         { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
+        // PR13 / Phase H2 — super-admin setup. Seeds super@demo.local
+        // (DemoSeeder) and persists storage state so the
+        // chromium-super-admin project can exercise destructive
+        // maintenance commands behind the `commands.destructive`
+        // permission — which the admin role alone doesn't hold.
+        { name: 'super-admin-setup', testMatch: /super-admin\.setup\.ts/ },
         {
             name: 'chromium',
             use: {
@@ -57,10 +63,10 @@ export default defineConfig({
             },
             dependencies: ['setup'],
             // Every *-viewer.spec.ts file runs under the viewer storage
-            // state. Keep the ignore list a single glob so new RBAC
-            // denial specs don't need this config touched (PR7 added
-            // admin-users-viewer.spec.ts).
-            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/],
+            // state; every *-super-admin.spec.ts under the super-admin
+            // one. Keep the ignore list a single regex so new RBAC
+            // denial / elevation specs don't need this config touched.
+            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/],
         },
         {
             // Non-admin project — runs ONLY the *-viewer scenarios.
@@ -73,6 +79,18 @@ export default defineConfig({
             },
             dependencies: ['viewer-setup'],
             testMatch: /.*-viewer\.spec\.ts/,
+        },
+        {
+            // PR13 / Phase H2 — super-admin project. Scoped ONLY to
+            // *-super-admin.spec.ts specs so destructive command
+            // flows don't leak into the admin project's scope.
+            name: 'chromium-super-admin',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: 'playwright/.auth/super-admin.json',
+            },
+            dependencies: ['super-admin-setup'],
+            testMatch: /.*-super-admin\.spec\.ts/,
         },
     ],
 });
