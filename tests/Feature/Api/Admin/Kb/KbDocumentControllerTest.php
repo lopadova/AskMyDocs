@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\Admin\Kb;
 
+use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
@@ -10,6 +11,7 @@ use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -329,6 +331,150 @@ class KbDocumentControllerTest extends TestCase
 
         // Pagination envelope exists.
         $this->assertSame(25, $response->json('meta.total'));
+    }
+
+    // ------------------------------------------------------------------
+    // updateRaw (PR10 / Phase G3)
+    // ------------------------------------------------------------------
+
+    public function test_update_raw_happy_writes_file_dispatches_ingest_job_and_audits(): void
+    {
+        Queue::fake();
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+
+        $newBody = "---\n"
+            ."id: dec-remote\n"
+            ."slug: remote-work\n"
+            ."type: decision\n"
+            ."status: accepted\n"
+            ."---\n\n# Remote Work\n\nUpdated body.\n";
+
+        $auditsBefore = KbCanonicalAudit::count();
+
+        $response = $this->actingAs($admin)
+            ->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', [
+                'content' => $newBody,
+            ])
+            ->assertStatus(202);
+
+        $response->assertJsonPath('queued', true);
+        $this->assertIsInt($response->json('audit_id'));
+
+        // File actually landed on disk (R4 — Storage::fake). Derive the
+        // expected hash from what the server persisted to keep the
+        // test robust against any transport-level newline normalisation.
+        $this->assertTrue(Storage::disk('kb')->exists('policies/remote-work.md'));
+        $onDisk = Storage::disk('kb')->get('policies/remote-work.md');
+        $this->assertStringContainsString('# Remote Work', (string) $onDisk);
+        $this->assertStringContainsString('type: decision', (string) $onDisk);
+        $expectedHash = hash('sha256', (string) $onDisk);
+        $response->assertJsonPath('version_hash', $expectedHash);
+
+        // One new audit row with event_type=updated, stamped to the
+        // canonical identifiers that survive hard deletes (R10).
+        $this->assertSame($auditsBefore + 1, KbCanonicalAudit::count());
+        $audit = KbCanonicalAudit::query()
+            ->where('event_type', 'updated')
+            ->where('project_key', 'hr-portal')
+            ->where('slug', 'remote-work')
+            ->latest('id')
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertSame($admin->email, $audit->actor);
+        $this->assertSame($expectedHash, $audit->after_json['version_hash']);
+
+        // Single ingestion execution path — job queued exactly once.
+        Queue::assertPushed(IngestDocumentJob::class, 1);
+    }
+
+    public function test_update_raw_invalid_frontmatter_returns_422_and_does_not_dispatch_job(): void
+    {
+        Queue::fake();
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+        Storage::disk('kb')->put('policies/remote-work.md', "# stale\n");
+
+        $auditsBefore = KbCanonicalAudit::count();
+
+        $badBody = "---\n"
+            ."id: dec-x\n"
+            ."slug: remote-work\n"
+            ."type: decision\n"
+            ."status: NOT_A_STATUS\n"
+            ."---\n\n# Body\n";
+
+        $response = $this->actingAs($admin)
+            ->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', [
+                'content' => $badBody,
+            ])
+            ->assertStatus(422);
+
+        // errors.frontmatter is keyed by the invalid frontmatter field
+        // so the editor can surface per-key messages (R11).
+        $response->assertJsonStructure([
+            'errors' => [
+                'frontmatter' => ['status'],
+            ],
+        ]);
+
+        // File content did NOT change — disk write is gated on validation.
+        $this->assertSame("# stale\n", Storage::disk('kb')->get('policies/remote-work.md'));
+        // No audit, no job dispatch.
+        $this->assertSame($auditsBefore, KbCanonicalAudit::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_update_raw_storage_failure_returns_500_and_does_not_dispatch_job_or_audit(): void
+    {
+        Queue::fake();
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+
+        // Override the fake disk with a Mockery spy that returns false
+        // from `put()` — simulates an out-of-space / permission error.
+        // Storage::fake() was already called in setUp(); replace the
+        // kb disk with the spy for this scenario.
+        $spy = \Mockery::mock(\Illuminate\Contracts\Filesystem\Filesystem::class);
+        $spy->shouldReceive('put')->andReturn(false);
+        Storage::set('kb', $spy);
+
+        $auditsBefore = KbCanonicalAudit::count();
+
+        $nonCanonicalBody = "# Plain update\n\nNo frontmatter — should still attempt to write.\n";
+
+        $response = $this->actingAs($admin)
+            ->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', [
+                'content' => $nonCanonicalBody,
+            ])
+            ->assertStatus(500);
+
+        $response->assertJsonPath('message', 'failed to write markdown to disk');
+
+        // No audit and no job when the disk write fails (R4).
+        $this->assertSame($auditsBefore, KbCanonicalAudit::count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_update_raw_non_admin_returns_403(): void
+    {
+        $viewer = $this->makeViewer('viewer-g3');
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+
+        $this->actingAs($viewer)
+            ->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', [
+                'content' => "# nope\n",
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_update_raw_guest_returns_401(): void
+    {
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+
+        $this->patchJson('/api/admin/kb/documents/'.$doc->id.'/raw', [
+            'content' => "# nope\n",
+        ])->assertStatus(401);
     }
 
     // ------------------------------------------------------------------
