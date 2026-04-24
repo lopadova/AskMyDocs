@@ -43,8 +43,8 @@ then docs + PR).
       (`type`/`required`/`nullable`/`min`/`max`/`enum`) +
       `requires_permission` (`commands.run` or `commands.destructive`)
       + `command_runner` TTL / retention knobs
-- [x] `database/migrations/create_admin_command_audits_table.php` +
-      `create_admin_command_nonces_table.php` + mirror test
+- [x] `database/migrations/2026_04_24_000010_create_admin_command_audit.php` +
+      `2026_04_24_000011_create_admin_command_nonces.php` + mirror test
       migrations — audit trail survives hard delete; nonces are
       single-use + TTL-scoped
 - [x] `app/Models/{AdminCommandAudit,AdminCommandNonce}.php`

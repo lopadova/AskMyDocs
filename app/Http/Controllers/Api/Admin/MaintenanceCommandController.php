@@ -224,7 +224,12 @@ class MaintenanceCommandController extends Controller
                 ['command' => 'kb:rebuild-graph', 'cron_time' => '03:40', 'description' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.'],
                 ['command' => 'queue:prune-failed --hours=48', 'cron_time' => '04:00', 'description' => 'Rotate the failed_jobs table.'],
                 ['command' => 'kb:prune-orphan-files --dry-run', 'cron_time' => '04:40', 'description' => 'Dry-run orphan scan.'],
-                ['command' => 'admin-audit:prune --days=365', 'cron_time' => '04:30', 'description' => 'Rotate admin_command_audit (Phase H2).'],
+                // Copilot #2 fix: bootstrap/app.php runs `admin-audit:prune`
+                // with no `--days` arg (the command reads ADMIN_AUDIT_RETENTION_DAYS
+                // from env). Previously this string said `--days=365`, so the
+                // UI schedule grid was lying about what the scheduler actually
+                // executes.
+                ['command' => 'admin-audit:prune', 'cron_time' => '04:30', 'description' => 'Rotate admin_command_audit (Phase H2).'],
                 ['command' => 'admin-nonces:prune', 'cron_time' => '04:50', 'description' => 'Purge expired/used admin_command_nonces.'],
             ],
         ]);

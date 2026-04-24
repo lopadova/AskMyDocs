@@ -16,9 +16,15 @@ use Illuminate\Support\Facades\Schema;
  * the same token is rejected. Expired rows are purged by the
  * `admin-nonces:prune` scheduler (runs daily).
  *
- * token_hash is sha256 of the encrypted signed token body; we NEVER
- * store the plaintext. Lookups use the hash so the DB row itself
- * cannot replay a token even if the admin_command_nonces table leaks.
+ * Copilot #6 fix: docblock now matches the implementation.
+ *
+ * token_hash is sha256 of the raw plaintext confirm_token returned by
+ * `CommandRunnerService::issueConfirmToken()` (opaque
+ * `bin2hex(random_bytes(32))` output). We NEVER store the plaintext
+ * token itself; the plaintext round-trips to the client once and is
+ * consumed by /run in a transactional lockForUpdate. Lookups use
+ * the hash so the DB row itself cannot replay a token even if the
+ * admin_command_nonces table leaks.
  */
 return new class extends Migration
 {
