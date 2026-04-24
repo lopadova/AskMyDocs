@@ -12,7 +12,14 @@ AskMyDocs is an **enterprise-grade RAG + canonical knowledge compilation**
 system built on **Laravel 13 + PostgreSQL/pgvector**. Users ingest markdown,
 ask questions via a chat UI (or a stateless JSON API), and get grounded
 answers with citations — over a **typed knowledge base** with a lightweight
-graph, anti-repetition memory, and a human-gated promotion pipeline.
+graph, anti-repetition memory, and a human-gated promotion pipeline. A
+full React SPA admin shell ships alongside the chat: KPI dashboard, users
++ roles + RBAC, canonical KB explorer with inline editor and graph viewer,
+log viewer (five tabs), whitelisted Artisan maintenance runner, and a
+daily AI-insights panel. Every admin page runs behind Spatie roles, every
+mutation audit-trails into `kb_canonical_audit` or `admin_command_audits`,
+and every destructive command requires a DB-backed single-use confirm
+token.
 
 - **PHP** `^8.3`, **Laravel** `^13.0`, **Sanctum** `^4.2`.
 - **symfony/yaml** `^7.4|^8.0` for canonical YAML frontmatter parsing
@@ -81,6 +88,13 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` + `app/Models/ChatLog.php` |
 | MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (10 tools: 5 retrieval + 5 canonical/promote) |
+| Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
+| Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
+| Admin KB surface (tree + detail + editor + graph + PDF) | `app/Services/Admin/KbTreeService.php`, `app/Http/Controllers/Api/Admin/KbTreeController.php`, `KbDocumentController.php`, `app/Services/Admin/Pdf/PdfRenderer*.php` |
+| Admin log viewer (H1) | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
+| Admin command runner (H2) | `app/Services/Admin/CommandRunnerService.php`, `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php`, `app/Models/AdminCommandAudit.php`, `AdminCommandNonce.php`, `config/admin.php` (`allowed_commands`) |
+| AI insights (Phase I) | `app/Services/Admin/AiInsightsService.php`, `app/Http/Controllers/Api/Admin/AdminInsightsController.php`, `app/Console/Commands/InsightsComputeCommand.php`, `app/Models/AdminInsightsSnapshot.php` |
+| SPA entrypoint | `app/Http/Controllers/SpaController.php`, `resources/views/app.blade.php`, `frontend/src/main.tsx`, `frontend/src/routes/index.tsx` |
 | Scheduler | `bootstrap/app.php` |
 | GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |
 | Claude skill templates | `.claude/skills/kb-canonical/*` (5 CONSUMER-SIDE templates), `.claude/skills/canonical-awareness/` (R10 — in-repo) |

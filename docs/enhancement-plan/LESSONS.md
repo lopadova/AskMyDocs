@@ -5,6 +5,84 @@
 
 ---
 
+## PR15 — Phase J (docs-e2e-polish agent, 2026-04-24)
+
+- **The dev bootstrap, in order, is non-negotiable.** If you clone this
+  repo and want the full stack up for the admin-journey spec in under
+  10 minutes, run exactly this sequence: (1) `composer install`
+  (note the `php.bat → php84` shim on Windows — the user-memory
+  entry spells this out, commands via `vendor/bin/phpunit` work
+  regardless); (2) `cp .env.example .env` then `php artisan key:generate`;
+  (3) `php artisan migrate` (Postgres + pgvector prod, SQLite in tests);
+  (4) `php artisan db:seed --class=RbacSeeder` THEN `--class=DemoSeeder`
+  (RbacSeeder must land first — DemoSeeder assigns roles that don't
+  exist yet otherwise); (5) `npm install` + `npm run build` to produce
+  `public/build/manifest.json` (the SPA crashes without it —
+  `withoutVite()` is only for feature tests); (6) `php artisan serve` in
+  one shell + `npm run dev` in another for HMR. For E2E:
+  `APP_ENV=testing` + `npx playwright install chromium` + `npx playwright test`.
+  The `TestingController` endpoints (`/testing/reset`, `/testing/seed`)
+  are triple-gated by `APP_ENV=testing`; they do not leak to prod. If
+  step 4 fails because `Spatie\Permission\Models\Role` throws
+  "Target class [role] does not exist", the cache is stale —
+  `php artisan cache:clear` + `php artisan config:clear` + re-run.
+- **Feature flags drive which admin pages actually do anything.** Not
+  every admin surface is always-on. The full list of gates the next
+  maintainer must be aware of: `RBAC_ENFORCED=true` (master switch for
+  the AccessScopeScope + EnsureProjectAccess middleware — set to false
+  ONLY for migration windows and emergency rollback, never in prod);
+  `KB_CANONICAL_ENABLED=true` (retrieval canonical-awareness — no-op
+  with zero canonical docs); `KB_GRAPH_EXPANSION_ENABLED=true` (1-hop
+  expansion — no-op without canonical seeds); `KB_REJECTED_INJECTION_ENABLED=true`
+  (rejected-approach ⚠ block in the prompt); `KB_PROMOTION_ENABLED=true`
+  (the `/api/kb/promotion/*` API surface); `KB_SOFT_DELETE_ENABLED=true`
+  (deletion behaviour); `ADMIN_PDF_ENGINE=disabled\|dompdf\|browsershot`
+  (KB doc PDF export — 501 under the default); `AUTH_2FA_ENABLED=false`
+  (two-factor flow stubbed returning 501 until a future PR). The
+  Maintenance panel's `CommandRunnerService` is driven entirely by
+  `config/admin.php` `allowed_commands` + the Spatie permission
+  `commands.run` (admin+super-admin) vs `commands.destructive`
+  (super-admin only — a compromised admin cannot wipe the corpus).
+  Every one of these flags degrades gracefully — never hard-code "always on".
+- **Two ingestion entrypoints, two deletion entrypoints, one write path
+  each — but the ADMIN pages are a THIRD class of actor.** The admin
+  KB Source editor (PATCH `/raw`) writes straight to the KB disk via
+  `Storage::put()` (R4-gated), writes a `kb_canonical_audit` row with
+  `event_type='updated'`, then dispatches `IngestDocumentJob` — that
+  job then re-enters `DocumentIngestor::ingestMarkdown()`. So the admin
+  edit path technically has its own ordering (disk → audit → dispatch,
+  NEVER audit → disk) but converges on the same execution path as
+  everything else once the job drains. Any future "admin-side bulk
+  edit" feature MUST preserve this ordering; inverting it produces
+  a liar audit row (row claims `updated` but disk holds the prior bytes
+  and the queued job crashes with file-not-found). See LESSONS PR10
+  for the full write-path contract.
+- **COPILOT-FINDINGS.md is the PR16 loadout.** The catalogue is not
+  optional record-keeping — PR16's final distillation reads it,
+  counts category frequencies, and mints rules R14+ from tags with
+  ≥ 3 occurrences across distinct PRs. Tags currently at ≥ 3
+  (skill-worthy): `doc-drift` (12), `silent-200` (9), `a11y` (7),
+  `render-stale` (3), `hardcoded-subset` (5), `test-no-coverage` /
+  `test-ordering-assumption` / `r12-failure-path` (6 combined),
+  `injection-attack` (3), `route-model-binding` (3). Low-count tags
+  become LESSONS anecdotes, not skills. Before PR16 starts, re-run
+  `gh api repos/lopadova/AskMyDocs/pulls/<N>/comments --paginate`
+  for every PR #16 → #30 and cross-check the table has a row per
+  real finding. The `(pending)` SHA cells on PR #28 (H1) were filled
+  in this PR.
+- **The golden-path spec is the reviewer demo.** `admin-journey.spec.ts`
+  exists to prove the whole admin stack composes cleanly — one
+  scenario, ten steps, real data end-to-end (DemoSeeder +
+  AdminInsightsSeeder). It is NOT a replacement for the per-feature
+  specs; those cover failure paths, RBAC denial, failure injection
+  (R13). If a future PR regresses, the golden-path spec is the first
+  thing that breaks — precisely because it touches every page in
+  sequence. Keep it at a single scenario: adding a second flow to
+  the same file doubles the seeder cost and dilutes the demo
+  signal. Add per-feature scenarios to the feature's own spec file.
+
+---
+
 ## PR14 — Phase I (ai-insights agent, 2026-04-24)
 
 - **Pre-computed snapshot vs on-demand is the ONLY viable design
