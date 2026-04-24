@@ -21,11 +21,13 @@ import { ToastHost } from '../shared/Toast';
  * current URL once on mount and write back through history.replaceState
  * so TanStack Router stays in charge of navigation elsewhere.
  *
- * Graph + PDF export (G4) slot next to the existing four tabs when
- * that microphase lands.
+ * Phase G4 adds the Graph tab + Export-PDF header action. The tab is
+ * deep-linkable via `?tab=graph`; the export button sits next to
+ * Print and fires useExportPdf, surfacing 501 ("engine disabled") +
+ * 500 errors as toasts.
  */
 
-const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history'];
+const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph'];
 
 function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
     if (typeof window === 'undefined') {

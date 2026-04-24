@@ -5,7 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Hold the hook stubs in a mutable object so each test can vary the
 // surface a DocumentDetail sees without remounting the mock graph.
-const mockState = {
+// Importing the KbDocument type widens `deleted_at` to `string | null`
+// so the trashed-state test can flip it to an ISO string without TS
+// narrowing the literal back to `null`.
+import type { KbDocument } from '../admin.api';
+
+const mockState: { doc: KbDocument; isLoading: boolean; isError: boolean } = {
     doc: {
         id: 7,
         project_key: 'hr-portal',
@@ -57,6 +62,10 @@ vi.mock('./kb-document.api', () => ({
     }),
     useRestoreKbDocument: () => ({ mutate: vi.fn(), isPending: false }),
     useDeleteKbDocument: () => ({ mutate: vi.fn(), isPending: false }),
+    // Phase G4 — export-pdf mutation is read by DocumentDetail via the
+    // header action. The stub keeps it non-pending so the button is
+    // enabled for interaction assertions.
+    useExportPdf: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { DocumentDetail } from './DocumentDetail';

@@ -4,6 +4,8 @@ namespace Tests\Feature\Api\Admin\Kb;
 
 use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
+use App\Models\KbEdge;
+use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
@@ -519,6 +521,152 @@ class KbDocumentControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // graph (PR11 / Phase G4)
+    // ------------------------------------------------------------------
+
+    public function test_graph_returns_empty_subgraph_for_raw_document(): void
+    {
+        $admin = $this->makeAdmin();
+        // Raw doc: no canonical columns, no kb_nodes row exists for it.
+        // The endpoint must return 200 + empty nodes/edges (NOT 404).
+        $doc = $this->makeDoc('hr-portal', 'drafts/raw.md', canonical: false, slug: null);
+
+        $response = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/'.$doc->id.'/graph')
+            ->assertOk();
+
+        $response->assertJsonPath('nodes', []);
+        $response->assertJsonPath('edges', []);
+        $response->assertJsonPath('meta.project_key', 'hr-portal');
+        $response->assertJsonPath('meta.center_node_uid', null);
+    }
+
+    public function test_graph_returns_canonical_subgraph_tenant_scoped(): void
+    {
+        $admin = $this->makeAdmin();
+
+        // Two canonical docs in hr-portal + a tenant-scoped edge between
+        // their kb_nodes rows. The graph endpoint is called for the first
+        // doc — we expect the other hr-portal node + the edge to surface.
+        $docA = $this->makeDoc('hr-portal', 'policies/remote.md', canonical: true, slug: 'remote-work');
+        $docB = $this->makeDoc('hr-portal', 'policies/pto.md', canonical: true, slug: 'pto');
+
+        $this->makeCanonicalNode('hr-portal', 'remote-work', 'policy', 'Remote Work', 'doc-remote-work');
+        $this->makeCanonicalNode('hr-portal', 'pto', 'policy', 'PTO Policy', 'doc-pto');
+        $this->makeEdge('hr-portal', 'remote-work', 'pto', 'related_to', 'edge-remote-pto', 0.9);
+
+        // A node in a DIFFERENT tenant — must NOT leak into the response.
+        // Uses the same `remote-work` slug as hr-portal to prove the
+        // composite-FK tenant scoping (R10).
+        $this->makeCanonicalNode('engineering', 'remote-work', 'runbook', 'Engineering Remote Runbook', 'doc-eng-remote');
+        // No edge between engineering's node and anyone — but even if
+        // there was one, the tenant filter would hide it.
+
+        $response = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/'.$docA->id.'/graph')
+            ->assertOk();
+
+        $response->assertJsonPath('meta.project_key', 'hr-portal');
+        $response->assertJsonPath('meta.center_node_uid', 'remote-work');
+
+        $nodes = $response->json('nodes');
+        $this->assertIsArray($nodes);
+        $uids = array_column($nodes, 'uid');
+        $this->assertContains('remote-work', $uids);
+        $this->assertContains('pto', $uids);
+        // Engineering row must NOT be present even though the uid matches.
+        // There must be NO engineering row — tenant filter is deterministic.
+        foreach ($nodes as $node) {
+            $this->assertNotSame('Engineering Remote Runbook', $node['label']);
+            $this->assertNotSame('runbook', $node['type']);
+        }
+
+        // The single related_to edge round-trips with weight + provenance.
+        $edges = $response->json('edges');
+        $this->assertIsArray($edges);
+        $this->assertCount(1, $edges);
+        $this->assertSame('remote-work', $edges[0]['from']);
+        $this->assertSame('pto', $edges[0]['to']);
+        $this->assertSame('related_to', $edges[0]['type']);
+
+        // Center node carries role='center'; neighbour role='neighbor'.
+        $center = array_values(array_filter($nodes, fn ($n) => $n['uid'] === 'remote-work'))[0];
+        $neighbor = array_values(array_filter($nodes, fn ($n) => $n['uid'] === 'pto'))[0];
+        $this->assertSame('center', $center['role']);
+        $this->assertSame('neighbor', $neighbor['role']);
+
+        // Unused var reference — suppress static analysis warnings.
+        unset($docB);
+    }
+
+    public function test_graph_non_admin_returns_403(): void
+    {
+        $viewer = $this->makeViewer('viewer-g4');
+        $doc = $this->makeDoc('hr-portal', 'policies/rbac.md', canonical: true, slug: 'rbac');
+
+        $this->actingAs($viewer)
+            ->getJson('/api/admin/kb/documents/'.$doc->id.'/graph')
+            ->assertStatus(403);
+    }
+
+    public function test_graph_guest_returns_401(): void
+    {
+        $doc = $this->makeDoc('hr-portal', 'policies/rbac.md', canonical: true, slug: 'rbac');
+
+        $this->getJson('/api/admin/kb/documents/'.$doc->id.'/graph')
+            ->assertStatus(401);
+    }
+
+    // ------------------------------------------------------------------
+    // exportPdf (PR11 / Phase G4)
+    // ------------------------------------------------------------------
+
+    public function test_export_pdf_returns_501_when_engine_is_disabled(): void
+    {
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+        Storage::disk('kb')->put('policies/remote-work.md', "# Remote Work\n\nBody.");
+
+        // Default engine is 'disabled' — config/admin.php defaults to it
+        // and the Testbench env does NOT set ADMIN_PDF_ENGINE.
+        config()->set('admin.pdf_engine', 'disabled');
+
+        $response = $this->actingAs($admin)
+            ->postJson('/api/admin/kb/documents/'.$doc->id.'/export-pdf')
+            ->assertStatus(501);
+
+        // The message surfaces the actionable "enable ADMIN_PDF_ENGINE"
+        // text so the SPA can echo it in a toast.
+        $this->assertStringContainsString('PDF export disabled', (string) $response->json('message'));
+        $response->assertJsonPath('engine', 'disabled');
+    }
+
+    public function test_export_pdf_returns_404_when_file_missing(): void
+    {
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/ghost.md', canonical: true, slug: 'ghost');
+        // No Storage::put — file missing on disk. The endpoint must 404
+        // BEFORE it consults the renderer, so the 501 (engine disabled)
+        // never shadows a genuine file-missing error.
+        config()->set('admin.pdf_engine', 'disabled');
+
+        $this->actingAs($admin)
+            ->postJson('/api/admin/kb/documents/'.$doc->id.'/export-pdf')
+            ->assertStatus(404)
+            ->assertJsonPath('path', 'policies/ghost.md');
+    }
+
+    public function test_export_pdf_non_admin_returns_403(): void
+    {
+        $viewer = $this->makeViewer('viewer-g4-pdf');
+        $doc = $this->makeDoc('hr-portal', 'policies/rbac.md', canonical: true, slug: 'rbac');
+
+        $this->actingAs($viewer)
+            ->postJson('/api/admin/kb/documents/'.$doc->id.'/export-pdf')
+            ->assertStatus(403);
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
@@ -544,6 +692,44 @@ class KbDocumentControllerTest extends TestCase
         $user->assignRole('viewer');
 
         return $user;
+    }
+
+    private function makeCanonicalNode(
+        string $projectKey,
+        string $slug,
+        string $type,
+        string $label,
+        string $sourceDocId,
+    ): KbNode {
+        return KbNode::create([
+            'node_uid' => $slug,
+            'node_type' => $type,
+            'label' => $label,
+            'project_key' => $projectKey,
+            'source_doc_id' => $sourceDocId,
+            'payload_json' => null,
+        ]);
+    }
+
+    private function makeEdge(
+        string $projectKey,
+        string $fromUid,
+        string $toUid,
+        string $edgeType,
+        string $edgeUid,
+        float $weight = 1.0,
+    ): KbEdge {
+        return KbEdge::create([
+            'edge_uid' => $edgeUid,
+            'from_node_uid' => $fromUid,
+            'to_node_uid' => $toUid,
+            'edge_type' => $edgeType,
+            'project_key' => $projectKey,
+            'source_doc_id' => null,
+            'weight' => $weight,
+            'provenance' => 'wikilink',
+            'payload_json' => null,
+        ]);
     }
 
     private function makeDoc(

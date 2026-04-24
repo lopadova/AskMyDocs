@@ -4,6 +4,8 @@ namespace Database\Seeders;
 
 use App\Models\Conversation;
 use App\Models\KbCanonicalAudit;
+use App\Models\KbEdge;
+use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
@@ -69,6 +71,7 @@ class DemoSeeder extends Seeder
         $this->seedProjectMemberships($admin);
         $this->seedProjectMemberships($viewer);
         $this->seedKnowledgeDocuments();
+        $this->seedCanonicalGraph();
         $this->seedConversations($admin);
         $this->seedChatLogs($admin);
 
@@ -141,6 +144,12 @@ class DemoSeeder extends Seeder
                 'document_hash' => hash('sha256', $projectKey.'/'.$slug),
                 'version_hash' => hash('sha256', $projectKey.'/'.$slug.'/v1'),
                 'metadata' => [],
+                // Phase G4 — persist the stable canonical identifier on
+                // the row so the /graph endpoint can resolve the seed
+                // node via source_doc_id (preferred path). The frontmatter
+                // also carries `id: demo-{slug}` so CanonicalIndexerJob
+                // (when a real worker runs) would produce the same value.
+                'doc_id' => 'demo-'.$slug,
                 'slug' => $slug,
                 'canonical_type' => $canonicalType,
                 'canonical_status' => 'accepted',
@@ -280,6 +289,55 @@ class DemoSeeder extends Seeder
             Log::error($message);
             throw new RuntimeException($message);
         }
+    }
+
+    /**
+     * Seed a tiny canonical graph (Phase G4): one kb_nodes row per
+     * canonical doc + one kb_edges row linking the two hr-portal
+     * policies. Lets the admin KB Graph tab render a real subgraph
+     * in local dev + E2E without waiting for CanonicalIndexerJob
+     * to process the seeded markdown through a real queue worker.
+     *
+     * Idempotent: each node/edge is upserted on (project_key,
+     * node_uid) / (project_key, edge_uid) which mirrors the DB
+     * composite unique constraints.
+     */
+    private function seedCanonicalGraph(): void
+    {
+        $nodes = [
+            ['hr-portal', 'remote-work-policy', 'policy', 'Remote Work Policy', 'demo-remote-work-policy'],
+            ['hr-portal', 'pto-guidelines', 'policy', 'PTO Guidelines', 'demo-pto-guidelines'],
+            ['engineering', 'incident-response', 'runbook', 'Incident Response Runbook', 'demo-incident-response'],
+        ];
+
+        foreach ($nodes as [$project, $slug, $type, $label, $sourceDocId]) {
+            KbNode::updateOrCreate(
+                ['project_key' => $project, 'node_uid' => $slug],
+                [
+                    'node_type' => $type,
+                    'label' => $label,
+                    'source_doc_id' => $sourceDocId,
+                    'payload_json' => null,
+                ],
+            );
+        }
+
+        // Link the two hr-portal policies with a `related_to` edge so
+        // the Graph tab on remote-work-policy shows exactly one
+        // neighbour + one edge — enough to exercise the full render
+        // path without overwhelming the radial layout.
+        KbEdge::updateOrCreate(
+            ['project_key' => 'hr-portal', 'edge_uid' => 'demo-edge-remote-pto'],
+            [
+                'from_node_uid' => 'remote-work-policy',
+                'to_node_uid' => 'pto-guidelines',
+                'edge_type' => 'related_to',
+                'source_doc_id' => 'demo-remote-work-policy',
+                'weight' => 0.9,
+                'provenance' => 'wikilink',
+                'payload_json' => null,
+            ],
+        );
     }
 
     /**

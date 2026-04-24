@@ -176,4 +176,13 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             ->name('api.admin.kb.documents.restore');
         Route::get('/kb/documents/{document}/history', [KbDocumentController::class, 'history'])
             ->name('api.admin.kb.documents.history');
+
+        // Phase G4 — graph subgraph + PDF export. Both honour the
+        // withTrashed() binding shim above, so the admin can render
+        // the 1-hop graph of a trashed doc for forensic use, and
+        // export a PDF of its last known body before it's pruned.
+        Route::get('/kb/documents/{document}/graph', [KbDocumentController::class, 'graph'])
+            ->name('api.admin.kb.documents.graph');
+        Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
+            ->name('api.admin.kb.documents.export_pdf');
     });
