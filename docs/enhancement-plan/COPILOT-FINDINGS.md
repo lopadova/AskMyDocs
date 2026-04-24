@@ -225,6 +225,21 @@
 
 **New category surfaced this PR**: `r7-silence` — `@`-silenced filesystem calls. Already covered by CLAUDE.md R7 but hadn't appeared as a standalone tag in the taxonomy until H1 tests. Not a new rule, just a tag the taxonomy table was missing.
 
+### PR #30 — Phase I (AI Insights)
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `AiInsightsService` constructor | `doc-drift` | PromotionSuggestService injected but never called — dead dep | (pending) |
+| `AiInsightsService::suggestTagsBatch` | `hardcoded-subset` | Picks first N canonical docs without "missing tags" SQL filter → wasteful LLM calls | (pending) |
+| `AiInsightsService::qualityReport` | `r3-bulk` | `GROUP BY LENGTH(chunk_text)` produces up to N groups; bucket/outlier logic in PHP | (pending) |
+| `AdminInsightsController::byDate` | `silent-200` | `Carbon::parse` permissive (accepts 2026-02-30); 422 vs docstring's 404 | (pending) |
+| `PROGRESS.md` row 14 | `doc-drift` | "4 new Playwright scenarios" but enumerates 6 | (pending) |
+| `PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | `Object.defineProperty(window, 'location')` not restored in afterEach — cross-suite pollution | (pending) |
+| `MetaTab.tsx` AiSuggestionsBlock | `doc-drift` | Block comment says "render nothing while loading" but impl renders explicit loading UI | (pending) |
+| `admin_insights_snapshots` test migration | `doc-drift` | Redundant explicit index on `snapshot_date` (unique already creates one) | (pending) |
+| `AiInsightsService::detectOrphans` | `r3-bulk` **(CRITICAL)** | Per-doc `chunks()->count()` + `KbEdge::exists()` = N+1 (thousands of queries on 10k-doc corpus) | (pending) |
+| `admin_insights_snapshots` prod migration | `doc-drift` | Same redundant index | (pending) |
+
 ---
 
 ## Category frequency snapshot (PR #16 → PR #27)

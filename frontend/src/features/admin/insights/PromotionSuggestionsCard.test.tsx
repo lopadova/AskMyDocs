@@ -1,19 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PromotionSuggestionsCard } from './PromotionSuggestionsCard';
 
 describe('PromotionSuggestionsCard', () => {
-    const originalAssign = window.location.assign;
+    // Copilot #6 fix: the original test replaced `window.location` via
+    // Object.defineProperty but never restored it in afterEach, which
+    // leaked the mock into every subsequent Vitest suite sharing the
+    // same jsdom environment (flakiness in unrelated tests that read
+    // `location.href` etc). Snapshot the full descriptor up-front and
+    // restore it after every test; restore the whole suite to the
+    // original `location` when the describe block ends.
+    const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+        window,
+        'location',
+    );
 
     beforeEach(() => {
         // jsdom doesn't allow reassigning `location.assign` directly;
         // spy via Object.defineProperty so the test can assert the
         // navigation target without actually navigating.
         Object.defineProperty(window, 'location', {
+            configurable: true,
             writable: true,
             value: { assign: vi.fn() },
         });
+    });
+
+    afterEach(() => {
+        if (originalLocationDescriptor) {
+            Object.defineProperty(window, 'location', originalLocationDescriptor);
+        }
     });
 
     it('renders the empty state when no items', () => {
