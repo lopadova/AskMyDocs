@@ -1,6 +1,10 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
+use App\Http\Controllers\Api\Admin\PermissionController;
+use App\Http\Controllers\Api\Admin\ProjectMembershipController;
+use App\Http\Controllers\Api\Admin\RoleController;
+use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -95,4 +99,40 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             ->name('api.admin.metrics.series');
         Route::get('/metrics/health', [DashboardMetricsController::class, 'health'])
             ->name('api.admin.metrics.health');
+
+        // Phase F2 — Users & Roles + Memberships.
+        // `users` is soft-deletable, so the controller opts into
+        // withTrashed()/onlyTrashed() explicitly; restore + force-delete
+        // need their own named routes because apiResource can't express
+        // "resolve trashed models via the route binding".
+        Route::get('/users', [UserController::class, 'index'])->name('api.admin.users.index');
+        Route::post('/users', [UserController::class, 'store'])->name('api.admin.users.store');
+        Route::get('/users/{user}', [UserController::class, 'show'])->name('api.admin.users.show');
+        Route::patch('/users/{user}', [UserController::class, 'update'])->name('api.admin.users.update');
+        Route::put('/users/{user}', [UserController::class, 'update']);
+        Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('api.admin.users.destroy');
+        Route::post('/users/{id}/restore', [UserController::class, 'restore'])
+            ->whereNumber('id')
+            ->name('api.admin.users.restore');
+        Route::post('/users/{user}/resend-invite', [UserController::class, 'resendInvite'])
+            ->name('api.admin.users.resend-invite');
+        Route::patch('/users/{user}/active', [UserController::class, 'toggleActive'])
+            ->name('api.admin.users.toggle-active');
+
+        Route::apiResource('roles', RoleController::class)
+            ->except(['update']);
+        Route::match(['put', 'patch'], '/roles/{role}', [RoleController::class, 'update'])
+            ->name('roles.update');
+
+        Route::get('/permissions', [PermissionController::class, 'index'])
+            ->name('api.admin.permissions.index');
+
+        Route::get('/users/{user}/memberships', [ProjectMembershipController::class, 'index'])
+            ->name('api.admin.users.memberships.index');
+        Route::post('/users/{user}/memberships', [ProjectMembershipController::class, 'store'])
+            ->name('api.admin.users.memberships.store');
+        Route::patch('/memberships/{membership}', [ProjectMembershipController::class, 'update'])
+            ->name('api.admin.memberships.update');
+        Route::delete('/memberships/{membership}', [ProjectMembershipController::class, 'destroy'])
+            ->name('api.admin.memberships.destroy');
     });

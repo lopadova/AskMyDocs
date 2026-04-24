@@ -5,6 +5,70 @@
 
 ---
 
+## PR7 — Phase F2 (users-roles agent, 2026-04-24)
+
+- **Spatie `$guard_name = 'web'` pin on `User`**: without it,
+  Spatie falls back to guard discovery via `config('auth.guards.*.provider')`,
+  and once Sanctum's `auth:sanctum` is on the request the effective guard
+  becomes `sanctum`, NOT `web`. Role/permission syncs then look up
+  roles under the `sanctum` guard (empty set), `syncRoles(['viewer'])`
+  silently no-ops, and every "assign role on create" test fails with
+  "0 roles assigned" even though `roles.*` validation passes against
+  `Rule::exists('roles','name')`. Hard-code `$guard_name = 'web'` on
+  the `User` model so every assign/sync/hasRole resolves under the
+  web guard regardless of the request's auth driver.
+- **`$attributes = ['is_active' => true]` mirrors DB default in
+  memory**: the migration sets `default(true)` at the column level
+  but an Eloquent `User::create([...])` that omits `is_active` saves
+  the row as NULL and then the boolean cast coerces it to `false`
+  on re-hydration. Only the `default(true)` attribute on the model
+  itself survives `fresh()` / `assertJsonPath('data.is_active', true)`.
+  Every soft-delete-aware model with a boolean default should pin
+  the same way — otherwise the admin UI renders "inactive" for
+  brand-new users and the test suite blames the controller.
+- **Soft-delete + restore UX pattern**: the drawer/filter split
+  (`with_trashed=1` toggle in the filter bar, `-restore` testid
+  action inside the trashed row) lets the admin flip on visibility
+  without leaving the list. Key insight: the table row carries a
+  `data-trashed="true"` attribute, so the row ALSO renders a muted
+  background — the same DOM communicates both states to the human
+  and the Playwright selector. Don't render a separate
+  "trash bin" view; the single table with a filter toggle keeps
+  the mental model flat.
+- **Permission matrix two-axis layout**: the `PermissionController`
+  exposes a `grouped` map keyed by the dotted-prefix domain
+  (`kb`, `users`, `roles`, `commands`, `logs`, `insights`, ...).
+  Matching the UI to that shape — one card per domain, each card
+  a `toggle-all` button + a flex-wrap of permission chips — lets
+  the React testids mirror the backend payload exactly
+  (`role-perm-kb-toggle-all`, `role-perm-kb.read.any`). The grouped
+  structure is load-bearing: ad-hoc client-side grouping drifts
+  the moment a new permission like `commands.run.retry` appears.
+- **`scope_allowlist` JSON shape**: two optional arrays
+  (`folder_globs: string[]`, `tags: string[]`) modelled as a single
+  JSON column. The editor normalises `{ folder_globs: [], tags: [] }`
+  down to `null` when both are empty — mirrors
+  `MembershipStoreRequest` which accepts `null` as "no restriction".
+  Canonical "no restriction" is strictly `null`, not `{}`; persisting
+  an empty object round-trips as a "restricted — empty allowlist"
+  (deny-all) on rehydration.
+- **`playwright.config.ts` testMatch broadening**: the
+  chromium-viewer project originally matched the single
+  `admin-dashboard-viewer.spec.ts` filename. Every new
+  RBAC denial spec required a config touch. Broadening to
+  `/.*-viewer\.spec\.ts/` on both `testMatch` and the chromium
+  `testIgnore` means PR7 (and PR8+) add a new `*-viewer.spec.ts`
+  file and it auto-enrolls into the right project with zero
+  config surgery. Suffix-by-convention beats explicit registry.
+- **`verify-e2e-real-data.sh` greps for the literal `page.route(`
+  token**: prose that quotes `page.route()` inside a
+  top-of-file comment is flagged as an offending interception
+  even though it isn't a live call. Keep explanatory comments
+  using "request interception" phrasing; the script is correctly
+  strict and we should not relax it.
+
+---
+
 ## PR6 — Phase F1 (admin-dashboard agent, 2026-04-24)
 
 - **Spatie `role:` middleware is NOT auto-registered in Laravel 11+

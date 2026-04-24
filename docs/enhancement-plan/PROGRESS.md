@@ -13,7 +13,7 @@
 | 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ✅ PR opened | TBD | PR3 | 2026-04-22 | 460 tests green (+3 Spa) + 21 Vitest + 18 legacy rich-content; Vite build verified (421 kB JS gz 131 kB) |
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
 | 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
-| 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ⏳ blocked | — | PR6 | — | |
+| 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ✅ PR opened | TBD | PR6 | 2026-04-24 | 551/551 PHP (+45 Admin suites) · 70/70 Vitest (+11) · 12 new Playwright scenarios (9 admin + 3 viewer) · R13 green |
 | 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
 | 9  | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR8 | — | |
 | 10 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR9 | — | |
@@ -24,6 +24,40 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR7 — Phase F2 checklist
+
+- [x] `database/migrations/2026_04_24_000001_add_soft_deletes_and_active_to_users.php` — SoftDeletes + is_active boolean default true
+- [x] `app/Models/User.php` — SoftDeletes trait + `$guard_name = 'web'` + `$attributes = ['is_active' => true]` + cast `is_active` boolean
+- [x] `app/Http/Controllers/Api/Admin/UserController.php` — index (q/role/active/with_trashed/only_trashed filters, `->paginate()`), show, store, update (409 last super-admin guard), destroy (soft + force), restore, resendInvite (202 stub until B2), toggleActive
+- [x] `app/Http/Controllers/Api/Admin/RoleController.php` — Spatie-backed CRUD, protected `super-admin`/`admin` names
+- [x] `app/Http/Controllers/Api/Admin/PermissionController.php` — flat + grouped-by-domain JSON
+- [x] `app/Http/Controllers/Api/Admin/ProjectMembershipController.php` — index/store (upsert)/update/destroy with `scope_allowlist` JSON schema
+- [x] `app/Http/Requests/Admin/*` — 6 form requests (User store/update, Role store/update, Membership store/update)
+- [x] `app/Http/Resources/Admin/*` — UserResource, RoleResource, MembershipResource
+- [x] `routes/api.php` — `/api/admin/users`, `/api/admin/roles`, `/api/admin/permissions`, `/api/admin/users/{u}/memberships`, `/api/admin/memberships/{m}` under `auth:sanctum + role:admin|super-admin`
+- [x] `tests/Feature/Api/Admin/UserControllerTest.php` (19 scenarios)
+- [x] `tests/Feature/Api/Admin/RoleControllerTest.php` (10 scenarios)
+- [x] `tests/Feature/Api/Admin/PermissionControllerTest.php` (5 scenarios)
+- [x] `tests/Feature/Api/Admin/ProjectMembershipControllerTest.php` (11 scenarios)
+- [x] `frontend/src/features/admin/admin.api.ts` — extend with `adminUsersApi`, `adminRolesApi`, `adminPermissionsApi`
+- [x] `frontend/src/features/admin/shared/Toast.tsx` + `errors.ts` — transient toast surface + 422 fieldErrors normaliser
+- [x] `frontend/src/features/admin/users/` — UsersView / UsersTable / UsersTableRow / UserDrawer (3 tabs) / UserForm (rhf + zod) / MembershipEditor / users.api.ts hooks
+- [x] `frontend/src/features/admin/roles/` — RolesView / RoleDialog (permission matrix with toggle-all) / roles.api.ts
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` — rail pivots Users + Roles to dedicated admin routes
+- [x] `frontend/src/routes/index.tsx` — flat `adminUsersRoute` + `adminRolesRoute` at `/app/admin/users` and `/app/admin/roles` wrapped in `RequireRole`
+- [x] 3 Vitest files (UsersTable / UserForm / RoleDialog) — 11 new cases
+- [x] `playwright.config.ts` — broaden `chromium-viewer` testMatch to `/.*-viewer\.spec\.ts/`
+- [x] `frontend/e2e/admin-users.spec.ts` (6 scenarios: 4 happy + 1 failure + 1 flagged failure injection)
+- [x] `frontend/e2e/admin-roles.spec.ts` (3 scenarios: 2 happy + 1 failure)
+- [x] `frontend/e2e/admin-users-viewer.spec.ts` (3 scenarios: 2 UI forbidden + 1 API 403)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
+- [x] `php vendor/bin/phpunit` → **551/551** (F2 suites 45/45; full suite 506 baseline + 45 new)
+- [x] `npm test` → **70/70** (59 PR6 baseline + 11 new)
+- [x] `npx playwright test --list` → 21 scenarios across 5 files
+- [x] Aggiornato `LESSONS.md` con scoperte Phase F2
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch + `gh pr create` verso `feature/enh-f1-admin-dashboard`
 
 ### PR6 — Phase F1 checklist
 
