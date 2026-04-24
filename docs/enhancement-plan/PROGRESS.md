@@ -12,7 +12,7 @@
 | 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ✅ PR opened | TBD | PR2 | 2026-04-23 | 457 tests green; Spatie ^6.25 + 25 Rbac tests + AccessScopeScope + Policy + middleware |
 | 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ✅ PR opened | TBD | PR3 | 2026-04-22 | 460 tests green (+3 Spa) + 21 Vitest + 18 legacy rich-content; Vite build verified (421 kB JS gz 131 kB) |
 | 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
-| 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ ready | — | PR5 | — | parte dal branch PR5 |
+| 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ✅ PR opened | TBD | PR5 | 2026-04-24 | 500/500 PHP (+27) · 59/59 Vitest (+11) · 6 Playwright scenarios (4 admin + 2 viewer) · R13 green |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ⏳ blocked | — | PR6 | — | |
 | 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
 | 9  | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR8 | — | |
@@ -24,6 +24,38 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR6 — Phase F1 checklist
+
+- [x] Rebase worktree on PR #21 (cherry-pick `65e72e5` from `feature/enh-e2e-rigor` — R13 enforcement script + skill)
+- [x] `app/Services/Admin/AdminMetricsService.php` — kpiOverview/chatVolume/tokenBurn/ratingDistribution/topProjects/activityFeed (DB-aggregated, R2+R3 compliant)
+- [x] `app/Services/Admin/HealthCheckService.php` — per-concern probes, no network calls
+- [x] `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` — 3 endpoints, 30s `Cache::remember` keyed by (kind, project, days)
+- [x] `routes/api.php` — `admin/metrics/*` group under `auth:sanctum + role:admin|super-admin`
+- [x] `bootstrap/app.php` — register Spatie `role` / `permission` / `role_or_permission` middleware aliases (mirror in tests/TestCase.php)
+- [x] `tests/Feature/Admin/AdminMetricsServiceTest.php` (10 scenarios)
+- [x] `tests/Feature/Admin/HealthCheckServiceTest.php` (10 scenarios)
+- [x] `tests/Feature/Api/Admin/DashboardMetricsControllerTest.php` (7 scenarios: admin 200 / viewer 403 / guest 401 / cache hit / days clamp)
+- [x] `frontend/src/features/admin/admin.api.ts` — typed axios client
+- [x] `frontend/src/features/admin/dashboard/use-admin-metrics.ts` — TanStack Query hooks (30s data / 15s health)
+- [x] `frontend/src/routes/role-guard.tsx` — `RequireRole` + `AdminForbidden` + 5 Vitest cases
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` — secondary rail
+- [x] `frontend/src/features/admin/dashboard/` — DashboardView + KpiStrip/KpiCard + HealthStrip + ChatVolumeCard/TokenBurnCard/RatingDonutCard (recharts lazy-loaded) + TopProjectsCard + ActivityFeedCard + ChartCard/EmptyChart + 6 Vitest cases
+- [x] `frontend/src/routes/index.tsx` — flat `adminRoute` at `/app/admin` wrapped in `RequireRole`
+- [x] `database/seeders/DemoSeeder.php` — seed `viewer@demo.local` + 5 ChatLog rows
+- [x] `database/seeders/EmptyAdminSeeder.php` + `AdminDegradedSeeder.php` + TestingController allowlist
+- [x] `playwright.config.ts` — new `viewer-setup` + `chromium-viewer` projects
+- [x] `frontend/e2e/viewer.setup.ts` — viewer single-login
+- [x] `frontend/e2e/admin-dashboard.spec.ts` (4 scenarios: happy path + 500 injection (R13-marked) + empty state + health degraded)
+- [x] `frontend/e2e/admin-dashboard-viewer.spec.ts` (2 scenarios: UI 403 + API 403)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
+- [x] `php vendor/bin/phpunit` → **500/500** (473 baseline + 27 new)
+- [x] `npm test` → **59/59** (48 baseline + 11 new)
+- [x] `npx playwright test --list` → 13 scenarios in 5 files
+- [x] `npm run build` → main chunk 645 kB gz 198 kB, recharts split as `index-*.js` (398 kB gz 116 kB)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase F1
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch + `gh pr create` verso `feature/enh-e-chat-react`
 
 ### PR5 — Phase E checklist
 
