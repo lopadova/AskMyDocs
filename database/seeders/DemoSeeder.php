@@ -68,8 +68,30 @@ class DemoSeeder extends Seeder
             $viewer->assignRole('viewer');
         }
 
+        // PR13 / Phase H2 — super-admin account for the Playwright
+        // super-admin project. Needed to exercise destructive
+        // maintenance commands (kb:prune-deleted etc.) which require
+        // the `commands.destructive` permission — a super-admin-only
+        // permission per config/admin.php.
+        //
+        // Note: `admin@demo.local` already has super-admin above, but
+        // we seed a DEDICATED account here so the Playwright storage
+        // state for super-admin scenarios is distinct from the
+        // admin/viewer ones. Keeps the RBAC isolation clean.
+        $super = User::firstOrCreate(
+            ['email' => 'super@demo.local'],
+            [
+                'name' => 'Demo Super-Admin',
+                'password' => Hash::make('password'),
+            ],
+        );
+        if (! $super->hasRole('super-admin')) {
+            $super->assignRole('super-admin');
+        }
+
         $this->seedProjectMemberships($admin);
         $this->seedProjectMemberships($viewer);
+        $this->seedProjectMemberships($super);
         $this->seedKnowledgeDocuments();
         $this->seedCanonicalGraph();
         $this->seedConversations($admin);
