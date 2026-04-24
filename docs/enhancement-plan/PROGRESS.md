@@ -21,13 +21,55 @@
 | 12 | H1 — Log Viewer (read-only) | `feature/enh-h1-log-viewer` | ✅ PR opened | TBD | PR11 (G4) | 2026-04-24 | 621/621 PHP (+28) · 120/120 Vitest (+14) · 8 new Playwright scenarios (6 admin + 2 viewer) · R13 green · Phase H split into H1 (read-only log viewer) + H2 (maintenance wizard + command runner) · adds spatie/laravel-activitylog ^5.0 as soft dep |
 | 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance-panel` | ✅ PR opened | TBD | PR12 (H1) | 2026-04-24 | 668/668 PHP (+47) · 132/132 Vitest (+12) · 6 new Playwright scenarios (4 admin + 1 super-admin + 1 viewer) · R13 green · 6-gate whitelisted Artisan runner (whitelist / schema / signed-token / permission / audit-first / rate-limit) + CommandWizard SPA + scheduler widget + 2 prune schedulers |
 | 14 | I — AI Insights | `feature/enh-i-ai-insights` | ✅ PR opened | TBD | PR13 (H2) | 2026-04-24 | 701/701 PHP (+33) · 144/144 Vitest (+12) · 4 new Playwright scenarios (3 admin + 1 super-admin + 2 viewer) · R13 green · 6 insight widgets + daily compute + AiInsightsService composed via AiManager + KB MetaTab ai-suggestions integration |
-| 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR14 (I) | — | |
+| 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | 🔨 in_progress | — | PR14 (I) | 2026-04-24 | docs alignment + admin-journey.spec.ts (golden path, 10 steps) + Lighthouse audit plan + screenshot manifest + COPILOT-FINDINGS regression |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
 
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR15 — Phase J (Docs + E2E + polish) checklist
+
+Final content phase before PR16 distill. No new features, no new routes,
+no new migrations — this PR aligns documentation with everything shipped
+since PR1, lands ONE Playwright golden-path scenario that walks every
+admin page in order, adds a Lighthouse audit plan with target scores,
+files a screenshot manifest for the README + PR template, and
+regression-checks the COPILOT-FINDINGS catalogue. Target ≤ 20 files
+touched (docs + one spec + one audit doc + one manifest).
+
+- [ ] `README.md` — new "Enterprise admin surface" section with SPA
+      route map, Sanctum stateful SPA + Bearer auth shape, and
+      screenshot placeholders wired to `resources/screenshots/`.
+- [ ] `CLAUDE.md` — softened "chat-only" framing to reflect the full
+      admin surface; "Critical components" table extended with
+      CommandRunnerService / AiInsightsService / admin controllers /
+      SPA entrypoint.
+- [ ] `.github/copilot-instructions.md` — mirror of CLAUDE.md
+      updates (R9 discipline).
+- [ ] `.env.example` — every `env(...)` key in `config/*.php`
+      already mirrored with a safe default + comment. ADMIN_* keys
+      (Phase H2) + no INSIGHTS_* keys (Phase I is pure DB-backed).
+- [ ] `docs/enhancement-plan/PROGRESS.md` — PR14 ✅, PR15 🔨.
+- [ ] `docs/enhancement-plan/LESSONS.md` — PR15 bullets for the
+      next maintainer.
+- [ ] `frontend/e2e/admin-journey.spec.ts` — ONE 10-step golden-path
+      scenario (login → dashboard → users → roles → KB tree + source
+      edit → graph → logs → maintenance → insights → logout).
+- [ ] `docs/performance-audit.md` — Lighthouse targets + running
+      procedure + current-status TBD cells against `/app/chat` and
+      `/app/admin`.
+- [ ] `resources/screenshots/README.md` — manifest contract for
+      every screenshot referenced by README / PR template.
+- [ ] COPILOT-FINDINGS regression check — `(pending)` cells on
+      PR #28 (Phase H1) filled with the real fix SHA.
+- [ ] R13 gate: `bash scripts/verify-e2e-real-data.sh` → OK.
+- [ ] PHPUnit baseline: 701/701 green (no new tests this PR).
+- [ ] Vitest baseline: 144/144 green (no new unit tests).
+- [ ] Playwright `--list`: 62 baseline + 1 new journey = 63.
+- [ ] Commit on branch, push, `gh pr create` targeting
+      `feature/enh-i-ai-insights`.
 
 ### PR14 — Phase I (AI Insights) checklist
 

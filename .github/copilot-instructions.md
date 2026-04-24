@@ -14,7 +14,13 @@ with citations out — over a **typed knowledge base** with a lightweight
 graph, anti-repetition memory, and a human-gated promotion pipeline.
 Optional chat history, feedback/few-shot, hybrid (semantic + FTS) search,
 MCP server (10 tools), and a GitHub-Action-based cross-repo ingestion
-pipeline.
+pipeline. A full React SPA admin shell rides alongside at `/app/*`:
+dashboard, users + roles + RBAC, canonical KB explorer with inline
+editor and graph viewer, five-tab log viewer, whitelisted Artisan
+maintenance runner, and a daily AI insights panel. Every admin page is
+Spatie-role-gated and every mutation is audit-trailed
+(`kb_canonical_audit` for canonical changes, `admin_command_audits` for
+commands).
 
 - PHP `^8.3`, Laravel `^13.0`, Sanctum `^4.2`.
 - `symfony/yaml ^7.4|^8.0` for canonical YAML frontmatter parsing.
@@ -117,6 +123,13 @@ when no canonical docs exist.
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` |
 | MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (10 tools: 5 retrieval + 5 canonical/promote) |
+| Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
+| Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
+| Admin KB surface | `app/Services/Admin/KbTreeService.php`, `app/Http/Controllers/Api/Admin/KbTreeController.php`, `KbDocumentController.php`, `app/Services/Admin/Pdf/PdfRenderer*.php` |
+| Admin log viewer | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
+| Admin command runner | `app/Services/Admin/CommandRunnerService.php`, `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php`, `app/Models/AdminCommandAudit.php`, `AdminCommandNonce.php`, `config/admin.php` |
+| AI insights | `app/Services/Admin/AiInsightsService.php`, `app/Http/Controllers/Api/Admin/AdminInsightsController.php`, `app/Console/Commands/InsightsComputeCommand.php`, `app/Models/AdminInsightsSnapshot.php` |
+| SPA entrypoint | `app/Http/Controllers/SpaController.php`, `resources/views/app.blade.php`, `frontend/src/main.tsx`, `frontend/src/routes/index.tsx` |
 | GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |
 | Claude skill templates | `.claude/skills/kb-canonical/*` (CONSUMER-SIDE), `.claude/skills/canonical-awareness/` (R10, in-repo) |
 | ADRs | `docs/adr/0001..0003.md` |

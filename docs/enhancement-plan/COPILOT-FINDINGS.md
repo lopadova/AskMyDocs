@@ -208,45 +208,69 @@
 
 | Path | Category | Pattern | Fix SHA |
 |---|---|---|---|
-| `LogTailService::readTail` | `silent-200` | `key() === 0` drops single-line file; use `filesize()` | (pending) |
-| `FailedJobsTab` | `r11-testid` | Pagination prev/next lack testids | (pending) |
-| `admin-logs.spec.ts` | `test-ordering-assumption` | `waitForTimeout(500)` flaky; use `waitForResponse` | (pending) |
-| `LogTailServiceTest` | `r7-silence` | `@unlink()` hides failure (R7 ban on @-silenced calls) | (pending) |
-| `LogViewerControllerTest` | `r7-silence` | `@mkdir/@unlink` hides filesystem errors | (pending) |
-| `ApplicationLogTab` | `doc-drift` | `?live=1` toggle reads URL but never writes it on flip | (pending) |
-| `LogViewerController::application` | `silent-200` | 404/500 chosen by message-prefix sniffing; brittle | (pending) |
-| `ActivityLogResource::jsonishValue` | `silent-200` | Returns raw JSON string when DB::table bypasses Eloquent casts | (pending) |
-| `AuditTab.tsx` rows.map | `render-stale` | `<>` fragment can't carry key; React warning + reconcile drift | (pending) |
-| `FailedJobsTab.tsx` rows.map | `render-stale` | Same React fragment key issue | (pending) |
-| `FailedJobsTab` | `r11-testid` | `data-state="not-installed"` outside `{idle,loading,ready,empty,error}` contract | (pending) |
-| `ActivityTab` | `r11-testid` | Same `not-installed` state contract drift | (pending) |
-| `AuditTab` | `r11-testid` | Pagination prev/next lack testids | (pending) |
-| `ActivityTab` | `r11-testid` | Same pagination testid gap | (pending) |
+| `LogTailService::readTail` | `silent-200` | `key() === 0` drops single-line file; use `filesize()` | `39719b9` |
+| `FailedJobsTab` | `r11-testid` | Pagination prev/next lack testids | `39719b9` |
+| `admin-logs.spec.ts` | `test-ordering-assumption` | `waitForTimeout(500)` flaky; use `waitForResponse` | `39719b9` |
+| `LogTailServiceTest` | `r7-silence` | `@unlink()` hides failure (R7 ban on @-silenced calls) | `39719b9` |
+| `LogViewerControllerTest` | `r7-silence` | `@mkdir/@unlink` hides filesystem errors | `39719b9` |
+| `ApplicationLogTab` | `doc-drift` | `?live=1` toggle reads URL but never writes it on flip | `39719b9` |
+| `LogViewerController::application` | `silent-200` | 404/500 chosen by message-prefix sniffing; brittle | `39719b9` |
+| `ActivityLogResource::jsonishValue` | `silent-200` | Returns raw JSON string when DB::table bypasses Eloquent casts | `39719b9` |
+| `AuditTab.tsx` rows.map | `render-stale` | `<>` fragment can't carry key; React warning + reconcile drift | `39719b9` |
+| `FailedJobsTab.tsx` rows.map | `render-stale` | Same React fragment key issue | `39719b9` |
+| `FailedJobsTab` | `r11-testid` | `data-state="not-installed"` outside `{idle,loading,ready,empty,error}` contract | `39719b9` |
+| `ActivityTab` | `r11-testid` | Same `not-installed` state contract drift | `39719b9` |
+| `AuditTab` | `r11-testid` | Pagination prev/next lack testids | `39719b9` |
+| `ActivityTab` | `r11-testid` | Same pagination testid gap | `39719b9` |
 
 **New category surfaced this PR**: `r7-silence` — `@`-silenced filesystem calls. Already covered by CLAUDE.md R7 but hadn't appeared as a standalone tag in the taxonomy until H1 tests. Not a new rule, just a tag the taxonomy table was missing.
 
+### PR #29 — Phase H2 (Maintenance Panel)
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `CommandRunnerService::invokeArtisan` | `route-model-binding` | `--` prepended to every arg key; positional args never populate (kb:delete {path}, queue:retry {id}, kb:ingest-folder {path?}) | `59d95bc` |
+| `MaintenanceCommandController::schedulerStatus` | `doc-drift` | Returned `admin-audit:prune --days=365` but scheduler runs bare `admin-audit:prune` | `59d95bc` |
+| `config/admin.php` command_runner docblock | `doc-drift` | Said tokens are `Crypt::encryptString + sha256 nonce` + TTL=0 disables; real impl is plain random + TTL=0 ≠ disable | `59d95bc` |
+| `CommandHistoryTable` rows.map | `render-stale` | `<>` fragment can't carry key; key-on-inner-<tr> is a React reconciliation bug | `59d95bc` |
+| `LESSONS.md` | `doc-drift` | Table name `admin_command_audits` (plural) vs real `admin_command_audit` (singular) | `59d95bc` |
+| `migration docblock` | `doc-drift` | Said `token_hash` is sha256 of encrypted signed body; real impl is sha256 of raw random | `59d95bc` |
+| `PROGRESS.md` | `doc-drift` | Migration filenames without timestamp prefix, don't match the real files on disk | `59d95bc` |
+| `CommandRunnerService::consumeConfirmToken` | **`security`** (NEW) | `lockForUpdate()` inside transaction, `used_at` update OUTSIDE → race window where 2 concurrent /run succeed with same token, breaking single-use guarantee | `59d95bc` |
+
+**New category surfaced this PR**: **`security`** — concurrency or crypto invariant violations that turn into RCE / single-use bypasses. Highest priority tag. Any future finding tagged `security` MUST land in a distilled skill + dedicated rule at PR16 (not a "nice to have" anecdote). The concurrent-consume bug here is a textbook instance — documented at length in the fix commit message (`59d95bc`) so the pattern is searchable.
+
+### PR #30 — Phase I (AI Insights)
+
+No Copilot findings landed against PR #30 before Phase J branched.
+The retrospective `gh api repos/<org>/<repo>/pulls/30/comments` call
+during Phase J returned zero finding-shaped rows. Re-harvest at PR16
+in case Copilot finishes its review after this PR lands.
+
 ---
 
-## Category frequency snapshot (PR #16 → PR #27)
+## Category frequency snapshot (PR #16 → PR #29)
 
 | Tag | Count | Enough to skill? |
 |---|---|---|
-| `doc-drift` | 12 | **YES** — already a skill (`docs-match-code`) but needs expansion to include comment-drift + PROGRESS.md |
-| `silent-200` | 9 | **YES** — new skill `surface-failures-loudly` |
+| `doc-drift` | 18 | **YES** — already a skill (`docs-match-code`) but needs expansion to include comment-drift + PROGRESS.md + migration filename drift + docblock/implementation drift |
+| `silent-200` | 11 | **YES** — new skill `surface-failures-loudly` |
 | `r13-real-data` | 7 | covered by `playwright-e2e` skill |
 | `a11y` | 7 | **YES** — new skill `frontend-a11y-checklist` |
 | `r10-scope` / `r10-audit` | 6 | covered by `canonical-awareness` skill, but add audit-identifier-on-edit rule |
 | `env-config-drift` | 6 | covered by `docs-match-code` skill; strengthen env parsing pattern |
-| `render-stale` | 3 | **YES** — new skill `react-effect-sync-cached-state` |
-| `r11-testid` | 3 | covered by `frontend-testid-conventions` skill |
+| `render-stale` | 5 | **YES** — new skill `react-effect-sync-cached-state` (emphasise Fragment-key pattern — caught THREE times PR26/PR28/PR29) |
+| `r7-silence` | 2 | covered by existing skill (R7) / CLAUDE.md rule — taxonomy tag added in PR28 for consistency |
+| `r11-testid` | 6 | covered by `frontend-testid-conventions` skill; emphasise `data-state` value contract |
 | `r3-bulk` | 4 | covered by `memory-safe-bulk-ops` skill; add chunkById+orderBy gotcha |
 | `injection-attack` | 3 | **YES** — new skill `input-escape-complete` (LIKE + fnmatch + regex) |
 | `hardcoded-subset` | 5 | **YES** — new skill `derive-from-db-not-literal` |
-| `test-no-coverage` / `test-ordering-assumption` / `r12-failure-path` | 6 | **YES** — new skill `test-actually-tests-what-it-claims` |
+| `test-no-coverage` / `test-ordering-assumption` / `r12-failure-path` | 7 | **YES** — new skill `test-actually-tests-what-it-claims` |
 | `r1-path` / `r4-silent` / `r2-softdelete` | 6 | covered by existing skills (R1/R2/R4) |
 | `regex-literal` | 1 | anecdote in LESSONS |
-| `route-model-binding` | 3 | **YES** — new skill `route-contracts-match-fe-shape` |
+| `route-model-binding` | 4 | **YES** — new skill `route-contracts-match-fe-shape` (also covers positional-vs-option Artisan invocation) |
 | `csrf-priming` | 1 | anecdote |
+| **`security` (NEW)** | 1 | **YES — HIGHEST PRIORITY** — mint a dedicated skill + rule `concurrent-invariants-hold-the-lock` even on a single occurrence: concurrency / crypto invariant bugs turn into RCE or single-use-bypass; never demote to anecdote |
 
 ---
 
