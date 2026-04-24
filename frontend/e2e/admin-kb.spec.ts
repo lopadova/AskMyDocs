@@ -44,14 +44,17 @@ test.describe('Admin KB Tree', () => {
         // actually hide.
         const csrfOk = await request.get('/sanctum/csrf-cookie');
         expect(csrfOk.ok()).toBeTruthy();
+        // Copilot #1 fix: KbIngestController expects `project_key` +
+        // `content` inside each document; the top-level `project` +
+        // `markdown` shape would 422 against the controller contract.
         const ingest = await request.post('/api/kb/ingest', {
             data: {
-                project: 'hr-portal',
                 documents: [
                     {
+                        project_key: 'hr-portal',
                         source_path: 'drafts/non-canonical-draft.md',
                         title: 'Non-canonical draft',
-                        markdown: '# Draft\n\nNo frontmatter — not canonical.',
+                        content: '# Draft\n\nNo frontmatter — not canonical.',
                     },
                 ],
             },

@@ -302,12 +302,30 @@ class KbDocumentControllerTest extends TestCase
         $this->assertIsArray($rows);
         $this->assertCount(20, $rows);
 
-        // Desc order — the first row's created_at should be >= the last.
-        $first = $rows[0]['created_at'] ?? null;
-        $last = $rows[19]['created_at'] ?? null;
-        $this->assertNotNull($first);
-        $this->assertNotNull($last);
-        $this->assertGreaterThanOrEqual($last, $first);
+        // Copilot #6 fix: originally this test sampled only the first
+        // and last row, which is ambiguous enough that the reviewer
+        // read the assertion direction backwards. Switched to a full
+        // pairwise walk — every row's created_at must be >= the next
+        // one's — so descending order is enforced across the whole
+        // page, not just its endpoints. A same-second tiebreaker on
+        // id (desc) keeps the check stable for bulk inserts.
+        $this->assertCount(
+            20,
+            array_filter(
+                $rows,
+                fn ($r) => isset($r['created_at']) && is_string($r['created_at']),
+            ),
+            'every row must carry a created_at timestamp',
+        );
+        for ($i = 0; $i < count($rows) - 1; $i++) {
+            $curr = $rows[$i]['created_at'];
+            $next = $rows[$i + 1]['created_at'];
+            $this->assertGreaterThanOrEqual(
+                $next,
+                $curr,
+                "row {$i} ({$curr}) must be >= row ".($i + 1)." ({$next}) — history returns newest first",
+            );
+        }
 
         // Pagination envelope exists.
         $this->assertSame(25, $response->json('meta.total'));

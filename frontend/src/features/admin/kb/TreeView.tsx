@@ -100,6 +100,8 @@ export function TreeView(props: TreeViewProps) {
                     />
                     <input
                         data-testid="kb-tree-q"
+                        type="search"
+                        aria-label="Search path or file name"
                         value={q}
                         onChange={(e) => onQChange(e.target.value)}
                         placeholder="Search path or file name…"
@@ -124,6 +126,7 @@ export function TreeView(props: TreeViewProps) {
                 >
                     <select
                         data-testid="kb-tree-mode"
+                        aria-label="Document mode filter"
                         value={mode}
                         onChange={(e) => onModeChange(e.target.value as KbTreeMode)}
                         style={{
@@ -244,10 +247,16 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
     const [open, setOpen] = useState(depth < 1);
 
     if (node.type === 'folder') {
+        // Copilot #4 a11y fix: treeitem role + aria-expanded belong on
+        // the focusable button, not the structural <li>. Screen readers
+        // announce "expanded/collapsed" on the element the user tabs
+        // to; leaving them on <li> meant the state was mute.
         return (
-            <li role="treeitem" aria-expanded={open}>
+            <li role="none">
                 <button
                     type="button"
+                    role="treeitem"
+                    aria-expanded={open}
                     className="focus-ring"
                     data-testid={`kb-tree-node-${node.path}`}
                     data-type="folder"
@@ -305,9 +314,11 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
     const canonical = node.meta.is_canonical;
 
     return (
-        <li role="treeitem" aria-selected={active}>
+        <li role="none">
             <button
                 type="button"
+                role="treeitem"
+                aria-selected={active}
                 className="focus-ring"
                 data-testid={`kb-tree-node-${node.path}`}
                 data-type="doc"

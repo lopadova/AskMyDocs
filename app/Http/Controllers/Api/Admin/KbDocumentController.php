@@ -146,11 +146,50 @@ class KbDocumentController extends Controller
         $fullPath = $this->fullPathFor($document, $sourcePath);
 
         $storage = Storage::disk($disk);
-        $body = $storage->exists($fullPath) ? $storage->get($fullPath) : null;
+
+        // Copilot #1 fix: mirror raw() / download() error handling —
+        // surface a real 404 when the file is missing and a 500 when
+        // the read fails, so the SPA can tell "empty document" apart
+        // from "broken disk". Previously we silently coerced to an
+        // empty body and returned 200, which hid data-loss bugs.
+        if (! $storage->exists($fullPath)) {
+            return response()->json(
+                [
+                    'message' => 'Markdown file not found on disk.',
+                    'path' => $fullPath,
+                    'disk' => $disk,
+                ],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        try {
+            $body = $storage->get($fullPath);
+        } catch (\Throwable) {
+            return response()->json(
+                [
+                    'message' => 'Failed to read markdown file from disk.',
+                    'path' => $fullPath,
+                    'disk' => $disk,
+                ],
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
+
+        if (! is_string($body)) {
+            return response()->json(
+                [
+                    'message' => 'Failed to read markdown file from disk.',
+                    'path' => $fullPath,
+                    'disk' => $disk,
+                ],
+                Response::HTTP_INTERNAL_SERVER_ERROR,
+            );
+        }
 
         $html = view('print.kb-doc', [
             'document' => $document,
-            'body' => is_string($body) ? $body : '',
+            'body' => $body,
         ])->render();
 
         return response($html, Response::HTTP_OK, ['Content-Type' => 'text/html; charset=UTF-8']);
@@ -236,31 +275,44 @@ class KbDocumentController extends Controller
      */
     private function auditComponentsFor(KnowledgeDocument $document, ?int $limit): array
     {
+        // Copilot #2 fix: prefer `doc_id` when present; fall back to
+        // `slug` only when doc_id is null. The previous `(doc_id OR slug)`
+        // union could merge audit rows from unrelated documents when a
+        // slug got recycled after a hard delete or a historical audit
+        // still carried the previous slug for the same doc_id. `doc_id`
+        // is the stable identifier — audits emitted by DocumentDeleter
+        // / CanonicalIndexerJob stamp both, so the stricter filter loses
+        // nothing real and gains precision.
         $query = KbCanonicalAudit::query()
-            ->where('project_key', $document->project_key)
-            ->where(function ($q) use ($document) {
-                if ($document->doc_id !== null) {
-                    $q->orWhere('doc_id', $document->doc_id);
-                }
-                if ($document->slug !== null) {
-                    $q->orWhere('slug', $document->slug);
-                }
-                // Raw docs with neither identifier — close the where()
-                // with an impossible clause so the page is empty.
-                if ($document->doc_id === null && $document->slug === null) {
-                    $q->whereRaw('1 = 0');
-                }
-            });
+            ->where('project_key', $document->project_key);
 
-        $count = (int) $query->clone()->count();
+        if ($document->doc_id !== null) {
+            $query->where('doc_id', $document->doc_id);
+        } elseif ($document->slug !== null) {
+            $query->where('slug', $document->slug);
+        } else {
+            // Raw doc with neither identifier — return an empty page.
+            $query->whereRaw('1 = 0');
+        }
 
+        // Copilot #5 fix: the COUNT query was always executed, even
+        // when the caller only wanted the paginated slice. `history()`
+        // now passes `limit = null` and then lets `paginate()` issue
+        // its own COUNT, so we skip the redundant clone+count here
+        // when no recent slice is requested.
+        $count = 0;
         $recent = collect();
-        if ($limit !== null && $count > 0) {
-            $recent = $query->clone()
-                ->orderBy('created_at', 'desc')
-                ->orderBy('id', 'desc')
-                ->limit($limit)
-                ->get();
+
+        if ($limit !== null) {
+            $count = (int) $query->clone()->count();
+
+            if ($count > 0) {
+                $recent = $query->clone()
+                    ->orderBy('created_at', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->limit($limit)
+                    ->get();
+            }
         }
 
         return [$query, $count, $recent];

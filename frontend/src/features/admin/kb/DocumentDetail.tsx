@@ -43,9 +43,20 @@ export function DocumentDetail(props: DocumentDetailProps) {
     const [confirm, setConfirm] = useState<null | { mode: 'soft' | 'force' }>(null);
 
     if (query.isLoading) {
+        // Copilot #4 fix: keep the `kb-detail` root element stable
+        // across all three states (loading / error / ready) so the
+        // observable-state contract (data-state + aria-busy) holds
+        // regardless of the fetch phase. Playwright can now wait on
+        // `kb-detail` without a branch; screen readers announce the
+        // busy state during the initial fetch.
         return (
-            <div data-testid="kb-detail-loading" style={{ padding: 16, color: 'var(--fg-3)' }}>
-                Loading document…
+            <div
+                data-testid="kb-detail"
+                data-state="loading"
+                aria-busy="true"
+                style={{ padding: 16, color: 'var(--fg-3)' }}
+            >
+                <div data-testid="kb-detail-loading">Loading document…</div>
             </div>
         );
     }
@@ -53,15 +64,22 @@ export function DocumentDetail(props: DocumentDetailProps) {
     if (query.isError || !query.data) {
         return (
             <div
-                data-testid="kb-detail-error"
+                data-testid="kb-detail"
+                data-state="error"
+                aria-busy="false"
                 style={{ padding: 16, color: 'var(--danger-fg, #b91c1c)' }}
             >
-                Could not load the document (id #{documentId}).
+                <div data-testid="kb-detail-error">
+                    Could not load the document (id #{documentId}).
+                </div>
             </div>
         );
     }
 
     const doc = query.data;
+    // `aria-busy` flips back on during mutations so assistive tech
+    // announces in-flight restore/delete requests.
+    const isBusy = restoreMut.isPending || deleteMut.isPending || query.isFetching;
 
     function handleRestore() {
         restoreMut.mutate(documentId);
@@ -83,7 +101,9 @@ export function DocumentDetail(props: DocumentDetailProps) {
     return (
         <div
             data-testid="kb-detail"
+            data-state="ready"
             data-doc-id={doc.id}
+            aria-busy={isBusy ? 'true' : 'false'}
             style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}
         >
             <DocHeader

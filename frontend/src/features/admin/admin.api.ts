@@ -377,11 +377,19 @@ function buildKbTreeParams(q: KbTreeQuery): Record<string, string> {
     return p;
 }
 
+export interface KbProjectsResponse {
+    projects: string[];
+}
+
 export const adminKbApi = {
     async tree(q: KbTreeQuery = {}): Promise<KbTreeResponse> {
         const { data } = await api.get<KbTreeResponse>('/api/admin/kb/tree', {
             params: buildKbTreeParams(q),
         });
+        return data;
+    },
+    async projects(): Promise<KbProjectsResponse> {
+        const { data } = await api.get<KbProjectsResponse>('/api/admin/kb/projects');
         return data;
     },
 };

@@ -63,9 +63,16 @@ class KbTreeService
         $root = [];
         $counts = ['docs' => 0, 'canonical' => 0, 'trashed' => 0];
 
+        // Copilot #7 fix: chunkById tracks its cursor via the `id` column
+        // (or whatever column you pass to it). Adding `orderBy('project_key')`
+        // / `orderBy('source_path')` before the chunk walk breaks that
+        // invariant because the "last ID" Laravel reads for the next
+        // chunk is the last row in the CURRENT result order — not the
+        // max id. Rows get skipped or processed twice. Sorting happens
+        // later inside `finaliseTree()`, which orders folders-first
+        // alphabetically regardless of DB order, so dropping these
+        // clauses has no user-visible effect.
         $this->baseQuery($projectKey, $mode, $withTrashed)
-            ->orderBy('project_key')
-            ->orderBy('source_path')
             ->chunkById(100, function ($docs) use (&$root, &$counts) {
                 foreach ($docs as $doc) {
                     $this->insertDoc($root, $doc);
@@ -87,8 +94,10 @@ class KbTreeService
 
     /**
      * Seed the Eloquent query with the mode + trashed + project filters.
-     * Uses the dedicated scopes on KnowledgeDocument (R10) instead of
-     * inlining WHERE clauses that would drift from the scope semantics.
+     * Uses the dedicated scopes on KnowledgeDocument (R10) — `canonical()`
+     * for the positive branch, `raw()` for the inverse. No inline
+     * `where('is_canonical', ...)` calls, so the scope vocabulary stays
+     * the single source of truth (Copilot #8).
      */
     private function baseQuery(?string $projectKey, string $mode, bool $withTrashed): Builder
     {
@@ -107,7 +116,7 @@ class KbTreeService
         }
 
         if ($mode === self::MODE_RAW) {
-            $query->where('is_canonical', false);
+            $query->raw();
         }
 
         return $query;

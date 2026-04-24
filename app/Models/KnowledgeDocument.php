@@ -93,6 +93,17 @@ class KnowledgeDocument extends Model
     }
 
     /**
+     * Non-canonical documents — the inverse of `canonical()`. Introduced
+     * for the admin tree explorer's raw-mode filter so call sites use the
+     * same named scope vocabulary (`canonical()` / `raw()`) instead of
+     * inlining `where('is_canonical', false)` and drifting from R10.
+     */
+    public function scopeRaw(Builder $query): Builder
+    {
+        return $query->where('is_canonical', false);
+    }
+
+    /**
      * Only canonical documents in `accepted` status.
      *
      * Composes with `canonical()` so a stray `canonical_status='accepted'`

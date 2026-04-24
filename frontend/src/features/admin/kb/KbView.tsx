@@ -3,7 +3,7 @@ import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
 import type { KbTreeMode, KbTreeNode } from '../admin.api';
 import { TreeView, type TreeState } from './TreeView';
-import { useKbTree } from './kb-tree.api';
+import { useKbProjects, useKbTree } from './kb-tree.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 
 /*
@@ -68,6 +68,13 @@ export function KbView() {
         mode,
         with_trashed: withTrashed || undefined,
     });
+    // Copilot #5 fix: the project list comes from the DB (distinct
+    // `project_key` across all tenants, soft-deleted rows included
+    // so a restore path sees its project). No more hard-coded
+    // `hr-portal` / `engineering` pair that would hide every other
+    // tenant.
+    const projectsQuery = useKbProjects();
+    const projectOptions = projectsQuery.data?.projects ?? [];
 
     // Keep the URL in sync with (selectedDocId, activeTab). Runs on every
     // state change — history.replaceState is cheap and idempotent, so
@@ -176,8 +183,11 @@ export function KbView() {
                             }}
                         >
                             <option value="">All projects</option>
-                            <option value="hr-portal">hr-portal</option>
-                            <option value="engineering">engineering</option>
+                            {projectOptions.map((key) => (
+                                <option key={key} value={key}>
+                                    {key}
+                                </option>
+                            ))}
                         </select>
                     </div>
                 </div>

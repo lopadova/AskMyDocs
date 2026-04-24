@@ -8,9 +8,12 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\KbPath;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -245,7 +248,14 @@ class DemoSeeder extends Seeder
     ): void {
         $disk = (string) config('kb.sources.disk', 'kb');
         $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
-        $fullPath = $prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath;
+        // Copilot #3 fix (R1 + R4): every disk write must go through
+        // `KbPath::normalize()` so we collapse `//`, strip accidental
+        // leading slashes, and reject `.`/`..` segments — the same
+        // contract every other KB writer honours. The raw
+        // concatenation used to let `policies//remote.md` through
+        // (broken key on S3, silent near-miss on local).
+        $rawPath = $prefix === '' ? $sourcePath : $prefix.'/'.$sourcePath;
+        $fullPath = KbPath::normalize($rawPath);
 
         $slug = pathinfo($sourcePath, PATHINFO_FILENAME);
         $fm = "---\n"
@@ -256,12 +266,20 @@ class DemoSeeder extends Seeder
             ."---\n\n";
         $body = "# {$title}\n\n{$preview}\n";
 
-        // Best-effort: `throw => false` on the kb disk means put()
-        // returns false when it can't write — the seeder is idempotent
-        // and local, so log via the caller's error channel rather
-        // than throwing here (the E2E tests would still fail loudly
-        // if Preview couldn't render).
-        Storage::disk($disk)->put($fullPath, $fm.$body);
+        // R4: `Storage::put()` returns false on failure. Surface it:
+        // log loudly and throw — a silent seeder-level write failure
+        // produces a DB row that claims to be canonical while there
+        // is no markdown on disk for the admin UI or ingest to read.
+        $ok = Storage::disk($disk)->put($fullPath, $fm.$body);
+        if ($ok === false) {
+            $message = sprintf(
+                'DemoSeeder: failed to write seeded markdown to disk "%s" path "%s".',
+                $disk,
+                $fullPath,
+            );
+            Log::error($message);
+            throw new RuntimeException($message);
+        }
     }
 
     /**
