@@ -18,15 +18,108 @@
 | 9  | G2 — KB Document Detail | `feature/enh-g2-kb-document-detail` | ✅ PR opened | #25 | PR8 (G1) | 2026-04-24 | 575/575 PHP (+13) · 94/94 Vitest (+16) · 4 new Playwright scenarios · R13 green · read-only Preview/Meta/History; editor + graph + PDF deferred to G3/G4 |
 | 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ✅ PR opened | TBD | PR9 (G2) | 2026-04-24 | 580/580 PHP (+5) · 101/101 Vitest (+7) · 4 new Playwright scenarios · R13 green · CodeMirror source editor + PATCH /raw pipeline (validate → write → audit → dispatch) |
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ✅ PR opened | TBD | PR10 (G3) | 2026-04-24 | 593/593 PHP (+13) · 106/106 Vitest (+5) · 4 new Playwright scenarios · R13 green · 1-hop tenant-scoped graph endpoint + SVG radial GraphTab + PdfRenderer strategy (Disabled/Dompdf/Browsershot) |
-| 12 | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR11 | — | |
-| 13 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR12 | — | |
-| 14 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR13 | — | |
+| 12 | H1 — Log Viewer (read-only) | `feature/enh-h1-log-viewer` | ✅ PR opened | TBD | PR11 (G4) | 2026-04-24 | 621/621 PHP (+28) · 120/120 Vitest (+14) · 8 new Playwright scenarios (6 admin + 2 viewer) · R13 green · Phase H split into H1 (read-only log viewer) + H2 (maintenance wizard + command runner) · adds spatie/laravel-activitylog ^5.0 as soft dep |
+| 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance` | ⏳ blocked | — | PR12 (H1) | — | Adds CommandRunnerService, retry failed jobs, AdminCommandAudit table, scheduler status widget |
+| 14 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR13 (H2) | — | |
+| 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR14 (I) | — | |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
 
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR12 — Phase H1 (Log Viewer, read-only) checklist
+
+First microphase 1 of 2 of Phase H. Read-only admin Log Viewer —
+five tabs under /app/admin/logs. H2 adds the command runner +
+maintenance wizard + retry write paths. Target ≤ 18 files
+touched — this PR lands 21 (9 backend / 9 frontend / 2 E2E / 1 plan
+doc pair). Backend is thin (one controller + one service + four
+resources + one migration) but the FE needs five self-contained
+tabs which drove the count over the 18 target.
+
+- [x] `composer require spatie/laravel-activitylog:^5.0` (required
+      because v4.x caps at Laravel 11; v5 is the first release with
+      Laravel 13 support) — added under `require`, NOT `suggest`,
+      because the activity tab's degraded "not installed" mode
+      still imports the Activity FQCN
+- [x] `database/migrations/2026_04_24_000002_create_activity_log_table.php`
+      — copied from the package stub so the migration runs in
+      lockstep with our other migrations; mirrored in
+      `tests/database/migrations/0001_01_01_000018_...`
+- [x] `app/Services/Admin/LogTailService.php` — reverse-seek
+      SplFileObject reader; hard cap 2000 lines; filename whitelist
+      regex `/^laravel(-\d{4}-\d{2}-\d{2})?\.log$/` (R4 loud failure,
+      R3 memory-safe)
+- [x] `app/Http/Controllers/Api/Admin/LogViewerController.php` —
+      six read-only endpoints: chat (paginated + 6 filters),
+      chatShow, canonical-audit (filters), application (422/404/500
+      error matrix), activity (Schema::hasTable soft-dep),
+      failed-jobs (read-only; retry is H2)
+- [x] `routes/api.php` — six new named routes under the existing
+      admin group (role:admin|super-admin) prefixed with `/logs`
+- [x] `app/Http/Resources/Admin/Logs/{ChatLogResource, AuditLogResource,
+      FailedJobResource, ActivityLogResource}.php` — four JSON
+      shapes covering every DB column the SPA renders
+- [x] `tests/Feature/Api/Admin/LogViewerControllerTest.php` (18
+      scenarios — chat pagination + filters + show + 404; audit
+      filters; application 200/422/404/level; activity installed +
+      not-installed; failed jobs paginated; RBAC 401/403)
+- [x] `tests/Unit/Services/Admin/LogTailServiceTest.php` (10
+      scenarios — filename whitelist accept/reject matrix incl.
+      null-byte / uppercase, reverse-seek tail semantics, level
+      filter case-insensitive + both Monolog/Laravel shapes,
+      missing/invalid error paths)
+- [x] `frontend/src/features/admin/logs/logs.api.ts` — five
+      TanStack Query hooks with filter-keyed query keys + retry=false
+- [x] `frontend/src/features/admin/logs/LogsView.tsx` — deep-linkable
+      tab strip (`?tab=chat|audit|app|activity|failed`), syncs URL
+      via history.replaceState
+- [x] `frontend/src/features/admin/logs/ChatLogsTab.tsx` — full
+      filter bar + paginated table + drawer (GET /chat/{id}) with
+      prompt/answer/tokens/citations
+- [x] `frontend/src/features/admin/logs/AuditTab.tsx` — project +
+      event_type + actor filters + inline-expandable JSON diff
+- [x] `frontend/src/features/admin/logs/ApplicationLogTab.tsx` —
+      file picker (preset + custom), level filter, tail 1..2000,
+      Live (5s polling) toggle via `?live=1`, red error banner for
+      real 422/500 bodies
+- [x] `frontend/src/features/admin/logs/ActivityTab.tsx` — graceful
+      `activitylog not installed` empty state; subject/causer
+      filters otherwise
+- [x] `frontend/src/features/admin/logs/FailedJobsTab.tsx` —
+      read-only paginated table with expandable exception trace
+      (NO retry button — H2)
+- [x] `frontend/src/routes/index.tsx` — `adminLogsRoute` at
+      `/app/admin/logs` wrapped in RequireRole; also updates
+      `/app/logs` to use the real view (backward compat)
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` — rail
+      Logs entry retargeted to `/app/admin/logs`
+- [x] `frontend/src/features/admin/logs/LogsView.test.tsx` (5
+      scenarios — default tab, deep-link, tab click syncs URL,
+      invalid ?tab= fallback, every testid present)
+- [x] `frontend/src/features/admin/logs/ChatLogsTab.test.tsx` (5
+      scenarios — loading/error/empty/ready + filter-propagation
+      into query-key)
+- [x] `frontend/src/features/admin/logs/ApplicationLogTab.test.tsx`
+      (4 scenarios — loading, ready pre block, 422 error surface,
+      every filter/action testid)
+- [x] `frontend/e2e/admin-logs.spec.ts` (6 scenarios — happy chat
+      rows, filter by model, application tab controls, 422 real
+      path, 500 injection flagged R13, audit + failed tabs clean)
+- [x] `frontend/e2e/admin-logs-viewer.spec.ts` (2 scenarios —
+      admin-forbidden + 403 on direct API call)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green;
+      single stubbed path carries the `R13: failure injection`
+      marker on one of the preceding five lines)
+- [x] `php vendor/bin/phpunit` → **621/621** (593 baseline + 28 new)
+- [x] `npm test` → **120/120** (106 baseline + 14 new)
+- [x] `npm run build` → manifest + bundle (~400 kB + 1.2 MB)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase H1
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch + `gh pr create` verso `feature/enh-g4-kb-graph-pdf`
+
 
 ### PR11 — Phase G4 (KB Graph + PDF Render) checklist
 
