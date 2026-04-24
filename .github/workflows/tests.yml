@@ -120,6 +120,16 @@ jobs:
         # routes and turn E2E into unit tests in E2E clothing.
         run: bash scripts/verify-e2e-real-data.sh
 
+      - name: Verify Copilot findings catalogue integrity
+        # Enforces COPILOT-FINDINGS.md protocol: every
+        # `fix(enh-*): address Copilot review on PR #N` commit must
+        # touch docs/enhancement-plan/COPILOT-FINDINGS.md with at least
+        # one row under the matching `### PR #N` heading. Without this
+        # gate, fix commits can silently drop from the catalogue and
+        # the PR16-style distillation loses its input. See R9 and the
+        # COPILOT-FINDINGS.md appendix for the protocol spec.
+        run: bash scripts/verify-copilot-catalogue.sh
+
       - name: Build frontend bundle
         run: npm run build
 
