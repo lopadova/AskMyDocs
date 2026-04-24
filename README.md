@@ -97,6 +97,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
 - [License](#license)
+- [Enterprise rules](#enterprise-rules)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 
@@ -2463,6 +2464,52 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 This project is open-source under the [MIT License](LICENSE).
 
 You are free to use, modify, and distribute it for any purpose, including commercial use.
+
+---
+
+## Enterprise rules
+
+This repository has 21 codified review rules (R1..R21) that every PR
+must satisfy. They are distilled from ~110 live Copilot review
+findings across the PR #16..#31 enterprise-enhancement series and
+mirror in three files for different consumers:
+
+- **`CLAUDE.md §7`** — the canonical R1..R21 list, authored for
+  Claude Code. Each rule: one-line imperative + "why this exists"
+  paragraph citing the representative PR + SHA + check-list + pointer
+  to the skill that enforces it.
+- **`.github/copilot-instructions.md §6`** — the mirror for GitHub
+  Copilot. Same rules, shorter bullets, plus a "Copilot review
+  checklist" (R1..R21) that reviewers walk on every PR.
+- **`.claude/skills/`** — one skill per rule, with grep patterns,
+  before/after fix templates, and counter-examples. Claude Code
+  auto-loads them when the trigger conditions match.
+
+Two CI gates enforce the rules at merge time:
+
+- **`scripts/verify-e2e-real-data.sh`** — R13 — every
+  `page.route(...)` / `context.route(...)` call against an internal
+  route carries an `R13: failure injection` marker or a match against
+  the external-boundary allowlist.
+- **`scripts/verify-copilot-catalogue.sh`** — R9 applied to the
+  catalogue itself — every `fix(enh-*): address Copilot review on PR
+  #N` commit has at least one row under `### PR #N` in
+  `docs/enhancement-plan/COPILOT-FINDINGS.md`.
+
+A pre-push review agent lives at
+`.claude/agents/copilot-review-anticipator.md`. Invoke
+`@copilot-review-anticipator` before `git push` on a feature branch:
+it applies R1..R21 to the outgoing diff and produces a numbered
+finding list with skill pointers — catching what Copilot will catch,
+but faster and cheaper.
+
+The full catalogue of every Copilot finding that shaped R1..R21 lives
+at
+[`docs/enhancement-plan/COPILOT-FINDINGS.md`](docs/enhancement-plan/COPILOT-FINDINGS.md)
+with a per-PR per-tag frequency table. New phases should start from
+[`.claude/briefings/enterprise-phase-template.md`](.claude/briefings/enterprise-phase-template.md)
+— a reusable Phase-1 briefing skeleton that wires the agent into the
+rules before the first commit.
 
 ---
 
