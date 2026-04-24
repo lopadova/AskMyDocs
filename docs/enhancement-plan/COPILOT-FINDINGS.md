@@ -242,10 +242,18 @@
 
 ### PR #30 — Phase I (AI Insights)
 
-No Copilot findings landed against PR #30 before Phase J branched.
-The retrospective `gh api repos/<org>/<repo>/pulls/30/comments` call
-during Phase J returned zero finding-shaped rows. Re-harvest at PR16
-in case Copilot finishes its review after this PR lands.
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `AiInsightsService` constructor | `doc-drift` | PromotionSuggestService injected but never called — dead dep | `bd40780` |
+| `AiInsightsService::suggestTagsBatch` | `hardcoded-subset` | Picks first N canonical docs without "missing tags" SQL filter → wasteful LLM calls | `bd40780` |
+| `AiInsightsService::qualityReport` | `r3-bulk` **(CRITICAL)** | `GROUP BY LENGTH(chunk_text)` produces up to N groups; bucket/outlier logic in PHP | `bd40780` |
+| `AdminInsightsController::byDate` | `silent-200` | `Carbon::parse` permissive (accepts 2026-02-30); 422 vs docstring's 404 | `bd40780` |
+| `PROGRESS.md` row 14 | `doc-drift` | "4 new Playwright scenarios" but enumerates 6 | `bd40780` |
+| `PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | `Object.defineProperty(window, 'location')` not restored in afterEach — cross-suite pollution | `bd40780` |
+| `MetaTab.tsx` AiSuggestionsBlock | `doc-drift` | Block comment says "render nothing while loading" but impl renders explicit loading UI | `bd40780` |
+| `admin_insights_snapshots` test migration | `doc-drift` | Redundant explicit index on `snapshot_date` (unique already creates one) | `bd40780` |
+| `AiInsightsService::detectOrphans` | `r3-bulk` **(CRITICAL)** | Per-doc `chunks()->count()` + `KbEdge::exists()` = N+1 (thousands of queries on 10k-doc corpus) | `bd40780` |
+| `admin_insights_snapshots` prod migration | `doc-drift` | Same redundant index | `bd40780` |
 
 ---
 

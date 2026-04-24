@@ -164,9 +164,15 @@ export function MetaTab({ doc }: MetaTabProps) {
 
 /*
  * Phase I — per-doc AI tag suggestions. Calls the insights endpoint
- * on demand (one LLM call per mount). Render nothing when the hook is
- * still loading on first mount or returns zero tags — don't litter
- * the tab with "no suggestions yet" cruft.
+ * on demand (one LLM call per mount).
+ *
+ * Copilot #7 fix: comment now matches the implementation.
+ * Loading state renders a `data-state="loading"` placeholder; error
+ * state renders a `data-state="error"` line; empty (no suggestions)
+ * renders a muted "no suggestions" hint with `data-state="empty"`;
+ * ready surfaces tag chips. Every branch carries a stable
+ * `data-testid="kb-meta-ai-suggestions"` + data-state attr so
+ * Playwright can assert on any of the four outcomes.
  */
 function AiSuggestionsBlock({ documentId }: { documentId: number }) {
     const q = useDocumentAiSuggestions(documentId);

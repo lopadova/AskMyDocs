@@ -24,7 +24,9 @@ return new class extends Migration
             $table->timestamp('computed_at')->nullable();
             $table->integer('computed_duration_ms')->nullable();
 
-            $table->index(['snapshot_date'], 'admin_insights_snapshots_date_idx');
+            // Copilot #8 fix: mirror of the production migration —
+            // unique() already provides the index we need for the
+            // SPA's "latest snapshot" lookup. No explicit duplicate.
         });
     }
 

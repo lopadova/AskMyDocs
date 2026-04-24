@@ -74,7 +74,9 @@ return [
         ],
         'queue:retry' => [
             'args_schema' => [
-                'id' => ['type' => 'string', 'required' => true, 'max' => 120],
+                // Positional: `queue:retry {id}` — passing `--id=…` would
+                // be an unrecognised option (Copilot #1 fix).
+                'id' => ['type' => 'string', 'required' => true, 'max' => 120, 'kind' => 'argument'],
             ],
             'requires_permission' => 'commands.run',
             'destructive' => false,
@@ -84,8 +86,10 @@ return [
         // Destructive — require `commands.destructive` permission + confirm_token.
         'kb:ingest-folder' => [
             'args_schema' => [
-                'path' => ['type' => 'string', 'required' => true, 'max' => 500],
-                'project' => ['type' => 'string', 'required' => true, 'max' => 120],
+                // Positional (`{path?}`) — optional but still a positional arg.
+                'path' => ['type' => 'string', 'required' => true, 'max' => 500, 'kind' => 'argument'],
+                // Option (`--project=`).
+                'project' => ['type' => 'string', 'required' => true, 'max' => 120, 'kind' => 'option'],
             ],
             'requires_permission' => 'commands.destructive',
             'destructive' => true,
@@ -93,8 +97,10 @@ return [
         ],
         'kb:delete' => [
             'args_schema' => [
-                'project' => ['type' => 'string', 'required' => true, 'max' => 120],
-                'path' => ['type' => 'string', 'required' => true, 'max' => 500],
+                // Option (`--project=`).
+                'project' => ['type' => 'string', 'required' => true, 'max' => 120, 'kind' => 'option'],
+                // Positional (`{path}`).
+                'path' => ['type' => 'string', 'required' => true, 'max' => 500, 'kind' => 'argument'],
             ],
             'requires_permission' => 'commands.destructive',
             'destructive' => true,
@@ -147,11 +153,20 @@ return [
     | Admin — command runner token TTL (Phase H2)
     |--------------------------------------------------------------------------
     |
-    | The preview/run two-step dance for destructive commands. Tokens are
-    | signed (Laravel `Crypt::encryptString` + sha256 nonce) with a 5-minute
-    | TTL by default. 0 disables destructive commands entirely (they would
-    | always fail the preview step). Keep this short — the whole point is
-    | that a human just confirmed the action intent.
+    | Copilot #3 fix: docblock now matches the real implementation.
+    |
+    | The preview/run two-step dance for destructive commands. Preview
+    | issues an opaque random token via `random_bytes(32)` → hex; we
+    | store ONLY `sha256($token)` in `admin_command_nonces` so the DB
+    | row cannot replay the plaintext even if the table leaks. The
+    | plaintext round-trips to the client once and is consumed by
+    | /run in a transactional `lockForUpdate()` + `used_at` update
+    | (Copilot #8 fix for the atomic consume race).
+    |
+    | `token_ttl_seconds` is how long that plaintext remains usable for
+    | the destructive POST /run step. Default 300s / 5 min. Keep this
+    | short — the whole point is that a human just confirmed the
+    | action intent within a bounded window.
     |
     */
     'command_runner' => [
