@@ -56,19 +56,23 @@ export default defineConfig({
                 storageState: 'playwright/.auth/admin.json',
             },
             dependencies: ['setup'],
-            testIgnore: [/.*\.setup\.ts/, /admin-dashboard-viewer\.spec\.ts/],
+            // Every *-viewer.spec.ts file runs under the viewer storage
+            // state. Keep the ignore list a single glob so new RBAC
+            // denial specs don't need this config touched (PR7 added
+            // admin-users-viewer.spec.ts).
+            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/],
         },
         {
-            // Non-admin project — runs ONLY the admin-dashboard-viewer
-            // scenarios. Uses a separate storage state so the admin
-            // cookie from `auth.setup.ts` does not leak in.
+            // Non-admin project — runs ONLY the *-viewer scenarios.
+            // Uses a separate storage state so the admin cookie from
+            // `auth.setup.ts` does not leak in.
             name: 'chromium-viewer',
             use: {
                 ...devices['Desktop Chrome'],
                 storageState: 'playwright/.auth/viewer.json',
             },
             dependencies: ['viewer-setup'],
-            testMatch: /admin-dashboard-viewer\.spec\.ts/,
+            testMatch: /.*-viewer\.spec\.ts/,
         },
     ],
 });
