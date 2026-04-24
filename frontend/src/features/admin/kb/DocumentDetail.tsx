@@ -7,23 +7,26 @@ import {
     useRestoreKbDocument,
 } from './kb-document.api';
 import { PreviewTab } from './PreviewTab';
+import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 
 /*
- * Phase G2 — KB document detail pane.
+ * Phase G2/G3 — KB document detail pane.
  *
- * Three tabs only at this phase: Preview / Meta / History. Source
- * editor (CodeMirror) lands in G3; Graph viewer + PDF Export land
- * in G4. The `activeTab` + `tab` URL search param are kept in
- * lockstep so deep-links reopen the correct pane.
+ * Tabs: Preview / Source / Meta / History. G2 shipped the three
+ * read-only tabs; G3 added Source (CodeMirror editor with PATCH
+ * /raw save pipeline). Graph viewer + PDF Export land in G4 —
+ * they'll slot in next to the existing four without further
+ * restructure. The `activeTab` + `tab` URL search param are kept
+ * in lockstep so deep-links reopen the correct pane.
  *
  * Destructive actions (delete / force-delete) go through a
  * controlled confirmation dialog so R11 (testids) stay stable
  * for Playwright.
  */
 
-export type KbDetailTab = 'preview' | 'meta' | 'history';
+export type KbDetailTab = 'preview' | 'source' | 'meta' | 'history';
 
 export interface DocumentDetailProps {
     documentId: number;
@@ -129,6 +132,7 @@ export function DocumentDetail(props: DocumentDetailProps) {
                 {activeTab === 'preview' ? (
                     <PreviewTab documentId={doc.id} project={doc.project_key} />
                 ) : null}
+                {activeTab === 'source' ? <SourceTab documentId={doc.id} /> : null}
                 {activeTab === 'meta' ? <MetaTab doc={doc} /> : null}
                 {activeTab === 'history' ? <HistoryTab documentId={doc.id} /> : null}
             </div>
@@ -265,6 +269,7 @@ function TabStrip({
 }) {
     const tabs: Array<{ key: KbDetailTab; label: string }> = [
         { key: 'preview', label: 'Preview' },
+        { key: 'source', label: 'Source' },
         { key: 'meta', label: 'Meta' },
         { key: 'history', label: 'History' },
     ];

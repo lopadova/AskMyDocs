@@ -163,6 +163,11 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
             ]);
         Route::get('/kb/documents/{document}/raw', [KbDocumentController::class, 'raw'])
             ->name('api.admin.kb.documents.raw');
+        // Phase G3 — updateRaw: PATCH writes the SPA-edited markdown,
+        // records an `updated` audit row, then queues IngestDocumentJob
+        // (the single ingestion execution path, CLAUDE.md §6).
+        Route::patch('/kb/documents/{document}/raw', [KbDocumentController::class, 'updateRaw'])
+            ->name('api.admin.kb.documents.update_raw');
         Route::get('/kb/documents/{document}/download', [KbDocumentController::class, 'download'])
             ->name('api.admin.kb.documents.download');
         Route::get('/kb/documents/{document}/print', [KbDocumentController::class, 'printable'])

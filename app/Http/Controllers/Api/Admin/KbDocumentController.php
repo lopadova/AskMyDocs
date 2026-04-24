@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Requests\Admin\Kb\UpdateRawRequest;
 use App\Http\Resources\Admin\Kb\KbAuditResource;
 use App\Http\Resources\Admin\Kb\KbDocumentResource;
+use App\Jobs\IngestDocumentJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\KbDiskResolver;
 use App\Support\KbPath;
@@ -108,6 +111,147 @@ class KbDocumentController extends Controller
             'content' => $content,
             'content_hash' => hash('sha256', $content),
         ]);
+    }
+
+    /**
+     * PATCH /api/admin/kb/documents/{document}/raw
+     *
+     * Writes the SPA-edited markdown to the KB disk, records an
+     * `updated` audit row, then queues an `IngestDocumentJob` so the
+     * chunks + graph are rebuilt through the single canonical
+     * ingestion path (CLAUDE.md §6).
+     *
+     * Ordering is load-bearing: disk write FIRST, audit SECOND, job
+     * LAST. If the disk write fails we return 500 with the same shape
+     * as {@see self::raw()} and leave no audit row / no queued job —
+     * a failed write must not produce a lying audit trail (R4).
+     *
+     * Frontmatter, when present, is validated synchronously via
+     * {@see CanonicalParser::validate()}. Invalid frontmatter short-circuits
+     * to 422 with per-key errors under `errors.frontmatter.<key>` so
+     * the editor can surface them field-by-field (R11). Non-canonical
+     * markdown (no `---` fence) is accepted as-is — matching the
+     * degrade-gracefully contract in DocumentIngestor (R10).
+     */
+    public function updateRaw(
+        UpdateRawRequest $request,
+        KnowledgeDocument $document,
+        CanonicalParser $parser,
+    ): JsonResponse {
+        /** @var string $content */
+        $content = $request->validated()['content'];
+
+        $sourcePath = KbPath::normalize((string) $document->source_path);
+
+        // Parsed frontmatter survives past the validation block so the
+        // audit row can stamp identifier *edits* (e.g. `id:` change in
+        // the YAML) with the NEW doc_id / slug — otherwise the audit
+        // trail would key on the pre-edit identifiers and the row
+        // would vanish from History once the re-ingest lands with the
+        // new doc_id (history prefers doc_id, Copilot #5).
+        $parsed = null;
+
+        if (str_starts_with($content, '---')) {
+            $parsed = $parser->parse($content);
+            // Copilot #4 fix: when the content opens with `---` but
+            // `parse()` returns null, the frontmatter fence is broken
+            // (e.g. missing closing `---`, malformed YAML scalar).
+            // Previously we silently skipped validation and wrote the
+            // malformed block to disk — the next ingest then crashed
+            // on CanonicalParser. Treat "opens with --- but can't
+            // parse" as a 422 so the editor can surface the failure
+            // to the author before bytes hit the disk.
+            if ($parsed === null) {
+                return response()->json([
+                    'message' => 'Invalid canonical frontmatter.',
+                    'errors' => ['frontmatter' => [
+                        'Frontmatter block must be a complete --- ... --- section with valid YAML.',
+                    ]],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+
+            $validation = $parser->validate($parsed);
+            if (! $validation->valid) {
+                return response()->json([
+                    'message' => 'Invalid canonical frontmatter.',
+                    'errors' => ['frontmatter' => $validation->errors],
+                ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+        }
+
+        $disk = $this->resolveDiskFor($document);
+        $fullPath = $this->fullPathFor($document, $sourcePath);
+
+        // R4: disk write FIRST — anything downstream (audit, job) must
+        // only happen when the bytes actually landed on disk.
+        $ok = Storage::disk($disk)->put($fullPath, $content);
+        if ($ok === false) {
+            return response()->json([
+                'message' => 'failed to write markdown to disk',
+                'path' => $fullPath,
+                'disk' => $disk,
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+
+        // R10: stamp the audit row with the identifiers that survive a
+        // hard delete (project_key, doc_id, slug).
+        //
+        // Copilot #5 fix: when the author edits `id:` / `slug:` in the
+        // YAML, the next ingest will materialise a KnowledgeDocument
+        // with the NEW identifiers. Keying the audit on the pre-edit
+        // identifiers would leave this `updated` row invisible from
+        // the new doc's History tab (history prefers `doc_id` and
+        // falls back to `slug`). Prefer the parsed frontmatter's
+        // identifiers when present; capture the prior ones inside
+        // `before_json` so the trail stays reversible. Raw
+        // (non-canonical) edits keep `$document->...` as-is.
+        $newVersionHash = hash('sha256', $content);
+        $actor = (string) (auth()->user()?->email ?? 'system');
+
+        $nextDocId = $parsed?->docId ?? $document->doc_id;
+        $nextSlug = $parsed?->slug ?? $document->slug;
+
+        $audit = KbCanonicalAudit::create([
+            'project_key' => $document->project_key,
+            'doc_id' => $nextDocId,
+            'slug' => $nextSlug,
+            'event_type' => 'updated',
+            'actor' => $actor,
+            'before_json' => [
+                'version_hash' => $document->version_hash,
+                'metadata' => $document->metadata,
+                'doc_id' => $document->doc_id,
+                'slug' => $document->slug,
+            ],
+            'after_json' => [
+                'version_hash' => $newVersionHash,
+                'size_bytes' => strlen($content),
+                'doc_id' => $nextDocId,
+                'slug' => $nextSlug,
+            ],
+            'metadata_json' => [
+                'route' => 'api.admin.kb.documents.update_raw',
+                'identifier_changed' => ($nextDocId !== $document->doc_id)
+                    || ($nextSlug !== $document->slug),
+            ],
+        ]);
+
+        // Single ingestion execution path (CLAUDE.md §6). The queued
+        // job re-reads from the same disk+prefix combination, chunks,
+        // embeds and refreshes graph edges.
+        IngestDocumentJob::dispatch(
+            $document->project_key,
+            $sourcePath,
+            $disk,
+            $document->title,
+            is_array($document->metadata) ? $document->metadata : [],
+        );
+
+        return response()->json([
+            'version_hash' => $newVersionHash,
+            'audit_id' => $audit->id,
+            'queued' => true,
+        ], Response::HTTP_ACCEPTED);
     }
 
     /**

@@ -4,6 +4,7 @@ import {
     type KbDocument,
     type KbHistoryResponse,
     type KbRawResponse,
+    type KbUpdateRawResponse,
 } from '../admin.api';
 import { KB_TREE_KEY } from './kb-tree.api';
 
@@ -54,6 +55,34 @@ export function useRestoreKbDocument() {
         onSuccess: (_data, id) => {
             qc.invalidateQueries({ queryKey: KB_TREE_KEY });
             qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'show', id] });
+        },
+    });
+}
+
+/**
+ * Phase G3 — write path. Saves the buffer back through PATCH /raw
+ * and invalidates every read-side cache a re-ingest could affect:
+ *   - raw markdown (content_hash flips after the save),
+ *   - document detail (chunks_count / audits_count drift once the
+ *     IngestDocumentJob completes),
+ *   - history (new audit row + downstream job-emitted rows),
+ *   - tree (indexed_at / status may flip).
+ */
+export function useUpdateKbRaw(id: number | null) {
+    const qc = useQueryClient();
+    return useMutation<KbUpdateRawResponse, Error, string>({
+        mutationFn: (content: string) => {
+            if (typeof id !== 'number') {
+                throw new Error('useUpdateKbRaw called without an id');
+            }
+            return adminKbDocumentApi.updateRaw(id, content);
+        },
+        onSuccess: () => {
+            if (typeof id !== 'number') return;
+            qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'raw', id] });
+            qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'show', id] });
+            qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'history', id] });
+            qc.invalidateQueries({ queryKey: KB_TREE_KEY });
         },
     });
 }
