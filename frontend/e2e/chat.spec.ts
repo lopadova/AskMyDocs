@@ -65,37 +65,11 @@ test.describe('Chat', () => {
     });
 
     test('wikilink hover fetches and shows the preview card', async ({ page }) => {
-        // Seed a message that the assistant would cite. Go direct to a
-        // fresh conversation, inject a preformatted assistant turn via
-        // the feedback-free path by mocking the network: simpler is to
-        // render the Markdown through our own route mocking and assert
-        // the WikilinkHover component hooks up to /api/kb/resolve-wikilink.
-        await page.route('**/api/kb/resolve-wikilink**', async (route) => {
-            const url = new URL(route.request().url());
-            if (url.searchParams.get('slug') === 'remote-work-policy') {
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify({
-                        document_id: 1,
-                        title: 'Remote Work Policy',
-                        source_path: 'policies/remote-work-policy.md',
-                        canonical_type: 'policy',
-                        canonical_status: 'accepted',
-                        is_canonical: true,
-                        preview: 'ACME employees may work remotely up to 3 days per week.',
-                    }),
-                });
-                return;
-            }
-            await route.fallback();
-        });
-
-        // Install a stub that replaces /conversations/*/messages POST so
-        // the assistant reply renders a [[remote-work-policy]] link
-        // synchronously. The DemoSeeder content is already present in
-        // the DB, and the default controller goes through the real AI
-        // manager — which we do not want to hit.
+        // R13: the wikilink resolver talks only to the local DB and
+        // DemoSeeder already seeds `remote-work-policy`. We stub ONLY
+        // the AI provider boundary (POST /conversations/*/messages
+        // invokes OpenRouter in the controller) and let the real
+        // resolver endpoint run against real data.
         await page.route('**/conversations/*/messages', async (route) => {
             if (route.request().method() !== 'POST') {
                 await route.fallback();
@@ -129,6 +103,7 @@ test.describe('Chat', () => {
     });
 
     test('wikilink resolver 500 degrades gracefully', async ({ page }) => {
+        /* R13: failure injection — real path tested in "wikilink hover fetches and shows the preview card". */
         await page.route('**/api/kb/resolve-wikilink**', (route) => route.fulfill({ status: 500 }));
         await page.route('**/conversations/*/messages', async (route) => {
             if (route.request().method() !== 'POST') {
