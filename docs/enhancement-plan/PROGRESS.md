@@ -11,8 +11,8 @@
 | 2  | B — Auth JSON API + Sanctum SPA | `feature/enh-b-auth-api` | ✅ PR opened | TBD | PR1 | 2026-04-23 | 433 tests green; Sanctum stateful + 7 Api/Auth tests |
 | 3  | C — RBAC foundation | `feature/enh-c-rbac-foundation` | ✅ PR opened | TBD | PR2 | 2026-04-23 | 457 tests green; Spatie ^6.25 + 25 Rbac tests + AccessScopeScope + Policy + middleware |
 | 4  | D — Frontend scaffold + auth pages | `feature/enh-d-frontend-scaffold` | ✅ PR opened | TBD | PR3 | 2026-04-22 | 460 tests green (+3 Spa) + 21 Vitest + 18 legacy rich-content; Vite build verified (421 kB JS gz 131 kB) |
-| 5  | E — Chat UI React | `feature/enh-e-chat-react` | ⏳ ready | — | PR4 | — | parte dal branch PR4 |
-| 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ blocked | — | PR5 | — | |
+| 5  | E — Chat UI React | `feature/enh-e-chat-react` | ✅ PR opened | TBD | PR4 | 2026-04-22 | 473 tests PHP + 48 Vitest + 18 legacy + 5 Playwright scenarios authored; chat view + wikilink hover + rich-content TS + DemoSeeder |
+| 6  | F1 — Admin shell + Dashboard | `feature/enh-f1-admin-dashboard` | ⏳ ready | — | PR5 | — | parte dal branch PR5 |
 | 7  | F2 — Users & Roles | `feature/enh-f2-users-roles` | ⏳ blocked | — | PR6 | — | |
 | 8  | G — KB Tree + Viewer + Editor | `feature/enh-g-kb-viewer-editor` | ⏳ blocked | — | PR7 | — | |
 | 9  | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR8 | — | |
@@ -24,6 +24,41 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR5 — Phase E checklist
+
+- [x] Checkout worktree sul branch `feature/enh-e-chat-react` da `feature/enh-d-frontend-scaffold`
+- [x] `npm install --save-dev @playwright/test` + `npx playwright install chromium`
+- [x] `npm install recharts react-markdown remark-gfm remark-frontmatter unified unist-util-visit`
+- [x] `package.json` scripts: `e2e`, `e2e:ui`, `e2e:headed`, `e2e:report`
+- [x] `playwright.config.ts` (root) — setup + chromium project, authed storage state
+- [x] `frontend/e2e/auth.setup.ts` — single-login flow → `playwright/.auth/admin.json`
+- [x] `frontend/e2e/fixtures.ts` — auto-reset + seed `DemoSeeder`
+- [x] `frontend/e2e/helpers.ts` — composer/thread/sidebar locators
+- [x] `app/Http/Controllers/Api/KbResolveWikilinkController.php` + 7 tests
+- [x] `routes/api.php` — `/api/kb/resolve-wikilink` GET (auth:sanctum)
+- [x] `app/Http/Controllers/TestingController.php` + 6 tests (env + allowlist guards)
+- [x] `database/seeders/DemoSeeder.php` — admin@demo.local + 3 canonical docs + 1 conversation
+- [x] `routes/web.php` — /chat → /app/chat redirect + /chat-legacy path + testing endpoints behind APP_ENV guard
+- [x] `frontend/src/lib/rich-content.ts` (TS port) + 12 Vitest cases; legacy `.mjs` preserved via `test:legacy` (18 cases)
+- [x] `frontend/src/lib/markdown/` — Markdown.tsx + 3 remark plugins (wikilink, tag, callout) + 7 Vitest cases
+- [x] `frontend/src/features/chat/`:
+  - `chat.api.ts` (typed client), `chat.store.ts` (Zustand), `use-chat-mutation.ts` (optimistic)
+  - `ChatView.tsx` (root), `ConversationList.tsx`, `MessageThread.tsx`, `MessageBubble.tsx`
+  - `Composer.tsx`, `VoiceInput.tsx`, `FeedbackButtons.tsx`, `MessageActions.tsx`
+  - `CitationsPopover.tsx`, `ThinkingTrace.tsx`, `WikilinkHover.tsx`
+- [x] `frontend/src/routes/index.tsx` — /app/chat + /app/chat/$conversationId route ChatView
+- [x] R11 compliance: every button/input has `data-testid`; thread exposes `data-state`; errors surface with `data-testid="<field>-error"` or `chat-*-error`
+- [x] R12 Playwright spec: `frontend/e2e/chat.spec.ts` with 1 happy + 4 failure paths
+- [x] `.github/workflows/tests.yml` — Playwright job (needs [phpunit, vitest]) + browser cache + report upload on failure
+- [x] `npm run build` → 623 kB JS gz 192 kB (warning about chunk size noted; code-split deferred)
+- [x] `~/.config/herd/bin/php.bat vendor/phpunit/phpunit/phpunit` → 473/473 verdi (460 baseline + 13 new)
+- [x] `npm run test` → 48/48 verdi (43 baseline + 5 chat)
+- [x] `npm run test:legacy` → 18/18 (rich-content.spec.mjs preserved)
+- [x] `npx playwright test --list` → 6 scenarios (1 setup + 5 chat)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase E
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch, push, `gh pr create` verso `feature/enh-d-frontend-scaffold`
 
 ### PR1 — Phase A checklist
 

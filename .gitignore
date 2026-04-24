@@ -22,3 +22,9 @@ composer.lock
 .env.local
 .env.*.local
 *.log
+# Playwright
+/playwright/.auth/
+/playwright-report/
+/test-results/
+/playwright.config.d.ts
+

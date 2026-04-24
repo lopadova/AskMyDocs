@@ -66,5 +66,90 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Vitest
+      - name: Run Vitest (react)
         run: npm test
+
+      - name: Run Vitest (legacy rich-content)
+        run: npm run test:legacy
+
+  playwright:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    # Depends on phpunit+vitest so E2E only spins up after core gates
+    # are green.
+    needs: [phpunit, vitest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install PHP deps
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build frontend bundle
+        run: npm run build
+
+      - name: Prepare .env for testing
+        run: |
+          cp .env.example .env || true
+          php -r "file_exists('.env') || copy('.env.example', '.env');" || true
+          echo "APP_ENV=testing" >> .env
+          echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
+          # Force SQLite for CI — Playwright boots the server via
+          # playwright.config.ts webServer and we don't spin Postgres here.
+          echo "DB_CONNECTION=sqlite" >> .env
+          echo "DB_DATABASE=$GITHUB_WORKSPACE/database/database.sqlite" >> .env
+          echo "SESSION_DRIVER=database" >> .env
+          echo "CACHE_STORE=database" >> .env
+          echo "QUEUE_CONNECTION=sync" >> .env
+          touch database/database.sqlite
+
+      - name: Migrate + seed test data
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan key:generate --force
+          php artisan migrate --force
+
+      # playwright.config.ts `webServer` launches `php artisan serve`
+      # automatically, waits on baseURL readiness, and shuts it down
+      # after the suite. No explicit background server step needed.
+      - name: Run Playwright (chromium)
+        env:
+          APP_ENV: testing
+        run: npm run e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+

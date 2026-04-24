@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
+use App\Http\Controllers\Api\KbResolveWikilinkController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -60,6 +61,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/kb/chat', KbChatController::class);
     Route::post('/kb/ingest', KbIngestController::class);
     Route::delete('/kb/documents', KbDeleteController::class);
+
+    // Wikilink hover-card resolver for the React chat UI. Uses the
+    // default-scoped KnowledgeDocument so soft-deletes + RBAC filter
+    // apply automatically (R2).
+    Route::get('/kb/resolve-wikilink', KbResolveWikilinkController::class)
+        ->name('api.kb.resolve-wikilink');
 
     // Promotion pipeline (Phase 4). suggest + candidates write nothing;
     // only `promote` writes canonical markdown to the KB disk.

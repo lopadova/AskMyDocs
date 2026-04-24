@@ -87,7 +87,11 @@ export function FieldError({ errors, name }: { errors: FieldErrors | undefined; 
     const raw = errors[name];
     const msg = Array.isArray(raw) ? raw[0] : raw;
     return (
-        <div style={{ fontSize: 12, color: 'var(--err)', marginTop: 6 }} role="alert">
+        <div
+            data-testid={`${name}-error`}
+            style={{ fontSize: 12, color: 'var(--err)', marginTop: 6 }}
+            role="alert"
+        >
             {msg}
         </div>
     );

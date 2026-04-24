@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
-import { ChatPlaceholder } from '../components/sections/ChatPlaceholder';
+import { ChatView } from '../features/chat/ChatView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
 import { InsightsPlaceholder } from '../components/sections/InsightsPlaceholder';
@@ -122,10 +122,22 @@ const appIndexRoute = createRoute({
     },
 });
 
+// Copilot #11 fix: flat chat routes instead of nesting
+// `$conversationId` under a parent that also renders `ChatView`.
+// TanStack Router only mounts a child route inside the parent's
+// `<Outlet />`, and `ChatView` doesn't (and shouldn't) render one —
+// so the nested variant never matched `useParams({strict:false})`
+// for `/app/chat/:conversationId`. Two sibling routes under
+// `appRoute` let `ChatView` receive the param in both shapes.
 const chatRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'chat',
-    component: ChatPlaceholder,
+    component: ChatView,
+});
+const chatConversationRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'chat/$conversationId',
+    component: ChatView,
 });
 const dashboardRoute = createRoute({
     getParentRoute: () => appRoute,
@@ -166,6 +178,7 @@ const routeTree = rootRoute.addChildren([
     appRoute.addChildren([
         appIndexRoute,
         chatRoute,
+        chatConversationRoute,
         dashboardRoute,
         kbRoute,
         insightsRoute,

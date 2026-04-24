@@ -394,6 +394,49 @@ deliberately. 10-point operational checklist:
 
 → See `.claude/skills/canonical-awareness/`.
 
+### R11 — Frontend components must be test-friendly (from PR5 onward)
+Every React component in `frontend/src/` must expose stable
+`data-testid` attributes on actionable elements, meaningful ARIA
+semantics (`role`, `aria-label`, `aria-live`), and observable async
+states (`data-state="idle|loading|ready|error|empty"`, `aria-busy`).
+API errors MUST surface in the DOM (no silent `useMutation` failures);
+validation errors MUST appear next to each input with
+`data-testid="<field>-error"`. Naming: `<feature>-<role>-<id?>`,
+kebab case. Applied from PR5 (Chat React) onward. Copilot cannot
+enforce this post-hoc — it starts at the component writing.
+→ See `.claude/skills/frontend-testid-conventions/`.
+
+### R12 — Every user-visible UI change ships Playwright E2E coverage
+From PR5 onward, a PR that touches any file under `frontend/src/` or
+any route/controller that renders into the SPA must include at least
+one `*.spec.ts` file under `frontend/e2e/` covering the happy path and
+at least one failure path (validation / 422 / 429 / network error /
+empty state) for the changed feature. Scenarios use `getByTestId` or
+`getByRole` + accessible name — never CSS selectors. They wait on
+`data-state`, never on `waitForTimeout`. CI gate: `npm run e2e` green.
+Authed tests reuse `playwright/.auth/admin.json` storage state — no
+per-test login.
+→ See `.claude/skills/playwright-e2e/`.
+
+### R13 — E2E scenarios run against real data; mock ONLY external services
+E2E tests are end-to-end on purpose: they must exercise the real
+Laravel app, the real database (SQLite in CI, seeded via the
+`TestingControllerSpy`/`DemoSeeder` pair), real Eloquent queries,
+real Sanctum cookies, real controllers. `page.route(...)` is
+**only** allowed to intercept calls that leave the application
+boundary — the AI provider (OpenRouter / OpenAI / Anthropic), email
+sending (Mailgun / SES), payment rails, OCR APIs, or any other
+third-party service that costs money or requires production
+credentials. Intercepting `/api/conversations`, `/api/admin/*`,
+`/api/kb/*`, `/sanctum/csrf-cookie`, or any internal route is a
+bug — the scenario becomes a unit test in E2E clothing and stops
+catching the kind of integration regressions E2E exists for.
+`playwright.config.ts` boots `php artisan serve` via the
+`webServer` block with `APP_ENV=testing` so every scenario has a
+working back-end automatically. Per-scenario seeding goes through
+`/testing/reset` + `/testing/seed` (the `seeded` auto-fixture).
+→ See `.claude/skills/playwright-e2e/`.
+
 ---
 
 ## 8. Testing & CI
@@ -430,8 +473,8 @@ deliberately. 10-point operational checklist:
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow the **eight rules above (R1–R8)** before opening a PR — they exist
-  because Copilot caught them the first time.
+- Follow the **twelve rules above (R1–R12)** before opening a PR — they
+  exist because Copilot caught them the first time.
 - Keep the README, `.env.example`, and `config/*.php` in sync whenever a knob
   changes.
 - Commits go on the designated feature branch; never force-push `main`.

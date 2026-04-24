@@ -93,10 +93,17 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
                 </span>
             }
         >
-            <form onSubmit={onSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <form
+                onSubmit={onSubmit}
+                noValidate
+                data-testid="login-form"
+                aria-label="Sign in"
+                style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+            >
                 {formError && (
                     <div
                         role="alert"
+                        data-testid="login-form-error"
                         style={{
                             padding: '10px 12px',
                             borderRadius: 9,
@@ -118,6 +125,8 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
                         type="email"
                         autoComplete="email"
                         className="input"
+                        data-testid="login-email"
+                        aria-label="Email"
                         {...register('email')}
                     />
                     {errors.email && <FieldError errors={{ email: errors.email.message ?? '' }} name="email" />}
@@ -135,6 +144,8 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
                         type="password"
                         autoComplete="current-password"
                         className="input"
+                        data-testid="login-password"
+                        aria-label="Password"
                         {...register('password')}
                     />
                     {errors.password && (
@@ -148,6 +159,7 @@ export function LoginPage({ onSuccess, onNavigateForgot }: LoginPageProps = {}) 
                 <button
                     type="submit"
                     className="btn primary"
+                    data-testid="login-submit"
                     disabled={submitting}
                     aria-busy={submitting}
                     style={{ justifyContent: 'center', marginTop: 4 }}
