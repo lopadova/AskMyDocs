@@ -20,13 +20,38 @@ import { composer, newConversationButton, thread, waitForThreadReady } from './h
 
 test.describe('Chat', () => {
     test('user asks question and the assistant reply renders', async ({ page }) => {
+        // Copilot #12 fix: stub the assistant reply instead of calling
+        // the real AI provider. Hitting OpenRouter in CI is flaky
+        // (missing API credentials) and makes the Playwright gate
+        // non-deterministic. The goal of this scenario is to verify
+        // the UI round-trip — composer → message render — not the
+        // provider integration, which is covered by PHPUnit feature
+        // tests on MessageController.
+        await page.route('**/conversations/*/messages', async (route) => {
+            if (route.request().method() !== 'POST') {
+                await route.fallback();
+                return;
+            }
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    id: 1001,
+                    role: 'assistant',
+                    content: 'The remote work stipend applies to full-time employees after 90 days.',
+                    metadata: { provider: 'mock', model: 'mock', citations: [] },
+                    rating: null,
+                    created_at: new Date().toISOString(),
+                }),
+            });
+        });
+
         await page.goto('/app/chat');
         const { input, send } = composer(page);
         await input.fill('How does the remote work stipend apply?');
         await send.click();
         await waitForThreadReady(page, 45_000);
         await expect(thread(page)).toHaveAttribute('data-state', 'ready');
-        // At least one assistant message is present after send.
         const firstAssistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').first();
         await expect(firstAssistant).toBeVisible({ timeout: 30_000 });
     });

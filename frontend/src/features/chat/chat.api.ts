@@ -35,6 +35,9 @@ export interface MessageMetadata {
     latency_ms?: number;
     citations?: MessageCitation[];
     few_shot_count?: number;
+    // Populated when the AI provider returns a reasoning trace.
+    // MessageBubble renders these inside <ThinkingTrace>.
+    reasoning_steps?: string[];
 }
 
 export interface Message {

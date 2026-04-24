@@ -28,10 +28,16 @@ export function ChatView(): ReactNode {
     const mutationStatus = useChatMutation();
 
     // Sync URL param → store. The URL is the source of truth (R11 §5).
+    //
+    // Copilot #6 fix: compute a sanitized `safeId` first. Without this,
+    // a non-numeric URL segment produced NaN, and `NaN !== activeId`
+    // evaluates true on every render, which re-fired `setActive(null)`
+    // every render and thrashed Zustand subscribers into a loop.
     useEffect(() => {
-        const fromUrl = params.conversationId ? Number(params.conversationId) : null;
-        if (fromUrl !== activeId) {
-            setActive(Number.isFinite(fromUrl as number) ? fromUrl : null);
+        const parsed = params.conversationId !== undefined ? Number(params.conversationId) : NaN;
+        const safeId: number | null = Number.isFinite(parsed) ? parsed : null;
+        if (safeId !== activeId) {
+            setActive(safeId);
         }
     }, [params.conversationId, activeId, setActive]);
 

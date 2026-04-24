@@ -18,6 +18,45 @@ least one Playwright scenario that:
 
 E2E runs in CI before merge; local `npm run e2e` is the pre-push gate.
 
+## The real-data rule (R13) — non-negotiable
+
+E2E tests are end-to-end *on purpose*. They must run against the
+**real Laravel app**, the **real database** (SQLite in CI), **real
+Sanctum cookies**, **real controllers**, and **real Eloquent
+queries**. The `webServer` block in `playwright.config.ts` boots
+`php artisan serve` with `APP_ENV=testing` so every scenario has a
+working back-end automatically; per-scenario state is reset through
+`/testing/reset` + `/testing/seed` via the `seeded` auto-fixture
+(see the `fixtures.ts` recipe below).
+
+`page.route(...)` is reserved for **external-service boundaries
+only** — outgoing calls that:
+
+- cost money or quota (AI providers: OpenRouter, OpenAI, Anthropic,
+  Gemini, Regolo; embedding providers; OCR APIs)
+- require production credentials unavailable in CI (Mailgun, SES,
+  Twilio, S3 if not using `Storage::fake`, payment rails)
+- introduce non-determinism (external clocks, rate limiters on
+  third-party APIs)
+
+Intercepting internal routes — `/api/conversations`,
+`/api/admin/*`, `/api/kb/*`, `/sanctum/csrf-cookie`, `/login`,
+`/api/auth/me` — turns an E2E into a unit test in E2E clothing
+and stops catching the exact kind of integration regressions E2E
+exists for. **Not allowed.**
+
+Quick check before committing a `.spec.ts`:
+
+```bash
+rg 'page\.route' frontend/e2e/ -n
+```
+
+Every match must be a route to a third-party host (or a controller
+path that itself calls one — e.g. `/conversations/*/messages` is
+allowed to be stubbed *because it invokes the AI provider*). If a
+match intercepts an internal-only route, replace it with real
+seeded data via `/testing/seed`.
+
 ## Why this exists
 
 Unit tests prove components render; E2E prove the whole stack

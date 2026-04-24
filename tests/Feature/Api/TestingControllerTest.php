@@ -34,11 +34,14 @@ class TestingControllerTest extends TestCase
 {
     use RefreshDatabase;
 
+    private ?string $originalEnv = null;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         TestingControllerSpy::$calls = [];
+        $this->originalEnv = app()->environment();
 
         // Register routes manually since they are conditional on APP_ENV
         // in the real routes/web.php. Tests go through the spy subclass
@@ -46,6 +49,24 @@ class TestingControllerTest extends TestCase
         // migrate:fresh inside a transaction.
         Route::post('/testing/reset', [TestingControllerSpy::class, 'reset'])->name('testing.reset');
         Route::post('/testing/seed', [TestingControllerSpy::class, 'seed'])->name('testing.seed');
+    }
+
+    /**
+     * Copilot #10 fix: restore the environment in tearDown. The two
+     * "aborts 403" tests flip the app env to `production` via
+     * `detectEnvironment()`, which is a sticky override — PHPUnit does
+     * not guarantee test order, and leaving `production` leaking into
+     * later tests in the same class would cause spurious 403s on the
+     * reset/seed success paths.
+     */
+    protected function tearDown(): void
+    {
+        if ($this->originalEnv !== null) {
+            $restore = $this->originalEnv;
+            app()->detectEnvironment(fn () => $restore);
+        }
+
+        parent::tearDown();
     }
 
     public function test_reset_returns_ok_when_env_is_testing(): void

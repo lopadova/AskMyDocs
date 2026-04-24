@@ -10,7 +10,14 @@ import { defineConfig, devices } from '@playwright/test';
  * CI runs with APP_ENV=testing so the TestingController endpoints are
  * reachable (/testing/reset + /testing/seed). Local dev can run the
  * same pipeline with `APP_ENV=testing npm run e2e`.
+ *
+ * Copilot #2/#3 fix: `webServer` boots `php artisan serve` automatically
+ * so `npm run e2e` is self-contained in CI and locally. Set
+ * `E2E_SKIP_WEBSERVER=1` when an external server is already running.
  */
+const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
+const skipWebServer = process.env.E2E_SKIP_WEBSERVER === '1';
+
 export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
@@ -19,11 +26,22 @@ export default defineConfig({
     workers: process.env.CI ? 1 : undefined,
     reporter: [['list'], ['html', { open: 'never' }]],
     use: {
-        baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000',
+        baseURL,
         trace: 'on-first-retry',
         video: 'retain-on-failure',
         screenshot: 'only-on-failure',
     },
+    webServer: skipWebServer
+        ? undefined
+        : {
+              command: 'php artisan serve --host=127.0.0.1 --port=8000',
+              url: baseURL,
+              reuseExistingServer: !process.env.CI,
+              timeout: 120_000,
+              env: { APP_ENV: 'testing' },
+              stdout: 'pipe',
+              stderr: 'pipe',
+          },
     projects: [
         { name: 'setup', testMatch: /.*\.setup\.ts/ },
         {

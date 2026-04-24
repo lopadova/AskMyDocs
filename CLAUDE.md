@@ -418,6 +418,25 @@ Authed tests reuse `playwright/.auth/admin.json` storage state — no
 per-test login.
 → See `.claude/skills/playwright-e2e/`.
 
+### R13 — E2E scenarios run against real data; mock ONLY external services
+E2E tests are end-to-end on purpose: they must exercise the real
+Laravel app, the real database (SQLite in CI, seeded via the
+`TestingControllerSpy`/`DemoSeeder` pair), real Eloquent queries,
+real Sanctum cookies, real controllers. `page.route(...)` is
+**only** allowed to intercept calls that leave the application
+boundary — the AI provider (OpenRouter / OpenAI / Anthropic), email
+sending (Mailgun / SES), payment rails, OCR APIs, or any other
+third-party service that costs money or requires production
+credentials. Intercepting `/api/conversations`, `/api/admin/*`,
+`/api/kb/*`, `/sanctum/csrf-cookie`, or any internal route is a
+bug — the scenario becomes a unit test in E2E clothing and stops
+catching the kind of integration regressions E2E exists for.
+`playwright.config.ts` boots `php artisan serve` via the
+`webServer` block with `APP_ENV=testing` so every scenario has a
+working back-end automatically. Per-scenario seeding goes through
+`/testing/reset` + `/testing/seed` (the `seeded` auto-fixture).
+→ See `.claude/skills/playwright-e2e/`.
+
 ---
 
 ## 8. Testing & CI

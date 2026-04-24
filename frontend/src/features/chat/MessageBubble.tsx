@@ -16,15 +16,24 @@ export interface MessageBubbleProps {
 
 /**
  * Single turn in the thread. User turns render as a right-aligned
- * speech bubble; assistant turns render full-width with ThinkingTrace
- * (if metadata supplies reasoning steps), Markdown body, Citations
- * strip, and the action row (copy + rate + graph + provider meta).
+ * speech bubble; assistant turns render full-width with (optional)
+ * ThinkingTrace, Markdown body, Citations strip, and the action row
+ * (copy + rate + graph + provider meta).
  *
  * R11: `data-testid="chat-message-<id>"`, `data-role` on every entry.
+ *
+ * Copilot #7 fix: the thinking-trace source is `metadata.reasoning_steps`
+ * (populated when the AI provider returns a reasoning trace). When the
+ * field is absent the component is intentionally skipped — no more
+ * `undefined ? undefined : undefined` dead code that made the trace
+ * unreachable even for providers that supply it.
  */
 export function MessageBubble({ conversationId, message, projectKey, streaming = false }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
-    const thinking = (message.metadata?.['few_shot_count'] !== undefined ? undefined : undefined) as string[] | undefined;
+    const rawSteps = message.metadata?.reasoning_steps;
+    const thinking = Array.isArray(rawSteps) && rawSteps.every((s) => typeof s === 'string')
+        ? (rawSteps as string[])
+        : undefined;
 
     if (isUser) {
         return (

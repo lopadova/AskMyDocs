@@ -121,7 +121,25 @@ jobs:
           php -r "file_exists('.env') || copy('.env.example', '.env');" || true
           echo "APP_ENV=testing" >> .env
           echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
+          # Force SQLite for CI — Playwright boots the server via
+          # playwright.config.ts webServer and we don't spin Postgres here.
+          echo "DB_CONNECTION=sqlite" >> .env
+          echo "DB_DATABASE=$GITHUB_WORKSPACE/database/database.sqlite" >> .env
+          echo "SESSION_DRIVER=database" >> .env
+          echo "CACHE_STORE=database" >> .env
+          echo "QUEUE_CONNECTION=sync" >> .env
+          touch database/database.sqlite
 
+      - name: Migrate + seed test data
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan key:generate --force
+          php artisan migrate --force
+
+      # playwright.config.ts `webServer` launches `php artisan serve`
+      # automatically, waits on baseURL readiness, and shuts it down
+      # after the suite. No explicit background server step needed.
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import { AxiosError } from 'axios';
 import { api } from '../../lib/api';
 
 export interface WikilinkPayload {
@@ -28,8 +29,19 @@ async function fetchWikilink(project: string | undefined, slug: string): Promise
         });
         return data;
     } catch (err) {
-        // 404 / 403 → degrade gracefully (renderer keeps the [[slug]] text).
-        return null;
+        // Copilot #4 fix: only swallow the "expected" outcomes (404 — slug
+        // not canonicalized yet, 403 — user lacks KB scope) so the UI
+        // gracefully keeps the plain [[slug]] text. Every other status
+        // (5xx, network failure, aborted) rethrows so React Query marks
+        // the query `isError` and the `wikilink-preview-error` branch
+        // actually renders.
+        if (err instanceof AxiosError) {
+            const status = err.response?.status;
+            if (status === 404 || status === 403) {
+                return null;
+            }
+        }
+        throw err;
     }
 }
 

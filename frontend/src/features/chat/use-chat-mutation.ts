@@ -15,18 +15,24 @@ interface SendMessageArgs {
  * consumer (Composer / MessageThread) renders a testid-tagged inline
  * error (see R11).
  */
-export function useChatMutation(): UseMutationResult<Message, Error, SendMessageArgs, { previous: Message[] | undefined }> {
+interface MutationContext {
+    previous: Message[] | undefined;
+    optimisticId: number;
+}
+
+export function useChatMutation(): UseMutationResult<Message, Error, SendMessageArgs, MutationContext> {
     const qc = useQueryClient();
-    return useMutation<Message, Error, SendMessageArgs, { previous: Message[] | undefined }>({
+    return useMutation<Message, Error, SendMessageArgs, MutationContext>({
         mutationFn: async ({ conversationId, content }) => {
             return chatApi.sendMessage(conversationId, content);
         },
         onMutate: async ({ conversationId, content }) => {
             await qc.cancelQueries({ queryKey: ['messages', conversationId] });
             const previous = qc.getQueryData<Message[]>(['messages', conversationId]);
+            const optimisticId = -Date.now();
             qc.setQueryData<Message[]>(['messages', conversationId], (old) => {
                 const tmp: Message = {
-                    id: -Date.now(),
+                    id: optimisticId,
                     role: 'user',
                     content,
                     metadata: null,
@@ -35,27 +41,32 @@ export function useChatMutation(): UseMutationResult<Message, Error, SendMessage
                 };
                 return old ? [...old, tmp] : [tmp];
             });
-            return { previous };
+            return { previous, optimisticId };
         },
         onError: (_err, { conversationId }, context) => {
             if (context?.previous) {
                 qc.setQueryData(['messages', conversationId], context.previous);
             }
         },
-        onSuccess: (assistantMessage, { conversationId }) => {
+        onSuccess: (assistantMessage, { conversationId }, context) => {
+            // Copilot #5 fix: remove ONLY the specific optimistic id we
+            // inserted, not every negative-id message. Otherwise a user
+            // sending two messages back-to-back would see the first
+            // optimistic echo flicker out while the second is still in
+            // flight. The optimistic user row stays visible until the
+            // `invalidateQueries` refetch replaces it with the canonical
+            // server row.
             qc.setQueryData<Message[]>(['messages', conversationId], (old) => {
                 if (!old) {
                     return [assistantMessage];
                 }
-                // Drop the optimistic user placeholder (negative id) and append
-                // the real assistant message. The server also persisted the
-                // real user row — refetching once makes the ids canonical.
-                const filtered = old.filter((m) => m.id > 0);
+                const optimisticId = context?.optimisticId;
+                const filtered = optimisticId === undefined
+                    ? old
+                    : old.filter((m) => m.id !== optimisticId);
                 return [...filtered, assistantMessage];
             });
-            // Conversation list's updated_at moved — bump it.
             qc.invalidateQueries({ queryKey: ['conversations'] });
-            // Pull the canonical message list (gets real user id from server).
             qc.invalidateQueries({ queryKey: ['messages', conversationId] });
         },
     });
