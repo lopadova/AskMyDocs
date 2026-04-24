@@ -336,3 +336,81 @@ test('admin creates a user and the table shows the new row', async ({ page }) =>
 - Failure surfacing in components: R11 in `CLAUDE.md`
 - Verification script: `scripts/verify-e2e-real-data.sh`
 - Template archive: `.claude/skills/playwright-e2e-templates/` (copy the closest template and adapt)
+
+---
+
+## Extension: `waitForTimeout` is banned; `context.route` is covered
+
+Distilled from PR16 live re-harvest.
+
+### `page.waitForTimeout(N)` is banned (PR #28 admin-logs.spec)
+
+Every `waitForTimeout` call is a latent flake: CI jitter makes 500ms
+sometimes 100ms (too short, test races) and sometimes 3s (wastes CI
+time). Wait on **observable state** instead.
+
+```ts
+// ❌
+await page.click('[data-testid="logs-filter-apply"]');
+await page.waitForTimeout(500);
+await expect(testid(page, 'logs-table')).toContainText('2026-04-23');
+
+// ✅ — wait on the response you just triggered
+await Promise.all([
+  page.waitForResponse(r =>
+    r.url().includes('/api/admin/logs/chat') && r.request().method() === 'GET'
+  ),
+  page.click('[data-testid="logs-filter-apply"]'),
+]);
+await expect(testid(page, 'logs-table')).toContainText('2026-04-23');
+
+// ✅ — wait on the state marker the component publishes
+await page.click('[data-testid="logs-filter-apply"]');
+await waitForReady(page, 'logs-table');
+await expect(testid(page, 'logs-table')).toContainText('2026-04-23');
+```
+
+### `context.route` is also covered by R13
+
+The `verify-e2e-real-data.sh` script originally only greped
+`page.route(`. Playwright also intercepts via `browserContext.route`
+or `page.context().route()` — the same semantic at a different
+scope. PR #21 caught that gap; the script was patched. When
+authoring a new scenario, treat `context.route` identically to
+`page.route`:
+
+```ts
+// ❌ — bypasses the R13 gate without the marker
+await page.context().route('**/api/admin/metrics/**', r => r.fulfill({ status: 500 }));
+
+// ✅ — R13: failure injection marker + real path covered elsewhere
+/* R13: failure injection — real path tested in "renders KPIs + health + charts" */
+await page.context().route('**/api/admin/metrics/**', r => r.fulfill({ status: 500 }));
+```
+
+### Other PR16 learnings
+
+- `remark-parse` must be listed as a direct devDependency in
+  `package.json` — relying on transitive resolution breaks in fresh
+  installs (PR #20).
+- `Composer.test.tsx`-style TS file that references
+  `React.ReactElement` without importing it fails `tsc -b` in CI —
+  always `import type { ReactElement } from 'react'` (PR #20).
+- `playwright.config.ts` MUST have a `webServer` block — without it,
+  `baseURL` is unreachable in CI (PR #20).
+- `Locator.evaluate` is `(fn, arg?)` — three args fails typecheck
+  (PR #20).
+- Happy path never stubs an internal chat endpoint unless the
+  endpoint triggers an AI-provider call (R13 proxy pattern).
+
+### Pre-PR checklist — extended
+
+Add to the main checklist above:
+
+- [ ] `rg 'waitForTimeout' frontend/e2e/` returns zero rows.
+- [ ] Every `context.route(...)` targeting an internal path carries
+      the `R13: failure injection` marker comment.
+- [ ] `package.json` lists every module your tests import directly
+      (no reliance on transitive resolution).
+- [ ] `playwright.config.ts` has a `webServer` block that boots
+      `php artisan serve` with `APP_ENV=testing`.
