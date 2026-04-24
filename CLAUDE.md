@@ -425,10 +425,10 @@ Laravel app, the real database (SQLite in CI, seeded via the
 real Sanctum cookies, real controllers. `page.route(...)` is
 **only** allowed to intercept calls that leave the application
 boundary — the AI provider (OpenRouter / OpenAI / Anthropic /
-Gemini / Regolo), email sending (Mailgun / SES / Mailersend),
-remote object storage, payment rails, OCR APIs, or any other
-third-party service that costs money or requires production
-credentials. Intercepting `/api/admin/*`, `/api/kb/*`,
+Gemini / Regolo), email sending (Mailgun / SendGrid / Mailersend),
+remote object storage (S3 / GCS / R2), payment rails (Stripe),
+OCR APIs, or any other third-party service that costs money or
+requires production credentials. Intercepting `/api/admin/*`, `/api/kb/*`,
 `/api/auth/*`, `/sanctum/csrf-cookie`, `/conversations`, or any
 other internal route is a bug — the scenario becomes a unit test
 in E2E clothing and stops catching the kind of integration

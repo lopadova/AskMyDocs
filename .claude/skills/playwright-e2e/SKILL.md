@@ -66,28 +66,47 @@ CI runs the same script. A red exit is a merge block.
 
 ## Directory layout
 
+**Current repo layout** (after PR #20):
+
 ```
 frontend/
-├── playwright.config.ts      ← webServer block boots php artisan serve (R13)
 ├── e2e/
 │   ├── auth.setup.ts         ← one-time admin login → playwright/.auth/admin.json
-│   ├── viewer.setup.ts       ← one-time viewer login → playwright/.auth/viewer.json
 │   ├── fixtures.ts           ← seeded auto-fixture via /testing/reset + /testing/seed
 │   ├── helpers.ts            ← testid getters, data-state waits
-│   ├── auth.spec.ts          ← login / forgot / reset real flows
-│   ├── chat.spec.ts
-│   ├── admin-dashboard.spec.ts
-│   ├── admin-users.spec.ts
-│   ├── admin-kb.spec.ts
-│   ├── admin-logs.spec.ts
-│   ├── admin-maintenance.spec.ts
-│   └── admin-insights.spec.ts
-└── playwright/.auth/         ← gitignored
+│   └── chat.spec.ts
+playwright.config.ts           ← repo root; webServer block boots php artisan serve (R13)
+playwright/.auth/              ← gitignored
 ```
 
-## `playwright.config.ts` — mandatory shape
+**Target layout** as admin/KB/logs/maintenance surfaces land in
+PR6–PR10. Add each file only when the corresponding PR introduces
+it — don't bootstrap empty files ahead of the feature:
+
+```
+frontend/e2e/
+├── auth.setup.ts
+├── viewer.setup.ts           ← ADD in the first PR that needs RBAC-split tests (PR6)
+├── fixtures.ts
+├── helpers.ts
+├── auth.spec.ts              ← ADD when login/forgot/reset get real-flow coverage
+├── chat.spec.ts
+├── admin-dashboard.spec.ts           ← PR6 Phase F1
+├── admin-dashboard-viewer.spec.ts    ← PR6, uses viewer storage state
+├── admin-users.spec.ts               ← PR7 Phase F2
+├── admin-kb.spec.ts                  ← PR8 Phase G
+├── admin-logs.spec.ts                ← PR9 Phase H
+├── admin-maintenance.spec.ts         ← PR9 Phase H
+└── admin-insights.spec.ts            ← PR10 Phase I
+```
+
+## `playwright.config.ts` — current shape (post PR #20)
+
+The repo ships with a **single-role** config today. Use it as-is
+when the scenario only needs the admin storage state:
 
 ```ts
+// playwright.config.ts — current shape
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
@@ -119,23 +138,48 @@ export default defineConfig({
     stderr: 'pipe',
   },
   projects: [
-    { name: 'admin-setup',  testMatch: /auth\.setup\.ts/ },
-    { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
+    { name: 'setup', testMatch: /.*\.setup\.ts/ },
     {
-      name: 'chromium-admin',
+      name: 'chromium',
       use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/admin.json' },
-      dependencies: ['admin-setup'],
-      testIgnore: /.*\.setup\.ts|.*-viewer\.spec\.ts/,
-    },
-    {
-      name: 'chromium-viewer',
-      use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/viewer.json' },
-      dependencies: ['viewer-setup'],
-      testMatch: /.*-viewer\.spec\.ts/,
+      dependencies: ['setup'],
+      testIgnore: /.*\.setup\.ts/,
     },
   ],
 });
 ```
+
+### Multi-role upgrade (apply in PR #6 when the first RBAC-split test lands)
+
+When a PR first needs to verify an admin-only route returns
+`admin-forbidden` to a viewer, extend the config to this shape —
+this is a **template**, not the current state:
+
+```ts
+// Multi-role projects — add in the PR that ships the first
+// *-viewer.spec.ts. The admin branch above remains unchanged.
+projects: [
+  { name: 'admin-setup',  testMatch: /auth\.setup\.ts/ },
+  { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
+  {
+    name: 'chromium-admin',
+    use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/admin.json' },
+    dependencies: ['admin-setup'],
+    testIgnore: /.*\.setup\.ts|.*-viewer\.spec\.ts/,
+  },
+  {
+    name: 'chromium-viewer',
+    use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/viewer.json' },
+    dependencies: ['viewer-setup'],
+    testMatch: /.*-viewer\.spec\.ts/,
+  },
+],
+```
+
+Keep `auth.setup.ts` as-is (just rename its project to `admin-setup`)
+and add a parallel `viewer.setup.ts`. Both write to
+`playwright/.auth/*.json` so the two browser projects pick the
+correct identity automatically.
 
 ## `frontend/e2e/fixtures.ts` — the `seeded` auto-fixture
 
