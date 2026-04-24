@@ -5,6 +5,59 @@
 
 ---
 
+## PR11 — Phase G4 (kb-graph-pdf agent, 2026-04-24)
+
+- **Strategy pattern + `class_exists()` guard keeps optional PDF
+  engines truly optional.** Neither Dompdf nor Browsershot is a
+  hard `require` — both sit under composer.json `suggest`, and
+  each concrete renderer calls `class_exists('Dompdf\\Dompdf')` /
+  `class_exists('Spatie\\Browsershot\\Browsershot')` before
+  dereferencing them. When the class is missing we throw the same
+  501 `PdfEngineDisabledException` as the `DisabledPdfRenderer`
+  default, so operators see a single, actionable error state
+  regardless of whether they forgot to flip `ADMIN_PDF_ENGINE` or
+  forgot to run `composer require`. `PdfRendererFactory::resolve()`
+  uses a `match` with a default arm that returns the disabled
+  renderer, so a typo in the env var also lands softly — never a
+  500 inside the container bind callback. The lesson: every
+  strategy entry point that depends on an optional package must
+  guard the class/interface reference AND have a default-safe arm
+  in the factory; doing only one leaves a foot-gun.
+- **Hand-rolled SVG radial layout vs a graph library.** reactflow
+  and sigma both pull >150 KB gzipped for a feature where we show
+  ≤ 50 nodes in a fixed circle. 20 lines of trigonometry
+  (`angle = 2π·i/n`; `x = cx + r·cos(angle)`; `y = cy + r·sin(angle)`)
+  plus a single `<svg>` element is enough. The real payoff is
+  testability: every node is a `<g data-testid="kb-graph-node-<uid>">`
+  with `data-role` + `data-type` + `data-dangling` baked in, so
+  Playwright and Vitest assertions key off deterministic testids
+  instead of fragile layout coordinates. Promote to a lib only when
+  the graph grows past 50 nodes AND zoom/pan become mandatory — not
+  before. The `dangling: true` payload from `kb_nodes` gets
+  surfaced as a dashed-stroke circle in the same pass, so the
+  operator sees "this wikilink points nowhere canonicalized yet"
+  at a glance.
+- **Tenant-scoped composite FK on `kb_edges` makes the graph
+  endpoint trivially safe.** The controller's `graph()` method
+  walks `kb_edges` with a bare `where('project_key', $project)`
+  filter — no JOIN, no sub-query gymnastics, no risk of a
+  cross-tenant leak. This is because the DB schema already
+  enforces `(project_key, from_node_uid) → (project_key,
+  node_uid)` via a composite FK, so an edge row in hr-portal
+  literally CANNOT reference an engineering node. The tenant-
+  scoping test (test_graph_returns_canonical_subgraph_tenant_scoped)
+  deliberately seeds a colliding `remote-work` slug in BOTH hr-portal
+  and engineering to prove the filter works — and the test proves
+  the schema, not the controller. The lesson: when the DB enforces
+  an invariant, the application code can lean on it; R10's
+  "tenant-scoped composite FK" language is load-bearing, not
+  decorative. Reviewers who ask for a sub-query or a JOIN for
+  "defence in depth" are asking for code that's measurably slower
+  (pgvector hash joins skip partial-index paths) and doesn't
+  improve correctness.
+
+---
+
 ## PR10 — Phase G3 (kb-editor agent, 2026-04-24)
 
 - **Disk-write-FIRST, audit-AFTER ordering**: the PATCH /raw pipeline

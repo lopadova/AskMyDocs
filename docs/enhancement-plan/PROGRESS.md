@@ -17,7 +17,7 @@
 | 8  | G1 — KB Tree Explorer | `feature/enh-g1-kb-tree` | 🎉 merged | #24 | feature/enh-f2-users-roles (PR7) | 2026-04-24 | 562/562 PHP (+11) · 78/78 Vitest (+8) · 3 new Playwright scenarios (2 admin + 1 viewer) · R13 green · Phase G split into G1..G4 (tree / detail / editor / graph+PDF) |
 | 9  | G2 — KB Document Detail | `feature/enh-g2-kb-document-detail` | ✅ PR opened | #25 | PR8 (G1) | 2026-04-24 | 575/575 PHP (+13) · 94/94 Vitest (+16) · 4 new Playwright scenarios · R13 green · read-only Preview/Meta/History; editor + graph + PDF deferred to G3/G4 |
 | 10 | G3 — KB Source Editor | `feature/enh-g3-kb-editor` | ✅ PR opened | TBD | PR9 (G2) | 2026-04-24 | 580/580 PHP (+5) · 101/101 Vitest (+7) · 4 new Playwright scenarios · R13 green · CodeMirror source editor + PATCH /raw pipeline (validate → write → audit → dispatch) |
-| 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ⏳ blocked | — | PR10 | — | Graph viewer + PDF renderer (PdfRenderer stashed) |
+| 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ✅ PR opened | TBD | PR10 (G3) | 2026-04-24 | 593/593 PHP (+13) · 106/106 Vitest (+5) · 4 new Playwright scenarios · R13 green · 1-hop tenant-scoped graph endpoint + SVG radial GraphTab + PdfRenderer strategy (Disabled/Dompdf/Browsershot) |
 | 12 | H — Logs + Maintenance | `feature/enh-h-logs-maintenance` | ⏳ blocked | — | PR11 | — | |
 | 13 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR12 | — | |
 | 14 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR13 | — | |
@@ -27,6 +27,78 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR11 — Phase G4 (KB Graph + PDF Render) checklist
+
+Final microphase 4 of 4 of Phase G. Adds the tenant-scoped 1-hop
+graph endpoint + SVG GraphTab + PdfRenderer strategy with
+Disabled/Dompdf/Browsershot implementations behind
+`config('admin.pdf_engine')`. Target ≤ 20 files touched — this PR
+lands 15 (9 backend incl. 5 PdfRenderer classes / 5 frontend / 1
+E2E / 1 seeder / 1 plan doc pair).
+
+- [x] `app/Services/Admin/Pdf/PdfRenderer.php` + 3 impls
+      (DisabledPdfRenderer / DompdfPdfRenderer / BrowsershotPdfRenderer)
+      with `class_exists()` guards so Dompdf / Browsershot stay
+      suggest-level dependencies
+- [x] `app/Services/Admin/Pdf/PdfRendererFactory.php` — config→class
+      match with safe default arm for unknown engines
+- [x] `app/Exceptions/PdfEngineDisabledException.php` — 501 HttpException
+- [x] `config/admin.php` — `pdf_engine` knob (env `ADMIN_PDF_ENGINE`,
+      default `disabled`)
+- [x] `.env.example` — documents the three engines + installation hints
+- [x] `composer.json` — adds `dompdf/dompdf` + `spatie/browsershot`
+      under the `suggest` block (NOT `require`)
+- [x] `app/Providers/AppServiceProvider.php::register()` — bind
+      `PdfRenderer::class` to `PdfRendererFactory::resolve()`
+- [x] `app/Http/Controllers/Api/Admin/KbDocumentController.php` —
+      `graph()` (tenant-scoped subgraph via composite FK, R10; 50/100
+      cap) + `exportPdf()` (R1 path normalise, R4 missing-file 404 /
+      read-fail 500, 501 for disabled engine, 500 with Log::error for
+      other Throwable)
+- [x] `routes/api.php` — GET `/api/admin/kb/documents/{document}/graph`
+      + POST `/api/admin/kb/documents/{document}/export-pdf` inside
+      the admin withTrashed() binding shim
+- [x] `tests/Feature/Api/Admin/Kb/KbDocumentControllerTest.php` — 7
+      new scenarios (graph: empty-raw / canonical-tenant-scoped /
+      viewer 403 / guest 401; exportPdf: 501-disabled / 404-missing /
+      viewer 403)
+- [x] `tests/Unit/Services/Admin/Pdf/PdfRendererFactoryTest.php` —
+      6 scenarios (disabled default / unknown falls back / dompdf /
+      browsershot / explicit override)
+- [x] `database/seeders/DemoSeeder.php` — stamps `doc_id=demo-{slug}`
+      on every canonical doc + seeds 3 `kb_nodes` + 1 `kb_edges`
+      (related_to) so the E2E happy path renders a real subgraph
+- [x] `frontend/src/features/admin/admin.api.ts` — `KbGraphNode` /
+      `KbGraphEdge` / `KbGraphResponse` types + `adminKbGraphApi`
+      (graph + exportPdf Blob)
+- [x] `frontend/src/features/admin/kb/kb-document.api.ts` —
+      `useKbGraph(id)` query (retry=false) + `useExportPdf(id)`
+      mutation
+- [x] `frontend/src/features/admin/kb/GraphTab.tsx` — SVG radial
+      layout, `data-state=loading|ready|empty|error`, per-node
+      `data-role / data-type`, per-edge `data-edge-type`
+- [x] `frontend/src/features/admin/kb/DocumentDetail.tsx` — add
+      `'graph'` to `KbDetailTab` + TabStrip + render branch +
+      Export-PDF header button with toast-on-success /
+      toast-on-501
+- [x] `frontend/src/features/admin/kb/KbView.tsx` — `VALID_TABS`
+      extended with `'graph'` (deep-linkable)
+- [x] `frontend/src/features/admin/kb/GraphTab.test.tsx` (5
+      scenarios — loading / empty / error / ready+nodes / edges)
+- [x] `frontend/src/features/admin/kb/DocumentDetail.test.tsx` —
+      stub `useExportPdf` in the module mock so the new header
+      button renders in existing scenarios
+- [x] `frontend/e2e/admin-kb-graph.spec.ts` (4 scenarios — happy
+      canonical graph / empty-ish ready / R13 failure injection /
+      export PDF 501 toast)
+- [x] `bash scripts/verify-e2e-real-data.sh` → OK (R13 green)
+- [x] `php vendor/bin/phpunit` → **593/593** (580 baseline + 13 new)
+- [x] `npm test` → **106/106** (101 baseline + 5 new)
+- [x] `npx playwright test --list` → 40 scenarios across 13 files (+4 new)
+- [x] Aggiornato `LESSONS.md` con scoperte Phase G4
+- [x] Aggiornato `PROGRESS.md` → stato ⏳ → ✅
+- [x] Commit su branch + `gh pr create` verso `feature/enh-g3-kb-editor`
 
 ### PR10 — Phase G3 (KB Source Editor) checklist
 
