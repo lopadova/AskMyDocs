@@ -15,6 +15,8 @@ use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
 use App\Models\KnowledgeDocument;
 use App\Policies\KnowledgeDocumentPolicy;
+use App\Services\Admin\Pdf\PdfRenderer;
+use App\Services\Admin\Pdf\PdfRendererFactory;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -25,7 +27,15 @@ class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        //
+        // PR11 / Phase G4 — PDF rendering strategy. The interface is
+        // resolved through {@see PdfRendererFactory} so the controller
+        // can type-hint `PdfRenderer` and let the container pick the
+        // concrete class. Default is 'disabled' — switching to
+        // 'dompdf' or 'browsershot' requires the matching suggest
+        // package (see composer.json). Bound in register() (not boot)
+        // because Laravel's HTTP kernel may resolve controller
+        // dependencies before boot() on a warm container.
+        $this->app->bind(PdfRenderer::class, fn () => PdfRendererFactory::resolve());
     }
 
     public function boot(): void
