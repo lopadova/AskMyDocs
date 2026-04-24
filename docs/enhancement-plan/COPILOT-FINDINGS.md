@@ -242,35 +242,82 @@
 
 ### PR #30 — Phase I (AI Insights)
 
-No Copilot findings landed against PR #30 before Phase J branched.
-The retrospective `gh api repos/<org>/<repo>/pulls/30/comments` call
-during Phase J returned zero finding-shaped rows. Re-harvest at PR16
-in case Copilot finishes its review after this PR lands.
+> Retrospective note — PR15's `gh api repos/<org>/<repo>/pulls/30/comments`
+> call returned zero finding-shaped rows at Phase J branch time. The PR16
+> live re-harvest (via the same API, after Phase J merged) surfaced 10
+> rows against PR #30 — Copilot finished its review between Phase J close
+> and PR16 open. Rows captured here; fixes deferred to a follow-up commit
+> on `main` (this PR is meta-only, no `app/` changes).
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `app/Services/Admin/AiInsightsService.php` | `doc-drift` | Injects `PromotionSuggestService` but never uses it — dead dependency / misleading ctor | (deferred) |
+| `app/Services/Admin/AiInsightsService.php` | `hardcoded-subset` | `suggestTagsBatch()` selects first N canonical docs without filtering on missing/empty tags — wasted LLM spend | (deferred) |
+| `app/Services/Admin/AiInsightsService.php` | `r3-bulk` | `qualityReport()` groups by `LENGTH(chunk_text)` in SQL then iterates all rows in PHP — worst case O(#chunks) groups | (deferred) |
+| `app/Services/Admin/AiInsightsService.php` | `r3-bulk` | `detectOrphans()` runs `chunks()->count()` + `KbEdge::exists()` inside `chunkById` loop — classic N+1 | (deferred) |
+| `app/Http/Controllers/Api/Admin/AdminInsightsController.php` | `silent-200` | `Carbon::parse($date)` non-strict — accepts `2026-02-30` then normalises silently; docstring says 404-on-malformed, impl returns 200 | (deferred) |
+| `docs/enhancement-plan/PROGRESS.md` | `doc-drift` | Claims "4 new Playwright scenarios" while listing 3+1+2 = 6 | (deferred) |
+| `frontend/src/features/admin/insights/PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | Overrides `window.location` via `Object.defineProperty` in `beforeEach` but never restores — leaks across Vitest suites | (deferred) |
+| `frontend/src/features/admin/kb/MetaTab.tsx` | `doc-drift` | Block comment says "renders nothing while loading" but impl renders explicit loading + error UI | (deferred) |
+| `database/migrations/2026_04_24_000020_create_admin_insights_snapshots.php` | `doc-drift` | `unique(snapshot_date)` already creates an index; explicit `index(snapshot_date)` is redundant (production migration) | (deferred) |
+| `tests/database/migrations/0001_01_01_000021_create_admin_insights_snapshots.php` | `doc-drift` | Same redundant `snapshot_date` index on the SQLite mirror | (deferred) |
+
+### PR #31 — Phase J (Docs + E2E + polish)
+
+Live re-harvest ran against PR #31 (Phase J). Copilot returned zero
+finding-shaped rows. This is consistent with Phase J being a docs +
+one-spec + manifest PR with no new routes / migrations / controllers.
+Table kept empty — future regressions against PR #31 should append
+here in normal order.
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| (none) | — | — | — |
 
 ---
 
-## Category frequency snapshot (PR #16 → PR #29)
+## Category frequency snapshot (PR #16 → PR #31, regenerated at PR16)
 
-| Tag | Count | Enough to skill? |
-|---|---|---|
-| `doc-drift` | 18 | **YES** — already a skill (`docs-match-code`) but needs expansion to include comment-drift + PROGRESS.md + migration filename drift + docblock/implementation drift |
-| `silent-200` | 11 | **YES** — new skill `surface-failures-loudly` |
-| `r13-real-data` | 7 | covered by `playwright-e2e` skill |
-| `a11y` | 7 | **YES** — new skill `frontend-a11y-checklist` |
-| `r10-scope` / `r10-audit` | 6 | covered by `canonical-awareness` skill, but add audit-identifier-on-edit rule |
-| `env-config-drift` | 6 | covered by `docs-match-code` skill; strengthen env parsing pattern |
-| `render-stale` | 5 | **YES** — new skill `react-effect-sync-cached-state` (emphasise Fragment-key pattern — caught THREE times PR26/PR28/PR29) |
-| `r7-silence` | 2 | covered by existing skill (R7) / CLAUDE.md rule — taxonomy tag added in PR28 for consistency |
-| `r11-testid` | 6 | covered by `frontend-testid-conventions` skill; emphasise `data-state` value contract |
-| `r3-bulk` | 4 | covered by `memory-safe-bulk-ops` skill; add chunkById+orderBy gotcha |
-| `injection-attack` | 3 | **YES** — new skill `input-escape-complete` (LIKE + fnmatch + regex) |
-| `hardcoded-subset` | 5 | **YES** — new skill `derive-from-db-not-literal` |
-| `test-no-coverage` / `test-ordering-assumption` / `r12-failure-path` | 7 | **YES** — new skill `test-actually-tests-what-it-claims` |
-| `r1-path` / `r4-silent` / `r2-softdelete` | 6 | covered by existing skills (R1/R2/R4) |
-| `regex-literal` | 1 | anecdote in LESSONS |
-| `route-model-binding` | 4 | **YES** — new skill `route-contracts-match-fe-shape` (also covers positional-vs-option Artisan invocation) |
-| `csrf-priming` | 1 | anecdote |
-| **`security` (NEW)** | 1 | **YES — HIGHEST PRIORITY** — mint a dedicated skill + rule `concurrent-invariants-hold-the-lock` even on a single occurrence: concurrency / crypto invariant bugs turn into RCE or single-use-bypass; never demote to anecdote |
+Live harvest via `gh api /repos/lopadova/AskMyDocs/pulls/<N>/comments`
+for N ∈ [16..31] on 2026-04-24: **110 total finding-shaped rows**
+(catalogue prior to this PR logged ~100 — the 10-row delta is the
+retrospective PR #30 block above).
+
+Per-PR breakdown: PR #28 = 14 · PR #20 = 12 · PR #30 = 10 · PR #24 = 8 ·
+PR #29 = 8 · PR #19 = 8 · PR #26 = 7 · PR #18 = 7 · PR #25 = 6 · PR #21
+= 6 · PR #27 = 5 · PR #23 = 5 · PR #22 = 5 · PR #17 = 5 · PR #16 = 4 ·
+PR #31 = 0.
+
+Per-tag frequency (after the PR #30 re-harvest; rule column reflects
+PR16 mint decisions):
+
+| Tag | Count (PR#16→#31) | Rule? | Skill action |
+|---|---|---|---|
+| `doc-drift` | 22 | R9 (existing) | EXTEND `docs-match-code` — add comment-drift + PROGRESS.md row drift + docblock/impl drift + migration-filename drift |
+| `silent-200` | 12 | **R14 (new)** | NEW `surface-failures-loudly` |
+| `a11y` | 7 | **R15 (new)** | NEW `frontend-a11y-checklist` |
+| `r13-real-data` | 7 | R13 (existing) | EXTEND `playwright-e2e` — ban `waitForTimeout`, cover `context.route` |
+| `test-no-coverage` + `test-ordering-assumption` + `r12-failure-path` | 9 | **R16 (new)** | NEW `test-actually-tests-what-it-claims` |
+| `r11-testid` | 6 | R11 (existing) | EXTEND `frontend-testid-conventions` — enumerate `data-state` contract |
+| `r3-bulk` | 6 | R3 (existing) | EXTEND `memory-safe-bulk-ops` — chunkById+orderBy pitfall + N+1-in-chunk |
+| `env-config-drift` | 6 | R6 / R9 | EXTEND `docs-match-code` — CSV env var parsing discipline |
+| `render-stale` | 6 | **R17 (new)** | NEW `react-effect-sync-cached-state` — emphasise Fragment-key pattern (caught at PR26/28/29) |
+| `r10-scope` + `r10-audit` | 6 | R10 (existing) | covered by `canonical-awareness` — add audit-identifier-on-edit note |
+| `r1-path` + `r4-silent` + `r2-softdelete` | 6 | R1/R2/R4 (existing) | covered by existing skills; no change |
+| `hardcoded-subset` | 5 | **R18 (new)** | NEW `derive-from-db-not-literal` |
+| `route-model-binding` | 4 | **R20 (new)** | NEW `route-contracts-match-fe-shape` (positional-vs-option Artisan + FE↔BE payload shape) |
+| `injection-attack` | 3 | **R19 (new)** | NEW `input-escape-complete` (LIKE + fnmatch + regex + whitespace CSV) |
+| `r7-silence` | 2 | R7 (existing) | tag added in PR28 for consistency |
+| `r8-path-prefix` | 1 | R8 (existing) | covered |
+| `route-middleware` | 1 | route-contracts (R20) | merged into R20 skill |
+| `regex-literal` | 1 | anecdote | LESSONS only |
+| `csrf-priming` | 1 | anecdote | LESSONS only |
+| **`security`** | 1 | **R21 (new — HIGHEST)** | NEW `security-invariants-atomic-or-absent` — single-use-consume race in `CommandRunnerService::consumeConfirmToken` (PR #29 `59d95bc`). Security findings never demote to anecdote. |
+
+Count totals 112 vs 110 harvested — two rows have cross-tagged categories
+(e.g. PR #25 DemoSeeder `r1-path` + `r4-silent`, PR #17 route-middleware
++ env-config-drift) and are double-counted on purpose so every mint
+decision is traceable.
 
 ---
 
