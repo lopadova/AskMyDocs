@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
@@ -206,6 +207,30 @@ Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
                 ->name('api.admin.logs.activity');
             Route::get('/failed-jobs', [LogViewerController::class, 'failedJobs'])
                 ->name('api.admin.logs.failed-jobs');
+        });
+
+        // Phase I — AI insights. /latest + /{date} read the pre-computed
+        // snapshot; /compute triggers a recompute (super-admin only +
+        // throttle:3,5 because it burns provider quota);
+        // /document/{id}/ai-suggestions returns per-doc tag proposals
+        // on demand for the KB Meta tab (throttle:6,1 — one LLM call
+        // per request).
+        Route::prefix('insights')->group(function () {
+            Route::get('/latest', [AdminInsightsController::class, 'latest'])
+                ->name('api.admin.insights.latest');
+            Route::post('/compute', [AdminInsightsController::class, 'compute'])
+                ->middleware(['permission:commands.destructive', 'throttle:3,5'])
+                ->name('api.admin.insights.compute');
+            Route::get('/document/{documentId}/ai-suggestions', [AdminInsightsController::class, 'documentSuggestions'])
+                ->whereNumber('documentId')
+                ->middleware('throttle:6,1')
+                ->name('api.admin.insights.document.ai-suggestions');
+            // `/{date}` must come AFTER the literal prefixes above so
+            // `/latest` and `/compute` aren't swallowed by the date
+            // matcher.
+            Route::get('/{date}', [AdminInsightsController::class, 'byDate'])
+                ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
+                ->name('api.admin.insights.by-date');
         });
 
         // Phase H2 — Maintenance command runner. Write-path actions

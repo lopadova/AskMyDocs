@@ -31,6 +31,9 @@ class TestingController extends Controller
         'RbacSeeder' => \Database\Seeders\RbacSeeder::class,
         'EmptyAdminSeeder' => \Database\Seeders\EmptyAdminSeeder::class,
         'AdminDegradedSeeder' => \Database\Seeders\AdminDegradedSeeder::class,
+        // PR14 / Phase I — one deterministic snapshot row for the
+        // /app/admin/insights happy-path E2E.
+        'AdminInsightsSeeder' => \Database\Seeders\AdminInsightsSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

@@ -229,16 +229,31 @@
 
 | Path | Category | Pattern | Fix SHA |
 |---|---|---|---|
-| `CommandRunnerService::invokeArtisan` | `route-model-binding` | `--` prepended to every arg key; positional args never populate (kb:delete {path}, queue:retry {id}, kb:ingest-folder {path?}) | (pending) |
-| `MaintenanceCommandController::schedulerStatus` | `doc-drift` | Returned `admin-audit:prune --days=365` but scheduler runs bare `admin-audit:prune` | (pending) |
-| `config/admin.php` command_runner docblock | `doc-drift` | Said tokens are `Crypt::encryptString + sha256 nonce` + TTL=0 disables; real impl is plain random + TTL=0 ≠ disable | (pending) |
-| `CommandHistoryTable` rows.map | `render-stale` | `<>` fragment can't carry key; key-on-inner-<tr> is a React reconciliation bug | (pending) |
-| `LESSONS.md` | `doc-drift` | Table name `admin_command_audits` (plural) vs real `admin_command_audit` (singular) | (pending) |
-| `migration docblock` | `doc-drift` | Said `token_hash` is sha256 of encrypted signed body; real impl is sha256 of raw random | (pending) |
-| `PROGRESS.md` | `doc-drift` | Migration filenames without timestamp prefix, don't match the real files on disk | (pending) |
-| `CommandRunnerService::consumeConfirmToken` | **`security`** (NEW) | `lockForUpdate()` inside transaction, `used_at` update OUTSIDE → race window where 2 concurrent /run succeed with same token, breaking single-use guarantee | (pending) |
+| `CommandRunnerService::invokeArtisan` | `route-model-binding` | `--` prepended to every arg key; positional args never populate (kb:delete {path}, queue:retry {id}, kb:ingest-folder {path?}) | `59d95bc` |
+| `MaintenanceCommandController::schedulerStatus` | `doc-drift` | Returned `admin-audit:prune --days=365` but scheduler runs bare `admin-audit:prune` | `59d95bc` |
+| `config/admin.php` command_runner docblock | `doc-drift` | Said tokens are `Crypt::encryptString + sha256 nonce` + TTL=0 disables; real impl is plain random + TTL=0 ≠ disable | `59d95bc` |
+| `CommandHistoryTable` rows.map | `render-stale` | `<>` fragment can't carry key; key-on-inner-<tr> is a React reconciliation bug | `59d95bc` |
+| `LESSONS.md` | `doc-drift` | Table name `admin_command_audits` (plural) vs real `admin_command_audit` (singular) | `59d95bc` |
+| `migration docblock` | `doc-drift` | Said `token_hash` is sha256 of encrypted signed body; real impl is sha256 of raw random | `59d95bc` |
+| `PROGRESS.md` | `doc-drift` | Migration filenames without timestamp prefix, don't match the real files on disk | `59d95bc` |
+| `CommandRunnerService::consumeConfirmToken` | **`security`** (NEW) | `lockForUpdate()` inside transaction, `used_at` update OUTSIDE → race window where 2 concurrent /run succeed with same token, breaking single-use guarantee | `59d95bc` |
 
 **New category surfaced this PR**: **`security`** — concurrency or crypto invariant violations that turn into RCE / single-use bypasses. Highest priority tag. Any future finding tagged `security` MUST land in a distilled skill + dedicated rule at PR16 (not a "nice to have" anecdote). The concurrent-consume bug here is a textbook instance — documented at length in the fix commit message so the pattern is searchable.
+
+### PR #30 — Phase I (AI Insights)
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `AiInsightsService` constructor | `doc-drift` | PromotionSuggestService injected but never called — dead dep | `bd40780` |
+| `AiInsightsService::suggestTagsBatch` | `hardcoded-subset` | Picks first N canonical docs without "missing tags" SQL filter → wasteful LLM calls | `bd40780` |
+| `AiInsightsService::qualityReport` | `r3-bulk` **(CRITICAL)** | `GROUP BY LENGTH(chunk_text)` produces up to N groups; bucket/outlier logic in PHP | `bd40780` |
+| `AdminInsightsController::byDate` | `silent-200` | `Carbon::parse` permissive (accepts 2026-02-30); 422 vs docstring's 404 | `bd40780` |
+| `PROGRESS.md` row 14 | `doc-drift` | "4 new Playwright scenarios" but enumerates 6 | `bd40780` |
+| `PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | `Object.defineProperty(window, 'location')` not restored in afterEach — cross-suite pollution | `bd40780` |
+| `MetaTab.tsx` AiSuggestionsBlock | `doc-drift` | Block comment says "render nothing while loading" but impl renders explicit loading UI | `bd40780` |
+| `admin_insights_snapshots` test migration | `doc-drift` | Redundant explicit index on `snapshot_date` (unique already creates one) | `bd40780` |
+| `AiInsightsService::detectOrphans` | `r3-bulk` **(CRITICAL)** | Per-doc `chunks()->count()` + `KbEdge::exists()` = N+1 (thousands of queries on 10k-doc corpus) | `bd40780` |
+| `admin_insights_snapshots` prod migration | `doc-drift` | Same redundant index | `bd40780` |
 
 ---
 

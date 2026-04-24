@@ -16,6 +16,7 @@ import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
+import { InsightsView } from '../features/admin/insights/InsightsView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -275,6 +276,23 @@ const adminKbRoute = createRoute({
     component: AdminKbRoute,
 });
 
+// PR14 / Phase I — Admin Insights. Same flat RBAC pattern — guard
+// inside the component so direct /app/admin/insights hits always
+// resolve to either the view or <AdminForbidden /> on viewer.
+function AdminInsightsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <InsightsView />
+        </RequireRole>
+    );
+}
+
+const adminInsightsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/insights',
+    component: AdminInsightsRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -296,6 +314,7 @@ const routeTree = rootRoute.addChildren([
         adminKbRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
+        adminInsightsRoute,
     ]),
 ]);
 

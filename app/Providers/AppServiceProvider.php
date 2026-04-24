@@ -3,12 +3,15 @@
 namespace App\Providers;
 
 use App\Console\Commands\AuthGrantCommand;
+use App\Console\Commands\InsightsComputeCommand;
 use App\Console\Commands\KbDeleteCommand;
 use App\Console\Commands\KbIngestCommand;
 use App\Console\Commands\KbIngestFolderCommand;
 use App\Console\Commands\KbPromoteCommand;
 use App\Console\Commands\KbRebuildGraphCommand;
 use App\Console\Commands\KbValidateCanonicalCommand;
+use App\Console\Commands\PruneAdminCommandAuditCommand;
+use App\Console\Commands\PruneAdminCommandNoncesCommand;
 use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
@@ -65,6 +68,11 @@ class AppServiceProvider extends ServiceProvider
             KbRebuildGraphCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
+            // PR13 / Phase H2 — admin audit + nonces rotations.
+            PruneAdminCommandAuditCommand::class,
+            PruneAdminCommandNoncesCommand::class,
+            // PR14 / Phase I — daily AI insights snapshot.
+            InsightsComputeCommand::class,
         ]);
     }
 

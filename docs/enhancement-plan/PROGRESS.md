@@ -20,7 +20,7 @@
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ✅ PR opened | TBD | PR10 (G3) | 2026-04-24 | 593/593 PHP (+13) · 106/106 Vitest (+5) · 4 new Playwright scenarios · R13 green · 1-hop tenant-scoped graph endpoint + SVG radial GraphTab + PdfRenderer strategy (Disabled/Dompdf/Browsershot) |
 | 12 | H1 — Log Viewer (read-only) | `feature/enh-h1-log-viewer` | ✅ PR opened | TBD | PR11 (G4) | 2026-04-24 | 621/621 PHP (+28) · 120/120 Vitest (+14) · 8 new Playwright scenarios (6 admin + 2 viewer) · R13 green · Phase H split into H1 (read-only log viewer) + H2 (maintenance wizard + command runner) · adds spatie/laravel-activitylog ^5.0 as soft dep |
 | 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance-panel` | ✅ PR opened | TBD | PR12 (H1) | 2026-04-24 | 668/668 PHP (+47) · 132/132 Vitest (+12) · 6 new Playwright scenarios (4 admin + 1 super-admin + 1 viewer) · R13 green · 6-gate whitelisted Artisan runner (whitelist / schema / signed-token / permission / audit-first / rate-limit) + CommandWizard SPA + scheduler widget + 2 prune schedulers |
-| 14 | I — AI Insights | `feature/enh-i-ai-insights` | ⏳ blocked | — | PR13 (H2) | — | |
+| 14 | I — AI Insights | `feature/enh-i-ai-insights` | ✅ PR opened | TBD | PR13 (H2) | 2026-04-24 | 701/701 PHP (+33) · 144/144 Vitest (+12) · 6 new Playwright scenarios (3 admin + 1 super-admin + 2 viewer) · R13 green · 6 insight widgets + daily compute + AiInsightsService composed via AiManager + KB MetaTab ai-suggestions integration |
 | 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ⏳ blocked | — | PR14 (I) | — | |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
@@ -28,6 +28,91 @@ Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · �
 ## Checklist per PR corrente
 
 Copiata dal template a inizio lavoro, spunta man mano.
+
+### PR14 — Phase I (AI Insights) checklist
+
+Second-to-last enhancement phase. Daily-computed insights snapshot
+under `/app/admin/insights` — 6 widget cards backed by a single JSON
+table, one scheduler pass at 05:00, zero LLM calls on the read path.
+Target ≤ 25 files touched — this PR lands 22 (6 backend + 10
+frontend + 3 E2E + 3 tests + 1 seeder + 1 docs pair).
+
+- [x] `database/migrations/2026_04_24_000020_create_admin_insights_snapshots.php`
+      + mirror test migration — one row per day (unique on
+      `snapshot_date`) with 6 independently-nullable JSON payload
+      columns + telemetry pair.
+- [x] `app/Models/AdminInsightsSnapshot.php` — casts for every JSON
+      column + `latestSnapshot()` scope matching the SPA read path.
+- [x] `app/Services/Admin/AiInsightsService.php` — 6 functions
+      composed via existing `AiManager` + `PromotionSuggestService`.
+      Every bulk walk uses `chunkById(100)` (R3); every query uses
+      `canonical()` / `raw()` scopes (R10). LLM-bearing methods
+      bubble `RuntimeException`.
+- [x] `app/Console/Commands/InsightsComputeCommand.php` — try/catch
+      per function (partial-failure null-column), `--force` replace,
+      `--date` override, idempotent no-op without `--force`.
+- [x] `bootstrap/app.php` — scheduler entry at 05:00 daily,
+      onOneServer + withoutOverlapping.
+- [x] `app/Http/Controllers/Api/Admin/AdminInsightsController.php` —
+      `latest` (404 with hint) / `byDate` / `compute` (202 + audit
+      row, permission:commands.destructive + throttle:3,5) /
+      `documentSuggestions` (throttle:6,1).
+- [x] `routes/api.php` — 4 routes under the admin group with the
+      per-route permission + throttle layers. Uses `{documentId}`
+      param name to avoid collision with the admin group's
+      `withTrashed()` binding shim.
+- [x] `app/Providers/AppServiceProvider.php` — register
+      InsightsComputeCommand + both admin prune commands (Testbench
+      doesn't auto-register; necessary for the compute test and the
+      existing H2 scheduler tests).
+- [x] `tests/Feature/Api/Admin/AdminInsightsControllerTest.php` (12
+      scenarios — latest happy/404, byDate happy/404/422,
+      compute 202+audit/403-permission/throttle-429,
+      documentSuggestions happy/404, RBAC viewer/guest).
+- [x] `tests/Feature/Admin/AiInsightsServiceTest.php` (14 scenarios
+      — each of the 6 functions + edge cases).
+- [x] `tests/Feature/Commands/InsightsComputeCommandTest.php` (6
+      scenarios — happy, partial-failure null-column, --force replace,
+      no-force noop, bad --date, explicit date).
+- [x] `frontend/src/features/admin/insights/insights.api.ts` — 4
+      TanStack hooks (latest / byDate / compute / documentAiSuggestions).
+- [x] `frontend/src/features/admin/insights/InsightsView.tsx` —
+      loading / empty (404) / error / ready states + highlight strip.
+- [x] `PromotionSuggestionsCard` + `OrphanDocsCard` +
+      `SuggestedTagsCard` + `CoverageGapsCard` + `StaleDocsCard` +
+      `QualityReportCard` — each with `data-testid="insight-card-<slug>"`
+      + `data-state` per R11.
+- [x] `frontend/src/routes/index.tsx` — `/app/admin/insights` wrapped
+      in RequireRole.
+- [x] `frontend/src/features/admin/shell/AdminShell.tsx` — Insights
+      rail entry pivoted from placeholder to real route.
+- [x] `frontend/src/features/admin/kb/MetaTab.tsx` — AI suggestions
+      block via `useDocumentAiSuggestions(doc.id)`; renders nothing
+      when zero tags (no empty-state cruft on the tab).
+- [x] `frontend/src/features/admin/insights/InsightsView.test.tsx` (5
+      Vitest scenarios — loading / empty-on-404 / error-on-500 /
+      ready-6-cards / highlight aggregates).
+- [x] `frontend/src/features/admin/insights/PromotionSuggestionsCard.test.tsx`
+      (4 scenarios — empty / ready / promote pivot / 10-row cap).
+- [x] `frontend/src/features/admin/insights/QualityReportCard.test.tsx`
+      (3 scenarios — empty / 5 buckets / plural vs singular copy).
+- [x] `database/seeders/AdminInsightsSeeder.php` + TestingController
+      allowlist — one deterministic snapshot row for the happy-path
+      E2E.
+- [x] `frontend/e2e/admin-insights.spec.ts` (3 scenarios — happy
+      seeded / no-snapshot empty / R13 flagged 500 injection).
+- [x] `frontend/e2e/admin-insights-super-admin.spec.ts` (1 scenario
+      — POST /compute returns 202 + audit id).
+- [x] `frontend/e2e/admin-insights-viewer.spec.ts` (2 scenarios —
+      UI forbidden + API 403).
+- [x] R13 gate: `bash scripts/verify-e2e-real-data.sh` → OK.
+- [x] PHPUnit baseline: 701/701 green (668 PR13 baseline + 33 new).
+- [x] Vitest baseline: 144/144 green (132 PR13 baseline + 12 new).
+- [x] Playwright `--list`: 62 tests in 22 files (+4 new).
+- [x] `LESSONS.md` — PR14 entry with 3 bullets.
+- [x] `PROGRESS.md` → stato ⏳ → ✅.
+- [x] Commit su branch, push, `gh pr create` verso
+      `feature/enh-h2-maintenance-panel`.
 
 ### PR13 — Phase H2 (Maintenance + command runner) checklist
 
