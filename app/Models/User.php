@@ -15,6 +15,16 @@ class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
 
+    // Pin Spatie HasRoles to the `web` guard regardless of the request
+    // context. Without this, calls like `$user->syncRoles(['viewer'])`
+    // inside an `auth:sanctum` request (e.g. UserController@store under
+    // `actingAs($admin)`) resolve the guard through `Auth::getDefaultDriver()`,
+    // which is `sanctum` mid-request — and Spatie can't find the role
+    // because RbacSeeder creates every Role/Permission against `web`.
+    // Binding the User model to `web` keeps role lookup stable for
+    // every call site, API + console.
+    protected string $guard_name = 'web';
+
     // Sentinel value returned by allowedProjects() when the user has the
     // global `kb.read.any` permission (super-admin / admin / editor /
     // viewer all have it by default — see RbacSeeder). Consumers check
@@ -26,6 +36,14 @@ class User extends Authenticatable
         'email',
         'password',
         'is_active',
+    ];
+
+    // Mirror the `default(true)` on the migration so newly created
+    // User instances in memory already see `is_active = true` without
+    // an explicit `->refresh()`. Same default applies in production and
+    // tests — no drift between Eloquent state and DB state.
+    protected $attributes = [
+        'is_active' => true,
     ];
 
     protected $hidden = [
