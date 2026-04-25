@@ -27,8 +27,23 @@ setup('authenticate as admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
     // Reset + seed demo data. Both endpoints are guarded by APP_ENV=testing.
-    await page.request.post('/testing/reset');
-    await page.request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    // Surface non-2xx loudly so a silent seeder failure doesn't manifest
+    // downstream as an opaque "credentials don't match our records" 422
+    // (the error mode caught on PR #33's previous run).
+    const resetResponse = await page.request.post('/testing/reset');
+    if (!resetResponse.ok()) {
+        throw new Error(
+            `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
+        );
+    }
+    const seedResponse = await page.request.post('/testing/seed', {
+        data: { seeder: 'DemoSeeder' },
+    });
+    if (!seedResponse.ok()) {
+        throw new Error(
+            `/testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
+        );
+    }
 
     await page.request.get('/sanctum/csrf-cookie');
 
