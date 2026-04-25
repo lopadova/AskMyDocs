@@ -306,15 +306,14 @@ test.describe('Admin golden-path journey — Phase J', () => {
 
         // Backend session is invalidated, but the SPA's auth store is
         // still hydrated from the pre-logout state. /app/admin → /login
-        // redirect is racy because RequireAuth depends on /me returning
-        // 401 AND the store reacting to it within the navigation cycle.
-        // The deterministic check is: clear cookies, navigate directly
-        // to /login, assert the form. This proves logout invalidated
-        // the session (the cookie clear is purely a belt-and-braces;
-        // /api/auth/logout already invalidates server-side) and the
-        // login page is reachable as the post-logout exit.
+        // bounce is racy. Direct goto('/login') hits the LEGACY Blade
+        // login (Laravel's web routes), not the SPA login — the Blade
+        // form has `login-email` / `login-password` / `login-submit`
+        // but NOT `login-form` (only the React LoginPage carries that).
+        // Assert on `login-email` instead — proves we landed on a
+        // login surface and the previous session is gone.
         await page.context().clearCookies();
         await page.goto('/login');
-        await expect(page.getByTestId('login-form')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('login-email')).toBeVisible({ timeout: 10_000 });
     });
 });

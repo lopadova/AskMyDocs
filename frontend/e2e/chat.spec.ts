@@ -66,27 +66,46 @@ test.describe('Chat', () => {
 
     test('wikilink hover fetches and shows the preview card', async ({ page }) => {
         // R13: the wikilink resolver talks only to the local DB and
-        // DemoSeeder already seeds `remote-work-policy`. We stub ONLY
-        // the AI provider boundary (POST /conversations/*/messages
-        // invokes OpenRouter in the controller) and let the real
-        // resolver endpoint run against real data.
+        // DemoSeeder already seeds `remote-work-policy`. We stub the
+        // AI provider boundary on POST and ALSO the GET — useChatMutation
+        // calls invalidateQueries(['messages',...]) on success which
+        // triggers a refetch; without stubbing the GET the refetch hits
+        // the real backend, which has no record of the mocked POST,
+        // and the assistant message (with the wikilink) disappears
+        // before hover assertions can land.
+        const assistantMessage = {
+            id: 999,
+            role: 'assistant',
+            content: 'See [[remote-work-policy]] for the details.',
+            metadata: { provider: 'mock', model: 'mock', citations: [] },
+            rating: null,
+            created_at: new Date().toISOString(),
+        };
+        const userMessage = {
+            id: 998,
+            role: 'user',
+            content: 'Show me the remote work policy',
+            metadata: null,
+            rating: null,
+            created_at: new Date().toISOString(),
+        };
         await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
+            const method = route.request().method();
+            if (method === 'POST') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify(assistantMessage),
+                });
+            } else if (method === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify([userMessage, assistantMessage]),
+                });
+            } else {
                 await route.fallback();
-                return;
             }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 999,
-                    role: 'assistant',
-                    content: 'See [[remote-work-policy]] for the details.',
-                    metadata: { provider: 'mock', model: 'mock', citations: [] },
-                    rating: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
         });
 
         await page.goto('/app/chat');
@@ -96,14 +115,12 @@ test.describe('Chat', () => {
 
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        // Trigger mouseenter via dispatchEvent so React's onMouseEnter
-        // fires on the CURRENT DOM node, regardless of where Playwright's
-        // virtual mouse cursor is. Playwright's `hover()` moves the mouse
-        // and relies on the DOM node staying stable; React re-renders
-        // (the chat thread polls + reorders messages) keep swapping the
-        // wikilink node, so the synthetic mouse loses track and `hover`
-        // state in WikilinkHover never flips to true. Dispatching the
-        // events directly on the live node bypasses the cursor tracking.
+        // Dispatch mouseenter via evaluate — Playwright's `hover()`
+        // moves a virtual mouse cursor onto a DOM node, but React's
+        // re-renders (TanStack Query, animation passes) replace that
+        // node so the cursor sits on a detached element. dispatchEvent
+        // on the LIVE node lets React's root-attached event delegation
+        // catch the bubbled event regardless of mouse position.
         const respPromise = page.waitForResponse(
             (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
             { timeout: 15_000 },
@@ -118,10 +135,9 @@ test.describe('Chat', () => {
                 `GET /api/kb/resolve-wikilink returned non-OK: ${resp.status()} ${await resp.text()}`,
             );
         }
-        // Re-dispatch mouseenter on whichever node currently carries the
-        // testid — after the response lands React rerenders one more
-        // time and the popover (gated on `hover === true`) needs the
-        // event on the CURRENT node.
+        // After the response lands React rerenders one more time. The
+        // popover (gated on `hover === true`) needs another mouseenter
+        // on the (potentially new) current node. Re-dispatch.
         await page.locator('[data-testid="wikilink-remote-work-policy"]').first().evaluate((el) => {
             el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
             el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
@@ -134,23 +150,42 @@ test.describe('Chat', () => {
     test('wikilink resolver 500 degrades gracefully', async ({ page }) => {
         /* R13: failure injection — real path tested in "wikilink hover fetches and shows the preview card". */
         await page.route('**/api/kb/resolve-wikilink**', (route) => route.fulfill({ status: 500 }));
+        // Stub both POST and GET — see the happy-path test for why the
+        // GET stub matters (invalidateQueries refetch would otherwise
+        // wipe the wikilink message).
+        const assistantMessage = {
+            id: 998,
+            role: 'assistant',
+            content: 'See [[remote-work-policy]].',
+            metadata: { provider: 'mock', model: 'mock', citations: [] },
+            rating: null,
+            created_at: new Date().toISOString(),
+        };
+        const userMessage = {
+            id: 997,
+            role: 'user',
+            content: 'Show remote policy please',
+            metadata: null,
+            rating: null,
+            created_at: new Date().toISOString(),
+        };
         await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
+            const method = route.request().method();
+            if (method === 'POST') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify(assistantMessage),
+                });
+            } else if (method === 'GET') {
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify([userMessage, assistantMessage]),
+                });
+            } else {
                 await route.fallback();
-                return;
             }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 998,
-                    role: 'assistant',
-                    content: 'See [[remote-work-policy]].',
-                    metadata: { provider: 'mock', model: 'mock', citations: [] },
-                    rating: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
         });
 
         await page.goto('/app/chat');
