@@ -178,8 +178,16 @@ jobs:
           echo "DB_DATABASE=askmydocs_test" >> .env
           echo "DB_USERNAME=askmydocs" >> .env
           echo "DB_PASSWORD=askmydocs" >> .env
-          echo "SESSION_DRIVER=database" >> .env
-          echo "CACHE_STORE=database" >> .env
+          # Cache/session intentionally NOT on the database — the project
+          # has no cache/sessions table migration (production uses redis
+          # or file). Spatie's permission migration calls
+          # `forgetCachedPermissions()` at the end of its up(), which
+          # would crash on `database` driver before the table exists.
+          # `array` is sufficient for migrations + a Playwright run;
+          # `file` persists session cookies across HTTP requests so
+          # login flows survive across page navigations.
+          echo "CACHE_STORE=array" >> .env
+          echo "SESSION_DRIVER=file" >> .env
           echo "QUEUE_CONNECTION=sync" >> .env
 
       - name: Migrate + seed test data
