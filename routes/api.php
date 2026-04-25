@@ -67,7 +67,7 @@ Route::middleware('web')->prefix('auth')->group(function () {
     });
 });
 
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['web', 'auth:sanctum'])->group(function () {
     Route::post('/kb/chat', KbChatController::class);
     Route::post('/kb/ingest', KbIngestController::class);
     Route::delete('/kb/documents', KbDeleteController::class);
@@ -95,7 +95,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 | admin OR super-admin is admitted; viewer / editor get 403.
 |
 */
-Route::middleware(['auth:sanctum', 'role:admin|super-admin'])
+Route::middleware(['web', 'auth:sanctum', 'role:admin|super-admin'])
     ->prefix('admin')
     ->group(function () {
         Route::get('/metrics/overview', [DashboardMetricsController::class, 'overview'])
