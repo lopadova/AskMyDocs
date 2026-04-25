@@ -27,8 +27,20 @@ const SUPER_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'password';
 setup('authenticate as super-admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    await page.request.post('/testing/reset');
-    await page.request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    const resetResponse = await page.request.post('/testing/reset');
+    if (!resetResponse.ok()) {
+        throw new Error(
+            `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
+        );
+    }
+    const seedResponse = await page.request.post('/testing/seed', {
+        data: { seeder: 'DemoSeeder' },
+    });
+    if (!seedResponse.ok()) {
+        throw new Error(
+            `/testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
+        );
+    }
 
     await page.request.get('/sanctum/csrf-cookie');
 

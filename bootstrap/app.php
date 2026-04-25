@@ -26,6 +26,18 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
+
+        // CSRF except list — `/testing/*` POST endpoints are env-gated
+        // (only registered when APP_ENV=testing in routes/web.php) and
+        // exclusively driven by Playwright's auth setup, which has no
+        // way to acquire a CSRF token before its very first call. The
+        // routes themselves are triple-locked: `app()->environment()`
+        // check on the route registration, plus an `abort_unless` in
+        // the controller. Skipping CSRF here is a controlled exception,
+        // not a general loosening.
+        $middleware->validateCsrfTokens(except: [
+            'testing/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
