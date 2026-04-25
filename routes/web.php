@@ -87,3 +87,19 @@ if (app()->environment('testing')) {
     Route::post('/testing/reset', [TestingController::class, 'reset'])->name('testing.reset');
     Route::post('/testing/seed', [TestingController::class, 'seed'])->name('testing.seed');
 }
+
+/*
+|--------------------------------------------------------------------------
+| Healthcheck (always on, intentionally tiny)
+|--------------------------------------------------------------------------
+|
+| Used by Playwright's `webServer.url` poll. Lives outside both `auth`
+| and `guest` middleware groups so it doesn't trigger redirect loops or
+| view rendering that could 4xx/5xx and stall the boot probe. Returns
+| a plain 200 with a stable body so the probe has an unambiguous green
+| signal as soon as the framework is ready to serve.
+|
+*/
+
+Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/plain']))
+    ->name('healthz');

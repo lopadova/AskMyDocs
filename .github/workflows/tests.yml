@@ -189,6 +189,16 @@ jobs:
           echo "CACHE_STORE=array" >> .env
           echo "SESSION_DRIVER=file" >> .env
           echo "QUEUE_CONNECTION=sync" >> .env
+          # `storage/framework/*` is gitignored except for `.gitkeep`,
+          # so the cache/sessions/views subdirs may not exist on a
+          # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
+          # blade views need `views/`; cache fallbacks need `cache/`.
+          # `mkdir -p` is idempotent.
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
+          mkdir -p storage/framework/cache/data
+          mkdir -p storage/logs
+          mkdir -p bootstrap/cache
 
       - name: Migrate + seed test data
         env:

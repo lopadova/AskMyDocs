@@ -39,7 +39,12 @@ export default defineConfig({
         ? undefined
         : {
               command: 'php artisan serve --host=127.0.0.1 --port=8000',
-              url: baseURL,
+              // `/healthz` returns a plain 200 with no auth / no DB hit.
+              // The previous `baseURL` poll on `/` was hitting the home
+              // route (auth middleware → 302 to /login) which CI's webServer
+              // probe interpreted as not-ready and timed out after 120s.
+              // `/healthz` is the unambiguous green signal.
+              url: `${baseURL}/healthz`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
               env: { APP_ENV: 'testing' },
