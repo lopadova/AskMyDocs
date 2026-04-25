@@ -122,12 +122,17 @@ class DemoSeeder extends Seeder
 
     private function seedKnowledgeDocuments(): void
     {
+        // canonicalType must match the CanonicalType enum (9 values) —
+        // 'policy' is NOT a valid type, the closest fit for an HR policy
+        // is 'standard'. Without this match, PATCH /api/admin/kb/.../raw
+        // re-runs the parser and rejects the saved buffer with 422
+        // "Missing or invalid `type`. Must be one of the 9 canonical types."
         $this->upsertDoc(
             projectKey: 'hr-portal',
             slug: 'remote-work-policy',
             title: 'Remote Work Policy',
             sourcePath: 'policies/remote-work-policy.md',
-            canonicalType: 'policy',
+            canonicalType: 'standard',
             preview: 'ACME employees may work remotely up to 3 days per week with manager approval. Full remote arrangements require VP sign-off and are reviewed annually.',
         );
 
@@ -136,7 +141,7 @@ class DemoSeeder extends Seeder
             slug: 'pto-guidelines',
             title: 'PTO Guidelines',
             sourcePath: 'policies/pto-guidelines.md',
-            canonicalType: 'policy',
+            canonicalType: 'standard',
             preview: 'Employees accrue 2 days PTO per month. Requests of 3+ consecutive days require manager approval 14 days in advance.',
         );
 
@@ -299,8 +304,15 @@ class DemoSeeder extends Seeder
         $fullPath = KbPath::normalize($rawPath);
 
         $slug = pathinfo($sourcePath, PATHINFO_FILENAME);
+        // CanonicalParser::validateSlug() requires the `slug` field to
+        // be non-null/non-empty. The seeded markdown only had `id:` —
+        // the parser accepted it on first ingest because the row was
+        // built directly via Eloquent, but PATCH /raw re-parses the
+        // saved buffer and rejected with 422 "Missing required field
+        // `slug`." until this line was added.
         $fm = "---\n"
             ."id: demo-{$slug}\n"
+            ."slug: {$slug}\n"
             ."type: {$canonicalType}\n"
             ."status: accepted\n"
             ."project: {$projectKey}\n"

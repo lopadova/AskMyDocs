@@ -96,32 +96,27 @@ test.describe('Chat', () => {
 
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        // `force: true` skips the "stable element" check — the wikilink
-        // sits inside the chat message bubble which keeps animating in
-        // briefly after render. Once visible the click target is the
-        // right one; we just don't need Playwright to wait for the
-        // bubble's translate-y animation to settle.
-        // Wait for the resolver round-trip to complete BEFORE asserting
-        // the preview text — the fetch is fired by `enabled: hover` in
-        // useQuery, which is async-batched after setHover(true). Without
-        // this explicit wait, the toContainText below races with the
-        // 200 response and intermittently sees the "loading" placeholder.
-        const resolverResponsePromise = page.waitForResponse(
-            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
-            { timeout: 10_000 },
-        );
-        await wikilink.hover({ force: true });
-        const resolverResp = await resolverResponsePromise;
+        // Use `Promise.all` to register the response listener BEFORE the
+        // hover fires — guarantees we don't miss the round-trip when
+        // it returns fast. Re-hovering after `await` detaches from the
+        // initial mouse position and was timing out in CI; the popover
+        // remains mounted as long as `hover === true` in WikilinkHover,
+        // so a single hover is enough.
+        // `force: true` skips the "stable element" check — the chat
+        // bubble keeps animating in briefly after render and we don't
+        // need Playwright to wait for the translate-y settle.
+        const [resolverResp] = await Promise.all([
+            page.waitForResponse(
+                (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+                { timeout: 10_000 },
+            ),
+            wikilink.hover({ force: true }),
+        ]);
         if (!resolverResp.ok()) {
             throw new Error(
                 `GET /api/kb/resolve-wikilink returned non-OK: ${resolverResp.status()} ${await resolverResp.text()}`,
             );
         }
-        // Re-trigger hover after the response lands — the popover only
-        // renders while `hover === true` in WikilinkHover. The mouse may
-        // have moved off the wikilink while we awaited the response, so
-        // explicitly re-establish hover with a tiny pause for state sync.
-        await wikilink.hover({ force: true });
         const preview = page.getByTestId('wikilink-preview');
         await expect(preview).toBeVisible({ timeout: 5_000 });
         await expect(preview).toContainText(/Remote Work Policy/i);
@@ -154,20 +149,17 @@ test.describe('Chat', () => {
         await composer(page).send.click();
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        // `force: true` — see the happy-path test for the rationale.
-        // Wait for the stubbed 500 response so the FE has actually
-        // observed the failure before asserting on the error surface.
-        const resolverResponsePromise = page.waitForResponse(
-            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
-            { timeout: 10_000 },
-        );
-        await wikilink.hover({ force: true });
-        await resolverResponsePromise;
-        // Re-trigger hover after the response lands — see the happy-path
-        // test for the rationale; same constraint applies on the 500
-        // path because WikilinkHover only renders the popover while
-        // `hover === true`.
-        await wikilink.hover({ force: true });
+        // `force: true` + `Promise.all` — see the happy-path test for
+        // the rationale. The popover stays mounted as long as
+        // `hover === true` in WikilinkHover, so we don't need to
+        // re-trigger hover after the response lands.
+        await Promise.all([
+            page.waitForResponse(
+                (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+                { timeout: 10_000 },
+            ),
+            wikilink.hover({ force: true }),
+        ]);
         // The preview tooltip appears even on 500, but the error surface is the
         // testid-tagged element so Playwright can assert graceful degradation.
         await expect(page.getByTestId('wikilink-preview-error')).toBeVisible({ timeout: 5_000 });
