@@ -6,6 +6,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Support endpoints for Playwright E2E.
@@ -48,7 +50,25 @@ class TestingController extends Controller
     {
         $this->guardEnvironment();
 
-        $this->runMigrateFresh();
+        try {
+            $this->runMigrateFresh();
+        } catch (Throwable $e) {
+            // Surface the exception in the JSON response so Playwright's
+            // setup error message contains the actual root cause instead
+            // of an opaque 500 HTML page. Testing-env only — no
+            // information leak risk in production.
+            Log::error('TestingController::reset failed', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'reset' => false,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'trace_head' => $this->traceHead($e),
+            ], 500);
+        }
 
         return response()->json(['reset' => true]);
     }
@@ -69,19 +89,63 @@ class TestingController extends Controller
             ], 422);
         }
 
-        $this->runDbSeed(self::SEEDER_ALIASES[$seeder]);
+        try {
+            $this->runDbSeed(self::SEEDER_ALIASES[$seeder]);
+        } catch (Throwable $e) {
+            Log::error('TestingController::seed failed', [
+                'seeder' => $seeder,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'seeded' => false,
+                'seeder' => $seeder,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+                'trace_head' => $this->traceHead($e),
+            ], 500);
+        }
 
         return response()->json(['seeded' => $seeder]);
+    }
+
+    /**
+     * Top 5 stack frames as plain strings — enough context to pin the
+     * call site without flooding the JSON payload. Testing-env only.
+     *
+     * @return array<int, string>
+     */
+    private function traceHead(Throwable $e): array
+    {
+        $head = [];
+        foreach (array_slice($e->getTrace(), 0, 5) as $frame) {
+            $file = $frame['file'] ?? '?';
+            $line = $frame['line'] ?? '?';
+            $function = $frame['function'] ?? '?';
+            $head[] = "{$file}:{$line} {$function}";
+        }
+
+        return $head;
     }
 
     /**
      * Extracted so tests can swap the real artisan side-effect with a
      * no-op. The Artisan facade can't be mocked under Testbench (final
      * Kernel), so these thin methods act as the seam.
+     *
+     * Throws RuntimeException on non-zero exit so the controller's
+     * try/catch surfaces the failure as a 500 JSON instead of a
+     * silent partial success.
      */
     protected function runMigrateFresh(): void
     {
-        Artisan::call('migrate:fresh', ['--force' => true]);
+        $exit = Artisan::call('migrate:fresh', ['--force' => true]);
+        if ($exit !== 0) {
+            throw new \RuntimeException(
+                'migrate:fresh exited with code '.$exit.': '.Artisan::output(),
+            );
+        }
     }
 
     /**
@@ -89,10 +153,15 @@ class TestingController extends Controller
      */
     protected function runDbSeed(string $seederClass): void
     {
-        Artisan::call('db:seed', [
+        $exit = Artisan::call('db:seed', [
             '--class' => $seederClass,
             '--force' => true,
         ]);
+        if ($exit !== 0) {
+            throw new \RuntimeException(
+                'db:seed exited with code '.$exit.': '.Artisan::output(),
+            );
+        }
     }
 
     /**
