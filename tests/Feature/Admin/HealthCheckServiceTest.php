@@ -134,8 +134,13 @@ class HealthCheckServiceTest extends TestCase
 
     public function test_chat_provider_ok_when_default_provider_is_configured(): void
     {
+        // Config key is `ai.default` (not `ai.default_provider`) — matches
+        // config/ai.php line 18 verbatim. The earlier test used a non-existent
+        // key, which masked a doc-drift bug in HealthCheckService where the
+        // read also used `ai.default_provider` and ALWAYS returned 'degraded'
+        // in production CI.
         config([
-            'ai.default_provider' => 'anthropic',
+            'ai.default' => 'anthropic',
             'ai.providers' => ['anthropic' => ['api_key' => 'sk-ant']],
         ]);
 
