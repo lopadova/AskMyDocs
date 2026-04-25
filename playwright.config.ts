@@ -61,14 +61,25 @@ export default defineConfig({
               stderr: 'pipe',
           },
     projects: [
+        // Setup projects are chained sequentially via `dependencies` so
+        // they don't all hammer /testing/reset (migrate:fresh on real
+        // Postgres) at the same instant. PHP's built-in `artisan serve`
+        // is single-threaded; three parallel migrate:fresh requests
+        // queue + sometimes lock the server long enough for downstream
+        // requests to ECONNREFUSED. Chaining keeps the API surface
+        // exercised one-at-a-time during boot.
         { name: 'setup', testMatch: /auth\.setup\.ts/ },
-        { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/ },
+        { name: 'viewer-setup', testMatch: /viewer\.setup\.ts/, dependencies: ['setup'] },
         // PR13 / Phase H2 — super-admin setup. Seeds super@demo.local
         // (DemoSeeder) and persists storage state so the
         // chromium-super-admin project can exercise destructive
         // maintenance commands behind the `commands.destructive`
         // permission — which the admin role alone doesn't hold.
-        { name: 'super-admin-setup', testMatch: /super-admin\.setup\.ts/ },
+        {
+            name: 'super-admin-setup',
+            testMatch: /super-admin\.setup\.ts/,
+            dependencies: ['viewer-setup'],
+        },
         {
             name: 'chromium',
             use: {
