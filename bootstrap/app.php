@@ -39,17 +39,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'testing/*',
         ]);
 
-        // Sanctum stateful SPA: register
-        // `EnsureFrontendRequestsAreStateful` as the first middleware
-        // in the `api` group so cookie/session-based auth works for
-        // routes/api.php endpoints that DON'T explicitly include the
-        // `web` middleware. Without this, `auth:sanctum` on routes
-        // like `/api/admin/*` and `/api/kb/*` rejects with 401 even
-        // when a valid session cookie is sent — Laravel never loads
-        // the session in the first place. PHPUnit hides this because
-        // it bypasses the middleware chain via `Sanctum::actingAs()`;
-        // Playwright catches it because it drives the real cookie flow.
-        $middleware->statefulApi();
+        // NOTE: previous attempt at fixing the api.php session auth
+        // used `$middleware->statefulApi()` here. That activates
+        // Sanctum's EnsureFrontendRequestsAreStateful only when the
+        // request matches SANCTUM_STATEFUL_DOMAINS — fragile in CI
+        // where the page may make a request before the SPA shell
+        // sets a proper Origin. Replaced with explicit `web`
+        // middleware on each `auth:sanctum` route group in api.php
+        // (kb/admin/etc.) so StartSession runs unconditionally.
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
