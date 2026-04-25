@@ -79,6 +79,25 @@ jobs:
     # are green.
     needs: [phpunit, vitest]
 
+    # Spin up real Postgres + pgvector so the Playwright job exercises
+    # the same DB engine production runs. The pgvector/pgvector image
+    # ships pgvector preinstalled; Schema::ensureVectorExtensionExists()
+    # in the chunks/embedding migrations resolves cleanly here.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: askmydocs
+          POSTGRES_PASSWORD: askmydocs
+          POSTGRES_DB: askmydocs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askmydocs -d askmydocs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,7 +115,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
+          extensions: mbstring, xml, sqlite, pdo_sqlite, pgsql, pdo_pgsql, intl, bcmath
           coverage: none
           tools: composer:v2
 
@@ -148,14 +167,20 @@ jobs:
           php -r "file_exists('.env') || copy('.env.example', '.env');" || true
           echo "APP_ENV=testing" >> .env
           echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
-          # Force SQLite for CI — Playwright boots the server via
-          # playwright.config.ts webServer and we don't spin Postgres here.
-          echo "DB_CONNECTION=sqlite" >> .env
-          echo "DB_DATABASE=$GITHUB_WORKSPACE/database/database.sqlite" >> .env
+          # Postgres + pgvector via the service container above — same
+          # engine production runs. Playwright boots the server via
+          # playwright.config.ts webServer; migrations exercise pgvector
+          # cleanly because ensureVectorExtensionExists() can issue
+          # CREATE EXTENSION here.
+          echo "DB_CONNECTION=pgsql" >> .env
+          echo "DB_HOST=127.0.0.1" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "DB_DATABASE=askmydocs_test" >> .env
+          echo "DB_USERNAME=askmydocs" >> .env
+          echo "DB_PASSWORD=askmydocs" >> .env
           echo "SESSION_DRIVER=database" >> .env
           echo "CACHE_STORE=database" >> .env
           echo "QUEUE_CONNECTION=sync" >> .env
-          touch database/database.sqlite
 
       - name: Migrate + seed test data
         env:

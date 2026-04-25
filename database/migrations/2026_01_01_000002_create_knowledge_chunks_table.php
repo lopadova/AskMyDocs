@@ -2,15 +2,20 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::ensureVectorExtensionExists();
+        $isPgsql = DB::getDriverName() === 'pgsql';
 
-        Schema::create('knowledge_chunks', function (Blueprint $table) {
+        if ($isPgsql) {
+            Schema::ensureVectorExtensionExists();
+        }
+
+        Schema::create('knowledge_chunks', function (Blueprint $table) use ($isPgsql) {
             $table->id();
             $table->foreignId('knowledge_document_id')->constrained('knowledge_documents')->cascadeOnDelete();
             $table->string('project_key', 120)->index();
@@ -19,7 +24,17 @@ return new class extends Migration
             $table->string('heading_path')->nullable()->index();
             $table->text('chunk_text');
             $table->json('metadata')->nullable();
-            $table->vector('embedding', dimensions: 1536)->vectorIndex();
+            // Production runs Postgres + pgvector — `vector(1536)` + `vectorIndex()`
+            // is the real shape. Non-pgsql connections (SQLite Playwright CI,
+            // local MySQL inspection) fall back to a `text` column so the
+            // table at least exists; ingestion / retrieval require pgvector
+            // and short-circuit elsewhere on those drivers (see
+            // KbSearchService + DocumentIngestor for the runtime guards).
+            if ($isPgsql) {
+                $table->vector('embedding', dimensions: 1536)->vectorIndex();
+            } else {
+                $table->text('embedding')->nullable();
+            }
             $table->timestamps();
 
             $table->unique(['knowledge_document_id', 'chunk_hash'], 'uq_kb_chunk_doc_hash');
