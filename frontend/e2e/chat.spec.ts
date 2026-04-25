@@ -96,7 +96,12 @@ test.describe('Chat', () => {
 
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        await wikilink.hover();
+        // `force: true` skips the "stable element" check — the wikilink
+        // sits inside the chat message bubble which keeps animating in
+        // briefly after render. Once visible the click target is the
+        // right one; we just don't need Playwright to wait for the
+        // bubble's translate-y animation to settle.
+        await wikilink.hover({ force: true });
         const preview = page.getByTestId('wikilink-preview');
         await expect(preview).toBeVisible();
         await expect(preview).toContainText(/Remote Work Policy/i);
@@ -129,7 +134,8 @@ test.describe('Chat', () => {
         await composer(page).send.click();
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        await wikilink.hover();
+        // `force: true` — see the happy-path test for the rationale.
+        await wikilink.hover({ force: true });
         // The preview tooltip appears even on 500, but the error surface is the
         // testid-tagged element so Playwright can assert graceful degradation.
         await expect(page.getByTestId('wikilink-preview-error')).toBeVisible({ timeout: 5_000 });

@@ -120,8 +120,14 @@ test.describe('Admin Log Viewer — Phase H1', () => {
 
         await page.getByTestId('logs-tab-failed').click();
         await expect(page.getByTestId('failed-jobs')).toBeVisible({ timeout: 15_000 });
-        // Clean DemoSeeder stack has zero failed jobs.
-        const failedState = await page.getByTestId('failed-jobs').getAttribute('data-state');
-        expect(['empty', 'ready']).toContain(failedState);
+        // Clean DemoSeeder stack has zero failed jobs. Wait for the
+        // panel to settle out of `loading` before sampling — the raw
+        // attribute read otherwise races with TanStack Query's first
+        // fetch and reports the transient loading state.
+        await expect(page.getByTestId('failed-jobs')).toHaveAttribute(
+            'data-state',
+            /^(empty|ready)$/,
+            { timeout: 15_000 },
+        );
     });
 });

@@ -46,7 +46,17 @@ return Application::configure(basePath: dirname(__DIR__))
         // StartSession explicitly.)
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Force JSON responses for every /api/* request regardless of
+        // Accept header. Default Laravel behavior redirects to /login
+        // on AuthenticationException when the request "doesn't expect
+        // JSON" — which is true for Playwright's APIRequestContext
+        // (request fixture) since it doesn't auto-add
+        // `Accept: application/json`. The redirect chain then resolves
+        // to a 200 from the login form, which is the OPPOSITE of what
+        // an API contract should signal.
+        $exceptions->shouldRenderJsonWhen(function ($request, \Throwable $e) {
+            return $request->is('api/*') || $request->expectsJson();
+        });
     })
     ->withSchedule(function (Schedule $schedule) {
         // Embedding cache retention (default: 30 days, env KB_EMBEDDING_CACHE_RETENTION_DAYS)

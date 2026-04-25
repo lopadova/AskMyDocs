@@ -33,9 +33,12 @@ test.describe('Admin KB Tree', () => {
         // Detail panel placeholder is visible before any selection.
         await expect(page.getByTestId('kb-detail-placeholder')).toBeVisible();
 
-        // Selecting a doc updates the right-hand summary.
+        // Selecting a doc opens the document detail panel (Phase G2+).
+        // The pre-G2 `kb-detail-summary` placeholder was replaced by the
+        // full DocumentDetail which carries the `kb-detail` testid.
         await node.click();
-        await expect(page.getByTestId('kb-detail-summary')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('kb-detail')).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('kb-detail-header')).toBeVisible();
     });
 
     test('failure — mode=canonical hides non-canonical docs', async ({ page, request }) => {

@@ -135,7 +135,11 @@ class HealthCheckService
 
     public function chatProviderOk(): string
     {
-        return $this->providerConfigured('ai.default_provider', 'ai.providers');
+        // config/ai.php uses key `default` (not `default_provider`) — the
+        // earlier name was a doc-drift artefact. R9: keep code matching
+        // the canonical config keys to avoid silent 'degraded' status
+        // on a configured provider.
+        return $this->providerConfigured('ai.default', 'ai.providers');
     }
 
     /**

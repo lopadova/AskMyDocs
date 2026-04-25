@@ -125,7 +125,7 @@ class DemoSeeder extends Seeder
             projectKey: 'hr-portal',
             slug: 'pto-guidelines',
             title: 'PTO Guidelines',
-            sourcePath: 'benefits/pto-guidelines.md',
+            sourcePath: 'policies/pto-guidelines.md',
             canonicalType: 'policy',
             preview: 'Employees accrue 2 days PTO per month. Requests of 3+ consecutive days require manager approval 14 days in advance.',
         );
