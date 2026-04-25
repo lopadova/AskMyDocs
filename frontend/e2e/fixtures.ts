@@ -34,7 +34,7 @@ const PROJECT_CREDENTIALS: Record<string, { email: string; password: string }> =
 
 export const test = base.extend<{ seeded: void }>({
     seeded: [
-        async ({ page, context }, use, testInfo) => {
+        async ({ page, context, request }, use, testInfo) => {
             const resetResponse = await page.request.post('/testing/reset');
             if (!resetResponse.ok()) {
                 throw new Error(
@@ -112,6 +112,38 @@ export const test = base.extend<{ seeded: void }>({
                 // here only because that route is wrapped in
                 // Route::middleware('web') which forces session
                 // loading regardless of Origin.
+
+                // Re-login in the TOP-LEVEL `request` fixture's context
+                // too. Playwright gives `request` and `page.request`
+                // SEPARATE cookie jars by default — even when
+                // storageState is set on the project, the top-level
+                // `request` fixture inherits the saved cookies but
+                // NOT the new session cookie set by page.request after
+                // login. Tests using `{ request }` (admin-maintenance,
+                // admin-users, admin-kb ingest) would then fire calls
+                // with the stale cookies → password-hash mismatch →
+                // 401. Run the same login dance against `request`'s
+                // own context so its cookie jar holds a fresh,
+                // valid session under the new bcrypt salt.
+                await request.get('/sanctum/csrf-cookie');
+                const requestStorage = await request.storageState();
+                const requestXsrf = requestStorage.cookies.find(
+                    (c) => c.name === 'XSRF-TOKEN',
+                );
+                if (requestXsrf) {
+                    const reqLoginResponse = await request.post('/api/auth/login', {
+                        data: creds,
+                        headers: {
+                            'X-XSRF-TOKEN': decodeURIComponent(requestXsrf.value),
+                            Accept: 'application/json',
+                        },
+                    });
+                    if (!reqLoginResponse.ok()) {
+                        throw new Error(
+                            `seeded fixture: top-level request re-login failed for ${creds.email}: ${reqLoginResponse.status()} ${await reqLoginResponse.text()}`,
+                        );
+                    }
+                }
             }
 
             await use();
