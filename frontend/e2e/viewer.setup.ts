@@ -8,29 +8,45 @@ const VIEWER_PASSWORD = process.env.E2E_VIEWER_PASSWORD ?? 'password';
 
 /*
  * PR6 — Phase F1. Logs in as the DemoSeeder-seeded `viewer@demo.local`
- * account and writes the session to playwright/.auth/viewer.json so
- * the `chromium-viewer` project can exercise RBAC denial flows
+ * via the JSON API and writes the session to playwright/.auth/viewer.json
+ * so the `chromium-viewer` project can exercise RBAC denial flows
  * against the real backend.
+ *
+ * See auth.setup.ts for the rationale on API-based auth (vs driving the
+ * legacy Blade form).
  *
  * Runs AFTER auth.setup.ts (chronologically) but Playwright does not
  * enforce ordering between setup projects — keep both idempotent.
  */
-setup('authenticate as viewer', async ({ page, request }) => {
+setup('authenticate as viewer', async ({ page, request, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    // Reset + seed demo data. DemoSeeder now seeds both admin and
-    // viewer accounts (see PR6 commit).
+    // Reset + seed demo data. DemoSeeder seeds admin + viewer + super-admin.
     await request.post('/testing/reset');
     await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
 
     await request.get('/sanctum/csrf-cookie');
 
-    await page.goto('/login');
-    await page.getByTestId('login-email').fill(VIEWER_EMAIL);
-    await page.getByTestId('login-password').fill(VIEWER_PASSWORD);
-    await page.getByTestId('login-submit').click();
-    await page.waitForURL('**/app/**', { timeout: 15_000 });
+    const cookies = await context.cookies();
+    const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    if (!xsrfCookie) {
+        throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
+    }
 
+    const loginResponse = await request.post('/api/auth/login', {
+        data: { email: VIEWER_EMAIL, password: VIEWER_PASSWORD },
+        headers: {
+            'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),
+            Accept: 'application/json',
+        },
+    });
+    if (!loginResponse.ok()) {
+        throw new Error(
+            `Login failed for ${VIEWER_EMAIL}: ${loginResponse.status()} ${await loginResponse.text()}`,
+        );
+    }
+
+    await page.goto('/app/chat');
     await expect(page.getByTestId('appshell-root')).toBeVisible();
     await page.context().storageState({ path: AUTH_FILE });
 });
