@@ -73,9 +73,12 @@ export function MetaTab({ doc }: MetaTabProps) {
         },
     ];
 
+    // KbTag's display name is `label` (Copilot PR #33 — was `t.name`,
+    // which is null because `KbTag` doesn't have a `name` column).
+    // Fall back to `slug` if `label` happens to be empty.
     const tagList: string[] = [
         ...doc.metadata_tags,
-        ...doc.tags.map((t) => t.name),
+        ...doc.tags.map((t) => t.label || t.slug),
     ];
     const uniqueTags = Array.from(new Set(tagList));
 

@@ -313,6 +313,65 @@ checkmark is misleading. Distillation note for any future CI gate
 work — fail closed, not open, when the gate's preconditions are
 unmet.
 
+### PR #33 — Final integration to main (rollup of Phases A..J + distill)
+
+Live re-harvest of PR #33 (the rollup-to-main PR that brings 16
+phases worth of accumulated work into `main`) returned **12
+finding-shaped rows** plus one runtime CI failure (missing
+`public/index.php`) caught by the new pgvector-enabled Playwright
+job. Findings split:
+- 6 frontend a11y / SVG-id / empty-data / state-derivation issues
+- 2 backend doc-drift / wrong-column-mapping issues
+- 1 CI dependency / DB driver issue chain
+- 1 missing scaffolding (`public/index.php`) that had been
+  un-versioned for the entire enhancement series
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `frontend/src/components/charts/BarStack.tsx` | `render-stale` | `Math.max(...[])` returns `-Infinity` on empty data → NaN/Infinity SVG geometry | _this PR_ |
+| `frontend/src/components/charts/AreaChart.tsx` | `render-stale` | Same empty-data issue + `labels.length - 1` → `-1`/`0` divisor for 0/1 labels → NaN x positions | _this PR_ |
+| `frontend/src/components/charts/Sparkline.tsx` | `dom-id-collision` | Hard-coded `<linearGradient id="...">` IDs collide on multi-instance pages → wrong gradient resolution | _this PR_ |
+| `frontend/src/components/charts/BarStack.tsx` | `dom-id-collision` | Hard-coded `bar-a`/`bar-b` gradient IDs → multi-instance collision | _this PR_ |
+| `frontend/src/components/charts/AreaChart.tsx` | `dom-id-collision` | Hard-coded `area-grad`/`area-line` → multi-instance collision | _this PR_ |
+| `frontend/src/components/shell/AppShell.tsx` | `derive-from-store` | `projectCount` from `storeProjects` but `Topbar`/switcher rendered seeded `PROJECTS` → count + list out-of-sync; also `projectIndex` not bound-clamped | _this PR_ |
+| `frontend/src/components/shell/ProjectSwitcher.tsx` | `a11y` | `role="listbox"` without ArrowUp/Down/Enter/Escape keyboard model → screen-reader trap; switched to ARIA `menu` + `menuitemradio` pattern + Escape close + focus-return | _this PR_ |
+| `frontend/src/components/shell/CommandPalette.test.tsx` | `test-flake` | Sync assertion right after `keyboard('{Escape}')` would race React's state-update tick → use `waitForElementToBeRemoved` | _this PR_ |
+| `frontend/src/components/shell/ProjectSwitcher.tsx` | `test-coverage` | Non-trivial interaction (open/close/select/escape/outside-click) shipped without a Vitest+RTL test | _this PR_ |
+| `app/Http/Resources/Admin/Kb/KbDocumentResource.php` | `route-contracts` | Mapped tags as `['name' => $t->name]` but `KbTag` has `slug`/`label`/`color` (no `name` column) → null on every tag | _this PR_ |
+| `app/Http/Controllers/TestingController.php` | `doc-drift` | Docblock said `/testing/reset` "clears cached config" but `runMigrateFresh()` only runs `migrate:fresh` | _this PR_ |
+| `composer.json` | `dep-pin-too-tight` | `spatie/laravel-activitylog ^5.0` requires PHP 8.4 — broke PHP 8.3 CI; widened to `^4.12|^5.0` | `42255b4` |
+| `.github/workflows/tests.yml` + 2 migrations | `ci-driver-mismatch` | `migrate --force` ran SQLite then later mysql/postgres on same job; pgvector calls only valid on pgsql; cache=database needed missing cache table; `public/index.php` was never committed | `c48fa27` + `f0db3c5` + _this PR_ |
+
+**New categories surfaced this PR**:
+- `dom-id-collision` — SVG/HTML elements with hard-coded ID
+  attributes that clash when the component renders multiple times.
+  React 18+ has `useId()` for exactly this; reach for it on every
+  `<linearGradient>` / `<filter>` / `<clipPath>` you author.
+- `dep-pin-too-tight` — exact-major package constraint that locked
+  out lower PHP versions in CI. `^X.Y` means "≥X.Y, <X+1" — when
+  the package's next major bumps the platform requirement, the lower
+  bound silently becomes unsatisfiable. Use `^X.Y|^Z.0` patterns
+  for libraries with stable APIs across majors.
+- `ci-driver-mismatch` — workflow steps disagreed about which DB
+  engine was active. Production migrations + pgvector-only
+  constructs require pgsql; the historical SQLite-via-config swap
+  worked for PHPUnit (which has parallel test migrations) but broke
+  for Playwright (which runs production migrations directly).
+- `route-contracts` is reinforced — same R20 violation (FE/BE
+  shape divergence) that PR16 already minted as a rule.
+
+**Meta-pattern across 5 of the 12 findings**: SVG chart components
+shipped without thinking about edge cases (empty arrays, single-element
+arrays, multiple instances on the same page). Worth a checklist entry
+for any future SVG-based component:
+1. What happens when input array is `[]`?
+2. What happens when input array length is 1?
+3. What happens when 2+ instances render on the same page?
+4. Are gradient/filter/clipPath IDs scoped per-instance?
+
+Distillation note for a future PR16-style pass: this likely deserves
+a dedicated `svg-chart-component-checklist` skill.
+
 ---
 
 ## Category frequency snapshot (PR #16 → PR #31, regenerated at PR16)

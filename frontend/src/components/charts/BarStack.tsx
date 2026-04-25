@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 export type BarDatum = { a: number; b: number; c: number };
 
 export type BarStackProps = {
@@ -8,16 +10,36 @@ export type BarStackProps = {
 };
 
 export function BarStack({ data, width = 520, height = 160, labels = [] }: BarStackProps) {
+    // Per-instance gradient IDs so multiple BarStacks on a page don't
+    // collide on `bar-a` / `bar-b` (Copilot PR #33 finding).
+    const reactId = useId();
+    const gradAId = `bar-a-${reactId}`;
+    const gradBId = `bar-b-${reactId}`;
+
+    // Empty-data guard: `Math.max(...[])` returns `-Infinity`, which is
+    // truthy, so `|| 1` doesn't kick in and we'd produce NaN/Infinity
+    // SVG geometry. Render a neutral empty state instead.
+    if (data.length === 0) {
+        return (
+            <svg
+                width="100%"
+                viewBox={`0 0 ${width} ${height}`}
+                style={{ display: 'block' }}
+                data-testid="bar-stack-empty"
+            />
+        );
+    }
+
     const max = Math.max(...data.map((d) => d.a + d.b + d.c)) * 1.15 || 1;
     const bw = width / data.length - 6;
     return (
         <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
             <defs>
-                <linearGradient id="bar-a" x1="0" x2="0" y1="0" y2="1">
+                <linearGradient id={gradAId} x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0" stopColor="#8b5cf6" />
                     <stop offset="1" stopColor="#6d28d9" />
                 </linearGradient>
-                <linearGradient id="bar-b" x1="0" x2="0" y1="0" y2="1">
+                <linearGradient id={gradBId} x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0" stopColor="#22d3ee" />
                     <stop offset="1" stopColor="#0891b2" />
                 </linearGradient>
@@ -30,8 +52,8 @@ export function BarStack({ data, width = 520, height = 160, labels = [] }: BarSt
                 const y0 = height - 12;
                 return (
                     <g key={i} style={{ animation: `popin .4s ${i * 40}ms ease-out both` }}>
-                        <rect x={x} y={y0 - ha} width={bw} height={ha} fill="url(#bar-a)" rx="2" />
-                        <rect x={x} y={y0 - ha - hb} width={bw} height={hb} fill="url(#bar-b)" rx="2" />
+                        <rect x={x} y={y0 - ha} width={bw} height={ha} fill={`url(#${gradAId})`} rx="2" />
+                        <rect x={x} y={y0 - ha - hb} width={bw} height={hb} fill={`url(#${gradBId})`} rx="2" />
                         <rect
                             x={x}
                             y={y0 - ha - hb - hc}

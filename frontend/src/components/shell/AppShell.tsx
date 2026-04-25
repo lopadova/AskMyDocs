@@ -1,11 +1,11 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { Sidebar, type SidebarSection } from './Sidebar';
 import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS } from '../../lib/seed';
+import { PROJECTS, USERS, type Project } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 
 const SECTION_ROUTES: Record<SidebarSection, string> = {
@@ -59,7 +59,41 @@ export function AppShell() {
           }
         : USERS[0];
 
-    const projectCount = storeProjects.length > 0 ? storeProjects.length : PROJECTS.length;
+    // Topbar / ProjectSwitcher need the rich Project shape (key, label,
+    // color, docs). When the auth store has real backend memberships,
+    // map them to that shape, looking up label/color/docs from the
+    // seeded PROJECTS table when available, and falling back to a
+    // synthetic record (humanised key + neutral colour) otherwise.
+    // Keeps `projectCount` and the switcher in lockstep — Copilot PR #33
+    // flagged the previous mismatch where projectCount came from
+    // storeProjects but the switcher always rendered PROJECTS.
+    const projects: Project[] = useMemo(() => {
+        if (storeProjects.length === 0) {
+            return PROJECTS;
+        }
+        return storeProjects.map((sp) => {
+            const seeded = PROJECTS.find((p) => p.key === sp.project_key);
+            if (seeded) {
+                return seeded;
+            }
+            return {
+                key: sp.project_key,
+                label: sp.project_key
+                    .split('-')
+                    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                    .join(' '),
+                color: '#8b5cf6',
+                docs: 0,
+                members: 0,
+            };
+        });
+    }, [storeProjects]);
+
+    // Clamp the index whenever the project list shrinks — otherwise
+    // an out-of-bounds index would yield `undefined` and crash the
+    // Topbar.
+    const safeProjectIndex = projectIndex < projects.length ? projectIndex : 0;
+    const projectCount = projects.length;
 
     const onNav = useCallback(
         (id: SidebarSection) => {
@@ -84,10 +118,10 @@ export function AppShell() {
             <Sidebar active={section} onNav={onNav} user={sidebarUser} projectCount={projectCount} />
             <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
-                    project={PROJECTS[projectIndex]}
-                    projects={PROJECTS}
+                    project={projects[safeProjectIndex]}
+                    projects={projects}
                     onProjectChange={(p) => {
-                        const idx = PROJECTS.findIndex((pp) => pp.key === p.key);
+                        const idx = projects.findIndex((pp) => pp.key === p.key);
                         if (idx >= 0) {
                             setProjectIndex(idx);
                         }

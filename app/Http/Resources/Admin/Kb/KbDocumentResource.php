@@ -34,8 +34,16 @@ class KbDocumentResource extends JsonResource
         /** @var KnowledgeDocument $doc */
         $doc = $this->resource;
 
+        // KbTag's columns are `slug` + `label` + `color` (no `name`),
+        // so map exactly those — Copilot PR #33 caught the previous
+        // `'name' => $t->name` mapping returning null on every tag.
         $tags = $doc->relationLoaded('tags')
-            ? $doc->tags->map(static fn ($t) => ['id' => $t->id, 'name' => $t->name])->values()->all()
+            ? $doc->tags->map(static fn ($t) => [
+                'id' => $t->id,
+                'slug' => $t->slug,
+                'label' => $t->label,
+                'color' => $t->color,
+            ])->values()->all()
             : [];
 
         $chunkCount = (int) ($this->additional['chunks_count'] ?? $doc->chunks()->count());

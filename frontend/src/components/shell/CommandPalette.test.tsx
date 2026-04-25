@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CommandPalette } from './CommandPalette';
 
@@ -11,7 +11,14 @@ describe('CommandPalette', () => {
         await user.keyboard('{Control>}k{/Control}');
         expect(await screen.findByRole('dialog', { name: /command palette/i })).toBeInTheDocument();
         await user.keyboard('{Escape}');
-        expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        // Closing is a state update that resolves on a later tick
+        // (Copilot PR #33 flakiness fix). `waitForElementToBeRemoved`
+        // is the wrong primitive here because the dialog is sometimes
+        // already gone by the time we check; `waitFor` against
+        // queryByRole === null is the right async-poll primitive.
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
     });
 
     it('filters items by query', async () => {

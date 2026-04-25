@@ -437,7 +437,7 @@ export interface KbDocument {
     updated_at: string | null;
     deleted_at: string | null;
     metadata_tags: string[];
-    tags: Array<{ id: number; name: string }>;
+    tags: Array<{ id: number; slug: string; label: string; color: string | null }>;
     chunks_count: number;
     audits_count: number;
     recent_audits: KbAudit[];

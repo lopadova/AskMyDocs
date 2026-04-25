@@ -1,9 +1,14 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 
 export type SparklineProps = {
     data: number[];
     width?: number;
     height?: number;
+    /**
+     * When omitted, defaults to the per-instance line gradient. Pass a
+     * literal CSS color (e.g. `"#22d3ee"`) or another url(#id) to
+     * override.
+     */
     stroke?: string;
     fill?: boolean;
     showDots?: boolean;
@@ -15,16 +20,25 @@ export type SparklineProps = {
  * components/charts.jsx`). No chart library dependency; rich-content /
  * dashboard charts will switch to recharts in PR6-F1 if interactivity
  * demands it.
+ *
+ * Gradient IDs are per-instance via `useId()` so multiple sparklines on
+ * the same page don't collide and accidentally pick up another instance's
+ * gradient definition (Copilot PR #33 finding).
  */
 export function Sparkline({
     data,
     width = 120,
     height = 34,
-    stroke = 'url(#spark-grad)',
+    stroke,
     fill = true,
     showDots = false,
     animate = true,
 }: SparklineProps) {
+    const reactId = useId();
+    const gradId = `spark-grad-${reactId}`;
+    const fillId = `spark-fill-${reactId}`;
+    const strokeRef = stroke ?? `url(#${gradId})`;
+
     const path = useMemo(() => {
         if (!data || data.length === 0) {
             return { line: '', area: '', pts: [] as [number, number][] };
@@ -52,20 +66,20 @@ export function Sparkline({
             style={{ overflow: 'visible' }}
         >
             <defs>
-                <linearGradient id="spark-grad" x1="0" y1="0" x2="1" y2="0">
+                <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
                     <stop offset="0" stopColor="#8b5cf6" />
                     <stop offset="1" stopColor="#22d3ee" />
                 </linearGradient>
-                <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0" stopColor="#8b5cf6" stopOpacity="0.35" />
                     <stop offset="1" stopColor="#22d3ee" stopOpacity="0" />
                 </linearGradient>
             </defs>
-            {fill && <path d={path.area} fill="url(#spark-fill)" />}
+            {fill && <path d={path.area} fill={`url(#${fillId})`} />}
             <path
                 d={path.line}
                 fill="none"
-                stroke={stroke}
+                stroke={strokeRef}
                 strokeWidth={1.6}
                 strokeLinecap="round"
                 strokeLinejoin="round"

@@ -15,7 +15,15 @@ use Illuminate\Support\Facades\Artisan;
  * environment matches. Triple-locked against accidental production
  * exposure.
  *
- *  - POST /testing/reset        — migrate:fresh (+ clear cached config)
+ *  - POST /testing/reset        — migrate:fresh (drops every table,
+ *                                  re-runs every migration). Does NOT
+ *                                  flush config / route / view caches —
+ *                                  CI uses `CACHE_STORE=array` so there
+ *                                  is no persistent cache to clear, and
+ *                                  Playwright spawns `php artisan serve`
+ *                                  fresh per run, so config is never
+ *                                  cached. (Copilot PR #33 docblock
+ *                                  drift fix.)
  *  - POST /testing/seed         — runs the requested seeder class
  */
 class TestingController extends Controller

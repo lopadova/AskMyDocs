@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { ProjectDot } from './Avatar';
 import type { Project } from '../../lib/seed';
@@ -9,28 +9,66 @@ export type ProjectSwitcherProps = {
     onChange: (p: Project) => void;
 };
 
+/*
+ * Single-select project switcher.
+ *
+ * Copilot PR #33 a11y fixes:
+ * - Switched from `role="listbox"` (which would have required full
+ *   roving-tabindex / aria-activedescendant keyboard navigation) to
+ *   the simpler ARIA `menu` + `menuitemradio` pattern that browsers
+ *   already give natural keyboard semantics to (Tab cycles items,
+ *   Enter/Space activates, native button focus ring).
+ * - Escape now closes the popover AND returns focus to the trigger
+ *   button (was: only mousedown-outside closed; keyboard users were
+ *   stuck).
+ * - aria-controls + per-instance menu id so screen readers can
+ *   announce the relationship.
+ */
 export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcherProps) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement | null>(null);
+    const triggerRef = useRef<HTMLButtonElement | null>(null);
+    const reactId = useId();
+    const menuId = `project-switcher-menu-${reactId}`;
+
+    const close = (returnFocus = false) => {
+        setOpen(false);
+        if (returnFocus) {
+            triggerRef.current?.focus();
+        }
+    };
 
     useEffect(() => {
-        const off = (e: MouseEvent) => {
+        if (!open) return;
+        const onMouseDown = (e: MouseEvent) => {
             if (!ref.current?.contains(e.target as Node)) {
-                setOpen(false);
+                close();
             }
         };
-        document.addEventListener('mousedown', off);
-        return () => document.removeEventListener('mousedown', off);
-    }, []);
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close(true);
+            }
+        };
+        document.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', onMouseDown);
+            document.removeEventListener('keydown', onKeyDown);
+        };
+    }, [open]);
 
     return (
         <div ref={ref} style={{ position: 'relative' }}>
             <button
+                ref={triggerRef}
                 type="button"
                 className="focus-ring"
-                onClick={() => setOpen(!open)}
-                aria-haspopup="listbox"
+                onClick={() => setOpen((o) => !o)}
+                aria-haspopup="menu"
                 aria-expanded={open}
+                aria-controls={open ? menuId : undefined}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -51,8 +89,10 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
             </button>
             {open && (
                 <div
+                    id={menuId}
                     className="panel popin"
-                    role="listbox"
+                    role="menu"
+                    aria-label="Switch project"
                     style={{
                         position: 'absolute',
                         top: 'calc(100% + 6px)',
@@ -79,11 +119,11 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                         <button
                             key={p.key}
                             type="button"
-                            role="option"
-                            aria-selected={project.key === p.key}
+                            role="menuitemradio"
+                            aria-checked={project.key === p.key}
                             onClick={() => {
                                 onChange(p);
-                                setOpen(false);
+                                close(true);
                             }}
                             style={{
                                 width: '100%',
