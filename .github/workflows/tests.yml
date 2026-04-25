@@ -204,6 +204,10 @@ jobs:
           mkdir -p storage/framework/cache/data
           mkdir -p storage/logs
           mkdir -p bootstrap/cache
+          # KB disk root — health check probes Storage::disk('kb')->exists('.').
+          # Without this dir the health check returns 'degraded' and
+          # admin-dashboard.spec.ts's happy path fails on dashboard-health.
+          mkdir -p storage/app/kb
 
       - name: Migrate + seed test data
         env:
