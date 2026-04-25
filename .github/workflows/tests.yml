@@ -220,6 +220,19 @@ jobs:
           APP_ENV: testing
         run: npm run e2e
 
+      - name: Dump Laravel log on failure
+        if: failure()
+        run: |
+          echo "=== storage/logs/laravel.log (last 200 lines) ==="
+          if [ -f storage/logs/laravel.log ]; then
+            tail -200 storage/logs/laravel.log
+          else
+            echo "(no laravel.log file present)"
+          fi
+          echo ""
+          echo "=== ls storage/framework/sessions ==="
+          ls -la storage/framework/sessions || echo "(no sessions dir)"
+
       - name: Upload report on failure
         if: failure()
         uses: actions/upload-artifact@v4
