@@ -372,6 +372,37 @@ for any future SVG-based component:
 Distillation note for a future PR16-style pass: this likely deserves
 a dedicated `svg-chart-component-checklist` skill.
 
+### PR #34 — README enterprise edition v2.0.0 (docs-only)
+
+Documentation-only PR rewriting Key Features / Quick Start / Changelog
+to reflect the v2.0 enterprise scope. Live re-harvest of the Copilot
+review surfaced **8 doc-drift findings** — every one a R6/R9 (docs/code
+coupling + docs match code) violation. Zero code paths touched.
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `README.md` (line 62, Key Features) | `docs-drift` | Claimed React 19 but `package.json` pins `^18.3.1` → reader who diffs deps trusts wrong version | _this PR_ |
+| `README.md` (line 74, Admin pages) | `docs-drift` | Called Spatie activitylog "soft dep" but `composer.json` lists it under `require` (not `suggest`); rephrased to "Spatie activity log" | _this PR_ |
+| `README.md` (Quick Start "skip seeder" recipe) | `r6-docs-config-drift` | Suggested `KB_DISK_DRIVER=s3/r2/gcs/minio`, but the actual backend selector is `KB_FILESYSTEM_DISK`. `KB_DISK_DRIVER` only configures the built-in `kb` disk's driver/root — see `.env.example` + `config/filesystems.php` | _this PR_ |
+| `README.md` (changelog Phase A scheduler) | `docs-drift` | Listed `activity-log:prune` and `notifications:prune` as new scheduler entries; neither exists. The Spatie cron is `activitylog:clean` (currently stubbed as a comment in `bootstrap/app.php`); Laravel 13 doesn't ship `notifications:prune` at all. Replaced with the actual `bootstrap/app.php` schedule list | _this PR_ |
+| `README.md` (changelog Phase A heading + 9 other phase headings) | `docs-drift` | PR numbers `#1`–`#15` referenced as enterprise phase PRs, but those are the original v1.x repo PRs (`#1` = ImgBot, `#2` = test scaffolding, etc.). The actual enterprise series is PR #16 → PR #33. Updated every phase heading to the real PR number | _this PR_ |
+| `README.md` (changelog Phase C RBAC) | `docs-drift` | Said "+ 13 permissions"; `Database\Seeders\RbacSeeder::PERMISSIONS` defines exactly 12. Listed the full set inline so future drift is greppable against the seeder | _this PR_ |
+| `README.md` (changelog Phase D scaffold) | `docs-drift` | Called out "React 19 + Tailwind 3.5" but `package.json` is `react ^18.3.1` + `tailwindcss ^3.4.14`. Aligned both | _this PR_ |
+| `README.md` (changelog Phase H1) | `docs-drift` | Repeated the "Spatie activitylog (soft dep)" framing — same fix as the line-74 entry, applied for consistency | _this PR_ |
+
+**Theme**: every finding is a R9 violation (docs out of sync with code).
+The PR #34 lesson is operational, not a new rule:
+
+- When the README quotes a column / env var / version / PR number / count,
+  diff it against the source (migration / `package.json` / `composer.json` /
+  `gh pr list`) BEFORE the commit lands. The pre-existing R9 skill
+  already covers this; PR #34 is a reminder that R9 applies to the
+  README itself, not just to code-adjacent docs (`CLAUDE.md`,
+  `copilot-instructions.md`).
+
+No new categories minted. No new rules. The fix simply tightens the
+README to match the v2.0 codebase verbatim.
+
 ---
 
 ## Category frequency snapshot (PR #16 → PR #31, regenerated at PR16)

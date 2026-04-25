@@ -59,7 +59,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 | Feature | Description |
 |---|---|
-| **Single-Page Admin Shell** | React 19 + TypeScript + Vite + TanStack Router/Query + shadcn/ui under `/app/*` — dark-first glassmorphism UI with code-split routes (~400 KB initial gzipped) |
+| **Single-Page Admin Shell** | React 18 + TypeScript + Vite + TanStack Router/Query + shadcn/ui under `/app/*` — dark-first glassmorphism UI with code-split routes (~400 KB initial gzipped) |
 | **RBAC Foundation** | Spatie roles (`admin`, `super-admin`, `editor`, `viewer`) + `project_memberships` (tenant scope with folder/tag allowlist JSON) + `knowledge_document_acl` (row-level ACL); global Eloquent scope filters every query against `knowledge_documents` to the user's permitted projects |
 | **Auth: Sanctum stateful SPA + Bearer** | Cookie-based stateful auth for the SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) AND personal access tokens for API clients / MCP / GitHub Action — same guard, same RBAC scopes |
 | **2FA stub** | `TwoFactorController` skeleton behind `AUTH_2FA_ENABLED=false` for future TOTP rollout |
@@ -71,7 +71,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Dashboard** (`/admin`) | KPI strip (docs, chunks, chats, p95 latency, cache hit rate, canonical coverage) + health strip (db, pgvector, queue, kb-disk, embeddings, chat) + 3 code-split recharts cards (chat volume, token burn, rating donut) + top projects + activity feed; 30-second cache layer |
 | **Users & Roles** (`/admin/users` + `/admin/roles`) | Filterable users table with soft-delete + restore, 3-tab edit drawer (Details / Roles / Memberships with `scope_allowlist` JSON editor), Spatie-backed role CRUD with grouped permission matrix |
 | **KB Explorer** (`/admin/kb`) | Memory-safe `chunkById(100)` tree walker with canonical-aware modes (`canonical \| raw \| all`); right-panel tabs: Preview (markdown + frontmatter pills) / Meta (canonical grid + AI tags) / **Source** (CodeMirror 6 editor with PATCH `/raw` → validate → write → audit → re-ingest) / **Graph** (1-hop tenant-scoped subgraph, SVG radial layout) / **History** (paginated `kb_canonical_audit`) / **PDF export** (Browsershot, A4 print-optimised) |
-| **Logs** (`/admin/logs`) | Five deep-linkable tabs (`?tab=chat \| audit \| app \| activity \| failed`) — chat logs with model/project/rating filters, canonical audit trail, reverse-seek `SplFileObject`-powered application log tailer (whitelist regex, 2000-line cap, optional live polling), Spatie activitylog (soft dep), failed-jobs read-only |
+| **Logs** (`/admin/logs`) | Five deep-linkable tabs (`?tab=chat \| audit \| app \| activity \| failed`) — chat logs with model/project/rating filters, canonical audit trail, reverse-seek `SplFileObject`-powered application log tailer (whitelist regex, 2000-line cap, optional live polling), Spatie activity log, failed-jobs read-only |
 | **Maintenance** (`/admin/maintenance`) | Whitelisted Artisan runner via `CommandRunnerService` with **6 independent gates**: (1) whitelist lookup, (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie permission gate (`commands.run` / `commands.destructive`), (5) audit-before-execute (`admin_command_audits`), (6) per-user `throttle:10,1` rate limit. Three-step React wizard: Preview → Confirm (type-in for destructive) → Run → Result |
 | **AI Insights** (`/admin/insights`) | Daily `insights:compute` (05:00 UTC) writes one row into `admin_insights_snapshots`; six widget cards: Promotion Suggestions, Orphan Docs, Suggested Tags, Coverage Gaps, Stale Docs, Quality Report — O(1) DB read, zero LLM calls per page load |
 
@@ -639,7 +639,7 @@ paginated chat logs with model/project/rating filters; canonical
 audit trail with event-type/actor filters; reverse-seek
 `SplFileObject`-powered application log tailer (2000-line cap, filename
 whitelist regex, optional live polling via `?live=1`); Spatie
-activitylog (soft dep — graceful "not installed" state); failed-jobs
+activity log (Spatie, required); failed-jobs
 read-only table with expandable exception trace (retry lives in
 Maintenance, not here).
 
@@ -2263,7 +2263,9 @@ at least one role.
 
 ```bash
 # Drop your markdown files under storage/app/kb/ (the default `kb` disk),
-# or edit KB_DISK_DRIVER in .env to point at S3 / R2 / GCS / MinIO.
+# or set KB_FILESYSTEM_DISK in .env to `s3`, `r2`, `gcs`, or `minio` to
+# use an object-storage backend. KB_DISK_DRIVER only configures the
+# built-in `kb` disk's driver/root and is not the backend selector.
 
 # Then walk the folder and ingest every .md (or .markdown) file:
 php artisan kb:ingest-folder docs/ --project=my-project --recursive
@@ -2714,23 +2716,31 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 
 **Enterprise Admin Surface (PRs #16 – #33, 10 phases A → J)**
 
-*Phase A — Storage & Scheduler hardening (PR #1)*
+*Phase A — Storage & Scheduler hardening (PR #16)*
 - Per-project disk override (`KB_PROJECT_DISKS` map → `App\Support\KbDiskResolver`)
 - Raw vs canonical disk separation (Omega-inspired)
-- New scheduler entries: `activity-log:prune`, `admin-audit:prune`,
-  `queue:prune-failed`, `notifications:prune`, `kb:prune-orphan-files`
+- Scheduled maintenance commands (`bootstrap/app.php`):
+  `kb:prune-embedding-cache`, `chat-log:prune`, `kb:prune-deleted`,
+  `kb:rebuild-graph`, `queue:prune-failed`, `admin-audit:prune`,
+  `admin-nonces:prune`, `kb:prune-orphan-files --dry-run`, `insights:compute`
+  (all `onOneServer()->withoutOverlapping()`). The `activitylog:clean`
+  cron is stubbed as a comment — flip it on by uncommenting once a
+  retention policy is locked in. Laravel 13 doesn't ship a
+  `notifications:prune` command, so we don't schedule one.
 - Configurable filesystems blocks: R2, GCS, MinIO
 
-*Phase B — Auth JSON API + Sanctum stateful SPA (PR #2)*
+*Phase B — Auth JSON API + Sanctum stateful SPA (PR #17)*
 - `Route::middleware('web')->prefix('auth')` group with JSON endpoints
   (`/login`, `/logout`, `/me`, `/forgot-password`, `/reset-password`)
 - 2FA stub controller behind `AUTH_2FA_ENABLED=false` feature flag
 - Throttling: 5/min on login (failure-only counter), 3/min on forgot-password
 
-*Phase C — RBAC foundation (PR #3)*
+*Phase C — RBAC foundation (PR #18)*
 - `spatie/laravel-permission` with 4 baseline roles (`super-admin`, `admin`,
-  `editor`, `viewer`) + 13 permissions (`users.manage`, `kb.read.any`,
-  `commands.run`, `commands.destructive`, etc.)
+  `editor`, `viewer`) + 12 permissions (`users.manage`, `roles.manage`,
+  `permissions.view`, `kb.read.any`, `kb.edit.any`, `kb.delete.any`,
+  `kb.promote.any`, `commands.run`, `commands.destructive`, `logs.view`,
+  `insights.view`, `admin.access`)
 - New tables: `project_memberships` (tenant scope JSON), `kb_tags` +
   `knowledge_document_tags` pivot, `knowledge_document_acl` (row-level)
 - Global Eloquent scope `AccessScopeScope` on `KnowledgeDocument` filters every
@@ -2739,8 +2749,8 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 - `EnsureProjectAccess` middleware + `KnowledgeDocumentPolicy`
 - `auth:grant {email} {role}` operator CLI
 
-*Phase D — Frontend scaffold + auth pages (PR #4)*
-- React 19 + TypeScript + Vite + Tailwind 3.5 + shadcn/ui (Radix) + TanStack
+*Phase D — Frontend scaffold + auth pages (PR #19)*
+- React 18 + TypeScript + Vite + Tailwind 3.4 + shadcn/ui (Radix) + TanStack
   Router/Query + Zustand + react-i18next
 - Catch-all `Route::get('/app/{any}', SpaController)` for the SPA
 - AppShell with collapsible sidebar, command palette, dark/light toggle
@@ -2748,7 +2758,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 - Auth pages: Login, Forgot, Reset, Verify — shadcn forms + zod + react-hook-form
 - Vite manifest output to `public/build/`, code-split per feature
 
-*Phase E — Chat React (PR #5)*
+*Phase E — Chat React (PR #20)*
 - Full porting of the legacy Blade chat (`chatApp()` Alpine) to React
 - `ConversationList`, `MessageThread`, `MessageBubble`, `Composer`,
   `CitationsPopover`, `FeedbackButtons`, `VoiceInput`
@@ -2758,7 +2768,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
   optimistic updates
 - Legacy `chat.blade.php` deprecated (kept for fallback during migration)
 
-*Phase F1 + F2 — Admin shell + Dashboard + Users & Roles (PRs #6 + #7)*
+*Phase F1 + F2 — Admin shell + Dashboard + Users & Roles (PRs #22 + #23)*
 - KPI dashboard (`/app/admin`): 6 KPI tiles + health strip + 3 recharts cards
   (chat volume area, token burn stacked bar, rating donut) + top projects +
   activity feed; 30-second `Cache::remember` layer
@@ -2768,7 +2778,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 - Spatie role CRUD with grouped permission matrix (`kb`, `users`, `roles`,
   `commands`, `logs`, `insights` cards)
 
-*Phase G1 – G4 — KB Explorer (PRs #8 + #9 + #10 + #11)*
+*Phase G1 – G4 — KB Explorer (PRs #24 + #25 + #26 + #27)*
 - Memory-safe `chunkById(100)` tree walker with canonical-aware modes
   (`canonical | raw | all`)
 - Detail panel tabs: **Preview** (markdown + frontmatter pills) / **Meta**
@@ -2780,12 +2790,12 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 - **PDF export** via Browsershot (Chrome headless), A4 print-optimised, with
   TOC and clickable wikilink anchors; feature-flagged via `ADMIN_PDF_ENGINE`
 
-*Phase H1 + H2 — Log Viewer + Maintenance Panel (PRs #12 + #13)*
+*Phase H1 + H2 — Log Viewer + Maintenance Panel (PRs #28 + #29)*
 - 5 deep-linkable log tabs (`?tab=chat | audit | app | activity | failed`):
   paginated chat logs with model/project/rating filters, canonical audit trail
   with event-type/actor filters, reverse-seek `SplFileObject`-powered
   application log tailer (filename whitelist regex, 2000-line cap, optional
-  live polling via `?live=1`), Spatie activitylog (soft dep), failed-jobs
+  live polling via `?live=1`), Spatie activity log (required), failed-jobs
   read-only with expandable exception trace
 - Whitelisted Artisan runner enforced by `CommandRunnerService` via **6
   independent gates**: (1) whitelist lookup in `config('admin.allowed_commands')`,
@@ -2796,7 +2806,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
   `throttle:10,1` rate limit
 - Three-step React wizard: Preview → [Confirm type-in for destructive] → Run → Result
 
-*Phase I — AI Insights (PR #14)*
+*Phase I — AI Insights (PR #30)*
 - Daily `insights:compute` command (05:00 UTC scheduler) writes one row into
   `admin_insights_snapshots` (six independently-nullable JSON columns)
 - Six widget cards: Promotion Suggestions, Orphan Docs, Suggested Tags,
@@ -2804,7 +2814,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
 - O(1) DB read on the SPA side; zero LLM calls per page load (compute moved
   from on-demand to pre-computed for cost control)
 
-*Phase J — Docs + E2E + polish (PR #15 + #33)*
+*Phase J — Docs + E2E + polish (PRs #31 + #32 + #33)*
 - 63-test Playwright E2E suite running against real Postgres + pgvector in CI
 - Deterministic via `data-testid` + `data-state="idle | loading | ready | error | empty"`
   contract (R11)
