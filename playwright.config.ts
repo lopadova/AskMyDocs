@@ -26,8 +26,17 @@ export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
-    retries: process.env.CI ? 2 : 0,
+    // Retries kept at 0 in CI while the suite is being stabilised on
+    // the new pgvector-enabled Playwright job — a flaky test can
+    // compound to hours of runner time with retries:2 (60 tests * 90s
+    // worst case). Once green and stable, bump back to 2 for nightly
+    // runs.
+    retries: process.env.CI ? 0 : 0,
     workers: process.env.CI ? 1 : undefined,
+    // Per-test timeout. Default is 30s; tighter so a stuck test
+    // (e.g., page.goto blocking on a slow CI server response) fails
+    // before it costs serious wall-clock budget.
+    timeout: 20_000,
     reporter: [['list'], ['html', { open: 'never' }]],
     use: {
         baseURL,

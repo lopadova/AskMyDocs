@@ -75,6 +75,11 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
+    # Cap the whole job at 20 minutes — Playwright's per-test retry +
+    # per-test timeout can compound to hours when a setup test
+    # consistently hits a slow failure. The cap turns a debug
+    # session from "hours of runner time" into a sharp 20 min loop.
+    timeout-minutes: 20
     # Depends on phpunit+vitest so E2E only spins up after core gates
     # are green.
     needs: [phpunit, vitest]
