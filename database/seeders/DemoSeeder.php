@@ -22,7 +22,9 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * Demo seeder for E2E + local dev.
  *
- *  - One super-admin `admin@demo.local` (password: `password`)
+ *  - One admin `admin@demo.local` (password: `password`) — has
+ *    `commands.run` but NOT `commands.destructive`. The
+ *    super-destructive flows go through `super@demo.local`.
  *  - Three KnowledgeDocument rows (hr-portal + engineering) with canonical
  *    metadata + a single chunk each, so the WikilinkResolver returns a
  *    realistic preview in Playwright tests.
@@ -49,8 +51,16 @@ class DemoSeeder extends Seeder
             ],
         );
 
-        if (! $admin->hasRole('super-admin')) {
-            $admin->assignRole('super-admin');
+        // admin@demo.local is the regular admin user used by the
+        // chromium project — has `commands.run` but NOT
+        // `commands.destructive`. That's load-bearing for
+        // admin-maintenance.spec.ts:62 which expects 403 when admin
+        // tries to preview a destructive command. The dedicated
+        // super@demo.local (seeded below) is the destructive-flow
+        // operator; making BOTH super-admin would break the RBAC
+        // gradient the suite is testing.
+        if (! $admin->hasRole('admin')) {
+            $admin->assignRole('admin');
         }
 
         // Viewer account for the Playwright chromium-viewer project

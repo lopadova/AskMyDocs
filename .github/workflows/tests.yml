@@ -193,7 +193,14 @@ jobs:
           # login flows survive across page navigations.
           echo "CACHE_STORE=array" >> .env
           echo "SESSION_DRIVER=file" >> .env
-          echo "QUEUE_CONNECTION=sync" >> .env
+          # Database-backed queue so /api/kb/ingest dispatches enqueue
+          # the job (returning 202) without running it immediately.
+          # `sync` would execute IngestDocumentJob on the request thread,
+          # which then calls the AI provider synchronously — without API
+          # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
+          # The test only asserts the 202; the actual indexing flow is
+          # covered by PHPUnit feature tests with Http::fake().
+          echo "QUEUE_CONNECTION=database" >> .env
           # `storage/framework/*` is gitignored except for `.gitkeep`,
           # so the cache/sessions/views subdirs may not exist on a
           # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
