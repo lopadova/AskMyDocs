@@ -39,14 +39,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'testing/*',
         ]);
 
-        // NOTE: previous attempt at fixing the api.php session auth
-        // used `$middleware->statefulApi()` here. That activates
-        // Sanctum's EnsureFrontendRequestsAreStateful only when the
-        // request matches SANCTUM_STATEFUL_DOMAINS — fragile in CI
-        // where the page may make a request before the SPA shell
-        // sets a proper Origin. Replaced with explicit `web`
-        // middleware on each `auth:sanctum` route group in api.php
-        // (kb/admin/etc.) so StartSession runs unconditionally.
+        // (No custom api-stateful group — Laravel 11+ `$middleware->group()`
+        // signature varies by minor; we set session/cookie middleware
+        // inline on the route groups in routes/api.php instead. See the
+        // `auth:sanctum` groups there which include EncryptCookies +
+        // StartSession explicitly.)
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
