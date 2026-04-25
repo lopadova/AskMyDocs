@@ -99,23 +99,19 @@ export const test = base.extend<{ seeded: void }>({
                     );
                 }
 
-                // Bisect step 2: if /me works but admin views land in
-                // data-state="error", the admin endpoint chain itself
-                // is broken. Probe one canonical admin endpoint here
-                // to surface the failure. Skip for chromium-viewer
-                // since that role is *expected* to get 403 on admin
-                // endpoints (RBAC denial is the test's whole point).
-                if (testInfo.project.name !== 'chromium-viewer') {
-                    const overviewResponse = await page.request.get(
-                        '/api/admin/metrics/overview',
-                        { headers: { Accept: 'application/json' } },
-                    );
-                    if (!overviewResponse.ok()) {
-                        throw new Error(
-                            `seeded fixture: /api/admin/metrics/overview failed for ${creds.email} on ${testInfo.project.name}: ${overviewResponse.status()} ${await overviewResponse.text()}`,
-                        );
-                    }
-                }
+                // NOTE: deliberately do NOT probe /api/admin/* here.
+                // The fixture runs before the test body, so the page
+                // is still at about:blank — page.request from that
+                // context sends no Origin header, so Sanctum's
+                // EnsureFrontendRequestsAreStateful middleware can't
+                // recognise the request as SPA-stateful and 401s
+                // even with a valid session cookie. The test body's
+                // own page.goto('/app/admin') sets a real Origin
+                // (http://127.0.0.1:8000), so the SPA's fetches DO
+                // pass through Sanctum stateful correctly. /me works
+                // here only because that route is wrapped in
+                // Route::middleware('web') which forces session
+                // loading regardless of Origin.
             }
 
             await use();
