@@ -284,7 +284,24 @@ test.describe('Admin golden-path journey — Phase J', () => {
         // and assert the subsequent /app navigation bounces to /login
         // (the RequireAuth guard does the redirect).
 
-        const logoutRes = await request.post('/api/auth/logout');
+        // POST /api/auth/logout sits under the `web` middleware group
+        // so VerifyCsrfToken applies. Without an explicit X-XSRF-TOKEN
+        // header the request 419s. The seeded fixture already populated
+        // the top-level `request` jar with a XSRF-TOKEN via
+        // /sanctum/csrf-cookie + login; pull it out and forward it.
+        const reqStorage = await request.storageState();
+        const xsrfCookie = reqStorage.cookies.find((c) => c.name === 'XSRF-TOKEN');
+        if (!xsrfCookie) {
+            throw new Error(
+                'admin-journey: XSRF-TOKEN missing from request jar before logout',
+            );
+        }
+        const logoutRes = await request.post('/api/auth/logout', {
+            headers: {
+                'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),
+                Accept: 'application/json',
+            },
+        });
         expect([200, 204]).toContain(logoutRes.status());
 
         await page.goto('/app/admin');

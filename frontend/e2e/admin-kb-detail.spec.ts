@@ -40,7 +40,7 @@ test.describe('Admin KB Document Detail', () => {
         // Frontmatter pill pack comes from the YAML fence DemoSeeder now
         // writes to disk — keys `id`, `type`, `status`, `project`.
         await expect(page.getByTestId('frontmatter-pills')).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByTestId('frontmatter-pill-type')).toContainText('policy');
+        await expect(page.getByTestId('frontmatter-pill-type')).toContainText('standard');
         await expect(page.getByTestId('frontmatter-pill-status')).toContainText('accepted');
 
         // Body comes from the seeded markdown (# Remote Work Policy).
@@ -60,7 +60,7 @@ test.describe('Admin KB Document Detail', () => {
         await page.getByTestId('kb-tab-meta').click();
         await expect(page.getByTestId('kb-meta')).toBeVisible({ timeout: 10_000 });
         await expect(page.getByTestId('kb-meta-project')).toContainText('hr-portal');
-        await expect(page.getByTestId('kb-meta-canonical-type')).toContainText('policy');
+        await expect(page.getByTestId('kb-meta-canonical-type')).toContainText('standard');
         await expect(page.getByTestId('kb-meta-is-canonical')).toContainText('yes');
 
         // History tab — DemoSeeder inserts one `promoted` audit per
