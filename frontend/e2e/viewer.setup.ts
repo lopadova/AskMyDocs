@@ -7,25 +7,18 @@ const VIEWER_EMAIL = process.env.E2E_VIEWER_EMAIL ?? 'viewer@demo.local';
 const VIEWER_PASSWORD = process.env.E2E_VIEWER_PASSWORD ?? 'password';
 
 /*
- * PR6 — Phase F1. Logs in as the DemoSeeder-seeded `viewer@demo.local`
- * via the JSON API and writes the session to playwright/.auth/viewer.json
- * so the `chromium-viewer` project can exercise RBAC denial flows
- * against the real backend.
- *
- * See auth.setup.ts for the rationale on API-based auth (vs driving the
- * legacy Blade form).
- *
- * Runs AFTER auth.setup.ts (chronologically) but Playwright does not
- * enforce ordering between setup projects — keep both idempotent.
+ * PR6 — Phase F1. Viewer auth setup. Uses `page.request` (not the
+ * top-level `request` fixture) so the XSRF cookie set by
+ * /sanctum/csrf-cookie shares the same jar as `page.goto(...)` —
+ * see auth.setup.ts for the full rationale.
  */
-setup('authenticate as viewer', async ({ page, request, context }) => {
+setup('authenticate as viewer', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    // Reset + seed demo data. DemoSeeder seeds admin + viewer + super-admin.
-    await request.post('/testing/reset');
-    await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    await page.request.post('/testing/reset');
+    await page.request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
 
-    await request.get('/sanctum/csrf-cookie');
+    await page.request.get('/sanctum/csrf-cookie');
 
     const cookies = await context.cookies();
     const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
@@ -33,7 +26,7 @@ setup('authenticate as viewer', async ({ page, request, context }) => {
         throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
     }
 
-    const loginResponse = await request.post('/api/auth/login', {
+    const loginResponse = await page.request.post('/api/auth/login', {
         data: { email: VIEWER_EMAIL, password: VIEWER_PASSWORD },
         headers: {
             'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),

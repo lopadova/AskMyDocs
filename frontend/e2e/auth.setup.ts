@@ -7,36 +7,30 @@ const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@demo.local';
 const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'password';
 
 /*
- * One-time authentication. Resets the demo DB, logs in via the JSON
- * `/api/auth/login` endpoint (the actual SPA flow) and persists the
- * Sanctum session cookies so the chromium project can reuse them.
+ * One-time authentication.
  *
- * Why API-based instead of driving the legacy Blade `/login` form:
+ * Uses `page.request` (NOT the top-level `request` fixture) for every
+ * HTTP call: only `page.request` is guaranteed to share its cookie jar
+ * with the page navigation that follows. The top-level `request`
+ * fixture in Playwright is its own APIRequestContext with a separate
+ * jar — XSRF-TOKEN set there won't be visible to `page.goto(...)`.
  *
- *   - The SPA's TanStack Router has `/login` mounted at the root level
- *     but Laravel still serves the legacy Blade auth.login view at
- *     server-side `/login`. Tests written against React testids
- *     wouldn't see them on the Blade form, and porting CSRF token
- *     handling between `request` and `page` contexts in CI proved
- *     fragile (15s waitForURL timeouts in headless chromium).
- *   - The JSON API path is the production user flow — driving it
- *     directly is more honest than a UI proxy in setup.
- *   - Cookies set by `request.get('/sanctum/csrf-cookie')` and
- *     `request.post('/api/auth/login')` propagate to `page.goto(...)`
- *     because `request` shares the browser context.
+ * Sanctum stateful SPA flow:
+ *   1. POST /testing/reset                  (env-gated, drops + recreates DB)
+ *   2. POST /testing/seed { DemoSeeder }    (env-gated, seeds users)
+ *   3. GET  /sanctum/csrf-cookie            (sets XSRF-TOKEN + laravel_session)
+ *   4. POST /api/auth/login + X-XSRF-TOKEN  (returns 200, fixates session)
+ *   5. page.goto('/app/chat')               (verifies SPA renders for the auth user)
+ *   6. context.storageState({ path })       (persists cookies for downstream projects)
  */
-setup('authenticate as admin', async ({ page, request, context }) => {
+setup('authenticate as admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
     // Reset + seed demo data. Both endpoints are guarded by APP_ENV=testing.
-    await request.post('/testing/reset');
-    await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    await page.request.post('/testing/reset');
+    await page.request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
 
-    // Sanctum stateful SPA flow:
-    //   1. GET /sanctum/csrf-cookie sets `XSRF-TOKEN` + `laravel_session`
-    //   2. POST /api/auth/login with the URL-decoded XSRF in the
-    //      `X-XSRF-TOKEN` header and the cookies sent automatically
-    await request.get('/sanctum/csrf-cookie');
+    await page.request.get('/sanctum/csrf-cookie');
 
     const cookies = await context.cookies();
     const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
@@ -46,7 +40,7 @@ setup('authenticate as admin', async ({ page, request, context }) => {
         );
     }
 
-    const loginResponse = await request.post('/api/auth/login', {
+    const loginResponse = await page.request.post('/api/auth/login', {
         data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
         headers: {
             'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),

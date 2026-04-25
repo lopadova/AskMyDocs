@@ -9,33 +9,28 @@ const SUPER_PASSWORD = process.env.E2E_SUPER_ADMIN_PASSWORD ?? 'password';
 /*
  * PR13 / Phase H2 — super-admin setup.
  *
- * Logs in as DemoSeeder's `super@demo.local` via the JSON API and
- * persists session state to playwright/.auth/super-admin.json. The
- * `chromium-super-admin` project picks this up via storageState.
+ * Logs in via the JSON `/api/auth/login` endpoint and persists session
+ * state to playwright/.auth/super-admin.json. The `chromium-super-admin`
+ * project picks this up via storageState.
  *
- * We need a DEDICATED super-admin account (not just reusing the admin
- * one) because:
+ * Uses `page.request` (not the top-level `request` fixture) so the
+ * XSRF cookie shares the same jar as `page.goto(...)` — see
+ * auth.setup.ts for the full rationale.
  *
- *   - The admin role maps to `commands.run` (non-destructive only).
- *   - The super-admin role maps to `commands.run` + `commands.destructive`.
+ * We need a DEDICATED super-admin account because:
+ *   - admin role        → commands.run (non-destructive only)
+ *   - super-admin role  → commands.run + commands.destructive
  *
- * To exercise destructive command flows in Playwright (kb:prune-deleted,
- * kb:prune-orphan-files, etc.) we must be authenticated as a user that
- * the RbacSeeder tagged super-admin. DemoSeeder handles that.
- *
- * See auth.setup.ts for the rationale on API-based auth.
- *
- * Runs after auth.setup.ts / viewer.setup.ts in CI but Playwright does
- * not enforce ordering across setup projects — keep all three idempotent
- * against /testing/reset.
+ * Destructive command flows (kb:prune-deleted, kb:prune-orphan-files,
+ * etc.) require the super-admin storage state.
  */
-setup('authenticate as super-admin', async ({ page, request, context }) => {
+setup('authenticate as super-admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
-    await request.post('/testing/reset');
-    await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+    await page.request.post('/testing/reset');
+    await page.request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
 
-    await request.get('/sanctum/csrf-cookie');
+    await page.request.get('/sanctum/csrf-cookie');
 
     const cookies = await context.cookies();
     const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
@@ -43,7 +38,7 @@ setup('authenticate as super-admin', async ({ page, request, context }) => {
         throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
     }
 
-    const loginResponse = await request.post('/api/auth/login', {
+    const loginResponse = await page.request.post('/api/auth/login', {
         data: { email: SUPER_EMAIL, password: SUPER_PASSWORD },
         headers: {
             'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),
