@@ -103,3 +103,126 @@ foreach ($rows as $row) {
     $this->hardDelete($row);
 }
 ```
+
+---
+
+## Extension: chunkById + custom orderBy is a cursor bug
+
+Distilled from PR16 re-harvest. PR #24 `KbTreeService` added
+`orderBy('project_key')` / `orderBy('source_path')` BEFORE
+`chunkById()`. That silently breaks the cursor — `chunkById` remembers
+the last `id` it processed and re-queries with `WHERE id > :last`.
+Mixing that with a custom `ORDER BY` means rows can be skipped (seen
+out of id-order once, then skipped the second pass) or processed
+twice (when the ordering churns on updates mid-sweep).
+
+### Symptoms in a review diff
+
+```php
+SomeModel::query()
+    ->where(...)
+    ->orderBy('project_key')       // ⚠ custom order
+    ->orderBy('source_path')       // ⚠ custom order
+    ->chunkById(100, function ($rows) { ... });   // expects id-order
+```
+
+### Fix template
+
+Option A — use `cursor()` when id-order doesn't matter:
+
+```php
+foreach (SomeModel::query()
+    ->where(...)
+    ->orderBy('project_key')
+    ->orderBy('source_path')
+    ->cursor() as $row) {
+    // stream; no cursor semantics to preserve
+}
+```
+
+Option B — sort in PHP after `chunkById`:
+
+```php
+$results = [];
+SomeModel::query()->where(...)->orderBy('id')->chunkById(100, function ($rows) use (&$results) {
+    foreach ($rows as $row) $results[] = $row;
+});
+usort($results, fn ($a, $b) => [$a->project_key, $a->source_path] <=> [$b->project_key, $b->source_path]);
+```
+
+Option C — batch-safe custom cursor: chunk on the composite order's
+unique key (only works when the `ORDER BY` is unique).
+
+---
+
+## Extension: N+1 inside the chunk walker
+
+Distilled from PR16 re-harvest. PR #30 `AiInsightsService::detectOrphans`
+ran `chunks()->count()` + `KbEdge::exists()` inside the `chunkById`
+closure — classic N+1 turned into chunk-walker-amplified N+1. On 10k
+docs that's 20k DB round-trips wrapped in a scheduler run.
+
+### Symptoms in a review diff
+
+```php
+KnowledgeDocument::query()->orderBy('id')->chunkById(100, function ($docs) {
+    foreach ($docs as $doc) {
+        $chunkCount = $doc->chunks()->count();                   // N+1
+        $hasEdges = KbEdge::where('from_node_uid', $doc->doc_id)->exists();  // N+1
+        // ...
+    }
+});
+```
+
+### Fix template — `withCount` + pre-fetched set-based check
+
+```php
+KnowledgeDocument::query()
+    ->withCount('chunks')  // set-based: one subquery, not N
+    ->orderBy('id')
+    ->chunkById(100, function ($docs) {
+        // Pre-fetch the set of doc_ids that have any edges — one query per chunk
+        $docIds = $docs->pluck('doc_id')->filter();
+        $hasEdgeSet = KbEdge::query()
+            ->whereIn('from_node_uid', $docIds)
+            ->pluck('from_node_uid')
+            ->unique()
+            ->flip();
+
+        foreach ($docs as $doc) {
+            $chunkCount = $doc->chunks_count;  // already hydrated
+            $hasEdges = isset($hasEdgeSet[$doc->doc_id]);
+            // ...
+        }
+    });
+```
+
+---
+
+## Extension: SQL-side histogram buckets, not PHP-side iteration
+
+Distilled from PR16 re-harvest. PR #30 `AiInsightsService::qualityReport`
+computed 5 histogram buckets by `GROUP BY LENGTH(chunk_text)` (up to
+#chunks distinct groups) and iterated in PHP. For a 100k-row
+knowledge_chunks table, that's a hundred-thousand-row hydrate.
+
+### Fix template — CASE in SQL so the DB produces 5 rows, not 100k
+
+```php
+$buckets = DB::table('knowledge_chunks')
+    ->selectRaw(
+        "CASE
+           WHEN LENGTH(chunk_text) <  200 THEN '0-200'
+           WHEN LENGTH(chunk_text) <  500 THEN '200-500'
+           WHEN LENGTH(chunk_text) < 1000 THEN '500-1000'
+           WHEN LENGTH(chunk_text) < 2000 THEN '1000-2000'
+           ELSE '2000+'
+         END AS bucket,
+         COUNT(*) AS count"
+    )
+    ->where('project_key', $project)
+    ->groupBy('bucket')
+    ->get()
+    ->keyBy('bucket')
+    ->toArray();
+```

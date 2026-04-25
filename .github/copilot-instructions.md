@@ -14,7 +14,13 @@ with citations out — over a **typed knowledge base** with a lightweight
 graph, anti-repetition memory, and a human-gated promotion pipeline.
 Optional chat history, feedback/few-shot, hybrid (semantic + FTS) search,
 MCP server (10 tools), and a GitHub-Action-based cross-repo ingestion
-pipeline.
+pipeline. A full React SPA admin shell rides alongside at `/app/*`:
+dashboard, users + roles + RBAC, canonical KB explorer with inline
+editor and graph viewer, five-tab log viewer, whitelisted Artisan
+maintenance runner, and a daily AI insights panel. Every admin page is
+Spatie-role-gated and every mutation is audit-trailed
+(`kb_canonical_audit` for canonical changes, `admin_command_audits` for
+commands).
 
 - PHP `^8.3`, Laravel `^13.0`, Sanctum `^4.2`.
 - `symfony/yaml ^7.4|^8.0` for canonical YAML frontmatter parsing.
@@ -117,6 +123,13 @@ when no canonical docs exist.
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` |
 | MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (10 tools: 5 retrieval + 5 canonical/promote) |
+| Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
+| Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
+| Admin KB surface | `app/Services/Admin/KbTreeService.php`, `app/Http/Controllers/Api/Admin/KbTreeController.php`, `KbDocumentController.php`, `app/Services/Admin/Pdf/PdfRenderer*.php` |
+| Admin log viewer | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
+| Admin command runner | `app/Services/Admin/CommandRunnerService.php`, `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php`, `app/Models/AdminCommandAudit.php`, `AdminCommandNonce.php`, `config/admin.php` |
+| AI insights | `app/Services/Admin/AiInsightsService.php`, `app/Http/Controllers/Api/Admin/AdminInsightsController.php`, `app/Console/Commands/InsightsComputeCommand.php`, `app/Models/AdminInsightsSnapshot.php` |
+| SPA entrypoint | `app/Http/Controllers/SpaController.php`, `resources/views/app.blade.php`, `frontend/src/main.tsx`, `frontend/src/routes/index.tsx` |
 | GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |
 | Claude skill templates | `.claude/skills/kb-canonical/*` (CONSUMER-SIDE), `.claude/skills/canonical-awareness/` (R10, in-repo) |
 | ADRs | `docs/adr/0001..0003.md` |
@@ -207,7 +220,7 @@ when no canonical docs exist.
 
 ---
 
-## 6. Review rules (R1–R10) — read this before reviewing or coding
+## 6. Review rules (R1–R22) — read this before reviewing or coding
 
 These are distilled from actual Copilot comments on PRs #4, #5, #6 and the
 canonical compilation series PRs #9–#14. The skills in
@@ -294,6 +307,130 @@ Checklist:
 Distilled from the canonical compilation series (PRs #9–#14). See
 `.claude/skills/canonical-awareness/`.
 
+### R11 — Frontend testid / ARIA / observable state contract
+Every React component under `frontend/src/` exposes stable
+`data-testid` values on actionable elements, proper ARIA (`role`,
+`aria-label`, `aria-live`), and observable async states
+(`data-state="idle|loading|ready|error|empty"`, `aria-busy`).
+Validation errors render next to their input with
+`data-testid="<field>-error"`. API failures surface in the DOM —
+no swallowed `useMutation` failures. See
+`.claude/skills/frontend-testid-conventions/`.
+
+### R12 — User-visible UI changes ship Playwright E2E coverage
+From PR5 onward, every PR touching `frontend/src/` or a route that
+renders into the SPA must include `frontend/e2e/<feature>.spec.ts`
+with at least one happy path and one failure path. Selectors use
+`getByTestId` or `getByRole` + accessible name. Waits use
+`data-state` / `toHaveAttribute`, never `waitForTimeout`. See
+`.claude/skills/playwright-e2e/`.
+
+### R13 — E2E scenarios exercise real data; stub only external services
+Playwright boots `php artisan serve` with `APP_ENV=testing` via
+`playwright.config.ts` webServer block. Tests hit the real DB
+(SQLite, reset+seeded via `/testing/reset` + `/testing/seed`).
+`page.route(...)` is reserved for external-service boundaries
+only — AI providers (OpenRouter, OpenAI, Anthropic, Gemini,
+Regolo), email senders, payment rails, remote object storage,
+OCR APIs. Intercepting `/api/admin/*`, `/api/kb/*`,
+`/api/auth/*`, `/sanctum/csrf-cookie`, `/conversations`, or any
+internal route turns E2E into a unit test in E2E clothing. The
+only exception is explicit failure injection on an internal
+route, which must carry an `R13: failure injection` marker
+comment so the intent is auditable.
+`scripts/verify-e2e-real-data.sh` is wired into the CI workflow
+and fails the build on any unmarked internal interception. See
+`.claude/skills/playwright-e2e/` and
+`.claude/skills/playwright-e2e-templates/`.
+
+### R14 — Surface failures loudly; never 200 with empty/null/NaN
+Empty/null/NaN on 200 is the same bug as silent `put() → false`.
+Every endpoint that cannot deliver a valid body maps failure to the
+correct status (404 missing, 500 unreadable, 503 downstream outage).
+No `""` PDF, no `null` JSON from a caught 500, no `-Infinity` from
+`Math.max(...[])`, no chosen-by-message-prefix status code. See
+`.claude/skills/surface-failures-loudly/`.
+
+### R15 — Frontend a11y checklist
+Every interactive element is programmatically labelled
+(`<label htmlFor>` / `aria-label`), keyboard-reachable (no
+`display:none` on real inputs — use visually-hidden pattern), with
+role/state on the focusable element (not the wrapper). Tooltips
+respond to focus/blur, not only mouseenter. See
+`.claude/skills/frontend-a11y-checklist/`.
+
+### R16 — Tests actually exercise the behaviour they claim
+A test named "enables Save after edit" must simulate an edit AND
+assert Save becomes enabled. An ordering test must use
+strictly-monotonic fixtures so reversing the endpoint would fail.
+Tests that mutate global state (env, DI, `window.location`, `Date.now`)
+restore it in `afterEach`. See
+`.claude/skills/test-actually-tests-what-it-claims/`.
+
+### R17 — React effects sync imperative / cached state
+When an effect owns an imperative cache (CodeMirror `EditorView`,
+canvas, ref-of-server-state), every branch that re-reads from the
+source must ALSO sync the cache. Optimistic updates stay until
+refetch completes. `NaN` is guarded before equality checks.
+`.map()` multi-element rows wrap in keyed `<Fragment key>` — NOT
+`<>` with key on an inner child. See
+`.claude/skills/react-effect-sync-cached-state/`.
+
+### R18 — Derive options from the DB, not from a literal subset
+UI filters, project lists, file-extension handling all derive from
+the real domain (API endpoint / distinct query / ingest-accepted
+extensions), never from a hard-coded sample. See
+`.claude/skills/derive-from-db-not-literal/`.
+
+### R19 — Input escaping is complete
+Escape every meta-char for every operator: LIKE (`%`, `_`, `\\`),
+fnmatch (always pass `FNM_PATHNAME` on paths), regex (escape `.`
+when the pattern is a literal host — or use `grep -Fq`), CSV env
+vars (`array_filter(array_map('trim', explode(',', $raw)))`). See
+`.claude/skills/input-escape-complete/`.
+
+### R20 — Route contracts match the FE payload shape
+FE `?token=X` ↔ BE `GET /reset-password` (query), not
+`/reset-password/{token}`. E2E specs post the shape the controller
+validates (`{ documents.*.project_key + content }`, not
+`{ project, markdown }`). TanStack parent routes render `<Outlet />`
+or nested children never mount. Artisan wrappers distinguish
+positional from option by signature. See
+`.claude/skills/route-contracts-match-fe-shape/`.
+
+### R21 — Security invariants are atomic or absent
+Lock-read-update-commit live inside the SAME transaction. Single-use
+tokens / nonces / rate counters mutate state INSIDE the lock, never
+after. Columns that encode "consumed" / "revoked" have DB-level
+`UNIQUE` or `PARTIAL UNIQUE` backing where the business rule demands
+it. One occurrence mints a rule because the blast radius is
+RCE-class. See `.claude/skills/security-invariants-atomic-or-absent/`.
+
+### R22 — CI failure investigation: artefact-first, then code
+When `gh pr checks` shows Playwright (or any E2E job) red, NEVER guess
+fixes from the test name alone. Always pull the failure context first:
+
+1. **Failed-job log** — `gh run view --job <id> --log-failed` for the
+   `✘` lines and the failing spec:line.
+2. **Playwright HTML report** — `tests.yml` uploads `playwright-report/`
+   on failure (retention 7d). Download via the GitHub UI or
+   `gh run download <run-id> --name playwright-report`. Each
+   `data/<hash>.md` carries the locator, timeout, page snapshot URL,
+   and screenshot path. Read these BEFORE diffing code.
+3. **Laravel log tail** — the workflow's "Dump Laravel log on failure"
+   step prints the last 200 lines of `storage/logs/laravel.log` inline.
+   A 500 from `/api/admin/...` surfaces as a Playwright "element not
+   visible" while the real stack trace lives in the laravel log.
+4. **Diagnostic throws** — when a non-2xx response masks itself as a
+   timeout, add a temporary `waitForResponse` + throw so the next CI
+   run prints the real status code + JSON body in the failed-job log.
+   Leave them in until green.
+
+A wrong commit costs one CI cycle (4–8 min) AND a misleading next
+baseline; artefact reading costs 5 min. PR #33 caught the DemoSeeder
+frontmatter regression (slug missing + invalid `type: policy`) this way.
+See `.claude/skills/ci-failure-investigation/`.
+
 ---
 
 ## 7. Testing & CI
@@ -341,4 +478,31 @@ Before approving a PR, quickly verify:
 - [ ] R8: any disk walker is explicit about `KB_PATH_PREFIX` handling.
 - [ ] R9: every column / env / flag / route quoted in the diff exists in
       the migration / config / routes / `--help` output it claims to mirror.
+- [ ] R10: every query on the KB graph uses the canonical scopes
+      (`canonical()` / `accepted()` / `raw()` / `byType()` / `bySlug()`),
+      no bare `where('project_key', …)` for retrieval grounding.
+- [ ] R11: every new FE actionable element has `data-testid` + ARIA +
+      `data-state` on the async container.
+- [ ] R12: every UI-touching PR ships ≥ 1 happy + ≥ 1 failure Playwright
+      spec.
+- [ ] R13: `bash scripts/verify-e2e-real-data.sh` exits 0.
+- [ ] R14: no endpoint returns 200 on error; no `""` / `null` / NaN
+      leaks through a successful body.
+- [ ] R15: every new input has a label; no `display:none` on real inputs;
+      role/state on the focusable element.
+- [ ] R16: every test's body matches its name (ordering tests use
+      strictly-monotonic fixtures; failure tests actually fire failure).
+- [ ] R17: React effects that re-read server state sync any imperative
+      cache in the same branch; `.map()` of multi-element rows wraps in
+      `<Fragment key>`.
+- [ ] R18: UI dropdowns derive from the DB / API, not a hard-coded
+      subset; file-extension handling covers `.md` AND `.markdown`.
+- [ ] R19: LIKE escapes `%` + `_` + `\\`; fnmatch passes `FNM_PATHNAME`;
+      regex literals escape `.`; CSV env vars go through trim + filter.
+- [ ] R20: FE call-site shape matches BE validator shape; TanStack
+      parent routes render `<Outlet />`; Artisan wrappers respect
+      positional vs option signatures.
+- [ ] R21: `lockForUpdate()` + `update()` live in the SAME
+      `DB::transaction`; single-use resources have DB-level unique
+      backing; concurrency-sensitive services have a concurrent test.
 - [ ] Tests: feature test added when the RAG hot path changed.

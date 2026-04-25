@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Scopes\AccessScopeScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -48,9 +50,34 @@ class KnowledgeDocument extends Model
         'frontmatter_json' => 'array',
     ];
 
+    /**
+     * Wire the per-user access-scope global filter. The SoftDeletes trait
+     * registers its own scope via the trait's boot method — this addition
+     * composes on top without fighting it.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope(new AccessScopeScope);
+    }
+
     public function chunks(): HasMany
     {
         return $this->hasMany(KnowledgeChunk::class);
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            KbTag::class,
+            'knowledge_document_tags',
+            'knowledge_document_id',
+            'kb_tag_id',
+        )->withTimestamps();
+    }
+
+    public function acl(): HasMany
+    {
+        return $this->hasMany(KnowledgeDocumentAcl::class, 'knowledge_document_id');
     }
 
     // -----------------------------------------------------------------
@@ -63,6 +90,17 @@ class KnowledgeDocument extends Model
     public function scopeCanonical(Builder $query): Builder
     {
         return $query->where('is_canonical', true);
+    }
+
+    /**
+     * Non-canonical documents — the inverse of `canonical()`. Introduced
+     * for the admin tree explorer's raw-mode filter so call sites use the
+     * same named scope vocabulary (`canonical()` / `raw()`) instead of
+     * inlining `where('is_canonical', false)` and drifting from R10.
+     */
+    public function scopeRaw(Builder $query): Builder
+    {
+        return $query->where('is_canonical', false);
     }
 
     /**

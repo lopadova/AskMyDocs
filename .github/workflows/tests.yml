@@ -66,5 +66,195 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run Vitest
+      - name: Run Vitest (react)
         run: npm test
+
+      - name: Run Vitest (legacy rich-content)
+        run: npm run test:legacy
+
+  playwright:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    # Cap the whole job at 20 minutes — Playwright's per-test retry +
+    # per-test timeout can compound to hours when a setup test
+    # consistently hits a slow failure. The cap turns a debug
+    # session from "hours of runner time" into a sharp 20 min loop.
+    timeout-minutes: 20
+    # Depends on phpunit+vitest so E2E only spins up after core gates
+    # are green.
+    needs: [phpunit, vitest]
+
+    # Spin up real Postgres + pgvector so the Playwright job exercises
+    # the same DB engine production runs. The pgvector/pgvector image
+    # ships pgvector preinstalled; Schema::ensureVectorExtensionExists()
+    # in the chunks/embedding migrations resolves cleanly here.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: askmydocs
+          POSTGRES_PASSWORD: askmydocs
+          POSTGRES_DB: askmydocs_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askmydocs -d askmydocs_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # verify-copilot-catalogue.sh walks `git log` to match
+          # `fix(enh-*): address Copilot review on PR #N` commits
+          # against catalogue rows. The default shallow checkout
+          # (depth=1) hides those commits — only the merge commit is
+          # visible — which would silently turn the gate into a no-op.
+          # Fetch the full history so the gate sees every fix commit
+          # in the PR's range.
+          fetch-depth: 0
+
+      - name: Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, sqlite, pdo_sqlite, pgsql, pdo_pgsql, intl, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install PHP deps
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify E2E real-data rule (R13)
+        # Enforces CLAUDE.md §R13: page.route() is only allowed against
+        # external-service boundaries (AI providers, email, payments,
+        # remote storage) or with an explicit "R13: failure injection"
+        # marker. Blocks merging scenarios that silently stub internal
+        # routes and turn E2E into unit tests in E2E clothing.
+        run: bash scripts/verify-e2e-real-data.sh
+
+      - name: Verify Copilot findings catalogue integrity
+        # Enforces COPILOT-FINDINGS.md protocol: every
+        # `fix(enh-*): address Copilot review on PR #N` commit must
+        # touch docs/enhancement-plan/COPILOT-FINDINGS.md with at least
+        # one row under the matching `### PR #N` heading. Without this
+        # gate, fix commits can silently drop from the catalogue and
+        # the PR16-style distillation loses its input. See R9 and the
+        # COPILOT-FINDINGS.md appendix for the protocol spec.
+        run: bash scripts/verify-copilot-catalogue.sh
+
+      - name: Build frontend bundle
+        run: npm run build
+
+      - name: Prepare .env for testing
+        run: |
+          cp .env.example .env || true
+          php -r "file_exists('.env') || copy('.env.example', '.env');" || true
+          echo "APP_ENV=testing" >> .env
+          echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
+          # Postgres + pgvector via the service container above — same
+          # engine production runs. Playwright boots the server via
+          # playwright.config.ts webServer; migrations exercise pgvector
+          # cleanly because ensureVectorExtensionExists() can issue
+          # CREATE EXTENSION here.
+          echo "DB_CONNECTION=pgsql" >> .env
+          echo "DB_HOST=127.0.0.1" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "DB_DATABASE=askmydocs_test" >> .env
+          echo "DB_USERNAME=askmydocs" >> .env
+          echo "DB_PASSWORD=askmydocs" >> .env
+          # Cache/session intentionally NOT on the database — the project
+          # has no cache/sessions table migration (production uses redis
+          # or file). Spatie's permission migration calls
+          # `forgetCachedPermissions()` at the end of its up(), which
+          # would crash on `database` driver before the table exists.
+          # `array` is sufficient for migrations + a Playwright run;
+          # `file` persists session cookies across HTTP requests so
+          # login flows survive across page navigations.
+          echo "CACHE_STORE=array" >> .env
+          echo "SESSION_DRIVER=file" >> .env
+          # Database-backed queue so /api/kb/ingest dispatches enqueue
+          # the job (returning 202) without running it immediately.
+          # `sync` would execute IngestDocumentJob on the request thread,
+          # which then calls the AI provider synchronously — without API
+          # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
+          # The test only asserts the 202; the actual indexing flow is
+          # covered by PHPUnit feature tests with Http::fake().
+          echo "QUEUE_CONNECTION=database" >> .env
+          # `storage/framework/*` is gitignored except for `.gitkeep`,
+          # so the cache/sessions/views subdirs may not exist on a
+          # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
+          # blade views need `views/`; cache fallbacks need `cache/`.
+          # `mkdir -p` is idempotent.
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
+          mkdir -p storage/framework/cache/data
+          mkdir -p storage/logs
+          mkdir -p bootstrap/cache
+          # KB disk root — health check probes Storage::disk('kb')->exists('.').
+          # Without this dir the health check returns 'degraded' and
+          # admin-dashboard.spec.ts's happy path fails on dashboard-health.
+          mkdir -p storage/app/kb
+
+      - name: Migrate + seed test data
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan key:generate --force
+          php artisan migrate --force
+          # NOTE: previous attempt at `php artisan optimize` here
+          # turned the artisan-serve socket-hang-up into ECONNREFUSED
+          # (the cached config + closure routes interfere with how
+          # `php artisan serve` boots its single-threaded handler).
+          # The auth.setup retry loop now handles the boot race
+          # without preemptive caching.
+
+      # playwright.config.ts `webServer` launches `php artisan serve`
+      # automatically, waits on baseURL readiness, and shuts it down
+      # after the suite. No explicit background server step needed.
+      - name: Run Playwright (chromium)
+        env:
+          APP_ENV: testing
+        run: npm run e2e
+
+      - name: Dump Laravel log on failure
+        if: failure()
+        run: |
+          echo "=== storage/logs/laravel.log (last 200 lines) ==="
+          if [ -f storage/logs/laravel.log ]; then
+            tail -200 storage/logs/laravel.log
+          else
+            echo "(no laravel.log file present)"
+          fi
+          echo ""
+          echo "=== ls storage/framework/sessions ==="
+          ls -la storage/framework/sessions || echo "(no sessions dir)"
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+

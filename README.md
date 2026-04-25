@@ -65,6 +65,10 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [Knowledge Base](#knowledge-base)
 - [Scheduler](#scheduler)
 - [Authentication](#authentication)
+- [Enterprise admin surface](#enterprise-admin-surface)
+  - [SPA route map](#spa-route-map)
+  - [Auth model — Sanctum stateful SPA + Bearer](#auth-model--sanctum-stateful-spa--bearer)
+  - [Admin pages at a glance](#admin-pages-at-a-glance)
 - [Chat Interface](#chat-interface)
   - [Chat History](#chat-history)
   - [Speech-to-Text](#speech-to-text)
@@ -93,6 +97,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
 - [License](#license)
+- [Enterprise rules](#enterprise-rules)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 
@@ -494,6 +499,146 @@ MAIL_USERNAME=noreply@example.com
 MAIL_PASSWORD=secret
 MAIL_FROM_ADDRESS=noreply@example.com
 ```
+
+---
+
+## Enterprise admin surface
+
+Beyond the chat UI, AskMyDocs ships a full React SPA admin shell at `/app/*`.
+It covers every operator workflow end-to-end — KPI dashboard, user + role
+management, canonical KB explorer with inline editor and graph, log viewer,
+whitelisted maintenance command runner, and daily AI insights. Every page
+is RBAC-gated via Spatie roles (`admin` + `super-admin`), every mutation
+is audit-trailed, and every destructive command requires a second,
+type-to-confirm gate before it runs.
+
+### SPA route map
+
+| Path | Component | Required role | Notes |
+|---|---|---|---|
+| `/login` + `/forgot-password` + `/reset-password` | Auth pages | guest | CSRF-primed on mount |
+| `/app/chat` + `/app/chat/:conversationId` | ChatView | any authenticated | ChatGPT-style RAG UI |
+| `/app/admin` | DashboardView | admin, super-admin | 6 KPIs + 3 charts + health strip |
+| `/app/admin/users` | UsersView | admin, super-admin | Create / edit / soft-delete / restore / memberships |
+| `/app/admin/roles` | RolesView | admin, super-admin | Spatie CRUD + permission matrix |
+| `/app/admin/kb` | KbView | admin, super-admin | Tree explorer + Preview / Meta / Source / Graph / History tabs |
+| `/app/admin/logs` | LogsView | admin, super-admin | Chat / audit / application / activity / failed-jobs tabs |
+| `/app/admin/maintenance` | MaintenanceView | admin (non-destructive) or super-admin (all) | Whitelisted Artisan runner |
+| `/app/admin/insights` | InsightsView | admin, super-admin | 6 AI-computed widget cards (daily) |
+
+Every page exposes stable `data-testid` + `data-state="idle\|loading\|ready\|error\|empty"` per R11
+so Playwright waits are deterministic — no `waitForTimeout`, no CSS-selector
+fishing. See `frontend/e2e/admin-*.spec.ts` for the reference pattern,
+including the golden-path `admin-journey.spec.ts` that walks every page in
+order as a reviewer demo.
+
+### Auth model — Sanctum stateful SPA + Bearer
+
+Two concurrent flows feed the same Sanctum guard, picked per request:
+
+1. **Stateful SPA (primary)** — cookies-based. The React app calls
+   `GET /sanctum/csrf-cookie` at bootstrap, then every `/api/*` call carries
+   the session + `X-XSRF-TOKEN` header. Stateful hosts are parsed from
+   `SANCTUM_STATEFUL_DOMAINS` (comma-separated), origins from
+   `CORS_ALLOWED_ORIGINS`. Wildcard `*` is forbidden because
+   `supports_credentials=true`.
+2. **Bearer (API clients, MCP, GitHub Action)** — personal access tokens.
+   `POST /api/auth/login` returns `{ token, user }`; subsequent requests
+   use `Authorization: Bearer <token>`. Same guard, same RBAC scopes.
+
+Spatie `role:` / `permission:` middleware is registered explicitly in
+`bootstrap/app.php` (Laravel 13 doesn't auto-alias package middleware).
+Role/permission assignments pin to the `web` guard regardless of request
+transport via `$guard_name = 'web'` on `User`.
+
+### Admin pages at a glance
+
+Screenshot placeholders — populated pre-release (see `resources/screenshots/README.md`).
+
+**Dashboard (`/app/admin`)**
+
+![Admin Dashboard](resources/screenshots/dashboard-admin.png)
+
+KPI strip (docs / chunks / chats / latency / cache / coverage) + health
+strip (db / pgvector / queue / kb-disk / embeddings / chat) + three
+code-split recharts cards (chat volume area, token burn stacked bar,
+rating donut) + top projects + activity feed. Thirty-second cache layer
+(`Cache::remember` keyed by kind+project+days).
+
+**Users & Roles (`/app/admin/users` + `/app/admin/roles`)**
+
+![Users Table](resources/screenshots/users-table.png) ![User Drawer](resources/screenshots/user-drawer-roles.png) ![Roles Permission Matrix](resources/screenshots/roles-permission-matrix.png)
+
+Filterable users table with soft-delete toggle, 3-tab edit drawer
+(Details / Roles / Memberships with `scope_allowlist` JSON shape),
+and a Spatie-backed role CRUD with a grouped permission matrix
+(one card per dotted-prefix domain: `kb`, `users`, `roles`,
+`commands`, `logs`, `insights`, ...).
+
+**KB Explorer (`/app/admin/kb`)**
+
+![KB Tree](resources/screenshots/kb-tree.png) ![KB Doc Preview](resources/screenshots/kb-doc-preview.png)
+![KB Doc Source Editor](resources/screenshots/kb-doc-source-editor.png) ![KB Doc Graph](resources/screenshots/kb-doc-graph.png) ![KB Doc History](resources/screenshots/kb-doc-history.png)
+
+Left panel: memory-safe `chunkById(100)` tree walker with canonical-aware
+scopes (`mode=canonical\|raw\|all`, `with_trashed=0\|1`). Right panel,
+when a doc is selected: **Preview** (remark-rendered markdown with
+frontmatter pill pack) / **Meta** (canonical meta grid + AI-suggested
+tags) / **Source** (CodeMirror 6 editor — `@codemirror/state` +
+`/view` + `/lang-markdown`, ~150 KB lighter than basic-setup; PATCH
+`/raw` runs validate → write → audit → re-ingest) / **Graph** (1-hop
+tenant-scoped subgraph, SVG radial layout, ≤ 50 nodes) / **History**
+(paginated audit trail from `kb_canonical_audit`, immutable, survives
+hard delete).
+
+**Logs (`/app/admin/logs`)**
+
+![Logs Chat Tab](resources/screenshots/logs-chat-tab.png) ![Logs App Tab](resources/screenshots/logs-app-tab.png)
+
+Five deep-linkable tabs (`?tab=chat\|audit\|app\|activity\|failed`):
+paginated chat logs with model/project/rating filters; canonical
+audit trail with event-type/actor filters; reverse-seek
+`SplFileObject`-powered application log tailer (2000-line cap, filename
+whitelist regex, optional live polling via `?live=1`); Spatie
+activitylog (soft dep — graceful "not installed" state); failed-jobs
+read-only table with expandable exception trace (retry lives in
+Maintenance, not here).
+
+**Maintenance (`/app/admin/maintenance`)**
+
+![Maintenance Wizard Step 1](resources/screenshots/maintenance-wizard-step1.png) ![Maintenance Wizard Step 2](resources/screenshots/maintenance-wizard-step2-confirm.png) ![Maintenance History](resources/screenshots/maintenance-history.png)
+
+Whitelisted Artisan runner enforced by `CommandRunnerService` via six
+independent gates: (1) whitelist lookup in
+`config('admin.allowed_commands')`, (2) args_schema validation,
+(3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie
+permission gate (`commands.run` for admin, `commands.destructive`
+for super-admin only), (5) audit-before-execute
+(`admin_command_audits` row flips `started → completed\|failed`
+around the `Artisan::call()`), (6) per-user rate limit
+(`throttle:10,1`). Three-step React wizard: Preview →
+[Confirm type-in for destructive] → Run → Result. Scheduler widget
+reports the next run of every queued command.
+
+**Insights (`/app/admin/insights`)**
+
+![Insights View](resources/screenshots/insights-view.png)
+
+Daily `insights:compute` command (05:00 UTC via scheduler) writes one
+row into `admin_insights_snapshots` — six independently-nullable JSON
+columns back six widget cards: Promotion Suggestions, Orphan Docs,
+Suggested Tags, Coverage Gaps, Stale Docs, Quality Report. The SPA
+read path is O(1) DB read; zero LLM calls per page load by design
+(moving the compute from on-demand to pre-computed saves a provider
+bill at scale — see LESSONS.md PR14).
+
+**Dark mode & auth pages**
+
+![Login Dark Mode](resources/screenshots/login-dark-mode.png) ![Chat Dark Mode](resources/screenshots/chat-dark-mode.png)
+
+The whole SPA is dark-first glassmorphism (violet → cyan accent) built
+on CSS custom properties (`frontend/src/styles/tokens.css`); Tailwind
+sits alongside as an escape hatch, not the primary styling path.
 
 ---
 
@@ -2319,6 +2464,52 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 This project is open-source under the [MIT License](LICENSE).
 
 You are free to use, modify, and distribute it for any purpose, including commercial use.
+
+---
+
+## Enterprise rules
+
+This repository has 21 codified review rules (R1..R21) that every PR
+must satisfy. They are distilled from ~110 live Copilot review
+findings across the PR #16..#31 enterprise-enhancement series and
+mirror in three files for different consumers:
+
+- **`CLAUDE.md §7`** — the canonical R1..R21 list, authored for
+  Claude Code. Each rule: one-line imperative + "why this exists"
+  paragraph citing the representative PR + SHA + check-list + pointer
+  to the skill that enforces it.
+- **`.github/copilot-instructions.md §6`** — the mirror for GitHub
+  Copilot. Same rules, shorter bullets, plus a "Copilot review
+  checklist" (R1..R21) that reviewers walk on every PR.
+- **`.claude/skills/`** — one skill per rule, with grep patterns,
+  before/after fix templates, and counter-examples. Claude Code
+  auto-loads them when the trigger conditions match.
+
+Two CI gates enforce the rules at merge time:
+
+- **`scripts/verify-e2e-real-data.sh`** — R13 — every
+  `page.route(...)` / `context.route(...)` call against an internal
+  route carries an `R13: failure injection` marker or a match against
+  the external-boundary allowlist.
+- **`scripts/verify-copilot-catalogue.sh`** — R9 applied to the
+  catalogue itself — every `fix(enh-*): address Copilot review on PR
+  #N` commit has at least one row under `### PR #N` in
+  `docs/enhancement-plan/COPILOT-FINDINGS.md`.
+
+A pre-push review agent lives at
+`.claude/agents/copilot-review-anticipator.md`. Invoke
+`@copilot-review-anticipator` before `git push` on a feature branch:
+it applies R1..R21 to the outgoing diff and produces a numbered
+finding list with skill pointers — catching what Copilot will catch,
+but faster and cheaper.
+
+The full catalogue of every Copilot finding that shaped R1..R21 lives
+at
+[`docs/enhancement-plan/COPILOT-FINDINGS.md`](docs/enhancement-plan/COPILOT-FINDINGS.md)
+with a per-PR per-tag frequency table. New phases should start from
+[`.claude/briefings/enterprise-phase-template.md`](.claude/briefings/enterprise-phase-template.md)
+— a reusable Phase-1 briefing skeleton that wires the agent into the
+rules before the first commit.
 
 ---
 
