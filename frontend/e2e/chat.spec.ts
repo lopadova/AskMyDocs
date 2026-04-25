@@ -106,14 +106,24 @@ test.describe('Chat', () => {
         // useQuery, which is async-batched after setHover(true). Without
         // this explicit wait, the toContainText below races with the
         // 200 response and intermittently sees the "loading" placeholder.
-        const resolverResponse = page.waitForResponse(
-            (resp) => resp.url().includes('/api/kb/resolve-wikilink') && resp.status() === 200,
+        const resolverResponsePromise = page.waitForResponse(
+            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
             { timeout: 10_000 },
         );
         await wikilink.hover({ force: true });
-        await resolverResponse;
+        const resolverResp = await resolverResponsePromise;
+        if (!resolverResp.ok()) {
+            throw new Error(
+                `GET /api/kb/resolve-wikilink returned non-OK: ${resolverResp.status()} ${await resolverResp.text()}`,
+            );
+        }
+        // Re-trigger hover after the response lands — the popover only
+        // renders while `hover === true` in WikilinkHover. The mouse may
+        // have moved off the wikilink while we awaited the response, so
+        // explicitly re-establish hover with a tiny pause for state sync.
+        await wikilink.hover({ force: true });
         const preview = page.getByTestId('wikilink-preview');
-        await expect(preview).toBeVisible();
+        await expect(preview).toBeVisible({ timeout: 5_000 });
         await expect(preview).toContainText(/Remote Work Policy/i);
     });
 
@@ -147,12 +157,17 @@ test.describe('Chat', () => {
         // `force: true` — see the happy-path test for the rationale.
         // Wait for the stubbed 500 response so the FE has actually
         // observed the failure before asserting on the error surface.
-        const resolverResponse = page.waitForResponse(
+        const resolverResponsePromise = page.waitForResponse(
             (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
             { timeout: 10_000 },
         );
         await wikilink.hover({ force: true });
-        await resolverResponse;
+        await resolverResponsePromise;
+        // Re-trigger hover after the response lands — see the happy-path
+        // test for the rationale; same constraint applies on the 500
+        // path because WikilinkHover only renders the popover while
+        // `hover === true`.
+        await wikilink.hover({ force: true });
         // The preview tooltip appears even on 500, but the error surface is the
         // testid-tagged element so Playwright can assert graceful degradation.
         await expect(page.getByTestId('wikilink-preview-error')).toBeVisible({ timeout: 5_000 });

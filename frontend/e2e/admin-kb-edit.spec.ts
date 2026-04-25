@@ -54,13 +54,18 @@ test.describe('Admin KB Source Editor', () => {
         // and the toast (which auto-dismisses after 5s) may already
         // be gone by the time Playwright catches up if the response
         // is unusually fast.
-        const saveResponse = page.waitForResponse(
+        const saveResponsePromise = page.waitForResponse(
             (resp) => /\/api\/admin\/kb\/documents\/\d+\/raw/.test(resp.url())
                 && resp.request().method() === 'PATCH',
             { timeout: 15_000 },
         );
         await save.click();
-        await saveResponse;
+        const saveResponse = await saveResponsePromise;
+        if (!saveResponse.ok()) {
+            throw new Error(
+                `PATCH /raw returned non-OK: ${saveResponse.status()} ${await saveResponse.text()}`,
+            );
+        }
 
         await expect(page.getByTestId('toast-success')).toBeVisible({ timeout: 15_000 });
 
