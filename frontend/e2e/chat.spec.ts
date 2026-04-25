@@ -101,7 +101,17 @@ test.describe('Chat', () => {
         // briefly after render. Once visible the click target is the
         // right one; we just don't need Playwright to wait for the
         // bubble's translate-y animation to settle.
+        // Wait for the resolver round-trip to complete BEFORE asserting
+        // the preview text — the fetch is fired by `enabled: hover` in
+        // useQuery, which is async-batched after setHover(true). Without
+        // this explicit wait, the toContainText below races with the
+        // 200 response and intermittently sees the "loading" placeholder.
+        const resolverResponse = page.waitForResponse(
+            (resp) => resp.url().includes('/api/kb/resolve-wikilink') && resp.status() === 200,
+            { timeout: 10_000 },
+        );
         await wikilink.hover({ force: true });
+        await resolverResponse;
         const preview = page.getByTestId('wikilink-preview');
         await expect(preview).toBeVisible();
         await expect(preview).toContainText(/Remote Work Policy/i);
@@ -135,7 +145,14 @@ test.describe('Chat', () => {
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
         // `force: true` — see the happy-path test for the rationale.
+        // Wait for the stubbed 500 response so the FE has actually
+        // observed the failure before asserting on the error surface.
+        const resolverResponse = page.waitForResponse(
+            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+            { timeout: 10_000 },
+        );
         await wikilink.hover({ force: true });
+        await resolverResponse;
         // The preview tooltip appears even on 500, but the error surface is the
         // testid-tagged element so Playwright can assert graceful degradation.
         await expect(page.getByTestId('wikilink-preview-error')).toBeVisible({ timeout: 5_000 });

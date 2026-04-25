@@ -156,7 +156,15 @@ test.describe('Admin golden-path journey — Phase J', () => {
 
         const save = page.getByTestId('kb-editor-save');
         await expect(save).toBeEnabled({ timeout: 10_000 });
+        // Wait for the PATCH /raw response before sampling the toast —
+        // see admin-kb-edit.spec for the rationale.
+        const saveResponse = page.waitForResponse(
+            (resp) => /\/api\/admin\/kb\/documents\/\d+\/raw/.test(resp.url())
+                && resp.request().method() === 'PATCH',
+            { timeout: 15_000 },
+        );
         await save.click();
+        await saveResponse;
         await expect(page.getByTestId('toast-success')).toBeVisible({ timeout: 15_000 });
 
         // History tab must surface a new `updated` row.
