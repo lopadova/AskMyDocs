@@ -98,6 +98,24 @@ export const test = base.extend<{ seeded: void }>({
                         `seeded fixture: /api/auth/me returned wrong user. expected ${creds.email}, got ${mePayload.user?.email ?? '(no user)'}`,
                     );
                 }
+
+                // Bisect step 2: if /me works but admin views land in
+                // data-state="error", the admin endpoint chain itself
+                // is broken. Probe one canonical admin endpoint here
+                // to surface the failure. Skip for chromium-viewer
+                // since that role is *expected* to get 403 on admin
+                // endpoints (RBAC denial is the test's whole point).
+                if (testInfo.project.name !== 'chromium-viewer') {
+                    const overviewResponse = await page.request.get(
+                        '/api/admin/metrics/overview',
+                        { headers: { Accept: 'application/json' } },
+                    );
+                    if (!overviewResponse.ok()) {
+                        throw new Error(
+                            `seeded fixture: /api/admin/metrics/overview failed for ${creds.email} on ${testInfo.project.name}: ${overviewResponse.status()} ${await overviewResponse.text()}`,
+                        );
+                    }
+                }
             }
 
             await use();
