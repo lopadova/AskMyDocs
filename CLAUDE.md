@@ -687,6 +687,59 @@ ships a public RCE. Check:
 
 → See `.claude/skills/security-invariants-atomic-or-absent/SKILL.md`.
 
+### R22 — CI failure investigation: read the artefacts BEFORE iterating
+When `gh pr checks` shows Playwright (or any E2E) job red, NEVER guess
+fixes from the test name alone. The cost of a wrong commit is one CI
+cycle (4–8 min) AND a misleading next-iteration baseline (the new
+failure becomes "different" but you don't know why). Always pull the
+full failure context first. Four sources, in order:
+
+1. **Failed-job log** — `gh run view --job <id> --log-failed` to surface
+   the `✘` lines, the spec:line that failed, and the error excerpt.
+   60% of the time this clusters the failures by root cause already.
+2. **Playwright HTML report artefact** — `tests.yml` uploads
+   `playwright-report/` on failure (retention 7d). Either:
+   - GitHub UI: PR → failed job → Artifacts → `playwright-report.zip`
+   - Or `gh run download <run-id> --name playwright-report --dir /tmp/...`
+   Inside the zip, `data/<hash>.md` files are the per-test error
+   contexts (locator, timeout, page snapshot URL, screenshot path).
+   Read them BEFORE diffing code — the snapshot often shows the page
+   in a state that explains the failure (stale modal, unresolved
+   spinner, error banner you missed).
+3. **Laravel log tail** — the workflow's "Dump Laravel log on failure"
+   step prints the last 200 lines of `storage/logs/laravel.log` inline
+   in the failed-job log. Read it before assuming the failure is FE-only
+   — a 500 from `/api/admin/...` surfaces as a Playwright
+   "element not visible" while the actual stack trace lives in the
+   laravel log.
+4. **Diagnostic throws in tests** — when a non-2xx response masks
+   itself as a generic timeout, add a temporary `waitForResponse` +
+   throw so the next CI run prints the real status + JSON body in the
+   failed-job log:
+   ```ts
+   const respPromise = page.waitForResponse(
+       (r) => r.url().includes('/api/admin/.../raw')
+           && r.request().method() === 'PATCH',
+       { timeout: 15_000 },
+   );
+   await save.click();
+   const resp = await respPromise;
+   if (!resp.ok()) {
+       throw new Error(`PATCH /raw returned non-OK: ${resp.status()} ${await resp.text()}`);
+   }
+   ```
+   PR #33 caught the DemoSeeder frontmatter regression this way: the
+   "toast not visible" timeout was actually a 422 with
+   `{"errors":{"frontmatter":{"slug":["Missing required field 'slug'."]}}}`.
+   Without the throw, the timeout was indistinguishable from a slow
+   render. Leave the throws in until green; remove them in a polish
+   commit only after the fix is verified.
+
+This rule is operational, not a code rule — but skipping it costs 30+
+min per false-iteration loop. Always artefact-first, then code.
+
+→ See `.claude/skills/ci-failure-investigation/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
@@ -723,12 +776,13 @@ ships a public RCE. Check:
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow the **twenty-one rules above (R1–R21)** before opening a PR —
-  they exist because Copilot caught them the first time. R14..R21 were
-  distilled at PR16 from ~110 live Copilot findings across PRs #16..#31;
-  see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the frequency
-  matrix and `.claude/agents/copilot-review-anticipator.md` for the
-  pre-push review sub-agent.
+- Follow the **twenty-two rules above (R1–R22)** before opening a PR —
+  R1..R21 exist because Copilot caught them the first time. R14..R21
+  were distilled at PR16 from ~110 live Copilot findings across
+  PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the
+  frequency matrix and `.claude/agents/copilot-review-anticipator.md`
+  for the pre-push review sub-agent. R22 is the operational protocol
+  for investigating CI failures (PR #33 lesson).
 - Keep the README, `.env.example`, and `config/*.php` in sync whenever a knob
   changes.
 - Commits go on the designated feature branch; never force-push `main`.

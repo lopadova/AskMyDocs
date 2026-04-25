@@ -220,7 +220,7 @@ when no canonical docs exist.
 
 ---
 
-## 6. Review rules (R1–R21) — read this before reviewing or coding
+## 6. Review rules (R1–R22) — read this before reviewing or coding
 
 These are distilled from actual Copilot comments on PRs #4, #5, #6 and the
 canonical compilation series PRs #9–#14. The skills in
@@ -405,6 +405,31 @@ after. Columns that encode "consumed" / "revoked" have DB-level
 `UNIQUE` or `PARTIAL UNIQUE` backing where the business rule demands
 it. One occurrence mints a rule because the blast radius is
 RCE-class. See `.claude/skills/security-invariants-atomic-or-absent/`.
+
+### R22 — CI failure investigation: artefact-first, then code
+When `gh pr checks` shows Playwright (or any E2E job) red, NEVER guess
+fixes from the test name alone. Always pull the failure context first:
+
+1. **Failed-job log** — `gh run view --job <id> --log-failed` for the
+   `✘` lines and the failing spec:line.
+2. **Playwright HTML report** — `tests.yml` uploads `playwright-report/`
+   on failure (retention 7d). Download via the GitHub UI or
+   `gh run download <run-id> --name playwright-report`. Each
+   `data/<hash>.md` carries the locator, timeout, page snapshot URL,
+   and screenshot path. Read these BEFORE diffing code.
+3. **Laravel log tail** — the workflow's "Dump Laravel log on failure"
+   step prints the last 200 lines of `storage/logs/laravel.log` inline.
+   A 500 from `/api/admin/...` surfaces as a Playwright "element not
+   visible" while the real stack trace lives in the laravel log.
+4. **Diagnostic throws** — when a non-2xx response masks itself as a
+   timeout, add a temporary `waitForResponse` + throw so the next CI
+   run prints the real status code + JSON body in the failed-job log.
+   Leave them in until green.
+
+A wrong commit costs one CI cycle (4–8 min) AND a misleading next
+baseline; artefact reading costs 5 min. PR #33 caught the DemoSeeder
+frontmatter regression (slug missing + invalid `type: policy`) this way.
+See `.claude/skills/ci-failure-investigation/`.
 
 ---
 
