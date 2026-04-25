@@ -146,3 +146,75 @@ const { mutate } = useMutation({ mutationFn: api.save })
 
 See also `.claude/skills/playwright-e2e/SKILL.md` for the test authoring
 patterns.
+
+---
+
+## Extension: the `data-state` value contract is enumerated — do not invent
+
+Distilled from PR16 `r11-testid` occurrences (6 across PR28 alone).
+Multiple PRs invented ad-hoc `data-state` values (`not-installed`,
+`partial`, `stale`) that break the canonical async-state contract
+Playwright / helpers rely on. The canonical enumeration is:
+
+```
+data-state ∈ { idle, loading, ready, empty, error }
+```
+
+Any state the UI needs to communicate that isn't one of these five
+goes on a SECOND attribute — not by overloading `data-state`.
+Examples:
+
+- `<div data-testid="failed-jobs-tab" data-state="ready" data-feature="not-installed">` — the panel loaded cleanly; the FEATURE is not installed. Use a separate attribute so the five-value contract survives.
+- `<div data-testid="activity-tab" data-state="empty" data-feature-gate="needs-spatie">` — the panel rendered, the DB returned zero rows, an opt-in feature hasn't shipped.
+- `<div data-testid="chat-thread" data-state="loading" data-phase="retrieving">` — loading sub-state surfaces via a `data-phase` attribute, not `data-state="retrieving"`.
+
+Rationale: `waitForReady()` in `helpers.ts` polls on
+`data-state !== 'loading'`. Introducing a sixth value makes that
+helper either "wait forever" (if the new value behaves like loading)
+or "never wait" (if it's treated as terminal). Every Playwright
+scenario in the repo silently depends on the five-value contract.
+
+### Symptoms in a review diff
+
+- `data-state="not-installed"` (PR #28 FailedJobsTab + ActivityTab).
+- `data-state="partial"` — half loaded, half errored? Pick one of the
+  five; surface "half" via a secondary attribute.
+- `data-state="stale"` — the data is ready but old? Use
+  `data-state="ready" data-stale="true"` or a `data-fetched-at` timestamp.
+- `data-state="warning"` — degraded health? The dashboard health strip
+  uses `data-state="ready"` for all states and a `data-health-level`
+  attribute for the level.
+
+### Detection recipe
+
+```bash
+# Any data-state value outside the five canonical values
+rg -n 'data-state="[^"]+"' frontend/src/ \
+  | rg -v 'data-state="(idle|loading|ready|empty|error)"'
+```
+
+A clean run returns zero rows.
+
+### Pagination testid convention
+
+Still a R11 miss even at PR28 — both `FailedJobsTab`, `AuditTab`, and
+`ActivityTab` shipped without testids on their pagination buttons.
+The canonical shape mirrors `ChatLogsTab`:
+
+```tsx
+<button
+  data-testid="<feature>-pagination-prev"
+  disabled={page === 1}
+  onClick={() => setPage(p => p - 1)}
+>Prev</button>
+<button
+  data-testid="<feature>-pagination-next"
+  disabled={page === last}
+  onClick={() => setPage(p => p + 1)}
+>Next</button>
+```
+
+E2E scenarios rely on `getByTestId(`${feature}-pagination-next`)` to
+navigate pages. Missing the testid forces the test into a CSS /
+text-match fallback, which is the whole problem R11 exists to
+prevent.

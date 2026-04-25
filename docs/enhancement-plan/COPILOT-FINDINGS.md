@@ -242,6 +242,13 @@
 
 ### PR #30 — Phase I (AI Insights)
 
+> Retrospective note — PR15's `gh api repos/<org>/<repo>/pulls/30/comments`
+> call returned zero finding-shaped rows at Phase J branch time. The
+> PR16 live re-harvest (via the same API) surfaced 10 rows. All 10 were
+> fixed on Phase J's branch as `bd40780 fix(enh-i): address Copilot
+> review on PR #30 (10 findings incl. 2 perf-critical)` and merged into
+> this branch as part of the PR16 rebase-on-upstream pass.
+
 | Path | Category | Pattern | Fix SHA |
 |---|---|---|---|
 | `AiInsightsService` constructor | `doc-drift` | PromotionSuggestService injected but never called — dead dep | `bd40780` |
@@ -255,30 +262,102 @@
 | `AiInsightsService::detectOrphans` | `r3-bulk` **(CRITICAL)** | Per-doc `chunks()->count()` + `KbEdge::exists()` = N+1 (thousands of queries on 10k-doc corpus) | `bd40780` |
 | `admin_insights_snapshots` prod migration | `doc-drift` | Same redundant index | `bd40780` |
 
+### PR #31 — Phase J (Docs + E2E + polish)
+
+Live re-harvest ran against PR #31 (Phase J). Copilot returned zero
+finding-shaped rows. This is consistent with Phase J being a docs +
+one-spec + manifest PR with no new routes / migrations / controllers.
+Table kept empty — future regressions against PR #31 should append
+here in normal order.
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+
+> Table intentionally empty — PR #31 had zero Copilot findings.
+> The verifier in `scripts/verify-copilot-catalogue.sh` skips
+> separator-only rows (`|---|...|`), so this header alone satisfies
+> the "PR #31 block exists" check without falsely advertising a
+> placeholder row. Future regressions against PR #31 should append
+> real rows above this note.
+
+### PR #32 — Final distill (R14..R21 + skills + CI gate)
+
+Live re-harvest of PR #32 (the final distill PR) returned **7
+finding-shaped rows**. Findings target the meta-deliverables of
+PR16 itself: the new CI gate, the new sub-agent doc, and an example
+in one of the 8 new skills. None touched runtime code (PR #32 is
+docs + scripts + templates).
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `docs/enhancement-plan/COPILOT-FINDINGS.md` | `test-fragility` | `(none)` placeholder row in PR #31 block satisfied verifier without being a real finding row | _this PR_ |
+| `.claude/agents/copilot-review-anticipator.md` | `doc-drift` | Doc described a `.claude/hooks/pre-push.sh` that doesn't ship with the repo | _this PR_ |
+| `.claude/skills/input-escape-complete/SKILL.md` | `doc-drift` | LIKE-escaping example used a 5-arg `User::where()` signature that doesn't compile | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `portability` | `readarray` is bash 4+, missing on macOS default bash 3.2 — script broke for local contributors | _this PR_ |
+| `.github/workflows/tests.yml` | `silent-noop` | Default shallow checkout (depth=1) hides individual commits → catalogue gate silently passes in CI | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `silent-noop` | Exited 0 when catalogue file was missing → renaming/deleting the catalogue bypassed the gate | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `silent-noop` | Full-history scan branch silently became partial-history under shallow clones → no shallow-detection guard | _this PR_ |
+
+**New category surfaced this PR**: **`portability`** — bash builtin
+assumed without checking against the lowest-common-denominator shell
+contributors actually run (macOS bash 3.2). One occurrence; not a
+rule on its own yet.
+
+**Pattern noted across 3 of the 7 findings**: the new CI gate (and
+the workflow that invokes it) had three independent ways to silently
+become a no-op — missing catalogue file, shallow clone with implicit
+full-history scan, and shallow clone in CI hiding the fix commits.
+This reinforces R14 (surface failures loudly): a gate that exits 0
+on its own absence is worse than no gate at all because the green
+checkmark is misleading. Distillation note for any future CI gate
+work — fail closed, not open, when the gate's preconditions are
+unmet.
+
 ---
 
-## Category frequency snapshot (PR #16 → PR #29)
+## Category frequency snapshot (PR #16 → PR #31, regenerated at PR16)
 
-| Tag | Count | Enough to skill? |
-|---|---|---|
-| `doc-drift` | 18 | **YES** — already a skill (`docs-match-code`) but needs expansion to include comment-drift + PROGRESS.md + migration filename drift + docblock/implementation drift |
-| `silent-200` | 11 | **YES** — new skill `surface-failures-loudly` |
-| `r13-real-data` | 7 | covered by `playwright-e2e` skill |
-| `a11y` | 7 | **YES** — new skill `frontend-a11y-checklist` |
-| `r10-scope` / `r10-audit` | 6 | covered by `canonical-awareness` skill, but add audit-identifier-on-edit rule |
-| `env-config-drift` | 6 | covered by `docs-match-code` skill; strengthen env parsing pattern |
-| `render-stale` | 5 | **YES** — new skill `react-effect-sync-cached-state` (emphasise Fragment-key pattern — caught THREE times PR26/PR28/PR29) |
-| `r7-silence` | 2 | covered by existing skill (R7) / CLAUDE.md rule — taxonomy tag added in PR28 for consistency |
-| `r11-testid` | 6 | covered by `frontend-testid-conventions` skill; emphasise `data-state` value contract |
-| `r3-bulk` | 4 | covered by `memory-safe-bulk-ops` skill; add chunkById+orderBy gotcha |
-| `injection-attack` | 3 | **YES** — new skill `input-escape-complete` (LIKE + fnmatch + regex) |
-| `hardcoded-subset` | 5 | **YES** — new skill `derive-from-db-not-literal` |
-| `test-no-coverage` / `test-ordering-assumption` / `r12-failure-path` | 7 | **YES** — new skill `test-actually-tests-what-it-claims` |
-| `r1-path` / `r4-silent` / `r2-softdelete` | 6 | covered by existing skills (R1/R2/R4) |
-| `regex-literal` | 1 | anecdote in LESSONS |
-| `route-model-binding` | 4 | **YES** — new skill `route-contracts-match-fe-shape` (also covers positional-vs-option Artisan invocation) |
-| `csrf-priming` | 1 | anecdote |
-| **`security` (NEW)** | 1 | **YES — HIGHEST PRIORITY** — mint a dedicated skill + rule `concurrent-invariants-hold-the-lock` even on a single occurrence: concurrency / crypto invariant bugs turn into RCE or single-use-bypass; never demote to anecdote |
+Live harvest via `gh api /repos/lopadova/AskMyDocs/pulls/<N>/comments`
+for N ∈ [16..31] on 2026-04-24: **110 total finding-shaped rows**
+(catalogue prior to this PR logged ~100 — the 10-row delta is the
+retrospective PR #30 block above).
+
+Per-PR breakdown: PR #28 = 14 · PR #20 = 12 · PR #30 = 10 (raw) / 11
+(catalogued — origin's PR30-fix commit split the migration drift into
+prod + test rows) · PR #24 = 8 · PR #29 = 8 · PR #19 = 8 · PR #26 = 7 ·
+PR #18 = 7 · PR #25 = 6 · PR #21 = 6 · PR #27 = 5 · PR #23 = 5 · PR #22
+= 5 · PR #17 = 5 · PR #16 = 4 · PR #31 = 0.
+
+Per-tag frequency (after the PR #30 re-harvest; rule column reflects
+PR16 mint decisions):
+
+| Tag | Count (PR#16→#31) | Rule? | Skill action |
+|---|---|---|---|
+| `doc-drift` | 22 | R9 (existing) | EXTEND `docs-match-code` — add comment-drift + PROGRESS.md row drift + docblock/impl drift + migration-filename drift |
+| `silent-200` | 12 | **R14 (new)** | NEW `surface-failures-loudly` |
+| `a11y` | 7 | **R15 (new)** | NEW `frontend-a11y-checklist` |
+| `r13-real-data` | 7 | R13 (existing) | EXTEND `playwright-e2e` — ban `waitForTimeout`, cover `context.route` |
+| `test-no-coverage` + `test-ordering-assumption` + `r12-failure-path` | 9 | **R16 (new)** | NEW `test-actually-tests-what-it-claims` |
+| `r11-testid` | 6 | R11 (existing) | EXTEND `frontend-testid-conventions` — enumerate `data-state` contract |
+| `r3-bulk` | 6 | R3 (existing) | EXTEND `memory-safe-bulk-ops` — chunkById+orderBy pitfall + N+1-in-chunk |
+| `env-config-drift` | 6 | R6 / R9 | EXTEND `docs-match-code` — CSV env var parsing discipline |
+| `render-stale` | 6 | **R17 (new)** | NEW `react-effect-sync-cached-state` — emphasise Fragment-key pattern (caught at PR26/28/29) |
+| `r10-scope` + `r10-audit` | 6 | R10 (existing) | covered by `canonical-awareness` — add audit-identifier-on-edit note |
+| `r1-path` + `r4-silent` + `r2-softdelete` | 6 | R1/R2/R4 (existing) | covered by existing skills; no change |
+| `hardcoded-subset` | 5 | **R18 (new)** | NEW `derive-from-db-not-literal` |
+| `route-model-binding` | 4 | **R20 (new)** | NEW `route-contracts-match-fe-shape` (positional-vs-option Artisan + FE↔BE payload shape) |
+| `injection-attack` | 3 | **R19 (new)** | NEW `input-escape-complete` (LIKE + fnmatch + regex + whitespace CSV) |
+| `r7-silence` | 2 | R7 (existing) | tag added in PR28 for consistency |
+| `r8-path-prefix` | 1 | R8 (existing) | covered |
+| `route-middleware` | 1 | route-contracts (R20) | merged into R20 skill |
+| `regex-literal` | 1 | anecdote | LESSONS only |
+| `csrf-priming` | 1 | anecdote | LESSONS only |
+| **`security`** | 1 | **R21 (new — HIGHEST)** | NEW `security-invariants-atomic-or-absent` — single-use-consume race in `CommandRunnerService::consumeConfirmToken` (PR #29 `59d95bc`). Security findings never demote to anecdote. |
+
+Count totals 112 vs 110 harvested — two rows have cross-tagged categories
+(e.g. PR #25 DemoSeeder `r1-path` + `r4-silent`, PR #17 route-middleware
++ env-config-drift) and are double-counted on purpose so every mint
+decision is traceable.
 
 ---
 

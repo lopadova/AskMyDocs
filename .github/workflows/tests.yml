@@ -82,6 +82,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # verify-copilot-catalogue.sh walks `git log` to match
+          # `fix(enh-*): address Copilot review on PR #N` commits
+          # against catalogue rows. The default shallow checkout
+          # (depth=1) hides those commits — only the merge commit is
+          # visible — which would silently turn the gate into a no-op.
+          # Fetch the full history so the gate sees every fix commit
+          # in the PR's range.
+          fetch-depth: 0
 
       - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
@@ -119,6 +128,16 @@ jobs:
         # marker. Blocks merging scenarios that silently stub internal
         # routes and turn E2E into unit tests in E2E clothing.
         run: bash scripts/verify-e2e-real-data.sh
+
+      - name: Verify Copilot findings catalogue integrity
+        # Enforces COPILOT-FINDINGS.md protocol: every
+        # `fix(enh-*): address Copilot review on PR #N` commit must
+        # touch docs/enhancement-plan/COPILOT-FINDINGS.md with at least
+        # one row under the matching `### PR #N` heading. Without this
+        # gate, fix commits can silently drop from the catalogue and
+        # the PR16-style distillation loses its input. See R9 and the
+        # COPILOT-FINDINGS.md appendix for the protocol spec.
+        run: bash scripts/verify-copilot-catalogue.sh
 
       - name: Build frontend bundle
         run: npm run build

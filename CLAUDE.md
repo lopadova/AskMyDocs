@@ -464,6 +464,229 @@ regressions.
   `.claude/skills/playwright-e2e-templates/`,
   `scripts/verify-e2e-real-data.sh`.
 
+### R14 — Surface failures loudly; never answer 200 with empty/null/NaN
+Every HTTP endpoint, renderer, log reader, and preview path must map
+failure → the correct status code (404 missing, 500 unreadable, 503
+downstream outage). Empty body on 200, `""` PDF on 200, `null` JSON on
+500-underneath, and `-Infinity` / NaN in chart coordinates are all the
+same bug: the caller cannot tell success from silent failure. PR #25
+`KbDocumentController::printable` returned 200 on missing file. PR #27
+`DompdfPdfRenderer::render` / `BrowsershotPdfRenderer::render` fell back
+to `''` when `$dompdf->output()` / `Browsershot::pdf()` returned a
+non-string, shipping zero-byte PDFs under 200. PR #28
+`LogTailService::readTail` treated `key() === 0` as empty and dropped
+single-line files. PR #20 `WikilinkHover.fetchWikilink` caught-all and
+returned `null`, so React Query saw `isError=false` on a real 500.
+PR #19 `AreaChart` / `BarStack` computed `Math.max(...[])` = `-Infinity`
+and rendered broken SVG. PR #28 `LogViewerController::application`
+chose 404 vs 500 by matching a message-prefix string. Check:
+
+- [ ] Grep the diff for `return response()->json([...], 200)` in error
+      branches; replace with 404 / 500 / 503 + error payload.
+- [ ] Grep the diff for `return ''`, `return '[]'`, `return null` in any
+      service/controller that a caller treats as success; throw or
+      return a proper failure value.
+- [ ] Grep FE for `try { ... } catch { return null }` — the UI must
+      distinguish error from success.
+- [ ] Any `Math.max(...arr)` / `Math.min(...arr)` guards the `arr.length
+      === 0` case.
+- [ ] Choose exception TYPE, not exception MESSAGE, to drive status code.
+
+→ See `.claude/skills/surface-failures-loudly/SKILL.md`.
+
+### R15 — Frontend a11y checklist: every actionable element announced + keyboard-reachable
+Every interactive element in the React SPA must carry a programmatic
+label (`<label htmlFor>`, `aria-label`, or `aria-labelledby`), be
+reachable via keyboard (tab order, `:focus` style, not `display:none`),
+and announce its role on the FOCUSABLE node — not on a wrapper. PR #19
+`Tooltip` was mouse-only (no focus/blur). PR #23 `RoleDialog` hid the
+real `<input type="checkbox">` via `style={{display:'none'}}` —
+screen-readers cannot perceive display-none inputs. PR #23 `UserForm`
+rendered visible `<div>` labels that weren't bound to their inputs.
+PR #24 `TreeView` search input had placeholder-only, mode `<select>`
+had no accessible name, and `role="treeitem"` + `aria-expanded` were
+attached to the `<li>` wrapper while the interactive element was the
+nested `<button>`. Check:
+
+- [ ] Every `<input>` / `<select>` / `<textarea>` has either `<label
+      htmlFor=id>` or `aria-label`. Placeholder is NOT a label.
+- [ ] Visually-hidden but semantically-real inputs use the CSS
+      visually-hidden pattern (`position:absolute; width:1px; ...`),
+      never `display:none` or `visibility:hidden`.
+- [ ] `role="…"` + `aria-expanded` / `aria-selected` / `aria-pressed`
+      live on the element that receives focus (the `<button>`, not the
+      `<li>` wrapper).
+- [ ] Tooltips / popovers respond to focus/blur, not only
+      mouseenter/mouseleave.
+- [ ] Icon-only buttons have `aria-label`.
+
+→ See `.claude/skills/frontend-a11y-checklist/SKILL.md`.
+
+### R16 — Tests must actually exercise the behaviour they claim
+A test's body must drive the state transition the test name promises.
+Named "enables Save/Cancel after edit"? Then it must dispatch an edit
+AND assert the buttons flip enabled — not just render and assert
+disabled. Named "history is sorted desc"? Then the fixture must contain
+rows that would FAIL under asc order, and the assertion must be
+strictly `$first > $last`, not `$last >= $first` (which is trivially
+true under either order). Named "failure path"? Then the failure must
+actually fire. PR #26 `SourceTab.test` "enables Save/Cancel" never
+dispatched a CodeMirror edit; the "422 frontmatter error" case never
+clicked Save. PR #25 `KbDocumentControllerTest` history-ordering
+reversed the comparison and passed under both orderings. PR #27
+`admin-kb-graph` "empty state" test asserted `data-state="ready"` with
+a center node — the scenario body proved the non-empty branch. PR #20
+`TestingControllerTest` mutated `app()->detectEnvironment(...)` without
+restoring. PR #30 `PromotionSuggestionsCard.test` overrode
+`window.location` in `beforeEach` without restoring. Check:
+
+- [ ] Test NAME and test BODY match: `grep -n "it('" | grep -n "expect("`
+      and read the assertion against the name.
+- [ ] Ordering / sorting tests use strictly-monotonic fixtures and
+      `>` / `<`, not `>=` / `<=`.
+- [ ] Any test that asserts "empty state" inspects for an empty-state
+      testid, not for the "ready" state.
+- [ ] Any test that mutates global state (env, DI, `window.location`,
+      `Date.now`) restores it in `afterEach` / `tearDown`.
+- [ ] "Failure path" tests actually provoke the failure (click Save,
+      POST invalid body, unplug network).
+
+→ See `.claude/skills/test-actually-tests-what-it-claims/SKILL.md`.
+
+### R17 — React effects must sync cached / imperative state
+When a component owns cached state inside an imperative library
+(CodeMirror `EditorView`, canvas, D3, IMask, monaco) or in a ref that
+mirrors server state, every effect branch that changes the underlying
+source must ALSO sync the cached copy. PR #26 `SourceTab` updated
+`savedRef` / `bufferRef` on refetch but never dispatched the new
+content into the CodeMirror `EditorView` — the visible editor showed
+stale content after every save. PR #20 `use-chat-mutation` filtered
+cached messages to `m.id > 0` on success, dropping the optimistic
+placeholder BEFORE the refetch completed — user's message vanished
+briefly. PR #20 `ChatView` computed `fromUrl` as `NaN` on non-numeric
+param; `NaN !== activeId` is always true → `setActive(null)` ran on
+every render, looping forever. Same family: PR #28 `AuditTab` +
+`FailedJobsTab`, PR #29 `CommandHistoryTable` all returned unkeyed
+`<>...</>` fragments from `.map()` where React needs the key on the
+list ELEMENT, not on a child inside the fragment — the inner `<tr
+key={…}>` does not satisfy the requirement and reconciliation drifts.
+Check:
+
+- [ ] After any effect that re-reads server state, verify every
+      imperative cache (EditorView, canvas, ref-of-server-state) was
+      synced in the SAME branch.
+- [ ] Optimistic updates stay in the cache UNTIL the refetch resolves
+      (guard the filter on `isFetching`, not on `isSuccess`).
+- [ ] Any derived value that can be `NaN` is guarded before the
+      equality check (`Number.isFinite(x) && x !== activeId`).
+- [ ] `.map()` of multi-element rows wraps in a keyed `<Fragment
+      key={id}>` (not `<>`), not inside-`<tr key={id}>`.
+
+→ See `.claude/skills/react-effect-sync-cached-state/SKILL.md`.
+
+### R18 — Derive options from the DB, not from a literal subset
+Any UI dropdown / filter / dataset that maps to a DB-derived domain
+must fetch the actual domain, not hard-code a subset. PR #24 `KbView`
+project filter was literally `['hr-portal', 'engineering']` — two
+tenants the seeder happened to create. PR #22 `topProjects()` was
+hard-coded to 7 days while the cache key encoded `(project, days)`
+generally. PR #18 `RbacSeeder::backfillUser()` granted EVERY user
+access to EVERY project_key — defeating tenant isolation. PR #27
+`exportPdf` did `basename($sourcePath, '.md')` while KB ingest accepts
+both `.md` AND `.markdown` — a `.markdown` doc exported as
+`foo.markdown.pdf`. Check:
+
+- [ ] UI select options derive from an API that returns the real
+      domain (`GET /api/admin/projects/keys` / `distinct` query).
+- [ ] No literal array of domain values in FE except for UI-only
+      aesthetics (colour palettes, etc.).
+- [ ] Backend filters accept the same parameter surface the cache key
+      encodes — no "7 days silently fixed" while the rest is generic.
+- [ ] File-extension handling covers every extension the ingest
+      pipeline accepts (`.md` AND `.markdown`).
+
+→ See `.claude/skills/derive-from-db-not-literal/SKILL.md`.
+
+### R19 — Input escaping is complete, not partial
+Every string passed to an operator with meta-characters (LIKE, regex,
+fnmatch, shell) must be escaped for EVERY meta-char, not just the
+obvious one. `%` in LIKE is obvious; `_` and `\\` also match. `*` in
+fnmatch with default flags matches `/`; use `FNM_PATHNAME`. A literal
+domain like `api.openai.com` is NOT a regex — in `grep -Eq` the `.`
+matches any char. PR #23 `UserController` escaped `%` but not `_` —
+queries with `a_b` matched `acb`. PR #18 `User::matchesAnyGlob` called
+`fnmatch` without `FNM_PATHNAME` so `hr/policies/*` matched
+`hr/policies/x/y`. PR #21 `verify-e2e-real-data.sh` treated
+EXTERNAL_PATTERNS as regex via `grep -Eq` — unescaped `.` weakened the
+gate. PR #17 `cors` / `sanctum` raw-`explode`'d whitespace-bearing CSV
+env vars into stateful lists. Check:
+
+- [ ] LIKE: escape `%`, `_`, and `\\`. Use `ESCAPE '\\'` explicitly.
+- [ ] fnmatch: always pass `FNM_PATHNAME` when the input is a path.
+- [ ] regex literals: escape `.`, `+`, `*`, `?`, `(`, `)`, `[`, `]`,
+      `{`, `}`, `|`, `^`, `$`, `\\` when the pattern is meant as
+      literal substring — or use `grep -Fq` (fixed string).
+- [ ] CSV env vars: `array_filter(array_map('trim', explode(',', $raw)))`
+      — never bare `explode`.
+
+→ See `.claude/skills/input-escape-complete/SKILL.md`.
+
+### R20 — Route contracts match the FE payload shape
+When the FE expects `?token=X&email=Y`, the BE route must match
+`GET /reset-password` with those query params, NOT
+`GET /reset-password/{token}` (path param) — and vice versa. When an
+E2E spec posts `{ project, markdown }`, the controller must accept
+that shape; `{ project_key, content }` will 422. When `CommandRunner`
+prepends `--` to every arg, commands with positional signatures
+(`kb:delete {path}`, `kb:ingest-folder {path?}`) never populate.
+PR #19 reset-password mismatch; PR #20 `chatRoute` had `$conversationId`
+nested under a parent without rendering `<Outlet />`, so the child
+never mounted. PR #24 `admin-kb.spec` sent the wrong ingest payload
+(`{ project, markdown }` vs `{ documents.*.project_key +
+documents.*.content }`). PR #29 `CommandRunnerService::invokeArtisan`
+treated positional args as options. Check:
+
+- [ ] Every FE `api.ts` call has a BE controller whose request
+      validation mirrors the exact shape (open both files side-by-side).
+- [ ] TanStack Router layouts that host child routes render
+      `<Outlet />` (or the child never mounts).
+- [ ] Artisan wrappers distinguish positional from option by signature
+      (`{name}` vs `{--name=}`), not by blanket `--` prefix.
+- [ ] Laravel implicit bindings that need `withTrashed()` declare it
+      in the route definition.
+
+→ See `.claude/skills/route-contracts-match-fe-shape/SKILL.md`.
+
+### R21 — Security invariants are atomic or absent
+Any single-use / rate-limit / auth check that crosses a concurrency
+boundary must hold the lock until the invariant is recorded — or you
+don't have the invariant. `lockForUpdate()` inside a transaction,
+`update('used_at')` OUTSIDE, means two concurrent requests see
+`used_at = null` and both succeed. That's not "rare" — it's the
+textbook race window, and for a DESTRUCTIVE-command confirm token it
+is RCE-class. PR #29 `CommandRunnerService::consumeConfirmToken`
+(`59d95bc`) was exactly this shape: `DB::transaction(fn() =>
+$row->lockForUpdate()->first())` then `$row->update([...])` after the
+closure returned. Fixed by moving the update INSIDE the transaction.
+**This rule is graded on blast radius, not frequency.** One
+occurrence mints a dedicated rule + skill because the next instance
+ships a public RCE. Check:
+
+- [ ] Every `lockForUpdate()` read is followed by the write inside
+      the SAME `DB::transaction` closure.
+- [ ] Single-use tokens, nonces, rate counters mutate state INSIDE
+      the lock, never after.
+- [ ] `updateOrCreate` / `firstOrCreate` on a single-use resource
+      carries `->where('used_at', null)` or its equivalent.
+- [ ] `used_at` / `consumed_at` / `revoked_at` columns have a DB-level
+      `UNIQUE` or `PARTIAL UNIQUE` constraint where the business rule
+      demands it, not just code-path discipline.
+- [ ] Concurrency-sensitive services have a test that fires two
+      threads/processes at the same resource (or at minimum documents
+      why a unit-level concurrency test is not feasible).
+
+→ See `.claude/skills/security-invariants-atomic-or-absent/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
@@ -500,8 +723,12 @@ regressions.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow the **twelve rules above (R1–R12)** before opening a PR — they
-  exist because Copilot caught them the first time.
+- Follow the **twenty-one rules above (R1–R21)** before opening a PR —
+  they exist because Copilot caught them the first time. R14..R21 were
+  distilled at PR16 from ~110 live Copilot findings across PRs #16..#31;
+  see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the frequency
+  matrix and `.claude/agents/copilot-review-anticipator.md` for the
+  pre-push review sub-agent.
 - Keep the README, `.env.example`, and `config/*.php` in sync whenever a knob
   changes.
 - Commits go on the designated feature branch; never force-push `main`.

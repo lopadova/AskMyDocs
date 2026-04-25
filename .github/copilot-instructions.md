@@ -220,7 +220,7 @@ when no canonical docs exist.
 
 ---
 
-## 6. Review rules (R1–R10) — read this before reviewing or coding
+## 6. Review rules (R1–R21) — read this before reviewing or coding
 
 These are distilled from actual Copilot comments on PRs #4, #5, #6 and the
 canonical compilation series PRs #9–#14. The skills in
@@ -343,6 +343,69 @@ and fails the build on any unmarked internal interception. See
 `.claude/skills/playwright-e2e/` and
 `.claude/skills/playwright-e2e-templates/`.
 
+### R14 — Surface failures loudly; never 200 with empty/null/NaN
+Empty/null/NaN on 200 is the same bug as silent `put() → false`.
+Every endpoint that cannot deliver a valid body maps failure to the
+correct status (404 missing, 500 unreadable, 503 downstream outage).
+No `""` PDF, no `null` JSON from a caught 500, no `-Infinity` from
+`Math.max(...[])`, no chosen-by-message-prefix status code. See
+`.claude/skills/surface-failures-loudly/`.
+
+### R15 — Frontend a11y checklist
+Every interactive element is programmatically labelled
+(`<label htmlFor>` / `aria-label`), keyboard-reachable (no
+`display:none` on real inputs — use visually-hidden pattern), with
+role/state on the focusable element (not the wrapper). Tooltips
+respond to focus/blur, not only mouseenter. See
+`.claude/skills/frontend-a11y-checklist/`.
+
+### R16 — Tests actually exercise the behaviour they claim
+A test named "enables Save after edit" must simulate an edit AND
+assert Save becomes enabled. An ordering test must use
+strictly-monotonic fixtures so reversing the endpoint would fail.
+Tests that mutate global state (env, DI, `window.location`, `Date.now`)
+restore it in `afterEach`. See
+`.claude/skills/test-actually-tests-what-it-claims/`.
+
+### R17 — React effects sync imperative / cached state
+When an effect owns an imperative cache (CodeMirror `EditorView`,
+canvas, ref-of-server-state), every branch that re-reads from the
+source must ALSO sync the cache. Optimistic updates stay until
+refetch completes. `NaN` is guarded before equality checks.
+`.map()` multi-element rows wrap in keyed `<Fragment key>` — NOT
+`<>` with key on an inner child. See
+`.claude/skills/react-effect-sync-cached-state/`.
+
+### R18 — Derive options from the DB, not from a literal subset
+UI filters, project lists, file-extension handling all derive from
+the real domain (API endpoint / distinct query / ingest-accepted
+extensions), never from a hard-coded sample. See
+`.claude/skills/derive-from-db-not-literal/`.
+
+### R19 — Input escaping is complete
+Escape every meta-char for every operator: LIKE (`%`, `_`, `\\`),
+fnmatch (always pass `FNM_PATHNAME` on paths), regex (escape `.`
+when the pattern is a literal host — or use `grep -Fq`), CSV env
+vars (`array_filter(array_map('trim', explode(',', $raw)))`). See
+`.claude/skills/input-escape-complete/`.
+
+### R20 — Route contracts match the FE payload shape
+FE `?token=X` ↔ BE `GET /reset-password` (query), not
+`/reset-password/{token}`. E2E specs post the shape the controller
+validates (`{ documents.*.project_key + content }`, not
+`{ project, markdown }`). TanStack parent routes render `<Outlet />`
+or nested children never mount. Artisan wrappers distinguish
+positional from option by signature. See
+`.claude/skills/route-contracts-match-fe-shape/`.
+
+### R21 — Security invariants are atomic or absent
+Lock-read-update-commit live inside the SAME transaction. Single-use
+tokens / nonces / rate counters mutate state INSIDE the lock, never
+after. Columns that encode "consumed" / "revoked" have DB-level
+`UNIQUE` or `PARTIAL UNIQUE` backing where the business rule demands
+it. One occurrence mints a rule because the blast radius is
+RCE-class. See `.claude/skills/security-invariants-atomic-or-absent/`.
+
 ---
 
 ## 7. Testing & CI
@@ -390,4 +453,31 @@ Before approving a PR, quickly verify:
 - [ ] R8: any disk walker is explicit about `KB_PATH_PREFIX` handling.
 - [ ] R9: every column / env / flag / route quoted in the diff exists in
       the migration / config / routes / `--help` output it claims to mirror.
+- [ ] R10: every query on the KB graph uses the canonical scopes
+      (`canonical()` / `accepted()` / `raw()` / `byType()` / `bySlug()`),
+      no bare `where('project_key', …)` for retrieval grounding.
+- [ ] R11: every new FE actionable element has `data-testid` + ARIA +
+      `data-state` on the async container.
+- [ ] R12: every UI-touching PR ships ≥ 1 happy + ≥ 1 failure Playwright
+      spec.
+- [ ] R13: `bash scripts/verify-e2e-real-data.sh` exits 0.
+- [ ] R14: no endpoint returns 200 on error; no `""` / `null` / NaN
+      leaks through a successful body.
+- [ ] R15: every new input has a label; no `display:none` on real inputs;
+      role/state on the focusable element.
+- [ ] R16: every test's body matches its name (ordering tests use
+      strictly-monotonic fixtures; failure tests actually fire failure).
+- [ ] R17: React effects that re-read server state sync any imperative
+      cache in the same branch; `.map()` of multi-element rows wraps in
+      `<Fragment key>`.
+- [ ] R18: UI dropdowns derive from the DB / API, not a hard-coded
+      subset; file-extension handling covers `.md` AND `.markdown`.
+- [ ] R19: LIKE escapes `%` + `_` + `\\`; fnmatch passes `FNM_PATHNAME`;
+      regex literals escape `.`; CSV env vars go through trim + filter.
+- [ ] R20: FE call-site shape matches BE validator shape; TanStack
+      parent routes render `<Outlet />`; Artisan wrappers respect
+      positional vs option signatures.
+- [ ] R21: `lockForUpdate()` + `update()` live in the SAME
+      `DB::transaction`; single-use resources have DB-level unique
+      backing; concurrency-sensitive services have a concurrent test.
 - [ ] Tests: feature test added when the RAG hot path changed.
