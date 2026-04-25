@@ -30,24 +30,63 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
-| | Feature | Description |
-|---|---|---|
+#### RAG core
+
+| Feature | Description |
+|---|---|
 | **Multi-Provider AI** | Swap between OpenAI, Anthropic Claude, Google Gemini, OpenRouter, or Regolo.ai with a single `.env` change |
 | **Hybrid Search** | Semantic vector search (pgvector) + full-text keyword search fused via Reciprocal Rank Fusion |
-| **Smart Reranking** | Over-retrieval + keyword/heading scoring to surface the most relevant chunks |
+| **Smart Reranking** | Over-retrieval + keyword/heading + canonical boost + status penalty to surface the most relevant chunks |
 | **Embedding Cache** | DB-backed cache eliminates redundant API calls on re-ingestion and repeated queries |
 | **Citations** | Every answer shows exactly which documents and sections were used — verify at the source |
-| **Visual Artifacts** | The AI generates charts (Chart.js), enhanced tables, and action buttons (copy, download) when the data justifies it |
+| **Visual Artifacts** | The AI generates charts (recharts), enhanced tables, and action buttons (copy, download) when the data justifies it |
 | **Feedback Learning** | Thumbs up/down on answers; positive examples are injected as few-shot context to improve future responses |
-| **Chat History** | Full conversation persistence with sidebar, rename, delete, auto-generated titles — like ChatGPT |
+| **Chat History** | Full conversation persistence with sidebar, rename, delete, auto-generated titles — ChatGPT-style |
 | **Speech-to-Text** | Browser-native microphone input via Web Speech API — zero external services |
-| **Chat Logging** | Structured logging (DB, extensible to BigQuery/CloudWatch) of every interaction with token counts, latency, client info |
-| **Scheduler Hygiene** | Daily Laravel jobs to rotate chat logs and prune the embedding cache by configurable retention |
-| **Storage-Agnostic Ingestion** | KB documents are read through Laravel disks: `local` by default, S3 with a single env change |
-| **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database` and `redis` queues (Horizon-ready) |
-| **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
-| **MCP Server** | Five read-only tools that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
-| **Auth** | Laravel session auth with login, logout, password reset — no registration (admin-created users); automatic redirect to `/chat` on login |
+
+#### Canonical Knowledge Compilation (OmegaWiki-inspired)
+
+| Feature | Description |
+|---|---|
+| **9 Canonical Document Types** | `decision`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`, `module-kb`, `rejected-approach`, `project-index` — each with YAML frontmatter validated by `CanonicalParser` |
+| **Knowledge Graph** | `kb_nodes` + `kb_edges` with 10 typed relations (`depends_on`, `uses`, `implements`, `related_to`, `supersedes`, `invalidated_by`, `decision_for`, `documented_by`, `affects`, `owned_by`); 1-hop graph expansion at retrieval time, tenant-scoped composite FKs make cross-tenant edges structurally impossible |
+| **Anti-Repetition Memory** | The prompt explicitly surfaces `rejected-approach` docs under a `⚠ REJECTED APPROACHES` block so the LLM stops re-proposing dismissed options — config-gated via `KB_REJECTED_INJECTION_ENABLED` |
+| **Promotion Pipeline** | Three-stage human-gated API (`/suggest` → LLM extract candidates / `/candidates` → validate draft / `/promote` → write + ingest); only humans (git push → GH action) and operators (`kb:promote` CLI) commit canonical storage — never the LLM |
+| **Audit Trail** | `kb_canonical_audit` is immutable (no `updated_at`, no FK to docs) — survives hard deletes for forensic access |
+| **5 Claude Skill Templates** | `.claude/skills/kb-canonical/*` — copy-paste templates for consumer repos to scaffold canonical drafts |
+
+#### Enterprise React SPA + RBAC
+
+| Feature | Description |
+|---|---|
+| **Single-Page Admin Shell** | React 19 + TypeScript + Vite + TanStack Router/Query + shadcn/ui under `/app/*` — dark-first glassmorphism UI with code-split routes (~400 KB initial gzipped) |
+| **RBAC Foundation** | Spatie roles (`admin`, `super-admin`, `editor`, `viewer`) + `project_memberships` (tenant scope with folder/tag allowlist JSON) + `knowledge_document_acl` (row-level ACL); global Eloquent scope filters every query against `knowledge_documents` to the user's permitted projects |
+| **Auth: Sanctum stateful SPA + Bearer** | Cookie-based stateful auth for the SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) AND personal access tokens for API clients / MCP / GitHub Action — same guard, same RBAC scopes |
+| **2FA stub** | `TwoFactorController` skeleton behind `AUTH_2FA_ENABLED=false` for future TOTP rollout |
+
+#### Admin pages (every page under `/app/admin/*`)
+
+| Page | Description |
+|---|---|
+| **Dashboard** (`/admin`) | KPI strip (docs, chunks, chats, p95 latency, cache hit rate, canonical coverage) + health strip (db, pgvector, queue, kb-disk, embeddings, chat) + 3 code-split recharts cards (chat volume, token burn, rating donut) + top projects + activity feed; 30-second cache layer |
+| **Users & Roles** (`/admin/users` + `/admin/roles`) | Filterable users table with soft-delete + restore, 3-tab edit drawer (Details / Roles / Memberships with `scope_allowlist` JSON editor), Spatie-backed role CRUD with grouped permission matrix |
+| **KB Explorer** (`/admin/kb`) | Memory-safe `chunkById(100)` tree walker with canonical-aware modes (`canonical \| raw \| all`); right-panel tabs: Preview (markdown + frontmatter pills) / Meta (canonical grid + AI tags) / **Source** (CodeMirror 6 editor with PATCH `/raw` → validate → write → audit → re-ingest) / **Graph** (1-hop tenant-scoped subgraph, SVG radial layout) / **History** (paginated `kb_canonical_audit`) / **PDF export** (Browsershot, A4 print-optimised) |
+| **Logs** (`/admin/logs`) | Five deep-linkable tabs (`?tab=chat \| audit \| app \| activity \| failed`) — chat logs with model/project/rating filters, canonical audit trail, reverse-seek `SplFileObject`-powered application log tailer (whitelist regex, 2000-line cap, optional live polling), Spatie activitylog (soft dep), failed-jobs read-only |
+| **Maintenance** (`/admin/maintenance`) | Whitelisted Artisan runner via `CommandRunnerService` with **6 independent gates**: (1) whitelist lookup, (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie permission gate (`commands.run` / `commands.destructive`), (5) audit-before-execute (`admin_command_audits`), (6) per-user `throttle:10,1` rate limit. Three-step React wizard: Preview → Confirm (type-in for destructive) → Run → Result |
+| **AI Insights** (`/admin/insights`) | Daily `insights:compute` (05:00 UTC) writes one row into `admin_insights_snapshots`; six widget cards: Promotion Suggestions, Orphan Docs, Suggested Tags, Coverage Gaps, Stale Docs, Quality Report — O(1) DB read, zero LLM calls per page load |
+
+#### Operations & quality
+
+| Feature | Description |
+|---|---|
+| **Chat Logging** | Structured logging (DB, extensible to BigQuery/CloudWatch) of every interaction with token counts, latency, citations, client info |
+| **Scheduler Hygiene** | Daily Laravel jobs at 03:10–05:00 UTC: `kb:prune-embedding-cache`, `chat-log:prune`, `kb:prune-deleted`, `kb:rebuild-graph`, `insights:compute` (`onOneServer()` + `withoutOverlapping()`) |
+| **Storage-Agnostic Ingestion** | KB documents read through Laravel disks: `local`, S3, R2, GCS, MinIO. Per-project disk override via `KB_PROJECT_DISKS`; raw vs canonical disk separation supported |
+| **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database`, `redis` queues (Horizon-ready) |
+| **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action (`v2`, canonical-folder aware) so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
+| **MCP Server** | **10 tools** (5 retrieval + 5 canonical/promotion) that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
+| **22 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4 — #33; the `ci-failure-investigation` skill (R22) codifies the artefact-first protocol for Playwright debug |
+| **63-test Playwright E2E suite** | Real Postgres + pgvector in CI, deterministic via `data-state` + `data-testid` contract (R11), happy-path + failure-injection per feature (R12), real data only — `page.route()` reserved for external boundaries (R13) |
 
 ---
 
@@ -2106,44 +2145,146 @@ ORDER BY chunks_count;
 
 ---
 
-## Quick Start: 5-minute onboarding
+## Quick Start: 10-minute onboarding (clone → working SPA)
 
-For the fastest path (OpenRouter + OpenAI embeddings + PostgreSQL):
+**Audience:** a junior developer who has just cloned the repo and wants to see the
+React SPA, the chat, and the admin dashboard running locally with seeded demo data.
+
+### Prerequisites (install these BEFORE step 1)
+
+| Tool | Minimum version | Why |
+|---|---|---|
+| **PHP** | `8.3` | Laravel 13 floor |
+| **Composer** | `2.x` | PHP package manager |
+| **PostgreSQL** | `15` (or higher) | Required — the `vector(N)` columns and the FTS GIN index are pgsql-only |
+| **`pgvector` extension** | matching your PG | `CREATE EXTENSION vector;` (see below) |
+| **Node.js** | `20` LTS | The React SPA build pipeline (Vite) |
+| **npm** | bundled with Node | JS deps |
+
+Quick PostgreSQL + pgvector setup (Docker is the fastest path):
 
 ```bash
-# 1. Setup
-git clone https://github.com/your-org/askmydocs.git
-cd askmydocs
+# Option A — Docker (preinstalled pgvector image, recommended)
+docker run -d --name askmydocs-pg \
+    -e POSTGRES_USER=askmydocs \
+    -e POSTGRES_PASSWORD=askmydocs \
+    -e POSTGRES_DB=askmydocs \
+    -p 5432:5432 \
+    pgvector/pgvector:pg16
+
+# Option B — local PostgreSQL: enable pgvector inside the database
+psql -U postgres -d askmydocs -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+### Step-by-step
+
+```bash
+# ─── 1. Clone + install PHP deps ────────────────────────────────────
+git clone https://github.com/lopadova/AskMyDocs.git
+cd AskMyDocs
 composer install
+
+# ─── 2. Install JS deps + build the React SPA ───────────────────────
+# Without this step the /app/* routes return a blank page (the Vite
+# manifest is missing). DO NOT SKIP.
+npm ci
+npm run build
+
+# ─── 3. Configure .env ──────────────────────────────────────────────
 cp .env.example .env
 php artisan key:generate
 
-# 2. Configure PostgreSQL in .env
-#    DB_DATABASE=askmydocs
-#    (make sure the pgvector extension is installed)
+# Edit .env and set:
+#   DB_CONNECTION=pgsql
+#   DB_HOST=127.0.0.1
+#   DB_PORT=5432
+#   DB_DATABASE=askmydocs
+#   DB_USERNAME=askmydocs
+#   DB_PASSWORD=askmydocs
+#
+#   AI_PROVIDER=openrouter
+#   OPENROUTER_API_KEY=sk-or-...        # https://openrouter.ai/keys
+#   AI_EMBEDDINGS_PROVIDER=openai
+#   OPENAI_API_KEY=sk-...               # required ONLY for embeddings
 
-# 3. Add your API keys in .env
-#    OPENROUTER_API_KEY=sk-or-...
-#    OPENAI_API_KEY=sk-...
-
-# 4. Run migrations
+# ─── 4. Migrate + seed RBAC + create demo data ──────────────────────
 php artisan migrate
 
-# 5. Create a user
+# RbacSeeder creates the 4 baseline roles (super-admin, admin, editor,
+# viewer) + every permission used by the SPA. WITHOUT this, a logged-in
+# user has zero permissions and the admin pages return 403.
+php artisan db:seed --class=RbacSeeder
+
+# DemoSeeder creates 3 ready-to-use demo accounts + 3 canonical KB
+# documents + a small graph + sample chat logs. Skip this only if you
+# want a totally empty KB.
+php artisan db:seed --class=DemoSeeder
+
+# Demo accounts created by DemoSeeder (password is the same: "password"):
+#   super@demo.local     → super-admin (sees + can run destructive maintenance commands)
+#   admin@demo.local     → admin       (sees admin pages, non-destructive only)
+#   viewer@demo.local    → viewer      (sees /app/chat only)
+
+# ─── 5. Start the dev server ────────────────────────────────────────
+php artisan serve
+```
+
+Open <http://localhost:8000> in your browser:
+
+- Log in with `super@demo.local` / `password`
+- The SPA redirects to <http://localhost:8000/app/chat> — the React chat UI
+- Click **Dashboard** in the sidebar to land on `/app/admin` — the KPI dashboard,
+  populated by the DemoSeeder's chat logs and 3 canonical docs
+- Click **Knowledge** to open the KB tree explorer; expand `policies/` and click
+  `remote-work-policy.md` to see Preview / Source (CodeMirror editor) / Graph /
+  History
+
+**That's it — clone to working SPA in under 10 minutes.**
+
+### What if I want to use my own credentials instead of the demo accounts?
+
+```bash
 php artisan tinker --execute="
-    \App\Models\User::create([
+    \$u = \App\Models\User::create([
         'name' => 'Admin',
         'email' => 'admin@example.com',
-        'password' => bcrypt('password'),
+        'password' => bcrypt('your-strong-password'),
     ]);
+    \$u->assignRole('super-admin');
+    echo 'Created user with super-admin role';
 "
-
-# 6. Start the server
-php artisan serve
-
-# 7. Open http://localhost:8000 → log in → you are redirected to /chat
-# 8. Start chatting with your knowledge base!
 ```
+
+⚠ The `assignRole()` call is **not optional** — `User::create()` alone gives you a
+user with zero permissions, who will get 403s on every admin page. Always assign
+at least one role.
+
+### What if I want to skip DemoSeeder and ingest my own docs?
+
+```bash
+# Drop your markdown files under storage/app/kb/ (the default `kb` disk),
+# or edit KB_DISK_DRIVER in .env to point at S3 / R2 / GCS / MinIO.
+
+# Then walk the folder and ingest every .md (or .markdown) file:
+php artisan kb:ingest-folder docs/ --project=my-project --recursive
+
+# For a small batch (≤ 100 docs), the synchronous mode is fine:
+php artisan kb:ingest-folder docs/ --project=my-project --recursive --sync
+
+# For a real ingest, run a queue worker in a second terminal:
+php artisan queue:work --queue=kb-ingest
+```
+
+### Troubleshooting the first-run
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `/app/*` shows a blank page | The React bundle is missing | `npm ci && npm run build` (re-run after every git pull) |
+| `/app/admin` returns 403 even as the seeded admin | `RbacSeeder` was skipped — the user has no `admin` / `super-admin` role | `php artisan db:seed --class=RbacSeeder` then re-login |
+| `vector` column type errors during migrate | `pgvector` extension is not installed in the database | `psql -d askmydocs -c "CREATE EXTENSION vector;"` |
+| `OPENROUTER_API_KEY missing` on first chat | `.env` not picked up | Ensure you ran `php artisan config:clear` (or the app is in `APP_ENV=local` where caching is off by default) |
+| Empty dashboard charts | Cache layer is warm with empty data | Refetch in 30s, or `php artisan cache:clear` |
+| `php artisan serve` exits immediately on Windows | Built-in PHP server can't bind 8000 | `php artisan serve --port=8001` and update `APP_URL` |
 
 For programmatic API access (Sanctum token):
 
@@ -2541,6 +2682,164 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v2.0.0 — Enterprise edition (10-PR roadmap A → J + canonical compilation)
+
+The 2.0 series promotes AskMyDocs from a single-user RAG chat tool into a
+full enterprise knowledge platform. Two parallel tracks landed simultaneously:
+the **canonical knowledge compilation** layer (knowledge graph + anti-repetition
+memory + 9-type document taxonomy) and the **enterprise admin surface**
+(React SPA + RBAC + 6 admin pages).
+
+**Canonical Knowledge Compilation (PRs #9 – #15)**
+- 9 canonical document types with YAML frontmatter validated by `CanonicalParser`
+  (`decision`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`,
+  `module-kb`, `rejected-approach`, `project-index`)
+- Knowledge graph with tenant-scoped composite FKs: `kb_nodes` (9 node kinds) +
+  `kb_edges` (10 edge kinds: `depends_on`, `uses`, `implements`, `related_to`,
+  `supersedes`, `invalidated_by`, `decision_for`, `documented_by`, `affects`,
+  `owned_by`)
+- Reranker fusion includes canonical boost + status penalty
+- Graph-aware retrieval: 1-hop walk of `kb_edges` from canonical seeds
+- Anti-repetition memory: `RejectedApproachInjector` cosine-correlates the query
+  against `rejected-approach` docs and surfaces them under `⚠ REJECTED APPROACHES`
+  in the prompt — config-gated via `KB_REJECTED_INJECTION_ENABLED`
+- Promotion pipeline (ADR 0003, human-gated): three-stage API
+  (`/suggest` → `/candidates` → `/promote`); only humans + operators commit
+- Immutable `kb_canonical_audit` trail (no `updated_at`, no FK — survives hard delete)
+- `CanonicalIndexerJob` populates the graph after every canonical ingest
+- `kb:rebuild-graph` scheduler at 03:40 UTC (no-op when no canonical docs exist)
+- 5 Claude skill templates under `.claude/skills/kb-canonical/` for consumer repos
+- 10 MCP tools (5 retrieval + 5 canonical/promotion)
+
+**Enterprise Admin Surface (PRs #16 – #33, 10 phases A → J)**
+
+*Phase A — Storage & Scheduler hardening (PR #1)*
+- Per-project disk override (`KB_PROJECT_DISKS` map → `App\Support\KbDiskResolver`)
+- Raw vs canonical disk separation (Omega-inspired)
+- New scheduler entries: `activity-log:prune`, `admin-audit:prune`,
+  `queue:prune-failed`, `notifications:prune`, `kb:prune-orphan-files`
+- Configurable filesystems blocks: R2, GCS, MinIO
+
+*Phase B — Auth JSON API + Sanctum stateful SPA (PR #2)*
+- `Route::middleware('web')->prefix('auth')` group with JSON endpoints
+  (`/login`, `/logout`, `/me`, `/forgot-password`, `/reset-password`)
+- 2FA stub controller behind `AUTH_2FA_ENABLED=false` feature flag
+- Throttling: 5/min on login (failure-only counter), 3/min on forgot-password
+
+*Phase C — RBAC foundation (PR #3)*
+- `spatie/laravel-permission` with 4 baseline roles (`super-admin`, `admin`,
+  `editor`, `viewer`) + 13 permissions (`users.manage`, `kb.read.any`,
+  `commands.run`, `commands.destructive`, etc.)
+- New tables: `project_memberships` (tenant scope JSON), `kb_tags` +
+  `knowledge_document_tags` pivot, `knowledge_document_acl` (row-level)
+- Global Eloquent scope `AccessScopeScope` on `KnowledgeDocument` filters every
+  read-path query to the user's permitted projects (config-gated via
+  `RBAC_ENFORCED`)
+- `EnsureProjectAccess` middleware + `KnowledgeDocumentPolicy`
+- `auth:grant {email} {role}` operator CLI
+
+*Phase D — Frontend scaffold + auth pages (PR #4)*
+- React 19 + TypeScript + Vite + Tailwind 3.5 + shadcn/ui (Radix) + TanStack
+  Router/Query + Zustand + react-i18next
+- Catch-all `Route::get('/app/{any}', SpaController)` for the SPA
+- AppShell with collapsible sidebar, command palette, dark/light toggle
+  (persisted in localStorage + `prefers-color-scheme`), i18n it/en
+- Auth pages: Login, Forgot, Reset, Verify — shadcn forms + zod + react-hook-form
+- Vite manifest output to `public/build/`, code-split per feature
+
+*Phase E — Chat React (PR #5)*
+- Full porting of the legacy Blade chat (`chatApp()` Alpine) to React
+- `ConversationList`, `MessageThread`, `MessageBubble`, `Composer`,
+  `CitationsPopover`, `FeedbackButtons`, `VoiceInput`
+- TanStack Query for server state; Zustand for UI state
+- `react-markdown` + `remark-gfm` + custom `[[wikilink]]` plugin (resolves via
+  `GET /api/kb/resolve-wikilink`); recharts for charts; `useChatMutation` with
+  optimistic updates
+- Legacy `chat.blade.php` deprecated (kept for fallback during migration)
+
+*Phase F1 + F2 — Admin shell + Dashboard + Users & Roles (PRs #6 + #7)*
+- KPI dashboard (`/app/admin`): 6 KPI tiles + health strip + 3 recharts cards
+  (chat volume area, token burn stacked bar, rating donut) + top projects +
+  activity feed; 30-second `Cache::remember` layer
+- Filterable users table with soft-delete + restore via `with_trashed` toggle
+- 3-tab user edit drawer (Details / Roles / Memberships with `scope_allowlist`
+  JSON editor)
+- Spatie role CRUD with grouped permission matrix (`kb`, `users`, `roles`,
+  `commands`, `logs`, `insights` cards)
+
+*Phase G1 – G4 — KB Explorer (PRs #8 + #9 + #10 + #11)*
+- Memory-safe `chunkById(100)` tree walker with canonical-aware modes
+  (`canonical | raw | all`)
+- Detail panel tabs: **Preview** (markdown + frontmatter pills) / **Meta**
+  (canonical grid + AI-suggested tags) / **Source** (CodeMirror 6 editor —
+  `@codemirror/state` + `/view` + `/lang-markdown`, ~150 KB lighter than
+  basic-setup; PATCH `/raw` runs validate → write → audit → re-ingest) /
+  **Graph** (1-hop tenant-scoped subgraph, SVG radial layout, ≤ 50 nodes) /
+  **History** (paginated `kb_canonical_audit`)
+- **PDF export** via Browsershot (Chrome headless), A4 print-optimised, with
+  TOC and clickable wikilink anchors; feature-flagged via `ADMIN_PDF_ENGINE`
+
+*Phase H1 + H2 — Log Viewer + Maintenance Panel (PRs #12 + #13)*
+- 5 deep-linkable log tabs (`?tab=chat | audit | app | activity | failed`):
+  paginated chat logs with model/project/rating filters, canonical audit trail
+  with event-type/actor filters, reverse-seek `SplFileObject`-powered
+  application log tailer (filename whitelist regex, 2000-line cap, optional
+  live polling via `?live=1`), Spatie activitylog (soft dep), failed-jobs
+  read-only with expandable exception trace
+- Whitelisted Artisan runner enforced by `CommandRunnerService` via **6
+  independent gates**: (1) whitelist lookup in `config('admin.allowed_commands')`,
+  (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use
+  nonce, (4) Spatie permission gate (`commands.run` for admin,
+  `commands.destructive` for super-admin only), (5) audit-before-execute
+  (`admin_command_audits` row flips around the `Artisan::call()`), (6) per-user
+  `throttle:10,1` rate limit
+- Three-step React wizard: Preview → [Confirm type-in for destructive] → Run → Result
+
+*Phase I — AI Insights (PR #14)*
+- Daily `insights:compute` command (05:00 UTC scheduler) writes one row into
+  `admin_insights_snapshots` (six independently-nullable JSON columns)
+- Six widget cards: Promotion Suggestions, Orphan Docs, Suggested Tags,
+  Coverage Gaps, Stale Docs, Quality Report
+- O(1) DB read on the SPA side; zero LLM calls per page load (compute moved
+  from on-demand to pre-computed for cost control)
+
+*Phase J — Docs + E2E + polish (PR #15 + #33)*
+- 63-test Playwright E2E suite running against real Postgres + pgvector in CI
+- Deterministic via `data-testid` + `data-state="idle | loading | ready | error | empty"`
+  contract (R11)
+- Real data only — `page.route()` reserved for external boundaries (R13)
+- Golden-path `admin-journey.spec.ts` walks every admin page in order
+
+**22 Codified Review Rules**
+- R1 — `KbPath::normalize()` everywhere | R2 — soft-delete awareness |
+  R3 — memory-safe bulk ops | R4 — no silent failures | R5 — action.yml hygiene |
+  R6 — docs/config coupling | R7 — no `0777` / no `@`-silenced errors |
+  R8 — `KB_PATH_PREFIX` consistency | R9 — docs match code | R10 — canonical
+  awareness | R11 — testid/state contract | R12 — UI changes ship E2E |
+  R13 — E2E real data | R14 — surface failures loudly | R15 — a11y checklist |
+  R16 — tests test what they claim | R17 — React effect/cache sync |
+  R18 — derive options from DB | R19 — input escaping is complete |
+  R20 — route contracts match FE shape | R21 — security invariants atomic-or-absent |
+  **R22 — CI failure investigation: artefact-first, then code** (NEW PR #33)
+- Each rule has a dedicated skill at `.claude/skills/<rule>/SKILL.md` with
+  worked examples and counter-examples
+
+**Tests**
+- PHPUnit 12: 200+ tests covering RBAC isolation, canonical parsing, document
+  ingestion/deletion, retrieval, MCP tools, command runner gates
+- Vitest: pure-module tests against `resources/js/*.mjs` + frontend unit tests
+- Playwright: 63 scenarios across `setup`, `chromium`, `chromium-viewer`,
+  `chromium-super-admin` projects; admin-journey golden path; failure injection
+  pattern (R13)
+
+**Migration notes**
+- Existing v1.3 deployments need: `composer update` → `npm ci && npm run build` →
+  `php artisan migrate` → `php artisan db:seed --class=RbacSeeder` (assigns
+  every existing user the `viewer` role + membership on every distinct
+  `project_key` of `knowledge_documents`).
+- Set `RBAC_ENFORCED=false` in `.env` to keep the v1.3 read-path open while
+  you migrate stakeholders to the new admin shell.
 
 ### v1.3.0
 
