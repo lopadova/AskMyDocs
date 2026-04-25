@@ -67,10 +67,12 @@ private function escapeLike(string $raw): string
     );
 }
 
+// Always specify ESCAPE so every driver agrees on the escape char.
+// Use whereRaw because Eloquent's where('col','like',$v) builder
+// emits no ESCAPE clause and SQLite/PostgreSQL/MySQL otherwise
+// disagree on the default.
 $q = $this->escapeLike($request->input('q', ''));
-$users = User::where('email', 'like', "%{$q}%", null, 'and')
-    // Always specify ESCAPE so every driver agrees:
-    ->whereRaw("email LIKE ? ESCAPE '\\\\'", ["%{$q}%"])
+$users = User::whereRaw("email LIKE ? ESCAPE '\\\\'", ["%{$q}%"])
     ->get();
 ```
 

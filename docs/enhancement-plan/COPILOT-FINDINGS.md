@@ -272,7 +272,46 @@ here in normal order.
 
 | Path | Category | Pattern | Fix SHA |
 |---|---|---|---|
-| (none) | — | — | — |
+
+> Table intentionally empty — PR #31 had zero Copilot findings.
+> The verifier in `scripts/verify-copilot-catalogue.sh` skips
+> separator-only rows (`|---|...|`), so this header alone satisfies
+> the "PR #31 block exists" check without falsely advertising a
+> placeholder row. Future regressions against PR #31 should append
+> real rows above this note.
+
+### PR #32 — Final distill (R14..R21 + skills + CI gate)
+
+Live re-harvest of PR #32 (the final distill PR) returned **7
+finding-shaped rows**. Findings target the meta-deliverables of
+PR16 itself: the new CI gate, the new sub-agent doc, and an example
+in one of the 8 new skills. None touched runtime code (PR #32 is
+docs + scripts + templates).
+
+| Path | Category | Pattern | Fix SHA |
+|---|---|---|---|
+| `docs/enhancement-plan/COPILOT-FINDINGS.md` | `test-fragility` | `(none)` placeholder row in PR #31 block satisfied verifier without being a real finding row | _this PR_ |
+| `.claude/agents/copilot-review-anticipator.md` | `doc-drift` | Doc described a `.claude/hooks/pre-push.sh` that doesn't ship with the repo | _this PR_ |
+| `.claude/skills/input-escape-complete/SKILL.md` | `doc-drift` | LIKE-escaping example used a 5-arg `User::where()` signature that doesn't compile | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `portability` | `readarray` is bash 4+, missing on macOS default bash 3.2 — script broke for local contributors | _this PR_ |
+| `.github/workflows/tests.yml` | `silent-noop` | Default shallow checkout (depth=1) hides individual commits → catalogue gate silently passes in CI | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `silent-noop` | Exited 0 when catalogue file was missing → renaming/deleting the catalogue bypassed the gate | _this PR_ |
+| `scripts/verify-copilot-catalogue.sh` | `silent-noop` | Full-history scan branch silently became partial-history under shallow clones → no shallow-detection guard | _this PR_ |
+
+**New category surfaced this PR**: **`portability`** — bash builtin
+assumed without checking against the lowest-common-denominator shell
+contributors actually run (macOS bash 3.2). One occurrence; not a
+rule on its own yet.
+
+**Pattern noted across 3 of the 7 findings**: the new CI gate (and
+the workflow that invokes it) had three independent ways to silently
+become a no-op — missing catalogue file, shallow clone with implicit
+full-history scan, and shallow clone in CI hiding the fix commits.
+This reinforces R14 (surface failures loudly): a gate that exits 0
+on its own absence is worse than no gate at all because the green
+checkmark is misleading. Distillation note for any future CI gate
+work — fail closed, not open, when the gate's preconditions are
+unmet.
 
 ---
 

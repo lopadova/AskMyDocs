@@ -23,10 +23,13 @@ commands. Your output is a numbered finding list the user can act on.
 - Manually: user invokes you with `@copilot-review-anticipator` or
   `claude --agent copilot-review-anticipator` and optionally passes a
   SHA range (`HEAD~3..HEAD`) or a diff file.
-- Automatically: a pre-push git hook under `.claude/hooks/pre-push.sh`
-  can invoke you on the branch's outgoing diff vs `origin/main`. The
-  hook is opt-in — users who don't want the pre-push pause delete
-  the hook.
+- Optionally: contributors can wire this agent into their **own**
+  pre-push hook (`.git/hooks/pre-push` locally, or a personal
+  `.claude/hooks/pre-push.sh` they create — neither ships with the
+  repo) so it runs against the branch's outgoing diff vs
+  `origin/main` before the push proceeds. This is a per-contributor
+  ergonomics choice; the repo does not install or version-control
+  any such hook.
 
 When no target is given, default to:
 ```

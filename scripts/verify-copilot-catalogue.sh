@@ -28,15 +28,27 @@ RANGE="${1:-}"
 CATALOGUE="docs/enhancement-plan/COPILOT-FINDINGS.md"
 
 if [[ ! -f "${CATALOGUE}" ]]; then
-  echo "verify-copilot-catalogue: ${CATALOGUE} not found, nothing to check."
-  exit 0
+  # A missing catalogue is itself a protocol violation (someone renamed
+  # or deleted the file). Failing here keeps the gate from silently
+  # passing in CI when the catalogue is gone.
+  echo "verify-copilot-catalogue: required catalogue ${CATALOGUE} not found." >&2
+  exit 1
 fi
 
 # Resolve log range. When no arg provided, scan the full history — it's
-# O(few hundred commits) and takes <200ms.
+# O(few hundred commits) and takes <200ms. That assumption only holds
+# for non-shallow clones; in CI a shallow checkout would silently turn
+# this gate into a partial-history scan (often only the merge commit
+# is visible), so refuse to run unless the caller has either fetched
+# full history or passed an explicit range.
 if [[ -n "${RANGE}" ]]; then
   LOG_RANGE=("${RANGE}")
 else
+  if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+    echo "verify-copilot-catalogue: refusing to scan full history in a shallow clone." >&2
+    echo "verify-copilot-catalogue: fetch full history (e.g. 'fetch-depth: 0' on actions/checkout) or pass an explicit range, e.g. 'origin/main..HEAD'." >&2
+    exit 1
+  fi
   LOG_RANGE=()
 fi
 
@@ -61,7 +73,15 @@ fi
 # Deduplicate PR numbers — one fix commit per PR is the norm but a
 # rebase / follow-up may produce more. We only need to verify each
 # distinct PR number once.
-readarray -t unique_prs < <(printf '%s\n' "${fix_prs[@]}" | sort -un)
+#
+# `readarray`/`mapfile` are bash 4+ builtins and missing on the default
+# macOS bash (3.2). Loop via `while read` instead so contributors can
+# run this locally without installing a newer bash.
+unique_prs=()
+while IFS= read -r pr; do
+  [[ -n "${pr}" ]] || continue
+  unique_prs+=("${pr}")
+done < <(printf '%s\n' "${fix_prs[@]}" | sort -un)
 
 missing=()
 for pr in "${unique_prs[@]}"; do

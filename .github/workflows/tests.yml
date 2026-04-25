@@ -82,6 +82,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # verify-copilot-catalogue.sh walks `git log` to match
+          # `fix(enh-*): address Copilot review on PR #N` commits
+          # against catalogue rows. The default shallow checkout
+          # (depth=1) hides those commits — only the merge commit is
+          # visible — which would silently turn the gate into a no-op.
+          # Fetch the full history so the gate sees every fix commit
+          # in the PR's range.
+          fetch-depth: 0
 
       - name: Setup PHP 8.3
         uses: shivammathur/setup-php@v2
