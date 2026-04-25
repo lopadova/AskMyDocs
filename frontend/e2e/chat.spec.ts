@@ -96,19 +96,36 @@ test.describe('Chat', () => {
 
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        // Strategy: wait for `data-state=ready` on the wikilink wrapper
-        // — this is a STABLE signal that survives React re-renders,
-        // unlike the volatile `hover` state which can flip back to
-        // false when a re-render swaps the DOM node out from under
-        // Playwright's mouse position.
-        // First hover triggers `enabled: hover` → fetch → data → ready.
-        // After ready, we re-hover deliberately so the popover (which
-        // is gated on `hover === true`) is mounted, then assert.
-        await wikilink.hover({ force: true });
-        await expect(wikilink).toHaveAttribute('data-state', 'ready', {
-            timeout: 10_000,
+        // Trigger mouseenter via dispatchEvent so React's onMouseEnter
+        // fires on the CURRENT DOM node, regardless of where Playwright's
+        // virtual mouse cursor is. Playwright's `hover()` moves the mouse
+        // and relies on the DOM node staying stable; React re-renders
+        // (the chat thread polls + reorders messages) keep swapping the
+        // wikilink node, so the synthetic mouse loses track and `hover`
+        // state in WikilinkHover never flips to true. Dispatching the
+        // events directly on the live node bypasses the cursor tracking.
+        const respPromise = page.waitForResponse(
+            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+            { timeout: 15_000 },
+        );
+        await wikilink.evaluate((el) => {
+            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         });
-        await wikilink.hover({ force: true });
+        const resp = await respPromise;
+        if (!resp.ok()) {
+            throw new Error(
+                `GET /api/kb/resolve-wikilink returned non-OK: ${resp.status()} ${await resp.text()}`,
+            );
+        }
+        // Re-dispatch mouseenter on whichever node currently carries the
+        // testid — after the response lands React rerenders one more
+        // time and the popover (gated on `hover === true`) needs the
+        // event on the CURRENT node.
+        await page.locator('[data-testid="wikilink-remote-work-policy"]').first().evaluate((el) => {
+            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        });
         const preview = page.getByTestId('wikilink-preview');
         await expect(preview).toBeVisible({ timeout: 5_000 });
         await expect(preview).toContainText(/Remote Work Policy/i);
@@ -141,14 +158,23 @@ test.describe('Chat', () => {
         await composer(page).send.click();
         const wikilink = page.getByTestId('wikilink-remote-work-policy').first();
         await expect(wikilink).toBeVisible({ timeout: 30_000 });
-        // Same strategy as the happy-path test: wait for `data-state=error`
-        // (set when the query rejects on 500) as a stable signal, then
-        // re-hover to mount the popover, then assert the error surface.
-        await wikilink.hover({ force: true });
-        await expect(wikilink).toHaveAttribute('data-state', 'error', {
-            timeout: 10_000,
+        // Same strategy as the happy-path test: dispatchEvent bypasses
+        // Playwright's mouse cursor tracking which loses the React node
+        // across re-renders. The route stub returns 500 so the response
+        // arrives immediately; wait for it then re-dispatch.
+        const respPromise = page.waitForResponse(
+            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+            { timeout: 15_000 },
+        );
+        await wikilink.evaluate((el) => {
+            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         });
-        await wikilink.hover({ force: true });
+        await respPromise;
+        await page.locator('[data-testid="wikilink-remote-work-policy"]').first().evaluate((el) => {
+            el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+        });
         await expect(page.getByTestId('wikilink-preview-error')).toBeVisible({ timeout: 5_000 });
     });
 

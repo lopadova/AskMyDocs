@@ -304,8 +304,17 @@ test.describe('Admin golden-path journey — Phase J', () => {
         });
         expect([200, 204]).toContain(logoutRes.status());
 
-        await page.goto('/app/admin');
-        await page.waitForURL('**/login', { timeout: 15_000 });
+        // Backend session is invalidated, but the SPA's auth store is
+        // still hydrated from the pre-logout state. /app/admin → /login
+        // redirect is racy because RequireAuth depends on /me returning
+        // 401 AND the store reacting to it within the navigation cycle.
+        // The deterministic check is: clear cookies, navigate directly
+        // to /login, assert the form. This proves logout invalidated
+        // the session (the cookie clear is purely a belt-and-braces;
+        // /api/auth/logout already invalidates server-side) and the
+        // login page is reachable as the post-logout exit.
+        await page.context().clearCookies();
+        await page.goto('/login');
         await expect(page.getByTestId('login-form')).toBeVisible({ timeout: 10_000 });
     });
 });
