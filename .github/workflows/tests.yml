@@ -222,13 +222,12 @@ jobs:
         run: |
           php artisan key:generate --force
           php artisan migrate --force
-          # Pre-warm the framework caches so the FIRST HTTP request
-          # Playwright fires (POST /testing/reset) doesn't time out
-          # while Laravel boots its config/route/view caches mid-flight.
-          # Without this the first migrate:fresh-as-HTTP request can
-          # socket-hang-up on slow CI runners — observed reproducibly
-          # on this PR's pipeline.
-          php artisan optimize
+          # NOTE: previous attempt at `php artisan optimize` here
+          # turned the artisan-serve socket-hang-up into ECONNREFUSED
+          # (the cached config + closure routes interfere with how
+          # `php artisan serve` boots its single-threaded handler).
+          # The auth.setup retry loop now handles the boot race
+          # without preemptive caching.
 
       # playwright.config.ts `webServer` launches `php artisan serve`
       # automatically, waits on baseURL readiness, and shuts it down
