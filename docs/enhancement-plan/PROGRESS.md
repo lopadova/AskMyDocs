@@ -20,9 +20,9 @@
 | 11 | G4 — KB Graph + PDF Render | `feature/enh-g4-kb-graph-pdf` | ✅ PR opened | TBD | PR10 (G3) | 2026-04-24 | 593/593 PHP (+13) · 106/106 Vitest (+5) · 4 new Playwright scenarios · R13 green · 1-hop tenant-scoped graph endpoint + SVG radial GraphTab + PdfRenderer strategy (Disabled/Dompdf/Browsershot) |
 | 12 | H1 — Log Viewer (read-only) | `feature/enh-h1-log-viewer` | ✅ PR opened | TBD | PR11 (G4) | 2026-04-24 | 621/621 PHP (+28) · 120/120 Vitest (+14) · 8 new Playwright scenarios (6 admin + 2 viewer) · R13 green · Phase H split into H1 (read-only log viewer) + H2 (maintenance wizard + command runner) · adds spatie/laravel-activitylog ^5.0 as soft dep |
 | 13 | H2 — Maintenance + command runner | `feature/enh-h2-maintenance-panel` | ✅ PR opened | TBD | PR12 (H1) | 2026-04-24 | 668/668 PHP (+47) · 132/132 Vitest (+12) · 6 new Playwright scenarios (4 admin + 1 super-admin + 1 viewer) · R13 green · 6-gate whitelisted Artisan runner (whitelist / schema / signed-token / permission / audit-first / rate-limit) + CommandWizard SPA + scheduler widget + 2 prune schedulers |
-| 14 | I — AI Insights | `feature/enh-i-ai-insights` | ✅ PR opened | TBD | PR13 (H2) | 2026-04-24 | 701/701 PHP (+33) · 144/144 Vitest (+12) · 4 new Playwright scenarios (3 admin + 1 super-admin + 2 viewer) · R13 green · 6 insight widgets + daily compute + AiInsightsService composed via AiManager + KB MetaTab ai-suggestions integration |
+| 14 | I — AI Insights | `feature/enh-i-ai-insights` | ✅ PR opened | TBD | PR13 (H2) | 2026-04-24 | 701/701 PHP (+33) · 144/144 Vitest (+12) · 6 new Playwright scenarios (3 admin + 1 super-admin + 2 viewer) · R13 green · 6 insight widgets + daily compute + AiInsightsService composed via AiManager + KB MetaTab ai-suggestions integration |
 | 15 | J — Docs + E2E + polish | `feature/enh-j-docs-e2e-polish` | ✅ PR opened | TBD | PR14 (I) | 2026-04-24 | 701/701 PHP · 144/144 Vitest · 63 Playwright scenarios (+1 journey) · R13 green · build 393 KB gz · docs alignment + admin-journey spec + Lighthouse audit plan + screenshot manifest + COPILOT-FINDINGS regression (PR#28 + PR#29 SHAs filled) |
-| 16 | FINAL DISTILL — R14..R21 + sub-agent + catalogue gate | `feature/enh-final-distill` | ✅ PR opened | TBD | PR15 (J) | 2026-04-24 | 701/701 PHP · 144/144 Vitest · 63 Playwright scenarios · R13 green · catalogue gate green · meta-only (0 app/ changes); 8 new rules (R14..R21) · 8 new skills · 4 extended skills · 1 new sub-agent (copilot-review-anticipator) · 1 new CI script (verify-copilot-catalogue.sh) · 1 reusable briefing template · PR #30 retrospective re-harvest (10 rows added) · README Enterprise rules anchor |
+| 16 | FINAL DISTILL — R14..R21 + sub-agent + catalogue gate | `feature/enh-final-distill` | ✅ PR opened | TBD | PR15 (J) | 2026-04-24 | 701/701 PHP · 144/144 Vitest · 63 Playwright scenarios · R13 green · catalogue gate green · meta-only (0 new app/ code — upstream `bd40780` PR #30 fixes absorbed on merge); 8 new rules (R14..R21) · 8 new skills · 4 extended skills · 1 new sub-agent (copilot-review-anticipator) · 1 new CI script (verify-copilot-catalogue.sh) · 1 reusable briefing template · PR #30 retrospective re-harvest + reconciliation · README Enterprise rules anchor |
 
 Legenda status: ⏳ pending / blocked · 🔨 in_progress · ✅ PR opened · 🎉 merged
 
@@ -46,9 +46,11 @@ guardrails: 8 new CLAUDE.md rules (R14..R21), 8 new skills in
       `gh api repos/lopadova/AskMyDocs/pulls/<N>/comments` for
       N ∈ [16..31] — 110 finding-shaped rows.
 - [x] Catalogue regression — PR #30 surfaced 10 rows missing from the
-      pre-PR15 catalogue; appended with `(deferred)` fix SHAs; PR #31
-      empty block; frequency snapshot regenerated across 112 tagged
-      rows (2 cross-tagged).
+      pre-PR15 catalogue; reconciled on merge-upstream with the
+      `bd40780` PR #30 fix block (origin's version splits the test
+      migration finding into prod + test rows for 11 catalogued
+      rows); PR #31 empty block; frequency snapshot regenerated
+      across 112 tagged rows (2 cross-tagged).
 - [x] `CLAUDE.md` — R14..R21 added after R13. Each rule: one-line
       imperative + "why" paragraph citing representative PR + check
       list + skill pointer. Closing paragraph bumped to
@@ -317,8 +319,8 @@ then docs + PR).
       (`type`/`required`/`nullable`/`min`/`max`/`enum`) +
       `requires_permission` (`commands.run` or `commands.destructive`)
       + `command_runner` TTL / retention knobs
-- [x] `database/migrations/create_admin_command_audits_table.php` +
-      `create_admin_command_nonces_table.php` + mirror test
+- [x] `database/migrations/2026_04_24_000010_create_admin_command_audit.php` +
+      `2026_04_24_000011_create_admin_command_nonces.php` + mirror test
       migrations — audit trail survives hard delete; nonces are
       single-use + TTL-scoped
 - [x] `app/Models/{AdminCommandAudit,AdminCommandNonce}.php`

@@ -50,9 +50,12 @@ return new class extends Migration
             $table->timestamp('computed_at')->nullable();
             $table->integer('computed_duration_ms')->nullable();
 
-            // Index mirrors the read path — the SPA fetches the latest
-            // row by ORDER BY snapshot_date DESC LIMIT 1.
-            $table->index(['snapshot_date'], 'admin_insights_snapshots_date_idx');
+            // Copilot #10 fix: the unique() constraint on `snapshot_date`
+            // above already creates a B-tree index — an explicit
+            // additional index would be a duplicate write + storage
+            // overhead for no read benefit. The SPA's "latest snapshot"
+            // query (`ORDER BY snapshot_date DESC LIMIT 1`) is served
+            // by the unique-index directly.
         });
     }
 

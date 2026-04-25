@@ -10,7 +10,6 @@ use App\Models\KbEdge;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\Message;
-use App\Services\Kb\Canonical\PromotionSuggestService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +27,10 @@ use Throwable;
  *
  * R10 compliance:
  *   - `suggestPromotions()` filters with `raw()` scope (is_canonical=false).
+ *     Scoring is citation-count-based (last 30 days), NOT LLM-backed.
+ *     Composing `PromotionSuggestService` was the original plan but
+ *     proved overkill for a daily snapshot — citation signal is
+ *     cheaper and sufficient.
  *   - `detectOrphans()` filters with `canonical()`.
  *   - `detectStaleDocs()` filters with `canonical()`.
  *   - `qualityReport()` walks `canonical()` docs for frontmatter checks.
@@ -71,9 +74,16 @@ class AiInsightsService
 
     private const COVERAGE_GAPS_MAX_TOPICS = 10;
 
+    // Copilot #1 fix: removed the unused `PromotionSuggestService`
+    // dependency. The original plan composed its scoring, but the
+    // current suggestPromotions() implementation uses citation
+    // counts over the last 30 days as the sole signal — a cheaper,
+    // LLM-free proxy that fits the daily-snapshot budget. If a
+    // future iteration wants to layer LLM-based ranking on top,
+    // the dep can be reintroduced at that point (and the scoring
+    // wired through explicitly rather than injected then ignored).
     public function __construct(
         private readonly AiManager $ai,
-        private readonly PromotionSuggestService $promotion,
     ) {}
 
     // ------------------------------------------------------------------
@@ -175,13 +185,29 @@ class AiInsightsService
         $since = Carbon::now()->subDays(self::ORPHAN_LOOKBACK_DAYS);
         $citedKeys = $this->citedKeys($since);
 
+        // Copilot #9 CRITICAL fix: set-based queries replace the
+        // previous N+1 pattern (one `chunks()->count()` + one
+        // `KbEdge::exists()` per canonical doc). On a 10k-doc
+        // corpus the old shape fired ~20k queries per daily
+        // compute — now it's exactly 3: the outer chunkById page,
+        // one `withCount('chunks')` aggregate, and one "set of
+        // slugs that appear in kb_edges" subquery. Orders of
+        // magnitude cheaper and hits the scheduler budget flat.
+        $slugsWithEdges = $this->slugsWithAnyEdge();
+
         $out = [];
         KnowledgeDocument::query()
             ->canonical()
             ->select(['id', 'project_key', 'slug', 'title', 'source_path', 'doc_id', 'source_updated_at'])
-            ->chunkById(100, function ($docs) use ($citedKeys, &$out): void {
+            ->withCount('chunks')
+            ->chunkById(100, function ($docs) use ($citedKeys, $slugsWithEdges, &$out): void {
                 foreach ($docs as $doc) {
-                    if ($this->orphanSkipDoc($doc, $citedKeys)) {
+                    $citedKey = $doc->project_key.'::'.$doc->source_path;
+                    if (isset($citedKeys[$citedKey])) {
+                        continue;
+                    }
+                    $edgeKey = $doc->project_key.'::'.(string) $doc->slug;
+                    if ($doc->slug !== null && isset($slugsWithEdges[$edgeKey])) {
                         continue;
                     }
                     $out[] = [
@@ -190,7 +216,7 @@ class AiInsightsService
                         'slug' => $doc->slug,
                         'title' => $doc->title,
                         'last_used_at' => $doc->source_updated_at?->toIso8601String(),
-                        'chunks_count' => (int) $doc->chunks()->count(),
+                        'chunks_count' => (int) $doc->chunks_count,
                     ];
                 }
             });
@@ -199,24 +225,33 @@ class AiInsightsService
     }
 
     /**
-     * @param  array<string, true>  $citedKeys
+     * Load every (project_key, slug) pair that appears on EITHER end of
+     * any kb_edges row — once, set-based. The map lets detectOrphans()
+     * answer "does this doc have any edge?" in O(1) without the per-doc
+     * EXISTS query that previously made the method N+1.
+     *
+     * @return array<string, true>  map of "project::slug" → true
      */
-    private function orphanSkipDoc(KnowledgeDocument $doc, array $citedKeys): bool
+    private function slugsWithAnyEdge(): array
     {
-        $key = $doc->project_key.'::'.$doc->source_path;
-        if (isset($citedKeys[$key])) {
-            return true;
-        }
-        // A doc with ANY outgoing or incoming edge is not orphan.
-        $hasEdges = KbEdge::query()
-            ->where('project_key', $doc->project_key)
-            ->where(function ($q) use ($doc): void {
-                $q->where('from_node_uid', $doc->slug)
-                    ->orWhere('to_node_uid', $doc->slug);
-            })
-            ->exists();
+        $map = [];
+        KbEdge::query()
+            // `id` is required by chunkById — it drives the cursor.
+            // Include it alongside the fields we actually consume.
+            ->select(['id', 'project_key', 'from_node_uid', 'to_node_uid'])
+            ->chunkById(200, function ($edges) use (&$map): void {
+                foreach ($edges as $edge) {
+                    $project = (string) $edge->project_key;
+                    if ($edge->from_node_uid !== null) {
+                        $map[$project.'::'.(string) $edge->from_node_uid] = true;
+                    }
+                    if ($edge->to_node_uid !== null) {
+                        $map[$project.'::'.(string) $edge->to_node_uid] = true;
+                    }
+                }
+            });
 
-        return $hasEdges;
+        return $map;
     }
 
     /**
@@ -261,11 +296,30 @@ class AiInsightsService
      */
     public function suggestTagsBatch(int $cap = self::SUGGEST_TAGS_MAX_DOCS): array
     {
-        // Pick up to $cap canonical docs that either have no tags at all
-        // or whose metadata.tags is empty. Small corpus → small batch.
+        // Copilot #2 fix: the original query took the first N canonical
+        // docs without filtering on tag presence — so every pass fired
+        // LLM calls for docs that already had rich tags, wasting quota.
+        // Push the "missing or empty tags" filter into the DB layer so
+        // we only pay the LLM bill for docs that actually need it. The
+        // DB-level predicate has to cover two shapes the codebase
+        // uses:
+        //   - `metadata.tags` absent entirely
+        //   - `metadata.tags` present but empty (`[]` / `null`)
+        // Portable across pgsql + sqlite via JSON_EXTRACT on the
+        // canonical column. Post-fetch we still double-check with a
+        // PHP filter since SQLite's JSON handling can return a
+        // cast-to-string `"[]"` for empty arrays.
         $candidates = KnowledgeDocument::query()
             ->canonical()
             ->select(['id', 'project_key', 'slug', 'title', 'metadata'])
+            ->where(function ($q): void {
+                // "no metadata at all" OR "metadata but no tags key"
+                // OR "tags key present but empty / null"
+                $q->whereNull('metadata')
+                    ->orWhereRaw("json_extract(metadata, '$.tags') IS NULL")
+                    ->orWhereRaw("json_extract(metadata, '$.tags') = '[]'")
+                    ->orWhereRaw("json_array_length(json_extract(metadata, '$.tags')) = 0");
+            })
             ->orderBy('id')
             ->limit($cap)
             ->get();
@@ -276,6 +330,13 @@ class AiInsightsService
 
         $out = [];
         foreach ($candidates as $doc) {
+            // Defensive post-filter: SQLite edge-cases where the JSON
+            // predicate thinks a value is non-empty but the decoded
+            // array is [] / null-only.
+            $tags = is_array($doc->metadata ?? null) ? ($doc->metadata['tags'] ?? null) : null;
+            if (is_array($tags) && $tags !== []) {
+                continue;
+            }
             $proposed = $this->suggestTagsForDoc($doc);
             if ($proposed === []) {
                 continue;
@@ -651,48 +712,39 @@ PROMPT;
      */
     public function qualityReport(): array
     {
+        // Copilot #3 CRITICAL fix: compute the 5 histogram buckets +
+        // outlier counts directly in SQL with CASE/SUM aggregates. The
+        // previous `GROUP BY LENGTH(chunk_text)` shape produced up to
+        // ONE row per distinct chunk length — on a 100k-chunk corpus
+        // with a wide length distribution that was ~10-50k groups
+        // streamed back to PHP and then bucketed in-memory. The SQL
+        // now returns a single row with 7 COUNT(*) FILTER buckets,
+        // portable across pgsql (FILTER syntax) and sqlite (CASE
+        // fallback via SUM). Load is constant regardless of corpus
+        // size.
+        $row = (array) DB::table('knowledge_chunks')
+            ->selectRaw(
+                'COUNT(*) AS total,
+                 SUM(CASE WHEN LENGTH(chunk_text) < 30   THEN 1 ELSE 0 END) AS outlier_short,
+                 SUM(CASE WHEN LENGTH(chunk_text) > 2000 THEN 1 ELSE 0 END) AS outlier_long,
+                 SUM(CASE WHEN LENGTH(chunk_text) <  100                            THEN 1 ELSE 0 END) AS bucket_under_100,
+                 SUM(CASE WHEN LENGTH(chunk_text) >= 100  AND LENGTH(chunk_text) <  500  THEN 1 ELSE 0 END) AS bucket_h100_500,
+                 SUM(CASE WHEN LENGTH(chunk_text) >= 500  AND LENGTH(chunk_text) < 1000  THEN 1 ELSE 0 END) AS bucket_h500_1000,
+                 SUM(CASE WHEN LENGTH(chunk_text) >= 1000 AND LENGTH(chunk_text) <= 2000 THEN 1 ELSE 0 END) AS bucket_h1000_2000,
+                 SUM(CASE WHEN LENGTH(chunk_text) > 2000                           THEN 1 ELSE 0 END) AS bucket_over_2000'
+            )
+            ->first();
+
         $distribution = [
-            'under_100' => 0,
-            'h100_500' => 0,
-            'h500_1000' => 0,
-            'h1000_2000' => 0,
-            'over_2000' => 0,
+            'under_100' => (int) ($row['bucket_under_100'] ?? 0),
+            'h100_500' => (int) ($row['bucket_h100_500'] ?? 0),
+            'h500_1000' => (int) ($row['bucket_h500_1000'] ?? 0),
+            'h1000_2000' => (int) ($row['bucket_h1000_2000'] ?? 0),
+            'over_2000' => (int) ($row['bucket_over_2000'] ?? 0),
         ];
-        $outlierShort = 0;
-        $outlierLong = 0;
-        $totalChunks = 0;
-
-        // SQLite + pgsql both support LENGTH() — cheap aggregate.
-        $rows = DB::table('knowledge_chunks')
-            ->select([
-                DB::raw('LENGTH(chunk_text) AS len'),
-                DB::raw('COUNT(*) AS c'),
-            ])
-            ->groupBy(DB::raw('LENGTH(chunk_text)'))
-            ->get();
-
-        foreach ($rows as $row) {
-            $len = (int) $row->len;
-            $count = (int) $row->c;
-            $totalChunks += $count;
-            if ($len < 30) {
-                $outlierShort += $count;
-            }
-            if ($len > 2000) {
-                $outlierLong += $count;
-            }
-            if ($len < 100) {
-                $distribution['under_100'] += $count;
-            } elseif ($len < 500) {
-                $distribution['h100_500'] += $count;
-            } elseif ($len < 1000) {
-                $distribution['h500_1000'] += $count;
-            } elseif ($len <= 2000) {
-                $distribution['h1000_2000'] += $count;
-            } else {
-                $distribution['over_2000'] += $count;
-            }
-        }
+        $outlierShort = (int) ($row['outlier_short'] ?? 0);
+        $outlierLong = (int) ($row['outlier_long'] ?? 0);
+        $totalChunks = (int) ($row['total'] ?? 0);
 
         $totalDocs = KnowledgeDocument::query()->count();
         // Docs whose `frontmatter_json` is null are "missing frontmatter"

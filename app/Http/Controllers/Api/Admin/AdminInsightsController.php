@@ -75,12 +75,33 @@ class AdminInsightsController extends Controller
      */
     public function byDate(string $date): JsonResponse
     {
-        try {
-            $parsed = Carbon::parse($date)->startOfDay();
-        } catch (Throwable) {
+        // Copilot #4 fix: strict YYYY-MM-DD parse + 404 (not 422) on
+        // malformed input. `Carbon::parse()` is permissive (2026-02-30
+        // silently rolls to 2026-03-02), which lets the SPA's
+        // "navigate to prev/next day" widget advance past valid dates
+        // into nonsense territory and still get 200-empty responses.
+        // The method docstring above specifies 404-for-bad-input so
+        // the SPA's UX stays symmetric ("no snapshot for this day" ==
+        // "invalid day shape"). createFromFormat with the `!` prefix
+        // zeroes time components and exact-string round-trip check
+        // catches every cast that Carbon would otherwise tolerate.
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
             return response()->json([
                 'message' => 'Invalid date. Use YYYY-MM-DD.',
-            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+            ], Response::HTTP_NOT_FOUND);
+        }
+
+        $parsed = Carbon::createFromFormat('!Y-m-d', $date);
+        $errors = Carbon::getLastErrors();
+        if (
+            $parsed === false
+            || (($errors['warning_count'] ?? 0) > 0)
+            || (($errors['error_count'] ?? 0) > 0)
+            || $parsed->format('Y-m-d') !== $date
+        ) {
+            return response()->json([
+                'message' => 'Invalid date. Use YYYY-MM-DD.',
+            ], Response::HTTP_NOT_FOUND);
         }
 
         $row = AdminInsightsSnapshot::query()

@@ -534,85 +534,118 @@ class CommandRunnerService
         }
 
         $tokenHash = hash('sha256', $confirmToken);
+        $argsHash = $this->argsHash($validatedArgs);
 
-        // Transactional consume — find + mark used in one swoop to
-        // make double-submit idempotent under concurrency.
-        $nonce = DB::transaction(function () use ($tokenHash) {
-            return AdminCommandNonce::query()
+        // Copilot #8 CRITICAL fix: validate + mark-used INSIDE the
+        // transaction while the row lock is still held. The previous
+        // shape read+validated, released the lock, then wrote `used_at`
+        // — race-window wide enough for two concurrent /run requests
+        // to both see `used_at = null` and both succeed, violating the
+        // single-use security guarantee. The transaction now covers
+        // every branch; on any validation failure the closure returns
+        // the failure reason string and the outer code turns it into
+        // the correct rejection audit + exception.
+        $failure = DB::transaction(function () use ($tokenHash, $command, $user, $argsHash) {
+            /** @var AdminCommandNonce|null $nonce */
+            $nonce = AdminCommandNonce::query()
                 ->where('token_hash', $tokenHash)
                 ->lockForUpdate()
                 ->first();
+
+            if ($nonce === null) {
+                return 'invalid';
+            }
+            if ($nonce->isUsed()) {
+                return 'used';
+            }
+            if ($nonce->isExpired()) {
+                return 'expired';
+            }
+            if ($nonce->command !== $command) {
+                return 'command_mismatch';
+            }
+            if ($nonce->user_id !== $user->id) {
+                return 'user_mismatch';
+            }
+            if ($nonce->args_hash !== $argsHash) {
+                return 'args_mismatch';
+            }
+
+            // All gates cleared while holding the row lock. Mark used
+            // now — the UPDATE commits with the transaction and the
+            // next concurrent reader sees `used_at` set.
+            $nonce->update(['used_at' => Carbon::now()]);
+
+            return null;
         });
 
-        if ($nonce === null) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token not found', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Confirm token invalid for '{$command}'.",
-                ['confirm_token' => 'invalid'],
-            );
-        }
-        if ($nonce->isUsed()) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token already used', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Confirm token already used for '{$command}'.",
-                ['confirm_token' => 'used'],
-            );
-        }
-        if ($nonce->isExpired()) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token expired', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Confirm token expired for '{$command}'.",
-                ['confirm_token' => 'expired'],
-            );
-        }
-        if ($nonce->command !== $command) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token command mismatch', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Confirm token command mismatch for '{$command}'.",
-                ['confirm_token' => 'command_mismatch'],
-            );
-        }
-        if ($nonce->user_id !== $user->id) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token user mismatch', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Confirm token user mismatch for '{$command}'.",
-                ['confirm_token' => 'user_mismatch'],
-            );
-        }
-        if ($nonce->args_hash !== $this->argsHash($validatedArgs)) {
-            $this->rejectAudit($command, $validatedArgs, $user, 'confirm_token args fingerprint mismatch', $clientIp, $userAgent);
-            throw new CommandRunnerValidation(
-                "Args fingerprint mismatch vs preview for '{$command}'.",
-                ['confirm_token' => 'args_mismatch'],
-            );
+        if ($failure === null) {
+            return;
         }
 
-        // Mark used (single-use). Store the last-seen IP for forensic continuity.
-        $nonce->update(['used_at' => Carbon::now()]);
+        $reasonMap = [
+            'invalid' => ['not found', 'invalid'],
+            'used' => ['already used', 'used'],
+            'expired' => ['expired', 'expired'],
+            'command_mismatch' => ['command mismatch', 'command_mismatch'],
+            'user_mismatch' => ['user mismatch', 'user_mismatch'],
+            'args_mismatch' => ['args fingerprint mismatch', 'args_mismatch'],
+        ];
+
+        [$auditReason, $errorCode] = $reasonMap[$failure];
+        $this->rejectAudit($command, $validatedArgs, $user, "confirm_token {$auditReason}", $clientIp, $userAgent);
+        throw new CommandRunnerValidation(
+            $failure === 'args_mismatch'
+                ? "Args fingerprint mismatch vs preview for '{$command}'."
+                : "Confirm token {$auditReason} for '{$command}'.",
+            ['confirm_token' => $errorCode],
+        );
     }
 
     /**
-     * Invoke Artisan::call() with the validated args normalised to the
-     * option shape Artisan expects. Each arg becomes `--name=value`.
-     * `bool` args become a presence flag (`--dry-run`) instead of
-     * `--dry-run=false`, which some commands don't parse.
+     * Invoke Artisan::call() with the validated args mapped to the
+     * right parameter shape.
+     *
+     * Copilot #1 CRITICAL fix: some whitelisted commands use POSITIONAL
+     * arguments (e.g. `kb:delete {path}`, `kb:ingest-folder {path?}`,
+     * `queue:retry {id}`). Prepending `--` to every key made them
+     * unreachable — Artisan would see `--path=foo/bar` as an
+     * unrecognised option and the required positional arg would
+     * remain empty, causing a prompt or error. The schema now
+     * declares per-arg `kind` (`'argument'` vs `'option'`); this
+     * method reads that map and builds the `$parameters` array
+     * accordingly. Arguments are passed by their bare name (no
+     * dashes), options become `--kebab-case=value`.
      *
      * @param  array<string, mixed>  $validatedArgs
      * @return array{0: int, 1: string}
      */
     private function invokeArtisan(string $command, array $validatedArgs): array
     {
-        $options = [];
+        $schema = (array) (config('admin.allowed_commands.'.$command.'.args_schema') ?? []);
+        $parameters = [];
+
         foreach ($validatedArgs as $key => $value) {
+            $kind = (string) ($schema[$key]['kind'] ?? 'option');
+
+            if ($kind === 'argument') {
+                // Positional — Artisan::call() accepts the bare argument
+                // name as an array key for positional binding.
+                $parameters[$key] = $value;
+
+                continue;
+            }
+
+            // Option — `--kebab-case=value` for scalars, `--flag` for
+            // `true` bools, skipped for `false` bools (absence = false).
             $flag = '--'.str_replace('_', '-', $key);
             if (is_bool($value)) {
                 if ($value) {
-                    $options[$flag] = true;
+                    $parameters[$flag] = true;
                 }
-                // false bool: skip — the absence of the flag IS the false case.
                 continue;
             }
-            $options[$flag] = $value;
+            $parameters[$flag] = $value;
         }
 
         // `--force` is always applied server-side for commands where
@@ -621,10 +654,10 @@ class CommandRunnerService
         // our equivalent UX guard — we do NOT want the CLI to also
         // sit there waiting for a TTY "are you sure?".
         if (in_array($command, ['kb:delete', 'kb:prune-deleted', 'kb:prune-embedding-cache'], true)) {
-            $options['--force'] = true;
+            $parameters['--force'] = true;
         }
 
-        $exitCode = Artisan::call($command, $options);
+        $exitCode = Artisan::call($command, $parameters);
         $stdoutHead = $this->truncate(Artisan::output(), 1000);
 
         return [$exitCode, $stdoutHead];

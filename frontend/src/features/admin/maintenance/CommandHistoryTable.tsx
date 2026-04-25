@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useCommandHistory, type HistoryRow } from './maintenance.api';
 
 /*
@@ -96,9 +96,13 @@ export function CommandHistoryTable() {
                                         ? new Date(row.completed_at).getTime() - new Date(row.started_at).getTime()
                                         : null;
                                 return (
-                                    <>
+                                    // Copilot #4 fix: key on the Fragment,
+                                    // not on the inner <tr>. React requires
+                                    // the array element to carry the key;
+                                    // on the inner <tr> alone React warns
+                                    // + reconciles rows unstably.
+                                    <Fragment key={row.id}>
                                         <tr
-                                            key={row.id}
                                             data-testid={`command-history-row-${row.id}`}
                                             data-status={row.status}
                                         >
@@ -161,7 +165,7 @@ export function CommandHistoryTable() {
                                                 </td>
                                             </tr>
                                         ) : null}
-                                    </>
+                                    </Fragment>
                                 );
                             })}
                         </tbody>

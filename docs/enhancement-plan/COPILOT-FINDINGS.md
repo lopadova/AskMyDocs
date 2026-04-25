@@ -243,24 +243,24 @@
 ### PR #30 — Phase I (AI Insights)
 
 > Retrospective note — PR15's `gh api repos/<org>/<repo>/pulls/30/comments`
-> call returned zero finding-shaped rows at Phase J branch time. The PR16
-> live re-harvest (via the same API, after Phase J merged) surfaced 10
-> rows against PR #30 — Copilot finished its review between Phase J close
-> and PR16 open. Rows captured here; fixes deferred to a follow-up commit
-> on `main` (this PR is meta-only, no `app/` changes).
+> call returned zero finding-shaped rows at Phase J branch time. The
+> PR16 live re-harvest (via the same API) surfaced 10 rows. All 10 were
+> fixed on Phase J's branch as `bd40780 fix(enh-i): address Copilot
+> review on PR #30 (10 findings incl. 2 perf-critical)` and merged into
+> this branch as part of the PR16 rebase-on-upstream pass.
 
 | Path | Category | Pattern | Fix SHA |
 |---|---|---|---|
-| `app/Services/Admin/AiInsightsService.php` | `doc-drift` | Injects `PromotionSuggestService` but never uses it — dead dependency / misleading ctor | (deferred) |
-| `app/Services/Admin/AiInsightsService.php` | `hardcoded-subset` | `suggestTagsBatch()` selects first N canonical docs without filtering on missing/empty tags — wasted LLM spend | (deferred) |
-| `app/Services/Admin/AiInsightsService.php` | `r3-bulk` | `qualityReport()` groups by `LENGTH(chunk_text)` in SQL then iterates all rows in PHP — worst case O(#chunks) groups | (deferred) |
-| `app/Services/Admin/AiInsightsService.php` | `r3-bulk` | `detectOrphans()` runs `chunks()->count()` + `KbEdge::exists()` inside `chunkById` loop — classic N+1 | (deferred) |
-| `app/Http/Controllers/Api/Admin/AdminInsightsController.php` | `silent-200` | `Carbon::parse($date)` non-strict — accepts `2026-02-30` then normalises silently; docstring says 404-on-malformed, impl returns 200 | (deferred) |
-| `docs/enhancement-plan/PROGRESS.md` | `doc-drift` | Claims "4 new Playwright scenarios" while listing 3+1+2 = 6 | (deferred) |
-| `frontend/src/features/admin/insights/PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | Overrides `window.location` via `Object.defineProperty` in `beforeEach` but never restores — leaks across Vitest suites | (deferred) |
-| `frontend/src/features/admin/kb/MetaTab.tsx` | `doc-drift` | Block comment says "renders nothing while loading" but impl renders explicit loading + error UI | (deferred) |
-| `database/migrations/2026_04_24_000020_create_admin_insights_snapshots.php` | `doc-drift` | `unique(snapshot_date)` already creates an index; explicit `index(snapshot_date)` is redundant (production migration) | (deferred) |
-| `tests/database/migrations/0001_01_01_000021_create_admin_insights_snapshots.php` | `doc-drift` | Same redundant `snapshot_date` index on the SQLite mirror | (deferred) |
+| `AiInsightsService` constructor | `doc-drift` | PromotionSuggestService injected but never called — dead dep | `bd40780` |
+| `AiInsightsService::suggestTagsBatch` | `hardcoded-subset` | Picks first N canonical docs without "missing tags" SQL filter → wasteful LLM calls | `bd40780` |
+| `AiInsightsService::qualityReport` | `r3-bulk` **(CRITICAL)** | `GROUP BY LENGTH(chunk_text)` produces up to N groups; bucket/outlier logic in PHP | `bd40780` |
+| `AdminInsightsController::byDate` | `silent-200` | `Carbon::parse` permissive (accepts 2026-02-30); 422 vs docstring's 404 | `bd40780` |
+| `PROGRESS.md` row 14 | `doc-drift` | "4 new Playwright scenarios" but enumerates 6 | `bd40780` |
+| `PromotionSuggestionsCard.test.tsx` | `test-ordering-assumption` | `Object.defineProperty(window, 'location')` not restored in afterEach — cross-suite pollution | `bd40780` |
+| `MetaTab.tsx` AiSuggestionsBlock | `doc-drift` | Block comment says "render nothing while loading" but impl renders explicit loading UI | `bd40780` |
+| `admin_insights_snapshots` test migration | `doc-drift` | Redundant explicit index on `snapshot_date` (unique already creates one) | `bd40780` |
+| `AiInsightsService::detectOrphans` | `r3-bulk` **(CRITICAL)** | Per-doc `chunks()->count()` + `KbEdge::exists()` = N+1 (thousands of queries on 10k-doc corpus) | `bd40780` |
+| `admin_insights_snapshots` prod migration | `doc-drift` | Same redundant index | `bd40780` |
 
 ### PR #31 — Phase J (Docs + E2E + polish)
 
@@ -283,10 +283,11 @@ for N ∈ [16..31] on 2026-04-24: **110 total finding-shaped rows**
 (catalogue prior to this PR logged ~100 — the 10-row delta is the
 retrospective PR #30 block above).
 
-Per-PR breakdown: PR #28 = 14 · PR #20 = 12 · PR #30 = 10 · PR #24 = 8 ·
-PR #29 = 8 · PR #19 = 8 · PR #26 = 7 · PR #18 = 7 · PR #25 = 6 · PR #21
-= 6 · PR #27 = 5 · PR #23 = 5 · PR #22 = 5 · PR #17 = 5 · PR #16 = 4 ·
-PR #31 = 0.
+Per-PR breakdown: PR #28 = 14 · PR #20 = 12 · PR #30 = 10 (raw) / 11
+(catalogued — origin's PR30-fix commit split the migration drift into
+prod + test rows) · PR #24 = 8 · PR #29 = 8 · PR #19 = 8 · PR #26 = 7 ·
+PR #18 = 7 · PR #25 = 6 · PR #21 = 6 · PR #27 = 5 · PR #23 = 5 · PR #22
+= 5 · PR #17 = 5 · PR #16 = 4 · PR #31 = 0.
 
 Per-tag frequency (after the PR #30 re-harvest; rule column reflects
 PR16 mint decisions):

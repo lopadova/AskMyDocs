@@ -128,7 +128,7 @@
 ## PR13 — Phase H2 (maintenance-panel agent, 2026-04-24)
 
 - **Audit-before-execute is the invariant, not the optimisation.**
-  `CommandRunnerService::run()` INSERTS the `admin_command_audits`
+  `CommandRunnerService::run()` INSERTS the `admin_command_audit`
   row with `status='started'` **before** calling `Artisan::call()`.
   If the artisan call crashes (segfault, OOM, PHP fatal), the row
   survives with status=started and exit_code=null — forensically
