@@ -649,11 +649,16 @@ class CommandRunnerService
         }
 
         // `--force` is always applied server-side for commands where
-        // the artisan signature expects it to bypass confirmation
-        // prompts (kb:delete, etc). The confirm_token dance above is
-        // our equivalent UX guard — we do NOT want the CLI to also
-        // sit there waiting for a TTY "are you sure?".
-        if (in_array($command, ['kb:delete', 'kb:prune-deleted', 'kb:prune-embedding-cache'], true)) {
+        // the artisan signature ACTUALLY accepts it. kb:delete carries
+        // an explicit `--force` flag in its signature; the prune
+        // commands don't (their signatures are `{--days=}` only) and
+        // injecting `--force` there throws Symfony's
+        // InvalidOptionException at runtime (caught by the audit
+        // 'failed' branch, but still costs a wizard cycle). The
+        // confirm_token dance above is our equivalent UX guard — we
+        // do NOT want the CLI to also sit there waiting for a TTY
+        // "are you sure?".
+        if (in_array($command, ['kb:delete'], true)) {
             $parameters['--force'] = true;
         }
 

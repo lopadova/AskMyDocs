@@ -307,22 +307,33 @@ class AiInsightsService
         //   - `metadata.tags` present but empty (`[]` / `null`)
         // Portable across pgsql + sqlite via JSON_EXTRACT on the
         // canonical column. Post-fetch we still double-check with a
-        // PHP filter since SQLite's JSON handling can return a
-        // cast-to-string `"[]"` for empty arrays.
-        $candidates = KnowledgeDocument::query()
+        // Filter "missing or empty tags" in PHP rather than SQL — the
+        // previous `json_extract(...)` predicates were SQLite-only and
+        // crashed on Postgres with `function json_extract(json, unknown)
+        // does not exist`. The `metadata->'tags'` / jsonb operators
+        // would work on Postgres but not SQLite tests, and the table
+        // is small enough (canonical docs only) that PHP filtering is
+        // simpler than driver-aware SQL.
+        $allCanonical = KnowledgeDocument::query()
             ->canonical()
             ->select(['id', 'project_key', 'slug', 'title', 'metadata'])
-            ->where(function ($q): void {
-                // "no metadata at all" OR "metadata but no tags key"
-                // OR "tags key present but empty / null"
-                $q->whereNull('metadata')
-                    ->orWhereRaw("json_extract(metadata, '$.tags') IS NULL")
-                    ->orWhereRaw("json_extract(metadata, '$.tags') = '[]'")
-                    ->orWhereRaw("json_array_length(json_extract(metadata, '$.tags')) = 0");
-            })
             ->orderBy('id')
-            ->limit($cap)
             ->get();
+
+        $candidates = $allCanonical->filter(function ($doc) {
+            $metadata = $doc->metadata;
+            if ($metadata === null || ! is_array($metadata)) {
+                return true;
+            }
+            $tags = $metadata['tags'] ?? null;
+            if ($tags === null) {
+                return true;
+            }
+            if (! is_array($tags) || count($tags) === 0) {
+                return true;
+            }
+            return false;
+        })->take($cap)->values();
 
         if ($candidates->isEmpty()) {
             return [];
