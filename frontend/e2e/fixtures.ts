@@ -76,6 +76,28 @@ export const test = base.extend<{ seeded: void }>({
                         `seeded fixture: re-login failed for ${creds.email} on project ${testInfo.project.name}: ${loginResponse.status()} ${await loginResponse.text()}`,
                     );
                 }
+
+                // Verification step: confirm /api/auth/me returns 200
+                // with the right user. If the session cookie set by
+                // /api/auth/login isn't carried by page.request to the
+                // protected /me endpoint, this throws with the auth
+                // body so the failure mode is unambiguous (vs the
+                // downstream 'data-state=error' mystery from the
+                // previous CI iteration).
+                const meResponse = await page.request.get('/api/auth/me', {
+                    headers: { Accept: 'application/json' },
+                });
+                if (!meResponse.ok()) {
+                    throw new Error(
+                        `seeded fixture: /api/auth/me failed AFTER successful login for ${creds.email}: ${meResponse.status()} ${await meResponse.text()}`,
+                    );
+                }
+                const mePayload = (await meResponse.json()) as { user?: { email?: string } };
+                if (mePayload.user?.email !== creds.email) {
+                    throw new Error(
+                        `seeded fixture: /api/auth/me returned wrong user. expected ${creds.email}, got ${mePayload.user?.email ?? '(no user)'}`,
+                    );
+                }
             }
 
             await use();
