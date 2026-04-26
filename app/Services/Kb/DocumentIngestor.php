@@ -10,8 +10,10 @@ use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\KbPath;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 /**
  * Document ingestion pipeline.
@@ -35,7 +37,7 @@ class DocumentIngestor
     protected CanonicalParser $canonicalParser;
 
     public function __construct(
-        protected MarkdownChunker $markdownChunker,
+        protected PipelineRegistry $registry,
         protected EmbeddingCacheService $embeddingCache,
         ?CanonicalParser $canonicalParser = null,
     ) {
@@ -50,6 +52,11 @@ class DocumentIngestor
      * {@see PipelineRegistry}: Converter → ConvertedDocument → Chunker
      * → ChunkDraft[] → persist + embed + canonical project + dispatch.
      *
+     * `$source->sourcePath` is normalised through {@see KbPath::normalize()}
+     * here as a safety net so every consumer (HTTP, CLI, jobs, future
+     * connectors) lands on identical idempotency keys regardless of how
+     * carefully the caller pre-normalised. Per R1 in CLAUDE.md.
+     *
      * @param  array<string,mixed>  $extraMetadata  merged on top of $source->metadata
      */
     public function ingest(
@@ -58,34 +65,65 @@ class DocumentIngestor
         string $title,
         array $extraMetadata = [],
     ): KnowledgeDocument {
-        $registry = app(PipelineRegistry::class);
-        $converter = $registry->resolveConverter($source->mimeType);
-        $converted = $converter->convert($source);
+        $normalizedPath = KbPath::normalize($source->sourcePath);
+        $normalizedSource = $source->sourcePath === $normalizedPath
+            ? $source
+            : new SourceDocument(
+                sourcePath: $normalizedPath,
+                mimeType: $source->mimeType,
+                bytes: $source->bytes,
+                externalUrl: $source->externalUrl,
+                externalId: $source->externalId,
+                connectorType: $source->connectorType,
+                metadata: $source->metadata,
+            );
 
-        $sourceType = (string) config(
-            "kb-pipeline.mime_to_source_type.{$source->mimeType}",
-            'unknown',
-        );
-        $chunker = $registry->resolveChunker($sourceType);
+        $converter = $this->registry->resolveConverter($normalizedSource->mimeType);
+        $converted = $converter->convert($normalizedSource);
+
+        $sourceType = $this->resolveSourceType($normalizedSource->mimeType);
+        $chunker = $this->registry->resolveChunker($sourceType);
         $chunkDrafts = $chunker->chunk($converted);
 
-        $combinedMetadata = array_merge($source->metadata, $extraMetadata, [
-            'connector' => $source->connectorType,
-            'external_url' => $source->externalUrl,
-            'external_id' => $source->externalId,
+        $combinedMetadata = array_merge($normalizedSource->metadata, $extraMetadata, [
+            'connector' => $normalizedSource->connectorType,
+            'external_url' => $normalizedSource->externalUrl,
+            'external_id' => $normalizedSource->externalId,
             'converter' => $converted->extractionMeta,
         ]);
 
         return $this->persistFromDrafts(
             projectKey: $projectKey,
-            sourcePath: $source->sourcePath,
+            sourcePath: $normalizedSource->sourcePath,
             title: $title,
-            mimeType: $source->mimeType,
+            mimeType: $normalizedSource->mimeType,
             sourceType: $sourceType,
             markdown: $converted->markdown,
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
         );
+    }
+
+    /**
+     * Maps a MIME type to the source-type token used for chunker resolution.
+     *
+     * Throws an actionable RuntimeException when the mapping is missing —
+     * the failure mode of "fall back to 'unknown' then fail at chunker
+     * lookup with 'No chunker registered for source type: unknown'" is
+     * misleading and points the operator at the wrong file. Surfaces the
+     * MIME type AND the config file the operator must edit.
+     */
+    private function resolveSourceType(string $mimeType): string
+    {
+        /** @var array<string, mixed> $map */
+        $map = (array) config('kb-pipeline.mime_to_source_type', []);
+        if (! array_key_exists($mimeType, $map)) {
+            throw new RuntimeException(sprintf(
+                'Missing MIME→source-type mapping for "%s". Add it to config/kb-pipeline.php under "mime_to_source_type".',
+                $mimeType,
+            ));
+        }
+        return (string) $map[$mimeType];
     }
 
     /**
@@ -359,6 +397,14 @@ class DocumentIngestor
     }
 
     /**
+     * Persists each ChunkDraft. `chunk_order` comes from the DTO's own
+     * `$chunk->order` (the SOT) so future chunkers (e.g. PdfPageChunker
+     * in T1.7) can emit non-sequential or page-numbered orders without
+     * losing them at persistence time. Embeddings stay positional —
+     * EmbeddingCacheService::generate() returned them in the same order
+     * we passed the draft texts, so `$index` is the correct embedding
+     * lookup key even when `$chunk->order` is unrelated.
+     *
      * @param  list<ChunkDraft>  $chunkDrafts
      */
     private function persistChunks(
@@ -375,7 +421,7 @@ class DocumentIngestor
                 ],
                 [
                     'project_key' => $projectKey,
-                    'chunk_order' => $index,
+                    'chunk_order' => $chunk->order,
                     'heading_path' => $chunk->headingPath,
                     'chunk_text' => $chunk->text,
                     'metadata' => $chunk->metadata,
