@@ -37,8 +37,20 @@ COPILOT_REVIEWER_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer[
 mkdir -p "$LOG_DIR" "$PROGRESS_DIR"
 
 # ─── Pre-flight ─────────────────────────────────────────────────────────────
+# Mandatory commands: missing → script aborts.
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "ERROR: required command '$1' not found" >&2; exit 1; }
+}
+# Optional commands: missing → log a warning, return non-zero, do NOT abort.
+# Caller must check return status (or set HAVE_<X>=1 sentinel) and choose
+# the fallback path explicitly. Used for `flock` (we have a portable
+# ln -s lock fallback in _with_state_lock).
+optional_cmd() {
+  if command -v "$1" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "WARN: optional command '$1' not found — using fallback path" >&2
+  return 1
 }
 require_cmd gh
 require_cmd jq
@@ -46,7 +58,8 @@ require_cmd git
 require_cmd php
 require_cmd npm
 require_cmd awk
-require_cmd flock 2>/dev/null || true   # flock optional on some platforms; falls back to ln -s lock pattern
+HAVE_FLOCK=0
+optional_cmd flock && HAVE_FLOCK=1
 
 if [[ "${CLAUDE_HEADLESS:-0}" == "1" ]]; then
   require_cmd claude
@@ -69,13 +82,14 @@ init_state() {
   fi
 }
 
-# Concurrency-safe state mutator. flock if available; fallback to ln -s lock.
+# Concurrency-safe state mutator. flock if available (HAVE_FLOCK=1 from
+# pre-flight); fallback to ln -s atomic lock when flock is missing.
 # Uses per-writer tmp file to avoid collision when --wave runs tasks in parallel.
 _with_state_lock() {
   local fn="$1"
   shift
   local lock_file="${STATE_FILE}.lock"
-  if command -v flock >/dev/null 2>&1; then
+  if [[ "$HAVE_FLOCK" -eq 1 ]]; then
     (
       flock -x 9
       "$fn" "$@"
@@ -142,16 +156,35 @@ log() {
 }
 
 # ─── Branch utilities ──────────────────────────────────────────────────────
+# Refuses to silently create branches from the wrong HEAD. If the base branch
+# does not exist locally, the script aborts rather than creating the new branch
+# from whatever HEAD happens to be (which then gets pushed/merged automatically
+# by later steps — high blast-radius if wrong).
 ensure_branch() {
   local branch="$1"
   local base="$2"
   if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+    if ! git show-ref --verify --quiet "refs/heads/$base"; then
+      log ERROR "Base branch '$base' does not exist locally — cannot safely create '$branch' from random HEAD. Fetch/checkout '$base' first."
+      return 1
+    fi
     log INFO "Creating branch $branch from $base"
-    git checkout "$base" 2>/dev/null
-    git pull --quiet 2>/dev/null || true
-    git checkout -b "$branch"
+    if ! git checkout "$base"; then
+      log ERROR "Failed to checkout base branch '$base'"
+      return 1
+    fi
+    if ! git pull --ff-only --quiet; then
+      log WARN "git pull on '$base' failed — proceeding with local-only base (may be stale)"
+    fi
+    if ! git checkout -b "$branch"; then
+      log ERROR "Failed to create branch '$branch'"
+      return 1
+    fi
   else
-    git checkout "$branch"
+    if ! git checkout "$branch"; then
+      log ERROR "Failed to checkout existing branch '$branch'"
+      return 1
+    fi
   fi
 }
 
@@ -429,7 +462,12 @@ open_pr() {
 Part of v3.0 release. Plan: \`${PLAN_FILE}\`.
 
 ### What this PR does
-$(grep -A 200 "^### Task ${task_id#T}" "$PLAN_FILE" | sed -n '/^### Task/,/^### Task/p' | head -100)
+$(awk -v id="${task_id#T}" '
+  $0 ~ "^### Task " id " — " { in_block = 1; print; next }
+  in_block && /^### Task / && $0 !~ "^### Task " id " — " { exit }
+  in_block && /^---$/ { exit }
+  in_block { print }
+' "$PLAN_FILE" | head -120)
 
 ### Verification
 - [x] Unit tests green
@@ -519,8 +557,11 @@ wait_for_copilot() {
 triage_copilot_comments() {
   local pr_num="$1"
   local comments
+  # Use the configurable COPILOT_AUTHOR_REGEX (same matcher as wait_for_copilot
+  # and the merge-decision check) so enterprise installations with non-default
+  # Copilot identities don't silently drop inline comments.
   comments=$(gh api "repos/{owner}/{repo}/pulls/$pr_num/comments" --jq \
-    'map(select(.user.login | test("copilot"; "i"))) | map({path, line, body})')
+    "map(select(.user.login | test(\"$COPILOT_AUTHOR_REGEX\"; \"i\"))) | map({path, line, body})")
 
   local count
   count=$(echo "$comments" | jq 'length')
@@ -793,18 +834,30 @@ case "${1:-}" in
     ;;
   --wave)
     wave="${2:?wave number required}"
+    # NOTE: T3.4 was previously listed in Wave 0 by mistake — plan shows
+    # T3.4 (prompt sentinel update) actually depends on T3.3 (refusal logic
+    # in KbChatController), so it belongs in Wave 2. T3.3 in turn depends
+    # on T3.1 + T3.2. Wave 0 = strictly zero-dependency tasks only.
     case "$wave" in
-      0) tasks=("T1.1" "T2.10" "T3.1" "T3.2" "T3.4" "T3.8" "T2.6" "T2.9") ;;
+      0) tasks=("T1.1" "T2.10" "T3.1" "T3.2" "T3.8" "T2.6" "T2.9") ;;
       *) echo "Wave $wave not yet defined"; exit 1 ;;
     esac
-    log INFO "Dispatching wave $wave: ${tasks[*]}"
+    # IMPORTANT: tasks in a wave MUST run SERIALLY in this script. Each
+    # run_task performs `git checkout`, `git pull`, `git push`, edits shared
+    # files (state file, progress files, LESSONS.md, README.md), and ALL
+    # share the same working directory. Parallel run_task background jobs
+    # would race on `HEAD` (last checkout wins) and corrupt branches/commits.
+    # True parallelism requires git worktrees per task — out of scope for v3.0.
+    # The "wave" abstraction is preserved at the orchestrator-protocol level
+    # (a human-orchestrator can dispatch multiple Claude sessions in
+    # different worktrees), but the standalone-runner sequence is serial.
+    log INFO "Dispatching wave $wave SERIALLY (worktree isolation not implemented): ${tasks[*]}"
     for t in "${tasks[@]}"; do
-      run_task "$t" &
-      while [[ $(jobs -r | wc -l) -ge $MAX_PARALLELISM ]]; do
-        sleep 5
-      done
+      if ! run_task "$t"; then
+        log ERROR "Task $t in wave $wave failed — aborting wave"
+        break
+      fi
     done
-    wait
     log INFO "Wave $wave done"
     ;;
   T*)

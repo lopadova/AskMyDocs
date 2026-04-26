@@ -95,9 +95,13 @@ This document is **the contract** between the orchestrator and the implementing 
 │  PR_URL=$(gh pr create \                                            │
 │    --base <macro-task-branch> \                                     │
 │    --title "feat(v3.0/T<id>): <title>" \                            │
-│    --body-file .pr-body.md \                                        │
-│    --reviewer copilot)                                              │
+│    --body-file .pr-body.md)                                         │
 │  PR_NUM=$(echo $PR_URL | grep -oE '[0-9]+$')                        │
+│  # gh CLI rejects 'copilot' as a regular --reviewer login; assign   │
+│  # the bot via the requested_reviewers REST endpoint instead. The   │
+│  # login is configurable through COPILOT_REVIEWER_LOGIN env var.    │
+│  gh api "repos/{owner}/{repo}/pulls/$PR_NUM/requested_reviewers" \  │
+│    -X POST -f "reviewers[]=$COPILOT_REVIEWER_LOGIN"                 │
 └──────────────────────────────┬──────────────────────────────────────┘
                                ↓
 ┌─────────────────────────────────────────────────────────────────────┐
