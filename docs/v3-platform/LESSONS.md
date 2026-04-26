@@ -176,3 +176,35 @@ ORCHESTRATOR §6 lists "Copilot requests changes after 2 fix cycles" as an escal
 **References:** PR #38 cycle-2 review (commit a0e5b57) at 2026-04-26 21:41:42 UTC, both inline comments at `tests/Unit/Services/Kb/Converters/TextPassthroughConverterTest.php:84` and `docs/v3-platform/progress/T1.3.md:67`. T1.3 closeout commit (pending).
 
 ---
+
+## [2026-04-27 00:30] Sub-task T1.4 — PipelineRegistry + DocumentIngestor refactor
+
+**Type:** rule + discovery
+**Severity:** high
+**Applies to:** every future T1.x and T2.x sub-agent that adds a new config file, plus every test that uses the `PipelineRegistry` indirectly.
+
+**Finding:**
+Four operational lessons surfaced during T1.4 — all binding for downstream tasks:
+
+1. **Testbench (`tests/TestCase.php::getEnvironmentSetUp`) does NOT auto-load `config/*.php`.** Project configs are loaded ONE-BY-ONE via `$app['config']->set('name', require __DIR__.'/../config/name.php')`. Adding a new config file requires adding a corresponding line. Without it, every `config('new-name.*')` call returns `null` under tests, even though `php artisan tinker` shows the config loaded fine. This bit T1.4: PipelineRegistry singleton booted with empty `converters` array, every test failed `assertContains('markdown-passthrough', $names)`. Fix: add `$app['config']->set('kb-pipeline', require __DIR__.'/../config/kb-pipeline.php');` next to the other config-set lines. **T1.5/T1.6 will add no new config files; T1.8 may add an enum-mapping config — if so, register it here too.**
+
+2. **`MarkdownChunker` is the universal markdown processor** — not a markdown-only chunker. Its `supports()` should return true for any source-type whose converter outputs markdown: currently `markdown`, `md`, `text` (TextPassthroughConverter wraps in `# basename`), and `docx` (T1.6 DocxConverter outputs markdown). Only `pdf` lands on T1.7's PdfPageChunker because that one slices by page (1 chunk per page) instead of by section. The lesson: when adding a new converter, check whether it produces markdown — if YES, add its source-type token to MarkdownChunker's `SUPPORTED_SOURCE_TYPES` constant. Don't create a redundant chunker that does the same thing.
+
+3. **The `ingestMarkdown()` → `ingest()` facade is bit-for-bit safe except for one metadata field.** After the facade refactor, every markdown ingest goes through `MarkdownPassthroughConverter` → `MarkdownChunker::chunk(ConvertedDocument)`. The metadata.filename ON CHUNKS now becomes `basename(sourcePath)` (per the T1.3 LESSONS rule) where the legacy path stored the FULL `sourcePath`. Production impact: zero — no production code or test asserts on the exact `metadata.filename` value (verified via `grep -rn` across `app/` and `tests/`). Admin observability surfaces continue working off `source_path` directly. Documented here so a future agent doesn't hunt for a "regression" that's actually intentional.
+
+4. **Mocking concrete classes that the registry resolves doesn't work with bind-time singletons.** The pre-T1.4 `DocumentIngestorTest::test_archives_previous_versions_for_same_source_path` did `Mockery::mock(MarkdownChunker::class)` then `new DocumentIngestor($chunker, $cache)`. After the facade change, `ingestMarkdown` calls `app(PipelineRegistry::class)` — a SINGLETON that already cached its real `MarkdownChunker` instance at boot. Late-binding the mock via `$this->app->instance(MarkdownChunker::class, $mock)` doesn't help: the registry holds its own reference. Fix: drop the chunker mock entirely, use the real chunker (cheap — regex + buffers), only mock the EmbeddingCacheService (which would otherwise call a real provider). General rule: **DO NOT mock chunker/converter classes in feature tests post-T1.4** — they're cheap to run and registry-bound; mock the boundaries (embedding cache, AI provider, external storage) instead.
+
+**Why it matters:**
+- Rule 1 is THE most common cause of "config-loaded-in-prod-but-null-in-tests" mystery failures. Codified now to save every future agent the 15-min debug cycle.
+- Rule 2 prevents proliferation of redundant chunker classes ("DocxChunker", "TextChunker") that would each just delegate to MarkdownChunker.
+- Rule 3 documents an intentional behaviour change so future devs don't waste time investigating a "regression".
+- Rule 4 reshapes how feature tests should be authored from T1.5 onward — converters and chunkers are part of the system-under-test, not collaborators to mock out.
+
+**How to apply:**
+- For new config files: ALWAYS add the matching `$app['config']->set('name', require __DIR__.'/../config/name.php')` line in `tests/TestCase.php::getEnvironmentSetUp()` immediately after creating the file. Test-first verifies you didn't forget.
+- For new converters in T1.5/T1.6: if the converter produces markdown, append the source-type token to `MarkdownChunker::SUPPORTED_SOURCE_TYPES`. Only build a NEW chunker if the format requires page/row/transcript-segment slicing that MarkdownChunker doesn't model.
+- For new feature tests: never mock `Converter*` or `*Chunker*`. Mock `EmbeddingCacheService`, `AiManager`, `Storage`, `Http::fake()` — system boundaries, not internal pipeline parts.
+
+**References:** `tests/TestCase.php::getEnvironmentSetUp()` (Testbench config loading list), `app/Services/Kb/MarkdownChunker.php::SUPPORTED_SOURCE_TYPES`, `app/Services/Kb/DocumentIngestor.php::ingest()` (polymorphic entry), `tests/Feature/Kb/PipelineRegistryTest.php`, `tests/Feature/Kb/DocumentIngestorPipelineTest.php`, `tests/Feature/Kb/DocumentIngestorTest.php` (chunker mock removal). T1.4 closeout pending.
+
+---

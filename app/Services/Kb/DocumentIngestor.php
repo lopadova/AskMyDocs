@@ -7,29 +7,37 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
+use App\Services\Kb\Pipeline\ChunkDraft;
+use App\Services\Kb\Pipeline\PipelineRegistry;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\KbPath;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 /**
  * Document ingestion pipeline.
  *
- * Chunks source documents, generates embeddings (with caching), stores
- * everything in PostgreSQL with pgvector, and (new since Phase 2 canonical
- * compilation) populates canonical metadata when the markdown carries
- * valid YAML frontmatter. Canonical-indexed documents also dispatch
- * {@see CanonicalIndexerJob} after commit to build the kb_nodes / kb_edges
- * graph projection.
+ * v3.0 (T1.4) introduces a polymorphic {@see ingest()} entry point that
+ * walks every source through the {@see PipelineRegistry}: pick a Converter
+ * by MIME, normalise to {@see Pipeline\ConvertedDocument}, pick a Chunker
+ * by source-type, persist the resulting {@see ChunkDraft}[] alongside the
+ * embedding cache. The pre-v3 {@see ingestMarkdown()} entry point is now
+ * a thin facade that synthesises a markdown SourceDocument and delegates
+ * to `ingest()` — the IngestDocumentJob keeps using it bit-for-bit.
  *
- * Graceful degradation (R4): markdown with malformed frontmatter is
- * ingested as a regular non-canonical document, logged as a warning.
- * Ingestion never fails on a frontmatter issue.
+ * Canonical compilation (Phase 2 / R10): markdown frontmatter is parsed
+ * once per ingest and projected into the canonical columns + the
+ * `kb_nodes` / `kb_edges` graph (via {@see CanonicalIndexerJob} dispatched
+ * post-commit). Malformed frontmatter degrades gracefully — the document
+ * is still ingested as non-canonical, the failure is logged.
  */
 class DocumentIngestor
 {
     protected CanonicalParser $canonicalParser;
 
     public function __construct(
-        protected MarkdownChunker $markdownChunker,
+        protected PipelineRegistry $registry,
         protected EmbeddingCacheService $embeddingCache,
         ?CanonicalParser $canonicalParser = null,
     ) {
@@ -39,6 +47,91 @@ class DocumentIngestor
         $this->canonicalParser = $canonicalParser ?? new CanonicalParser();
     }
 
+    /**
+     * v3 polymorphic entry point. Routes the source through the
+     * {@see PipelineRegistry}: Converter → ConvertedDocument → Chunker
+     * → ChunkDraft[] → persist + embed + canonical project + dispatch.
+     *
+     * `$source->sourcePath` is normalised through {@see KbPath::normalize()}
+     * here as a safety net so every consumer (HTTP, CLI, jobs, future
+     * connectors) lands on identical idempotency keys regardless of how
+     * carefully the caller pre-normalised. Per R1 in CLAUDE.md.
+     *
+     * @param  array<string,mixed>  $extraMetadata  merged on top of $source->metadata
+     */
+    public function ingest(
+        string $projectKey,
+        SourceDocument $source,
+        string $title,
+        array $extraMetadata = [],
+    ): KnowledgeDocument {
+        $normalizedPath = KbPath::normalize($source->sourcePath);
+        $normalizedSource = $source->sourcePath === $normalizedPath
+            ? $source
+            : new SourceDocument(
+                sourcePath: $normalizedPath,
+                mimeType: $source->mimeType,
+                bytes: $source->bytes,
+                externalUrl: $source->externalUrl,
+                externalId: $source->externalId,
+                connectorType: $source->connectorType,
+                metadata: $source->metadata,
+            );
+
+        $converter = $this->registry->resolveConverter($normalizedSource->mimeType);
+        $converted = $converter->convert($normalizedSource);
+
+        $sourceType = $this->resolveSourceType($normalizedSource->mimeType);
+        $chunker = $this->registry->resolveChunker($sourceType);
+        $chunkDrafts = $chunker->chunk($converted);
+
+        $combinedMetadata = array_merge($normalizedSource->metadata, $extraMetadata, [
+            'connector' => $normalizedSource->connectorType,
+            'external_url' => $normalizedSource->externalUrl,
+            'external_id' => $normalizedSource->externalId,
+            'converter' => $converted->extractionMeta,
+        ]);
+
+        return $this->persistFromDrafts(
+            projectKey: $projectKey,
+            sourcePath: $normalizedSource->sourcePath,
+            title: $title,
+            mimeType: $normalizedSource->mimeType,
+            sourceType: $sourceType,
+            markdown: $converted->markdown,
+            chunkDrafts: $chunkDrafts,
+            metadata: $combinedMetadata,
+        );
+    }
+
+    /**
+     * Maps a MIME type to the source-type token used for chunker resolution.
+     *
+     * Throws an actionable RuntimeException when the mapping is missing —
+     * the failure mode of "fall back to 'unknown' then fail at chunker
+     * lookup with 'No chunker registered for source type: unknown'" is
+     * misleading and points the operator at the wrong file. Surfaces the
+     * MIME type AND the config file the operator must edit.
+     */
+    private function resolveSourceType(string $mimeType): string
+    {
+        /** @var array<string, mixed> $map */
+        $map = (array) config('kb-pipeline.mime_to_source_type', []);
+        if (! array_key_exists($mimeType, $map)) {
+            throw new RuntimeException(sprintf(
+                'Missing MIME→source-type mapping for "%s". Add it to config/kb-pipeline.php under "mime_to_source_type".',
+                $mimeType,
+            ));
+        }
+        return (string) $map[$mimeType];
+    }
+
+    /**
+     * Pre-v3 facade — kept for IngestDocumentJob, KbIngestController, and
+     * the consumer GitHub Action that still POST plain markdown bytes.
+     * Synthesises a `text/markdown` SourceDocument and delegates to
+     * {@see ingest()} so behaviour is now driven by the registry path.
+     */
     public function ingestMarkdown(
         string $projectKey,
         string $sourcePath,
@@ -46,34 +139,19 @@ class DocumentIngestor
         string $markdown,
         array $metadata = [],
     ): KnowledgeDocument {
-        $documentHash = hash('sha256', $markdown);
-        $versionHash = $documentHash;
-
-        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
-        if ($existing !== null) {
-            $existing->update(['indexed_at' => now()]);
-            return $existing;
-        }
-
-        $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
-        $chunks = $this->markdownChunker->chunkLegacy($sourcePath, $markdown);
-        $embeddingResponse = $this->embeddingCache->generate($chunks->pluck('text')->all());
-
-        $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
-            $projectKey,
-            $sourcePath,
-            $title,
-            $metadata,
-            $documentHash,
-            $versionHash,
-            $chunks,
-            $embeddingResponse,
-            $canonical,
-        ));
-
-        $this->dispatchCanonicalIndexerIfCanonical($document);
-
-        return $document;
+        return $this->ingest(
+            projectKey: $projectKey,
+            source: new SourceDocument(
+                sourcePath: $sourcePath,
+                mimeType: 'text/markdown',
+                bytes: $markdown,
+                externalUrl: null,
+                externalId: null,
+                connectorType: 'local',
+                metadata: $metadata,
+            ),
+            title: $title,
+        );
     }
 
     // -----------------------------------------------------------------
@@ -116,17 +194,80 @@ class DocumentIngestor
     }
 
     // -----------------------------------------------------------------
+    // unified persistence (v3 — accepts ChunkDraft[])
+    // -----------------------------------------------------------------
+
+    /**
+     * Single persistence path for both the v3 polymorphic {@see ingest()}
+     * AND the legacy markdown facade. Holds the SHA-256 versioning,
+     * canonical projection, chunks insert, embedding cache, and
+     * post-commit job dispatch — the join point any new converter
+     * (T1.5 PDF, T1.6 DOCX) plugs into via {@see ingest()}.
+     *
+     * @param  list<ChunkDraft>     $chunkDrafts
+     * @param  array<string,mixed>  $metadata
+     */
+    private function persistFromDrafts(
+        string $projectKey,
+        string $sourcePath,
+        string $title,
+        string $mimeType,
+        string $sourceType,
+        string $markdown,
+        array $chunkDrafts,
+        array $metadata,
+    ): KnowledgeDocument {
+        $documentHash = hash('sha256', $markdown);
+        $versionHash = $documentHash;
+
+        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+        if ($existing !== null) {
+            $existing->update(['indexed_at' => now()]);
+            return $existing;
+        }
+
+        $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
+        $embeddingResponse = $this->embeddingCache->generate(
+            array_map(fn (ChunkDraft $d) => $d->text, $chunkDrafts),
+        );
+
+        $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
+            $projectKey,
+            $sourcePath,
+            $title,
+            $mimeType,
+            $sourceType,
+            $metadata,
+            $documentHash,
+            $versionHash,
+            $chunkDrafts,
+            $embeddingResponse,
+            $canonical,
+        ));
+
+        $this->dispatchCanonicalIndexerIfCanonical($document);
+
+        return $document;
+    }
+
+    // -----------------------------------------------------------------
     // persistence (wrapped in transaction by the caller)
     // -----------------------------------------------------------------
 
+    /**
+     * @param  list<ChunkDraft>     $chunkDrafts
+     * @param  array<string,mixed>  $metadata
+     */
     private function persistDocumentAndChunks(
         string $projectKey,
         string $sourcePath,
         string $title,
+        string $mimeType,
+        string $sourceType,
         array $metadata,
         string $documentHash,
         string $versionHash,
-        $chunks,
+        array $chunkDrafts,
         $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
     ): KnowledgeDocument {
@@ -138,7 +279,14 @@ class DocumentIngestor
             $this->vacateCanonicalIdentifiersOnPreviousVersions($projectKey, $sourcePath, $versionHash);
         }
 
-        $attributes = $this->buildDocumentAttributes($title, $metadata, $documentHash, $canonical);
+        $attributes = $this->buildDocumentAttributes(
+            $title,
+            $mimeType,
+            $sourceType,
+            $metadata,
+            $documentHash,
+            $canonical,
+        );
         $document = KnowledgeDocument::updateOrCreate(
             [
                 'project_key' => $projectKey,
@@ -149,7 +297,7 @@ class DocumentIngestor
         );
 
         $this->archivePreviousVersions($projectKey, $sourcePath, $document->id);
-        $this->persistChunks($document, $projectKey, $chunks, $embeddingResponse);
+        $this->persistChunks($document, $projectKey, $chunkDrafts, $embeddingResponse);
 
         return $document;
     }
@@ -189,16 +337,23 @@ class DocumentIngestor
      */
     private function buildDocumentAttributes(
         string $title,
+        string $mimeType,
+        string $sourceType,
         array $metadata,
         string $documentHash,
         ?CanonicalParsedDocument $canonical,
     ): array {
         $base = [
-            'source_type' => 'markdown',
+            'source_type' => $sourceType,
             'title' => $title,
-            'mime_type' => 'text/markdown',
-            'language' => $metadata['language'] ?? 'it',
-            'access_scope' => $metadata['access_scope'] ?? 'internal',
+            'mime_type' => $mimeType,
+            // `??` would let `null` fall through to the default but would NOT
+            // catch empty-string or non-string values that connectors might
+            // emit. Defensive normalisation prevents blank or invalid values
+            // from being persisted for these fields and overriding the
+            // intended defaults / domain invariants (`'it'`, `'internal'`).
+            'language' => $this->normalizeStringMeta($metadata['language'] ?? null, 'it'),
+            'access_scope' => $this->normalizeStringMeta($metadata['access_scope'] ?? null, 'internal'),
             'status' => 'active',
             'document_hash' => $documentHash,
             'metadata' => $metadata,
@@ -236,6 +391,23 @@ class DocumentIngestor
         ]);
     }
 
+    /**
+     * Returns `$default` for any non-string OR empty/whitespace-only string.
+     * Used by {@see buildDocumentAttributes()} to keep metadata-backed
+     * fields such as `language` and `access_scope` from being overridden by
+     * connector payloads that send `null`, `''`, or `'   '` for those keys —
+     * the bare `??` operator would preserve those blank strings instead of
+     * preserving the intended defaults / required domain values.
+     */
+    private function normalizeStringMeta(mixed $value, string $default): string
+    {
+        if (! is_string($value)) {
+            return $default;
+        }
+        $trimmed = trim($value);
+        return $trimmed === '' ? $default : $trimmed;
+    }
+
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void
     {
         KnowledgeDocument::query()
@@ -246,24 +418,35 @@ class DocumentIngestor
             ->update(['status' => 'archived']);
     }
 
+    /**
+     * Persists each ChunkDraft. `chunk_order` comes from the DTO's own
+     * `$chunk->order` (the SOT) so future chunkers (e.g. PdfPageChunker
+     * in T1.7) can emit non-sequential or page-numbered orders without
+     * losing them at persistence time. Embeddings stay positional —
+     * EmbeddingCacheService::generate() returned them in the same order
+     * we passed the draft texts, so `$index` is the correct embedding
+     * lookup key even when `$chunk->order` is unrelated.
+     *
+     * @param  list<ChunkDraft>  $chunkDrafts
+     */
     private function persistChunks(
         KnowledgeDocument $document,
         string $projectKey,
-        $chunks,
+        array $chunkDrafts,
         $embeddingResponse,
     ): void {
-        foreach ($chunks as $index => $chunk) {
+        foreach ($chunkDrafts as $index => $chunk) {
             KnowledgeChunk::updateOrCreate(
                 [
                     'knowledge_document_id' => $document->id,
-                    'chunk_hash' => hash('sha256', $chunk['text']),
+                    'chunk_hash' => hash('sha256', $chunk->text),
                 ],
                 [
                     'project_key' => $projectKey,
-                    'chunk_order' => $index,
-                    'heading_path' => $chunk['heading_path'],
-                    'chunk_text' => $chunk['text'],
-                    'metadata' => $chunk['metadata'],
+                    'chunk_order' => $chunk->order,
+                    'heading_path' => $chunk->headingPath,
+                    'chunk_text' => $chunk->text,
+                    'metadata' => $chunk->metadata,
                     'embedding' => $embeddingResponse->embeddings[$index],
                 ]
             );
