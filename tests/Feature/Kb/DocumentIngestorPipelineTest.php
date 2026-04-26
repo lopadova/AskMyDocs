@@ -146,10 +146,10 @@ final class DocumentIngestorPipelineTest extends TestCase
     public function test_normalizes_empty_string_language_and_access_scope_to_defaults(): void
     {
         // Connectors may emit `'language' => ''` or `'access_scope' => '   '`
-        // on partial payloads; bare `??` would let those values through and
-        // trip the NOT NULL DB constraint at INSERT (production columns are
-        // not nullable). Verify defensive normalisation falls back to the
-        // declared defaults `'it'` / `'internal'`.
+        // on partial payloads; bare `??` would preserve those blank strings
+        // instead of falling back to the declared defaults. Verify defensive
+        // normalisation treats blank metadata values as missing and restores
+        // the domain defaults `'it'` / `'internal'`.
         $ingestor = app(DocumentIngestor::class);
         $doc = new SourceDocument(
             sourcePath: 'docs/empty-meta.md',

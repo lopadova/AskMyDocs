@@ -349,10 +349,9 @@ class DocumentIngestor
             'mime_type' => $mimeType,
             // `??` would let `null` fall through to the default but would NOT
             // catch empty-string or non-string values that connectors might
-            // emit. Both columns are NOT NULL in production, so a `''` from
-            // an upstream metadata payload would surface as a constraint
-            // error at INSERT. Defensive normalisation keeps the DB defaults
-            // honoured.
+            // emit. Defensive normalisation prevents blank or invalid values
+            // from being persisted for these fields and overriding the
+            // intended defaults / domain invariants (`'it'`, `'internal'`).
             'language' => $this->normalizeStringMeta($metadata['language'] ?? null, 'it'),
             'access_scope' => $this->normalizeStringMeta($metadata['access_scope'] ?? null, 'internal'),
             'status' => 'active',
@@ -394,10 +393,11 @@ class DocumentIngestor
 
     /**
      * Returns `$default` for any non-string OR empty/whitespace-only string.
-     * Used by {@see buildDocumentAttributes()} to harden NOT NULL columns
-     * (`language`, `access_scope`) against connector payloads that send
-     * `null`, `''`, or `'   '` for those keys — the bare `??` operator
-     * would let those values through and trip the DB constraint at INSERT.
+     * Used by {@see buildDocumentAttributes()} to keep metadata-backed
+     * fields such as `language` and `access_scope` from being overridden by
+     * connector payloads that send `null`, `''`, or `'   '` for those keys —
+     * the bare `??` operator would preserve those blank strings instead of
+     * preserving the intended defaults / required domain values.
      */
     private function normalizeStringMeta(mixed $value, string $default): string
     {
