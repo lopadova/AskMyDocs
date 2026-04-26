@@ -28,6 +28,11 @@ COPILOT_POLL_INTERVAL_SEC=90
 COPILOT_TIMEOUT_SEC=900        # 15 min total
 MAX_FIX_CYCLES=2
 MAX_VERIFICATION_RETRIES=3
+# Copilot review author identity is configurable — observed values include
+# 'copilot-pull-request-reviewer', 'github-copilot[bot]', 'Copilot'. Use a regex.
+COPILOT_AUTHOR_REGEX="${COPILOT_AUTHOR_REGEX:-copilot}"
+# Reviewer login passed to the GitHub API requested_reviewers endpoint.
+COPILOT_REVIEWER_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer[bot]}"
 
 mkdir -p "$LOG_DIR" "$PROGRESS_DIR"
 
@@ -39,6 +44,18 @@ require_cmd gh
 require_cmd jq
 require_cmd git
 require_cmd php
+require_cmd npm
+require_cmd awk
+require_cmd flock 2>/dev/null || true   # flock optional on some platforms; falls back to ln -s lock pattern
+
+if [[ "${CLAUDE_HEADLESS:-0}" == "1" ]]; then
+  require_cmd claude
+fi
+
+if [[ ! -f "vendor/bin/phpunit" ]]; then
+  echo "ERROR: vendor/bin/phpunit not found. Run 'composer install' first." >&2
+  exit 1
+fi
 
 if ! gh auth status >/dev/null 2>&1; then
   echo "ERROR: gh CLI not authenticated. Run 'gh auth login' first." >&2
@@ -52,21 +69,67 @@ init_state() {
   fi
 }
 
+# Concurrency-safe state mutator. flock if available; fallback to ln -s lock.
+# Uses per-writer tmp file to avoid collision when --wave runs tasks in parallel.
+_with_state_lock() {
+  local fn="$1"
+  shift
+  local lock_file="${STATE_FILE}.lock"
+  if command -v flock >/dev/null 2>&1; then
+    (
+      flock -x 9
+      "$fn" "$@"
+    ) 9>"$lock_file"
+  else
+    # Portable fallback: spin on ln -s atomic create
+    local tries=0
+    while ! ln -s "$$" "$lock_file" 2>/dev/null; do
+      tries=$((tries + 1))
+      if [[ $tries -gt 300 ]]; then
+        echo "ERROR: could not acquire $lock_file after 300 tries" >&2
+        return 1
+      fi
+      sleep 0.1
+    done
+    "$fn" "$@"
+    local rc=$?
+    rm -f "$lock_file"
+    return $rc
+  fi
+}
+
+_set_task_status_inner() {
+  local task_id="$1"
+  local status="$2"
+  local writer_tmp
+  writer_tmp=$(mktemp "${STATE_FILE}.XXXXXX")
+  jq --arg id "$task_id" --arg s "$status" --arg ts "$(date -u +%FT%TZ)" \
+    '.tasks[$id] = (.tasks[$id] // {}) + {status: $s, updated_at: $ts}' \
+    "$STATE_FILE" > "$writer_tmp" && mv "$writer_tmp" "$STATE_FILE"
+}
+
 set_task_status() {
   local task_id="$1"
   local status="$2"   # pending | in_progress | completed | escalated | blocked
-  jq --arg id "$task_id" --arg s "$status" --arg ts "$(date -u +%FT%TZ)" \
-    '.tasks[$id] = (.tasks[$id] // {}) + {status: $s, updated_at: $ts}' \
-    "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+  _with_state_lock _set_task_status_inner "$task_id" "$status"
 }
 
 get_task_status() {
   jq -r --arg id "$1" '.tasks[$id].status // "pending"' "$STATE_FILE"
 }
 
+_set_task_field_inner() {
+  local task_id="$1"
+  local k="$2"
+  local v="$3"
+  local writer_tmp
+  writer_tmp=$(mktemp "${STATE_FILE}.XXXXXX")
+  jq --arg id "$task_id" --arg k "$k" --arg v "$v" \
+    '.tasks[$id][$k] = $v' "$STATE_FILE" > "$writer_tmp" && mv "$writer_tmp" "$STATE_FILE"
+}
+
 set_task_field() {
-  jq --arg id "$1" --arg k "$2" --arg v "$3" \
-    '.tasks[$id][$k] = $v' "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+  _with_state_lock _set_task_field_inner "$1" "$2" "$3"
 }
 
 # ─── Logging ───────────────────────────────────────────────────────────────
@@ -194,7 +257,8 @@ dispatch_subagent() {
   lessons_content=$(cat "$LESSONS_FILE")
 
   local prompt_file
-  prompt_file=$(mktemp -t "v3-prompt-${task_id}-XXXXXX.md")
+  # macOS-portable mktemp (no -t with template)
+  prompt_file=$(mktemp "${TMPDIR:-/tmp}/v3-prompt-${task_id}-XXXXXX.md")
   local progress_status
   progress_status=$(read_last_progress_step "$task_id")
   local resume_clause=""
@@ -288,9 +352,24 @@ EOF
 }
 
 # ─── Verification Gate runner (independent of agent — orchestrator double-checks) ─
+# Diff range: from merge-base with the macro branch up to HEAD. Covers ALL commits
+# on the task branch (including fix-cycle commits), not just HEAD~1..HEAD.
+_changed_paths_on_branch() {
+  local macro_branch="$1"
+  local merge_base
+  merge_base=$(git merge-base HEAD "$macro_branch" 2>/dev/null || echo "")
+  if [[ -z "$merge_base" ]]; then
+    # Fallback to HEAD~1..HEAD if merge-base unavailable (e.g. detached state)
+    git diff --name-only HEAD~1 HEAD 2>/dev/null
+  else
+    git diff --name-only "$merge_base..HEAD"
+  fi
+}
+
 run_verification_gate() {
   local task_id="$1"
-  log INFO "Running independent Verification Gate for ${task_id}"
+  local macro_branch="${2:-feature/v3.0}"
+  log INFO "Running independent Verification Gate for ${task_id} (diff base: $macro_branch)"
 
   # Universal checks every task must pass:
   if ! vendor/bin/phpunit --testsuite=Unit > "$LOG_DIR/phpunit-unit-${task_id}.log" 2>&1; then
@@ -303,8 +382,11 @@ run_verification_gate() {
     return 1
   fi
 
-  # FE checks if frontend was touched
-  if git diff --name-only HEAD~1 HEAD | grep -q '^frontend/'; then
+  local changed_paths
+  changed_paths=$(_changed_paths_on_branch "$macro_branch")
+
+  # FE checks if frontend was touched anywhere on the branch
+  if echo "$changed_paths" | grep -q '^frontend/'; then
     if ! (cd frontend && npm test -- --run > "$LOG_DIR/vitest-${task_id}.log" 2>&1); then
       log ERROR "Vitest failed for ${task_id}"
       return 1
@@ -312,7 +394,7 @@ run_verification_gate() {
   fi
 
   # E2E only if frontend/e2e/* changed
-  if git diff --name-only HEAD~1 HEAD | grep -q '^frontend/e2e/'; then
+  if echo "$changed_paths" | grep -q '^frontend/e2e/'; then
     if ! (cd frontend && npm run e2e > "$LOG_DIR/playwright-${task_id}.log" 2>&1); then
       log ERROR "Playwright failed for ${task_id}"
       return 1
@@ -320,9 +402,11 @@ run_verification_gate() {
   fi
 
   # R13 enforcement
-  if ! bash scripts/verify-e2e-real-data.sh > "$LOG_DIR/r13-${task_id}.log" 2>&1; then
-    log ERROR "R13 verifier (verify-e2e-real-data.sh) failed for ${task_id}"
-    return 1
+  if [[ -x scripts/verify-e2e-real-data.sh ]]; then
+    if ! bash scripts/verify-e2e-real-data.sh > "$LOG_DIR/r13-${task_id}.log" 2>&1; then
+      log ERROR "R13 verifier (verify-e2e-real-data.sh) failed for ${task_id}"
+      return 1
+    fi
   fi
 
   log INFO "Verification Gate GREEN for ${task_id}"
@@ -377,17 +461,19 @@ EOF
   local pr_num
   pr_num=$(echo "$pr_url" | grep -oE '[0-9]+$')
 
-  # Assign Copilot via REST API (gh CLI rejects 'copilot' as a regular user login;
-  # the bot must be added through the requested_reviewers endpoint with the
-  # 'copilot-pull-request-reviewer[bot]' login).
+  # Assign Copilot via REST API. The login is configurable via
+  # COPILOT_REVIEWER_LOGIN env var (default 'copilot-pull-request-reviewer[bot]')
+  # because GitHub Copilot's reviewer identity varies by enterprise / repo
+  # configuration. gh CLI's --reviewer flag rejects bot logins, so we always
+  # use the requested_reviewers endpoint here.
   local repo_full
   repo_full=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
   if ! gh api "repos/${repo_full}/pulls/${pr_num}/requested_reviewers" \
-        -X POST -f 'reviewers[]=copilot-pull-request-reviewer[bot]' \
+        -X POST -f "reviewers[]=${COPILOT_REVIEWER_LOGIN}" \
         > "$LOG_DIR/copilot-assign-${task_id}.log" 2>&1; then
-    log WARN "Copilot bot assignment via API failed for PR #$pr_num — verify manually"
+    log WARN "Copilot bot assignment via API failed (login: $COPILOT_REVIEWER_LOGIN) for PR #$pr_num — verify manually or set COPILOT_REVIEWER_LOGIN env"
   else
-    log INFO "Copilot assigned as reviewer on PR #$pr_num"
+    log INFO "Copilot assigned as reviewer on PR #$pr_num (login: $COPILOT_REVIEWER_LOGIN)"
   fi
 
   set_task_field "$task_id" "pr_url" "$pr_url"
@@ -401,14 +487,14 @@ wait_for_copilot() {
   local pr_num="$1"
   local elapsed=0
 
-  log INFO "Waiting initial $COPILOT_WAIT_INITIAL_SEC s for Copilot review"
+  log INFO "Waiting initial $COPILOT_WAIT_INITIAL_SEC s for Copilot review (matcher regex: /$COPILOT_AUTHOR_REGEX/i)"
   sleep "$COPILOT_WAIT_INITIAL_SEC"
   elapsed=$COPILOT_WAIT_INITIAL_SEC
 
   while [[ $elapsed -lt $COPILOT_TIMEOUT_SEC ]]; do
     local copilot_review
     copilot_review=$(gh pr view "$pr_num" --json reviews --jq \
-      '.reviews[] | select(.author.login | test("copilot"; "i")) | {state, body, submittedAt}' 2>/dev/null)
+      ".reviews[] | select(.author.login | test(\"$COPILOT_AUTHOR_REGEX\"; \"i\")) | {state, body, submittedAt, author: .author.login}" 2>/dev/null)
 
     if [[ -n "$copilot_review" ]]; then
       log INFO "Copilot review received for PR #$pr_num after $elapsed s"
@@ -416,12 +502,17 @@ wait_for_copilot() {
       return 0
     fi
 
-    log INFO "Still waiting for Copilot (elapsed ${elapsed}s, polling again in $COPILOT_POLL_INTERVAL_SEC s)"
+    # Log all observed review authors so timeout debugging is trivial
+    local observed_authors
+    observed_authors=$(gh pr view "$pr_num" --json reviews --jq '[.reviews[].author.login] | unique | join(",")' 2>/dev/null)
+    log INFO "Still waiting for Copilot (elapsed ${elapsed}s, polling again in ${COPILOT_POLL_INTERVAL_SEC}s; observed review authors so far: [${observed_authors:-none}])"
     sleep "$COPILOT_POLL_INTERVAL_SEC"
     elapsed=$((elapsed + COPILOT_POLL_INTERVAL_SEC))
   done
 
-  log ERROR "Copilot review timeout after ${elapsed}s for PR #$pr_num — ESCALATE"
+  local final_observed
+  final_observed=$(gh pr view "$pr_num" --json reviews --jq '[.reviews[].author.login] | unique | join(",")' 2>/dev/null)
+  log ERROR "Copilot review timeout after ${elapsed}s for PR #$pr_num — observed review authors: [${final_observed:-none}], expected matcher /$COPILOT_AUTHOR_REGEX/i — ESCALATE (set COPILOT_AUTHOR_REGEX env to fix)"
   return 1
 }
 
@@ -445,8 +536,47 @@ triage_copilot_comments() {
   return 0
 }
 
+_wait_for_ci_checks() {
+  local pr_num="$1"
+  local timeout_sec="${2:-1800}"   # 30 min default
+  local elapsed=0
+  log INFO "Waiting for CI checks on PR #$pr_num (timeout ${timeout_sec}s)"
+  while [[ $elapsed -lt $timeout_sec ]]; do
+    local rollup
+    rollup=$(gh pr view "$pr_num" --json statusCheckRollup --jq \
+      '[.statusCheckRollup[] | {name: (.name // .context // "unknown"), status: (.status // .state // "PENDING"), conclusion: (.conclusion // "")}]' 2>/dev/null)
+    local total pending success failure
+    total=$(echo "$rollup" | jq 'length')
+    pending=$(echo "$rollup" | jq '[.[] | select(.status == "IN_PROGRESS" or .status == "QUEUED" or .status == "PENDING")] | length')
+    success=$(echo "$rollup" | jq '[.[] | select(.conclusion == "SUCCESS" or .status == "SUCCESS")] | length')
+    failure=$(echo "$rollup" | jq '[.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT" or .status == "FAILURE")] | length')
+    if [[ "$failure" -gt 0 ]]; then
+      log ERROR "CI failure on PR #$pr_num — $failure check(s) failed"
+      echo "$rollup" | jq '.[] | select(.conclusion == "FAILURE" or .conclusion == "CANCELLED" or .conclusion == "TIMED_OUT" or .status == "FAILURE")' >&2
+      return 1
+    fi
+    if [[ "$pending" -eq 0 && "$total" -gt 0 ]]; then
+      log INFO "All $total CI checks passed on PR #$pr_num"
+      return 0
+    fi
+    if [[ "$total" -eq 0 ]]; then
+      log INFO "No CI checks configured on PR #$pr_num — proceeding"
+      return 0
+    fi
+    log INFO "CI: $success/$total passed, $pending pending — sleep 60s (elapsed ${elapsed}s)"
+    sleep 60
+    elapsed=$((elapsed + 60))
+  done
+  log ERROR "CI checks timeout after ${elapsed}s on PR #$pr_num"
+  return 1
+}
+
 merge_pr() {
   local pr_num="$1"
+  if ! _wait_for_ci_checks "$pr_num" 1800; then
+    log ERROR "Refusing to merge PR #$pr_num — CI not green"
+    return 1
+  fi
   log INFO "Merging PR #$pr_num (squash + delete branch)"
   if gh pr merge "$pr_num" --squash --delete-branch 2>&1 | tee -a "$LOG_DIR/merge-pr-$pr_num.log"; then
     log INFO "PR #$pr_num merged successfully"
@@ -477,7 +607,7 @@ run_task() {
 
   # Extract the task excerpt from the plan
   local task_excerpt_file
-  task_excerpt_file=$(mktemp -t "v3-excerpt-${task_id}-XXXXXX.md")
+  task_excerpt_file=$(mktemp "${TMPDIR:-/tmp}/v3-excerpt-${task_id}-XXXXXX.md")
   awk -v id="${task_id#T}" '
     /^### Task / {p=0}
     $0 ~ "^### Task " id " " {p=1}
@@ -504,7 +634,21 @@ run_task() {
 
   # Push + open PR
   local pr_num
-  if ! pr_num=$(open_pr "$task_id" "$(grep -oP "(?<=^### Task ${task_id#T} — ).+" "$PLAN_FILE" | head -1)" "$task_branch" "$macro_branch"); then
+  # Extract task title via awk (portable across BSD/GNU; grep -oP requires GNU+PCRE)
+  local task_title
+  task_title=$(awk -v id="${task_id#T}" '
+    $0 ~ "^### Task " id " — " {
+      sub("^### Task " id " — ", "");
+      print;
+      exit
+    }
+  ' "$PLAN_FILE")
+  if [[ -z "$task_title" ]]; then
+    log ERROR "Could not extract task title for $task_id from $PLAN_FILE"
+    return 1
+  fi
+
+  if ! pr_num=$(open_pr "$task_id" "$task_title" "$task_branch" "$macro_branch"); then
     set_task_status "$task_id" "escalated"
     return 1
   fi
@@ -522,22 +666,39 @@ run_task() {
     local fix_count
     fix_count=$(echo "$comments" | jq 'length')
 
-    if [[ "$fix_count" -eq 0 ]]; then
-      # Verify Copilot APPROVED state (not just no comments)
-      local approval
-      approval=$(gh pr view "$pr_num" --json reviews --jq \
-        '[.reviews[] | select(.author.login | test("copilot"; "i"))][-1].state' 2>/dev/null)
+    # Check most recent Copilot review state. Critically: do NOT treat
+    # COMMENTED-with-empty-body as approval — Copilot frequently leaves a
+    # COMMENTED summary requesting follow-ups without inline comments.
+    local approval review_body
+    approval=$(gh pr view "$pr_num" --json reviews --jq \
+      "[.reviews[] | select(.author.login | test(\"$COPILOT_AUTHOR_REGEX\"; \"i\"))][-1].state" 2>/dev/null)
+    review_body=$(gh pr view "$pr_num" --json reviews --jq \
+      "[.reviews[] | select(.author.login | test(\"$COPILOT_AUTHOR_REGEX\"; \"i\"))][-1].body" 2>/dev/null)
 
-      if [[ "$approval" == "APPROVED" ]] || [[ "$approval" == "COMMENTED" && "$fix_count" -eq 0 ]]; then
-        log INFO "Copilot APPROVED PR #$pr_num — proceeding to merge"
-        break
-      fi
+    if [[ "$approval" == "APPROVED" && "$fix_count" -eq 0 ]]; then
+      log INFO "Copilot APPROVED PR #$pr_num — proceeding to merge"
+      break
+    fi
 
-      if [[ "$approval" == "CHANGES_REQUESTED" ]]; then
-        log WARN "Copilot requested changes (cycle $fix_cycle / $MAX_FIX_CYCLES) — dispatching fix-agent"
-      fi
-    else
+    if [[ "$approval" == "CHANGES_REQUESTED" ]]; then
+      log WARN "Copilot requested changes (cycle $fix_cycle / $MAX_FIX_CYCLES) — dispatching fix-agent"
+    elif [[ "$fix_count" -gt 0 ]]; then
       log INFO "Copilot left $fix_count inline comments — dispatching fix-agent (cycle $fix_cycle / $MAX_FIX_CYCLES)"
+    elif [[ "$approval" == "COMMENTED" ]]; then
+      # COMMENTED with no inline comments but a non-trivial summary body =
+      # follow-ups requested in narrative form. Escalate so a human reads it.
+      local body_len="${#review_body}"
+      if [[ "$body_len" -gt 50 ]]; then
+        log ERROR "Copilot left COMMENTED state with summary body (${body_len} chars) but zero inline comments — refusing to merge, ESCALATING"
+        set_task_status "$task_id" "escalated"
+        return 1
+      fi
+      log INFO "Copilot COMMENTED with empty/trivial body and zero inline comments — treating as no-action and proceeding"
+      break
+    else
+      log WARN "Copilot review state '$approval' with $fix_count inline comments — defensive escalation"
+      set_task_status "$task_id" "escalated"
+      return 1
     fi
 
     if [[ $fix_cycle -ge $MAX_FIX_CYCLES ]]; then
@@ -548,7 +709,7 @@ run_task() {
 
     # Dispatch fix-agent with Copilot comments attached
     local fix_excerpt_file
-    fix_excerpt_file=$(mktemp -t "v3-fix-${task_id}-XXXXXX.md")
+    fix_excerpt_file=$(mktemp "${TMPDIR:-/tmp}/v3-fix-${task_id}-XXXXXX.md")
     {
       cat "$task_excerpt_file"
       echo ""
@@ -602,10 +763,30 @@ case "${1:-}" in
     done
     ;;
   --resume)
+    # First: any task in state file that's not yet completed (in_progress | escalated | blocked | pending)
     next=$(jq -r '.tasks | to_entries | map(select(.value.status != "completed")) | .[0].key // empty' "$STATE_FILE")
     if [[ -z "$next" ]]; then
-      echo "All tasks marked completed. v3.0 done?"
-      exit 0
+      # No partial state — derive next pending task from plan + progress files
+      # Plan task IDs to work through, in DAG-respecting wave order:
+      ALL_TASKS=(
+        T1.1 T2.10 T3.1 T3.2 T3.4 T3.8 T2.6 T2.9
+        T1.2 T1.3 T1.4 T2.1 T2.2
+        T1.5 T1.6 T1.7 T1.8 T2.3 T2.4 T2.5 T2.7 T2.8 T3.3 T3.5 T3.6 T3.7
+        T4.1 T4.2 T4.3 T4.4 T4.5 T4.6
+      )
+      for candidate in "${ALL_TASKS[@]}"; do
+        # Skip if progress file shows completion
+        if [[ -f "$PROGRESS_DIR/$candidate.md" ]] && grep -qE '^\*\*Status:\*\* completed' "$PROGRESS_DIR/$candidate.md"; then
+          continue
+        fi
+        next="$candidate"
+        break
+      done
+      if [[ -z "$next" ]]; then
+        echo "All v3.0 tasks completed across plan + progress files. v3.0 done."
+        exit 0
+      fi
+      log INFO "No pending state in $STATE_FILE — derived next task '$next' from plan + progress files"
     fi
     log INFO "Resuming with $next"
     run_task "$next"

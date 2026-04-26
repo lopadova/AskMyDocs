@@ -399,7 +399,7 @@ main
 
 ## 9. Tooling References
 
-- **Standalone runner:** `scripts/v3-orchestrator.sh` (implements this protocol — bash, runs without Claude session needed)
+- **Standalone runner:** `scripts/v3-orchestrator.sh` (implements this protocol as a standalone bash workflow). **Default mode is interactive/manual**: the script prepares prompts and pauses for a human to dispatch them via a Claude Code session, then collects the agent's JSON report. **Fully unattended execution requires `CLAUDE_HEADLESS=1`** plus a compatible Claude CLI on PATH (currently expects a `claude --headless --prompt-file ... --max-turns N` invocation surface)
 - **Plan source:** `docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md`
 - **Lessons log:** `docs/v3-platform/LESSONS.md`
 - **Digest target (T4.1):** `docs/v3-platform/LESSONS-v3.0-digest.md`
