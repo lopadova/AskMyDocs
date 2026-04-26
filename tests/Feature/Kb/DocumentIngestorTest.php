@@ -6,7 +6,6 @@ use App\Ai\EmbeddingsResponse;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\EmbeddingCacheService;
-use App\Services\Kb\MarkdownChunker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;

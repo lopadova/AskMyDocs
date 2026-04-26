@@ -205,6 +205,6 @@ Four operational lessons surfaced during T1.4 — all binding for downstream tas
 - For new converters in T1.5/T1.6: if the converter produces markdown, append the source-type token to `MarkdownChunker::SUPPORTED_SOURCE_TYPES`. Only build a NEW chunker if the format requires page/row/transcript-segment slicing that MarkdownChunker doesn't model.
 - For new feature tests: never mock `Converter*` or `*Chunker*`. Mock `EmbeddingCacheService`, `AiManager`, `Storage`, `Http::fake()` — system boundaries, not internal pipeline parts.
 
-**References:** `tests/TestCase.php:36` (Testbench config loading list), `app/Services/Kb/MarkdownChunker.php:35` (SUPPORTED_SOURCE_TYPES), `app/Services/Kb/DocumentIngestor.php:57` (ingest polymorphic entry), `tests/Feature/Kb/PipelineRegistryTest.php`, `tests/Feature/Kb/DocumentIngestorPipelineTest.php`, `tests/Feature/Kb/DocumentIngestorTest.php:24` (chunker mock removal). T1.4 closeout pending.
+**References:** `tests/TestCase.php::getEnvironmentSetUp()` (Testbench config loading list), `app/Services/Kb/MarkdownChunker.php::SUPPORTED_SOURCE_TYPES`, `app/Services/Kb/DocumentIngestor.php::ingest()` (polymorphic entry), `tests/Feature/Kb/PipelineRegistryTest.php`, `tests/Feature/Kb/DocumentIngestorPipelineTest.php`, `tests/Feature/Kb/DocumentIngestorTest.php` (chunker mock removal). T1.4 closeout pending.
 
 ---
