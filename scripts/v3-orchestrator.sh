@@ -365,8 +365,7 @@ EOF
     --base "$base_branch" \
     --head "$task_branch" \
     --title "feat(v3.0/${task_id}): ${task_title}" \
-    --body-file .pr-body.md \
-    --reviewer copilot 2>&1 | tee "$LOG_DIR/pr-create-${task_id}.log" | grep -oE 'https://github.com[^ ]+')
+    --body-file .pr-body.md 2>&1 | tee "$LOG_DIR/pr-create-${task_id}.log" | grep -oE 'https://github.com[^ ]+')
 
   rm -f .pr-body.md
 
@@ -377,6 +376,20 @@ EOF
 
   local pr_num
   pr_num=$(echo "$pr_url" | grep -oE '[0-9]+$')
+
+  # Assign Copilot via REST API (gh CLI rejects 'copilot' as a regular user login;
+  # the bot must be added through the requested_reviewers endpoint with the
+  # 'copilot-pull-request-reviewer[bot]' login).
+  local repo_full
+  repo_full=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+  if ! gh api "repos/${repo_full}/pulls/${pr_num}/requested_reviewers" \
+        -X POST -f 'reviewers[]=copilot-pull-request-reviewer[bot]' \
+        > "$LOG_DIR/copilot-assign-${task_id}.log" 2>&1; then
+    log WARN "Copilot bot assignment via API failed for PR #$pr_num — verify manually"
+  else
+    log INFO "Copilot assigned as reviewer on PR #$pr_num"
+  fi
+
   set_task_field "$task_id" "pr_url" "$pr_url"
   set_task_field "$task_id" "pr_number" "$pr_num"
 
