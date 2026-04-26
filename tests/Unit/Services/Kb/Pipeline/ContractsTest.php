@@ -91,33 +91,74 @@ final class ContractsTest extends TestCase
         self::assertSame('full', EnrichmentLevel::FULL->value);
     }
 
-    public function test_converter_interface_has_required_methods(): void
+    public function test_converter_interface_has_required_method_signatures(): void
     {
         $rc = new \ReflectionClass(ConverterInterface::class);
 
         self::assertTrue($rc->isInterface());
-        self::assertTrue($rc->hasMethod('name'));
-        self::assertTrue($rc->hasMethod('supports'));
-        self::assertTrue($rc->hasMethod('convert'));
+
+        $name = $rc->getMethod('name');
+        self::assertSame(0, $name->getNumberOfParameters());
+        self::assertSame('string', (string) $name->getReturnType());
+
+        $supports = $rc->getMethod('supports');
+        self::assertSame(1, $supports->getNumberOfParameters());
+        self::assertSame('mimeType', $supports->getParameters()[0]->getName());
+        self::assertSame('string', (string) $supports->getParameters()[0]->getType());
+        self::assertSame('bool', (string) $supports->getReturnType());
+
+        $convert = $rc->getMethod('convert');
+        self::assertSame(1, $convert->getNumberOfParameters());
+        self::assertSame('doc', $convert->getParameters()[0]->getName());
+        self::assertSame(SourceDocument::class, (string) $convert->getParameters()[0]->getType());
+        self::assertSame(ConvertedDocument::class, (string) $convert->getReturnType());
     }
 
-    public function test_chunker_interface_has_required_methods(): void
+    public function test_chunker_interface_has_required_method_signatures(): void
     {
         $rc = new \ReflectionClass(ChunkerInterface::class);
 
         self::assertTrue($rc->isInterface());
-        self::assertTrue($rc->hasMethod('name'));
-        self::assertTrue($rc->hasMethod('supports'));
-        self::assertTrue($rc->hasMethod('chunk'));
+
+        $name = $rc->getMethod('name');
+        self::assertSame(0, $name->getNumberOfParameters());
+        self::assertSame('string', (string) $name->getReturnType());
+
+        $supports = $rc->getMethod('supports');
+        self::assertSame(1, $supports->getNumberOfParameters());
+        self::assertSame('sourceType', $supports->getParameters()[0]->getName());
+        self::assertSame('string', (string) $supports->getParameters()[0]->getType());
+        self::assertSame('bool', (string) $supports->getReturnType());
+
+        $chunk = $rc->getMethod('chunk');
+        self::assertSame(1, $chunk->getNumberOfParameters());
+        self::assertSame('doc', $chunk->getParameters()[0]->getName());
+        self::assertSame(ConvertedDocument::class, (string) $chunk->getParameters()[0]->getType());
+        self::assertSame('array', (string) $chunk->getReturnType());
     }
 
-    public function test_enricher_interface_has_required_methods(): void
+    public function test_enricher_interface_has_required_method_signatures(): void
     {
         $rc = new \ReflectionClass(EnricherInterface::class);
 
         self::assertTrue($rc->isInterface());
-        self::assertTrue($rc->hasMethod('name'));
-        self::assertTrue($rc->hasMethod('appliesAt'));
-        self::assertTrue($rc->hasMethod('enrich'));
+
+        $name = $rc->getMethod('name');
+        self::assertSame(0, $name->getNumberOfParameters());
+        self::assertSame('string', (string) $name->getReturnType());
+
+        $appliesAt = $rc->getMethod('appliesAt');
+        self::assertSame(1, $appliesAt->getNumberOfParameters());
+        self::assertSame('level', $appliesAt->getParameters()[0]->getName());
+        self::assertSame(EnrichmentLevel::class, (string) $appliesAt->getParameters()[0]->getType());
+        self::assertSame('bool', (string) $appliesAt->getReturnType());
+
+        $enrich = $rc->getMethod('enrich');
+        self::assertSame(2, $enrich->getNumberOfParameters());
+        self::assertSame('chunk', $enrich->getParameters()[0]->getName());
+        self::assertSame(ChunkDraft::class, (string) $enrich->getParameters()[0]->getType());
+        self::assertSame('context', $enrich->getParameters()[1]->getName());
+        self::assertSame('array', (string) $enrich->getParameters()[1]->getType());
+        self::assertSame(ChunkDraft::class, (string) $enrich->getReturnType());
     }
 }
