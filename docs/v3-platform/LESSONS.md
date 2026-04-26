@@ -59,3 +59,33 @@ Three concrete environment lessons discovered while building T1.1 contracts:
 **References:** `app/Services/Kb/Pipeline/SourceDocument.php`, `app/Services/Kb/Contracts/ConverterInterface.php`, `tests/Unit/Services/Kb/Pipeline/ContractsTest.php`
 
 ---
+
+## [2026-04-26 22:25] Sub-task T1.2 — MarkdownChunker behind ChunkerInterface
+
+**Type:** discovery + decision-runtime
+**Severity:** medium
+**Applies to:** all v3 sub-agents that follow plan literal-text without first inspecting the existing code; future ChunkerInterface implementations (T1.7 PdfPageChunker); T1.4 DocumentIngestor refactor.
+
+**Finding:**
+Three concrete lessons surfaced during T1.2:
+
+1. **The plan's stated "existing signature" was wrong.** Plan §Task 1.2 Step 3 says the legacy method is `chunk(string $markdown, string $filename, ?string $strategy = null): array`. The REAL existing signature is `chunk(string $filename, string $markdown): Collection` (filename FIRST, returns Illuminate `Collection`, no strategy arg). Following the plan literally would have broken 22 callsites in `tests/Unit/Kb/MarkdownChunkerTest.php` (which call `->chunk('f.md', $md)`) and the Mockery expectation in `tests/Feature/Kb/DocumentIngestorTest.php` (which returns a Collection of bare arrays). I preserved the REAL signature verbatim under the renamed `chunkLegacy()` method — parity is what the Verification Gate required, not plan literal-text.
+
+2. **The plan's "Files" list is necessary-but-not-sufficient.** Plan listed only `app/Services/Kb/MarkdownChunker.php` + the new test file. But renaming `chunk` → `chunkLegacy` cascades to ALL callers: `app/Services/Kb/DocumentIngestor.php:59`, 22 calls in `tests/Unit/Kb/MarkdownChunkerTest.php`, and (less obvious) a Mockery `shouldReceive('chunk')` expectation in `tests/Feature/Kb/DocumentIngestorTest.php:29`. The Feature test failure surfaced ONLY when running the full Feature suite — the Unit suite passed without touching it. Always run BOTH suites at the Verification Gate even when the plan only specifies Unit.
+
+3. **`Mockery::mock(ConcreteClass)` does NOT proxy unstubbed calls** — it raises `Mockery\Exception\BadMethodCallException: Received Mockery_X::chunkLegacy(), but no expectations were specified`. So renaming a public method silently breaks every mock that pinned the OLD name, and the failure surfaces only when that specific test runs. There is no "rename public method on a class with mocks pinned to it" tooling; you must grep `shouldReceive('<oldname>')` across `tests/` whenever you rename.
+
+**Why it matters:**
+- T1.7 (PdfPageChunker) and T1.5/T1.6 (Pdf/Docx converters) will face the same "plan-vs-reality" gap. Sub-agents must inspect the existing code BEFORE accepting the plan's signature claims.
+- T1.4 (DocumentIngestor refactor) will be the cutover that finally drops `chunkLegacy()` AND the 22 legacy test calls. Plan it as a single atomic refactor: switch the caller, update the 22 tests to the new signature, delete `chunkLegacy()`. Don't try to keep both methods past T1.4.
+- Future renames of public methods on classes consumed by Mockery: always `grep -rn "shouldReceive('<oldname>')" tests/` BEFORE assuming Unit-only is sufficient.
+
+**How to apply:**
+- For any "rename existing method" step: run `grep -rn "->\w*<oldname>(\|shouldReceive('<oldname>')" app/ tests/` first. Update all hits in the same commit.
+- Always run `--testsuite=Unit` AND `--testsuite=Feature` at the Verification Gate, even if the plan lists only Unit.
+- When the plan's claimed "existing signature" disagrees with the source: trust the source, document the deviation in the progress log + LESSONS.md, do NOT silently break parity to match the plan literal.
+- Adapter pattern is fine: new `chunk(ConvertedDocument)` delegates to `chunkLegacy()` via a thin map to ChunkDraft. No logic duplication, no stale code paths.
+
+**References:** `app/Services/Kb/MarkdownChunker.php` (chunk + chunkLegacy + adapter), `app/Services/Kb/DocumentIngestor.php:59` (callsite update), `tests/Unit/Services/Kb/MarkdownChunkerInterfaceTest.php` (T1.2 own tests), `tests/Unit/Kb/MarkdownChunkerTest.php` (22 cascade renames), `tests/Feature/Kb/DocumentIngestorTest.php:29` (Mockery rename), `docs/v3-platform/progress/T1.2.md`.
+
+---

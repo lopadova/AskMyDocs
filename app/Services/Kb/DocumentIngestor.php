@@ -56,7 +56,7 @@ class DocumentIngestor
         }
 
         $canonical = $this->tryParseCanonical($projectKey, $sourcePath, $markdown);
-        $chunks = $this->markdownChunker->chunk($sourcePath, $markdown);
+        $chunks = $this->markdownChunker->chunkLegacy($sourcePath, $markdown);
         $embeddingResponse = $this->embeddingCache->generate($chunks->pluck('text')->all());
 
         $document = DB::transaction(fn () => $this->persistDocumentAndChunks(
