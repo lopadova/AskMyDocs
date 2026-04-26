@@ -32,13 +32,19 @@ final class MarkdownChunkerInterfaceTest extends TestCase
         $this->assertSame('markdown-section-aware', app(MarkdownChunker::class)->name());
     }
 
-    public function test_supports_markdown_and_md(): void
+    public function test_supports_markdown_md_text_and_docx(): void
     {
         $chunker = app(MarkdownChunker::class);
         $this->assertTrue($chunker->supports('markdown'));
         $this->assertTrue($chunker->supports('md'));
+        // text/plain converts to markdown via TextPassthroughConverter,
+        // so the same chunker must accept 'text' source-type.
+        $this->assertTrue($chunker->supports('text'));
+        // T1.6 DocxConverter produces markdown — same processor.
+        $this->assertTrue($chunker->supports('docx'));
+        // T1.7 introduces PdfPageChunker — pdf is NOT this chunker's job.
         $this->assertFalse($chunker->supports('pdf'));
-        $this->assertFalse($chunker->supports('docx'));
+        $this->assertFalse($chunker->supports('unknown'));
     }
 
     public function test_chunk_method_accepts_converted_document(): void

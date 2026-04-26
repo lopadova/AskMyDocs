@@ -462,6 +462,29 @@ KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
+### Extending the Ingestion Pipeline
+
+AskMyDocs v3.0 introduces a pluggable ingestion pipeline driven by `config/kb-pipeline.php`. To add support for a new file format:
+
+1. **Implement** `App\Services\Kb\Contracts\ConverterInterface` — convert raw bytes to a `ConvertedDocument` (markdown + extraction metadata). Every converter MUST populate `extractionMeta['filename'] = basename($doc->sourcePath)` so the chunker can attribute chunks back to their source file.
+2. **Implement** `App\Services\Kb\Contracts\ChunkerInterface` — or reuse `MarkdownChunker` if your converter outputs markdown (the default for prose formats).
+3. **Register** in `config/kb-pipeline.php` under `converters` and `chunkers`.
+4. **Map** the MIME type in `mime_to_source_type` so the pipeline can route to the right chunker.
+
+Built-in converters (v3.0):
+
+- `MarkdownPassthroughConverter` — `text/markdown`, `text/x-markdown`
+- `TextPassthroughConverter` — `text/plain` (wraps prose in a `# {basename}` header so MarkdownChunker can section it)
+- `PdfConverter` — `application/pdf` (added in T1.5)
+- `DocxConverter` — `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (added in T1.6)
+
+Built-in chunkers (v3.0):
+
+- `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown)
+- `PdfPageChunker` — handles `pdf` source type, one chunk per page (added in T1.7)
+
+The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title)`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
+
 ---
 
 ## Scheduler

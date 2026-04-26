@@ -20,6 +20,7 @@ use App\Models\KnowledgeDocument;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
+use App\Services\Kb\Pipeline\PipelineRegistry;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -39,6 +40,13 @@ class AppServiceProvider extends ServiceProvider
         // because Laravel's HTTP kernel may resolve controller
         // dependencies before boot() on a warm container.
         $this->app->bind(PdfRenderer::class, fn () => PdfRendererFactory::resolve());
+
+        // T1.4 — KB ingestion pipeline registry. Singleton so the converter +
+        // chunker boot cost is paid once per request. Driven by `config/kb-pipeline.php`
+        // (see README → "Extending the Ingestion Pipeline").
+        $this->app->singleton(PipelineRegistry::class, function ($app) {
+            return new PipelineRegistry($app, (array) config('kb-pipeline', []));
+        });
     }
 
     public function boot(): void

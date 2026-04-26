@@ -23,26 +23,22 @@ class DocumentIngestorTest extends TestCase
 
     public function test_archives_previous_versions_for_same_source_path(): void
     {
-        $chunker = Mockery::mock(MarkdownChunker::class);
+        // Post-T1.4 refactor: ingestMarkdown is a facade calling ingest() which
+        // resolves the real MarkdownChunker via PipelineRegistry. Mocking the
+        // chunker is no longer reachable through the singleton registry path,
+        // so we use the real chunker (cheap — just regex + buffers) and only
+        // mock the embedding cache (which would otherwise hit a real provider).
         $cache = Mockery::mock(EmbeddingCacheService::class);
-
-        $chunker->shouldReceive('chunkLegacy')->twice()->andReturn(
-            collect([[
-                'text' => 'first chunk',
-                'heading_path' => null,
-                'metadata' => [],
-            ]])
-        );
-
-        $cache->shouldReceive('generate')->twice()->andReturn(
-            new EmbeddingsResponse(
-                embeddings: [[0.1, 0.2, 0.3]],
+        $cache->shouldReceive('generate')->twice()->andReturnUsing(
+            fn (array $texts) => new EmbeddingsResponse(
+                embeddings: array_map(fn () => [0.1, 0.2, 0.3], $texts),
                 provider: 'openai',
                 model: 'text-embedding-3-small',
-            )
+            ),
         );
+        $this->app->instance(EmbeddingCacheService::class, $cache);
 
-        $ingestor = new DocumentIngestor($chunker, $cache);
+        $ingestor = app(DocumentIngestor::class);
 
         $first = $ingestor->ingestMarkdown('proj-a', '/docs/readme.md', 'Readme', '# v1');
         $second = $ingestor->ingestMarkdown('proj-a', '/docs/readme.md', 'Readme', '# v2');

@@ -44,7 +44,15 @@ class MarkdownChunker implements ChunkerInterface
     private const FENCE_TOGGLE_RE = '/^\s{0,3}(`{3,}|~{3,})/';
     private const PARAGRAPH_SEP = '/\n{2,}/';
     private const CHARS_PER_TOKEN = 4;
-    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md'];
+    /**
+     * Source-type tokens this chunker handles. `text` is included because
+     * {@see \App\Services\Kb\Converters\TextPassthroughConverter} produces
+     * markdown (a synthetic `# {basename}` H1 wrapping the prose body),
+     * so MarkdownChunker is the natural processor for plain-text sources too.
+     * T1.7 introduces PdfPageChunker for `pdf`; T1.6 keeps DOCX on this same
+     * chunker (DocxConverter outputs markdown).
+     */
+    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'docx'];
 
     private WikilinkExtractor $wikilinks;
 

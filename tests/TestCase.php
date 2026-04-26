@@ -34,6 +34,10 @@ abstract class TestCase extends OrchestraTestCase
 
         $app['config']->set('ai', require __DIR__.'/../config/ai.php');
         $app['config']->set('kb', require __DIR__.'/../config/kb.php');
+        // T1.4 — pluggable ingestion pipeline registry config. Without this,
+        // PipelineRegistry boots with an empty converter/chunker list under
+        // Testbench (which doesn't auto-load project config files).
+        $app['config']->set('kb-pipeline', require __DIR__.'/../config/kb-pipeline.php');
         // Load the project's filesystems config so `config('filesystems.disks.kb.driver')`
         // resolves during tests (Testbench's default skeleton has no `kb` disk).
         // HealthCheckService::kbDiskOk reads this to decide whether to hit
