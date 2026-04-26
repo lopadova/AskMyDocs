@@ -80,8 +80,6 @@ final class TextPassthroughConverterTest extends TestCase
      *
      * Filename meta is still set so the pipeline observability surface (admin
      * KB tree, log lines) can still attribute the empty source to its path.
-     *
-     * @dataProvider emptyBodyProvider
      */
     #[DataProvider('emptyBodyProvider')]
     public function test_convert_returns_empty_markdown_for_empty_or_whitespace_body(string $body): void

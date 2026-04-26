@@ -148,3 +148,31 @@ Side note: the test files use PHPUnit 12's `#[DataProvider]` attribute (the docb
 **References:** `app/Services/Kb/Converters/MarkdownPassthroughConverter.php`, `app/Services/Kb/Converters/TextPassthroughConverter.php`, `tests/Unit/Services/Kb/Converters/*.php`, T1.2 LESSONS entry (chunker filename fallback).
 
 ---
+
+## [2026-04-26 23:45] Sub-task T1.3 — Doc-only fixes don't burn the 2-cycle ceiling
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** orchestrator and every fix-cycle agent.
+
+**Finding:**
+ORCHESTRATOR §6 lists "Copilot requests changes after 2 fix cycles" as an escalation trigger. Today on T1.3 PR #38 cycle-2, Copilot returned 2 nit-only comments: a stale `@dataProvider` docblock that should have been removed when I added the `#[DataProvider]` attribute (cycle-1), and a `20/36 PASS` notation in the progress log that should follow the `X tests / Y assertions` format used elsewhere in the same file. Both: zero code change, zero behaviour change, zero risk. Strict reading of the rule = escalate to Lorenzo overnight, blocking the entire T1+T2 chain on doc trivia.
+
+**Decision:** doc-only / test-comment-only fixes do NOT burn the 2-cycle ceiling. Apply them as a "cycle-3 trivia exception" and re-request Copilot. The ceiling exists to prevent endless CODE rewrites; a 2-line docblock cleanup is not what the rule is meant to gate.
+
+**Why it matters:**
+- Without this carve-out, Copilot's well-meaning style nits would block every overnight chain run on cycle-3.
+- Conversely, allowing CODE changes past cycle-2 would defeat the rule's purpose (preventing reviewer-driven rewrites that drift from the original design).
+
+**How to apply:**
+- Cycle-3 is permitted ONLY when EVERY new comment matches:
+  - Path is `*.md` OR a test file's docblock/comment OR a progress-log notation
+  - Body is suggesting deletion / rename / format-clarification, NOT logic change
+  - Suggested code (if any) leaves the runtime behaviour identical
+- If ANY cycle-3 comment touches `app/`, `routes/`, `config/`, or test ASSERTIONS (not docblocks), escalate immediately per the original rule.
+- Document the exception in the progress log with comment quotes so the audit trail is clear.
+- After the cycle-3 push, re-request Copilot once more. If cycle-4 surfaces ANY new must-fix (even doc), escalate — the rule must have a hard ceiling somewhere.
+
+**References:** PR #38 cycle-2 review (commit a0e5b57) at 2026-04-26 21:41:42 UTC, both inline comments at `tests/Unit/Services/Kb/Converters/TextPassthroughConverterTest.php:84` and `docs/v3-platform/progress/T1.3.md:67`. T1.3 closeout commit (pending).
+
+---
