@@ -89,3 +89,33 @@ Three concrete lessons surfaced during T1.2:
 **References:** `app/Services/Kb/MarkdownChunker.php` (chunk + chunkLegacy + adapter), `app/Services/Kb/DocumentIngestor.php:59` (callsite update), `tests/Unit/Services/Kb/MarkdownChunkerInterfaceTest.php` (T1.2 own tests), `tests/Unit/Kb/MarkdownChunkerTest.php` (22 cascade renames), `tests/Feature/Kb/DocumentIngestorTest.php:29` (Mockery rename), `docs/v3-platform/progress/T1.2.md`.
 
 ---
+
+## [2026-04-26 22:55] Sub-task T1.2 — Orchestrator workflow gotchas (cycle-2 addendum)
+
+**Type:** rule + discovery
+**Severity:** high
+**Applies to:** EVERY future v3 sub-task PR loop (the orchestrator and every fix-cycle agent).
+
+**Finding:**
+Two operational gotchas surfaced during the Copilot fix loop on PR #37 — both block the workflow silently if not handled:
+
+1. **Copilot does NOT auto-re-trigger on a fix push when its prior review state is `COMMENTED`.** Cycle-1 review was COMMENTED (2 must-fix inline comments). After pushing the fix commit `7c4117d`, no new "Copilot code review" workflow run appeared and the reviews API still showed only the cycle-1 entry tied to the original commit. Copilot does NOT behave like a human reviewer here — it requires an explicit re-request. Workaround: `gh api "repos/<owner>/<repo>/pulls/<n>/requested_reviewers" -X POST -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` after every fix push. Cycle-2 review then arrives ~5 min later. Without this re-request, the orchestrator polls forever waiting for a review that never comes.
+
+2. **`.github/workflows/tests.yml` ONLY runs on `main` push and PR-against-`main` (`on: { push: { branches: [main] }, pull_request: { branches: [main] } }`).** PR #37 targets `feature/v3.0-pipeline-foundation`, so PHPUnit / vitest / lint workflows DO NOT execute on these intra-feature PRs. The PR is gated SOLELY by Copilot review. This means: (a) the Verification Gate run by the sub-agent locally is the ONLY automated test signal before merge, (b) any Playwright-flake escalation rule from the prompt is moot for these PRs (no Playwright runs), (c) when T4.6 finally opens the v3.0 → main PR, the FULL test suite will fire for the first time across all v3 commits — surprises possible. Plan T4.x accordingly.
+
+**Cycle-2 verdict pattern:** when Copilot returns COMMENTED with body containing the literal string `"generated no comments"` and no new entries in `pulls/<n>/comments`, that IS the approval signal — there is no formal APPROVED state with this app config. Treat as merge-ready.
+
+**Why it matters:**
+- Without rule (1), the orchestrator wastes 10-15 min polling a review queue that's empty by design, then escalates falsely.
+- Without rule (2), an agent might assume "PR opened, CI will catch any regression I missed" and skip the local Feature-suite gate. There IS no CI on these branches.
+- Cycle-2 verdict pattern is the only deterministic merge signal — relying on `reviewDecision` (which stays empty) or the literal "APPROVED" string would block forever.
+
+**How to apply:**
+- After every fix push: re-request Copilot via REST POST. Bake into the orchestrator's STEP H.
+- Sub-agents: run BOTH Unit AND Feature suites at the Verification Gate. Do not assume CI will catch it. (Reinforces T1.2 main entry rule 2.)
+- Merge-readiness check: review state COMMENTED + body contains "generated no comments" + zero new entries in `pulls/<n>/comments` after the fix commit's sha → merge-eligible.
+- Wakeup cadence: 270s (within 5-min cache TTL) is the right poll interval; cycle-2 review arrives ~3-5 min after re-request based on PR #37 timing.
+
+**References:** PR #37 cycle-1 (commit 4f30ea2) review at 20:29:42Z, fix push 7c4117d at 22:38, re-request via API at ~22:45, cycle-2 (commit 7c4117d) review at 20:50:28Z, merge sha 050c75e. Closeout commit `e7f8672` on `feature/v3.0-pipeline-foundation`.
+
+---
