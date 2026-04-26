@@ -123,9 +123,25 @@ final class PdfConverter implements ConverterInterface
             $process->mustRun();
             $text = $process->getOutput();
             $pages = preg_split("/\f/", $text);
-            return $pages === false || $pages === [] ? [$text] : $pages;
+            if ($pages === false || $pages === []) {
+                return [$text];
+            }
+            // pdftotext frequently emits a trailing form-feed after the last
+            // page, which would surface here as an empty trailing element
+            // and inflate page_count by one (and produce a phantom `## Page N`
+            // section with empty body). Pop exactly one trailing empty.
+            if (end($pages) === '') {
+                array_pop($pages);
+            }
+            return $pages;
         } finally {
-            @unlink($tmp);
+            // Per CLAUDE.md R7 (no @-silenced errors): explicit guard +
+            // unsuppressed unlink. tempnam() always returns a writable path,
+            // so a missing file at this point would only happen if another
+            // process raced us — guarding with is_file() handles that.
+            if (is_file($tmp)) {
+                unlink($tmp);
+            }
         }
     }
 
