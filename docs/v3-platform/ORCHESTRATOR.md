@@ -202,7 +202,131 @@ WAVE 0 (parallel-safe):
 
 ---
 
-## 4. LESSONS.md Injection Protocol
+## 4. Per-Task Progress Tracking (CRASH-RESILIENT RESUME)
+
+**Goal:** zero work lost on session interruption. Every sub-agent must update its progress file after EACH step so the orchestrator (or a future fresh agent) can resume exactly where the previous one stopped.
+
+### 4.1 Progress file per task
+
+**File:** `docs/v3-platform/progress/<TASK_ID>.md` (e.g. `T1.1.md`, `T2.7.md`)
+
+**Created by:** orchestrator at task dispatch (STEP A of the workflow).
+
+**Updated by:** sub-agent, after EACH step of the plan.
+
+**Schema (mandatory):**
+
+```markdown
+# <TASK_ID> Progress Log
+
+**Status:** in_progress | completed | escalated | blocked
+**Started:** YYYY-MM-DD HH:MM:SS UTC
+**Last update:** YYYY-MM-DD HH:MM:SS UTC
+**Branch:** feature/v3.0-<TASK_ID>
+**Plan reference:** docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md (anchor: ### Task <N>)
+
+## Step Updates (append-only — newest at the BOTTOM)
+
+### [HH:MM:SS] Step 1: <step title from plan>
+**Action:** <what was done>
+**Files touched:** [list of paths created/modified]
+**Command run:** <if applicable>
+**Result:** PASS | FAIL | (with stdout/stderr excerpt if failed)
+**State after step:** <one sentence describing repo state>
+
+### [HH:MM:SS] Step 2: ...
+...
+
+## Verification Gate State
+- [ ] <each gate item from plan>
+- [ ] ...
+
+## Completion Checklist (orchestrator-driven, NOT sub-agent)
+- [ ] Verification Gate green
+- [ ] LESSONS.md entry appended
+- [ ] README delta applied
+- [ ] Local commit made (sha: <git-sha>)
+- [ ] Branch pushed (gh push log: <link>)
+- [ ] PR opened with Copilot reviewer (PR#: <num>, url: <url>)
+- [ ] Copilot review received
+- [ ] Fix cycle complete (cycles: <n>)
+- [ ] PR merged + branch deleted (merge sha: <sha>)
+
+## Recovery Instructions
+
+If this session was interrupted, the orchestrator MUST:
+1. Read the LAST `### [HH:MM:SS] Step N` block in "Step Updates"
+2. Check `Result:` of that step:
+   - If `PASS` → restart from Step N+1
+   - If `FAIL` → restart from Step N (re-attempt the same step with the error context attached)
+   - If missing (block has no Result line) → restart from Step N (sub-agent likely crashed mid-step)
+3. Check `State after step:` to understand what files exist / what tests pass
+4. Run `git status` and `git log --oneline -5` on the task branch to confirm
+5. If `Local commit made` is checked but `Branch pushed` is not → just push, don't re-run agent
+6. If `PR opened` is checked but Copilot review missing → resume the wait-for-Copilot loop, do NOT reopen PR
+
+**Never restart a task from Step 1 without first checking this file.** Doing so risks duplicate commits, duplicate PRs, and merge conflicts.
+
+## Error Log (if any)
+
+Append blocker details here when status flips to `escalated` or `blocked`:
+
+### [HH:MM:SS] Blocker: <short description>
+**Step:** N
+**Command:** <what failed>
+**Stdout:**
+<excerpt>
+**Stderr:**
+<excerpt>
+**Hypothesis:** <agent's guess at root cause>
+**Suggested next actions:** <agent's 1-3 suggested debug steps>
+```
+
+### 4.2 Sub-agent prompt requirement
+
+The orchestrator's dispatch prompt (STEP B) MUST include this clause:
+
+> **Progress tracking is mandatory.** Before you start, OPEN `docs/v3-platform/progress/<TASK_ID>.md` (the orchestrator pre-created it). After EACH numbered Step in the plan, append a new `### [HH:MM:SS] Step N: ...` block to the "Step Updates" section with: Action, Files touched, Command run, Result (PASS/FAIL), State after step. Do this BEFORE moving to the next step. If you must stop mid-step (token budget, bug you can't resolve), append a final block describing the partial state — never leave a step half-done without a record.
+
+### 4.3 Resume behavior
+
+```
+$ bash scripts/v3-orchestrator.sh --resume
+
+Reading state from .v3-orchestrator-state.json
+Found task T1.4 with status 'in_progress'
+Reading docs/v3-platform/progress/T1.4.md
+Last step: ### [14:23:11] Step 5: Implement PipelineRegistry — Result: PASS
+Inferred restart point: Step 6 (Bind in service provider)
+Re-dispatching sub-agent for T1.4 with continuation prompt...
+```
+
+Continuation prompt example:
+
+> You are CONTINUING sub-task T1.4 of AskMyDocs v3.0 from Step 6.
+>
+> The previous agent completed Steps 1-5 successfully (verified via progress log at docs/v3-platform/progress/T1.4.md).
+> Repo state confirmed: PipelineRegistry.php exists, tests at Step 5 passed, no commit made yet.
+>
+> Resume from Step 6 (Bind in service provider) and continue through to commit + report.
+> Continue updating the progress log after each step as before.
+
+### 4.4 Why this matters (rationale for sub-agents reading this)
+
+- **Session interruption** can happen mid-task (network blip, model timeout, manual stop). Without progress logs, the next agent has no idea what's been done — risks running implement-step on already-existing code, creating duplicate commits, breaking partial state.
+- **Fix-cycle continuity:** when Copilot requests changes and the orchestrator dispatches a fix-agent, that fix-agent reads the progress log to understand what was originally done, then layers fixes on top.
+- **Audit trail:** progress logs are committed to git as part of the task PR. Future debugging of "why was X done this way" becomes trivial.
+- **Estimation calibration:** progress logs give actual time-per-step data, useful for revising stima for v3.1+.
+
+### 4.5 Periodicity for long tasks
+
+For tasks with > 5 steps OR > 30 min estimated:
+- Sub-agent updates progress log MIN every 10 minutes even if mid-step (`### [HH:MM:SS] Step N (in progress): partial state — no full result yet`)
+- This handles the case of agents writing 200 lines of code in one shot — at least one heartbeat lets orchestrator know it's alive
+
+---
+
+## 5. LESSONS.md Injection Protocol
 
 **File:** `docs/v3-platform/LESSONS.md` (append-only, see plan §0.2 for entry format).
 
@@ -224,7 +348,7 @@ WAVE 0 (parallel-safe):
 
 ---
 
-## 5. Escalation Triggers (orchestrator MUST stop and ask human)
+## 6. Escalation Triggers (orchestrator MUST stop and ask human)
 
 | Trigger | Action |
 |---|---|
@@ -238,7 +362,7 @@ WAVE 0 (parallel-safe):
 
 ---
 
-## 6. Branch Conventions
+## 7. Branch Conventions
 
 ```
 main
@@ -264,7 +388,7 @@ main
 
 ---
 
-## 7. Reporting Cadence
+## 8. Reporting Cadence
 
 **Orchestrator reports to human:**
 - Once per WAVE completion: `WAVE N done — N tasks merged, M lessons added, X minutes elapsed`
@@ -273,7 +397,7 @@ main
 
 ---
 
-## 8. Tooling References
+## 9. Tooling References
 
 - **Standalone runner:** `scripts/v3-orchestrator.sh` (implements this protocol — bash, runs without Claude session needed)
 - **Plan source:** `docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md`
@@ -283,7 +407,7 @@ main
 
 ---
 
-## 9. Anti-patterns (DO NOT do these)
+## 10. Anti-patterns (DO NOT do these)
 
 - ❌ Dispatch a sub-agent without injecting LESSONS.md
 - ❌ Push or open PR from inside a sub-agent (orchestrator owns remote state)
@@ -292,6 +416,8 @@ main
 - ❌ Resolve merge conflicts in macro branch without escalating
 - ❌ Trim LESSONS.md too aggressively — lose context, agents repeat mistakes
 - ❌ Run > 4 sub-agents in parallel against the same monorepo — race conditions on shared files
+- ❌ Skip the progress log update after a step — breaks crash-resilient resume
+- ❌ Restart a task from Step 1 without consulting `docs/v3-platform/progress/<TASK_ID>.md` first
 
 ---
 

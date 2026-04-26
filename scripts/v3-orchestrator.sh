@@ -19,6 +19,7 @@ set -uo pipefail
 PLAN_FILE="docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md"
 LESSONS_FILE="docs/v3-platform/LESSONS.md"
 ORCHESTRATOR_DOC="docs/v3-platform/ORCHESTRATOR.md"
+PROGRESS_DIR="docs/v3-platform/progress"
 STATE_FILE=".v3-orchestrator-state.json"
 LOG_DIR="docs/v3-platform/orchestrator-logs"
 MAX_PARALLELISM=4
@@ -28,7 +29,7 @@ COPILOT_TIMEOUT_SEC=900        # 15 min total
 MAX_FIX_CYCLES=2
 MAX_VERIFICATION_RETRIES=3
 
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" "$PROGRESS_DIR"
 
 # ─── Pre-flight ─────────────────────────────────────────────────────────────
 require_cmd() {
@@ -91,6 +92,94 @@ ensure_branch() {
   fi
 }
 
+# ─── Progress file management ──────────────────────────────────────────────
+init_progress_file() {
+  local task_id="$1"
+  local task_branch="$2"
+  local progress_file="$PROGRESS_DIR/$task_id.md"
+
+  if [[ -f "$progress_file" ]]; then
+    log INFO "Progress file already exists for $task_id — keeping for resume"
+    return 0
+  fi
+
+  local task_title
+  task_title=$(awk -v id="${task_id#T}" '$0 ~ "^### Task " id " " {print substr($0, length("### Task " id " — ")); exit}' "$PLAN_FILE")
+
+  cat > "$progress_file" <<EOF
+# $task_id Progress Log
+
+**Status:** in_progress
+**Started:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**Last update:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+**Branch:** $task_branch
+**Plan reference:** docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md (### Task ${task_id#T} — $task_title)
+
+## Step Updates (append-only — newest at the BOTTOM)
+
+<!-- Sub-agent appends a "### [HH:MM:SS] Step N: ..." block after each step -->
+
+## Verification Gate State
+
+<!-- Sub-agent ticks each gate item from the plan as they pass -->
+
+## Completion Checklist (orchestrator-driven)
+
+- [ ] Verification Gate green
+- [ ] LESSONS.md entry appended
+- [ ] README delta applied
+- [ ] Local commit made (sha: <pending>)
+- [ ] Branch pushed
+- [ ] PR opened with Copilot reviewer (PR#: <pending>)
+- [ ] Copilot review received
+- [ ] Fix cycle complete (cycles: 0)
+- [ ] PR merged + branch deleted
+
+## Recovery Instructions
+
+If this session was interrupted, the orchestrator MUST:
+1. Read the LAST '### [HH:MM:SS] Step N' block in 'Step Updates'
+2. Check 'Result:' of that step:
+   - If PASS → restart from Step N+1
+   - If FAIL → restart from Step N (re-attempt with error context)
+   - If missing → restart from Step N (sub-agent crashed mid-step)
+3. Run 'git status' and 'git log --oneline -5' on the task branch to confirm state
+4. If 'Local commit made' is checked but not 'Branch pushed' → just push, do NOT re-run agent
+5. If 'PR opened' is checked → resume the wait-for-Copilot loop, do NOT reopen PR
+
+## Error Log
+
+<!-- Append blocker details here if status flips to escalated/blocked -->
+EOF
+
+  log INFO "Progress file initialized: $progress_file"
+}
+
+read_last_progress_step() {
+  local progress_file="$PROGRESS_DIR/$1.md"
+  if [[ ! -f "$progress_file" ]]; then
+    echo "NEW"
+    return 0
+  fi
+  # Find last "### [HH:MM:SS] Step N:" block + result line
+  local last_step
+  last_step=$(grep -E "^### \[[0-9]{2}:[0-9]{2}:[0-9]{2}\] Step [0-9]+:" "$progress_file" | tail -1)
+  if [[ -z "$last_step" ]]; then
+    echo "NEW"
+    return 0
+  fi
+  local step_num
+  step_num=$(echo "$last_step" | grep -oE "Step [0-9]+" | grep -oE "[0-9]+")
+  # Check the result of that step (look in the lines following the last "### Step N:" header)
+  local last_result
+  last_result=$(awk "/^### \[[0-9]+:[0-9]+:[0-9]+\] Step ${step_num}:/{found=1} found && /^\*\*Result:\*\*/{print; exit}" "$progress_file")
+  if echo "$last_result" | grep -q "PASS"; then
+    echo "RESUME_FROM:$((step_num + 1))"
+  else
+    echo "RESUME_FROM:$step_num"
+  fi
+}
+
 # ─── Sub-agent dispatch (Claude Code headless) ─────────────────────────────
 # This is the integration seam with Claude. Two implementations:
 #  (A) HEADLESS — uses `claude --headless` (if available in your install)
@@ -106,12 +195,32 @@ dispatch_subagent() {
 
   local prompt_file
   prompt_file=$(mktemp -t "v3-prompt-${task_id}-XXXXXX.md")
+  local progress_status
+  progress_status=$(read_last_progress_step "$task_id")
+  local resume_clause=""
+  if [[ "$progress_status" =~ ^RESUME_FROM:([0-9]+)$ ]]; then
+    local resume_step="${BASH_REMATCH[1]}"
+    resume_clause="
+
+# RESUMPTION CONTEXT
+
+A previous agent worked on this task and produced docs/v3-platform/progress/${task_id}.md.
+Read that file FIRST. It tells you exactly which steps already completed (with their results
+and file lists) and which step to RESUME from. Inferred resume point: Step ${resume_step}.
+
+Verify repo state matches what the progress log claims (run 'git status', 'git log --oneline -5'
+on this branch) before proceeding. If state diverges from progress log, append a discrepancy
+note in the Error Log section and re-do the diverged steps.
+"
+  fi
+
   cat > "$prompt_file" <<EOF
 You are implementing sub-task ${task_id} of AskMyDocs v3.0.
 
 Working directory: $(pwd)
 Branch you are on: ${task_branch}
-
+Progress log: docs/v3-platform/progress/${task_id}.md (pre-created by orchestrator)
+${resume_clause}
 # PLAN EXCERPT FOR ${task_id}
 
 $(cat "$task_excerpt_file")
@@ -123,20 +232,33 @@ $lessons_content
 # CONSTRAINTS (orchestrator-enforced)
 
 1. Follow ALL steps in order. Do NOT skip the failing-test step before the implementation.
-2. Do NOT push, do NOT open PR — orchestrator handles those.
-3. The Verification Gate is non-negotiable. If any check fails, STOP and report:
-   - The failing command
-   - Stdout + stderr
-   - Hypothesis of root cause
-   - Next 1-3 debug actions you'd try
-4. Append your LESSONS.md entry per the template at the top of $LESSONS_FILE.
-5. Update README.md per the README Delta block in your task excerpt.
-6. Make ONE atomic commit when everything is green, with the conventional commit message
-   shown in the plan.
-7. Report the final state to stdout in this exact JSON shape:
-   {"verification": "green"|"red", "files_changed": [...], "lessons_appended": true|false, "blocker": null|"..."}
+2. **Progress tracking is MANDATORY.** After EACH numbered Step (1, 2, 3, ...) in the plan,
+   append a new block to docs/v3-platform/progress/${task_id}.md under "## Step Updates":
 
-Begin.
+   ### [HH:MM:SS] Step N: <step title from plan>
+   **Action:** <what you did, 1-2 lines>
+   **Files touched:** [paths created/modified]
+   **Command run:** <if applicable>
+   **Result:** PASS | FAIL (with stdout/stderr excerpt)
+   **State after step:** <one sentence describing repo state>
+
+   Update BEFORE moving to the next step. If you stop mid-step, append a partial block
+   describing the partial state — never leave a step half-done without a record.
+   For long-running steps (>10 min), append a heartbeat block.
+
+3. Do NOT push, do NOT open PR — orchestrator handles those.
+4. The Verification Gate is non-negotiable. If any check fails, STOP and:
+   - Append an Error Log entry in the progress file with: failing command, stdout, stderr,
+     hypothesis, suggested next debug actions
+   - Report back with verification: red
+5. Append your LESSONS.md entry per the template at the top of $LESSONS_FILE.
+6. Update README.md per the README Delta block in your task excerpt (or note 'none' explicitly).
+7. Make ONE atomic commit when everything is green, with the conventional commit message
+   shown in the plan. Tick the 'Local commit made (sha: <git-sha>)' line in the progress file.
+8. Report the final state to stdout in this exact JSON shape:
+   {"verification": "green"|"red", "files_changed": [...], "lessons_appended": true|false, "progress_file_updated": true|false, "blocker": null|"..."}
+
+Begin by reading the progress file and either starting Step 1 or resuming from the inferred step.
 EOF
 
   log INFO "Dispatching sub-agent for ${task_id}"
@@ -338,6 +460,7 @@ run_task() {
   set_task_status "$task_id" "in_progress"
   ensure_branch "$macro_branch" "feature/v3.0"
   ensure_branch "$task_branch" "$macro_branch"
+  init_progress_file "$task_id" "$task_branch"
 
   # Extract the task excerpt from the plan
   local task_excerpt_file
@@ -456,6 +579,14 @@ init_state
 case "${1:-}" in
   --status)
     jq '.tasks' "$STATE_FILE"
+    echo ""
+    echo "Progress files:"
+    ls -1 "$PROGRESS_DIR"/*.md 2>/dev/null | while read -r f; do
+      task=$(basename "$f" .md)
+      status=$(grep -E '^\*\*Status:\*\*' "$f" | head -1 | sed 's/\*\*Status:\*\* //')
+      last_step=$(grep -E '^### \[[0-9]+:[0-9]+:[0-9]+\] Step' "$f" | tail -1 | sed 's/^### //' | head -c 80)
+      echo "  $task  ($status)  last: $last_step"
+    done
     ;;
   --resume)
     next=$(jq -r '.tasks | to_entries | map(select(.value.status != "completed")) | .[0].key // empty' "$STATE_FILE")
