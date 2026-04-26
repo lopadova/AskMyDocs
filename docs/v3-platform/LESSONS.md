@@ -48,12 +48,12 @@ Three concrete environment lessons discovered while building T1.1 contracts:
 
 **Why it matters:**
 - Subsequent agents on Windows MUST use PowerShell tool, not Bash, for php commands.
-- If a future task touches composer.json, run `composer update <pkg>` AND verify `composer.lock` is committed in the same commit.
+- `composer.lock` is intentionally NOT committed in this repo. Bootstrap on a fresh clone always runs `composer install` against `composer.json`. Newly declared deps that fail to resolve must be installed via `composer update <pkg>`, NOT `composer require` (which mutates the manifest again and risks bumping unrelated packages).
 - The `final readonly` + constructor-promotion pattern is the standard for ALL v3 pipeline DTOs (SourceDocument, ConvertedDocument, ChunkDraft, RetrievalFilters, ConnectorCredential, ...).
 
 **How to apply:**
 - For tests/lint commands: prefer the PowerShell tool over Bash.
-- For composer changes: NOTE that `composer.lock` is gitignored in this repo. After modifying `composer.json` (T1.5 adds smalot/pdfparser, T1.6 adds phpoffice/phpword), you must (a) run `composer require <pkg>:<version>` so it's installed locally, (b) verify CI installs the same version (CI runs `composer install` against the JSON since there's no lock), and (c) document the new dep in README's setup section. Future agents bootstrapping locally must run the same `composer require` or `composer update <pkg>` after pulling.
+- For composer changes: NOTE that `composer.lock` is gitignored in this repo, so it cannot be committed. After modifying `composer.json` (T1.5 adds smalot/pdfparser, T1.6 adds phpoffice/phpword), you must (a) run `composer update <pkg>` for the dependency you changed so it resolves locally without re-mutating the manifest, (b) verify a fresh-clone bootstrap still works via `composer install` against the manifest alone, and (c) document the new dep in README's setup section. Future agents bootstrapping locally should start with `composer install` after pulling, then run `composer update <pkg>` only if a declared dependency fails to resolve.
 - For new DTOs: follow the pattern in `app/Services/Kb/Pipeline/SourceDocument.php` — `final readonly class X { public function __construct(public string $a, public ?int $b, public array $c) {} }`.
 
 **References:** `app/Services/Kb/Pipeline/SourceDocument.php`, `app/Services/Kb/Contracts/ConverterInterface.php`, `tests/Unit/Services/Kb/Pipeline/ContractsTest.php`

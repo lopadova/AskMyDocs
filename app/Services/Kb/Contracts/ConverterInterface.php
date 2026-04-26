@@ -14,8 +14,9 @@ use App\Services\Kb\Pipeline\SourceDocument;
  * ConvertedDocument (markdown text + extraction metadata) that the chunker can
  * then split into ChunkDraft[].
  *
- * Implementations MUST be stateless and side-effect-free; the PipelineRegistry
- * resolves a single instance per process via the Laravel container.
+ * Implementations MUST be stateless and side-effect-free; the pipeline
+ * resolves a single instance per process via the Laravel container (the
+ * concrete registry/resolver lands in T1.4).
  */
 interface ConverterInterface
 {
@@ -27,8 +28,11 @@ interface ConverterInterface
     /**
      * Returns true if this converter can handle the given MIME type.
      *
-     * Per R23 (pipeline-supports-mutex), no two registered converters may both
-     * return true for the same MIME — the registry uses first-match-wins.
+     * Non-overlap requirement: no two registered converters may both return
+     * true for the same MIME. The pipeline configuration (introduced in T1.4
+     * by `config/kb-pipeline.php`) uses first-match-wins resolution; ambiguity
+     * is a configuration bug. See plan §1 (Dependency DAG) and the
+     * Pilastro A architecture note.
      */
     public function supports(string $mimeType): bool;
 

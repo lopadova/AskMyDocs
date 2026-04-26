@@ -15,7 +15,7 @@ use PHPUnit\Framework\TestCase;
 
 final class ContractsTest extends TestCase
 {
-    public function test_source_document_dto_is_immutable_value_object(): void
+    public function test_source_document_exposes_constructor_args_as_readonly_properties(): void
     {
         $doc = new SourceDocument(
             sourcePath: 'docs/test.md',
@@ -34,6 +34,24 @@ final class ContractsTest extends TestCase
         self::assertNull($doc->externalId);
         self::assertSame('local', $doc->connectorType);
         self::assertSame(['language' => 'en'], $doc->metadata);
+    }
+
+    public function test_source_document_throws_on_attempted_mutation_proving_immutability(): void
+    {
+        $doc = new SourceDocument(
+            sourcePath: 'a.md',
+            mimeType: 'text/markdown',
+            bytes: 'x',
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [],
+        );
+
+        $this->expectException(\Error::class);
+        $this->expectExceptionMessageMatches('/Cannot modify readonly property/');
+        // @phpstan-ignore-next-line — intentional readonly violation to prove the invariant.
+        $doc->sourcePath = 'mutated.md';
     }
 
     public function test_converted_document_holds_markdown_and_extraction_meta(): void

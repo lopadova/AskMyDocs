@@ -25,18 +25,19 @@ interface ChunkerInterface
 
     /**
      * Returns true if this chunker handles the given source-type token
-     * (e.g. 'markdown', 'pdf', 'docx', 'text'). Source-type comes from
-     * config('kb-pipeline.mime_to_source_type').
+     * (e.g. 'markdown', 'pdf', 'docx', 'text'). The source type is derived
+     * from pipeline configuration during MIME/source normalisation
+     * (the concrete config key is introduced in T1.4).
      *
-     * Per R23 (pipeline-supports-mutex), no two registered chunkers may both
-     * return true for the same source-type.
+     * Non-overlap requirement: no two registered chunkers may both return
+     * true for the same source-type. Ambiguity is a configuration bug.
      */
     public function supports(string $sourceType): bool;
 
     /**
      * Split the converted document into ordered chunk drafts.
      *
-     * @return ChunkDraft[]
+     * @return list<ChunkDraft>
      */
     public function chunk(ConvertedDocument $doc): array;
 }
