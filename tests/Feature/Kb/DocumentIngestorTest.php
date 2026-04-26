@@ -26,7 +26,7 @@ class DocumentIngestorTest extends TestCase
         $chunker = Mockery::mock(MarkdownChunker::class);
         $cache = Mockery::mock(EmbeddingCacheService::class);
 
-        $chunker->shouldReceive('chunk')->twice()->andReturn(
+        $chunker->shouldReceive('chunkLegacy')->twice()->andReturn(
             collect([[
                 'text' => 'first chunk',
                 'heading_path' => null,
