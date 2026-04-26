@@ -347,8 +347,14 @@ class DocumentIngestor
             'source_type' => $sourceType,
             'title' => $title,
             'mime_type' => $mimeType,
-            'language' => $metadata['language'] ?? 'it',
-            'access_scope' => $metadata['access_scope'] ?? 'internal',
+            // `??` would let `null` fall through to the default but would NOT
+            // catch empty-string or non-string values that connectors might
+            // emit. Both columns are NOT NULL in production, so a `''` from
+            // an upstream metadata payload would surface as a constraint
+            // error at INSERT. Defensive normalisation keeps the DB defaults
+            // honoured.
+            'language' => $this->normalizeStringMeta($metadata['language'] ?? null, 'it'),
+            'access_scope' => $this->normalizeStringMeta($metadata['access_scope'] ?? null, 'internal'),
             'status' => 'active',
             'document_hash' => $documentHash,
             'metadata' => $metadata,
@@ -384,6 +390,22 @@ class DocumentIngestor
                 ],
             ]),
         ]);
+    }
+
+    /**
+     * Returns `$default` for any non-string OR empty/whitespace-only string.
+     * Used by {@see buildDocumentAttributes()} to harden NOT NULL columns
+     * (`language`, `access_scope`) against connector payloads that send
+     * `null`, `''`, or `'   '` for those keys — the bare `??` operator
+     * would let those values through and trip the DB constraint at INSERT.
+     */
+    private function normalizeStringMeta(mixed $value, string $default): string
+    {
+        if (! is_string($value)) {
+            return $default;
+        }
+        $trimmed = trim($value);
+        return $trimmed === '' ? $default : $trimmed;
     }
 
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void

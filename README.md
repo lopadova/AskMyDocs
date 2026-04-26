@@ -483,7 +483,7 @@ Built-in chunkers (v3.0):
 - `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown)
 - `PdfPageChunker` — handles `pdf` source type, one chunk per page (added in T1.7)
 
-The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title)`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
+The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
 
 ---
 

@@ -143,6 +143,57 @@ final class DocumentIngestorPipelineTest extends TestCase
         $this->assertSame('from-notion.md', $kdoc->metadata['converter']['filename']);
     }
 
+    public function test_normalizes_empty_string_language_and_access_scope_to_defaults(): void
+    {
+        // Connectors may emit `'language' => ''` or `'access_scope' => '   '`
+        // on partial payloads; bare `??` would let those values through and
+        // trip the NOT NULL DB constraint at INSERT (production columns are
+        // not nullable). Verify defensive normalisation falls back to the
+        // declared defaults `'it'` / `'internal'`.
+        $ingestor = app(DocumentIngestor::class);
+        $doc = new SourceDocument(
+            sourcePath: 'docs/empty-meta.md',
+            mimeType: 'text/markdown',
+            bytes: "# T\n\nbody",
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [
+                'language' => '',
+                'access_scope' => '   ',
+            ],
+        );
+
+        $kdoc = $ingestor->ingest('test-project', $doc, title: 'Empty meta');
+        $kdoc->refresh();
+
+        $this->assertSame('it', $kdoc->language);
+        $this->assertSame('internal', $kdoc->access_scope);
+    }
+
+    public function test_normalizes_non_string_language_to_default(): void
+    {
+        $ingestor = app(DocumentIngestor::class);
+        $doc = new SourceDocument(
+            sourcePath: 'docs/non-string-meta.md',
+            mimeType: 'text/markdown',
+            bytes: "# T\n\nbody",
+            externalUrl: null,
+            externalId: null,
+            connectorType: 'local',
+            metadata: [
+                'language' => 42,
+                'access_scope' => false,
+            ],
+        );
+
+        $kdoc = $ingestor->ingest('test-project', $doc, title: 'Non-string meta');
+        $kdoc->refresh();
+
+        $this->assertSame('it', $kdoc->language);
+        $this->assertSame('internal', $kdoc->access_scope);
+    }
+
     public function test_idempotency_via_version_hash_holds_for_new_pipeline_path(): void
     {
         $ingestor = app(DocumentIngestor::class);
