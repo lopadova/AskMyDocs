@@ -119,3 +119,32 @@ Two operational gotchas surfaced during the Copilot fix loop on PR #37 — both 
 **References:** PR #37 cycle-1 (commit 4f30ea2) review at 20:29:42Z, fix push 7c4117d at 22:38, re-request via API at ~22:45, cycle-2 (commit 7c4117d) review at 20:50:28Z, merge sha 050c75e. Closeout commit `e7f8672` on `feature/v3.0-pipeline-foundation`.
 
 ---
+
+## [2026-04-26 23:05] Sub-task T1.3 — MarkdownPassthrough + TextPassthrough converters
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** every future converter implementation (T1.5 PdfConverter, T1.6 DocxConverter, plus T2.x connectors that produce SourceDocument).
+
+**Finding:**
+Two non-obvious converter contract decisions surfaced and are now binding for ALL ConverterInterface implementations:
+
+1. **`extractionMeta['filename']` is the cross-component handshake key.** The plan §697-727 sample code did NOT set it — only `converter`, `duration_ms`, `source_path`. But T1.2's MarkdownChunker reads `extractionMeta['filename']` (with `'unknown.md'` fallback) to populate `metadata.filename` on every chunk. Without the converter populating this key, every chunked document ends up with `filename = 'unknown.md'` in its persisted chunk metadata — a regression vs the legacy `chunk(filename, markdown)` shape. Decision: every converter MUST set `extractionMeta['filename'] = basename($doc->sourcePath)`. Encoded as a test in both T1.3 converters; T1.5/T1.6 must do the same.
+
+2. **TextPassthrough wraps prose in `# {basename}\n\n{body}` deliberately.** The plan §730-766 hint was correct: this gives MarkdownChunker a heading to anchor `section_aware` strategy on, instead of falling back to `paragraph_split` (which leaves `heading_path = null`). The chunked output then carries a meaningful breadcrumb (`heading_path = "release.txt"`) instead of nothing. Reusable pattern for ANY future binary-prose converter that has no native heading structure (e.g. a CSV converter, a transcript converter): synthesise an H1 from the basename so downstream chunk metadata stays uniform.
+
+Side note: the test files use PHPUnit 12's `#[DataProvider]` attribute (the docblock `@dataProvider` no longer triggers the parser — same lesson as T1.2 fix cycle 1). Codified now: every new test file with parametrised cases must use the attribute form + `use PHPUnit\Framework\Attributes\DataProvider`.
+
+**Why it matters:**
+- Chunk metadata is consumed by the admin KB tree, the citation renderer, the Mcp tools, and the FE inline `<title>` of search results. Missing/wrong `filename` cascades into every UI surface that displays sources.
+- Future binary converters (PDF, DOCX) without an H1 would force MarkdownChunker into paragraph_split and lose the heading_path that the reranker uses for the `head` term in its `0.6·vec + 0.3·kw + 0.1·head` fusion.
+
+**How to apply:**
+- New ConverterInterface implementation checklist:
+  - `extractionMeta` MUST include keys `converter`, `duration_ms`, `source_path`, `filename` (basename of source_path).
+  - If the converter produces prose without native headings, prepend `# {basename}\n\n` to the body.
+  - Test file uses `#[DataProvider]` attribute, never `@dataProvider` docblock.
+
+**References:** `app/Services/Kb/Converters/MarkdownPassthroughConverter.php`, `app/Services/Kb/Converters/TextPassthroughConverter.php`, `tests/Unit/Services/Kb/Converters/*.php`, T1.2 LESSONS entry (chunker filename fallback).
+
+---
