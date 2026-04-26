@@ -246,3 +246,32 @@ Pattern observation: Copilot does NOT converge. Each cycle finds something new �
 **References:** PR #39 cycle-1 (a3caa58) → cycle-5 (06d96b1) → merge sha 4fe79d4. Progress log Step 7-12 narrates each cycle's triage decision.
 
 ---
+
+## [2026-04-27 01:35] Sub-task T1.5 — PdfConverter + inline PDF fixture builder pattern
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** T1.6 (DocxConverter), T1.7 (PdfPageChunker), and any future binary-format converter that needs a non-trivial test fixture.
+
+**Finding:**
+Three concrete decisions surfaced during T1.5 — all binding for downstream binary converters:
+
+1. **Inline pure-PHP fixture builders beat checked-in binary fixtures.** Plan §1099 suggested `wkhtmltopdf` or a checked-in `tests/Fixtures/pdfs/sample-3-pages.pdf`. I went with `tests/Fixtures/Pdf/PdfFixtureBuilder` — a 130-LOC pure-PHP class that emits a deterministic multi-page PDF (catalog / pages tree / content streams / xref / trailer, byte-accurate offsets). Smalot/pdfparser parses it cleanly. Why: (a) binary fixtures hide regressions in test data — a `git diff` shows nothing, and a corrupted-but-still-parseable fixture silently weakens assertions; (b) reproducibility is automatic (no external tool required to regenerate); (c) the builder doubles as living documentation of the minimum viable PDF subset; (d) the unit test for the converter and the feature test for end-to-end ingest can share the same builder, ensuring assertion text alignment. **T1.6 should follow the same pattern with a DocxFixtureBuilder** that emits a minimal `.docx` zip (Office Open XML — also straightforward).
+
+2. **Binary deps land via `composer update <pkg>` after editing composer.json directly** — confirmed-clean over the T1.1 LESSONS rule. Edited composer.json adding `smalot/pdfparser ^2.10` to the `require` block, ran `composer update smalot/pdfparser --no-interaction`. Composer resolved v2.12.5, downloaded, autoloaded — no further intervention. The gitignored composer.lock means future fresh-clone bootstraps must run `composer install` against the manifest; the repo's existing `composer.json` is the SoT. **T1.6 follows the same recipe for `phpoffice/phpword`.**
+
+3. **The pdftotext fallback path needs a parser-injection seam to test cleanly.** Plan §1146 marked the fallback test as `markTestIncomplete`. I kept it that way and instead added an integration-style test (`test_throws_runtime_exception_when_both_strategies_fail`) that feeds non-PDF bytes — both strategies fail, the wrapper RuntimeException with both strategy errors fires. Adequate for v3.0; T2.x or a follow-up refactor can introduce a `PdfParserInterface` if the fallback path needs surgical test isolation. Documented the deliberate gap so the next agent doesn't try to "fix" it without considering the seam decision.
+
+**Why it matters:**
+- Rule 1 makes binary-fixture creation ZERO operational burden (no developer runs wkhtmltopdf locally) AND keeps `git diff` informative.
+- Rule 2 codifies the install recipe so future converter PRs (T1.6, T1.x v3.1+ image OCR, etc.) don't re-derive it.
+- Rule 3 is a deliberate test-coverage gap with documented rationale — distinguish "missing because we forgot" from "missing because the design needs more thought".
+
+**How to apply:**
+- For T1.6: write `tests/Fixtures/Docx/DocxFixtureBuilder` that emits a minimal `.docx` (zip with `[Content_Types].xml`, `_rels/.rels`, `word/document.xml`). PhpWord parses it the same way it would parse a Word-generated file. Mirror the unit + feature test split.
+- For any new converter: populate `extractionMeta` with `converter`, `duration_ms`, `page_count`/`element_count` (or whatever the format's natural unit is), `extraction_strategy` (when there's a fallback), `source_path`, `filename`. The `filename` key is the T1.3-codified handshake with MarkdownChunker.
+- For binary deps: edit `composer.json` directly, run `composer update <pkg> --no-interaction`. Document the new dep in README.
+
+**References:** `app/Services/Kb/Converters/PdfConverter.php`, `tests/Unit/Services/Kb/Converters/PdfConverterTest.php`, `tests/Feature/Kb/PdfIngestionTest.php`, `tests/Fixtures/Pdf/PdfFixtureBuilder.php`, `composer.json` (smalot/pdfparser require), README.md "Extending the Ingestion Pipeline" + PDF support note.
+
+---

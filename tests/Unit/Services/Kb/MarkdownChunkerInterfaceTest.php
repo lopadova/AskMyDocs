@@ -32,7 +32,7 @@ final class MarkdownChunkerInterfaceTest extends TestCase
         $this->assertSame('markdown-section-aware', app(MarkdownChunker::class)->name());
     }
 
-    public function test_supports_markdown_md_text_and_docx(): void
+    public function test_supports_every_markdown_emitting_source_type(): void
     {
         $chunker = app(MarkdownChunker::class);
         $this->assertTrue($chunker->supports('markdown'));
@@ -42,8 +42,11 @@ final class MarkdownChunkerInterfaceTest extends TestCase
         $this->assertTrue($chunker->supports('text'));
         // T1.6 DocxConverter produces markdown — same processor.
         $this->assertTrue($chunker->supports('docx'));
-        // T1.7 introduces PdfPageChunker — pdf is NOT this chunker's job.
-        $this->assertFalse($chunker->supports('pdf'));
+        // T1.5 PdfConverter emits `# basename` + `## Page N` markdown that
+        // MarkdownChunker section_aware-chunks one chunk per page. T1.7 will
+        // introduce a dedicated PdfPageChunker that takes over `pdf` via the
+        // registry's first-match-wins rule.
+        $this->assertTrue($chunker->supports('pdf'));
         $this->assertFalse($chunker->supports('unknown'));
     }
 
