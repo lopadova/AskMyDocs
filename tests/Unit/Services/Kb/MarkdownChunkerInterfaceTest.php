@@ -8,6 +8,7 @@ use App\Services\Kb\Contracts\ChunkerInterface;
 use App\Services\Kb\MarkdownChunker;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\ConvertedDocument;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -75,6 +76,43 @@ final class MarkdownChunkerInterfaceTest extends TestCase
 
         $this->assertCount(1, $chunks);
         $this->assertSame('unknown.md', $chunks[0]->metadata['filename']);
+    }
+
+    /**
+     * Filename derivation must be defensive: a non-string OR an empty/whitespace-only
+     * string in `extractionMeta['filename']` must fall back to 'unknown.md'.
+     * Without the guard, string-casting an array yields the literal `'Array'`,
+     * an empty string is preserved verbatim, and downstream metadata becomes
+     * meaningless.
+     */
+    #[DataProvider('invalidFilenameProvider')]
+    public function test_chunk_falls_back_to_unknown_md_for_invalid_filename(mixed $invalid): void
+    {
+        $chunker = app(MarkdownChunker::class);
+        $cd = new ConvertedDocument(
+            markdown: "Just a paragraph.",
+            mediaItems: [],
+            extractionMeta: ['filename' => $invalid],
+            sourceMimeType: 'text/markdown',
+        );
+
+        $chunks = $chunker->chunk($cd);
+
+        $this->assertCount(1, $chunks);
+        $this->assertSame('unknown.md', $chunks[0]->metadata['filename']);
+    }
+
+    /**
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function invalidFilenameProvider(): iterable
+    {
+        yield 'null' => [null];
+        yield 'empty string' => [''];
+        yield 'whitespace only' => ["   \t\n"];
+        yield 'array' => [['x.md']];
+        yield 'integer' => [42];
+        yield 'boolean false' => [false];
     }
 
     public function test_chunk_returns_empty_array_for_blank_markdown(): void

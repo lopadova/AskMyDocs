@@ -67,14 +67,17 @@ class MarkdownChunker implements ChunkerInterface
      * v3 pipeline entry point — accepts a ConvertedDocument and returns ChunkDraft[].
      *
      * Filename for `metadata.filename` is read from `extractionMeta['filename']`
-     * (set by the converter or DocumentIngestor); falls back to 'unknown.md' so
-     * downstream embedding/persistence never sees a missing key.
+     * (set by the converter or DocumentIngestor) — only when it is a non-empty
+     * string. Anything else (missing key, null, empty string, array, int, ...)
+     * falls back to 'unknown.md' so downstream embedding/persistence never sees
+     * a missing key OR a meaningless value like the literal `'Array'` produced
+     * by string-casting an array.
      *
      * @return list<ChunkDraft>
      */
     public function chunk(ConvertedDocument $doc): array
     {
-        $filename = (string) ($doc->extractionMeta['filename'] ?? 'unknown.md');
+        $filename = $this->resolveFilename($doc->extractionMeta['filename'] ?? null);
         $legacy = $this->chunkLegacy($filename, $doc->markdown);
 
         return $legacy
@@ -86,6 +89,15 @@ class MarkdownChunker implements ChunkerInterface
             ))
             ->values()
             ->all();
+    }
+
+    private function resolveFilename(mixed $raw): string
+    {
+        if (! is_string($raw)) {
+            return 'unknown.md';
+        }
+        $trimmed = trim($raw);
+        return $trimmed === '' ? 'unknown.md' : $trimmed;
     }
 
     /**
