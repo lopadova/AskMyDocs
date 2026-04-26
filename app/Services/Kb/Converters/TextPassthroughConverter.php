@@ -35,7 +35,13 @@ final class TextPassthroughConverter implements ConverterInterface
     public function convert(SourceDocument $doc): ConvertedDocument
     {
         $filename = basename($doc->sourcePath);
-        $markdown = "# {$filename}\n\n" . $doc->bytes;
+        // Truly-empty / whitespace-only sources stay empty so MarkdownChunker
+        // returns []. Without the guard a heading-only `# {filename}` body
+        // would be treated as `section_aware` and produce a useless one-chunk
+        // embedding of the filename alone, polluting the vector index.
+        $markdown = trim($doc->bytes) === ''
+            ? ''
+            : "# {$filename}\n\n" . $doc->bytes;
 
         return new ConvertedDocument(
             markdown: $markdown,

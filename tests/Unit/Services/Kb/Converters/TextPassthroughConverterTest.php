@@ -70,13 +70,27 @@ final class TextPassthroughConverterTest extends TestCase
         $this->assertSame('release.txt', $result->extractionMeta['filename']);
     }
 
-    public function test_convert_preserves_empty_body(): void
+    /**
+     * Truly-empty (and whitespace-only) bodies must produce empty markdown,
+     * NOT a heading-only `# {filename}` document. MarkdownChunker treats
+     * heading-only content as `section_aware` and emits a useless one-chunk
+     * embedding of the filename alone — pollution of the vector index.
+     * The converter guards with `trim() === ''` to preserve empty-body
+     * semantics end-to-end (chunker subsequently returns []).
+     *
+     * Filename meta is still set so the pipeline observability surface (admin
+     * KB tree, log lines) can still attribute the empty source to its path.
+     *
+     * @dataProvider emptyBodyProvider
+     */
+    #[DataProvider('emptyBodyProvider')]
+    public function test_convert_returns_empty_markdown_for_empty_or_whitespace_body(string $body): void
     {
         $c = new TextPassthroughConverter();
         $doc = new SourceDocument(
             sourcePath: 'empty.txt',
             mimeType: 'text/plain',
-            bytes: '',
+            bytes: $body,
             externalUrl: null,
             externalId: null,
             connectorType: 'local',
@@ -85,10 +99,17 @@ final class TextPassthroughConverterTest extends TestCase
 
         $result = $c->convert($doc);
 
-        // Empty body still gets the H1 header — downstream chunker decides
-        // whether to emit a chunk (MarkdownChunker returns [] for body that
-        // is whitespace-only after frontmatter strip; the header alone with
-        // no body is whitespace-only after strip).
-        $this->assertStringStartsWith("# empty.txt\n\n", $result->markdown);
+        $this->assertSame('', $result->markdown);
+        $this->assertSame('empty.txt', $result->extractionMeta['filename']);
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function emptyBodyProvider(): iterable
+    {
+        yield 'truly empty'             => [''];
+        yield 'spaces only'             => ['   '];
+        yield 'tabs and newlines only'  => ["\t\n\r  \n"];
     }
 }
