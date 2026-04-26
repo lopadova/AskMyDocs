@@ -78,4 +78,47 @@ final class PipelineRegistryTest extends TestCase
 
         $this->assertSame($a, $b, 'PipelineRegistry must be bound as a singleton — boot cost is paid once.');
     }
+
+    public function test_boot_throws_when_configured_converter_does_not_implement_contract(): void
+    {
+        // Replace the kb-pipeline config with a misconfigured FQCN (a class that
+        // exists but doesn't implement ConverterInterface) and force a fresh
+        // singleton boot. Without the fail-loud guard, this would silently boot
+        // and only blow up at the first `supports()` call.
+        config()->set('kb-pipeline.converters', [\stdClass::class]);
+        $this->app->forgetInstance(PipelineRegistry::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches(
+            '/Pipeline class "stdClass" does not implement App\\\\Services\\\\Kb\\\\Contracts\\\\ConverterInterface/',
+        );
+
+        app(PipelineRegistry::class);
+    }
+
+    public function test_boot_throws_when_configured_chunker_does_not_implement_contract(): void
+    {
+        config()->set('kb-pipeline.chunkers', [\stdClass::class]);
+        $this->app->forgetInstance(PipelineRegistry::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches(
+            '/Pipeline class "stdClass" does not implement App\\\\Services\\\\Kb\\\\Contracts\\\\ChunkerInterface/',
+        );
+
+        app(PipelineRegistry::class);
+    }
+
+    public function test_boot_throws_when_configured_enricher_does_not_implement_contract(): void
+    {
+        config()->set('kb-pipeline.enrichers', [\stdClass::class]);
+        $this->app->forgetInstance(PipelineRegistry::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches(
+            '/Pipeline class "stdClass" does not implement App\\\\Services\\\\Kb\\\\Contracts\\\\EnricherInterface/',
+        );
+
+        app(PipelineRegistry::class);
+    }
 }

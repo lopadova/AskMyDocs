@@ -37,18 +37,42 @@ final class PipelineRegistry
 
     /**
      * @param  array{converters?: list<class-string>, chunkers?: list<class-string>, enrichers?: list<class-string>, mime_to_source_type?: array<string,string>}  $config
+     *
+     * @throws RuntimeException when a configured FQCN does not implement the
+     *         expected pipeline contract — fail-loud at boot beats a confusing
+     *         "undefined method supports()" fatal at the first ingest call.
      */
     public function __construct(Container $app, array $config)
     {
         foreach ($config['converters'] ?? [] as $cls) {
-            $this->converters[] = $app->make($cls);
+            $this->converters[] = $this->bootInstance($app, $cls, ConverterInterface::class);
         }
         foreach ($config['chunkers'] ?? [] as $cls) {
-            $this->chunkers[] = $app->make($cls);
+            $this->chunkers[] = $this->bootInstance($app, $cls, ChunkerInterface::class);
         }
         foreach ($config['enrichers'] ?? [] as $cls) {
-            $this->enrichers[] = $app->make($cls);
+            $this->enrichers[] = $this->bootInstance($app, $cls, EnricherInterface::class);
         }
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param  class-string  $cls
+     * @param  class-string<T>  $expected
+     * @return T
+     */
+    private function bootInstance(Container $app, string $cls, string $expected): object
+    {
+        $instance = $app->make($cls);
+        if (! $instance instanceof $expected) {
+            throw new RuntimeException(sprintf(
+                'Pipeline class "%s" does not implement %s — check config/kb-pipeline.php.',
+                $cls,
+                $expected,
+            ));
+        }
+        return $instance;
     }
 
     /**
