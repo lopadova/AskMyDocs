@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
+use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,6 +47,7 @@ class MessageController extends Controller
         KbSearchService $search,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
+        ConfidenceCalculator $confidence,
     ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
@@ -143,10 +145,27 @@ class MessageController extends Controller
         // 7. Build citations
         $citations = $this->buildCitations($chunks);
 
+        // 7b. T3.5 — composite confidence score for the grounded answer.
+        // Same formula as KbChatController; identical signal across both
+        // chat surfaces lets the dashboard aggregate without de-duping
+        // by route. The conversation flow has a thinner meta surface
+        // (no search_strategy / retrieval_stats — search() doesn't
+        // expose them) but the score itself is fully comparable.
+        $confidenceScore = $confidence->compute(
+            primaryChunks: $chunks,
+            minThreshold: (float) config('kb.refusal.min_chunk_similarity', 0.45),
+            answerWords: str_word_count($aiResponse->content),
+            citationsCount: count($citations),
+        );
+
         // 8. Save assistant message
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
             'content' => $aiResponse->content,
+            // T3.5 — populate the dedicated columns (T3.1) so SQL
+            // aggregations don't have to scan messages.metadata JSON.
+            'confidence' => $confidenceScore,
+            'refusal_reason' => null,
             'metadata' => [
                 'provider' => $aiResponse->provider,
                 'model' => $aiResponse->model,
@@ -157,6 +176,11 @@ class MessageController extends Controller
                 'latency_ms' => $latencyMs,
                 'citations' => $citations,
                 'few_shot_count' => count($fewShotExamples),
+                // T3.5 — confidence mirrored in metadata so the FE can
+                // render the badge from a single read of the message
+                // payload (no separate /confidence endpoint needed).
+                'confidence' => $confidenceScore,
+                'refusal_reason' => null,
             ],
         ]);
 
@@ -191,6 +215,10 @@ class MessageController extends Controller
             'content' => $aiResponse->content,
             'metadata' => $assistantMessage->metadata,
             'rating' => null,
+            // T3.5 — top-level confidence + refusal_reason for FE shape
+            // uniformity (same surface as /api/kb/chat happy path).
+            'confidence' => $confidenceScore,
+            'refusal_reason' => null,
             'created_at' => $assistantMessage->created_at,
         ]);
     }
