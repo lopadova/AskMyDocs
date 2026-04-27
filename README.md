@@ -44,6 +44,40 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Chat History** | Full conversation persistence with sidebar, rename, delete, auto-generated titles — ChatGPT-style |
 | **Speech-to-Text** | Browser-native microphone input via Web Speech API — zero external services |
 
+#### Pluggable Ingestion Pipeline (v3.0 — markdown / text / PDF / DOCX)
+
+| Feature | Description |
+|---|---|
+| **4 source types out of the box** | `markdown`, `text`, **PDF** (`smalot/pdfparser`), **DOCX** (`phpoffice/phpword`) — all converge on a single execution path: `DocumentIngestor::ingest(SourceDocument)` |
+| **Three-contract architecture** | `ConverterInterface` (raw bytes → markdown-ish text) + `ChunkerInterface` (text → ordered chunks) + `EnricherInterface` (post-chunk metadata enrichment) — add a new format by implementing three small interfaces |
+| **`PipelineRegistry` with FQCN validation at boot** | Every registered class is checked against its expected interface at boot (R23); `supports()` predicates are mutex-checked so first-match-wins resolution can never silently pick the wrong handler |
+| **Page-aware PDF chunking** | `PdfPageChunker` co-exists with `MarkdownChunker` via the `supports()` mutex — PDFs preserve page boundaries in `chunk_metadata.page` for citation precision; markdown stays section-aware |
+| **`SourceType` enum** | Helper-only enum (`SourceType::MARKDOWN | TEXT | PDF | DOCX`); the `source_type` column stays `string` for back-compat with v2.x rows |
+| **One execution path, two entrypoints** | CLI (`kb:ingest-folder`) and HTTP (`POST /api/kb/ingest`) both dispatch `IngestDocumentJob` → `DocumentIngestor::ingest()` — never a third path |
+
+#### Enterprise Chat Filters (v3.0 — 10 dimensions + saved presets + @mention pinning)
+
+| Feature | Description |
+|---|---|
+| **10-dimension `RetrievalFilters` DTO** | `project_keys`, `tag_slugs`, `source_types`, `canonical_types`, `connector_types`, `doc_ids`, `folder_globs`, `date_from`, `date_to`, `languages` — composable, all optional, applied as SQL filters before vector + FTS scoring |
+| **Per-user saved presets** | RESTful CRUD at `/api/chat-filter-presets` — 404-not-403 cross-user isolation (a preset that isn't yours is "not found", never "forbidden"); lossless round-trip (save → load → search produces identical results) |
+| **@mention pinning** | Type `@docname` in the composer → `/api/kb/documents/search` autocomplete → `MentionPopover` with cursor-context detection → pinned doc forces inclusion of that exact `doc_id` in retrieval, even when scored below the threshold |
+| **Cross-segment folder globs** | `**` patterns supported via in-house `glob→regex` translator (PHP `fnmatch` with `FNM_PATHNAME` doesn't span `/` — we do); `hr/**/policies/*` matches `hr/eu/policies/x.md` correctly |
+| **Cross-DB LIKE portability** | Tag/folder filters use explicit `ESCAPE '\\'` clause so `_` and `\` are escaped identically on SQLite (tests) and pgsql (prod) — R19 reaffirmed in v3.0 context |
+| **Composer redesign** | Persistent `FilterBar` + removable `FilterChip`s (one chip per active dimension) + tabbed `FilterPickerPopover` (Project / Type / Tag / Folder / Date / Language) + saved-presets dropdown |
+| **Admin Tags CRUD** | `/app/admin/kb/tags` page — per-project tag taxonomy with composite UNIQUE on `(project_key, slug)` (R28 — never global), pivot cascade-on-delete, 422 on `project_key` change of an existing tag (orphan-pivot guard) |
+
+#### Anti-Hallucination Tier-1 (v3.0 — deterministic refusal + composite confidence)
+
+| Feature | Description |
+|---|---|
+| **Deterministic refusal short-circuit** | If no chunks pass the similarity floor, `KbChatController` returns `refusal_reason='no_relevant_context'` + `confidence=0` + empty citations **WITHOUT calling the LLM** — proven by Mockery's `shouldNotReceive('chat')` (R26), so a regression that re-invokes the LLM fails CI loudly |
+| **LLM self-refusal sentinel** | The prompt instructs the model to emit `__NO_GROUNDED_ANSWER__` when context is insufficient; the controller converts this to `refusal_reason='llm_self_refusal'` via **exact-match-after-trim** (never substring — partial answers that mention the sentinel verbatim are preserved) |
+| **Composite confidence score** | 0..100 score = `0.40·mean_top_k_sim + 0.20·threshold_margin + 0.20·chunk_diversity + 0.20·citation_density` (`ConfidenceCalculator`); producer-side clamped to `[0, 100]`; schema column nullable for legacy v2.x rows |
+| **Additive response shape (R27)** | `confidence` + `refusal_reason` at the top level; new sub-objects under `meta.search_strategy`, `meta.retrieval_stats`, `meta.latency_ms_breakdown` — `meta.latency_ms` stays a flat int sibling so existing clients that read it never break |
+| **Per-reason i18n hierarchy** | `lang/{en,it}/kb.php` with hierarchical keys `kb.refusal.{reason}` and a `kb.no_grounded_answer` generic fallback (R24) — the machine-readable `refusal_reason` stays English; only the human-visible message is localized |
+| **`ConfidenceBadge` + `RefusalNotice` UX** | FE renders `high / moderate / low / refused` tiers from the score; `RefusalNotice` uses `role="status"` (NOT `role="alert"`) — a refusal is a **quality signal**, not an error, and screen-readers shouldn't interrupt the user with an alarm |
+
 #### Canonical Knowledge Compilation (OmegaWiki-inspired)
 
 | Feature | Description |
@@ -85,8 +119,8 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database`, `redis` queues (Horizon-ready) |
 | **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action (`v2`, canonical-folder aware) so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
 | **MCP Server** | **10 tools** (5 retrieval + 5 canonical/promotion) that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
-| **22 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4 — #33; the `ci-failure-investigation` skill (R22) codifies the artefact-first protocol for Playwright debug |
-| **63-test Playwright E2E suite** | Real Postgres + pgvector in CI, deterministic via `data-state` + `data-testid` contract (R11), happy-path + failure-injection per feature (R12), real data only — `page.route()` reserved for external boundaries (R13) |
+| **29 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4 — #33 (R1–R22) plus 7 new rules from the v3.0 enterprise-platform cohort (R23 pluggable-pipeline-registry, R24 per-reason i18n, R25 optimistic-mutation-dedupe, R26 external-call-shouldNotReceive, R27 additive-only response shapes, R28 per-project unique slugs + pivot cascade, R29 testid hierarchy) |
+| **Playwright E2E suite** | Real Postgres + pgvector in CI, deterministic via `data-state` + `data-testid` contract (R11), happy-path + failure-injection per feature (R12), real data only — `page.route()` reserved for external boundaries (R13); v3.0 added 28 spec scenarios across `chat-filters`, `chat-mention`, `chat-refusal`, `admin-tags` |
 
 ---
 
