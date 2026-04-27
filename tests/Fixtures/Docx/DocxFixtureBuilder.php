@@ -65,39 +65,54 @@ final class DocxFixtureBuilder
         }
 
         $zip = new ZipArchive();
-        if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new \RuntimeException('Failed to open zip archive for DocxFixtureBuilder.');
-        }
+        $zipOpened = false;
 
-        // Each addFromString() returns false on failure — silently ignoring
-        // would emit a corrupt/partial .docx that PhpWord then rejects in
-        // non-obvious ways. CLAUDE.md R4: surface side-effect failures.
-        $entries = [
-            '[Content_Types].xml'              => self::contentTypesXml(),
-            '_rels/.rels'                      => self::rootRelsXml(),
-            'word/_rels/document.xml.rels'     => self::documentRelsXml(),
-            'word/styles.xml'                  => self::stylesXml(),
-            'word/document.xml'                => self::documentXml($blocks),
-        ];
-        foreach ($entries as $name => $content) {
-            if ($zip->addFromString($name, $content) !== true) {
-                throw new \RuntimeException(
-                    sprintf('DocxFixtureBuilder failed to add zip entry "%s".', $name),
-                );
+        try {
+            if ($zip->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                throw new \RuntimeException('Failed to open zip archive for DocxFixtureBuilder.');
+            }
+            $zipOpened = true;
+
+            // Each addFromString() returns false on failure — silently ignoring
+            // would emit a corrupt/partial .docx that PhpWord then rejects in
+            // non-obvious ways. CLAUDE.md R4: surface side-effect failures.
+            $entries = [
+                '[Content_Types].xml'              => self::contentTypesXml(),
+                '_rels/.rels'                      => self::rootRelsXml(),
+                'word/_rels/document.xml.rels'     => self::documentRelsXml(),
+                'word/styles.xml'                  => self::stylesXml(),
+                'word/document.xml'                => self::documentXml($blocks),
+            ];
+            foreach ($entries as $name => $content) {
+                if ($zip->addFromString($name, $content) !== true) {
+                    throw new \RuntimeException(
+                        sprintf('DocxFixtureBuilder failed to add zip entry "%s".', $name),
+                    );
+                }
+            }
+            if ($zip->close() !== true) {
+                throw new \RuntimeException('DocxFixtureBuilder failed to close the zip archive.');
+            }
+            $zipOpened = false;
+
+            $bytes = file_get_contents($tmp);
+            if ($bytes === false) {
+                throw new \RuntimeException('Failed to read generated docx bytes.');
+            }
+            return $bytes;
+        } finally {
+            // Belt-and-braces cleanup: ensure the archive is always closed
+            // (re-throw + half-open zip otherwise leaves the file locked on
+            // Windows) and the temp file is unlinked on every failure path
+            // (open() failure, addFromString() failure, file_get_contents()
+            // failure — each of which would leak the tempnam'd file).
+            if ($zipOpened) {
+                $zip->close();
+            }
+            if (is_file($tmp)) {
+                unlink($tmp);
             }
         }
-        if ($zip->close() !== true) {
-            throw new \RuntimeException('DocxFixtureBuilder failed to close the zip archive.');
-        }
-
-        $bytes = file_get_contents($tmp);
-        if (is_file($tmp)) {
-            unlink($tmp);
-        }
-        if ($bytes === false) {
-            throw new \RuntimeException('Failed to read generated docx bytes.');
-        }
-        return $bytes;
     }
 
     /**

@@ -23,7 +23,8 @@ use Throwable;
  *
  * Walks every section + element of a Word2007 .docx parsed via PhpWord and
  * emits markdown:
- *  - `Heading{N}` paragraph style → `{#×N} {text}`
+ *  - `Heading{N}` paragraph style → heading markdown offset by +1 level
+ *    (H1 is reserved for `# {basename}`), clamped to `##`..`######`
  *  - `Title` element (PhpWord creates these from heading-styled paragraphs) → same
  *  - normal paragraphs → prose lines
  *  - tables → markdown pipe-tables (header row from the FIRST row of the table)
@@ -162,10 +163,11 @@ final class DocxConverter implements ConverterInterface
         }
 
         if ($element instanceof TextBreak) {
-            // Treat blank paragraph as an empty separator that the upstream
-            // join('\n\n') handles naturally — return empty so we don't
-            // accumulate stray whitespace blocks.
-            return '';
+            // Preserve explicit in-paragraph line breaks so adjacent text
+            // runs do not get concatenated during conversion (Word's
+            // shift+enter line break would otherwise glue `line1` + `line2`
+            // into `line1line2`).
+            return "\n";
         }
 
         if ($element instanceof Text || $element instanceof TextRun) {
