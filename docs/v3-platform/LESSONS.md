@@ -541,7 +541,7 @@ T2.6 cycle-0 implementation initially used `where('title', 'LIKE', $escaped)` af
 
 **How to apply:**
 - For new LIKE-based searches: `whereRaw("col LIKE ? ESCAPE '\\'", [$pattern])` — never `where('col', 'LIKE', $pattern)` alone.
-- For grep/inspection: `grep -rn "LIKE'.*\?\\)" app/Http/` to find existing endpoints; verify each pairs an ESCAPE clause with its escape step.
+- For grep/inspection: `grep -Ern "(whereRaw|orWhereRaw)|LIKE \?|ESCAPE '\\\\'" app/Http/` to find existing LIKE-based endpoints; verify each pairs an ESCAPE clause with its escape step.
 - Test pattern: include BOTH `_` and `%` literal inputs in the user query and assert the response excludes wildcard-style matches (T2.6's `test_escapes_underscore_per_R19_so_literal_underscore_is_not_a_wildcard` and `test_escapes_percent_per_R19_so_literal_percent_is_not_a_wildcard`).
 
 **Operational note:** the existing `User::matchesAnyGlob` (R19 follow-up flagged in T2.4 LESSONS) is unrelated — it's an in-PHP fnmatch-style match, not SQL LIKE. The two issues share the R19 lineage but have different fixes.

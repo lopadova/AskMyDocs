@@ -159,6 +159,52 @@ final class KbDocumentSearchControllerTest extends TestCase
             ->assertJsonValidationErrors(['q']);
     }
 
+    public function test_search_is_case_insensitive_across_sqlite_and_postgres(): void
+    {
+        // T2.6 cycle-1 fix: SQLite LIKE is case-insensitive by default
+        // but PostgreSQL LIKE is case-sensitive. Lowercased both sides
+        // (LOWER(col) + mb_strtolower($needle)) so the autocomplete
+        // behaves the same under both dialects — `policy` matches
+        // `Policy Alpha`.
+        $this->seedDoc('hr', 'docs/x.md', 'Policy Alpha');
+
+        $resp = $this->getJson('/api/kb/documents/search?q=policy');
+
+        $resp->assertOk()->assertJsonCount(1, 'data');
+        $this->assertSame('Policy Alpha', $resp->json('data.0.title'));
+    }
+
+    public function test_rejects_whitespace_only_query_with_422(): void
+    {
+        // T2.6 cycle-1 fix: trim BEFORE validation so a whitespace-only
+        // input ("   ") fails the `filled` + `min:2` guards instead of
+        // slipping through and matching every row via a 0-char pattern.
+        $this->getJson('/api/kb/documents/search?q=' . urlencode('   '))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['q']);
+    }
+
+    public function test_orders_canonical_first_then_by_retrieval_priority_then_recency(): void
+    {
+        // T2.6 cycle-1 fix: deterministic ordering BEFORE limit(20).
+        // Priority: is_canonical DESC > retrieval_priority DESC >
+        // indexed_at DESC > title ASC > id ASC. Verify the canonical
+        // doc lands first regardless of insertion order.
+        $this->seedDoc('hr', 'docs/non-canon.md', 'Policy plain');
+        $this->seedDoc(
+            'hr',
+            'docs/canon.md',
+            'Policy canonical',
+            canonicalType: 'decision',
+        );
+
+        $resp = $this->getJson('/api/kb/documents/search?q=Policy');
+
+        $resp->assertOk()->assertJsonCount(2, 'data');
+        $this->assertSame('Policy canonical', $resp->json('data.0.title'));
+        $this->assertSame('Policy plain', $resp->json('data.1.title'));
+    }
+
     public function test_returns_empty_data_array_when_no_match(): void
     {
         $this->seedDoc('hr', 'docs/x.md', 'Existing');
