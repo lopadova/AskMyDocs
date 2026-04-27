@@ -475,13 +475,15 @@ Built-in converters (v3.0):
 
 - `MarkdownPassthroughConverter` — `text/markdown`, `text/x-markdown`
 - `TextPassthroughConverter` — `text/plain` (wraps prose in a `# {basename}` header so MarkdownChunker can section it)
-- `PdfConverter` — `application/pdf` (added in T1.5)
+- `PdfConverter` — `application/pdf` (smalot/pdfparser primary; falls back to `pdftotext` from Poppler when smalot rejects the file)
 - `DocxConverter` — `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (added in T1.6)
+
+**PDF support:** `smalot/pdfparser` is a hard `require` (pure PHP, no system deps). For more robust extraction on complex PDFs (multi-column layouts, certain XFA forms, mixed encodings), install `poppler-utils` on the host (`apt install poppler-utils` on Debian/Ubuntu, `brew install poppler` on macOS) — the `PdfConverter` automatically falls back to the `pdftotext` binary when smalot raises an exception. `extractionMeta.extraction_strategy` records which strategy was used per document so you can audit the rate of fallbacks in production.
 
 Built-in chunkers (v3.0):
 
-- `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown)
-- `PdfPageChunker` — handles `pdf` source type, one chunk per page (added in T1.7)
+- `MarkdownChunker` — handles `markdown`, `md`, `text`, `pdf`, `docx` source types (any source whose converter outputs markdown). For `pdf` the converter emits `# {basename}` + `## Page N` sections so the section_aware mode produces ≥1 chunk per page out-of-the-box.
+- `PdfPageChunker` (T1.7, not yet shipped) — will take over `pdf` source-type via the registry's first-match-wins rule and slice by page metadata directly instead of relying on the `## Page N` heading convention.
 
 The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
 

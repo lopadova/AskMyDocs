@@ -40,10 +40,11 @@ final class PipelineRegistryTest extends TestCase
     public function test_throws_runtime_exception_on_unsupported_source_type(): void
     {
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessageMatches('/No chunker registered for source type: pdf/');
+        $this->expectExceptionMessageMatches('/No chunker registered for source type: pptx/');
 
-        // T1.7 will register a chunker for `pdf`; before then this must throw.
-        app(PipelineRegistry::class)->resolveChunker('pdf');
+        // `pptx` has no chunker registered (no PowerPoint converter exists yet);
+        // before T1.x adds one, this must throw an actionable error.
+        app(PipelineRegistry::class)->resolveChunker('pptx');
     }
 
     public function test_lists_all_registered_converters_for_admin_ui(): void
@@ -53,7 +54,8 @@ final class PipelineRegistryTest extends TestCase
 
         $this->assertContains('markdown-passthrough', $names);
         $this->assertContains('text-passthrough', $names);
-        $this->assertCount(2, $names);
+        $this->assertContains('pdf-converter', $names);
+        $this->assertCount(3, $names);
     }
 
     public function test_lists_all_registered_chunkers_for_admin_ui(): void

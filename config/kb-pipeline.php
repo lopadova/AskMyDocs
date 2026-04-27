@@ -25,7 +25,7 @@ return [
     'converters' => [
         \App\Services\Kb\Converters\MarkdownPassthroughConverter::class,
         \App\Services\Kb\Converters\TextPassthroughConverter::class,
-        // PdfConverter added in T1.5
+        \App\Services\Kb\Converters\PdfConverter::class,
         // DocxConverter added in T1.6
     ],
 
@@ -55,7 +55,7 @@ return [
         'text/markdown'   => 'markdown',
         'text/x-markdown' => 'markdown',
         'text/plain'      => 'text',
-        // T1.5 adds: 'application/pdf' => 'pdf'
+        'application/pdf' => 'pdf',
         // T1.6 adds: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx'
     ],
 ];

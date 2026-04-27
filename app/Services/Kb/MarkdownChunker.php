@@ -45,14 +45,20 @@ class MarkdownChunker implements ChunkerInterface
     private const PARAGRAPH_SEP = '/\n{2,}/';
     private const CHARS_PER_TOKEN = 4;
     /**
-     * Source-type tokens this chunker handles. `text` is included because
-     * {@see \App\Services\Kb\Converters\TextPassthroughConverter} produces
-     * markdown (a synthetic `# {basename}` H1 wrapping the prose body),
-     * so MarkdownChunker is the natural processor for plain-text sources too.
-     * T1.7 introduces PdfPageChunker for `pdf`; T1.6 keeps DOCX on this same
-     * chunker (DocxConverter outputs markdown).
+     * Source-type tokens this chunker handles. Every converter that produces
+     * markdown reuses this chunker (no DRY violation):
+     *  - `markdown` / `md` — MarkdownPassthroughConverter (T1.3)
+     *  - `text`            — TextPassthroughConverter wraps body in `# basename`
+     *  - `pdf`             — PdfConverter (T1.5) emits `# basename` + `## Page N`
+     *                        until T1.7 introduces a dedicated PdfPageChunker
+     *                        that slices by page metadata directly.
+     *  - `docx`            — DocxConverter (T1.6) outputs markdown headings.
+     *
+     * T1.7 will REMOVE `pdf` from this list and register PdfPageChunker for
+     * the same source-type — at that point the registry's first-match-wins
+     * rule will make PdfPageChunker the resolver.
      */
-    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'docx'];
+    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'pdf', 'docx'];
 
     private WikilinkExtractor $wikilinks;
 
