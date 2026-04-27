@@ -340,16 +340,21 @@ class KbSearchService
             // (where the slug lives). Slugs are user-facing identifiers —
             // exact match avoids the R19 LIKE-escape concern entirely
             // (no `%` / `_` / `\` to worry about because we never use LIKE).
-            // Project boundary is enforced transitively: kt → kdt →
-            // knowledge_documents.project_key, all chained via FKs, so
-            // the same slug across projects only matches docs of the
-            // current chunk's project (the chunk-level project_key
-            // whereIn from the projectKeys branch above).
+            //
+            // Project boundary: `knowledge_document_tags` only has FKs on
+            // `knowledge_document_id` and `kb_tag_id` — the schema does
+            // NOT prevent associating a tag from project A with a document
+            // from project B (write-time application invariant, not
+            // structural). To make the search query tenant-safe regardless,
+            // explicitly constrain `kt.project_key = knowledge_chunks
+            // .project_key` so the same slug across projects only matches
+            // tags belonging to the current chunk's project.
             $q->whereExists(function ($sub) use ($f): void {
                 $sub->select(DB::raw(1))
                     ->from('knowledge_document_tags as kdt')
                     ->join('kb_tags as kt', 'kt.id', '=', 'kdt.kb_tag_id')
                     ->whereColumn('kdt.knowledge_document_id', 'knowledge_chunks.knowledge_document_id')
+                    ->whereColumn('kt.project_key', 'knowledge_chunks.project_key')
                     ->whereIn('kt.slug', $f->tagSlugs);
             });
         }

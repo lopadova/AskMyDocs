@@ -174,6 +174,18 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertContains('security', $sql['bindings']);
     }
 
+    public function test_apply_filters_tag_subquery_constrains_project_explicitly(): void
+    {
+        // T2.3 cycle-1 fix: knowledge_document_tags pivot has no
+        // project_key FK, so the schema doesn't structurally prevent
+        // cross-project tag associations. The subquery must EXPLICITLY
+        // constrain `kt.project_key = knowledge_chunks.project_key` so
+        // the search is tenant-safe regardless of write-time invariants.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(tagSlugs: ['policy']));
+
+        $this->assertStringContainsString('"kt"."project_key" = "knowledge_chunks"."project_key"', $sql['sql']);
+    }
+
     public function test_apply_filters_tag_slug_match_is_exact_not_like(): void
     {
         // R19 documents that LIKE-based filters need %/_/\ escaping. Slug
