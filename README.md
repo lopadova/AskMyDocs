@@ -462,6 +462,102 @@ KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
+### `GET /api/kb/documents/search` (v3.0+)
+
+Document title/path autocomplete used by the chat composer's `@mention` popover (T2.7/T2.8). Sanctum-protected.
+
+**Query params:**
+
+- `q` — search string (2-120 chars, escaped for `LIKE` wildcards via `\` + `ESCAPE '\\'` clause per R19; literal `_` and `%` in the query do NOT act as wildcards)
+- `project_keys[]` — optional tenant scope (zero or more)
+
+**Response:** `{ "data": [{ "id", "project_key", "title", "source_path", "source_type", "canonical_type" }] }`
+
+Up to 20 results per request. Archived documents are excluded.
+
+### Saved filter presets (v3.0+)
+
+Authenticated users can save / load / delete personal filter combinations via `RESTful /api/chat-filter-presets` (consumed by the FE FilterBar dropdown — UI work in a follow-up FE PR).
+
+- `GET    /api/chat-filter-presets` — list the user's presets (alphabetical by name).
+- `POST   /api/chat-filter-presets` — create. Required body: `{ "name": "…", "filters": { … } }`. Per-user uniqueness enforced on `name` (422 on duplicate within the same account). Different users may pick the same display name independently.
+- `GET    /api/chat-filter-presets/{id}` — show one. Returns `404` for IDs owned by a different user (deliberate — the API does not leak the existence of other users' presets).
+- `PUT    /api/chat-filter-presets/{id}` — update name + filters; same `404` semantics for non-owned rows.
+- `DELETE /api/chat-filter-presets/{id}` — delete; `204` on success, `404` for non-owned rows.
+
+The `filters` JSON column carries a serialised RetrievalFilters payload — the same shape the chat controller's `KbChatRequest::toFilters()` consumes. Round-trip is lossless: load preset → POST to `/api/kb/chat` produces identical retrieval scope as if the user had re-selected every filter manually.
+
+### Chat filters (v3.0+)
+
+`POST /api/kb/chat` accepts an optional `filters` object that narrows the retrieval scope BEFORE reranking + graph expansion + rejected-approach injection — filters change the candidate population, not the post-hoc ranking. Every dimension is optional.
+
+```json
+{
+  "question": "What is our cache invalidation policy?",
+  "filters": {
+    "project_keys": ["hr-portal", "engineering"],
+    "tag_slugs": ["policy", "security"],
+    "source_types": ["markdown", "pdf"],
+    "canonical_types": ["decision", "runbook"],
+    "connector_types": ["local", "google-drive"],
+    "doc_ids": [42, 99],
+    "folder_globs": ["hr/policies/**"],
+    "date_from": "2026-01-01",
+    "date_to": "2026-12-31",
+    "languages": ["it", "en"]
+  }
+}
+```
+
+Field semantics:
+
+- `project_keys` — multi-tenant scope; takes precedence over the legacy `project_key` field when both are sent.
+- `tag_slugs` — match documents tagged with ANY listed slug (T2.3 join, ships in a follow-up).
+- `source_types` — one of `markdown`, `text`, `pdf`, `docx` (validated against `App\Support\Kb\SourceType` so adding a new type extends the validator automatically).
+- `canonical_types` — one of the `App\Support\Canonical\CanonicalType` enum values currently stored on `knowledge_documents.canonical_type`: `decision`, `module-kb`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`, `rejected-approach`, `project-index`. The validator is built from `CanonicalType::cases()` so adding a new case auto-extends the accepted set.
+- `connector_types` — connector identifier strings (for example `local`, `google-drive`, `onedrive`, `notion`, `asana`, `imap`). Accepted in v3.0 but currently a no-op in retrieval until the `connector_type` column is added in v3.1.
+- `doc_ids` — explicit document-id allowlist (used by the `@mention` UI in the chat composer, T2.7).
+- `folder_globs` — path globs against `source_path`. `*` matches a single segment (does NOT cross `/`), `**` matches across segments (e.g. `hr/policies/**` matches `hr/policies/leave.md` AND `hr/policies/inner/leave.md`), `?` matches a single char (not `/`). Applied PHP-side after the SQL pre-filter via `App\Support\KbPath::matchesAnyGlob` (PostgreSQL has no native fnmatch and `**` doesn't translate to LIKE cleanly).
+- `date_from` / `date_to` — ISO 8601 date range against `indexed_at`. `date_to` must be after-or-equal to `date_from`.
+- `languages` — ISO 639-1 codes (normalized to lowercase during DTO construction; the validator enforces `size:2`).
+
+Pre-T2.2 callers using the legacy `{question, project_key}` payload keep working unchanged — internally `project_key` is wrapped into `filters.project_keys = [project_key]`. The response `meta.filters_selected` echoes the count of user-selected filter dimensions for the FE composer to render "5 filters selected".
+
+### Multi-format ingest (v3.0+)
+
+`kb:ingest-folder` now picks up `.md`, `.markdown`, `.txt`, `.pdf`, and `.docx` files automatically (default `--pattern` is the union of every supported extension). Operators who want pre-T1.8 markdown-only behavior pass `--pattern=md,markdown` explicitly.
+
+The `POST /api/kb/ingest` endpoint accepts an optional `mime_type` field per document (defaults to `text/markdown` for back-compat). Binary formats (`application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`) require `documents.*.content` to be **base64-encoded**; the controller decodes-or-422 before writing to disk. Text MIMEs (`text/markdown`, `text/x-markdown`, `text/plain`) keep accepting raw content. Unsupported MIME types return 422 with an actionable error naming the supported set.
+
+The `App\Support\Kb\SourceType` enum is a typed helper for the markdown/text/pdf/docx domain — `SourceType::fromMime()` and `SourceType::fromExtension()` are the canonical conversions used by the API controller and the folder walker. The actual ingest routing is config-driven via `config/kb-pipeline.php` (`converters` / `chunkers` / `mime_to_source_type`); adding a new format requires updating BOTH `config/kb-pipeline.php` AND `SourceType::fromMime()` / `fromExtension()` / `toMime()` / `supportedMimes()` so the API/CLI surfaces stay consistent with what the registry resolves.
+
+### Extending the Ingestion Pipeline
+
+AskMyDocs v3.0 introduces a pluggable ingestion pipeline driven by `config/kb-pipeline.php`. To add support for a new file format:
+
+1. **Implement** `App\Services\Kb\Contracts\ConverterInterface` — convert raw bytes to a `ConvertedDocument` (markdown + extraction metadata). Every converter MUST populate `extractionMeta['filename'] = basename($doc->sourcePath)` so the chunker can attribute chunks back to their source file.
+2. **Implement** `App\Services\Kb\Contracts\ChunkerInterface` — or reuse `MarkdownChunker` if your converter outputs markdown (the default for prose formats).
+3. **Register** in `config/kb-pipeline.php` under `converters` and `chunkers`.
+4. **Map** the MIME type in `mime_to_source_type` so the pipeline can route to the right chunker.
+
+Built-in converters (v3.0):
+
+- `MarkdownPassthroughConverter` — `text/markdown`, `text/x-markdown`
+- `TextPassthroughConverter` — `text/plain` (wraps prose in a `# {basename}` header so MarkdownChunker can section it)
+- `PdfConverter` — `application/pdf` (smalot/pdfparser primary; falls back to `pdftotext` from Poppler when smalot rejects the file)
+- `DocxConverter` — `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (parses the `.docx` package via `phpoffice/phpword`; maps `Heading{N}` paragraph styles to `#{×N+1}` markdown headings nested under the basename H1; tables become markdown pipe-tables. Embedded images are NOT extracted in v3.0 — planned for v3.1 with the vision-LLM pipeline.)
+
+**PDF support:** `smalot/pdfparser` is a hard `require` (pure PHP, no system deps). For more robust extraction on complex PDFs (multi-column layouts, certain XFA forms, mixed encodings), install `poppler-utils` on the host (`apt install poppler-utils` on Debian/Ubuntu, `brew install poppler` on macOS) — the `PdfConverter` automatically falls back to the `pdftotext` binary when smalot raises an exception. `extractionMeta.extraction_strategy` records which strategy was used per document so you can audit the rate of fallbacks in production.
+
+Built-in chunkers (v3.0):
+
+- `PdfPageChunker` — handles `pdf` source-type. Slices on the `## Page N` heading boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` so citations like "see page N of foo.pdf" map 1:1 to a single chunk row. Pages exceeding `KB_CHUNK_HARD_CAP_TOKENS` are split intra-page on `\n\n` paragraph boundaries; all pieces of the same page share the same `heading_path` so page-level citations still resolve cleanly.
+- `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown). Uses `section_aware` mode: emits one chunk per ATX heading section with `heading_path` as a `>`-joined breadcrumb of H1-H3 ancestors. Falls back to `paragraph_split` (one chunk per blank-line-separated block) for documents without headings.
+
+The chunker registry is order-significant — `PdfPageChunker` is listed FIRST in `config/kb-pipeline.php`'s `chunkers` so the first-match-wins resolution prefers it for `pdf` over the markdown fallback.
+
+The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
+
 ---
 
 ## Scheduler
@@ -2684,6 +2780,79 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v3.0.0 (2026-04-27) — Enterprise platform: pluggable pipeline + filters + anti-hallucination
+
+The v3.0 series turns AskMyDocs from "RAG chat with admin" into an
+enterprise knowledge platform with a **pluggable ingestion pipeline**
+(markdown / text / PDF / DOCX), **rich chat retrieval filters** (10
+dimensions + saved presets + @mention pinning), and **anti-hallucination
+tier-1** (deterministic refusal + composite confidence score).
+
+**M1 — Pluggable ingestion pipeline (PRs #36–#44)**
+- `ConverterInterface` + `ChunkerInterface` + `EnricherInterface`
+  contracts; `PipelineRegistry` with FQCN validation at boot
+- 4 source types shipped: markdown, text, PDF (`smalot/pdfparser`),
+  DOCX (`phpoffice/phpword`); one ingestion execution path
+  (`DocumentIngestor::ingest(SourceDocument)`)
+- `PdfPageChunker` (page-aware) co-exists with `MarkdownChunker`
+  via first-match-wins `supports()` mutex (R23 — codified)
+- `SourceType` enum (helper-only — column stays string for back-compat)
+- Two ingest entrypoints (CLI + HTTP) converge on the same path
+
+**M2 — Enterprise chat filters (PRs #45–#52, #67–#72)**
+- `RetrievalFilters` DTO with **10 dimensions**: `project_keys`,
+  `tag_slugs`, `source_types`, `canonical_types`, `connector_types`,
+  `doc_ids`, `folder_globs`, `date_from/to`, `languages`
+- Per-user **saved presets** (`/api/chat-filter-presets`) — RESTful
+  CRUD, 404-not-403 cross-user isolation, lossless round-trip
+- **@mention pinning**: `/api/kb/documents/search` autocomplete +
+  FE `MentionPopover` with cursor-context detection
+- React SPA: `Composer` redesigned with persistent `FilterBar` +
+  removable `FilterChip`s + tabbed `FilterPickerPopover` + saved
+  presets dropdown + admin Tags CRUD (`/app/admin/kb/tags`)
+- Folder globs support `**` cross-segment via in-house glob→regex
+  translator (PHP fnmatch + FNM_PATHNAME doesn't)
+- LIKE escape with explicit `ESCAPE '\\'` clause for SQLite + pgsql
+  portability (R19 reaffirmed in v3.0 context)
+
+**M3 — Anti-hallucination tier-1 (PRs #54–#65, #67)**
+- Deterministic **refusal short-circuit**: if no chunks pass the
+  similarity floor, `KbChatController` returns `refusal_reason='no_relevant_context'`
+  + `confidence=0` + empty citations **WITHOUT calling the LLM**
+  (proven via Mockery's `shouldNotReceive('chat')` — R26)
+- LLM **self-refusal sentinel** (`__NO_GROUNDED_ANSWER__` in the
+  prompt) → controller converts to `refusal_reason='llm_self_refusal'`;
+  exact-match-after-trim, never substring (preserves partial answers)
+- **Composite confidence score** 0..100 = `0.40·mean_top_k_sim +
+  0.20·threshold_margin + 0.20·chunk_diversity + 0.20·citation_density`
+  (`ConfidenceCalculator`, producer-side clamped, schema column
+  nullable for legacy rows)
+- API response shape: `confidence` + `refusal_reason` at the top
+  level; `meta.search_strategy` + `meta.retrieval_stats` +
+  `meta.latency_ms_breakdown` (R27 additive-only — `meta.latency_ms`
+  stays a flat int sibling)
+- Per-reason **i18n hierarchy** in `lang/{en,it}/kb.php`:
+  `kb.refusal.{reason}` with `kb.no_grounded_answer` fallback (R24)
+- FE: `ConfidenceBadge` (high/moderate/low/refused tiers) +
+  `RefusalNotice` (`role="status"`, NOT alert — refusal is a quality
+  signal, not an error)
+
+**M4 — Consolidamento (PR #75 — this release closure)**
+- 7 new permanent rules in CLAUDE.md (R23..R29)
+- 3 new skills under `.claude/skills/`:
+  `pluggable-pipeline-registry`, `optimistic-mutation-dedupe`,
+  `refusal-not-error-ux`
+- Full LESSONS digest at `docs/v3-platform/LESSONS-v3.0-digest.md`
+- COPILOT-FINDINGS.md updated with v3.0 PR cohort
+
+**Numbers**
+- ~30 sub-tasks executed across 4 milestones
+- ~25 PRs merged (sub-PRs + macro PRs + closeouts + recovery)
+- **PHPUnit: 985 tests / 3017 assertions** (was 905/2630 at start of v3.0 → +80 tests / +387 assertions)
+- **Vitest: 224 tests** (was 149 at start → +75 cases)
+- **Playwright: 28 spec scenarios** across `chat-filters`, `chat-mention`, `chat-refusal`, `admin-tags`
+- 28 LESSONS entries (T1.x..T2.9 date-stamped + L17..L28 numbered)
 
 ### v2.0.0 — Enterprise edition (10-PR roadmap A → J + canonical compilation)
 

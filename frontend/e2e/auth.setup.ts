@@ -24,6 +24,10 @@ const ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? 'password';
  *   6. context.storageState({ path })       (persists cookies for downstream projects)
  */
 setup('authenticate as admin', async ({ page, context }) => {
+    // Setup runs `migrate:fresh` + DemoSeeder over HTTP — under php -S
+    // single-threaded backend the cycle takes 15-25s. Bump from the
+    // 20s default so we're not racing the seeder boot under local runs.
+    setup.setTimeout(120_000);
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
     // Reset + seed demo data. Both endpoints are guarded by APP_ENV=testing.
