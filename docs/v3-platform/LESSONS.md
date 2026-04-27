@@ -370,3 +370,32 @@ Five concrete decisions surfaced during T1.8 — all binding for the multi-forma
 **References:** `app/Support/Kb/SourceType.php` (enum + helpers), `app/Console/Commands/KbIngestFolderCommand.php::handle()` (extension routing + sync `ingest()` call), `app/Jobs/IngestDocumentJob.php::handle()` (mimeType-aware SourceDocument build), `app/Http/Controllers/Api/KbIngestController.php::__invoke()` (mime_type validation + base64 decode), `tests/Feature/Console/KbIngestFolderMultiformatTest.php`, `tests/Feature/Api/KbIngestApiMultiformatTest.php`, `tests/Unit/Support/Kb/SourceTypeTest.php`, README.md "Multi-format ingest" section.
 
 ---
+
+## [2026-04-27 04:30] Sub-task T2.1 — RetrievalFilters DTO + reflection-based query-construction tests
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** every T2.x sub-task (T2.2 chat controller validator, T2.3 tag join, T2.4 folder globs, T2.5 doc_ids, T2.6 doc-search controller) and any future code touching `KbSearchService` query construction.
+
+**Finding:**
+Three concrete decisions surfaced during T2.1 — all binding for the rest of the T2 wave:
+
+1. **SQLite cannot run pgvector SQL — test the FILTER LOGIC via reflection on the private method, not via end-to-end search().** The full `search()` hot path uses `embedding <=> ?::vector` which SQLite parses as syntax error. Existing `MultiTenantRetrievalIsolationTest::buildSearchServiceWithPrimedPrimary` works around this by stubbing `search()` entirely. For T2.1 we needed to verify `applyFilters()` ACTUALLY narrows the query (not stub it), so the test pattern is: build a `KnowledgeChunk::query()` Eloquent builder, reflect into the private `applyFilters()` method, then assert `$builder->toSql()` contains the expected `whereIn`/`whereHas` clauses + `$builder->getBindings()` contains the expected values. **For T2.3 (tag join), T2.4 (folder globs), T2.5 (doc_ids extension)**: follow the same reflection-based pattern. Don't try to run SQLite end-to-end against a pgvector-flavoured query.
+
+2. **back-compat plumbing in 2 layers, not 1.** `searchWithContext()` and `search()` both gained an optional `?RetrievalFilters $filters = null` parameter. Resolution order at call time: (a) explicit `$filters` wins, (b) else fall back to `RetrievalFilters::forLegacyProject($projectKey)` which wraps the legacy `?string $projectKey` into a single-element `projectKeys` array (or returns empty for null/empty). The chunk-level `where('project_key', ...)` STILL fires for legacy callers (it's outside applyFilters), so the existing query plan is preserved bit-for-bit when no DTO is passed. **For T2.2** when threading the filters into `KbChatController` → `KbSearchService::searchWithContext()`, ALWAYS pass the explicit DTO (never rely on the legacy `?string $projectKey` derivation alone).
+
+3. **`connector_type` filter is accepted in the DTO but applies no constraint until v3.1.** `knowledge_documents` has no `connector_type` column today (connector info lives in `metadata.connector` JSON, populated by T1.4). JSON-path queries are dialect-specific and brittle on SQLite. Decision for v3.0: include `connectorTypes` in the DTO + accept it in payloads (so the FE composer can render the filter chip and CHAT clients can submit it without 422), but the actual WHERE clause is deferred. Documented inline in `applyFilters()`. **v3.1 follow-up**: add `knowledge_documents.connector_type` as a denormalised column populated by `DocumentIngestor::ingest()` (read it from `SourceDocument::connectorType`).
+
+**Why it matters:**
+- Rule 1 is the de facto pattern for ALL T2 filter additions — without it, T2.3/T2.4/T2.5 would each waste 30+ min discovering the SQLite-pgvector incompatibility.
+- Rule 2 is the bug surface the T2.2 controller wiring will use — getting it right keeps every legacy `/api/kb/chat` payload (no `filters` key) working unchanged.
+- Rule 3 is technical debt with a documented ETA — future T2.x agents won't waste effort on the connector filter and will be primed for the v3.1 column-add.
+
+**How to apply:**
+- For new filter dimensions in T2.x: add the field to `RetrievalFilters`, extend `applyFilters()` with the matching `whereIn`/`whereHas` clause, write a reflection-based test asserting the SQL shape. Do NOT add an end-to-end test against SQLite.
+- For new public methods accepting filters: parameter is `?RetrievalFilters $filters = null`. Use `RetrievalFilters::forLegacyProject($projectKey)` as the fallback for legacy single-project callers.
+- For DTO fields without a backing implementation (like `connectorTypes` today): accept the value, doc the deferral inline, do NOT silently throw or transform — operators sending the field shouldn't see surprising behaviour.
+
+**References:** `app/Services/Kb/Retrieval/RetrievalFilters.php`, `app/Services/Kb/KbSearchService.php::applyFilters()`, `app/Services/Kb/KbSearchService.php::search()` (back-compat plumbing), `app/Services/Kb/KbSearchService.php::searchWithContext()` (filters_active meta), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (reflection + SQL inspection pattern).
+
+---

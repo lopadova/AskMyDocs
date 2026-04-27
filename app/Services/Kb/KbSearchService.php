@@ -5,7 +5,9 @@ namespace App\Services\Kb;
 use App\Models\KnowledgeChunk;
 use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
+use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -38,10 +40,19 @@ class KbSearchService
         ?string $projectKey = null,
         int $limit = 8,
         float $minSimilarity = 0.30,
+        ?RetrievalFilters $filters = null,
     ): SearchResult {
-        $primary = $this->search($query, $projectKey, $limit, $minSimilarity);
-        $expanded = $this->graphExpander->expand($primary, $projectKey);
-        $rejected = $this->rejectedInjector->pick($query, $projectKey);
+        $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+        // Resolve a representative project_key for the legacy meta payload
+        // and for the graph expander / rejected injector (which still take
+        // a single ?string $projectKey today — extending them to filters
+        // is a v3.1 follow-up).
+        $effectiveProject = $projectKey
+            ?? ($effectiveFilters->projectKeys[0] ?? null);
+
+        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters);
+        $expanded = $this->graphExpander->expand($primary, $effectiveProject);
+        $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
 
         return new SearchResult(
             primary: $primary,
@@ -51,7 +62,32 @@ class KbSearchService
                 'primary_count' => $primary->count(),
                 'expanded_count' => $expanded->count(),
                 'rejected_count' => $rejected->count(),
-                'project_key' => $projectKey,
+                'project_key' => $effectiveProject,
+                // Operational hint: how many filter dimensions the USER
+                // selected on this query — NOT how many actually narrowed
+                // the candidate set (some dimensions like `tagSlugs`,
+                // `folderGlobs`, `connectorTypes` are accepted in the DTO
+                // but no-op in applyFilters() until their implementing
+                // task lands; counting them as "active" would overstate
+                // narrowing and confuse the empty-result correlation in
+                // admin telemetry). UI (T3.x) surfaces "5 filters
+                // selected" in the chat composer; the count grows
+                // organically as T2.3/T2.4 etc. wire up the deferred
+                // dimensions.
+                'filters_selected' => $effectiveFilters->isEmpty()
+                    ? 0
+                    : count(array_filter([
+                        $effectiveFilters->projectKeys !== [],
+                        $effectiveFilters->tagSlugs !== [],
+                        $effectiveFilters->sourceTypes !== [],
+                        $effectiveFilters->canonicalTypes !== [],
+                        $effectiveFilters->connectorTypes !== [],
+                        $effectiveFilters->docIds !== [],
+                        $effectiveFilters->folderGlobs !== [],
+                        $effectiveFilters->languages !== [],
+                        $effectiveFilters->dateFrom !== null,
+                        $effectiveFilters->dateTo !== null,
+                    ])),
             ],
         );
     }
@@ -70,7 +106,18 @@ class KbSearchService
         ?string $projectKey = null,
         int $limit = 8,
         float $minSimilarity = 0.30,
+        ?RetrievalFilters $filters = null,
     ): Collection {
+        // T2.1 — back-compat: legacy callers pass `?string $projectKey`;
+        // when no filters DTO is provided, we synthesise one from the
+        // legacy parameter so applyFilters() handles BOTH paths uniformly.
+        // When the caller passes BOTH (rare), filters wins for everything
+        // except the chunk-level `project_key` which still gets the
+        // legacy single-project filter (back-compat with the existing
+        // builder shape — the filters DTO's projectKeys narrows DOCUMENTS,
+        // the chunk-level filter narrows CHUNKS).
+        $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
+
         // Generate query embedding (cached)
         $embeddingsResponse = $this->embeddingCache->generate([$query]);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
@@ -92,6 +139,10 @@ class KbSearchService
 
         if ($projectKey !== null && $projectKey !== '') {
             $builder->where('project_key', $projectKey);
+        }
+
+        if (! $effectiveFilters->isEmpty()) {
+            $this->applyFilters($builder, $effectiveFilters);
         }
 
         $semanticChunks = $builder->limit($candidateCount)->get();
@@ -221,5 +272,70 @@ class KbSearchService
         }
 
         return $merged;
+    }
+
+    /**
+     * Threads RetrievalFilters into the chunk-search query (T2.1 scaffold).
+     *
+     * Filters constrain the candidate document population BEFORE the
+     * reranker scores chunks; this is intentionally placed at the WHERE
+     * level (not in the reranker) so over-retrieval doesn't waste
+     * embedding-cost on documents the user has already excluded.
+     *
+     * Each clause is opt-in via the corresponding DTO field being non-empty.
+     * Tag joins (T2.3) and folder globs (T2.4) are deferred to their own
+     * tasks per the plan — they need a `whereExists` subquery and a
+     * dialect-portable fnmatch translation respectively. `connectorTypes`
+     * is accepted in the DTO + payload but applies no constraint until
+     * a `connector_type` column is added (currently the value lives in
+     * `metadata.connector` JSON which is brittle to query under SQLite).
+     */
+    private function applyFilters(Builder $q, RetrievalFilters $f): void
+    {
+        if ($f->projectKeys !== []) {
+            // KnowledgeChunk has its own `project_key` column denormalised
+            // from KnowledgeDocument (DocumentIngestor::persistChunks
+            // copies it on insert) so the chunk-level whereIn uses the
+            // index directly without joining knowledge_documents — same
+            // legacy filter shape, just with multiple values. The
+            // implicit FK consistency between chunk.project_key and
+            // document.project_key is enforced at write time, so a
+            // separate document-level whereHas would be redundant.
+            $q->whereIn('knowledge_chunks.project_key', $f->projectKeys);
+        }
+
+        $hasDocumentLevelFilters = $f->sourceTypes !== []
+            || $f->canonicalTypes !== []
+            || $f->docIds !== []
+            || $f->languages !== []
+            || $f->dateFrom !== null
+            || $f->dateTo !== null;
+
+        if ($hasDocumentLevelFilters) {
+            $q->whereHas('document', function ($docQuery) use ($f): void {
+                if ($f->sourceTypes !== []) {
+                    $docQuery->whereIn('source_type', $f->sourceTypes);
+                }
+                if ($f->canonicalTypes !== []) {
+                    $docQuery->whereIn('canonical_type', $f->canonicalTypes);
+                }
+                if ($f->docIds !== []) {
+                    $docQuery->whereIn('id', $f->docIds);
+                }
+                if ($f->languages !== []) {
+                    $docQuery->whereIn('language', $f->languages);
+                }
+                if ($f->dateFrom !== null) {
+                    $docQuery->where('indexed_at', '>=', $f->dateFrom);
+                }
+                if ($f->dateTo !== null) {
+                    $docQuery->where('indexed_at', '<=', $f->dateTo);
+                }
+            });
+        }
+
+        // Tag joins handled in T2.3.
+        // Folder globs handled in T2.4.
+        // connectorTypes deferred until a `connector_type` column is added.
     }
 }
