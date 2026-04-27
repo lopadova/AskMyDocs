@@ -462,6 +462,19 @@ KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
+### `GET /api/kb/documents/search` (v3.0+)
+
+Document title/path autocomplete used by the chat composer's `@mention` popover (T2.7/T2.8). Sanctum-protected.
+
+**Query params:**
+
+- `q` — search string (2-120 chars, escaped for `LIKE` wildcards via `\` + `ESCAPE '\\'` clause per R19; literal `_` and `%` in the query do NOT act as wildcards)
+- `project_keys[]` — optional tenant scope (zero or more)
+
+**Response:** `{ "data": [{ "id", "project_key", "title", "source_path", "source_type", "canonical_type" }] }`
+
+Up to 20 results per request. Archived documents are excluded.
+
 ### Chat filters (v3.0+)
 
 `POST /api/kb/chat` accepts an optional `filters` object that narrows the retrieval scope BEFORE reranking + graph expansion + rejected-approach injection — filters change the candidate population, not the post-hoc ranking. Every dimension is optional.

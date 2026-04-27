@@ -518,3 +518,34 @@ T2.5 mostly verified the `doc_ids` whitelist that T2.1 already wired, and the ve
 **References:** `app/Services/Kb/Retrieval/RetrievalFilters.php::isEmpty()` (top-level fast path), `app/Services/Kb/KbSearchService.php::applyFilters()` (SQL-backed dimensions only — each with its `!== []` guard), `app/Services/Kb/KbSearchService.php::filterByFolderGlobs()` (post-fetch dimension), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (T2.5 added `test_apply_filters_doc_ids_empty_array_is_true_no_op_not_a_zero_eq_one_clause`, `test_apply_filters_doc_ids_single_value_uses_single_binding`, `test_apply_filters_doc_ids_combine_with_other_dimensions_in_single_whereHas`).
 
 ---
+
+## [2026-04-27 06:42] Sub-task T2.6 — LIKE escape MUST pair with explicit `ESCAPE '\\'` clause via whereRaw
+
+**Type:** rule
+**Severity:** high (security-adjacent — silent search wildcard injection)
+**Applies to:** every future LIKE-based search endpoint, plus any existing code that escapes LIKE wildcards without the ESCAPE clause.
+
+**Finding:**
+T2.6 cycle-0 implementation initially used `where('title', 'LIKE', $escaped)` after str_replacing `\`, `%`, `_` to their backslash-escaped forms. The R19 escape tests FAILED with 0 results when expecting 1. Root cause: SQLite's default `LIKE` operator has NO escape character — when the SQL contains `WHERE title LIKE 'Policy\_v2'` without an `ESCAPE` clause, SQLite interprets `\_` as the LITERAL two-character string `\_`, NOT as an escaped underscore. So `Policy\_v2` only matches the title `Policy\_v2` (which doesn't exist) — `Policy_v2` becomes effectively unfindable AND `Policyav2` would still match if a search query had been `Policy_v2` without escape.
+
+**The fix has two halves:**
+1. Escape `\`, `%`, `_` in the user input (already in plan).
+2. Combine with an explicit `ESCAPE '\\'` clause in the SQL.
+
+**Laravel's `where('col', 'LIKE', $val)` does NOT support tacking ESCAPE on the operator side.** The only portable path is `whereRaw("col LIKE ? ESCAPE '\\'", [$val])`. PostgreSQL respects the same `ESCAPE '\\'` clause, so the raw-SQL is portable across the two dialects we support.
+
+**Why it matters:**
+- Without the ESCAPE clause, the escape step is worse than useless: it makes the search FAIL on legitimate inputs (e.g. `Policy_v2`) AND leaves wildcard injection possible if the escape step is ever skipped or partially applied. Users would see "no results" for valid queries — a silent UX bug AND a search-bypass invariant violation.
+- Security-adjacent: combine escape + ESCAPE means a user typing `100%` in the autocomplete looks for the literal substring `100%`, not "anything starting with 100" — preventing accidental tenant data leakage on shared autocomplete results.
+- Future LIKE-based endpoints (search-by-author, search-by-tag-name, etc.) MUST follow this pattern.
+
+**How to apply:**
+- For new LIKE-based searches: `whereRaw("col LIKE ? ESCAPE '\\'", [$pattern])` — never `where('col', 'LIKE', $pattern)` alone.
+- For grep/inspection: `grep -rn "LIKE'.*\?\\)" app/Http/` to find existing endpoints; verify each pairs an ESCAPE clause with its escape step.
+- Test pattern: include BOTH `_` and `%` literal inputs in the user query and assert the response excludes wildcard-style matches (T2.6's `test_escapes_underscore_per_R19_so_literal_underscore_is_not_a_wildcard` and `test_escapes_percent_per_R19_so_literal_percent_is_not_a_wildcard`).
+
+**Operational note:** the existing `User::matchesAnyGlob` (R19 follow-up flagged in T2.4 LESSONS) is unrelated — it's an in-PHP fnmatch-style match, not SQL LIKE. The two issues share the R19 lineage but have different fixes.
+
+**References:** `app/Http/Controllers/Api/KbDocumentSearchController.php::__invoke()` (whereRaw + ESCAPE), `tests/Feature/Api/KbDocumentSearchControllerTest.php` (12 cases including the two R19-specific escapes for `_` and `%`).
+
+---
