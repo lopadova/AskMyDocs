@@ -239,7 +239,7 @@ class KbChatController extends Controller
         string $reason,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = (string) __('kb.no_grounded_answer');
+        $answer = $this->localizedRefusalMessage($reason);
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
@@ -307,6 +307,35 @@ class KbChatController extends Controller
     }
 
     /**
+     * T3.8-BE — resolve the user-facing refusal message for the given
+     * reason via the localized hierarchy:
+     *
+     *   1. `kb.refusal.{reason}` — per-reason copy (preferred). Lets the
+     *      user see why the answer was withheld ("no documents match"
+     *      vs "AI couldn't ground").
+     *   2. `kb.no_grounded_answer` — generic fallback when the per-reason
+     *      key is missing. Forward-compat hatch: a future task can add
+     *      a new refusal_reason in code without breaking response
+     *      rendering before the lang lines land in a follow-up PR.
+     *
+     * The `__()` translator returns the dotted key itself when no entry
+     * exists, so we use that as the "miss" sentinel and degrade to the
+     * generic message. Callers should NEVER receive the raw key — the
+     * test suite asserts this on every refusal path.
+     */
+    private function localizedRefusalMessage(string $reason): string
+    {
+        $perReasonKey = "kb.refusal.{$reason}";
+        $perReasonMessage = __($perReasonKey);
+
+        if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
+            return $perReasonMessage;
+        }
+
+        return (string) __('kb.no_grounded_answer');
+    }
+
+    /**
      * T3.4 — convert an LLM-self-refusal sentinel response into a refusal
      * payload. Different from {@see refusalResponse()} on TWO axes:
      *
@@ -334,7 +363,7 @@ class KbChatController extends Controller
         int $latencyMs,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = (string) __('kb.no_grounded_answer');
+        $answer = $this->localizedRefusalMessage($reason);
 
         $chatLog->log(new ChatLogEntry(
             sessionId: $request->header('X-Session-Id', (string) Str::uuid()),

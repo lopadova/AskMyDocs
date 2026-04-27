@@ -245,7 +245,7 @@ class MessageController extends Controller
         string $reason,
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
-        $answer = (string) __('kb.no_grounded_answer');
+        $answer = $this->localizedRefusalMessage($reason);
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
@@ -310,6 +310,26 @@ class MessageController extends Controller
     }
 
     /**
+     * T3.8-BE — per-reason i18n with fallback (mirror of
+     * KbChatController::localizedRefusalMessage). Uses
+     * `kb.refusal.{reason}` first, degrades to `kb.no_grounded_answer`
+     * if the per-reason key is missing. The translator returns the raw
+     * key on a miss — we use that as the sentinel and never leak the
+     * key to the user.
+     */
+    private function localizedRefusalMessage(string $reason): string
+    {
+        $perReasonKey = "kb.refusal.{$reason}";
+        $perReasonMessage = __($perReasonKey);
+
+        if (is_string($perReasonMessage) && $perReasonMessage !== $perReasonKey) {
+            return $perReasonMessage;
+        }
+
+        return (string) __('kb.no_grounded_answer');
+    }
+
+    /**
      * T3.4 — sentinel-to-refusal conversion for the conversation flow.
      *
      * Differs from {@see refusalResponse()} (which handles `no_relevant_context`)
@@ -338,7 +358,7 @@ class MessageController extends Controller
         int $latencyMs,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
-        $answer = (string) __('kb.no_grounded_answer');
+        $answer = $this->localizedRefusalMessage($reason);
 
         $assistantMessage = $conversation->messages()->create([
             'role' => 'assistant',
