@@ -13,8 +13,10 @@ use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
+use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
+use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
@@ -74,6 +76,18 @@ Route::middleware([
 ])->group(function () {
     Route::post('/kb/chat', KbChatController::class);
     Route::post('/kb/ingest', KbIngestController::class);
+    // T2.6 — document title/path autocomplete for the FE chat composer's
+    // @mention popover (T2.7/T2.8 will consume it).
+    Route::get('/kb/documents/search', KbDocumentSearchController::class)
+        ->name('api.kb.documents.search');
+
+    // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
+    // consumes these in T2.7-FE follow-up). Per-user authorization
+    // enforced inside the controller via `where('user_id', auth()->id())`
+    // on every action — no policy needed.
+    Route::apiResource('/chat-filter-presets', ChatFilterPresetController::class)
+        ->parameters(['chat-filter-presets' => 'id'])
+        ->names('api.chat-filter-presets');
     Route::delete('/kb/documents', KbDeleteController::class);
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
@@ -197,6 +211,21 @@ Route::middleware([
             ->name('api.admin.kb.documents.graph');
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
+
+        // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
+        // cascade on delete via FK ON DELETE CASCADE on
+        // knowledge_document_tags. Controller methods take `int $id`
+        // (mirrors ChatFilterPresetController's int-typed params)
+        // so route binding stays plain — no Eloquent implicit binding.
+        Route::apiResource('kb/tags', \App\Http\Controllers\Api\Admin\TagController::class)
+            ->parameters(['tags' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.tags.index',
+                'store' => 'api.admin.kb.tags.store',
+                'show' => 'api.admin.kb.tags.show',
+                'update' => 'api.admin.kb.tags.update',
+                'destroy' => 'api.admin.kb.tags.destroy',
+            ]);
 
         // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
         // canonical audit, application log tail, activity log

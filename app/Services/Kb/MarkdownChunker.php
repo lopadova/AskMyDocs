@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Services\Kb;
 
 use App\Services\Kb\Canonical\WikilinkExtractor;
+use App\Services\Kb\Contracts\ChunkerInterface;
+use App\Services\Kb\Pipeline\ChunkDraft;
+use App\Services\Kb\Pipeline\ConvertedDocument;
 use Illuminate\Support\Collection;
 
 /**
@@ -26,14 +29,34 @@ use Illuminate\Support\Collection;
  *
  * Token count is approximate (`strlen / 4`). Exact tokenization is the
  * embedding provider's concern; here we only need a hard-cap gate.
+ *
+ * v3.0 contract surface (T1.2):
+ *  - {@see chunk()} now accepts a {@see ConvertedDocument} and returns
+ *    `list<ChunkDraft>` per {@see ChunkerInterface}.
+ *  - The pre-v3 `chunk(string $filename, string $markdown): Collection`
+ *    is preserved verbatim under {@see chunkLegacy()} so DocumentIngestor
+ *    and existing tests keep working until T1.4 cuts callers over.
  */
-class MarkdownChunker
+class MarkdownChunker implements ChunkerInterface
 {
     private const FRONTMATTER_RE = '/\A---\r?\n.*?\r?\n---\r?\n?/s';
     private const HEADING_RE = '/^(#{1,6})\s+(.*?)\s*$/';
     private const FENCE_TOGGLE_RE = '/^\s{0,3}(`{3,}|~{3,})/';
     private const PARAGRAPH_SEP = '/\n{2,}/';
     private const CHARS_PER_TOKEN = 4;
+    /**
+     * Source-type tokens this chunker handles. Every converter that produces
+     * markdown reuses this chunker (no DRY violation):
+     *  - `markdown` / `md` — MarkdownPassthroughConverter (T1.3)
+     *  - `text`            — TextPassthroughConverter wraps body in `# basename`
+     *  - `docx`            — DocxConverter (T1.6) outputs markdown headings.
+     *
+     * `pdf` was REMOVED in T1.7 — PdfPageChunker now owns it and splits the
+     * converted markdown on `## Page N` heading boundaries. The registry's
+     * first-match-wins rule resolves `pdf` to PdfPageChunker because it's
+     * listed first in `config/kb-pipeline.php`.
+     */
+    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'docx'];
 
     private WikilinkExtractor $wikilinks;
 
@@ -42,10 +65,60 @@ class MarkdownChunker
         $this->wikilinks = $wikilinks ?? new WikilinkExtractor();
     }
 
+    public function name(): string
+    {
+        return 'markdown-section-aware';
+    }
+
+    public function supports(string $sourceType): bool
+    {
+        return in_array($sourceType, self::SUPPORTED_SOURCE_TYPES, true);
+    }
+
     /**
+     * v3 pipeline entry point — accepts a ConvertedDocument and returns ChunkDraft[].
+     *
+     * Filename for `metadata.filename` is read from `extractionMeta['filename']`
+     * (set by the converter or DocumentIngestor) — only when it is a non-empty
+     * string. Anything else (missing key, null, empty string, array, int, ...)
+     * falls back to 'unknown.md' so downstream embedding/persistence never sees
+     * a missing key OR a meaningless value like the literal `'Array'` produced
+     * by string-casting an array.
+     *
+     * @return list<ChunkDraft>
+     */
+    public function chunk(ConvertedDocument $doc): array
+    {
+        $filename = $this->resolveFilename($doc->extractionMeta['filename'] ?? null);
+        $legacy = $this->chunkLegacy($filename, $doc->markdown);
+
+        return $legacy
+            ->map(fn (array $chunk, int $i): ChunkDraft => new ChunkDraft(
+                text: $chunk['text'],
+                order: $i,
+                headingPath: $chunk['heading_path'] ?? '',
+                metadata: $chunk['metadata'],
+            ))
+            ->values()
+            ->all();
+    }
+
+    private function resolveFilename(mixed $raw): string
+    {
+        if (! is_string($raw)) {
+            return 'unknown.md';
+        }
+        $trimmed = trim($raw);
+        return $trimmed === '' ? 'unknown.md' : $trimmed;
+    }
+
+    /**
+     * Legacy entry point — preserved verbatim for DocumentIngestor and existing
+     * unit tests until T1.4 swaps callers to {@see chunk()}.
+     *
      * @return Collection<int, array{text:string, heading_path:?string, metadata:array<string,mixed>}>
      */
-    public function chunk(string $filename, string $markdown): Collection
+    public function chunkLegacy(string $filename, string $markdown): Collection
     {
         $body = $this->stripFrontmatter($markdown);
         if (trim($body) === '') {
