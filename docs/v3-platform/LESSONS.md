@@ -428,3 +428,28 @@ Three concrete decisions surfaced during T2.2:
 **References:** `app/Http/Requests/Api/KbChatRequest.php` (rules + toFilters + effectiveProjectKey), `app/Http/Controllers/Api/KbChatController.php::__invoke` (filters threading + effective project_key + filters_selected echo), `tests/Feature/Api/KbChatControllerFiltersTest.php` (capture-and-stub KbSearchService pattern + chat-log disabled-via-config workaround), README.md "Chat filters (v3.0+)" section.
 
 ---
+
+## [2026-04-27 05:15] Sub-task T2.3 — Tag filter via whereExists subquery (slug-exact, no LIKE)
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** every future filter dimension that maps to a slug-style identifier (T2.x folder paths via folder_id, future user-id allowlists, etc.).
+
+**Finding:**
+Two binding decisions surfaced during T2.3:
+
+1. **Slug-style filters use `whereIn` (exact match), NOT `LIKE` — so R19 escape is irrelevant for them.** Plan §1822 included a "tag with name 'a_b' must NOT match documents tagged 'acb'" test, originally framed as the R19 LIKE-escape concern. But tag SLUGS are exact-match identifiers (the whereIn constructs `kt.slug IN (?, ?, ...)`); LIKE only enters the picture when matching tag NAMES (the human-readable label, which we don't filter on). Codified now: any slug/identifier dimension stays whereIn-based; future maintainers should NOT "harden" with backslash-escape on slug values — that would actually break legitimate slugs containing `_` (e.g. `pre_release`). A test (`test_apply_filters_tag_slug_match_is_exact_not_like`) pins the intent so a future grep-and-replace doesn't accidentally LIKE-ify the query.
+
+2. **Tag join project scoping is NOT structurally enforced — the pivot only has FKs on IDs, no `project_key` constraint.** Initial cycle-0 LESSONS claim was that "the chunk-level project_key whereIn + FK chains transitively enforce tenant isolation in the subquery". That's WRONG: `knowledge_document_tags` only carries FKs on `knowledge_document_id` and `kb_tag_id`; the schema does NOT prevent a tag from project A from being associated with a document from project B (it's a write-time application invariant, not DB-enforced). If the application code ever bugs out and creates a cross-project pivot row, the chunk-level project filter would NOT prevent the cross-project slug match. Cycle-1 fix: added an explicit `whereColumn('kt.project_key', 'knowledge_chunks.project_key')` constraint in the subquery so the search query is tenant-safe regardless of write-time invariants. **For T2.4 folder filter**: do NOT automatically generalize "no project-key duplication needed" — first verify whether that join path is actually tenant-enforced by the schema. When in doubt, add the explicit constraint (cheap insurance, easy to remove later if profiling shows it hurts the query plan).
+
+**Why it matters:**
+- Rule 1 prevents a recurring mistake pattern (over-applying R19 to non-LIKE filters).
+- Rule 2 corrects an over-confident tenant-safety claim — multi-tenant search MUST enforce project scoping at the query level for every join, not assume schema or application invariants are bulletproof.
+
+**How to apply:**
+- For new slug/identifier filters: use `whereIn` and write a test that asserts `LIKE` is NOT in the resulting SQL.
+- For new joined-table filters: ALWAYS verify the join path's project scoping at the schema level. If the pivot/junction table doesn't have a project-key FK or check constraint, add an explicit `whereColumn('joined_table.project_key', 'knowledge_chunks.project_key')` predicate in the subquery — defence-in-depth against a buggy write path leaking across tenants.
+
+**References:** `app/Services/Kb/KbSearchService.php::applyFilters()` (tagSlugs branch), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_adds_whereExists_join_for_tag_slugs` + `test_apply_filters_tag_slug_match_is_exact_not_like`.
+
+---

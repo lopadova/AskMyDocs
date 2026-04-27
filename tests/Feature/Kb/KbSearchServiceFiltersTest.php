@@ -159,16 +159,56 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertStringContainsString('"id" in (?)', $sql['sql']);
     }
 
-    public function test_apply_filters_does_nothing_for_tag_or_folder_or_connector_in_t2_1(): void
+    public function test_apply_filters_adds_whereExists_join_for_tag_slugs(): void
     {
-        // T2.3 (tags), T2.4 (folder globs), and a future task (connector
-        // column) own those dimensions. Verify T2.1's scaffold leaves them
-        // as no-ops so future tasks can plug them in without conflict.
-        $sqlA = $this->buildFilteredSql(new RetrievalFilters(tagSlugs: ['x']));
+        // T2.3 — tag filter via whereExists subquery on
+        // knowledge_document_tags + kb_tags. Slugs are exact-match
+        // (whereIn, not LIKE) so no R19 escape concern.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(tagSlugs: ['policy', 'security']));
+
+        $this->assertStringContainsString('exists', $sql['sql']);
+        $this->assertStringContainsString('"knowledge_document_tags"', $sql['sql']);
+        $this->assertStringContainsString('"kb_tags"', $sql['sql']);
+        $this->assertStringContainsString('"kt"."slug" in (?, ?)', $sql['sql']);
+        $this->assertContains('policy', $sql['bindings']);
+        $this->assertContains('security', $sql['bindings']);
+    }
+
+    public function test_apply_filters_tag_subquery_constrains_project_explicitly(): void
+    {
+        // T2.3 cycle-1 fix: knowledge_document_tags pivot has no
+        // project_key FK, so the schema doesn't structurally prevent
+        // cross-project tag associations. The subquery must EXPLICITLY
+        // constrain `kt.project_key = knowledge_chunks.project_key` so
+        // the search is tenant-safe regardless of write-time invariants.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(tagSlugs: ['policy']));
+
+        $this->assertStringContainsString('"kt"."project_key" = "knowledge_chunks"."project_key"', $sql['sql']);
+    }
+
+    public function test_apply_filters_tag_slug_match_is_exact_not_like(): void
+    {
+        // R19 documents that LIKE-based filters need %/_/\ escaping. Slug
+        // matching uses whereIn (exact match) by DESIGN — verify the SQL
+        // does NOT include LIKE so future maintainers don't try to
+        // "harden" with unnecessary escaping that would actually break
+        // valid slugs containing underscores (e.g. `pre_release`).
+        $sql = $this->buildFilteredSql(new RetrievalFilters(tagSlugs: ['pre_release']));
+
+        $this->assertStringNotContainsString(' like ', strtolower($sql['sql']));
+        $this->assertStringContainsString('in (?)', $sql['sql']);
+        $this->assertContains('pre_release', $sql['bindings']);
+    }
+
+    public function test_apply_filters_does_nothing_for_folder_or_connector_in_t2_3(): void
+    {
+        // T2.4 (folder globs), and a future task (connector column) own
+        // those dimensions. Verify T2.3 leaves them as no-ops so future
+        // tasks can plug them in without conflict. (tagSlugs IS now
+        // implemented — see test_apply_filters_adds_whereExists_join_for_tag_slugs.)
         $sqlB = $this->buildFilteredSql(new RetrievalFilters(folderGlobs: ['hr/**']));
         $sqlC = $this->buildFilteredSql(new RetrievalFilters(connectorTypes: ['google-drive']));
 
-        $this->assertStringNotContainsString('kb_tags', $sqlA['sql']);
         $this->assertStringNotContainsString('source_path', $sqlB['sql']);
         $this->assertStringNotContainsString('connector_type', $sqlC['sql']);
     }
