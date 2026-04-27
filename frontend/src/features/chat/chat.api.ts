@@ -118,6 +118,14 @@ export interface MessageMetadata {
     // Populated when the AI provider returns a reasoning trace.
     // MessageBubble renders these inside <ThinkingTrace>.
     reasoning_steps?: string[];
+    // T3.5 — composite grounding score 0..100. Populated for assistant
+    // turns since the v3.0 grounding tier; null on legacy rows + on
+    // refusal payloads (where confidence=0 sits at the top level too).
+    confidence?: number | null;
+    // T3.3/T3.4 — refusal taxonomy tag. Stays English regardless of
+    // user locale (machine-readable identifier the dashboard rolls up).
+    // Possible values: 'no_relevant_context' | 'llm_self_refusal' | null.
+    refusal_reason?: string | null;
 }
 
 export interface Message {
@@ -127,6 +135,11 @@ export interface Message {
     metadata: MessageMetadata | null;
     rating: 'positive' | 'negative' | null;
     created_at: string;
+    // T3.5 — top-level mirrors of the same metadata fields. The BE
+    // populates BOTH so the FE can render the badge without digging
+    // through metadata. Null on legacy rows + on user turns.
+    confidence?: number | null;
+    refusal_reason?: string | null;
 }
 
 export const chatApi = {
