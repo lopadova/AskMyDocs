@@ -12,9 +12,13 @@ import { composer } from './helpers';
  *   - `/api/chat-filter-presets` is INTERNAL (per-user CRUD).
  *     T2.9-BE shipped + the DemoSeeder seeds an admin user. The
  *     scenario calls the real endpoint via the popover; no stub.
- *   - `/conversations/*\/messages` POST stays stubbed via `page.route`
+ *   - the conversations/messages POST stays stubbed via page.route
  *     because it triggers the AI provider (EXTERNAL_PROXY allowlist).
  */
+
+// Per-test timeout bumped from the 20s default — see chat-refusal.spec.ts
+// for the rationale (slow seeded fixture under local php -S + SQLite).
+test.describe.configure({ timeout: 60_000 });
 
 test.describe('Mention popover + saved filter presets', () => {
     test('typing @ pol shows the mention popover with results from the real API', async ({ page }) => {

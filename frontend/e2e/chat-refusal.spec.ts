@@ -1,6 +1,40 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
+
+/**
+ * Stub BOTH POST /conversations/<id>/messages (the assistant-reply
+ * endpoint) and GET /conversations/<id>/messages (the list refetch
+ * useChatMutation triggers via invalidateQueries on success).
+ *
+ * Without the GET stub, the refetch hits the real BE which has no
+ * record of the mocked POST → assistant message disappears before
+ * the assertions land. Mirrors the chat.spec.ts pattern (Copilot #12
+ * fix). Keeping it as a helper so each test stays focused on
+ * declaring its own assistant payload.
+ */
+async function stubAssistantReply(page: Page, body: Record<string, unknown>): Promise<void> {
+    await page.route('**/conversations/*/messages', async (route) => {
+        const method = route.request().method();
+        if (method === 'GET') {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify([body]),
+            });
+            return;
+        }
+        if (method !== 'POST') {
+            await route.fallback();
+            return;
+        }
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(body),
+        });
+    });
+}
 
 /*
  * T3.7 / M3-FE — Refusal payload rendering scenarios.
@@ -18,44 +52,41 @@ import { composer, thread, waitForThreadReady } from './helpers';
  *   - skip the citations strip
  *   - show a 'refused' confidence badge
  *
- * R13: this scenario uses `page.route()` to fake the AI provider AT
- * THE LARAVEL ENDPOINT (the route Laravel exposes — `*conversations/* /messages`)
+ * R13: this scenario uses page.route() to fake the AI provider AT
+ * THE LARAVEL ENDPOINT (the route Laravel exposes is conversations/messages)
  * because the goal is to control the BE response shape verifiably,
  * NOT to test the LLM provider integration. The BE refusal logic is
  * fully covered by KbChatRefusalTest + KbChatSentinelTest at the
  * PHPUnit layer; the FE spec proves the rendering pipeline only.
  */
 
+// Per-test timeout bumped from the 20s default — under php -S
+// single-threaded backend + SQLite migrate:fresh, the `seeded`
+// fixture alone can take 10-15s before the test logic runs. CI runs
+// against Postgres which is much faster; this ceiling only kicks in
+// on local boxes that run the spec end-to-end.
+test.describe.configure({ timeout: 60_000 });
+
 test.describe('Chat refusal rendering', () => {
     test('no_relevant_context refusal renders RefusalNotice with grey confidence badge', async ({ page }) => {
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 2001,
-                    role: 'assistant',
-                    // English copy from lang/en/kb.php (T3.8-BE).
-                    content: 'No documents in the knowledge base match this question.',
-                    metadata: {
-                        provider: 'none',
-                        model: 'none',
-                        chunks_count: 0,
-                        latency_ms: 25,
-                        citations: [],
-                        refusal_reason: 'no_relevant_context',
-                        confidence: 0,
-                    },
-                    rating: null,
-                    confidence: 0,
-                    refusal_reason: 'no_relevant_context',
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubAssistantReply(page, {
+            id: 2001,
+            role: 'assistant',
+            // English copy from lang/en/kb.php (T3.8-BE).
+            content: 'No documents in the knowledge base match this question.',
+            metadata: {
+                provider: 'none',
+                model: 'none',
+                chunks_count: 0,
+                latency_ms: 25,
+                citations: [],
+                refusal_reason: 'no_relevant_context',
+                confidence: 0,
+            },
+            rating: null,
+            confidence: 0,
+            refusal_reason: 'no_relevant_context',
+            created_at: new Date().toISOString(),
         });
 
         await page.goto('/app/chat');
@@ -64,22 +95,25 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        const refusalNotice = page.getByTestId('refusal-notice');
+        // .first() throughout because optimistic-insert + GET-refetch
+        // can briefly render two assistant messages with the same body
+        // before reconciliation; the content match is what matters.
+        const refusalNotice = page.getByTestId('refusal-notice').first();
         await expect(refusalNotice).toBeVisible({ timeout: 30_000 });
         await expect(refusalNotice).toHaveAttribute('data-reason', 'no_relevant_context');
         await expect(refusalNotice).toHaveAttribute('role', 'status');
         await expect(refusalNotice).toHaveAttribute('aria-live', 'polite');
-        await expect(page.getByTestId('refusal-notice-body')).toContainText(
+        await expect(page.getByTestId('refusal-notice-body').first()).toContainText(
             'No documents in the knowledge base match this question.',
         );
 
         // Helper text guides the user toward a remediation.
-        await expect(page.getByTestId('refusal-notice-hint')).toContainText(
+        await expect(page.getByTestId('refusal-notice-hint').first()).toContainText(
             /broadening filters|adding more documents/i,
         );
 
         // Confidence badge renders 'refused' tier (grey), NOT 'low'.
-        const badge = page.getByTestId('confidence-badge');
+        const badge = page.getByTestId('confidence-badge').first();
         await expect(badge).toBeVisible();
         await expect(badge).toHaveAttribute('data-state', 'refused');
 
@@ -90,33 +124,23 @@ test.describe('Chat refusal rendering', () => {
     });
 
     test('llm_self_refusal renders RefusalNotice with the LLM-self-refusal hint', async ({ page }) => {
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 2002,
-                    role: 'assistant',
-                    content: 'The AI cannot answer this question based on the provided documents.',
-                    metadata: {
-                        provider: 'openai',
-                        model: 'gpt-4o-mini',
-                        chunks_count: 3,
-                        latency_ms: 1200,
-                        citations: [],
-                        refusal_reason: 'llm_self_refusal',
-                        confidence: 0,
-                    },
-                    rating: null,
-                    confidence: 0,
-                    refusal_reason: 'llm_self_refusal',
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubAssistantReply(page, {
+            id: 2002,
+            role: 'assistant',
+            content: 'The AI cannot answer this question based on the provided documents.',
+            metadata: {
+                provider: 'openai',
+                model: 'gpt-4o-mini',
+                chunks_count: 3,
+                latency_ms: 1200,
+                citations: [],
+                refusal_reason: 'llm_self_refusal',
+                confidence: 0,
+            },
+            rating: null,
+            confidence: 0,
+            refusal_reason: 'llm_self_refusal',
+            created_at: new Date().toISOString(),
         });
 
         await page.goto('/app/chat');
@@ -125,17 +149,17 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        const refusalNotice = page.getByTestId('refusal-notice');
+        const refusalNotice = page.getByTestId('refusal-notice').first();
         await expect(refusalNotice).toBeVisible({ timeout: 30_000 });
         await expect(refusalNotice).toHaveAttribute('data-reason', 'llm_self_refusal');
 
         // The per-reason hint differs from the no_relevant_context one.
-        await expect(page.getByTestId('refusal-notice-hint')).toContainText(
+        await expect(page.getByTestId('refusal-notice-hint').first()).toContainText(
             /rephrasing the question/i,
         );
 
         // Refused tier on the badge regardless of which refusal reason fired.
-        await expect(page.getByTestId('confidence-badge')).toHaveAttribute('data-state', 'refused');
+        await expect(page.getByTestId('confidence-badge').first()).toHaveAttribute('data-state', 'refused');
     });
 
     test('grounded answer with high confidence shows green badge, no refusal notice', async ({ page }) => {
@@ -143,33 +167,23 @@ test.describe('Chat refusal rendering', () => {
         // fires when the BE actually emits a refusal. A high-confidence
         // grounded answer must render the normal Markdown body + a
         // green/'high' badge.
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 2003,
-                    role: 'assistant',
-                    content: 'The remote work stipend applies to full-time employees after 90 days.',
-                    metadata: {
-                        provider: 'openai',
-                        model: 'gpt-4o-mini',
-                        chunks_count: 3,
-                        latency_ms: 980,
-                        citations: [],
-                        refusal_reason: null,
-                        confidence: 87,
-                    },
-                    rating: null,
-                    confidence: 87,
-                    refusal_reason: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubAssistantReply(page, {
+            id: 2003,
+            role: 'assistant',
+            content: 'The remote work stipend applies to full-time employees after 90 days.',
+            metadata: {
+                provider: 'openai',
+                model: 'gpt-4o-mini',
+                chunks_count: 3,
+                latency_ms: 980,
+                citations: [],
+                refusal_reason: null,
+                confidence: 87,
+            },
+            rating: null,
+            confidence: 87,
+            refusal_reason: null,
+            created_at: new Date().toISOString(),
         });
 
         await page.goto('/app/chat');
@@ -178,44 +192,36 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        // No refusal notice on the grounded path.
-        await expect(page.getByTestId('refusal-notice')).not.toBeVisible();
+        // No refusal notice on the grounded path. We check first()
+        // because the optimistic-vs-refetch race can yield 0-or-2
+        // matches; not.toBeVisible on first() is the clearer assertion.
+        await expect(page.getByTestId('refusal-notice').first()).not.toBeVisible();
 
         // High-confidence badge.
-        const badge = page.getByTestId('confidence-badge');
+        const badge = page.getByTestId('confidence-badge').first();
         await expect(badge).toBeVisible({ timeout: 15_000 });
         await expect(badge).toHaveAttribute('data-state', 'high');
         await expect(badge).toContainText('87/100');
     });
 
     test('moderate confidence (50-79) renders yellow tier', async ({ page }) => {
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 2004,
-                    role: 'assistant',
-                    content: 'A partially-grounded answer with one citation.',
-                    metadata: {
-                        provider: 'openai',
-                        model: 'gpt-4o-mini',
-                        chunks_count: 1,
-                        latency_ms: 1050,
-                        citations: [],
-                        refusal_reason: null,
-                        confidence: 62,
-                    },
-                    rating: null,
-                    confidence: 62,
-                    refusal_reason: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubAssistantReply(page, {
+            id: 2004,
+            role: 'assistant',
+            content: 'A partially-grounded answer with one citation.',
+            metadata: {
+                provider: 'openai',
+                model: 'gpt-4o-mini',
+                chunks_count: 1,
+                latency_ms: 1050,
+                citations: [],
+                refusal_reason: null,
+                confidence: 62,
+            },
+            rating: null,
+            confidence: 62,
+            refusal_reason: null,
+            created_at: new Date().toISOString(),
         });
 
         await page.goto('/app/chat');
@@ -224,7 +230,7 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        const badge = page.getByTestId('confidence-badge');
+        const badge = page.getByTestId('confidence-badge').first();
         await expect(badge).toBeVisible({ timeout: 15_000 });
         await expect(badge).toHaveAttribute('data-state', 'moderate');
     });
@@ -232,33 +238,23 @@ test.describe('Chat refusal rendering', () => {
     test('Italian-locale refusal body renders verbatim (BE owns localization)', async ({ page }) => {
         // Pin L22: the FE never re-translates; whatever string the BE
         // delivered is what shows up. Italian seed → Italian body.
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 2005,
-                    role: 'assistant',
-                    content: 'Nessun documento nella knowledge base corrisponde a questa domanda.',
-                    metadata: {
-                        provider: 'none',
-                        model: 'none',
-                        chunks_count: 0,
-                        latency_ms: 18,
-                        citations: [],
-                        refusal_reason: 'no_relevant_context',
-                        confidence: 0,
-                    },
-                    rating: null,
-                    confidence: 0,
-                    refusal_reason: 'no_relevant_context',
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubAssistantReply(page, {
+            id: 2005,
+            role: 'assistant',
+            content: 'Nessun documento nella knowledge base corrisponde a questa domanda.',
+            metadata: {
+                provider: 'none',
+                model: 'none',
+                chunks_count: 0,
+                latency_ms: 18,
+                citations: [],
+                refusal_reason: 'no_relevant_context',
+                confidence: 0,
+            },
+            rating: null,
+            confidence: 0,
+            refusal_reason: 'no_relevant_context',
+            created_at: new Date().toISOString(),
         });
 
         await page.goto('/app/chat');
@@ -267,11 +263,14 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        await expect(page.getByTestId('refusal-notice-body')).toContainText(
+        // .first() because the optimistic-insert + GET-refetch can
+        // briefly render two assistant messages with the same body
+        // before reconciliation; the content match is what matters.
+        await expect(page.getByTestId('refusal-notice-body').first()).toContainText(
             'Nessun documento nella knowledge base corrisponde a questa domanda.',
         );
         // Reason tag stays English (machine-readable identifier).
-        await expect(page.getByTestId('refusal-notice')).toHaveAttribute(
+        await expect(page.getByTestId('refusal-notice').first()).toHaveAttribute(
             'data-reason',
             'no_relevant_context',
         );

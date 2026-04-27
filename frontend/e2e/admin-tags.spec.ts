@@ -13,6 +13,11 @@ import { test } from './fixtures';
  * admin-tags-viewer.spec.ts and run under the chromium-viewer project.
  */
 
+// Per-test timeout bumped from 20s default — slow seeded fixture
+// under local php -S + SQLite, fast under CI's Postgres. Admin Tags
+// scenarios run a multi-step CRUD flow that compounds the latency.
+test.describe.configure({ timeout: 90_000 });
+
 test.describe('Admin Tags CRUD', () => {
     test('admin lands on /app/admin/kb/tags and sees the empty state on a fresh seed', async ({ page }) => {
         await page.goto('/app/admin/kb/tags');

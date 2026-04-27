@@ -16,12 +16,16 @@ import { composer } from './helpers';
  *      POST payload — the BE receives the `filters` object and the
  *      response carries the resulting `meta.filters_selected` count.
  *
- * R13: the AI provider is stubbed via `page.route()` on
- * `/conversations/*/messages` (EXTERNAL_PROXY allowlist — POST
- * triggers the AI provider). The `page.route` handler asserts the
+ * R13: the AI provider is stubbed via page.route() on
+ * /conversations/<id>/messages (EXTERNAL_PROXY allowlist — POST
+ * triggers the AI provider). The page.route handler asserts the
  * payload SHAPE — proving the FE actually threaded the filters
  * through, not just rendered them locally.
  */
+
+// Per-test timeout bumped from 20s default — slow seeded fixture
+// under local php -S + SQLite, fast under CI's Postgres.
+test.describe.configure({ timeout: 60_000 });
 
 test.describe('Chat composer filters', () => {
     test('filter bar renders even with zero filters and shows the + Filter trigger', async ({ page }) => {
