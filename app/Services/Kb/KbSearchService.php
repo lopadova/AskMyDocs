@@ -334,7 +334,26 @@ class KbSearchService
             });
         }
 
-        // Tag joins handled in T2.3.
+        if ($f->tagSlugs !== []) {
+            // Tag matching is exact-on-slug via a whereExists subquery
+            // joining `knowledge_document_tags` (the pivot) with `kb_tags`
+            // (where the slug lives). Slugs are user-facing identifiers —
+            // exact match avoids the R19 LIKE-escape concern entirely
+            // (no `%` / `_` / `\` to worry about because we never use LIKE).
+            // Project boundary is enforced transitively: kt → kdt →
+            // knowledge_documents.project_key, all chained via FKs, so
+            // the same slug across projects only matches docs of the
+            // current chunk's project (the chunk-level project_key
+            // whereIn from the projectKeys branch above).
+            $q->whereExists(function ($sub) use ($f): void {
+                $sub->select(DB::raw(1))
+                    ->from('knowledge_document_tags as kdt')
+                    ->join('kb_tags as kt', 'kt.id', '=', 'kdt.kb_tag_id')
+                    ->whereColumn('kdt.knowledge_document_id', 'knowledge_chunks.knowledge_document_id')
+                    ->whereIn('kt.slug', $f->tagSlugs);
+            });
+        }
+
         // Folder globs handled in T2.4.
         // connectorTypes deferred until a `connector_type` column is added.
     }
