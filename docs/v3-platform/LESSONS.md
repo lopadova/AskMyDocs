@@ -582,3 +582,30 @@ T2.9 plan spans backend + frontend. CLAUDE.md mandates "test in browser before c
 **References:** `app/Http/Controllers/Api/ChatFilterPresetController.php::findOwnedOr404()` + per-action where-scoping, `tests/Feature/Api/ChatFilterPresetControllerTest.php::test_*_returns_404_when_preset_belongs_to_other_user` + `_cannot_delete_another_users_preset` + `_cascade_delete_removes_presets_when_user_force_deleted`. T2.9 FE slice (FilterBar dropdown + e2e) deferred — depends on T2.7 which itself is deferred per CLAUDE.md UI verification rule.
 
 ---
+
+## L17 — Grounding columns on shared analytics tables: nullable + non-indexed by default
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule
+**Severity:** low (defaults that don't bite later)
+**Applies to:** future analytics column additions on `messages` / `chat_logs` / similar high-write tables.
+
+**Finding:**
+T3.1 added two grounding columns (`confidence` tinyint 0-100, `refusal_reason` string 64) to BOTH `messages` and `chat_logs`. Three defaulting decisions:
+
+1. **Both columns are nullable.** Pre-T3.0 rows have no concept of confidence or refusal — making the columns NOT NULL would force a backfill migration on a table that grows unboundedly. Nullable + read-side null-handling stays safe; the FE (T3.6 — deferred) renders a default state when the score is null.
+2. **No index on either column.** `confidence` is read by row id (already indexed via PK); aggregating "all messages with confidence < X" is an admin-dashboard query that's rare enough to tolerate a seq scan. `refusal_reason` has 2-3 distinct values across the entire population — the planner ignores B-tree indexes on low-cardinality columns, and `WHERE refusal_reason IS NULL` (the common predicate) doesn't benefit from one. Skipping the index keeps inserts fast on the hot path.
+3. **No CHECK constraint at the schema level (yet).** The plan suggests `CHECK (confidence BETWEEN 0 AND 100)` but it's pgsql-only and SQLite tests would no-op. Deferred to a follow-up pgsql-only migration once the consumer side stabilizes — defending invariants in the producer (`ConfidenceCalculator::compute()` clamps to 0..100) is the cheaper, portable enforcement point for now.
+
+**Why it matters:**
+- Default `NOT NULL` on a high-write table requires a backfill — the v3.0 upgrade path stays single-step (run migration, deploy).
+- Indexing every new column "just in case" is the classic premature-optimization pattern that compounds into write-amplification on tables like `chat_logs` (every INSERT pays the index maintenance cost).
+- CHECK constraints are great until they collide with cross-driver portability — pin invariants in a pgsql-only follow-up rather than no-op'ing them in SQLite.
+
+**How to apply:**
+- New analytics column on a high-write table → start nullable, no index, no CHECK. Add later if a query pattern actually needs it.
+- Producer-side clamp first, schema-level CHECK only when you know the column is stable AND only run on pgsql.
+- Test the BOUNDARY values (0, 1, 99, 100) explicitly in the migration test — guards against future regressions that flip the type to signed or shrink to a smaller width.
+
+**References:** `database/migrations/2026_04_27_000002_add_grounding_columns_to_messages_and_chat_logs_table.php`, `tests/Feature/Migrations/AddGroundingColumnsTest.php::test_messages_confidence_round_trips_boundary_values`.
