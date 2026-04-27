@@ -127,13 +127,15 @@ final class PdfConverter implements ConverterInterface
                 return [$text];
             }
             // pdftotext frequently emits a trailing form-feed after the last
-            // page, which would surface here as an empty trailing element
-            // and inflate page_count by one (and produce a phantom `## Page N`
-            // section with empty body). Pop exactly one trailing empty.
-            if (end($pages) === '') {
+            // page, which can surface here as one or more trailing empty OR
+            // whitespace-only elements (the binary often appends `\n` or
+            // spaces after the form-feed too). Loop-pop ALL such phantom
+            // trailing pages so page_count and later page numbering stay
+            // aligned with the real page count.
+            while ($pages !== [] && trim((string) end($pages)) === '') {
                 array_pop($pages);
             }
-            return $pages;
+            return $pages === [] ? [$text] : $pages;
         } finally {
             // Per CLAUDE.md R7 (no @-silenced errors): explicit guard +
             // unsuppressed unlink. tempnam() always returns a writable path,
@@ -153,9 +155,11 @@ final class PdfConverter implements ConverterInterface
      * extracts no text at all).
      *
      * If EVERY page is empty, returns an empty string so the downstream
-     * MarkdownChunker returns [] and no document/chunks get persisted with
-     * meaningless content. Mirrors TextPassthroughConverter's empty-body
-     * semantics.
+     * MarkdownChunker returns []. This prevents meaningless chunk and
+     * embedding content from being created; whether an empty document
+     * row is still persisted by DocumentIngestor is a separate pipeline
+     * concern this converter does not control. Mirrors TextPassthrough
+     * Converter's empty-body semantics.
      *
      * @param  list<string>  $pages
      */

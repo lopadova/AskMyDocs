@@ -101,9 +101,11 @@ final class PdfConverterTest extends TestCase
 
     public function test_returns_empty_markdown_when_every_page_is_empty(): void
     {
-        // All-whitespace pages → empty markdown → MarkdownChunker returns []
-        // → no document/chunks persisted with meaningless content.
-        // Real-world trigger: scanned/image-only PDFs with no extractable text.
+        // All-whitespace pages → empty markdown → MarkdownChunker returns [].
+        // This avoids producing meaningless chunks from scanned/image-only
+        // PDFs with no extractable text. (Whether an empty document row is
+        // still persisted by DocumentIngestor is a separate pipeline concern
+        // not asserted here.)
         $bytes = PdfFixtureBuilder::build([' ', "\t", '   ']);
         $result = (new PdfConverter())->convert($this->sourceDoc($bytes, 'docs/scan-only.pdf'));
 
