@@ -214,6 +214,84 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertStringNotContainsString('hr/policies', $sql['sql']);
     }
 
+    public function test_filterByFolderGlobs_returns_input_unchanged_for_empty_globs(): void
+    {
+        // Coverage gap fix from T2.4 cycle-1: the filter step must be
+        // explicit and testable. With no globs, the input collection
+        // passes through unchanged.
+        $chunks = collect(['a', 'b', 'c']);
+        $this->assertSame(
+            $chunks->all(),
+            $this->svc->filterByFolderGlobs($chunks, [])->all(),
+        );
+    }
+
+    public function test_filterByFolderGlobs_keeps_only_chunks_whose_document_path_matches_a_glob(): void
+    {
+        // Build fake chunks via stdClass with nested document.source_path
+        // so we don't need to run pgvector SQL.
+        $mk = function (string $path) {
+            $chunk = new \stdClass();
+            $chunk->document = new \stdClass();
+            $chunk->document->source_path = $path;
+            return $chunk;
+        };
+        $chunks = collect([
+            $mk('hr/policies/leave.md'),
+            $mk('engineering/runbook.md'),
+            $mk('hr/policies/inner/onboarding.md'),
+        ]);
+
+        $filtered = $this->svc->filterByFolderGlobs($chunks, ['hr/policies/*']);
+
+        // `hr/policies/*` matches one segment only — `inner/onboarding.md`
+        // crosses a segment boundary, so it's excluded.
+        $paths = $filtered->map(fn ($c) => $c->document->source_path)->all();
+        $this->assertSame(['hr/policies/leave.md'], $paths);
+    }
+
+    public function test_filterByFolderGlobs_double_star_crosses_segments(): void
+    {
+        $mk = function (string $path) {
+            $chunk = new \stdClass();
+            $chunk->document = new \stdClass();
+            $chunk->document->source_path = $path;
+            return $chunk;
+        };
+        $chunks = collect([
+            $mk('hr/policies/leave.md'),
+            $mk('hr/policies/inner/onboarding.md'),
+            $mk('engineering/runbook.md'),
+        ]);
+
+        $filtered = $this->svc->filterByFolderGlobs($chunks, ['hr/policies/**']);
+
+        $paths = $filtered->map(fn ($c) => $c->document->source_path)->sort()->values()->all();
+        $this->assertSame(
+            ['hr/policies/inner/onboarding.md', 'hr/policies/leave.md'],
+            $paths,
+        );
+    }
+
+    public function test_filterByFolderGlobs_drops_chunks_with_null_document(): void
+    {
+        // Defensive: orphaned chunks (document deleted but chunk lingered)
+        // shouldn't blow up; the filter excludes them.
+        $orphan = new \stdClass();
+        $orphan->document = null;
+
+        $valid = new \stdClass();
+        $valid->document = new \stdClass();
+        $valid->document->source_path = 'a/b.md';
+
+        $chunks = collect([$orphan, $valid]);
+
+        $filtered = $this->svc->filterByFolderGlobs($chunks, ['a/*']);
+
+        $this->assertCount(1, $filtered);
+        $this->assertSame('a/b.md', $filtered->first()->document->source_path);
+    }
+
     public function test_apply_filters_does_nothing_for_connector_types_in_t2_4(): void
     {
         // connector_type is the only filter dimension still deferred

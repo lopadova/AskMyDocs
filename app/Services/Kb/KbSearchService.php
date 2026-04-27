@@ -148,26 +148,6 @@ class KbSearchService
 
         $semanticChunks = $builder->limit($candidateCount)->get();
 
-        // ── Post-fetch folder-glob filter (T2.4) ─────────────────
-        // Folder globs (e.g. `hr/policies/**`) can't be expressed
-        // portably in SQL — `**` doesn't map to LIKE and PostgreSQL
-        // has no native fnmatch. Apply via PHP fnmatch with
-        // FNM_PATHNAME (R19) AFTER the SQL pre-filter. The candidate
-        // set has been narrowed by every other dimension first
-        // (project, source_type, tags, etc.), so the PHP-side cost
-        // stays bounded; for very large candidate sets (>5000), the
-        // operator is expected to also narrow with more selective
-        // filter dimensions.
-        if ($effectiveFilters->folderGlobs !== []) {
-            $semanticChunks = $semanticChunks->filter(
-                fn ($chunk): bool => $chunk->document !== null
-                    && KbPath::matchesAnyGlob(
-                        (string) $chunk->document->source_path,
-                        $effectiveFilters->folderGlobs,
-                    ),
-            )->values();
-        }
-
         // ── Hybrid: merge full-text results if enabled ───────────
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
 
@@ -183,6 +163,23 @@ class KbSearchService
                 config('kb.hybrid_search.fts_weight', 0.3),
             );
         }
+
+        // ── Post-fetch folder-glob filter (T2.4) ─────────────────
+        // Folder globs (e.g. `hr/policies/**`) can't be expressed
+        // portably in SQL — `**` doesn't map cleanly to LIKE. Apply
+        // them in PHP via `KbPath::matchesAnyGlob()`, which
+        // centralises the repo's glob-to-regex path matching
+        // semantics, AFTER the SQL pre-filter AND AFTER the optional
+        // hybrid (FTS) merge — otherwise FTS chunks would bypass the
+        // folder constraint. The candidate set has been narrowed by
+        // every other dimension first (project, source_type, tags,
+        // etc.), so the PHP-side cost stays bounded; for very large
+        // candidate sets (>5000), the operator is expected to also
+        // narrow with more selective filter dimensions.
+        $semanticChunks = $this->filterByFolderGlobs(
+            $semanticChunks,
+            $effectiveFilters->folderGlobs,
+        );
 
         // ── Map to array format ──────────────────────────────────
         $chunks = collect($semanticChunks)->map(function ($chunk): array {
@@ -381,10 +378,41 @@ class KbSearchService
         }
 
         // Folder globs are applied POST-FETCH in search() via
-        // KbPath::matchesAnyGlob() — fnmatch isn't pgsql-native and
-        // `**` globs don't translate to LIKE cleanly. See the
-        // post-fetch step in search() above.
+        // {@see filterByFolderGlobs()} — pgsql has no native fnmatch
+        // and `**` globs don't translate to LIKE cleanly.
         //
         // connectorTypes deferred until a `connector_type` column is added.
+    }
+
+    /**
+     * Filters a chunk collection by folder globs using KbPath::matchesAnyGlob.
+     * Extracted from search() so the post-fetch filtering step is testable
+     * in isolation (search() itself can't be unit-tested under SQLite
+     * because of the pgvector cast). Removing or reordering the call
+     * site in search() would now break this method's tests too — the
+     * filter is no longer "implicit pipeline behaviour" but a
+     * documented, named step.
+     *
+     * Returns the input collection unchanged when `$globs` is empty.
+     * Drops chunks whose document is null (defensive: orphaned chunk
+     * shouldn't surface in citation paths anyway, but the filter
+     * being explicit prevents a Throwable on `null->source_path`).
+     *
+     * @param  \Illuminate\Support\Collection  $chunks
+     * @param  list<string>  $globs
+     */
+    public function filterByFolderGlobs(Collection $chunks, array $globs): Collection
+    {
+        if ($globs === []) {
+            return $chunks;
+        }
+
+        return $chunks->filter(
+            fn ($chunk): bool => $chunk->document !== null
+                && KbPath::matchesAnyGlob(
+                    (string) $chunk->document->source_path,
+                    $globs,
+                ),
+        )->values();
     }
 }

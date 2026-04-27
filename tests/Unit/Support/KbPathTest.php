@@ -53,7 +53,7 @@ class KbPathTest extends TestCase
     }
 
     // ----------------------------------------------------------------------
-    // T2.4 — matchesAnyGlob with FNM_PATHNAME (R19 invariant)
+    // T2.4 — matchesAnyGlob with segment-aware glob semantics (R19 invariant)
     // ----------------------------------------------------------------------
 
     public function test_matches_any_glob_returns_true_when_a_glob_matches(): void
