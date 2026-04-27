@@ -823,6 +823,56 @@ Forward-compat with deployments where code lands before lang files. Without the 
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::localizedRefusalMessage()`, `app/Http/Controllers/Api/MessageController.php::localizedRefusalMessage()` (mirror), `lang/en/kb.php`, `lang/it/kb.php`, `tests/Feature/Localization/RefusalI18nTest.php` (6 cases — 4 per-reason locale combos + helper-fallback contract + meta-shape locale invariance).
 
+## L27 — Tags admin: per-project scope is the load-bearing invariant; project_key is read-only on edit
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + data model invariant
+**Severity:** medium-high (FK orphan risk if violated)
+**Applies to:** admin CRUD on per-project taxonomies (tags, categories, custom labels) backed by m2m pivot tables.
+
+**Finding:**
+T2.10 ships admin CRUD on `kb_tags`. Two design decisions worth pinning:
+
+1. **Per-project unique slug (not global).** The same slug `policy` exists independently on `hr` and `engineering` because tags are tenant-scoped by design. The composite unique is `(project_key, slug)` — both at the DB level (migration ships UNIQUE constraint) and in `Rule::unique('kb_tags', 'slug')->where(project_key)` for FE-friendly 422 errors. Without the per-project scoping, two tenants picking the same intuitive slug would block each other.
+
+2. **`project_key` is read-only on edit.** The `knowledge_document_tags` pivot indexes by `kb_tag_id` (not by `project_key`), so changing a tag's parent project would orphan the pivot rows: documents in `hr` would still link to a tag now claiming `engineering`. The BE rejects with 422 (`'in:current_project_key'` rule); the FE preempts by rendering the field as `readonly` in edit mode + an inline help text explaining "Delete + recreate to move a tag across projects." UX-wise: making the bad action UNREACHABLE is better than letting the user attempt it and showing a 422.
+
+**Cascade ON DELETE for the pivot is the load-bearing invariant.**
+- `2026_04_23_000003_create_knowledge_document_tags_table.php` declares `foreignId('kb_tag_id')->constrained('kb_tags')->cascadeOnDelete()`.
+- Deleting a tag atomically removes its document associations.
+- Test it: `test_destroy_cascades_pivot_rows` seeds a doc + pivot row, deletes the tag, asserts the pivot row is gone via `assertDatabaseMissing`. Without this assertion, a regression that drops the FK would leave orphan pivots and the FE chip-rendering would crash on `documents.tags[i].label`.
+
+**FE-side: confirm step on row-level delete (consistent with L26).**
+- `× Delete` reveals inline `Confirm | Cancel` instead of firing immediately.
+- Same UX rule as the chat presets dropdown: destructive actions on small UI surfaces require an explicit confirm.
+- testid: `admin-tag-row-{id}-delete` → `admin-tag-row-{id}-delete-confirm | -delete-cancel`.
+
+**Color is optional and stored as a 7-char hex.**
+- `null` color is rendered as a transparent swatch; the FE never falls back to a "default" color (would mask data-presence questions in admin views).
+- Validation is `regex:/^#[0-9a-fA-F]{6}$/` — no shorthand `#abc`, no rgb()/hsl(). Keeps the color picker round-trip lossless.
+
+**testid hierarchy codified for admin CRUD pages:**
+- `admin-tags-view` (root)
+- `admin-tags-create` (open-form trigger)
+- `admin-tags-loading | -empty | -no-match | -count | -filter`
+- `admin-tags-table` (with `data-state=ready`)
+- `admin-tag-row-{id}` (with `data-tag-slug` + `data-tag-project`)
+- `admin-tag-row-{id}-edit | -delete | -delete-confirm | -delete-cancel`
+- `admin-tag-form` (with `data-mode=create|edit` + `aria-modal=true`)
+- `admin-tag-form-{project,slug,label,color,color-text,color-clear}`
+- `admin-tag-form-error | -submit | -cancel`
+
+Mirrors the chat-side convention from L26 — every admin CRUD surface should follow the same pattern so Playwright + Vitest selectors don't need cross-feature memorisation.
+
+**How to apply:**
+- New per-project taxonomy table → unique on `(project_key, slug_or_name)`, NEVER global. Add the composite to the migration AND the `Rule::unique` form on the controller.
+- Edit form for per-project resources → `project_key` is read-only with a help-text explaining why. Don't accept it in the PUT payload (BE rejects, FE preempts).
+- m2m pivot deletion → ALWAYS `cascadeOnDelete()`. Test the cascade explicitly (assert pivot absence after parent delete).
+- Confirm step on every destructive row action. Inline confirm > modal-on-table for compact admin tables.
+- testid hierarchy: `feature-resource-{id}-{action[-substep]}` pattern. Predictable, grepable, refactor-safe.
+
+**References:** `app/Http/Controllers/Api/Admin/TagController.php`, `tests/Feature/Api/Admin/TagControllerTest.php` (18 cases — index, project-keys filter, store with all fields, slug regex/duplicate validation, per-project independence, show 200/404, update label+color+slug, project_key change rejected with 422, delete + cascade verification, RBAC 403/401), `frontend/src/features/admin/tags/{TagsList,TagFormDialog,admin-tags.api}.tsx`, `frontend/src/features/admin/tags/TagsList.test.tsx` (14 cases — loading/empty/no-match states, list rendering, filter input, edit prefill + project_key readOnly, delete confirm step, full create+edit+delete payload-shape assertions, cancel-without-API-call), `frontend/e2e/admin-tags.spec.ts` (5 scenarios — empty state, dialog open, full create→edit→delete round-trip with real BE, cancel-confirm reverts, filter narrows rows).
 ## L24 — FE filter state owned by composer; bar component is stateless
 
 **Date:** 2026-04-27

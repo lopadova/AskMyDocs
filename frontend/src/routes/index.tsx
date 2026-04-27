@@ -14,6 +14,7 @@ import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
+import { TagsList } from '../features/admin/tags/TagsList';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
@@ -276,6 +277,23 @@ const adminKbRoute = createRoute({
     component: AdminKbRoute,
 });
 
+// T2.10 — Admin Tags. Same flat-RBAC + RequireRole wrapping pattern as
+// adminKbRoute / adminInsightsRoute so direct hits to /app/admin/kb/tags
+// resolve to either the view or <AdminForbidden /> on viewer/guest.
+function AdminTagsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <TagsList />
+        </RequireRole>
+    );
+}
+
+const adminTagsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/tags',
+    component: AdminTagsRoute,
+});
+
 // PR14 / Phase I — Admin Insights. Same flat RBAC pattern — guard
 // inside the component so direct /app/admin/insights hits always
 // resolve to either the view or <AdminForbidden /> on viewer.
@@ -312,6 +330,7 @@ const routeTree = rootRoute.addChildren([
         adminUsersRoute,
         adminRolesRoute,
         adminKbRoute,
+        adminTagsRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
         adminInsightsRoute,
