@@ -29,3 +29,7 @@ composer.lock
 /playwright.config.d.ts
 
 /.claude/settings.local.json
+
+# Local SQLite dev artefacts (tests use in-memory; prod is pgsql)
+/database/*.sqlite
+/database/*.sqlite-journal
