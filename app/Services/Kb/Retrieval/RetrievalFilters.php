@@ -31,9 +31,9 @@ final readonly class RetrievalFilters
      *                                        the actual constraint until the column lands.
      * @param  list<int>     $docIds          Explicit document-id allowlist (used by @mention in UI).
      * @param  list<string>  $folderGlobs     fnmatch globs against `source_path` (T2.4).
-     * @param  list<string>  $languages       ISO 639-1 codes ('it', 'en', ...).
      * @param  ?string       $dateFrom        ISO-8601 date string applied as `>=` against `indexed_at`.
      * @param  ?string       $dateTo          ISO-8601 date string applied as `<=` against `indexed_at`.
+     * @param  list<string>  $languages       ISO 639-1 codes ('it', 'en', ...).
      */
     public function __construct(
         public array $projectKeys = [],

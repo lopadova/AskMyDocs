@@ -63,11 +63,18 @@ class KbSearchService
                 'expanded_count' => $expanded->count(),
                 'rejected_count' => $rejected->count(),
                 'project_key' => $effectiveProject,
-                // Operational hint: how many filter dimensions narrowed the
-                // candidate set. UI (T3.x) can surface "5 filters active"
-                // in the chat composer; admin telemetry can correlate
-                // empty-result rates with filter density.
-                'filters_active' => $effectiveFilters->isEmpty()
+                // Operational hint: how many filter dimensions the USER
+                // selected on this query — NOT how many actually narrowed
+                // the candidate set (some dimensions like `tagSlugs`,
+                // `folderGlobs`, `connectorTypes` are accepted in the DTO
+                // but no-op in applyFilters() until their implementing
+                // task lands; counting them as "active" would overstate
+                // narrowing and confuse the empty-result correlation in
+                // admin telemetry). UI (T3.x) surfaces "5 filters
+                // selected" in the chat composer; the count grows
+                // organically as T2.3/T2.4 etc. wire up the deferred
+                // dimensions.
+                'filters_selected' => $effectiveFilters->isEmpty()
                     ? 0
                     : count(array_filter([
                         $effectiveFilters->projectKeys !== [],
@@ -287,9 +294,13 @@ class KbSearchService
     {
         if ($f->projectKeys !== []) {
             // KnowledgeChunk has its own `project_key` column denormalised
-            // from KnowledgeDocument so the chunk-level WHERE can use the
-            // index without an extra join. Filter both column AND the
-            // document-level scope inside the existing whereHas.
+            // from KnowledgeDocument (DocumentIngestor::persistChunks
+            // copies it on insert) so the chunk-level whereIn uses the
+            // index directly without joining knowledge_documents — same
+            // legacy filter shape, just with multiple values. The
+            // implicit FK consistency between chunk.project_key and
+            // document.project_key is enforced at write time, so a
+            // separate document-level whereHas would be redundant.
             $q->whereIn('knowledge_chunks.project_key', $f->projectKeys);
         }
 
