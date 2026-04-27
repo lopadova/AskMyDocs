@@ -3,12 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
+use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -16,18 +16,19 @@ use Illuminate\Support\Str;
 class KbChatController extends Controller
 {
     public function __invoke(
-        Request $request,
+        KbChatRequest $request,
         AiManager $ai,
         KbSearchService $search,
         ChatLogManager $chatLog,
     ): JsonResponse {
-        $validated = $request->validate([
-            'question' => ['required', 'string', 'max:10000'],
-            'project_key' => ['nullable', 'string', 'max:120'],
-        ]);
-
-        $question = $validated['question'];
-        $projectKey = $validated['project_key'] ?? null;
+        $question = (string) $request->input('question');
+        // Effective single-project key for the legacy meta payload + the
+        // chat log row. When the new `filters.project_keys` payload is
+        // used, the FIRST element is treated as the canonical tenant for
+        // observability (chat-log row carries one project_key column);
+        // the FULL list is still applied via the RetrievalFilters DTO.
+        $projectKey = $request->effectiveProjectKey();
+        $filters = $request->toFilters();
 
         $startTime = microtime(true);
 
@@ -36,6 +37,7 @@ class KbChatController extends Controller
             projectKey: $projectKey,
             limit: config('kb.default_limit', 8),
             minSimilarity: config('kb.default_min_similarity', 0.30),
+            filters: $filters,
         );
 
         $systemPrompt = view('prompts.kb_rag', [
@@ -86,6 +88,11 @@ class KbChatController extends Controller
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
                 'latency_ms' => $latencyMs,
+                // T2.2 — surface the user-selected filter count so the
+                // FE composer can render "5 filters selected" without
+                // an extra round-trip. Mirrors the meta key set by
+                // KbSearchService::searchWithContext (T2.1).
+                'filters_selected' => $result->meta['filters_selected'] ?? 0,
             ],
         ]);
     }

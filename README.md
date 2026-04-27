@@ -462,6 +462,67 @@ KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
 ```
 
+### `GET /api/kb/documents/search` (v3.0+)
+
+Document title/path autocomplete used by the chat composer's `@mention` popover (T2.7/T2.8). Sanctum-protected.
+
+**Query params:**
+
+- `q` — search string (2-120 chars, escaped for `LIKE` wildcards via `\` + `ESCAPE '\\'` clause per R19; literal `_` and `%` in the query do NOT act as wildcards)
+- `project_keys[]` — optional tenant scope (zero or more)
+
+**Response:** `{ "data": [{ "id", "project_key", "title", "source_path", "source_type", "canonical_type" }] }`
+
+Up to 20 results per request. Archived documents are excluded.
+
+### Saved filter presets (v3.0+)
+
+Authenticated users can save / load / delete personal filter combinations via `RESTful /api/chat-filter-presets` (consumed by the FE FilterBar dropdown — UI work in a follow-up FE PR).
+
+- `GET    /api/chat-filter-presets` — list the user's presets (alphabetical by name).
+- `POST   /api/chat-filter-presets` — create. Required body: `{ "name": "…", "filters": { … } }`. Per-user uniqueness enforced on `name` (422 on duplicate within the same account). Different users may pick the same display name independently.
+- `GET    /api/chat-filter-presets/{id}` — show one. Returns `404` for IDs owned by a different user (deliberate — the API does not leak the existence of other users' presets).
+- `PUT    /api/chat-filter-presets/{id}` — update name + filters; same `404` semantics for non-owned rows.
+- `DELETE /api/chat-filter-presets/{id}` — delete; `204` on success, `404` for non-owned rows.
+
+The `filters` JSON column carries a serialised RetrievalFilters payload — the same shape the chat controller's `KbChatRequest::toFilters()` consumes. Round-trip is lossless: load preset → POST to `/api/kb/chat` produces identical retrieval scope as if the user had re-selected every filter manually.
+
+### Chat filters (v3.0+)
+
+`POST /api/kb/chat` accepts an optional `filters` object that narrows the retrieval scope BEFORE reranking + graph expansion + rejected-approach injection — filters change the candidate population, not the post-hoc ranking. Every dimension is optional.
+
+```json
+{
+  "question": "What is our cache invalidation policy?",
+  "filters": {
+    "project_keys": ["hr-portal", "engineering"],
+    "tag_slugs": ["policy", "security"],
+    "source_types": ["markdown", "pdf"],
+    "canonical_types": ["decision", "runbook"],
+    "connector_types": ["local", "google-drive"],
+    "doc_ids": [42, 99],
+    "folder_globs": ["hr/policies/**"],
+    "date_from": "2026-01-01",
+    "date_to": "2026-12-31",
+    "languages": ["it", "en"]
+  }
+}
+```
+
+Field semantics:
+
+- `project_keys` — multi-tenant scope; takes precedence over the legacy `project_key` field when both are sent.
+- `tag_slugs` — match documents tagged with ANY listed slug (T2.3 join, ships in a follow-up).
+- `source_types` — one of `markdown`, `text`, `pdf`, `docx` (validated against `App\Support\Kb\SourceType` so adding a new type extends the validator automatically).
+- `canonical_types` — one of the `App\Support\Canonical\CanonicalType` enum values currently stored on `knowledge_documents.canonical_type`: `decision`, `module-kb`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`, `rejected-approach`, `project-index`. The validator is built from `CanonicalType::cases()` so adding a new case auto-extends the accepted set.
+- `connector_types` — connector identifier strings (for example `local`, `google-drive`, `onedrive`, `notion`, `asana`, `imap`). Accepted in v3.0 but currently a no-op in retrieval until the `connector_type` column is added in v3.1.
+- `doc_ids` — explicit document-id allowlist (used by the `@mention` UI in the chat composer, T2.7).
+- `folder_globs` — path globs against `source_path`. `*` matches a single segment (does NOT cross `/`), `**` matches across segments (e.g. `hr/policies/**` matches `hr/policies/leave.md` AND `hr/policies/inner/leave.md`), `?` matches a single char (not `/`). Applied PHP-side after the SQL pre-filter via `App\Support\KbPath::matchesAnyGlob` (PostgreSQL has no native fnmatch and `**` doesn't translate to LIKE cleanly).
+- `date_from` / `date_to` — ISO 8601 date range against `indexed_at`. `date_to` must be after-or-equal to `date_from`.
+- `languages` — ISO 639-1 codes (normalized to lowercase during DTO construction; the validator enforces `size:2`).
+
+Pre-T2.2 callers using the legacy `{question, project_key}` payload keep working unchanged — internally `project_key` is wrapped into `filters.project_keys = [project_key]`. The response `meta.filters_selected` echoes the count of user-selected filter dimensions for the FE composer to render "5 filters selected".
+
 ### Multi-format ingest (v3.0+)
 
 `kb:ingest-folder` now picks up `.md`, `.markdown`, `.txt`, `.pdf`, and `.docx` files automatically (default `--pattern` is the union of every supported extension). Operators who want pre-T1.8 markdown-only behavior pass `--pattern=md,markdown` explicitly.

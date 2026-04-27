@@ -370,3 +370,215 @@ Five concrete decisions surfaced during T1.8 — all binding for the multi-forma
 **References:** `app/Support/Kb/SourceType.php` (enum + helpers), `app/Console/Commands/KbIngestFolderCommand.php::handle()` (extension routing + sync `ingest()` call), `app/Jobs/IngestDocumentJob.php::handle()` (mimeType-aware SourceDocument build), `app/Http/Controllers/Api/KbIngestController.php::__invoke()` (mime_type validation + base64 decode), `tests/Feature/Console/KbIngestFolderMultiformatTest.php`, `tests/Feature/Api/KbIngestApiMultiformatTest.php`, `tests/Unit/Support/Kb/SourceTypeTest.php`, README.md "Multi-format ingest" section.
 
 ---
+
+## [2026-04-27 04:30] Sub-task T2.1 — RetrievalFilters DTO + reflection-based query-construction tests
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** every T2.x sub-task (T2.2 chat controller validator, T2.3 tag join, T2.4 folder globs, T2.5 doc_ids, T2.6 doc-search controller) and any future code touching `KbSearchService` query construction.
+
+**Finding:**
+Three concrete decisions surfaced during T2.1 — all binding for the rest of the T2 wave:
+
+1. **SQLite cannot run pgvector SQL — test the FILTER LOGIC via reflection on the private method, not via end-to-end search().** The full `search()` hot path uses `embedding <=> ?::vector` which SQLite parses as syntax error. Existing `MultiTenantRetrievalIsolationTest::buildSearchServiceWithPrimedPrimary` works around this by stubbing `search()` entirely. For T2.1 we needed to verify `applyFilters()` ACTUALLY narrows the query (not stub it), so the test pattern is: build a `KnowledgeChunk::query()` Eloquent builder, reflect into the private `applyFilters()` method, then assert `$builder->toSql()` contains the expected `whereIn`/`whereHas` clauses + `$builder->getBindings()` contains the expected values. **For T2.3 (tag join), T2.4 (folder globs), T2.5 (doc_ids extension)**: follow the same reflection-based pattern. Don't try to run SQLite end-to-end against a pgvector-flavoured query.
+
+2. **back-compat plumbing in 2 layers, not 1.** `searchWithContext()` and `search()` both gained an optional `?RetrievalFilters $filters = null` parameter. Resolution order at call time: (a) explicit `$filters` wins, (b) else fall back to `RetrievalFilters::forLegacyProject($projectKey)` which wraps the legacy `?string $projectKey` into a single-element `projectKeys` array (or returns empty for null/empty). The chunk-level `where('project_key', ...)` STILL fires for legacy callers (it's outside applyFilters), so the existing query plan is preserved bit-for-bit when no DTO is passed. **For T2.2** when threading the filters into `KbChatController` → `KbSearchService::searchWithContext()`, ALWAYS pass the explicit DTO (never rely on the legacy `?string $projectKey` derivation alone).
+
+3. **`connector_type` filter is accepted in the DTO but applies no constraint until v3.1.** `knowledge_documents` has no `connector_type` column today (connector info lives in `metadata.connector` JSON, populated by T1.4). JSON-path queries are dialect-specific and brittle on SQLite. Decision for v3.0: include `connectorTypes` in the DTO + accept it in payloads (so the FE composer can render the filter chip and CHAT clients can submit it without 422), but the actual WHERE clause is deferred. Documented inline in `applyFilters()`. **v3.1 follow-up**: add `knowledge_documents.connector_type` as a denormalised column populated by `DocumentIngestor::ingest()` (read it from `SourceDocument::connectorType`).
+
+**Why it matters:**
+- Rule 1 is the de facto pattern for ALL T2 filter additions — without it, T2.3/T2.4/T2.5 would each waste 30+ min discovering the SQLite-pgvector incompatibility.
+- Rule 2 is the bug surface the T2.2 controller wiring will use — getting it right keeps every legacy `/api/kb/chat` payload (no `filters` key) working unchanged.
+- Rule 3 is technical debt with a documented ETA — future T2.x agents won't waste effort on the connector filter and will be primed for the v3.1 column-add.
+
+**How to apply:**
+- For new filter dimensions in T2.x: add the field to `RetrievalFilters`, extend `applyFilters()` with the matching `whereIn`/`whereHas` clause, write a reflection-based test asserting the SQL shape. Do NOT add an end-to-end test against SQLite.
+- For new public methods accepting filters: parameter is `?RetrievalFilters $filters = null`. Use `RetrievalFilters::forLegacyProject($projectKey)` as the fallback for legacy single-project callers.
+- For DTO fields without a backing implementation (like `connectorTypes` today): accept the value, doc the deferral inline, do NOT silently throw or transform — operators sending the field shouldn't see surprising behaviour.
+
+**References:** `app/Services/Kb/Retrieval/RetrievalFilters.php`, `app/Services/Kb/KbSearchService.php::applyFilters()`, `app/Services/Kb/KbSearchService.php::search()` (back-compat plumbing), `app/Services/Kb/KbSearchService.php::searchWithContext()` (filters_active meta), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (reflection + SQL inspection pattern).
+
+---
+
+## [2026-04-27 04:55] Sub-task T2.2 — KbChatRequest FormRequest + filters threading
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** T2.6 (KbDocumentSearchController also accepts filters), T2.7 (FE composer payload shape), and any future API endpoint accepting RetrievalFilters.
+
+**Finding:**
+Three concrete decisions surfaced during T2.2:
+
+1. **`SourceType::cases()` IS the validator's source-of-truth for `filters.source_types.*`.** Plan §1729 hardcoded `'in:markdown,text,pdf,docx'` as the `in:` rule. Better: build the rule list from `SourceType::cases()` (rejecting UNKNOWN) at request-time so adding a new SourceType case in T1.x or v3.1 (e.g. `image`, `audio`) auto-extends the validator without a separate edit. This satisfies R6 (docs and config must stay coupled). **For T2.6**: the document-search controller uses the same source-type filter; reuse the same `SourceType::cases()` rule construction.
+
+2. **`ChatLogManager` is `final` — Mockery can't mock it.** Trying `Mockery::mock(ChatLogManager::class)` throws `Mockery\Exception: marked final and its methods cannot be replaced`. Two clean workarounds: (a) bind a real instance + disable via config (`config()->set('chat-log.enabled', false)` makes `log()` exit early at line 17), (b) build a fake `ChatLogDriverInterface` and bind it as the resolved driver. Option (a) is simpler for tests that don't care about chat-log assertions. **For any future test using ChatLogManager**: do NOT try to mock it; disable via config.
+
+3. **`KbChatRequest::effectiveProjectKey()` resolution priority is `filters.project_keys[0]` > legacy `project_key` > null.** Important for the chat-log row's single `project_key` column (still single-tenant in the schema today) — when a multi-tenant filters payload arrives, the FIRST tenant becomes the canonical attribution for observability. **For T2.6** if it builds a similar request: keep the same precedence so cross-endpoint behaviour stays consistent.
+
+**Why it matters:**
+- Rule 1 prevents an annoying coupling: every new SourceType would otherwise require manual touches in 2 places (enum + validator).
+- Rule 2 saves the next test-author 15 min of "why won't Mockery let me mock this".
+- Rule 3 keeps chat-log telemetry consistent — operators querying "all chats for project X" get correct row counts regardless of whether the FE used the legacy or new payload shape.
+
+**How to apply:**
+- For new validators on enum-backed fields: use `enum::cases()` to build the `in:` list rule, never hardcode the values.
+- For tests that need to silence final services: `config()->set('feature.enabled', false)` is the first thing to try.
+- For new endpoints accepting RetrievalFilters: copy `KbChatRequest::toFilters()` + `effectiveProjectKey()` shape so callers can mix legacy + new payloads consistently.
+
+**References:** `app/Http/Requests/Api/KbChatRequest.php` (rules + toFilters + effectiveProjectKey), `app/Http/Controllers/Api/KbChatController.php::__invoke` (filters threading + effective project_key + filters_selected echo), `tests/Feature/Api/KbChatControllerFiltersTest.php` (capture-and-stub KbSearchService pattern + chat-log disabled-via-config workaround), README.md "Chat filters (v3.0+)" section.
+
+---
+
+## [2026-04-27 05:15] Sub-task T2.3 — Tag filter via whereExists subquery (slug-exact, no LIKE)
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** every future filter dimension that maps to a slug-style identifier (T2.x folder paths via folder_id, future user-id allowlists, etc.).
+
+**Finding:**
+Two binding decisions surfaced during T2.3:
+
+1. **Slug-style filters use `whereIn` (exact match), NOT `LIKE` — so R19 escape is irrelevant for them.** Plan §1822 included a "tag with name 'a_b' must NOT match documents tagged 'acb'" test, originally framed as the R19 LIKE-escape concern. But tag SLUGS are exact-match identifiers (the whereIn constructs `kt.slug IN (?, ?, ...)`); LIKE only enters the picture when matching tag NAMES (the human-readable label, which we don't filter on). Codified now: any slug/identifier dimension stays whereIn-based; future maintainers should NOT "harden" with backslash-escape on slug values — that would actually break legitimate slugs containing `_` (e.g. `pre_release`). A test (`test_apply_filters_tag_slug_match_is_exact_not_like`) pins the intent so a future grep-and-replace doesn't accidentally LIKE-ify the query.
+
+2. **Tag join project scoping is NOT structurally enforced — the pivot only has FKs on IDs, no `project_key` constraint.** Initial cycle-0 LESSONS claim was that "the chunk-level project_key whereIn + FK chains transitively enforce tenant isolation in the subquery". That's WRONG: `knowledge_document_tags` only carries FKs on `knowledge_document_id` and `kb_tag_id`; the schema does NOT prevent a tag from project A from being associated with a document from project B (it's a write-time application invariant, not DB-enforced). If the application code ever bugs out and creates a cross-project pivot row, the chunk-level project filter would NOT prevent the cross-project slug match. Cycle-1 fix: added an explicit `whereColumn('kt.project_key', 'knowledge_chunks.project_key')` constraint in the subquery so the search query is tenant-safe regardless of write-time invariants. **For T2.4 folder filter**: do NOT automatically generalize "no project-key duplication needed" — first verify whether that join path is actually tenant-enforced by the schema. When in doubt, add the explicit constraint (cheap insurance, easy to remove later if profiling shows it hurts the query plan).
+
+**Why it matters:**
+- Rule 1 prevents a recurring mistake pattern (over-applying R19 to non-LIKE filters).
+- Rule 2 corrects an over-confident tenant-safety claim — multi-tenant search MUST enforce project scoping at the query level for every join, not assume schema or application invariants are bulletproof.
+
+**How to apply:**
+- For new slug/identifier filters: use `whereIn` and write a test that asserts `LIKE` is NOT in the resulting SQL.
+- For new joined-table filters: ALWAYS verify the join path's project scoping at the schema level. If the pivot/junction table doesn't have a project-key FK or check constraint, add an explicit `whereColumn('joined_table.project_key', 'knowledge_chunks.project_key')` predicate in the subquery — defence-in-depth against a buggy write path leaking across tenants.
+
+**References:** `app/Services/Kb/KbSearchService.php::applyFilters()` (tagSlugs branch), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_adds_whereExists_join_for_tag_slugs` + `test_apply_filters_tag_slug_match_is_exact_not_like`.
+
+---
+
+## [2026-04-27 05:50] Sub-task T2.4 — Folder glob filter (post-fetch fnmatch + glob→regex translator)
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** any future filter dimension that needs path-pattern matching, plus the deferred R19 cleanup of `User::matchesAnyGlob`.
+
+**Finding:**
+Three concrete decisions surfaced during T2.4:
+
+1. **Folder glob filter runs PHP-side AFTER the SQL fetch — NOT inside `applyFilters()`.** PostgreSQL has no native fnmatch and `**` (cross-segment wildcard) doesn't translate to LIKE. The plan §1879 already advised this approach; the test pinning the SQL still doesn't carry the folder constraint (`test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`) makes the design explicit so future maintainers don't accidentally hoist the filter into the WHERE clause and break `**` semantics. Performance trade-off: the candidate set has been narrowed by every other dimension (project, source_type, tags, etc.) BEFORE the PHP filter runs, so the cost stays bounded; for very large candidate sets (>5000), the operator is expected to layer additional selective dimensions. Documented inline in search().
+
+2. **PHP's `fnmatch($pattern, $path, FNM_PATHNAME)` does NOT support `**` natively.** Initial T2.4 implementation used `fnmatch` with `FNM_PATHNAME` and the `hr/policies/**` test case for `hr/policies/inner/leave.md` failed — fnmatch treats `**` as two `*`s in sequence (each blocked from crossing `/`). The plan documents `**` as the cross-segment wildcard, so the contract requires it. Replaced fnmatch with a glob→regex translator: tokenise on `**`, escape each token with `preg_quote`, replace `*` (single segment) and `?` (single char) with `[^/]*` and `[^/]`, then rejoin with `.*` so `**` matches across `/`. Anchored with `^...$` so partial matches don't leak. Test pins both invariants: `*` does NOT cross segments, `**` DOES cross segments.
+
+3. **`User::matchesAnyGlob` (line 236 of `app/Models/User.php`) is a duplicate that does NOT pass `FNM_PATHNAME` — pre-existing R19 violation.** Discovered during T2.4 scoping but out of scope to fix here. The User method protects access scopes (folder-glob ACLs); without `FNM_PATHNAME`, `*` could grant access across `/` boundaries (e.g. `engineering/*` would also match `engineering/secrets/api-keys.md`). Flagged for a follow-up task: replace User's private method with a call to `KbPath::matchesAnyGlob`. **For T2.x or v3.1**: this fix is one-liner per call site once `KbPath::matchesAnyGlob` is the canonical helper.
+
+**Why it matters:**
+- Rule 1 keeps the contract clear (post-fetch is by design, not laziness) so future maintainers don't try to over-optimise into SQL.
+- Rule 2 is the kind of "I assumed fnmatch did X, it doesn't" gotcha that wastes 30 min of debugging — codified now so the next path-pattern feature doesn't repeat it.
+- Rule 3 documents a security-adjacent bug for future cleanup. ACL bypass via folder-pattern over-matching is a real attack surface; even if the User code is "currently correct in practice", the missing FNM_PATHNAME flag is one user-input change away from being exploitable.
+
+**How to apply:**
+- For new path-pattern filters: use `KbPath::matchesAnyGlob` — DO NOT call PHP fnmatch directly. The helper handles `**` correctly.
+- For path patterns destined for SQL (e.g. a future indexed prefix query): translate the glob's leading literal segment to a `LIKE 'prefix%'` after escaping `%`, `_`, `\` per R19, and apply the rest of the glob PHP-side post-fetch.
+- For ACL-style folder matching (User.php): planned follow-up; replace local `fnmatch` (no FNM_PATHNAME) with `KbPath::matchesAnyGlob`.
+
+**References:** `app/Support/KbPath.php::matchesAnyGlob()` + `globToRegex()`, `app/Services/Kb/KbSearchService.php::search()` (post-fetch folder-glob step), `tests/Unit/Support/KbPathTest.php` (6 new tests pinning the contract), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`. Deferred follow-up: `app/Models/User.php:236` (R19 violation).
+
+---
+
+## [2026-04-27 06:08] Sub-task T2.5 — Empty-array filter dimensions should be no-ops (implementation-specific today)
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** RetrievalFilters dimensions, the FE composer payload shape, and any future filter implementation.
+
+**Finding:**
+T2.5 mostly verified the `doc_ids` whitelist that T2.1 already wired, and the verification surfaced a rule worth codifying for optional filter dimensions:
+
+**Empty-array dimensions should behave as no-ops, not as "match zero rows".** The practical risk of passing `[]` into `whereIn(...)` in Laravel is NOT invalid `IN ()` SQL — it's a compiled-to-always-false predicate (typically `0 = 1`) that silently filters out every row. T2.5 cycle-1 caught this in the test design: an unguarded empty whereIn would have passed the original binding-count assertion while silently breaking all results. Current implementation behaviour across dimensions is NOT uniform — document it accurately:
+
+- **SQL-backed dimensions guarded in `applyFilters()`**: `projectKeys` (chunk-level), and the document-level group `sourceTypes` / `canonicalTypes` / `docIds` / `languages` all check `!== []` before adding the `whereIn`. These are the cases the rule applies to directly.
+- **`tagSlugs` (T2.3)**: also guarded with `!== []`, but the implementation uses `whereExists` + a join (kdt + kb_tags), so the failure mode is "exists subquery that returns no rows" rather than "0 = 1".
+- **`connectorTypes`**: documented SQL no-op — NO clause is added in `applyFilters()` even when non-empty (deferred until v3.1 when a `connector_type` column lands). Listing it under "guarded with `!== []`" was wrong — the guard isn't there because the branch isn't there.
+- **`folderGlobs` (T2.4)**: applied POST-FETCH via `KbSearchService::filterByFolderGlobs()`, NOT inside `applyFilters()`. The empty-array no-op for it lives outside the SQL filter pass entirely.
+- **`dateFrom` / `dateTo`**: optional scalars, check `!== null`.
+- **`RetrievalFilters::isEmpty()`**: a TOP-LEVEL fast path that short-circuits `applyFilters()` when EVERY dimension is empty AND EVERY scalar is null. It is NOT proof that each individual dimension is uniformly guarded; partial-empty payloads (some dims set, others empty) still need each branch's own `!== []` guard.
+
+**Why it matters:**
+- For SQL-backed dimensions, the real failure mode is accidental zero-row behaviour from an empty `whereIn(...)` (compiles to `0 = 1`), not invalid SQL text. T2.5's original test relied on binding count and would have passed even under the broken behaviour — corrected to a SQL-equivalence assertion ("with empty docIds === without docIds at all") + defence-in-depth string checks for `0 = 1` / `1 = 0` / `"id" in ()`.
+- The FE composer (T2.7) should be able to send every filter dimension on every request, with `[]` meaning "nothing selected in this dimension", not "force zero results".
+- `connectorTypes` and `folderGlobs` need to be documented where they actually apply so future agents don't assume they're enforced inside `applyFilters()`.
+- For T2.7 / T2.8 (FE), sending `[]` or omitting the key should remain equivalent for unselected dimensions.
+- For T2.9 (presets), saving an empty preset should still round-trip as "no filters".
+
+**How to apply:**
+- For each new SQL-backed RetrievalFilters dimension added to `applyFilters()`: guard the branch against empty arrays before calling `whereIn(...)`. Test the empty-array case with a SQL-equivalence comparison (with-empty == without-the-dimension) PLUS defence-in-depth assertions that `0 = 1` / `1 = 0` / `IN ()` aren't present — binding-count alone is insufficient.
+- For optional scalars: keep using `!== null`.
+- DO NOT document a dimension as an `applyFilters()` SQL constraint unless it is actually enforced there. If a dimension is post-fetch (folderGlobs) or intentionally a no-op (connectorTypes), say that explicitly.
+- For new validation rules, `nullable` should continue to allow omission, `array` should allow `[]`, and the DTO `toFilters()` (T2.2) should keep normalizing omitted and explicitly-empty cases consistently.
+- New tests for new SQL-backed dimensions should include an "empty array is no-op" case (with the equivalence-comparison pattern from T2.5 cycle-1) alongside the "single value" and "multi value" cases. Dimensions applied outside SQL should be tested in the layer where they actually run (T2.4 unit-tests `filterByFolderGlobs` in isolation).
+
+**References:** `app/Services/Kb/Retrieval/RetrievalFilters.php::isEmpty()` (top-level fast path), `app/Services/Kb/KbSearchService.php::applyFilters()` (SQL-backed dimensions only — each with its `!== []` guard), `app/Services/Kb/KbSearchService.php::filterByFolderGlobs()` (post-fetch dimension), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (T2.5 added `test_apply_filters_doc_ids_empty_array_is_true_no_op_not_a_zero_eq_one_clause`, `test_apply_filters_doc_ids_single_value_uses_single_binding`, `test_apply_filters_doc_ids_combine_with_other_dimensions_in_single_whereHas`).
+
+---
+
+## [2026-04-27 06:42] Sub-task T2.6 — LIKE escape MUST pair with explicit `ESCAPE '\\'` clause via whereRaw
+
+**Type:** rule
+**Severity:** high (security-adjacent — silent search wildcard injection)
+**Applies to:** every future LIKE-based search endpoint, plus any existing code that escapes LIKE wildcards without the ESCAPE clause.
+
+**Finding:**
+T2.6 cycle-0 implementation initially used `where('title', 'LIKE', $escaped)` after str_replacing `\`, `%`, `_` to their backslash-escaped forms. The R19 escape tests FAILED with 0 results when expecting 1. Root cause: SQLite's default `LIKE` operator has NO escape character — when the SQL contains `WHERE title LIKE 'Policy\_v2'` without an `ESCAPE` clause, SQLite interprets `\_` as the LITERAL two-character string `\_`, NOT as an escaped underscore. So `Policy\_v2` only matches the title `Policy\_v2` (which doesn't exist) — `Policy_v2` becomes effectively unfindable AND `Policyav2` would still match if a search query had been `Policy_v2` without escape.
+
+**The fix has two halves:**
+1. Escape `\`, `%`, `_` in the user input (already in plan).
+2. Combine with an explicit `ESCAPE '\\'` clause in the SQL.
+
+**Laravel's `where('col', 'LIKE', $val)` does NOT support tacking ESCAPE on the operator side.** The only portable path is `whereRaw("col LIKE ? ESCAPE '\\'", [$val])`. PostgreSQL respects the same `ESCAPE '\\'` clause, so the raw-SQL is portable across the two dialects we support.
+
+**Why it matters:**
+- Without the ESCAPE clause, the escape step is worse than useless: it makes the search FAIL on legitimate inputs (e.g. `Policy_v2`) AND leaves wildcard injection possible if the escape step is ever skipped or partially applied. Users would see "no results" for valid queries — a silent UX bug AND a search-bypass invariant violation.
+- Security-adjacent: combine escape + ESCAPE means a user typing `100%` in the autocomplete looks for the literal substring `100%`, not "anything starting with 100" — preventing accidental tenant data leakage on shared autocomplete results.
+- Future LIKE-based endpoints (search-by-author, search-by-tag-name, etc.) MUST follow this pattern.
+
+**How to apply:**
+- For new LIKE-based searches: `whereRaw("col LIKE ? ESCAPE '\\'", [$pattern])` — never `where('col', 'LIKE', $pattern)` alone.
+- For grep/inspection: `grep -Ern "(whereRaw|orWhereRaw)|LIKE \?|ESCAPE '\\\\'" app/Http/` to find existing LIKE-based endpoints; verify each pairs an ESCAPE clause with its escape step.
+- Test pattern: include BOTH `_` and `%` literal inputs in the user query and assert the response excludes wildcard-style matches (T2.6's `test_escapes_underscore_per_R19_so_literal_underscore_is_not_a_wildcard` and `test_escapes_percent_per_R19_so_literal_percent_is_not_a_wildcard`).
+
+**Operational note:** the existing `User::matchesAnyGlob` (R19 follow-up flagged in T2.4 LESSONS) is unrelated — it's an in-PHP fnmatch-style match, not SQL LIKE. The two issues share the R19 lineage but have different fixes.
+
+**References:** `app/Http/Controllers/Api/KbDocumentSearchController.php::__invoke()` (whereRaw + ESCAPE), `tests/Feature/Api/KbDocumentSearchControllerTest.php` (12 cases including the two R19-specific escapes for `_` and `%`).
+
+---
+
+## [2026-04-27 07:05] Sub-task T2.9 (backend slice) — Per-user resource policy via where-clause + 404-not-403 + soft-delete cascade
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** future per-user-owned resources (saved searches, alert subscriptions, custom dashboards), the FE-deferral pattern for chained UI work.
+
+**Finding:**
+Three concrete decisions surfaced during T2.9 backend implementation:
+
+1. **Per-user authorization via `where('user_id', auth()->id())` is sufficient — no Spatie role/policy needed for self-owned resources.** The controller scopes EVERY action (index/show/update/destroy) by adding the `where('user_id', $userId)` predicate to the query. Other users' rows surface as `null` from `find()` and get rendered as 404 — never 403. This pattern is appropriate for resources where ownership is binary (mine OR not-mine) AND where ownership is the entire authorization model. For resources where multiple authorization dimensions matter (e.g. role-based access to admin features), Spatie policies are still the right tool.
+
+2. **404 (NotFoundHttpException) > 403 (Forbidden) for cross-user access attempts to private resources.** Returning 403 leaks the existence of other users' presets — an attacker could enumerate IDs and learn which IDs are taken vs free. Returning 404 makes other users' resources indistinguishable from "doesn't exist" from the caller's perspective. Use `throw new NotFoundHttpException('…')` (NOT `ValidationException::withMessages([…])->status(404)` which is what I tried first — it carries a 422 semantic that Laravel's exception handler doesn't reliably override even when status() is set).
+
+3. **`SoftDeletes` on User means `$user->delete()` is soft — the FK cascade does NOT fire.** Per CLAUDE.md §6, soft-delete is the default. T2.9's first cascade test called `$alice->delete()` and asserted the preset was gone — failed because the soft-delete kept the user row, the FK constraint was satisfied, and the preset stayed. Real cascade test must use `$alice->forceDelete()` (the GDPR/data-removal hard-delete path). For T2.x (and any future per-user resources): test BOTH soft-delete (preset stays — preserves user reactivation) AND hard-delete (preset cascades — GDPR compliance).
+
+**Why it matters:**
+- Rule 1 keeps the controller simple and the policy obvious — no separate Policy class to navigate when reading the controller. Reduces the file count and keeps the auth surface auditable in one place.
+- Rule 2 is a security-adjacent invariant. Tested by `test_show_returns_404_when_preset_belongs_to_other_user` etc.; the assertion is `assertStatus(404)` (NOT 403). For T2.x and future per-user resources, mirror the test name pattern so the security expectation is visible.
+- Rule 3 is the kind of "I assumed delete was hard but it's soft" gotcha that surfaces only when cascade testing matters (GDPR right-to-be-forgotten flows, account closure, etc.). Codify the soft+hard split in tests.
+
+**FE-deferral pattern (operational):**
+T2.9 plan spans backend + frontend. CLAUDE.md mandates "test in browser before claiming success" for UI work, which doesn't fit overnight unattended runs. Pattern: do the backend slice now (independently mergeable, fully tested via PHPUnit, provides the API surface), document the FE part as deferred in the progress log + the PR body, queue a follow-up issue. Don't pretend FE is done if it isn't.
+
+**How to apply:**
+- For new per-user resources: copy `ChatFilterPresetController` + `findOwnedOr404()` shape. Wrap every action with the `where('user_id', $userId)` filter at the query level.
+- For per-user uniqueness validation (`Rule::unique`): use the closure form `->where(fn($q) => $q->where('user_id', $userId))` so the unique check is scoped to the same user (different users can pick the same name independently).
+- For 404 vs 403: when the resource model is "mine OR not-mine, no shades", use 404. When the resource has roles/permissions and the user is missing a SPECIFIC permission, use 403. Don't conflate them.
+- For cascade test coverage on User-owned resources: write TWO tests — `_when_user_soft_deleted_preset_remains` AND `_when_user_force_deleted_preset_cascades`. Pin both to the GDPR vs reactivation invariants.
+
+**References:** `app/Http/Controllers/Api/ChatFilterPresetController.php::findOwnedOr404()` + per-action where-scoping, `tests/Feature/Api/ChatFilterPresetControllerTest.php::test_*_returns_404_when_preset_belongs_to_other_user` + `_cannot_delete_another_users_preset` + `_cascade_delete_removes_presets_when_user_force_deleted`. T2.9 FE slice (FilterBar dropdown + e2e) deferred — depends on T2.7 which itself is deferred per CLAUDE.md UI verification rule.
+
+---
