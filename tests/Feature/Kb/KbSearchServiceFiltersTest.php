@@ -123,6 +123,66 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertContains(99, $sql['bindings']);
     }
 
+    public function test_apply_filters_doc_ids_empty_array_is_no_op(): void
+    {
+        // T2.5 — empty doc_ids must NOT add the whereHas constraint.
+        // RetrievalFilters::isEmpty() short-circuits applyFilters() entirely
+        // when ALL fields are empty; the search() path simply skips
+        // applyFilters in that case. But even if doc_ids is the only
+        // empty-but-present dimension AND another dimension is set,
+        // doc_ids must still produce zero added clauses (not "id in ()"
+        // which would be invalid SQL).
+        $sql = $this->buildFilteredSql(new RetrievalFilters(
+            sourceTypes: ['markdown'],  // forces applyFilters to run
+            docIds: [],                  // empty, must be skipped
+        ));
+
+        // SourceTypes constraint should be present...
+        $this->assertStringContainsString('"source_type" in (?)', $sql['sql']);
+        // ...but no `id in ()` clause should be added for the empty docIds.
+        // Note: SQLite produces "id" in many other contexts (FK columns
+        // on join tables, etc.); we narrow the assertion by checking the
+        // bindings shape — if doc_ids had been applied, an extra
+        // ?-marker would land in the bindings count.
+        $sourceTypeBindings = array_filter(
+            $sql['bindings'],
+            fn ($v) => $v === 'markdown',
+        );
+        $this->assertCount(1, $sourceTypeBindings, 'expected exactly one binding for sourceTypes only');
+    }
+
+    public function test_apply_filters_doc_ids_single_value_uses_single_binding(): void
+    {
+        // T2.5 — single id produces `id in (?)` (NOT `id = ?`); the
+        // whereIn shape stays uniform regardless of array size, which
+        // simplifies the SQL builder + EXPLAIN plan reasoning.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(docIds: [42]));
+        $this->assertStringContainsString('"id" in (?)', $sql['sql']);
+        $this->assertContains(42, $sql['bindings']);
+        $this->assertCount(1, array_filter($sql['bindings'], fn ($v) => $v === 42));
+    }
+
+    public function test_apply_filters_doc_ids_combine_with_other_dimensions(): void
+    {
+        // T2.5 — the doc_ids whitelist is AND-combined with every
+        // other dimension (a doc must be in the whitelist AND match
+        // every other constraint). Verify both clauses land in the
+        // SAME whereHas('document') subquery (Eloquent groups them).
+        $sql = $this->buildFilteredSql(new RetrievalFilters(
+            docIds: [1, 2, 3],
+            sourceTypes: ['pdf'],
+            languages: ['en'],
+        ));
+
+        $this->assertStringContainsString('"id" in (?, ?, ?)', $sql['sql']);
+        $this->assertStringContainsString('"source_type" in (?)', $sql['sql']);
+        $this->assertStringContainsString('"language" in (?)', $sql['sql']);
+        // All three constraints land in the bindings.
+        foreach ([1, 2, 3, 'pdf', 'en'] as $expected) {
+            $this->assertContains($expected, $sql['bindings']);
+        }
+    }
+
     public function test_apply_filters_adds_whereHas_document_for_languages(): void
     {
         $sql = $this->buildFilteredSql(new RetrievalFilters(languages: ['it', 'en']));

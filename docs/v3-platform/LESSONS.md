@@ -482,3 +482,32 @@ Three concrete decisions surfaced during T2.4:
 **References:** `app/Support/KbPath.php::matchesAnyGlob()` + `globToRegex()`, `app/Services/Kb/KbSearchService.php::search()` (post-fetch folder-glob step), `tests/Unit/Support/KbPathTest.php` (6 new tests pinning the contract), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`. Deferred follow-up: `app/Models/User.php:236` (R19 violation).
 
 ---
+
+## [2026-04-27 06:08] Sub-task T2.5 — Empty-array filter dimensions are no-ops (uniform contract)
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** every existing AND future RetrievalFilters dimension; the FE composer payload shape; downstream filter implementations.
+
+**Finding:**
+T2.5 mostly verified the doc_ids whitelist that T2.1 already wired, and the verification surfaced a binding rule worth codifying for ALL filter dimensions:
+
+**Empty-array dimensions MUST be no-ops, never `WHERE id IN ()` or equivalent invalid SQL.** PHP's array semantics make this trivially correct when each `applyFilters()` branch guards with `if ($f->dimension !== [])` — every existing dimension does this. The pattern is uniform across:
+- `projectKeys`, `tagSlugs`, `sourceTypes`, `canonicalTypes`, `connectorTypes`, `docIds`, `folderGlobs`, `languages` — all check `!== []` before adding the constraint.
+- `dateFrom`, `dateTo` — check `!== null` (they're optional scalars, not arrays).
+- `RetrievalFilters::isEmpty()` short-circuits applyFilters() entirely when EVERY dimension is empty (legacy back-compat).
+
+**Why it matters:**
+- Uniform "empty is no-op" semantics let the FE composer (T2.7) safely send every filter dimension on every request — empty arrays are "I haven't selected anything in this dimension", not "show me zero results from this dimension". Conflating those two would surprise users.
+- Generated SQL for `WHERE id IN ()` is invalid in most dialects (or silently matches zero rows in some) — the `!== []` guard prevents both surprises.
+- For T2.7 / T2.8 (FE) — the API client should send `[]` (or omit the key) for unselected dimensions; both are equivalent.
+- For T2.9 (presets) — saving an empty preset is structurally identical to saving "no filters"; the round-trip should be lossless.
+
+**How to apply:**
+- For new RetrievalFilters dimensions: ALWAYS guard with `if ($f->newField !== [])` (or `!== null` for optional scalars) in `applyFilters()`. NEVER call `whereIn` with a possibly-empty list.
+- For new validation rules: `nullable` allows the key to be omitted; `array` allows empty array; the DTO `toFilters()` (T2.2) must produce `[]` for both omitted and explicitly-empty cases (it already does).
+- New tests for new dimensions: include an "empty array is no-op" case alongside the "single value" and "multi value" cases. T2.5 added these for `doc_ids`; the same coverage shape applies to every future dimension.
+
+**References:** `app/Services/Kb/Retrieval/RetrievalFilters.php::isEmpty()`, `app/Services/Kb/KbSearchService.php::applyFilters()` (every dimension's `!== []` guard), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (T2.5 added `test_apply_filters_doc_ids_empty_array_is_no_op`, `test_apply_filters_doc_ids_single_value_uses_single_binding`, `test_apply_filters_doc_ids_combine_with_other_dimensions`).
+
+---
