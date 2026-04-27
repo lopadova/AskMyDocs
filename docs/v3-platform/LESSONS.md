@@ -688,3 +688,48 @@ T3.3 ships the deterministic refusal short-circuit on `KbChatController` + `Mess
 - Always set `useLangPath()` in Testbench's `getEnvironmentSetUp` when the project has any user-facing i18n string.
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::refusalResponse()`, `app/Http/Controllers/Api/MessageController.php::refusalResponse()`, `tests/Feature/Api/KbChatRefusalTest.php` (9 cases — 5 prove no LLM call, 4 verify happy path through), `tests/TestCase.php::getEnvironmentSetUp` (`useLangPath` registration).
+
+## L20 — Literal-sentinel detection: `=== trim()` only, never `str_contains`
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + LLM-protocol design
+**Severity:** medium (UX correctness — partial answers are valuable)
+**Applies to:** every prompt-driven sentinel (refusal token, function-call marker, any "respond exactly with X" contract).
+
+**Finding:**
+T3.4 ships LLM-self-refusal sentinel parsing. The prompt instructs the model: "If you cannot answer at all, respond EXACTLY with `__NO_GROUNDED_ANSWER__`. Otherwise answer the parts you CAN ground and skip the rest with a note." Two distinct LLM behaviours map to two distinct application paths:
+
+1. **Bare sentinel** → refusal payload (`refusal_reason='llm_self_refusal'`, the i18n placeholder replaces the user-visible answer).
+2. **Partial answer mentioning the sentinel as wording** → pass-through (the user benefits from the partial coverage + explicit gaps).
+
+The boundary between (1) and (2) is **exact match after `trim()`**, NOT substring containment:
+
+```php
+// CORRECT
+if (trim($content) === '__NO_GROUNDED_ANSWER__') { return $this->convertToRefusal(...); }
+
+// WRONG
+if (str_contains($content, '__NO_GROUNDED_ANSWER__')) { return $this->convertToRefusal(...); }
+```
+
+The substring version would discard partial answers that mention the sentinel — e.g. "I had to fall back to `__NO_GROUNDED_ANSWER__` for the second half of your question" loses the first half. The exact-match version preserves the partial answer for the user AND keeps the sentinel reserved as a protocol-level signal.
+
+**Why `trim()` and not raw `===`:** Some providers wrap responses with stray whitespace (a leading newline, trailing space). The trim tolerance handles that without weakening the contract — surrounding whitespace doesn't carry semantic content.
+
+**Why two refusal reasons exist:**
+- `'no_relevant_context'` — retrieval came up empty/below-threshold; LLM was NEVER called.
+- `'llm_self_refusal'` — retrieval succeeded; LLM declared the chunks insufficient.
+
+The split lets the dashboard distinguish "tune retrieval threshold" from "LLM is overly cautious". Aggregating them into one bucket throws away the most actionable observability signal in the whole anti-hallucination tier.
+
+**Why preserve provider/model/tokens on the sentinel-refusal log row:** the LLM call was paid in full. Cost attribution + per-model refusal-rate tracking depend on the row reflecting that. The retrieval-side refusal (`no_relevant_context`) zeroes provider/model because no LLM call happened.
+
+**How to apply:**
+- Define the sentinel as a `private const` on the controller (or a shared constant if more than one controller mirrors it). Documented in code, not in config.
+- Detection helper signature: `private function isSelfRefusalSentinel(string $content): bool { return trim($content) === self::SELF_REFUSAL_SENTINEL; }`. Pure function; trivially testable; impossible to weaken accidentally.
+- Test the boundary explicitly: bare sentinel YES, sentinel-with-whitespace YES, sentinel-as-substring NO, natural-language "I don't know" NO. Each in a named test.
+- Update the prompt template (`prompts/kb_rag.blade.php`) and the controller in the same PR — the contract spans both. A prompt change without controller update silently turns the LLM's intended refusal into a literal user-visible string starting with `__`.
+- Mirror across every controller that hits the same prompt (KbChatController + MessageController). Both must use the same sentinel constant + same detection helper.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::isSelfRefusalSentinel()` + `convertSentinelToRefusal()`, `app/Http/Controllers/Api/MessageController.php` (mirror), `resources/views/prompts/kb_rag.blade.php` "Refusal Protocol" section, `tests/Feature/Api/KbChatSentinelTest.php` (7 cases — bare/whitespace/substring/natural-IDK/grounded/meta-attribution/chunks-used).

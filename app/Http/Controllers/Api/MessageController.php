@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
+use App\Ai\AiResponse;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
@@ -12,10 +13,19 @@ use App\Services\Kb\KbSearchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class MessageController extends Controller
 {
+    /**
+     * T3.4 — same sentinel as KbChatController. Centralizing on a class
+     * constant per controller (not pulling into a shared trait yet) so
+     * each controller's contract with the prompt is explicit on the
+     * surface that's most likely to be touched together.
+     */
+    private const SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
+
     public function index(Request $request, Conversation $conversation): JsonResponse
     {
         if ($conversation->user_id !== $request->user()->id) {
@@ -109,6 +119,26 @@ class MessageController extends Controller
         $aiResponse = $ai->chatWithHistory($systemPrompt, $history);
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+
+        // 6b. T3.4 — sentinel detection. Mirrors KbChatController behaviour.
+        // The LLM emits `__NO_GROUNDED_ANSWER__` when it can't ground the
+        // answer in the provided context (prompt instruction in
+        // prompts/kb_rag.blade.php "Refusal Protocol" section). Compare
+        // with === after trim — substring matching would misfire on
+        // partial answers that mention the sentinel as part of the body.
+        if ($this->isSelfRefusalSentinel($aiResponse->content)) {
+            return $this->convertSentinelToRefusal(
+                request: $request,
+                chatLog: $chatLog,
+                conversation: $conversation,
+                question: $question,
+                projectKey: $projectKey,
+                userId: $userId,
+                chunks: $chunks,
+                aiResponse: $aiResponse,
+                latencyMs: $latencyMs,
+            );
+        }
 
         // 7. Build citations
         $citations = $this->buildCitations($chunks);
@@ -220,6 +250,102 @@ class MessageController extends Controller
             promptTokens: 0,
             completionTokens: 0,
             totalTokens: 0,
+            latencyMs: $latencyMs,
+            clientIp: $request->ip(),
+            userAgent: $request->userAgent(),
+            extra: [
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+            ],
+        ));
+
+        return response()->json([
+            'id' => $assistantMessage->id,
+            'role' => 'assistant',
+            'content' => $answer,
+            'metadata' => $assistantMessage->metadata,
+            'rating' => null,
+            'confidence' => 0,
+            'refusal_reason' => $reason,
+            'created_at' => $assistantMessage->created_at,
+        ]);
+    }
+
+    /**
+     * T3.4 — exact-match sentinel detection (mirror of
+     * KbChatController::isSelfRefusalSentinel). Whitespace tolerated;
+     * substring matches are NOT treated as refusal.
+     */
+    private function isSelfRefusalSentinel(string $content): bool
+    {
+        return trim($content) === self::SELF_REFUSAL_SENTINEL;
+    }
+
+    /**
+     * T3.4 — sentinel-to-refusal conversion for the conversation flow.
+     *
+     * Differs from {@see refusalResponse()} (which handles `no_relevant_context`)
+     * on two axes:
+     *   1. `refusal_reason` is `'llm_self_refusal'` — retrieval succeeded
+     *      but the LLM declared the chunks insufficient. The split lets
+     *      the dashboard distinguish threshold-too-lenient from
+     *      threshold-too-strict.
+     *   2. The chat-log row + assistant message metadata carry the REAL
+     *      provider/model/token counts (the LLM call was paid in full).
+     *      Latency reflects retrieval+LLM, not retrieval-only.
+     *
+     * The assistant message body is replaced with the i18n placeholder
+     * (NOT the literal sentinel) so the FE renders RefusalNotice instead
+     * of leaking the protocol token to the user.
+     */
+    private function convertSentinelToRefusal(
+        Request $request,
+        ChatLogManager $chatLog,
+        Conversation $conversation,
+        string $question,
+        ?string $projectKey,
+        int $userId,
+        Collection $chunks,
+        AiResponse $aiResponse,
+        int $latencyMs,
+    ): JsonResponse {
+        $reason = 'llm_self_refusal';
+        $answer = (string) __('kb.no_grounded_answer');
+
+        $assistantMessage = $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => $answer,
+            'confidence' => 0,
+            'refusal_reason' => $reason,
+            'metadata' => [
+                'provider' => $aiResponse->provider,
+                'model' => $aiResponse->model,
+                'prompt_tokens' => $aiResponse->promptTokens,
+                'completion_tokens' => $aiResponse->completionTokens,
+                'total_tokens' => $aiResponse->totalTokens,
+                'chunks_count' => $chunks->count(),
+                'latency_ms' => $latencyMs,
+                'citations' => [],
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+            ],
+        ]);
+
+        $conversation->touch();
+
+        $chatLog->log(new ChatLogEntry(
+            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            userId: $userId,
+            question: $question,
+            answer: $answer,
+            projectKey: $projectKey,
+            aiProvider: $aiResponse->provider,
+            aiModel: $aiResponse->model,
+            chunksCount: $chunks->count(),
+            sources: $chunks->pluck('document.source_path')->filter()->unique()->values()->all(),
+            promptTokens: $aiResponse->promptTokens,
+            completionTokens: $aiResponse->completionTokens,
+            totalTokens: $aiResponse->totalTokens,
             latencyMs: $latencyMs,
             clientIp: $request->ip(),
             userAgent: $request->userAgent(),
