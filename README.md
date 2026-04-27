@@ -4,6 +4,7 @@
   <img src="resources/cover-AskMyDocs.png" alt="AskMyDocs" width="100%" />
 </p>
 
+
 <p align="center">
   <a href="#installation"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
   <a href="#ai-provider"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude"></a>
@@ -23,6 +24,13 @@
 <p align="center">
   <strong>Ask your docs. Get grounded answers. See the sources.</strong>
 </p>
+
+
+# CHATBOT UI/UX
+![AskMyDoc - ChatBot.png](resources/screenshots/AskMyDoc%20-%20ChatBot.png)
+
+# DASHBOARD UI/UX
+![AskMyDoc - Dashboard.png](resources/screenshots/AskMyDoc%20-%20Dashboard.png)
 
 ---
 
@@ -136,6 +144,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [Storage (Laravel disks)](#storage-laravel-disks)
   - [Chat Logging](#chat-logging)
   - [Knowledge Base](#knowledge-base)
+- [Screenshoots](#screenshoots)
 - [Scheduler](#scheduler)
 - [Authentication](#authentication)
 - [Enterprise admin surface](#enterprise-admin-surface)
@@ -591,6 +600,19 @@ Built-in chunkers (v3.0):
 The chunker registry is order-significant — `PdfPageChunker` is listed FIRST in `config/kb-pipeline.php`'s `chunkers` so the first-match-wins resolution prefers it for `pdf` over the markdown fallback.
 
 The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
+
+---
+
+## Screenshoots
+
+![AskMyDoc - ChatBot.png](resources/screenshots/AskMyDoc%20-%20ChatBot.png)
+![AskMyDoc - Dashboard.png](resources/screenshots/AskMyDoc%20-%20Dashboard.png)
+![AskMyDoc - Dashboard-dark.png](resources/screenshots/AskMyDoc%20-%20Dashboard-dark.png)
+![AskMyDoc - KB.png](resources/screenshots/AskMyDoc%20-%20KB.png)
+![AskMyDoc - User and Roles.png](resources/screenshots/AskMyDoc%20-%20User%20and%20Roles.png)
+![AskMyDoc - Manteinance.png](resources/screenshots/AskMyDoc%20-%20Manteinance.png)
+![AskMyDoc - Logs.png](resources/screenshots/AskMyDoc%20-%20Logs.png)
+![AskMyDoc - Ai.png](resources/screenshots/AskMyDoc%20-%20Ai.png)
 
 ---
 
