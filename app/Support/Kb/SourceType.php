@@ -42,10 +42,18 @@ enum SourceType: string
      * MIME types not registered in the pipeline (callers usually treat
      * UNKNOWN as a hard error so the operator notices the gap and adds
      * a converter + mapping).
+     *
+     * Normalisation: MIME types are case-insensitive and frequently arrive
+     * with media-type parameters (e.g. `text/plain; charset=utf-8`). We
+     * lowercase + split on `;` so all call sites get consistent routing
+     * regardless of header casing or the presence of charset/boundary
+     * parameters.
      */
     public static function fromMime(string $mimeType): self
     {
-        return match ($mimeType) {
+        $normalizedMimeType = strtolower(trim(explode(';', $mimeType, 2)[0]));
+
+        return match ($normalizedMimeType) {
             'text/markdown', 'text/x-markdown' => self::MARKDOWN,
             'text/plain' => self::TEXT,
             'application/pdf' => self::PDF,

@@ -13,18 +13,24 @@ namespace App\Services\Kb\Pipeline;
  * Pipeline flow:
  *   SourceDocument -> Converter -> ConvertedDocument -> Chunker -> list<ChunkDraft>
  *
- * Per R1 (kb-path-normalization), `$sourcePath` MUST be pre-normalised by
- * `App\Support\KbPath::normalize()` before constructing this DTO. The
- * pipeline does NOT re-normalise — accepting the path verbatim avoids
- * double-collapse and keeps deletion paths idempotent. Callers that
- * receive raw paths from HTTP/CLI/connectors are responsible for the
- * normalisation step at the boundary, exactly as `DocumentIngestor` and
- * `KbIngestController` already do today for markdown ingest.
+ * Per R1 (kb-path-normalization), `$sourcePath` is normalised inside
+ * `App\Services\Kb\DocumentIngestor::ingest()` via
+ * `App\Support\KbPath::normalize()` as a safety net — callers may pass a
+ * raw KB-relative path and it WILL get normalised before persistence.
+ * Idempotent normalisation means the same DTO can be constructed with the
+ * pre- or post-normalised form and produce identical persistence keys.
+ * Callers that receive raw paths from HTTP/CLI/connectors are still
+ * encouraged to normalise at the boundary for consistency and earlier
+ * validation feedback (immediate 422 vs deep ingestion failure), but this
+ * DTO does NOT require a pre-normalised value.
  */
 final readonly class SourceDocument
 {
     /**
-     * @param  string                $sourcePath  KB-relative path. MUST be pre-normalised via App\Support\KbPath::normalize().
+     * @param  string                $sourcePath  KB-relative path. `DocumentIngestor::ingest()`
+     *                                            normalises it via App\Support\KbPath::normalize();
+     *                                            callers may also normalise earlier at the boundary
+     *                                            for consistency and early validation.
      * @param  array<string, mixed>  $metadata    Free-form key-value bag (language, owner, custom labels, ...).
      */
     public function __construct(

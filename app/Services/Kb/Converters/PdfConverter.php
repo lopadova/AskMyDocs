@@ -17,10 +17,10 @@ use Throwable;
  *
  * Primary strategy: smalot/pdfparser (pure PHP, no system deps). Walks the
  * PDF object tree, extracts text per page, normalises whitespace, and emits
- * markdown shaped as `# {basename}` followed by `## Page N` per page so the
- * downstream MarkdownChunker can section_aware-chunk one chunk per page
- * (T1.7 will introduce a dedicated PdfPageChunker that owns this slicing
- * directly; for v3.0 the markdown shape is the routing key).
+ * markdown shaped as `# {basename}` followed by `## Page N` markers for each
+ * extracted page. That markdown shape is intentional: PdfPageChunker (T1.7)
+ * owns `pdf` source-type routing via the registry's first-match-wins rule
+ * and uses those markers to slice one chunk per non-empty page.
  *
  * Fallback strategy: invokes the `pdftotext` binary from Poppler when
  * smalot rejects the file (XFA forms, certain encrypted streams, malformed

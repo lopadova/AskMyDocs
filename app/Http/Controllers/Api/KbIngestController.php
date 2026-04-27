@@ -36,7 +36,12 @@ class KbIngestController extends Controller
     {
         $validated = $request->validate([
             'documents' => ['required', 'array', 'min:1', 'max:100'],
-            'documents.*.project_key' => ['nullable', 'string', 'max:120'],
+            // `nullable` lets callers omit project_key entirely (default
+            // applied below); `filled` rejects explicit empty strings so
+            // a blank tenant key never lands as the project_key value
+            // (would be indistinguishable from "default" but with worse
+            // observability).
+            'documents.*.project_key' => ['nullable', 'filled', 'string', 'max:120'],
             'documents.*.source_path' => ['required', 'string', 'max:500'],
             'documents.*.title' => ['nullable', 'string', 'max:255'],
             'documents.*.mime_type' => ['nullable', 'string', 'max:200'],

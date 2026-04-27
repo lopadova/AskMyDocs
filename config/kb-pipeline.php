@@ -51,8 +51,10 @@ return [
 
     /**
      * MIME-type → source-type token mapping. The source-type drives Chunker
-     * resolution and lands on `knowledge_documents.source_type` (T1.8 will
-     * promote this string to a typed enum).
+     * resolution and lands on `knowledge_documents.source_type`. Typed
+     * handling at the call sites (controllers, jobs, the folder walker)
+     * goes through {@see \App\Support\Kb\SourceType} (helper-only enum —
+     * the column itself stays string for read back-compat).
      *
      * @var array<string, string>
      */

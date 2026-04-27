@@ -65,7 +65,7 @@ final class PdfIngestionTest extends TestCase
         $this->assertSame('reports/q1.pdf', $kdoc->source_path);
     }
 
-    public function test_pdf_ingestion_emits_at_least_one_chunk_per_page_via_section_aware_markdown_chunker(): void
+    public function test_pdf_ingestion_emits_one_chunk_per_page_via_pdf_page_chunker(): void
     {
         $bytes = PdfFixtureBuilder::buildThreePageSample();
 
@@ -86,9 +86,11 @@ final class PdfIngestionTest extends TestCase
         $chunks = $kdoc->chunks()->orderBy('chunk_order')->get();
 
         $this->assertGreaterThanOrEqual(3, $chunks->count(), 'expect ≥1 chunk per page');
-        // MarkdownChunker section_aware nests the H2 page headings under the
-        // doc-level H1 (the basename), so heading_path is "q1.pdf > Page N".
-        $this->assertStringContainsString('Page 1', (string) $chunks->first()->heading_path);
+        // PdfPageChunker (registered first in chunkers list, takes 'pdf'
+        // source-type via registry first-match-wins) sets heading_path to
+        // "Page N" — basename lives in metadata.filename for the citation
+        // renderer to compose "page N of foo.pdf".
+        $this->assertSame('Page 1', (string) $chunks->first()->heading_path);
     }
 
     public function test_pdf_ingestion_propagates_converter_meta_to_document(): void
