@@ -28,3 +28,4 @@ composer.lock
 /test-results/
 /playwright.config.d.ts
 
+/.claude/settings.local.json
