@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
-import { chatApi, type Message } from './chat.api';
+import { chatApi, type FilterState, type Message } from './chat.api';
 
 interface SendMessageArgs {
     conversationId: number;
     content: string;
+    /** T2.7 — optional retrieval filters applied to this turn's RAG search. */
+    filters?: FilterState;
 }
 
 /**
@@ -23,8 +25,8 @@ interface MutationContext {
 export function useChatMutation(): UseMutationResult<Message, Error, SendMessageArgs, MutationContext> {
     const qc = useQueryClient();
     return useMutation<Message, Error, SendMessageArgs, MutationContext>({
-        mutationFn: async ({ conversationId, content }) => {
-            return chatApi.sendMessage(conversationId, content);
+        mutationFn: async ({ conversationId, content, filters }) => {
+            return chatApi.sendMessage(conversationId, content, filters);
         },
         onMutate: async ({ conversationId, content }) => {
             await qc.cancelQueries({ queryKey: ['messages', conversationId] });

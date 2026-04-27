@@ -11,6 +11,9 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Support\Canonical\CanonicalType;
+use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -53,13 +56,23 @@ class MessageController extends Controller
             abort(403);
         }
 
-        $validated = $request->validate([
-            'content' => ['required', 'string', 'max:10000'],
-        ]);
+        $validated = $request->validate(array_merge(
+            ['content' => ['required', 'string', 'max:10000']],
+            // T2.7 — accept the same `filters.*` payload shape as
+            // /api/kb/chat (validated by KbChatRequest). Inline here
+            // rather than via FormRequest because MessageController
+            // already validates `content` and switching to a custom
+            // FormRequest would touch every route binding. The
+            // resulting filter rule set is duplicated with
+            // KbChatRequest::rules() — refactor to a shared trait
+            // is a follow-up (M4 consolidamento).
+            $this->retrievalFilterRules(),
+        ));
 
         $question = $validated['content'];
         $projectKey = $conversation->project_key;
         $userId = $request->user()->id;
+        $filters = $this->buildRetrievalFilters($request, $projectKey);
 
         // 1. Save user message
         $conversation->messages()->create([
@@ -76,12 +89,17 @@ class MessageController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // 3. RAG: search KB for context
+        // 3. RAG: search KB for context. T2.7 threads the user-selected
+        // filters into the search; when no filters are surfaced (legacy
+        // composer or the new composer with empty FilterBar), filters
+        // is the legacy single-project DTO so retrieval behaviour
+        // matches the pre-filters baseline.
         $chunks = $search->search(
             query: $question,
             projectKey: $projectKey,
             limit: config('kb.default_limit', 8),
             minSimilarity: config('kb.default_min_similarity', 0.30),
+            filters: $filters,
         );
 
         // 3b. T3.3 — deterministic refusal short-circuit. Mirrors the
@@ -413,6 +431,96 @@ class MessageController extends Controller
             'refusal_reason' => $reason,
             'created_at' => $assistantMessage->created_at,
         ]);
+    }
+
+    /**
+     * T2.7 — validation rules for the optional `filters.*` payload
+     * mirroring `KbChatRequest::rules()`'s filter-only subset. Drives
+     * `$request->validate()` in `store()`. Kept inline (not extracted
+     * to a shared trait) so each controller's contract stays auditable
+     * in one file; M4 consolidamento can refactor to a trait later.
+     *
+     * @return array<string, array<int, string>>
+     */
+    private function retrievalFilterRules(): array
+    {
+        $sourceTypeValues = collect(SourceType::cases())
+            ->reject(fn (SourceType $t) => $t === SourceType::UNKNOWN)
+            ->map(fn (SourceType $t) => $t->value)
+            ->all();
+        $sourceTypeRule = 'in:' . implode(',', $sourceTypeValues);
+
+        $canonicalTypeValues = array_map(
+            fn (CanonicalType $t) => $t->value,
+            CanonicalType::cases(),
+        );
+        $canonicalTypeRule = 'in:' . implode(',', $canonicalTypeValues);
+
+        return [
+            'filters' => ['nullable', 'array'],
+            'filters.project_keys' => ['nullable', 'array'],
+            'filters.project_keys.*' => ['string', 'max:120'],
+            'filters.tag_slugs' => ['nullable', 'array'],
+            'filters.tag_slugs.*' => ['string', 'max:120'],
+            'filters.source_types' => ['nullable', 'array'],
+            'filters.source_types.*' => ['string', $sourceTypeRule],
+            'filters.canonical_types' => ['nullable', 'array'],
+            'filters.canonical_types.*' => ['string', $canonicalTypeRule],
+            'filters.connector_types' => ['nullable', 'array'],
+            'filters.connector_types.*' => ['string', 'max:120'],
+            'filters.doc_ids' => ['nullable', 'array'],
+            'filters.doc_ids.*' => ['integer', 'min:1'],
+            'filters.folder_globs' => ['nullable', 'array'],
+            'filters.folder_globs.*' => ['string', 'max:255'],
+            'filters.date_from' => ['nullable', 'date'],
+            'filters.date_to' => ['nullable', 'date', 'after_or_equal:filters.date_from'],
+            'filters.languages' => ['nullable', 'array'],
+            'filters.languages.*' => ['string', 'size:2'],
+        ];
+    }
+
+    /**
+     * T2.7 — constructs a {@see RetrievalFilters} DTO from the validated
+     * request payload. When no `filters` block is present (legacy
+     * composer), returns the legacy single-project DTO so retrieval
+     * behaviour matches pre-T2.7 callers bit-for-bit.
+     */
+    private function buildRetrievalFilters(Request $request, ?string $conversationProject): RetrievalFilters
+    {
+        $f = $request->input('filters', []) ?? [];
+
+        if ($f === []) {
+            return RetrievalFilters::forLegacyProject($conversationProject);
+        }
+
+        $projectKeys = array_key_exists('project_keys', $f) && is_array($f['project_keys'])
+            ? array_values(array_map('strval', $f['project_keys']))
+            : ($conversationProject !== null && $conversationProject !== '' ? [(string) $conversationProject] : []);
+
+        return new RetrievalFilters(
+            projectKeys: $projectKeys,
+            tagSlugs: array_values(array_map('strval', $f['tag_slugs'] ?? [])),
+            sourceTypes: array_values(array_map('strval', $f['source_types'] ?? [])),
+            canonicalTypes: array_values(array_map('strval', $f['canonical_types'] ?? [])),
+            connectorTypes: array_values(array_map('strval', $f['connector_types'] ?? [])),
+            docIds: array_values(array_map('intval', $f['doc_ids'] ?? [])),
+            folderGlobs: array_values(array_map('strval', $f['folder_globs'] ?? [])),
+            dateFrom: $this->normaliseDate($f['date_from'] ?? null),
+            dateTo: $this->normaliseDate($f['date_to'] ?? null),
+            languages: array_values(array_map(
+                fn ($v) => strtolower((string) $v),
+                $f['languages'] ?? [],
+            )),
+        );
+    }
+
+    private function normaliseDate(mixed $raw): ?string
+    {
+        if (! is_string($raw)) {
+            return null;
+        }
+        $trimmed = trim($raw);
+        return $trimmed === '' ? null : $trimmed;
     }
 
     private function buildCitations(\Illuminate\Support\Collection $chunks): array
