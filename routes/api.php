@@ -212,6 +212,21 @@ Route::middleware([
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
 
+        // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
+        // cascade on delete via FK ON DELETE CASCADE on
+        // knowledge_document_tags. Controller methods take `int $id`
+        // (mirrors ChatFilterPresetController's int-typed params)
+        // so route binding stays plain — no Eloquent implicit binding.
+        Route::apiResource('kb/tags', \App\Http\Controllers\Api\Admin\TagController::class)
+            ->parameters(['tags' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.tags.index',
+                'store' => 'api.admin.kb.tags.store',
+                'show' => 'api.admin.kb.tags.show',
+                'update' => 'api.admin.kb.tags.update',
+                'destroy' => 'api.admin.kb.tags.destroy',
+            ]);
+
         // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
         // canonical audit, application log tail, activity log
         // (Spatie soft-dep), failed jobs. Write-path actions (retry
