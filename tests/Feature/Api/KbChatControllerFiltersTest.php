@@ -223,6 +223,65 @@ final class KbChatControllerFiltersTest extends TestCase
             ->assertJsonValidationErrors(['filters.date_to']);
     }
 
+    public function test_explicit_empty_project_keys_array_means_no_project_scoping(): void
+    {
+        // Cycle-1 fix: when filters.project_keys is PRESENT as an empty
+        // array, that's the caller saying "no project scoping" and the
+        // legacy project_key fallback must NOT fire. Pre-cycle-1 behaviour
+        // would have wrapped 'should-be-ignored' into the filters.
+        $resp = $this->postJson('/api/kb/chat', [
+            'question' => 'X?',
+            'project_key' => 'should-be-ignored',
+            'filters' => ['project_keys' => []],
+        ]);
+
+        $resp->assertStatus(200);
+        $this->assertSame([], $this->capturedFilters->projectKeys);
+        $this->assertNull($this->capturedProjectKey);
+    }
+
+    public function test_canonical_types_validator_rejects_unknown_value_with_422(): void
+    {
+        // Cycle-1 fix: canonical_types validator now derives from
+        // CanonicalType::cases() so unknown values get 422 (was previously
+        // accepting any string up to 120 chars).
+        $this->postJson('/api/kb/chat', [
+            'question' => 'X',
+            'filters' => ['canonical_types' => ['not-a-real-canonical-type']],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters.canonical_types.0']);
+    }
+
+    public function test_canonical_types_validator_accepts_real_canonical_type_values(): void
+    {
+        // Cycle-1 fix: the actual stored values are `module-kb` and
+        // `project-index` (NOT `module` / `project` as the README
+        // initially claimed). Verify the validator accepts them.
+        $this->postJson('/api/kb/chat', [
+            'question' => 'X',
+            'filters' => ['canonical_types' => ['decision', 'module-kb', 'project-index']],
+        ])->assertStatus(200);
+
+        $this->assertSame(
+            ['decision', 'module-kb', 'project-index'],
+            $this->capturedFilters->canonicalTypes,
+        );
+    }
+
+    public function test_normalised_date_strips_surrounding_whitespace(): void
+    {
+        // Cycle-1 fix: normaliseDate() now returns the trimmed value, not
+        // the original. SQL date comparisons would otherwise carry padding.
+        $this->postJson('/api/kb/chat', [
+            'question' => 'X',
+            'filters' => [
+                'date_from' => '  2026-01-01  ',
+            ],
+        ])->assertStatus(200);
+
+        $this->assertSame('2026-01-01', $this->capturedFilters->dateFrom);
+    }
+
     public function test_empty_filters_payload_falls_back_to_no_filters(): void
     {
         $resp = $this->postJson('/api/kb/chat', [

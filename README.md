@@ -489,12 +489,12 @@ Field semantics:
 - `project_keys` — multi-tenant scope; takes precedence over the legacy `project_key` field when both are sent.
 - `tag_slugs` — match documents tagged with ANY listed slug (T2.3 join, ships in a follow-up).
 - `source_types` — one of `markdown`, `text`, `pdf`, `docx` (validated against `App\Support\Kb\SourceType` so adding a new type extends the validator automatically).
-- `canonical_types` — one of `decision|module|runbook|standard|incident|integration|domain-concept|rejected-approach|project`.
-- `connector_types` — one of `local|google-drive|onedrive|notion|asana|imap|...`. Accepted in v3.0 but no-op in retrieval until the `connector_type` column is added in v3.1.
+- `canonical_types` — one of the `App\Support\Canonical\CanonicalType` enum values currently stored on `knowledge_documents.canonical_type`: `decision`, `module-kb`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`, `rejected-approach`, `project-index`. The validator is built from `CanonicalType::cases()` so adding a new case auto-extends the accepted set.
+- `connector_types` — connector identifier strings (for example `local`, `google-drive`, `onedrive`, `notion`, `asana`, `imap`). Accepted in v3.0 but currently a no-op in retrieval until the `connector_type` column is added in v3.1.
 - `doc_ids` — explicit document-id allowlist (used by the `@mention` UI in the chat composer, T2.7).
 - `folder_globs` — fnmatch globs against `source_path` (T2.4 ships the actual constraint).
 - `date_from` / `date_to` — ISO 8601 date range against `indexed_at`. `date_to` must be after-or-equal to `date_from`.
-- `languages` — ISO 639-1 codes (lowercased on validate).
+- `languages` — ISO 639-1 codes (normalized to lowercase during DTO construction; the validator enforces `size:2`).
 
 Pre-T2.2 callers using the legacy `{question, project_key}` payload keep working unchanged — internally `project_key` is wrapped into `filters.project_keys = [project_key]`. The response `meta.filters_selected` echoes the count of user-selected filter dimensions for the FE composer to render "5 filters selected".
 

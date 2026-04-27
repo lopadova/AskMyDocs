@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Requests\Api;
 
 use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -42,6 +43,15 @@ final class KbChatRequest extends FormRequest
             ->all();
         $sourceTypeRule = 'in:' . implode(',', $sourceTypeValues);
 
+        // Same `enum::cases()` source-of-truth pattern as $sourceTypeRule
+        // (T2.2 LESSONS rule 1) — adding a new CanonicalType case
+        // automatically extends the validator without a separate edit.
+        $canonicalTypeValues = array_map(
+            fn (CanonicalType $t) => $t->value,
+            CanonicalType::cases(),
+        );
+        $canonicalTypeRule = 'in:' . implode(',', $canonicalTypeValues);
+
         return [
             'question' => ['required', 'string', 'max:10000'],
 
@@ -63,7 +73,7 @@ final class KbChatRequest extends FormRequest
             'filters.source_types.*' => ['string', $sourceTypeRule],
 
             'filters.canonical_types' => ['nullable', 'array'],
-            'filters.canonical_types.*' => ['string', 'max:120'],
+            'filters.canonical_types.*' => ['string', $canonicalTypeRule],
 
             'filters.connector_types' => ['nullable', 'array'],
             'filters.connector_types.*' => ['string', 'max:120'],
@@ -95,11 +105,18 @@ final class KbChatRequest extends FormRequest
         $f = $this->input('filters', []) ?? [];
         $legacyProject = $this->input('project_key');
 
-        $projectKeys = $f['project_keys'] ?? null;
-        if (! is_array($projectKeys) || $projectKeys === []) {
-            $projectKeys = ($legacyProject !== null && $legacyProject !== '')
-                ? [$legacyProject]
-                : [];
+        // Precedence: when `filters.project_keys` is PRESENT (even as
+        // an explicit empty array — that's the caller saying "no project
+        // scoping"), it is authoritative. The legacy `project_key`
+        // fallback only fires when the field is missing entirely OR
+        // is not an array. This matches the documented "filters wins"
+        // contract.
+        if (array_key_exists('project_keys', $f) && is_array($f['project_keys'])) {
+            $projectKeys = $f['project_keys'];
+        } elseif ($legacyProject !== null && $legacyProject !== '') {
+            $projectKeys = [$legacyProject];
+        } else {
+            $projectKeys = [];
         }
 
         return new RetrievalFilters(
@@ -128,19 +145,28 @@ final class KbChatRequest extends FormRequest
      */
     public function effectiveProjectKey(): ?string
     {
-        $filtersProjects = $this->input('filters.project_keys');
-        if (is_array($filtersProjects) && $filtersProjects !== []) {
-            return (string) $filtersProjects[0];
+        // Mirrors toFilters() precedence: when filters.project_keys is
+        // PRESENT (even as an empty array), it's authoritative — the
+        // legacy fallback only applies when the field is missing or
+        // not an array. An explicit empty array means "no scoping" =>
+        // null effective project for the chat-log row.
+        $filters = $this->input('filters', []) ?? [];
+        if (array_key_exists('project_keys', $filters) && is_array($filters['project_keys'])) {
+            return $filters['project_keys'] === []
+                ? null
+                : (string) $filters['project_keys'][0];
         }
+
         $legacy = $this->input('project_key');
         return $legacy === null || $legacy === '' ? null : (string) $legacy;
     }
 
     private function normaliseDate(mixed $raw): ?string
     {
-        if (! is_string($raw) || trim($raw) === '') {
+        if (! is_string($raw)) {
             return null;
         }
-        return $raw;
+        $trimmed = trim($raw);
+        return $trimmed === '' ? null : $trimmed;
     }
 }
