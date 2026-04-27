@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Services\Kb\DocumentIngestor;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\SourceType;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,13 +15,18 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
- * Ingests a single markdown document into the knowledge base.
+ * Ingests a single document of any supported format into the knowledge base.
  *
  * Dispatched by KbIngestFolderCommand (folder walker) and KbIngestController
- * (remote HTTP ingestion). Reads the markdown from the configured Laravel
- * disk, then delegates to DocumentIngestor::ingestMarkdown which is
- * idempotent via a SHA-256 version hash — retries and duplicate dispatches
- * never create duplicate chunks.
+ * (remote HTTP ingestion). Reads the bytes from the configured Laravel disk
+ * — text-decoded for markdown/text, raw binary for PDF/DOCX — and routes
+ * through DocumentIngestor::ingest() which is idempotent via a SHA-256
+ * version hash so retries and duplicate dispatches never create duplicate
+ * chunks.
+ *
+ * Back-compat: when `$mimeType` is null (legacy callers from before T1.8)
+ * defaults to `text/markdown` and the call goes through the same `ingest()`
+ * path that `ingestMarkdown()` now wraps.
  */
 class IngestDocumentJob implements ShouldQueue
 {
@@ -41,6 +48,9 @@ class IngestDocumentJob implements ShouldQueue
         public readonly string $disk,
         public readonly ?string $title = null,
         public readonly array $metadata = [],
+        // T1.8 — optional MIME override. When omitted, defaults to
+        // `text/markdown` (legacy back-compat for jobs queued before T1.8).
+        public readonly ?string $mimeType = null,
     ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
@@ -58,26 +68,38 @@ class IngestDocumentJob implements ShouldQueue
             );
         }
 
-        $markdown = (string) $storage->get($fullPath);
+        // Storage::get() returns the raw bytes regardless of MIME — text
+        // and binary formats both flow through the same read; the converter
+        // (resolved by PipelineRegistry from the mime type) decides how to
+        // interpret them.
+        $bytes = (string) $storage->get($fullPath);
         $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
+        $mimeType = $this->mimeType ?? 'text/markdown';
 
         $metadata = array_merge($this->metadata, [
             'disk' => $this->disk,
             'prefix' => $prefix,
         ]);
 
-        $document = $ingestor->ingestMarkdown(
+        $document = $ingestor->ingest(
             projectKey: $this->projectKey,
-            sourcePath: $this->relativePath,
+            source: new SourceDocument(
+                sourcePath: $this->relativePath,
+                mimeType: $mimeType,
+                bytes: $bytes,
+                externalUrl: null,
+                externalId: null,
+                connectorType: 'local',
+                metadata: $metadata,
+            ),
             title: $title,
-            markdown: $markdown,
-            metadata: $metadata,
         );
 
         Log::info('IngestDocumentJob completed', [
             'document_id' => $document->id,
             'project_key' => $this->projectKey,
             'source_path' => $this->relativePath,
+            'source_type' => SourceType::fromMime($mimeType)->value,
             'disk' => $this->disk,
         ]);
     }

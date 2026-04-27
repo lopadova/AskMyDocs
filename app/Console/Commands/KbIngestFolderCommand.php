@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Jobs\IngestDocumentJob;
 use App\Services\Kb\DocumentDeleter;
 use App\Services\Kb\DocumentIngestor;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Kb\SourceType;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -23,7 +25,7 @@ class KbIngestFolderCommand extends Command
                             {path? : Folder on the KB disk, relative to KB_PATH_PREFIX (defaults to the prefix root)}
                             {--project= : Project key for multi-tenant filtering (defaults to KB_INGEST_DEFAULT_PROJECT)}
                             {--disk= : Override KB_FILESYSTEM_DISK for this run}
-                            {--pattern= : Comma-separated extension patterns (default: md,markdown)}
+                            {--pattern= : Comma-separated extension patterns (default: md,markdown,txt,pdf,docx — every supported format)}
                             {--recursive : Walk sub-directories}
                             {--sync : Run ingestion inline without touching the queue}
                             {--limit=0 : Stop after N files (0 = unlimited)}
@@ -31,7 +33,7 @@ class KbIngestFolderCommand extends Command
                             {--prune-orphans : Delete documents under this folder whose source file no longer exists}
                             {--force-delete : When pruning orphans, hard-delete instead of using the KB_SOFT_DELETE_ENABLED default}';
 
-    protected $description = 'Walk a folder on the KB disk and dispatch a queued ingestion job per markdown file.';
+    protected $description = 'Walk a folder on the KB disk and dispatch a queued ingestion job per supported file (md/markdown/txt/pdf/docx).';
 
     public function handle(DocumentIngestor $ingestor, DocumentDeleter $deleter): int
     {
@@ -51,7 +53,11 @@ class KbIngestFolderCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $sync = (bool) $this->option('sync');
         $limit = max(0, (int) $this->option('limit'));
-        $patternRaw = (string) ($this->option('pattern') ?: 'md,markdown');
+        // Default pattern includes every supported extension (T1.8 multi-format
+        // ingest). Operators can still pass `--pattern=md,markdown` to scope
+        // a run to a single format.
+        $defaultPattern = implode(',', SourceType::knownExtensions());
+        $patternRaw = (string) ($this->option('pattern') ?: $defaultPattern);
         $patterns = $this->parsePatterns($patternRaw);
 
         $storage = Storage::disk($disk);
@@ -85,9 +91,21 @@ class KbIngestFolderCommand extends Command
 
         foreach ($matching as $fullPath) {
             $relative = $this->stripPrefix($fullPath, $prefix);
+            $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
+            $sourceType = SourceType::fromExtension($extension);
 
             if ($dryRun) {
-                $this->line("  • {$fullPath}");
+                $this->line("  • {$fullPath} [{$sourceType->value}]");
+                continue;
+            }
+
+            if ($sourceType === SourceType::UNKNOWN) {
+                // Filter already removes unknown extensions, but defence-
+                // in-depth: if a custom --pattern brings in an unknown
+                // extension, refuse it loudly rather than silently routing
+                // through markdown.
+                $failed++;
+                $this->error("  ! unsupported extension: {$relative} [{$extension}]");
                 continue;
             }
 
@@ -96,21 +114,30 @@ class KbIngestFolderCommand extends Command
                     if (! $storage->exists($fullPath)) {
                         throw new \RuntimeException("File vanished before ingestion: {$fullPath}");
                     }
-                    $markdown = (string) $storage->get($fullPath);
+                    $bytes = (string) $storage->get($fullPath);
                     $title = pathinfo($relative, PATHINFO_FILENAME);
 
-                    $ingestor->ingestMarkdown(
+                    $ingestor->ingest(
                         projectKey: $projectKey,
-                        sourcePath: $relative,
+                        source: new SourceDocument(
+                            sourcePath: $relative,
+                            mimeType: $sourceType->toMime(),
+                            bytes: $bytes,
+                            externalUrl: null,
+                            externalId: null,
+                            connectorType: 'local',
+                            metadata: ['disk' => $disk, 'prefix' => $prefix],
+                        ),
                         title: $title,
-                        markdown: $markdown,
-                        metadata: ['disk' => $disk, 'prefix' => $prefix],
                     );
                 } else {
                     IngestDocumentJob::dispatch(
                         projectKey: $projectKey,
                         relativePath: $relative,
                         disk: $disk,
+                        title: null,
+                        metadata: [],
+                        mimeType: $sourceType->toMime(),
                     );
                 }
 

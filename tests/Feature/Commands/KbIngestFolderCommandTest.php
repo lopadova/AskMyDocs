@@ -24,8 +24,14 @@ class KbIngestFolderCommandTest extends TestCase
         config()->set('kb.ingest.default_project', 'default');
     }
 
-    public function test_walks_flat_folder_and_dispatches_one_job_per_markdown(): void
+    public function test_walks_flat_folder_and_dispatches_one_job_per_supported_file(): void
     {
+        // T1.8 broadened the default --pattern from `md,markdown` to every
+        // supported extension (md/markdown/txt/pdf/docx). Per the new
+        // semantics, `c.txt` is ALSO picked up and dispatched as a
+        // text/plain SourceDocument. Operators wanting the pre-T1.8
+        // markdown-only behavior pass `--pattern=md,markdown` explicitly
+        // (covered by the next test).
         Queue::fake();
         Storage::fake('kb');
         Storage::disk('kb')->put('a.md', 'alpha');
@@ -34,6 +40,24 @@ class KbIngestFolderCommandTest extends TestCase
 
         $this->artisan('kb:ingest-folder', ['--project' => 'demo'])
             ->assertSuccessful();
+
+        Queue::assertPushed(IngestDocumentJob::class, 3);
+    }
+
+    public function test_explicit_pattern_md_scopes_to_markdown_only(): void
+    {
+        // Back-compat shim for the pre-T1.8 default — operators relying on
+        // markdown-only walks pass `--pattern=md,markdown` explicitly.
+        Queue::fake();
+        Storage::fake('kb');
+        Storage::disk('kb')->put('a.md', 'alpha');
+        Storage::disk('kb')->put('b.md', 'bravo');
+        Storage::disk('kb')->put('c.txt', 'charlie');
+
+        $this->artisan('kb:ingest-folder', [
+            '--project' => 'demo',
+            '--pattern' => 'md,markdown',
+        ])->assertSuccessful();
 
         Queue::assertPushed(IngestDocumentJob::class, 2);
     }
