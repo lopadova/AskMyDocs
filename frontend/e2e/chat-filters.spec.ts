@@ -16,11 +16,11 @@ import { composer } from './helpers';
  *      POST payload — the BE receives the `filters` object and the
  *      response carries the resulting `meta.filters_selected` count.
  *
- * R13: the AI provider is stubbed via page.route() on
- * /conversations/<id>/messages (EXTERNAL_PROXY allowlist — POST
- * triggers the AI provider). The page.route handler asserts the
- * payload SHAPE — proving the FE actually threaded the filters
- * through, not just rendered them locally.
+ * R13: the AI provider is stubbed at the conversations/messages
+ * endpoint (EXTERNAL_PROXY allowlist — POST triggers the AI provider).
+ * The route handler asserts the payload SHAPE — proving the FE
+ * actually threaded the filters through, not just rendered them
+ * locally.
  */
 
 // Per-test timeout bumped from 20s default — slow seeded fixture

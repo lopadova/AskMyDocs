@@ -52,8 +52,8 @@ async function stubAssistantReply(page: Page, body: Record<string, unknown>): Pr
  *   - skip the citations strip
  *   - show a 'refused' confidence badge
  *
- * R13: this scenario uses page.route() to fake the AI provider AT
- * THE LARAVEL ENDPOINT (the route Laravel exposes is conversations/messages)
+ * R13: this scenario stubs the AI provider at the Laravel endpoint
+ * (the route Laravel exposes is conversations/messages)
  * because the goal is to control the BE response shape verifiably,
  * NOT to test the LLM provider integration. The BE refusal logic is
  * fully covered by KbChatRefusalTest + KbChatSentinelTest at the
