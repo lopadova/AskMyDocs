@@ -959,3 +959,100 @@ Reasoning:
 - The 2-3 EN-only labels in `ConfidenceBadge` + `RefusalNotice` (tier labels, hint copy) are NOT localized. This is a known limitation. When the project ships `react-i18next` (separate task), those strings move to the FE i18n surface. Until then, EN matches the rest of the chat UI.
 
 **References:** `frontend/src/features/chat/RefusalNotice.tsx` (renders `body` verbatim), `frontend/src/features/chat/ConfidenceBadge.tsx` (EN-only tier labels), `frontend/src/features/chat/chat.api.ts` (`refusal_reason` typed as English-tag string), `tests/Feature/Localization/RefusalI18nTest.php` (BE-side proves both en + it copy on the wire), `frontend/e2e/chat-refusal.spec.ts` (FE-side proves Italian body renders verbatim when BE delivered Italian).
+
+## L25 — Mention popover: detect cursor context, don't try to render pills inside textarea
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + UX architecture
+**Severity:** medium
+**Applies to:** any inline-trigger autocomplete in plain `<textarea>` (`@`, `#`, `:` emoji shortcuts, etc.).
+
+**Finding:**
+T2.8 ships the `@mention` autocomplete popover. The plan §2218 originally suggested replacing `@<query>` with a "pill" inside the textarea. Two approaches:
+
+1. **Pill in textarea** — requires `contentEditable` div instead of `<textarea>`. Loses native browser features (spellcheck, dictation, IME composition, mobile autosuggest, screen-reader behaviour). Custom selection model. Much more code.
+2. **Splice text + chip in FilterBar** — when the user picks a doc, splice the `@<query>` token out of the textarea AND add a chip to the FilterBar (`filter-chip-doc-{id}`). The textarea stays plain text; the chip in the bar IS the persistent indicator.
+
+T2.8 went with #2. Trade-off: the user briefly types "@policy" and it disappears when they pick a result, replaced by a chip in the bar above. Slightly less conventional than Slack/Discord pills, but vastly simpler and preserves all the textarea ergonomics.
+
+**Cursor context detection rule:**
+- Find the LAST `@` at-or-before the cursor in the prefix (`prefix.slice(0, cursorIndex)`).
+- If there's whitespace between that `@` and the cursor → the user has moved past the @-token; close popover.
+- The character immediately BEFORE the `@` must be whitespace (or start-of-string) — else `foo@bar` reads as an email fragment, NOT a mention. **This rule is the load-bearing part — without it, users typing email addresses get false-positive popovers.**
+
+**Test it:**
+- Type `@pol` → popover opens.
+- Type `<space>` after → popover closes (whitespace ends the token).
+- Type `foo@bar` → popover does NOT open (mid-word @, email-style).
+- Esc → popover closes.
+
+**TanStack Query for the search:**
+- Query key includes the trimmed query string + project keys.
+- `enabled: open && query.length >= 1` — bails when irrelevant.
+- 30s `staleTime` so re-typing the same prefix is free.
+- TanStack's signal + query-key change → automatic abort of in-flight prior request. No manual `AbortController` plumbing needed.
+
+**Click handler must use `onMouseDown`, not `onClick`:**
+- `onClick` fires AFTER `onBlur` on the textarea.
+- By the time `click` fires, the textarea has lost focus → `selectionStart` is stale → the splice math is wrong.
+- `onMouseDown` fires while the textarea is still focused. Combined with `e.preventDefault()`, it stops the default focus shift to the popover element so the textarea keeps the cursor active.
+
+**Listbox + aria-activedescendant:**
+- `role="listbox"` on the popover. `role="option"` + `aria-selected` per item.
+- `aria-activedescendant` on the popover (NOT the textarea) points at the active option's id. When the user presses arrow keys, update both `activeIndex` AND the descendant attribute. Screen readers announce the highlighted option without focus actually moving — the textarea keeps the cursor.
+
+**How to apply:**
+- New inline-trigger autocomplete → use plain textarea. Don't reach for contenteditable until you have a concrete reason (visual-pill UX is NOT a reason — chip in a sibling component is equivalent).
+- Cursor-context detection: prefix-slice + lastIndexOf + boundary check on the char BEFORE the trigger. The boundary check prevents email-style false positives.
+- TanStack Query on the fetcher; signal-based abort handles the race naturally.
+- Selection: `onMouseDown + e.preventDefault()`, never `onClick`.
+- Restore focus to the textarea after splice — cursor placement matters for typing flow.
+
+**References:** `frontend/src/features/chat/MentionPopover.tsx`, `frontend/src/features/chat/use-mention-search.ts`, `frontend/src/features/chat/Composer.tsx::onChange + onMentionSelect` (cursor-context detection + splice math + chip addition), `frontend/e2e/chat-mention.spec.ts` (test for whitespace boundary + email-style false positive).
+
+## L26 — Saved-state CRUD UI: confirm step on destructive action; surface 422 inline
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + UX
+**Severity:** low-medium
+**Applies to:** any FE CRUD over user-owned data (presets, saved searches, custom views, alert subscriptions).
+
+**Finding:**
+T2.9-FE ships the saved-presets dropdown — the user can save current filter state, load past presets, and delete presets. Two UX rules baked into the component:
+
+1. **Delete needs a confirm step.** Single-click delete on a small UI surface is too easy to misclick. The `×` button reveals "Delete | Cancel" inline; only "Delete" actually fires the request. The confirm-step lives in the same row (no modal) — keeps the dropdown compact, doesn't yank focus.
+
+2. **Save errors surface inline next to the input.** The BE rejects duplicate names with 422 (per-user uniqueness constraint, T2.9-BE). The error renders right under the name input with `data-testid="chat-filter-presets-save-error"`. Recovery is type-and-retry — no toast, no modal.
+
+**Save current is disabled when filter state is empty.**
+- Saving an empty preset has no value (user could just clear the bar).
+- Disabling the button + cursor: not-allowed signals "this isn't a meaningful action right now" without a tooltip.
+
+**TanStack Query mutation pattern:**
+- `useMutation` for create + delete. Auto-invalidates `['chat-filter-presets']` on success → the list refetches and the new/removed preset reflects in the dropdown without manual cache surgery.
+- `useQuery` with `enabled: open` — list only fetches when the dropdown is open. Closed state = idle = no network.
+
+**Per-user authorization is BE-enforced (L15 — 404, not 403, on cross-user IDs).**
+- The FE never has to filter by user_id or scope.
+- Unauthorized IDs surface as 404 → TanStack Query handles them as plain errors without leaking row existence.
+
+**How to apply:**
+- Destructive action (delete, archive, irreversible state change) → require an explicit confirm.
+- Inline confirm > modal when the surface is already a popup. Modal-on-top-of-popup is a nesting trap.
+- `useMutation.onError` → set local error state with the exception's `.message`. Render it next to the input with role="alert".
+- `useQuery({ enabled: <gating-condition> })` keeps idle UI truly idle.
+- Per-user CRUD: trust the BE (404-not-403 pattern from L15 is the contract).
+
+**testid naming for CRUD popovers:**
+- `chat-filter-presets-trigger` (open the menu)
+- `chat-filter-presets-menu` (the menu wrapper)
+- `chat-filter-preset-{id}` (one row)
+- `chat-filter-preset-{id}-load` / `-delete` / `-delete-confirm` / `-delete-cancel`
+- `chat-filter-presets-save` / `-save-form` / `-save-confirm` / `-save-cancel`
+- `chat-filter-presets-name-input` / `-save-error` / `-loading` / `-empty`
+
+Stable, hierarchical, grepable. Playwright + Vitest both consume these directly.
+
+**References:** `frontend/src/features/chat/FilterPresetsDropdown.tsx` (component), `frontend/src/features/chat/FilterPresetsDropdown.test.tsx` (12 cases — empty state, list rendering, load, save enable-when-non-empty, save POST shape, delete confirm requirement, cancel reverting state), `frontend/e2e/chat-mention.spec.ts` (E2E covers preset save → load → list reflect against the real BE).
