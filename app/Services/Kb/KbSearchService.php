@@ -51,9 +51,37 @@ class KbSearchService
         $effectiveProject = $projectKey
             ?? ($effectiveFilters->projectKeys[0] ?? null);
 
+        // T3.5 — track retrieval-only latency separately so the controller
+        // can compose `meta.latency_ms_breakdown` with retrieval/llm/total.
+        $retrievalStart = microtime(true);
+
         $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters);
         $expanded = $this->graphExpander->expand($primary, $effectiveProject);
         $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
+
+        $retrievalMs = (int) ((microtime(true) - $retrievalStart) * 1000);
+
+        $filtersSelected = $effectiveFilters->isEmpty()
+            ? 0
+            : count(array_filter([
+                $effectiveFilters->projectKeys !== [],
+                $effectiveFilters->tagSlugs !== [],
+                $effectiveFilters->sourceTypes !== [],
+                $effectiveFilters->canonicalTypes !== [],
+                $effectiveFilters->connectorTypes !== [],
+                $effectiveFilters->docIds !== [],
+                $effectiveFilters->folderGlobs !== [],
+                $effectiveFilters->languages !== [],
+                $effectiveFilters->dateFrom !== null,
+                $effectiveFilters->dateTo !== null,
+            ]));
+
+        // T3.5 — vector_score is set on EVERY primary chunk by search();
+        // these min/max are retrieval-quality signals the dashboard uses
+        // to flag "everything just barely passed" outlier queries.
+        $primaryScores = $primary->map(fn ($c) => (float) ($c->vector_score ?? 0));
+        $minScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->min();
+        $maxScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->max();
 
         return new SearchResult(
             primary: $primary,
@@ -75,22 +103,84 @@ class KbSearchService
                 // selected" in the chat composer; the count grows
                 // organically as T2.3/T2.4 etc. wire up the deferred
                 // dimensions.
-                'filters_selected' => $effectiveFilters->isEmpty()
-                    ? 0
-                    : count(array_filter([
-                        $effectiveFilters->projectKeys !== [],
-                        $effectiveFilters->tagSlugs !== [],
-                        $effectiveFilters->sourceTypes !== [],
-                        $effectiveFilters->canonicalTypes !== [],
-                        $effectiveFilters->connectorTypes !== [],
-                        $effectiveFilters->docIds !== [],
-                        $effectiveFilters->folderGlobs !== [],
-                        $effectiveFilters->languages !== [],
-                        $effectiveFilters->dateFrom !== null,
-                        $effectiveFilters->dateTo !== null,
-                    ])),
+                'filters_selected' => $filtersSelected,
+
+                // T3.5 — retrieval timing in ms (excludes LLM call). The
+                // controller composes `meta.latency_ms_breakdown` from
+                // this value + the LLM-side delta.
+                'retrieval_ms' => $retrievalMs,
+
+                // T3.5 — search_strategy: which retrieval features were
+                // active for this query. Pure config snapshot — useful
+                // for "why did this query miss?" investigations + dashboard
+                // rollups (e.g. "FTS-disabled queries refuse 30% more").
+                'search_strategy' => [
+                    'semantic_enabled' => true,  // pgvector is always on
+                    'fts_enabled' => (bool) config('kb.hybrid_search.enabled', false),
+                    'fusion_method' => $this->resolveFusionMethod(),
+                    'graph_expansion_enabled' => (bool) config('kb.graph.expansion_enabled', true),
+                    'rejected_injection_enabled' => (bool) config('kb.rejected.injection_enabled', true),
+                    'filters_applied' => $filtersSelected,
+                ],
+
+                // T3.5 — retrieval_stats: per-query counts + score range.
+                // The `candidates_pre_threshold` / `candidates_post_threshold`
+                // pair is APPROXIMATED here — `pre` is what the search
+                // builder fetched (over-retrieved if reranking enabled),
+                // `post` is what survived the threshold (== primary count
+                // when reranking off; >= when reranking is on and chunks
+                // were promoted/demoted). Exact tracking requires
+                // instrumenting search() with side-channel counters; the
+                // approximation is good enough for the dashboard at
+                // production scale and avoids a hot-path refactor.
+                'retrieval_stats' => [
+                    'candidates_pre_threshold' => $this->approxCandidatesPreThreshold($limit),
+                    'candidates_post_threshold' => $primary->count(),
+                    'primary_count' => $primary->count(),
+                    'expanded_count' => $expanded->count(),
+                    'rejected_count' => $rejected->count(),
+                    'min_score_used' => $minScoreUsed,
+                    'max_score_used' => $maxScoreUsed,
+                ],
             ],
         );
+    }
+
+    /**
+     * Best-guess fusion method label for `search_strategy`. The Reranker
+     * uses a weighted-sum of vector+keyword+heading; without reranking,
+     * the result is straight RRF when FTS is on, or pure semantic when
+     * not. The label is for observability — exact algorithm lives in
+     * the Reranker class.
+     */
+    private function resolveFusionMethod(): string
+    {
+        $rerank = (bool) config('kb.reranking.enabled', true);
+        $fts = (bool) config('kb.hybrid_search.enabled', false);
+
+        return match (true) {
+            $rerank => 'rerank_weighted_sum',
+            $fts => 'rrf',
+            default => 'semantic_only',
+        };
+    }
+
+    /**
+     * Approximation of how many candidates were considered before the
+     * similarity threshold filtered them out. With reranking enabled the
+     * service over-retrieves by `candidate_multiplier` (default 3x);
+     * without it, the over-retrieval factor is 1x. This is a USEFUL
+     * over-estimate for the dashboard — it tells operators how much
+     * "headroom" the reranker had to work with on this query without
+     * adding a second SQL count() round-trip on the hot path.
+     */
+    private function approxCandidatesPreThreshold(int $limit): int
+    {
+        $rerank = (bool) config('kb.reranking.enabled', true);
+
+        return $rerank
+            ? $limit * (int) config('kb.reranking.candidate_multiplier', 3)
+            : $limit;
     }
 
     /**

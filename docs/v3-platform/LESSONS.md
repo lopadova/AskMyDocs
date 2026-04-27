@@ -582,3 +582,243 @@ T2.9 plan spans backend + frontend. CLAUDE.md mandates "test in browser before c
 **References:** `app/Http/Controllers/Api/ChatFilterPresetController.php::findOwnedOr404()` + per-action where-scoping, `tests/Feature/Api/ChatFilterPresetControllerTest.php::test_*_returns_404_when_preset_belongs_to_other_user` + `_cannot_delete_another_users_preset` + `_cascade_delete_removes_presets_when_user_force_deleted`. T2.9 FE slice (FilterBar dropdown + e2e) deferred — depends on T2.7 which itself is deferred per CLAUDE.md UI verification rule.
 
 ---
+
+## L17 — Grounding columns on shared analytics tables: nullable + non-indexed by default
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule
+**Severity:** low (defaults that don't bite later)
+**Applies to:** future analytics column additions on `messages` / `chat_logs` / similar high-write tables.
+
+**Finding:**
+T3.1 added two grounding columns (`confidence` tinyint 0-100, `refusal_reason` string 64) to BOTH `messages` and `chat_logs`. Three defaulting decisions:
+
+1. **Both columns are nullable.** Pre-T3.0 rows have no concept of confidence or refusal — making the columns NOT NULL would force a backfill migration on a table that grows unboundedly. Nullable + read-side null-handling stays safe; the FE (T3.6 — deferred) renders a default state when the score is null.
+2. **No index on either column.** `confidence` is read by row id (already indexed via PK); aggregating "all messages with confidence < X" is an admin-dashboard query that's rare enough to tolerate a seq scan. `refusal_reason` has 2-3 distinct values across the entire population — the planner ignores B-tree indexes on low-cardinality columns, and `WHERE refusal_reason IS NULL` (the common predicate) doesn't benefit from one. Skipping the index keeps inserts fast on the hot path.
+3. **No CHECK constraint at the schema level (yet).** The plan suggests `CHECK (confidence BETWEEN 0 AND 100)` but it's pgsql-only and SQLite tests would no-op. Deferred to a follow-up pgsql-only migration once the consumer side stabilizes — defending invariants in the producer (`ConfidenceCalculator::compute()` clamps to 0..100) is the cheaper, portable enforcement point for now.
+
+**Why it matters:**
+- Default `NOT NULL` on a high-write table requires a backfill — the v3.0 upgrade path stays single-step (run migration, deploy).
+- Indexing every new column "just in case" is the classic premature-optimization pattern that compounds into write-amplification on tables like `chat_logs` (every INSERT pays the index maintenance cost).
+- CHECK constraints are great until they collide with cross-driver portability — pin invariants in a pgsql-only follow-up rather than no-op'ing them in SQLite.
+
+**How to apply:**
+- New analytics column on a high-write table → start nullable, no index, no CHECK. Add later if a query pattern actually needs it.
+- Producer-side clamp first, schema-level CHECK only when you know the column is stable AND only run on pgsql.
+- Test the BOUNDARY values (0, 1, 99, 100) explicitly in the migration test — guards against future regressions that flip the type to signed or shrink to a smaller width.
+
+**References:** `database/migrations/2026_04_27_000002_add_grounding_columns_to_messages_and_chat_logs_table.php`, `tests/Feature/Migrations/AddGroundingColumnsTest.php::test_messages_confidence_round_trips_boundary_values`.
+
+## L18 — Composite confidence formula: weighted-sum + producer-side clamp
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + design decision
+**Severity:** medium
+**Applies to:** future grounding-quality scoring services, any per-message numeric metric exposed via API.
+
+**Finding:**
+T3.2 ships `ConfidenceCalculator` with the formula codified in plan §2434:
+
+```
+confidence = 100 * (
+    0.40 * mean_top_k_similarity +
+    0.20 * threshold_margin +
+    0.20 * chunk_diversity +
+    0.20 * citation_density
+)
+```
+
+Three design choices worth pinning:
+
+1. **Weighted sum with explicit `const WEIGHT_*`** rather than a config-driven knob. The weights are part of the v3.0 grounding contract — a 60/40/0/0 split would produce wildly different numbers and break dashboards. Weights live in code where they're version-controlled and reviewable, not in `config/kb.php` where they're easy to tweak silently. If/when the weights need tuning, that's a code change with a test update — explicitly visible in PRs.
+
+2. **Producer-side clamp via `(int) round(max(0.0, min(100.0, $score)))`** at the very end of `compute()` is the load-bearing invariant — the schema column has no CHECK constraint (per L17). Every internal sub-calculation also clamps to [0,1] via `clamp01()` so intermediate floats can't poison the result. This is defense-in-depth for a number that ends up persisted forever in `messages.confidence` + `chat_logs.confidence`.
+
+3. **Boundary carve-outs are intentional and named**:
+   - **Zero chunks → 0** (defense-in-depth: caller is normally on the refusal short-circuit, but if it forgets, this still scores honestly).
+   - **threshold === min_used_score → margin contribution = 0** (a chunk that just-barely-passed pulls the score down even when other signals are good).
+   - **Zero answer words → density forced to 1** (refusal path doesn't pretend to cite anything; density should be neutral, not punitive — otherwise the refusal score would be artificially halved).
+   - **threshold === 1.0 → margin = 0 safely** (pathological config; don't divide by zero, don't throw — score the rest of the signals).
+
+**Why it matters:**
+- Hard-coded weights with named constants make the formula self-documenting in code review. A reviewer can see "0.40 weight for similarity" without cross-referencing config.
+- The producer-side clamp is the only thing standing between a poisoned float (NaN, Infinity, 117.3) and a persisted bad row. Test the clamp at the boundary (test cases `_perfect_inputs_clamp_at_100` and `_threshold_at_one_returns_zero_margin_safely`).
+- Carve-outs that aren't tested by name will silently regress. Each carve-out gets a dedicated test method (`test_zero_answer_words_does_not_penalise_density`, etc.) so a future regression is immediately attributable.
+
+**How to apply:**
+- New numeric metric service → start as a `final class` with `final readonly`-style constants for weights, never `config()->get(...)` for the formula constants themselves (config OK for the `min_threshold` input — it's a tunable, not a contract weight).
+- End the public method with the clamp + cast to the persistence type. Don't trust intermediate steps.
+- For any boundary case that justifies a carve-out, name a test method after it. A `// special case` comment without a test is a regression waiting to happen.
+- Accept both `object` and `array` chunk shapes via a helper (`fieldOf()`) — KbSearchService emits stdClass, fixtures use arrays, refactors break the calculator if it's tied to one shape.
+
+**References:** `app/Services/Kb/Grounding/ConfidenceCalculator.php::compute()` + `clamp01()` + `citationDensity()`, `tests/Unit/Services/Kb/Grounding/ConfidenceCalculatorTest.php` (11 cases including 4 dedicated boundary tests).
+
+## L19 — Refusal short-circuit must NEVER call the LLM; prove it with `shouldNotReceive`
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + security/cost invariant
+**Severity:** medium-high (cost + UX correctness)
+**Applies to:** every controller path that ought to skip an external API call when local conditions don't warrant it. Generalises beyond LLM to any expensive third-party service (OCR, payments, email).
+
+**Finding:**
+T3.3 ships the deterministic refusal short-circuit on `KbChatController` + `MessageController`. Two design points worth pinning:
+
+1. **The "no LLM call on refusal" invariant is the WHOLE point.** A refusal that still triggers a `chat/completions` request is worse than no refusal at all — it pays the API cost AND ships the hallucinated answer to the user. The early-return MUST live in the controller before the AI manager is invoked.
+
+2. **Test by Mockery's `shouldNotReceive('chat')` rather than `Http::assertNothingSent()`.** Both work, but `shouldNotReceive` is direct ("the controller did not call this method"), transport-agnostic ("doesn't matter how chat() was implemented"), and gives a clearer failure message ("Mockery: expected NO calls, got 1"). `Http::assertNothingSent()` only catches calls that go through `Http::` and would silently miss any future provider that uses a different HTTP client (Guzzle direct, cURL, etc.).
+
+3. **Existing tests that mocked KbSearchService with empty primary will start failing** when the refusal short-circuit ships. That's a CORRECT regression — those tests were stubbing "search returns nothing" while expecting the LLM was called downstream. After T3.3, empty-primary triggers refusal and `meta.provider = null`. The fix is to update the search mock to return a single high-similarity chunk (`vector_score: 0.90`, well above the 0.45 threshold). T2.2's `KbChatControllerFiltersTest` was the casualty here — the test's INTENT was to verify filter threading, not refusal, so the chunk-presence fix preserves the original intent.
+
+**Why it matters:**
+- A refusal path that costs $0.02 per call instead of $0.00 invalidates the whole feature ("anti-hallucination tier" was supposed to be free of LLM cost on refused turns).
+- The `shouldNotReceive` pattern surfaces regressions immediately. A future refactor that moves the LLM call before the refusal check would fail the test on the next CI run.
+- When introducing a new short-circuit, audit ALL existing tests that exercise the controller — any test that stubbed retrieval with empty results was implicitly relying on the controller blindly calling the LLM. That assumption is now wrong everywhere.
+
+**Mirror in MessageController too.** The conversation flow (`POST /conversations/{id}/messages`) uses `$search->search()` (flat collection, not `searchWithContext`), but the refusal logic is identical. Both controllers must check the same `kb.refusal.*` config keys and produce the same refusal payload shape so the FE can render either uniformly. Forgetting one of them ships an inconsistent UX where stateless `/api/kb/chat` refuses but stateful conversations still hallucinate.
+
+**i18n: lang_path under Testbench.** `__('kb.no_grounded_answer')` returns the raw key under Testbench unless `$app->useLangPath(__DIR__.'/../lang')` is set in `getEnvironmentSetUp`. Without it, every i18n string in tests reads as the literal key — the test then has to assert "string is non-empty" instead of asserting the localized content. Set the lang_path once in TestCase so `__()` works naturally everywhere.
+
+**How to apply:**
+- New short-circuit before an external call → write the `shouldNotReceive` test FIRST. If you can't make the mock fail when called, the test is too lax.
+- Audit existing tests touching the same controller — every "search returned X then LLM ran" stub needs to be re-examined.
+- Mirror the short-circuit across every controller that hits the same expensive call (chat, conversations, MCP tools, batch APIs). Don't ship inconsistent refusal between API surfaces.
+- Always set `useLangPath()` in Testbench's `getEnvironmentSetUp` when the project has any user-facing i18n string.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::refusalResponse()`, `app/Http/Controllers/Api/MessageController.php::refusalResponse()`, `tests/Feature/Api/KbChatRefusalTest.php` (9 cases — 5 prove no LLM call, 4 verify happy path through), `tests/TestCase.php::getEnvironmentSetUp` (`useLangPath` registration).
+
+## L20 — Literal-sentinel detection: `=== trim()` only, never `str_contains`
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + LLM-protocol design
+**Severity:** medium (UX correctness — partial answers are valuable)
+**Applies to:** every prompt-driven sentinel (refusal token, function-call marker, any "respond exactly with X" contract).
+
+**Finding:**
+T3.4 ships LLM-self-refusal sentinel parsing. The prompt instructs the model: "If you cannot answer at all, respond EXACTLY with `__NO_GROUNDED_ANSWER__`. Otherwise answer the parts you CAN ground and skip the rest with a note." Two distinct LLM behaviours map to two distinct application paths:
+
+1. **Bare sentinel** → refusal payload (`refusal_reason='llm_self_refusal'`, the i18n placeholder replaces the user-visible answer).
+2. **Partial answer mentioning the sentinel as wording** → pass-through (the user benefits from the partial coverage + explicit gaps).
+
+The boundary between (1) and (2) is **exact match after `trim()`**, NOT substring containment:
+
+```php
+// CORRECT
+if (trim($content) === '__NO_GROUNDED_ANSWER__') { return $this->convertToRefusal(...); }
+
+// WRONG
+if (str_contains($content, '__NO_GROUNDED_ANSWER__')) { return $this->convertToRefusal(...); }
+```
+
+The substring version would discard partial answers that mention the sentinel — e.g. "I had to fall back to `__NO_GROUNDED_ANSWER__` for the second half of your question" loses the first half. The exact-match version preserves the partial answer for the user AND keeps the sentinel reserved as a protocol-level signal.
+
+**Why `trim()` and not raw `===`:** Some providers wrap responses with stray whitespace (a leading newline, trailing space). The trim tolerance handles that without weakening the contract — surrounding whitespace doesn't carry semantic content.
+
+**Why two refusal reasons exist:**
+- `'no_relevant_context'` — retrieval came up empty/below-threshold; LLM was NEVER called.
+- `'llm_self_refusal'` — retrieval succeeded; LLM declared the chunks insufficient.
+
+The split lets the dashboard distinguish "tune retrieval threshold" from "LLM is overly cautious". Aggregating them into one bucket throws away the most actionable observability signal in the whole anti-hallucination tier.
+
+**Why preserve provider/model/tokens on the sentinel-refusal log row:** the LLM call was paid in full. Cost attribution + per-model refusal-rate tracking depend on the row reflecting that. The retrieval-side refusal (`no_relevant_context`) zeroes provider/model because no LLM call happened.
+
+**How to apply:**
+- Define the sentinel as a `private const` on the controller (or a shared constant if more than one controller mirrors it). Documented in code, not in config.
+- Detection helper signature: `private function isSelfRefusalSentinel(string $content): bool { return trim($content) === self::SELF_REFUSAL_SENTINEL; }`. Pure function; trivially testable; impossible to weaken accidentally.
+- Test the boundary explicitly: bare sentinel YES, sentinel-with-whitespace YES, sentinel-as-substring NO, natural-language "I don't know" NO. Each in a named test.
+- Update the prompt template (`prompts/kb_rag.blade.php`) and the controller in the same PR — the contract spans both. A prompt change without controller update silently turns the LLM's intended refusal into a literal user-visible string starting with `__`.
+- Mirror across every controller that hits the same prompt (KbChatController + MessageController). Both must use the same sentinel constant + same detection helper.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::isSelfRefusalSentinel()` + `convertSentinelToRefusal()`, `app/Http/Controllers/Api/MessageController.php` (mirror), `resources/views/prompts/kb_rag.blade.php` "Refusal Protocol" section, `tests/Feature/Api/KbChatSentinelTest.php` (7 cases — bare/whitespace/substring/natural-IDK/grounded/meta-attribution/chunks-used).
+
+## L21 — Response-shape extensions are ADDITIVE only; never sub-objectify load-bearing keys
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + API-contract discipline
+**Severity:** high (silently breaks every consumer)
+**Applies to:** any JSON response that already has shipped clients (FE app, MCP tools, public API, dashboards).
+
+**Finding:**
+T3.5 extends the `/api/kb/chat` response shape with confidence + retrieval_stats + search_strategy + per-stage latency breakdown. The plan §2731 originally specified `latency_ms` as a sub-object with `{retrieval, llm, total}`. Doing so would silently break every existing client that reads `meta.latency_ms` as an integer:
+
+```js
+// Existing FE chart code
+const latencyMs = response.meta.latency_ms;  // expects int
+chart.push({x: time, y: latencyMs});         // breaks if latency_ms = {retrieval, llm, total}
+```
+
+**Three rules to follow when extending a shipped response:**
+
+1. **Never rename top-level keys** — `latency_ms` stays `latency_ms`, never becomes `total_latency_ms` or `latencyMs` (camelCase). The diff between PHP arrays and JSON keys must remain stable.
+2. **Never sub-objectify a primitive that callers may already read.** `meta.latency_ms` was an int; introducing the breakdown adds `meta.latency_ms_breakdown` as a SIBLING — both keys coexist, the int total is preserved, and the breakdown carries the stages. Same approach for any future "we want richer X": add `X_breakdown` (or `X_details` / `X_extended`), don't morph `X`.
+3. **Default new keys to nullable / present-but-null.** The refusal paths (T3.3 `no_relevant_context` and T3.4 `llm_self_refusal`) emit the same extended meta shape — `search_strategy: null` and `retrieval_stats: null` are valid sentinel values. Clients can `??` over them without crashing on missing keys.
+
+**Why it matters:**
+- A single missed client (an old MCP tool, a dashboard built before T3.5, a CI integration that posts test queries) will produce a misleading "broken pipeline" alert. The cost of "we just refactored the API and 4 dashboards started showing zero" is days of triage.
+- Sub-objectifying after ship is a one-way door. You can't roll back without forcing every client to re-deploy. Sibling-keys are reversible — drop the new key, the old surface is unchanged.
+- The same logic applies to top-level fields. T3.3 added `confidence` + `refusal_reason` to the happy path with `null` defaults precisely so the FE shape stays uniform. Adding them as new top-level keys (vs nesting under `meta`) was deliberate — they're part of the answer payload, not metadata.
+
+**How to apply:**
+- New keys → ADD with sensible defaults. Don't mutate existing keys.
+- New sub-structure → put under `<original_key>_breakdown` or `<original_key>_details` as a sibling. Never override the original.
+- Refusal/error paths → same shape as happy path with sentinel values. NEVER strip keys based on path; the FE must use a uniform JSON-decoder.
+- Test the additive contract: write a test that asserts the OLD key is still int (`assertIsInt($resp->json('meta.latency_ms'))`). If the test fails, the contract was broken silently.
+
+**Architectural cost:** the ConfidenceCalculator (T3.2) is now wired into BOTH KbChatController and MessageController via constructor DI. The conversation flow has a thinner meta surface (no search_strategy / retrieval_stats — `$search->search()` doesn't expose them) — confidence is comparable across both surfaces but the dashboard rollups for retrieval-strategy-based queries should filter to the `/api/kb/chat` surface only. Document this asymmetry in the FE consumer.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::buildSuccessResponse()` (sibling-key pattern), `app/Services/Kb/KbSearchService.php::searchWithContext()` (meta enrichment with retrieval_ms / search_strategy / retrieval_stats), `tests/Feature/Api/KbChatResponseShapeTest.php::test_legacy_latency_ms_stays_flat_int` (the additive-contract guard).
+
+## L22 — Per-reason i18n keys with generic fallback; never leak the raw key
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + i18n design
+**Severity:** medium (UX correctness + forward-compat hatch)
+**Applies to:** any growing taxonomy of user-visible reasons (refusal, validation errors, status messages, audit-event labels).
+
+**Finding:**
+T3.8-BE expands the refusal i18n from a single flat key (`kb.no_grounded_answer`) to a hierarchy:
+
+```
+kb.no_grounded_answer       (generic fallback)
+kb.refusal.no_relevant_context
+kb.refusal.llm_self_refusal
+... (future reasons add here)
+```
+
+The controllers resolve via `localizedRefusalMessage($reason)`:
+1. Try `kb.refusal.{reason}` first.
+2. If the translator returns the raw key (Laravel's "miss" sentinel), degrade to `kb.no_grounded_answer`.
+3. NEVER emit the raw dotted key to the user.
+
+**Why hierarchical, not flat:**
+The refusal taxonomy will grow. T3.x already defines two reasons; future tasks may add `tag_conflict_refusal`, `quota_exceeded_refusal`, `model_unsafe_refusal`. Flat strings would force every new reason to either:
+- Generate code that does its own per-reason `if-else` to pick a string (hard-codes copy in code, not lang files), OR
+- Use the same generic copy for all reasons (loses the actionable signal — "no docs match" vs "AI couldn't ground" vs "your filter scope conflicted" require different remedies).
+
+The hierarchy lets each reason carry specific copy WITHOUT touching code. Adding a new reason is two lines in `lang/{en,it}/kb.php` — the controller already knows how to look it up.
+
+**The fallback hatch matters:**
+Forward-compat with deployments where code lands before lang files. Without the fallback, a code change adding `'tag_conflict'` to the refusal taxonomy would respond with the literal string `"kb.refusal.tag_conflict"` until the lang PR ships. With the fallback, users see the generic message until the localization catches up — degraded UX, not broken UX.
+
+**The miss-sentinel detection:** Laravel's `__()` returns the raw dotted key when no translation is found. Check via `is_string($result) && $result !== $key`. Don't try to `Lang::has()` first — it's a separate filesystem lookup that double-costs every refusal. The string-equality check on the result is free.
+
+**Locale switching:** `App::setLocale('it')` triggers Italian copy from `lang/it/kb.php`. The test suite exercises this directly (no Accept-Language middleware involved) so the lang files themselves are validated. The `refusal_reason` tag in the JSON response stays in English regardless of locale — it's a machine-readable identifier the dashboard rolls up across users with different locales. Only the user-visible `answer` body localizes.
+
+**Cross-controller consistency:** the helper is duplicated (verbatim) in `KbChatController` and `MessageController`. Pulling it into a shared trait or service is tempting but premature — both controllers are likely to consolidate in M4 (the planned MessageController/KbChatController merge); duplicating once is cheaper than the refactor that would land + revert across PRs.
+
+**Test that would catch a regression:**
+- Reflection-based test on `localizedRefusalMessage()` asserting a known-reason returns specific copy AND an unknown-reason returns the generic. The fallback contract is the load-bearing part — without that test it would silently degrade to leaking dotted keys when a new reason ships before its lang lines.
+
+**How to apply:**
+- Growing user-visible taxonomy → use a `{namespace}.{category}.{reason}` hierarchy from day one. Adding reasons is cheap; restructuring later is expensive.
+- Always pair with a generic fallback at the parent path.
+- Test the fallback explicitly (reflection or a feature test with a fictitious reason).
+- The machine-readable identifier (e.g. `refusal_reason: 'no_relevant_context'`) NEVER localizes; only the human-visible string does.
+- When code introduces a new reason, the lang line is part of the same PR. Don't ship a code-only PR that depends on a follow-up lang PR — the fallback covers the deploy-window gap, not "we forgot the translation".
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::localizedRefusalMessage()`, `app/Http/Controllers/Api/MessageController.php::localizedRefusalMessage()` (mirror), `lang/en/kb.php`, `lang/it/kb.php`, `tests/Feature/Localization/RefusalI18nTest.php` (6 cases — 4 per-reason locale combos + helper-fallback contract + meta-shape locale invariance).
