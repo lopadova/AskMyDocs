@@ -475,6 +475,18 @@ Document title/path autocomplete used by the chat composer's `@mention` popover 
 
 Up to 20 results per request. Archived documents are excluded.
 
+### Saved filter presets (v3.0+)
+
+Authenticated users can save / load / delete personal filter combinations via `RESTful /api/chat-filter-presets` (consumed by the FE FilterBar dropdown — UI work in a follow-up FE PR).
+
+- `GET    /api/chat-filter-presets` — list the user's presets (alphabetical by name).
+- `POST   /api/chat-filter-presets` — create. Required body: `{ "name": "…", "filters": { … } }`. Per-user uniqueness enforced on `name` (422 on duplicate within the same account). Different users may pick the same display name independently.
+- `GET    /api/chat-filter-presets/{id}` — show one. Returns `404` for IDs owned by a different user (deliberate — the API does not leak the existence of other users' presets).
+- `PUT    /api/chat-filter-presets/{id}` — update name + filters; same `404` semantics for non-owned rows.
+- `DELETE /api/chat-filter-presets/{id}` — delete; `204` on success, `404` for non-owned rows.
+
+The `filters` JSON column carries a serialised RetrievalFilters payload — the same shape the chat controller's `KbChatRequest::toFilters()` consumes. Round-trip is lossless: load preset → POST to `/api/kb/chat` produces identical retrieval scope as if the user had re-selected every filter manually.
+
 ### Chat filters (v3.0+)
 
 `POST /api/kb/chat` accepts an optional `filters` object that narrows the retrieval scope BEFORE reranking + graph expansion + rejected-approach injection — filters change the candidate population, not the post-hoc ranking. Every dimension is optional.

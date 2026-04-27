@@ -549,3 +549,36 @@ T2.6 cycle-0 implementation initially used `where('title', 'LIKE', $escaped)` af
 **References:** `app/Http/Controllers/Api/KbDocumentSearchController.php::__invoke()` (whereRaw + ESCAPE), `tests/Feature/Api/KbDocumentSearchControllerTest.php` (12 cases including the two R19-specific escapes for `_` and `%`).
 
 ---
+
+## [2026-04-27 07:05] Sub-task T2.9 (backend slice) — Per-user resource policy via where-clause + 404-not-403 + soft-delete cascade
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** future per-user-owned resources (saved searches, alert subscriptions, custom dashboards), the FE-deferral pattern for chained UI work.
+
+**Finding:**
+Three concrete decisions surfaced during T2.9 backend implementation:
+
+1. **Per-user authorization via `where('user_id', auth()->id())` is sufficient — no Spatie role/policy needed for self-owned resources.** The controller scopes EVERY action (index/show/update/destroy) by adding the `where('user_id', $userId)` predicate to the query. Other users' rows surface as `null` from `find()` and get rendered as 404 — never 403. This pattern is appropriate for resources where ownership is binary (mine OR not-mine) AND where ownership is the entire authorization model. For resources where multiple authorization dimensions matter (e.g. role-based access to admin features), Spatie policies are still the right tool.
+
+2. **404 (NotFoundHttpException) > 403 (Forbidden) for cross-user access attempts to private resources.** Returning 403 leaks the existence of other users' presets — an attacker could enumerate IDs and learn which IDs are taken vs free. Returning 404 makes other users' resources indistinguishable from "doesn't exist" from the caller's perspective. Use `throw new NotFoundHttpException('…')` (NOT `ValidationException::withMessages([…])->status(404)` which is what I tried first — it carries a 422 semantic that Laravel's exception handler doesn't reliably override even when status() is set).
+
+3. **`SoftDeletes` on User means `$user->delete()` is soft — the FK cascade does NOT fire.** Per CLAUDE.md §6, soft-delete is the default. T2.9's first cascade test called `$alice->delete()` and asserted the preset was gone — failed because the soft-delete kept the user row, the FK constraint was satisfied, and the preset stayed. Real cascade test must use `$alice->forceDelete()` (the GDPR/data-removal hard-delete path). For T2.x (and any future per-user resources): test BOTH soft-delete (preset stays — preserves user reactivation) AND hard-delete (preset cascades — GDPR compliance).
+
+**Why it matters:**
+- Rule 1 keeps the controller simple and the policy obvious — no separate Policy class to navigate when reading the controller. Reduces the file count and keeps the auth surface auditable in one place.
+- Rule 2 is a security-adjacent invariant. Tested by `test_show_returns_404_when_preset_belongs_to_other_user` etc.; the assertion is `assertStatus(404)` (NOT 403). For T2.x and future per-user resources, mirror the test name pattern so the security expectation is visible.
+- Rule 3 is the kind of "I assumed delete was hard but it's soft" gotcha that surfaces only when cascade testing matters (GDPR right-to-be-forgotten flows, account closure, etc.). Codify the soft+hard split in tests.
+
+**FE-deferral pattern (operational):**
+T2.9 plan spans backend + frontend. CLAUDE.md mandates "test in browser before claiming success" for UI work, which doesn't fit overnight unattended runs. Pattern: do the backend slice now (independently mergeable, fully tested via PHPUnit, provides the API surface), document the FE part as deferred in the progress log + the PR body, queue a follow-up issue. Don't pretend FE is done if it isn't.
+
+**How to apply:**
+- For new per-user resources: copy `ChatFilterPresetController` + `findOwnedOr404()` shape. Wrap every action with the `where('user_id', $userId)` filter at the query level.
+- For per-user uniqueness validation (`Rule::unique`): use the closure form `->where(fn($q) => $q->where('user_id', $userId))` so the unique check is scoped to the same user (different users can pick the same name independently).
+- For 404 vs 403: when the resource model is "mine OR not-mine, no shades", use 404. When the resource has roles/permissions and the user is missing a SPECIFIC permission, use 403. Don't conflate them.
+- For cascade test coverage on User-owned resources: write TWO tests — `_when_user_soft_deleted_preset_remains` AND `_when_user_force_deleted_preset_cascades`. Pin both to the GDPR vs reactivation invariants.
+
+**References:** `app/Http/Controllers/Api/ChatFilterPresetController.php::findOwnedOr404()` + per-action where-scoping, `tests/Feature/Api/ChatFilterPresetControllerTest.php::test_*_returns_404_when_preset_belongs_to_other_user` + `_cannot_delete_another_users_preset` + `_cascade_delete_removes_presets_when_user_force_deleted`. T2.9 FE slice (FilterBar dropdown + e2e) deferred — depends on T2.7 which itself is deferred per CLAUDE.md UI verification rule.
+
+---

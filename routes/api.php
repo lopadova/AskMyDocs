@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
+use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
@@ -79,6 +80,14 @@ Route::middleware([
     // @mention popover (T2.7/T2.8 will consume it).
     Route::get('/kb/documents/search', KbDocumentSearchController::class)
         ->name('api.kb.documents.search');
+
+    // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
+    // consumes these in T2.7-FE follow-up). Per-user authorization
+    // enforced inside the controller via `where('user_id', auth()->id())`
+    // on every action — no policy needed.
+    Route::apiResource('/chat-filter-presets', ChatFilterPresetController::class)
+        ->parameters(['chat-filter-presets' => 'id'])
+        ->names('api.chat-filter-presets');
     Route::delete('/kb/documents', KbDeleteController::class);
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
