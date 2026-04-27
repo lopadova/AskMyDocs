@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { FilterChip } from './FilterChip';
 import { FilterPickerPopover } from './FilterPickerPopover';
+import { FilterPresetsDropdown } from './FilterPresetsDropdown';
 import { countSelectedFilters, type FilterState } from './chat.api';
 
 /**
@@ -67,6 +68,13 @@ export function FilterBar({
                 borderBottom: '1px solid var(--panel-border, rgba(255,255,255,.08))',
             }}
         >
+            {/*
+              * T2.9-FE — saved presets dropdown sits BEFORE the
+              * "+ Filter" trigger so the user's eye lands on it first
+              * (typical scan order). Both are equally accessible —
+              * order is just visual hierarchy, not a contract.
+              */}
+            <FilterPresetsDropdown filters={filters} onLoad={onChange} />
             <button
                 type="button"
                 data-testid="chat-filter-bar-add"

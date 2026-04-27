@@ -1,9 +1,11 @@
-import { useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
 import { FilterBar } from './FilterBar';
+import { MentionPopover } from './MentionPopover';
 import { useChatMutation } from './use-chat-mutation';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
+import type { MentionResult } from './use-mention-search';
 import type { FilterState } from './chat.api';
 
 export interface ComposerProps {
@@ -54,6 +56,18 @@ export function Composer({
     // re-pick filters every time. Resetting on conversation change is
     // a UX call we may revisit; for now keeping it simple.
     const [filters, setFilters] = useState<FilterState>({});
+    // T2.8 — @mention popover state. `mentionQuery` is the chars after
+    // the most recent unmatched `@` (truncated to next whitespace). It
+    // drives use-mention-search via MentionPopover. `mentionAnchor` is
+    // the cursor index of the `@` character — used to splice the
+    // textarea content when a doc is selected.
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const mentionAnchorRef = useRef<number | null>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+    // Map of doc_id → title for chips. Updates when the user picks a
+    // mention, so the FilterBar can show "Doc: HR Policy v2" instead of
+    // "#42". Survives across turns inside the same composer mount.
+    const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
     const mutation = useChatMutation();
 
     const send = async () => {
@@ -84,10 +98,70 @@ export function Composer({
     };
 
     const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
-        setDraft(e.target.value);
+        const value = e.target.value;
+        setDraft(value);
         if (localError) {
             setLocalError(null);
         }
+        // T2.8 — detect the most recent `@` BEFORE the cursor, take chars
+        // up to next whitespace as the mention query. If the cursor isn't
+        // currently inside an `@token`, close the popover.
+        const cursor = e.target.selectionStart ?? value.length;
+        const prefix = value.slice(0, cursor);
+        const atIndex = prefix.lastIndexOf('@');
+        if (atIndex === -1 || /\s/.test(prefix.slice(atIndex + 1))) {
+            // Cursor isn't inside an @-token (no @ before, OR there's
+            // whitespace between the @ and the cursor → user moved on).
+            setMentionQuery(null);
+            mentionAnchorRef.current = null;
+            return;
+        }
+        const tokenAfterAt = prefix.slice(atIndex + 1);
+        // The `@` must be at start-of-string OR follow whitespace —
+        // otherwise it's an email address fragment, not a mention.
+        const charBeforeAt = atIndex === 0 ? ' ' : value.charAt(atIndex - 1);
+        if (!/\s/.test(charBeforeAt)) {
+            setMentionQuery(null);
+            mentionAnchorRef.current = null;
+            return;
+        }
+        mentionAnchorRef.current = atIndex;
+        setMentionQuery(tokenAfterAt);
+    };
+
+    /**
+     * T2.8 — User picked a doc from the MentionPopover. Add its id to
+     * `filters.doc_ids`, update the doc-label map for FilterBar chip
+     * display, and replace the `@<query>` text in the textarea with
+     * an empty string (the chip in the FilterBar IS the indicator).
+     */
+    const onMentionSelect = (doc: MentionResult) => {
+        const anchor = mentionAnchorRef.current;
+        if (anchor !== null) {
+            // Splice out the @<query> token. Find where the token ends
+            // (first whitespace after the anchor, or end of string).
+            const after = draft.slice(anchor);
+            const endRel = after.search(/\s/);
+            const end = endRel === -1 ? draft.length : anchor + endRel;
+            const next = draft.slice(0, anchor) + draft.slice(end);
+            setDraft(next);
+        }
+
+        setFilters((prev) => {
+            const existing = prev.doc_ids ?? [];
+            if (existing.includes(doc.id)) {
+                return prev;
+            }
+            return { ...prev, doc_ids: [...existing, doc.id] };
+        });
+        setDocLabelMap((prev) => ({ ...prev, [doc.id]: doc.title }));
+        setMentionQuery(null);
+        mentionAnchorRef.current = null;
+
+        // Restore textarea focus (mousedown's preventDefault stopped
+        // blur, but we still want the cursor visible at the splice
+        // point so the user can continue typing).
+        textareaRef.current?.focus();
     };
 
     const serverError = mutation.isError ? (mutation.error?.message ?? 'Provider returned an error.') : null;
@@ -123,7 +197,7 @@ export function Composer({
                     onChange={setFilters}
                     availableProjects={availableProjects}
                     availableTags={availableTags}
-                    docLabels={docLabels}
+                    docLabels={docLabelMap}
                 />
                 <div style={{ display: 'flex', gap: 6, padding: '10px 12px 2px', flexWrap: 'wrap' }}>
                     {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
@@ -134,11 +208,23 @@ export function Composer({
                         Shift+⏎ for new line
                     </span>
                 </div>
+                {/*
+                  * T2.8 — wrapper provides positioning context for the
+                  * MentionPopover, which uses position:absolute / bottom:100%
+                  * to render ABOVE the textarea. The popover is conditional
+                  * on `mentionQuery !== null`, so when no @-token is
+                  * active under the cursor the popover doesn't even mount.
+                  */}
+                <div style={{ position: 'relative' }}>
                 <textarea
                     name="message"
                     data-testid="chat-composer-input"
                     aria-label="Your message"
                     aria-invalid={Boolean(localError)}
+                    aria-autocomplete={mentionQuery !== null ? 'list' : undefined}
+                    aria-expanded={mentionQuery !== null}
+                    aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
+                    ref={textareaRef}
                     value={draft}
                     onChange={onChange}
                     onFocus={() => setFocused(true)}
@@ -159,6 +245,20 @@ export function Composer({
                         lineHeight: 1.5,
                     }}
                 />
+                {mentionQuery !== null && (
+                    <MentionPopover
+                        query={mentionQuery}
+                        projectKeys={projectLabel ? [projectLabel] : undefined}
+                        excludeIds={filters.doc_ids ?? []}
+                        open={mentionQuery !== null}
+                        onSelect={onMentionSelect}
+                        onClose={() => {
+                            setMentionQuery(null);
+                            mentionAnchorRef.current = null;
+                        }}
+                    />
+                )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px 10px' }}>
                     <button
                         type="button"
