@@ -95,25 +95,26 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        // .first() throughout because optimistic-insert + GET-refetch
-        // can briefly render two assistant messages with the same body
-        // before reconciliation; the content match is what matters.
-        const refusalNotice = page.getByTestId('refusal-notice').first();
+        // Strict-mode locators (no .first()) — useChatMutation now
+        // dedupes by message id when merging the assistant reply,
+        // preventing the brief duplicate render. If two refusal-notice
+        // elements appear, that's a real regression, not a render race.
+        const refusalNotice = page.getByTestId('refusal-notice');
         await expect(refusalNotice).toBeVisible({ timeout: 30_000 });
         await expect(refusalNotice).toHaveAttribute('data-reason', 'no_relevant_context');
         await expect(refusalNotice).toHaveAttribute('role', 'status');
         await expect(refusalNotice).toHaveAttribute('aria-live', 'polite');
-        await expect(page.getByTestId('refusal-notice-body').first()).toContainText(
+        await expect(page.getByTestId('refusal-notice-body')).toContainText(
             'No documents in the knowledge base match this question.',
         );
 
         // Helper text guides the user toward a remediation.
-        await expect(page.getByTestId('refusal-notice-hint').first()).toContainText(
+        await expect(page.getByTestId('refusal-notice-hint')).toContainText(
             /broadening filters|adding more documents/i,
         );
 
         // Confidence badge renders 'refused' tier (grey), NOT 'low'.
-        const badge = page.getByTestId('confidence-badge').first();
+        const badge = page.getByTestId('confidence-badge');
         await expect(badge).toBeVisible();
         await expect(badge).toHaveAttribute('data-state', 'refused');
 
@@ -149,17 +150,17 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        const refusalNotice = page.getByTestId('refusal-notice').first();
+        const refusalNotice = page.getByTestId('refusal-notice');
         await expect(refusalNotice).toBeVisible({ timeout: 30_000 });
         await expect(refusalNotice).toHaveAttribute('data-reason', 'llm_self_refusal');
 
         // The per-reason hint differs from the no_relevant_context one.
-        await expect(page.getByTestId('refusal-notice-hint').first()).toContainText(
+        await expect(page.getByTestId('refusal-notice-hint')).toContainText(
             /rephrasing the question/i,
         );
 
         // Refused tier on the badge regardless of which refusal reason fired.
-        await expect(page.getByTestId('confidence-badge').first()).toHaveAttribute('data-state', 'refused');
+        await expect(page.getByTestId('confidence-badge')).toHaveAttribute('data-state', 'refused');
     });
 
     test('grounded answer with high confidence shows green badge, no refusal notice', async ({ page }) => {
@@ -192,13 +193,11 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        // No refusal notice on the grounded path. We check first()
-        // because the optimistic-vs-refetch race can yield 0-or-2
-        // matches; not.toBeVisible on first() is the clearer assertion.
-        await expect(page.getByTestId('refusal-notice').first()).not.toBeVisible();
+        // No refusal notice on the grounded path.
+        await expect(page.getByTestId('refusal-notice')).not.toBeVisible();
 
         // High-confidence badge.
-        const badge = page.getByTestId('confidence-badge').first();
+        const badge = page.getByTestId('confidence-badge');
         await expect(badge).toBeVisible({ timeout: 15_000 });
         await expect(badge).toHaveAttribute('data-state', 'high');
         await expect(badge).toContainText('87/100');
@@ -230,7 +229,7 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        const badge = page.getByTestId('confidence-badge').first();
+        const badge = page.getByTestId('confidence-badge');
         await expect(badge).toBeVisible({ timeout: 15_000 });
         await expect(badge).toHaveAttribute('data-state', 'moderate');
     });
@@ -263,14 +262,11 @@ test.describe('Chat refusal rendering', () => {
         await send.click();
         await waitForThreadReady(page, 30_000);
 
-        // .first() because the optimistic-insert + GET-refetch can
-        // briefly render two assistant messages with the same body
-        // before reconciliation; the content match is what matters.
-        await expect(page.getByTestId('refusal-notice-body').first()).toContainText(
+        await expect(page.getByTestId('refusal-notice-body')).toContainText(
             'Nessun documento nella knowledge base corrisponde a questa domanda.',
         );
         // Reason tag stays English (machine-readable identifier).
-        await expect(page.getByTestId('refusal-notice').first()).toHaveAttribute(
+        await expect(page.getByTestId('refusal-notice')).toHaveAttribute(
             'data-reason',
             'no_relevant_context',
         );
