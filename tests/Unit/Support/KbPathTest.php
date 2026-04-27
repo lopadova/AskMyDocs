@@ -51,4 +51,56 @@ class KbPathTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
         KbPath::normalize('docs/./a.md');
     }
+
+    // ----------------------------------------------------------------------
+    // T2.4 — matchesAnyGlob with FNM_PATHNAME (R19 invariant)
+    // ----------------------------------------------------------------------
+
+    public function test_matches_any_glob_returns_true_when_a_glob_matches(): void
+    {
+        $this->assertTrue(KbPath::matchesAnyGlob('hr/policies/leave.md', ['hr/policies/*']));
+        $this->assertTrue(KbPath::matchesAnyGlob('docs/api/v2/auth.md', ['docs/api/*/auth.md']));
+    }
+
+    public function test_matches_any_glob_returns_false_when_no_glob_matches(): void
+    {
+        $this->assertFalse(KbPath::matchesAnyGlob('engineering/runbook.md', ['hr/policies/*']));
+    }
+
+    public function test_matches_any_glob_returns_false_for_empty_globs_list(): void
+    {
+        $this->assertFalse(KbPath::matchesAnyGlob('any/path.md', []));
+    }
+
+    public function test_matches_any_glob_uses_FNM_PATHNAME_so_star_does_not_cross_segments(): void
+    {
+        // R19 invariant: `*` must NOT match `/`. Without FNM_PATHNAME,
+        // `hr/policies/*` would match `hr/policies/inner/leave.md` —
+        // wrong. With FNM_PATHNAME, the match is bounded to a single
+        // path segment.
+        $this->assertFalse(KbPath::matchesAnyGlob(
+            'hr/policies/inner/leave.md',
+            ['hr/policies/*'],
+        ));
+    }
+
+    public function test_matches_any_glob_double_star_crosses_segments(): void
+    {
+        // `**` is the documented "cross-segments" pattern. With
+        // FNM_PATHNAME, ONLY `**` (not `*`) matches across `/`.
+        $this->assertTrue(KbPath::matchesAnyGlob(
+            'hr/policies/inner/leave.md',
+            ['hr/policies/**'],
+        ));
+    }
+
+    public function test_matches_any_glob_short_circuits_on_first_match(): void
+    {
+        // No deterministic way to assert short-circuit ordering from
+        // outside, but verify that adding more globs after a hit still
+        // returns true (and conversely a non-hit followed by a hit
+        // also returns true).
+        $this->assertTrue(KbPath::matchesAnyGlob('a/b.md', ['x/y/*', 'a/*']));
+        $this->assertTrue(KbPath::matchesAnyGlob('a/b.md', ['a/*', 'x/y/*']));
+    }
 }

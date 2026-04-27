@@ -453,3 +453,32 @@ Two binding decisions surfaced during T2.3:
 **References:** `app/Services/Kb/KbSearchService.php::applyFilters()` (tagSlugs branch), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_adds_whereExists_join_for_tag_slugs` + `test_apply_filters_tag_slug_match_is_exact_not_like`.
 
 ---
+
+## [2026-04-27 05:50] Sub-task T2.4 — Folder glob filter (post-fetch fnmatch + glob→regex translator)
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** any future filter dimension that needs path-pattern matching, plus the deferred R19 cleanup of `User::matchesAnyGlob`.
+
+**Finding:**
+Three concrete decisions surfaced during T2.4:
+
+1. **Folder glob filter runs PHP-side AFTER the SQL fetch — NOT inside `applyFilters()`.** PostgreSQL has no native fnmatch and `**` (cross-segment wildcard) doesn't translate to LIKE. The plan §1879 already advised this approach; the test pinning the SQL still doesn't carry the folder constraint (`test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`) makes the design explicit so future maintainers don't accidentally hoist the filter into the WHERE clause and break `**` semantics. Performance trade-off: the candidate set has been narrowed by every other dimension (project, source_type, tags, etc.) BEFORE the PHP filter runs, so the cost stays bounded; for very large candidate sets (>5000), the operator is expected to layer additional selective dimensions. Documented inline in search().
+
+2. **PHP's `fnmatch($pattern, $path, FNM_PATHNAME)` does NOT support `**` natively.** Initial T2.4 implementation used `fnmatch` with `FNM_PATHNAME` and the `hr/policies/**` test case for `hr/policies/inner/leave.md` failed — fnmatch treats `**` as two `*`s in sequence (each blocked from crossing `/`). The plan documents `**` as the cross-segment wildcard, so the contract requires it. Replaced fnmatch with a glob→regex translator: tokenise on `**`, escape each token with `preg_quote`, replace `*` (single segment) and `?` (single char) with `[^/]*` and `[^/]`, then rejoin with `.*` so `**` matches across `/`. Anchored with `^...$` so partial matches don't leak. Test pins both invariants: `*` does NOT cross segments, `**` DOES cross segments.
+
+3. **`User::matchesAnyGlob` (line 236 of `app/Models/User.php`) is a duplicate that does NOT pass `FNM_PATHNAME` — pre-existing R19 violation.** Discovered during T2.4 scoping but out of scope to fix here. The User method protects access scopes (folder-glob ACLs); without `FNM_PATHNAME`, `*` could grant access across `/` boundaries (e.g. `engineering/*` would also match `engineering/secrets/api-keys.md`). Flagged for a follow-up task: replace User's private method with a call to `KbPath::matchesAnyGlob`. **For T2.x or v3.1**: this fix is one-liner per call site once `KbPath::matchesAnyGlob` is the canonical helper.
+
+**Why it matters:**
+- Rule 1 keeps the contract clear (post-fetch is by design, not laziness) so future maintainers don't try to over-optimise into SQL.
+- Rule 2 is the kind of "I assumed fnmatch did X, it doesn't" gotcha that wastes 30 min of debugging — codified now so the next path-pattern feature doesn't repeat it.
+- Rule 3 documents a security-adjacent bug for future cleanup. ACL bypass via folder-pattern over-matching is a real attack surface; even if the User code is "currently correct in practice", the missing FNM_PATHNAME flag is one user-input change away from being exploitable.
+
+**How to apply:**
+- For new path-pattern filters: use `KbPath::matchesAnyGlob` — DO NOT call PHP fnmatch directly. The helper handles `**` correctly.
+- For path patterns destined for SQL (e.g. a future indexed prefix query): translate the glob's leading literal segment to a `LIKE 'prefix%'` after escaping `%`, `_`, `\` per R19, and apply the rest of the glob PHP-side post-fetch.
+- For ACL-style folder matching (User.php): planned follow-up; replace local `fnmatch` (no FNM_PATHNAME) with `KbPath::matchesAnyGlob`.
+
+**References:** `app/Support/KbPath.php::matchesAnyGlob()` + `globToRegex()`, `app/Services/Kb/KbSearchService.php::search()` (post-fetch folder-glob step), `tests/Unit/Support/KbPathTest.php` (6 new tests pinning the contract), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`. Deferred follow-up: `app/Models/User.php:236` (R19 violation).
+
+---

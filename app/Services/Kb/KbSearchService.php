@@ -7,6 +7,7 @@ use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
+use App\Support\KbPath;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -146,6 +147,26 @@ class KbSearchService
         }
 
         $semanticChunks = $builder->limit($candidateCount)->get();
+
+        // ── Post-fetch folder-glob filter (T2.4) ─────────────────
+        // Folder globs (e.g. `hr/policies/**`) can't be expressed
+        // portably in SQL — `**` doesn't map to LIKE and PostgreSQL
+        // has no native fnmatch. Apply via PHP fnmatch with
+        // FNM_PATHNAME (R19) AFTER the SQL pre-filter. The candidate
+        // set has been narrowed by every other dimension first
+        // (project, source_type, tags, etc.), so the PHP-side cost
+        // stays bounded; for very large candidate sets (>5000), the
+        // operator is expected to also narrow with more selective
+        // filter dimensions.
+        if ($effectiveFilters->folderGlobs !== []) {
+            $semanticChunks = $semanticChunks->filter(
+                fn ($chunk): bool => $chunk->document !== null
+                    && KbPath::matchesAnyGlob(
+                        (string) $chunk->document->source_path,
+                        $effectiveFilters->folderGlobs,
+                    ),
+            )->values();
+        }
 
         // ── Hybrid: merge full-text results if enabled ───────────
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
@@ -359,7 +380,11 @@ class KbSearchService
             });
         }
 
-        // Folder globs handled in T2.4.
+        // Folder globs are applied POST-FETCH in search() via
+        // KbPath::matchesAnyGlob() — fnmatch isn't pgsql-native and
+        // `**` globs don't translate to LIKE cleanly. See the
+        // post-fetch step in search() above.
+        //
         // connectorTypes deferred until a `connector_type` column is added.
     }
 }
