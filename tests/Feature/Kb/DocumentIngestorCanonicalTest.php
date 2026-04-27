@@ -7,7 +7,6 @@ use App\Jobs\CanonicalIndexerJob;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\EmbeddingCacheService;
-use App\Services\Kb\MarkdownChunker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -28,7 +27,8 @@ class DocumentIngestorCanonicalTest extends TestCase
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
 
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         $markdown = <<<'MD'
 ---
 id: DEC-2026-0001
@@ -71,7 +71,8 @@ MD;
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
 
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         $doc = $ingestor->ingestMarkdown('acme', 'docs/plain.md', 'Plain', "# Heading\n\nBody.");
 
         $this->assertFalse($doc->is_canonical);
@@ -88,7 +89,8 @@ MD;
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
 
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         // Unclosed quote → YAML parse error → validation fails → fall through.
         $markdown = "---\nslug: \"broken\ntype: decision\nstatus: accepted\n---\n\n# Body";
 
@@ -103,7 +105,8 @@ MD;
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
 
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         // Structurally valid YAML but missing the slug — validation fails.
         $markdown = "---\ntype: decision\nstatus: accepted\n---\n\n# Body";
 
@@ -119,7 +122,8 @@ MD;
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
 
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         $markdown = "---\nslug: dec-x\ntype: decision\nstatus: accepted\n---\n\n# Body";
 
         $doc = $ingestor->ingestMarkdown('acme', 'decisions/dec-x.md', 'Title', $markdown);
@@ -132,7 +136,8 @@ MD;
     {
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
         $markdown = "---\nslug: dec-x\ntype: decision\nstatus: accepted\n---\n\n# Body";
 
         $first = $ingestor->ingestMarkdown('acme', 'decisions/dec-x.md', 'T', $markdown);
@@ -153,7 +158,8 @@ MD;
     {
         Queue::fake();
         $cache = $this->fakeEmbeddingCache();
-        $ingestor = new DocumentIngestor(new MarkdownChunker(), $cache);
+        $this->app->instance(EmbeddingCacheService::class, $cache);
+        $ingestor = app(DocumentIngestor::class);
 
         $v1 = "---\nid: DEC-2026-0001\nslug: dec-cache\ntype: decision\nstatus: accepted\n---\n\n# V1 body";
         $v2 = "---\nid: DEC-2026-0001\nslug: dec-cache\ntype: decision\nstatus: accepted\n---\n\n# V2 body (changed)";

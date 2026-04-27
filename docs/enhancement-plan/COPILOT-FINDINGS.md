@@ -451,6 +451,41 @@ decision is traceable.
 
 ---
 
+## v3.0 (PRs #36–#74)
+
+**Period:** 2026-04-26 → 2026-04-27 (~2 days, ~30 sub-tasks, ~25 PRs).
+**Source-of-truth digest:** [docs/v3-platform/LESSONS-v3.0-digest.md](../v3-platform/LESSONS-v3.0-digest.md).
+
+### Recurring categories caught (frequency)
+
+| Category | Count | Rule (new in v3.0) | Skill (new in v3.0) |
+|---|---|---|---|
+| optimistic-mutation-render-race | 1 | **R25 (new)** | NEW `optimistic-mutation-dedupe` — only caught after PR #72 mitigation revealed the bug; fixed in PR #74 by deduping by id in `useChatMutation.onSuccess` |
+| pluggable-pipeline-overlap | 1 | **R23 (new)** | NEW `pluggable-pipeline-registry` — caught by T1.7 mutex test; preempts boot-time silent FQCN/supports() drift |
+| refusal-skip-LLM-call | 0 (preempted) | **R26 (new)** | NEW `refusal-not-error-ux` — invariant proved by `shouldNotReceive`, never `Http::assertNothingSent` |
+| response-shape-additive | 0 (preempted) | **R27 (new)** | T3.5 explicitly chose `latency_ms_breakdown` sibling rather than sub-objectifying `latency_ms` |
+| per-project-taxonomy | 0 (preempted) | **R28 (new)** | T2.10 baked in cascade test on `knowledge_document_tags` pivot |
+| per-reason-i18n-fallback | 0 (preempted) | **R24 (new)** | T3.8-BE designed the hierarchy + fallback from day 1 |
+| testid-hierarchy | 0 (preempted) | **R29 (new)** | All FE PRs (T2.7, T2.8, T2.9-FE, T2.10, T3.6/T3.7) followed `feature-resource-{id}-{action}` from start |
+
+**Net new lessons learned in v3.0:** L17..L28 (12 numbered) + T1.x..T2.9 date-stamped (~13). Total ~25 lessons → 7 permanent rules + 3 new skills + ~15 project-internal digest entries.
+
+### Notable findings
+
+- **PR #69 orphan recovery (PR #72)**: PR #69 was stacked on PR #68. When GitHub squash-merged #68, the contents of #69 stayed on the dead `feature/v3.0-filters-frontend` branch and never reached `feature/v3.0`. Recovered via cherry-pick of the original commit. Pattern: **when stacking PRs, always re-target the base after the parent merges, OR rebase-onto-master before merge**.
+
+- **`useChatMutation` duplicate render (PR #74)**: PR #72 shipped `.first()` selectors as a Playwright mitigation for a brief duplicate-render. Root-caused in PR #74 — `onSuccess` filtered cache by optimistic id only, not by server-id. When the cache already contained the server-id (refetch race / fixture seed), the merge produced `[A, A]`. Strict-mode locators were the canary; lesson codified as L28 + R25 + skill. Pattern: **when a Playwright spec uses `.first()`, ask whether it's masking a real bug**.
+
+- **Local Playwright infra (PR #72)**: `php artisan serve` fails to bind ports on Windows host (Symfony Process wrapper issue); `php -S 127.0.0.1:8000 -t public` works fine. Locally use `E2E_SKIP_WEBSERVER=1` + `php -S` directly. CI uses `artisan serve` via `playwright.config.ts` webServer block.
+
+### Cycle policy retrospective
+
+- All 25 sub-PRs in v3.0 went cycle-1 clean (Copilot self-cleared without filing comments). The revised cycle policy (T1.4 LESSONS) never had to escalate beyond cycle-1.
+
+- One squash-divergence resolved via merge-from-wave (T3.2 PR #55): when a sub-PR is stacked on a sibling that squash-merges first, the local branch's history references the original commit which no longer exists on origin. Resolution: merge `origin/<wave-branch>` into the sub-PR branch (NOT rebase — force-push is blocked), resolve LESSONS.md conflict by keeping HEAD + cherry-picked content. Pattern: **sub-PRs stacked on a wave branch require this merge-from-wave every time the parent squash-merges before the child**.
+
+---
+
 ## Appendix — protocol hooks
 
 - Every `fix(enh-*): address Copilot review on PR #N` commit MUST touch this

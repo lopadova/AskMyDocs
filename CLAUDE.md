@@ -740,6 +740,82 @@ min per false-iteration loop. Always artefact-first, then code.
 
 → See `.claude/skills/ci-failure-investigation/SKILL.md`.
 
+### R23 — Pluggable pipeline: validate FQCN at boot + `supports()` mutex
+Every interface registry (`PipelineRegistry`, future MCP-tool registry,
+future provider registry) MUST validate at boot that each registered
+FQCN actually implements the expected interface, AND its `supports()`
+predicates MUST NOT overlap with another registered class. First-match-
+wins resolution silently picks the wrong handler when overlap exists
+(caught by T1.7's PdfPageChunker re-routing test). Test the overlap
+detection explicitly.
+→ See `.claude/skills/pluggable-pipeline-registry/SKILL.md`.
+
+### R24 — Per-reason i18n with generic fallback; machine-readable tag stays English
+Growing user-visible taxonomies (refusal reasons, validation errors,
+audit-event labels) use a hierarchical `<namespace>.<category>.<reason>`
+key with a generic fallback at the parent path. The machine-readable
+identifier (e.g. `refusal_reason: 'no_relevant_context'`) NEVER
+localizes — only the human-visible body does. FE renders BE-localized
+strings verbatim; never introduce a parallel FE i18n surface for the
+same content. Two translation surfaces drift over deploy windows.
+
+### R25 — Optimistic mutations: dedupe by id when merging server response
+Any TanStack Query (or Redux/Zustand equivalent) `onSuccess` that
+merges optimistic placeholder + server-confirmed payload MUST filter
+the cache by BOTH the optimistic id AND the server response's id
+before appending. The merge is idempotent: same id appears AT MOST
+once after the call. Without the dedupe, a cache that already
+contains the server-id (prior refetch race, fixture seed, fast-typist
+double-mutation) duplicates → React renders two same-id components
+for ~100ms until reconciliation. Test posture: strict-mode locators,
+NO `.first()`. If two same-testid elements ever appear, that's a real
+regression, not flakiness.
+→ See `.claude/skills/optimistic-mutation-dedupe/SKILL.md`.
+
+### R26 — External-call short-circuits: prove no-call with `shouldNotReceive`
+Any controller path that should skip an expensive external call when
+local conditions don't warrant it (refusal threshold, cost guard, rate
+limit, idempotency hit) MUST be proved by Mockery's
+`shouldNotReceive('chat')` (or equivalent). Transport-agnostic; fails
+loudly on regression. `Http::assertNothingSent()` only catches calls
+that go through `Http::` — silently misses provider implementations
+using a different HTTP client. Mirror the short-circuit across every
+controller hitting the same external (e.g. `KbChatController` +
+`MessageController` both refuse on missing context).
+→ See `.claude/skills/refusal-not-error-ux/SKILL.md`.
+
+### R27 — Response-shape extensions are ADDITIVE only
+Extending a JSON response with new data: ADD new keys with sensible
+defaults; NEVER rename or sub-objectify a primitive callers may
+already read. New sub-structure goes under `<key>_breakdown` (or
+`<key>_details`) as a sibling. Refusal/error paths emit the same
+shape with sentinel values; never strip keys based on path. Test the
+additive contract explicitly (e.g. `assertIsInt('meta.latency_ms')`
+after the extension lands). Sub-objectifying after ship is a one-way
+door — every existing client breaks silently.
+
+### R28 — Per-project unique slugs + ALWAYS cascade m2m pivot delete
+Per-project taxonomies (tags, categories, custom labels) backed by
+m2m pivot tables MUST: (a) declare composite UNIQUE on
+`(project_key, slug_or_name)` — never global; (b) declare FK with
+`cascadeOnDelete()` on the pivot; (c) reject `project_key` change on
+update with 422 (orphan-pivot guard); (d) test the cascade explicitly
+(`assertDatabaseMissing` on pivot rows after parent delete). Global
+slug uniqueness blocks two tenants picking the same intuitive name.
+Pivot orphan rows make the FE crash on undefined relationships.
+
+### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`
+Every interactive admin or chat surface uses the testid hierarchy
+`feature-resource-{id}-{action[-substep]}` for stable, hierarchical,
+grepable Playwright + Vitest selectors. Examples:
+`admin-tag-row-42-delete-confirm`, `chat-filter-preset-7-load`,
+`filter-chip-source-pdf-remove`, `filter-popover-close`. Trigger
+buttons follow `feature-action`: `chat-filter-bar-add`,
+`admin-tags-create`. Predictable selectors survive DOM refactors;
+cross-feature memorisation isn't required when convention holds.
+Stateless components (`FilterBar`, `TagsList`) take `(value, onChange)`
+controlled props — state lifts to the lowest common parent.
+
 ---
 
 ## 8. Testing & CI

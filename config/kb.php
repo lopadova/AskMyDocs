@@ -204,6 +204,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Anti-hallucination refusal (v3.0+)
+    |--------------------------------------------------------------------------
+    |
+    | Deterministic short-circuit: if the retrieved primary chunks don't
+    | meet a similarity floor (`min_chunk_similarity`) and a count
+    | (`min_chunks_required`), the chat endpoint refuses BEFORE calling the
+    | LLM and returns `refusal_reason: 'no_relevant_context'` with a
+    | confidence of 0 and an empty citations array. This eliminates the
+    | hallucination class where the model tries to answer questions it
+    | has zero grounding for.
+    |
+    | The threshold is intentionally set above `default_min_similarity`
+    | (0.30) — the search step over-retrieves, but the refusal step
+    | requires evidence strong enough to stake an answer on.
+    |
+    */
+
+    'refusal' => [
+        'min_chunk_similarity' => (float) env('KB_REFUSAL_MIN_SIMILARITY', 0.45),
+        'min_chunks_required' => (int) env('KB_REFUSAL_MIN_CHUNKS', 1),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Promotion pipeline (raw -> curated -> canonical)
     |--------------------------------------------------------------------------
     |

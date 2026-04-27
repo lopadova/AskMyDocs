@@ -95,13 +95,9 @@ This document is **the contract** between the orchestrator and the implementing 
 │  PR_URL=$(gh pr create \                                            │
 │    --base <macro-task-branch> \                                     │
 │    --title "feat(v3.0/T<id>): <title>" \                            │
-│    --body-file .pr-body.md)                                         │
+│    --body-file .pr-body.md \                                        │
+│    --reviewer copilot)                                              │
 │  PR_NUM=$(echo $PR_URL | grep -oE '[0-9]+$')                        │
-│  # gh CLI rejects 'copilot' as a regular --reviewer login; assign   │
-│  # the bot via the requested_reviewers REST endpoint instead. The   │
-│  # login is configurable through COPILOT_REVIEWER_LOGIN env var.    │
-│  gh api "repos/{owner}/{repo}/pulls/$PR_NUM/requested_reviewers" \  │
-│    -X POST -f "reviewers[]=$COPILOT_REVIEWER_LOGIN"                 │
 └──────────────────────────────┬──────────────────────────────────────┘
                                ↓
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -403,7 +399,7 @@ main
 
 ## 9. Tooling References
 
-- **Standalone runner:** `scripts/v3-orchestrator.sh` (implements this protocol as a standalone bash workflow). **Default mode is interactive/manual**: the script prepares prompts and pauses for a human to dispatch them via a Claude Code session, then collects the agent's JSON report. **Fully unattended execution requires `CLAUDE_HEADLESS=1`** plus a compatible Claude CLI on PATH (currently expects a `claude --headless --prompt-file ... --max-turns N` invocation surface)
+- **Standalone runner:** `scripts/v3-orchestrator.sh` (implements this protocol — bash, runs without Claude session needed)
 - **Plan source:** `docs/superpowers/plans/2026-04-26-v3.0-pipeline-filters-grounding.md`
 - **Lessons log:** `docs/v3-platform/LESSONS.md`
 - **Digest target (T4.1):** `docs/v3-platform/LESSONS-v3.0-digest.md`

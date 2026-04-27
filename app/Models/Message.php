@@ -15,11 +15,14 @@ class Message extends Model
         'content',
         'metadata',
         'rating',
+        'confidence',
+        'refusal_reason',
         'created_at',
     ];
 
     protected $casts = [
         'metadata' => 'array',
+        'confidence' => 'integer',
         'created_at' => 'datetime',
     ];
 
