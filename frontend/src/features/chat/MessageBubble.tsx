@@ -2,6 +2,8 @@ import { type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
+import { ConfidenceBadge } from './ConfidenceBadge';
+import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
 import { FeedbackButtons } from './FeedbackButtons';
@@ -65,10 +67,18 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
     const meta = message.metadata ?? {};
     const citations = meta.citations ?? [];
 
+    // T3.5 — confidence + refusal_reason live at BOTH the top level
+    // and in metadata. Read top-level first; fall back to metadata for
+    // any client that loaded the message before T3.5 shipped.
+    const refusalReason = message.refusal_reason ?? meta.refusal_reason ?? null;
+    const confidence = message.confidence ?? meta.confidence ?? null;
+    const isRefusal = refusalReason != null;
+
     return (
         <div
             data-testid={`chat-message-${message.id}`}
             data-role="assistant"
+            data-refusal-reason={refusalReason ?? ''}
             className="popin"
             style={{ display: 'flex', gap: 12, marginBottom: 22 }}
         >
@@ -88,11 +98,24 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
-                <div data-testid={`chat-message-${message.id}-body`} style={{ fontSize: 13.5, color: 'var(--fg-1)' }}>
-                    <Markdown source={message.content} project={projectKey ?? undefined} />
-                    {streaming && <span className="caret" />}
-                </div>
-                {!streaming && citations.length > 0 && (
+                {isRefusal ? (
+                    <RefusalNotice body={message.content} reason={refusalReason ?? 'unknown'} />
+                ) : (
+                    <div
+                        data-testid={`chat-message-${message.id}-body`}
+                        style={{ fontSize: 13.5, color: 'var(--fg-1)' }}
+                    >
+                        <Markdown source={message.content} project={projectKey ?? undefined} />
+                        {streaming && <span className="caret" />}
+                    </div>
+                )}
+                {/*
+                  * Citations are skipped on the refusal path — the BE
+                  * always sends an empty citations array there, but
+                  * guarding here protects against a future regression
+                  * that surfaces stale citations under a refusal body.
+                  */}
+                {!streaming && !isRefusal && citations.length > 0 && (
                     <CitationsPopover citations={citations} />
                 )}
                 {!streaming && (
@@ -104,8 +127,23 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                             initialRating={message.rating}
                         />
                         <span style={{ flex: 1 }} />
+                        {/*
+                          * T3.6 — confidence badge to the right of
+                          * the action row. Renders nothing on legacy
+                          * rows that have no signal; renders 'refused'
+                          * tier (grey) when refusal_reason is set;
+                          * otherwise renders the high/moderate/low
+                          * tier per the score band.
+                          */}
+                        <ConfidenceBadge
+                            confidence={confidence}
+                            refusalReason={refusalReason}
+                        />
                         {meta.model && (
-                            <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
+                            <span
+                                className="mono"
+                                style={{ fontSize: 10.5, color: 'var(--fg-3)', marginLeft: 8 }}
+                            >
                                 {meta.provider ? `${meta.provider}/` : ''}
                                 {meta.model}
                                 {meta.latency_ms !== undefined ? ` · ${(meta.latency_ms / 1000).toFixed(1)}s` : ''}
