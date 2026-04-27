@@ -265,6 +265,31 @@ final class ChatFilterPresetControllerTest extends TestCase
         $this->assertSame($payload, $showResp->json('data.filters'));
     }
 
+    public function test_cascade_does_NOT_remove_presets_when_user_soft_deleted(): void
+    {
+        // Counter-test to the force-delete cascade below: soft-deleting
+        // the owner must leave the preset row intact so reactivating the
+        // account restores the user's saved filters. This is the whole
+        // point of using SoftDeletes on User — soft delete is reversible,
+        // hard delete is GDPR-final. Without this assertion we'd never
+        // notice a regression that turned a soft delete into a destructive
+        // operation (e.g. someone accidentally adding a model observer
+        // that hard-cascades on the soft-delete event).
+        $alice = $this->makeUser('alice');
+        $preset = ChatFilterPreset::create([
+            'user_id' => $alice->id,
+            'name' => 'Should survive soft delete',
+            'filters' => ['source_types' => ['pdf']],
+        ]);
+
+        $alice->delete();
+
+        $this->assertDatabaseHas('chat_filter_presets', [
+            'id' => $preset->id,
+            'name' => 'Should survive soft delete',
+        ]);
+    }
+
     public function test_cascade_delete_removes_presets_when_user_force_deleted(): void
     {
         // The User model uses SoftDeletes (CLAUDE.md §6: "soft delete
