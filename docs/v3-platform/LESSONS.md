@@ -333,3 +333,40 @@ Three concrete decisions surfaced during T1.7:
 **References:** `app/Services/Kb/Chunkers/PdfPageChunker.php`, `tests/Unit/Services/Kb/Chunkers/PdfPageChunkerTest.php`, `config/kb-pipeline.php` (PdfPageChunker listed first), `app/Services/Kb/MarkdownChunker.php` (pdf removed from SUPPORTED_SOURCE_TYPES), `tests/Feature/Kb/PipelineRegistryTest.php` (chunker count + pdf resolves to PdfPageChunker assertion).
 
 ---
+
+## [2026-04-27 03:55] Sub-task T1.8 — SourceType enum + multi-format API ingest
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** every T2.x sub-agent that adds new source types (image OCR, audio, code), the GitHub Action consumer, and any future API ingest client.
+
+**Finding:**
+Five concrete decisions surfaced during T1.8 — all binding for the multi-format pipeline:
+
+1. **The SourceType enum is helper-only; the column stays string.** Plan §1473 said "DocumentIngestor casts string → enum on persist". Adding an Eloquent cast `'source_type' => SourceType::class` on KnowledgeDocument would change the read shape from string to enum, breaking every existing consumer (admin UI, search queries, MCP tools, ~12 tests). Instead, the enum is the typed source-of-truth at the call site (controller derives `SourceType::fromMime($payload['mime_type'])`, folder command derives `SourceType::fromExtension($pathinfo['extension'])`), and the `->value` is what gets passed to DocumentIngestor and persisted. Reads stay backwards-compatible.
+
+2. **Binary content over JSON requires base64 + decode-or-422 at the controller boundary.** The API used to accept only text, so `documents.*.content` was a raw string. For PDF/DOCX, raw bytes can't survive JSON serialization (UTF-8 invariants violated, control characters break parsers). Decision: `mime_type.isBinary() === true` → require base64 encoding in `content`; controller calls `base64_decode($content, strict: true)` and returns 422 on `false`. **For T2.x connectors (Notion, GitHub, S3)**: they fetch bytes directly, so base64 is irrelevant — they call `DocumentIngestor::ingest(SourceDocument(bytes: ...))` directly without the JSON layer.
+
+3. **Default `--pattern` change is a documented breaking change for `kb:ingest-folder`.** Pre-T1.8 default was `md,markdown` (markdown-only). T1.8 broadens to `md,markdown,txt,pdf,docx` (every supported format). Operators relying on the pre-T1.8 behavior must now pass `--pattern=md,markdown` explicitly. Documented in README, called out in the existing `KbIngestFolderCommandTest::test_walks_flat_folder_and_dispatches_one_job_per_supported_file` (renamed + assertion bumped from 2 to 3).
+
+4. **`IngestDocumentJob::mimeType` defaults to null → `'text/markdown'` for back-compat.** Jobs queued by pre-T1.8 callers (existing rows in the database queue table when v3.0 deploys, the GitHub Action that hasn't been upgraded yet) have no `mimeType` parameter on their constructor. The default is null which the job then resolves to `'text/markdown'` so legacy enqueued jobs keep working bit-for-bit. **For T2.x**: don't pass empty strings — pass null OR a valid MIME explicitly.
+
+5. **Body-cap bumped from 5MB → 7MB to accommodate base64 inflation.** Base64 expands raw bytes by ~4/3 (33% overhead). A 5MB binary becomes ~6.7MB after encoding. The pre-T1.8 `max:5000000` rule rejected legitimate multi-page PDFs. Bumped to `max:7000000` (~5MB raw effective). Still subject to PHP's `post_max_size` and Laravel's request body limit — if operators hit the limit in production, they should bump `KB_INGEST_MAX_CONTENT_BYTES` env (T1.8 deferred — config knob TBD in v3.1).
+
+**Why it matters:**
+- Rule 1 keeps source_type readable as a string everywhere (admin UI, queries, tests) while still giving the ingest path type-safe routing — best of both worlds.
+- Rule 2 is the standard pattern for any future binary format (XLSX, PPTX, audio in v3.1+). Encoded transport at the boundary, raw bytes at the converter.
+- Rule 3 surfaces the breaking change in the upgrade notes — operators who skip the README and just run `php artisan kb:ingest-folder` will get unexpected (more) jobs.
+- Rule 4 means the v3.0 deploy doesn't blow up jobs already in the queue.
+- Rule 5 unblocks real-world PDF ingest sizes; sub-10MB PDFs are common (multi-chapter manuals, scanned reports).
+
+**How to apply:**
+- For new source types in T2.x / v3.1: add a case to SourceType enum + extension/mime entries in `fromMime()` + `fromExtension()` + `toMime()` + `isBinary()`. Update `knownExtensions()` and config/kb-pipeline.php.
+- For new API endpoints accepting bytes: mirror the `mime_type` + base64-when-binary contract from KbIngestController.
+- For new connector tests: NEVER use the API path — instantiate SourceDocument directly and call `DocumentIngestor::ingest()`. The API path is for HTTP clients, not for in-process pipelines.
+
+**Operational note (codified):** the current `KbIngestController` validates `documents.*.content` against `max:7000000` characters. PHP's `post_max_size` (default 8M) and Nginx's `client_max_body_size` will gate larger bodies before validation runs — operators ingesting >5MB raw PDFs need to tune both AND the Laravel cap. T1.8 didn't introduce a config knob for the cap; v3.1 should add `KB_INGEST_MAX_CONTENT_BYTES` for runtime tuning.
+
+**References:** `app/Support/Kb/SourceType.php` (enum + helpers), `app/Console/Commands/KbIngestFolderCommand.php::handle()` (extension routing + sync `ingest()` call), `app/Jobs/IngestDocumentJob.php::handle()` (mimeType-aware SourceDocument build), `app/Http/Controllers/Api/KbIngestController.php::__invoke()` (mime_type validation + base64 decode), `tests/Feature/Console/KbIngestFolderMultiformatTest.php`, `tests/Feature/Api/KbIngestApiMultiformatTest.php`, `tests/Unit/Support/Kb/SourceTypeTest.php`, README.md "Multi-format ingest" section.
+
+---
