@@ -275,3 +275,32 @@ Three concrete decisions surfaced during T1.5 — all binding for downstream bin
 **References:** `app/Services/Kb/Converters/PdfConverter.php`, `tests/Unit/Services/Kb/Converters/PdfConverterTest.php`, `tests/Feature/Kb/PdfIngestionTest.php`, `tests/Fixtures/Pdf/PdfFixtureBuilder.php`, `composer.json` (smalot/pdfparser require), README.md "Extending the Ingestion Pipeline" + PDF support note.
 
 ---
+
+## [2026-04-27 02:35] Sub-task T1.6 — DocxConverter + PhpWord Title element gotcha
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** any future converter built on PhpWord; future heading-style detection in other XML-based formats.
+
+**Finding:**
+Three concrete lessons surfaced during T1.6:
+
+1. **PhpWord's `Title` element does NOT extend `AbstractContainer`** and has no `getElements()` iteration. It exposes its content via `getText()`, which returns either a `string` OR a `TextRun` (when the heading has rich formatting). Walking it like a container element throws a `Call to undefined method` fatal at parse time. Cycle-1 RED-test caught this immediately; the fix is type-narrowing in extractText() — handle `Title` as a leaf with `getText()` first, then fall back to extracting from the returned TextRun if it's an object. **For other PhpWord-based work**: always inspect the element's class hierarchy before assuming the standard container contract; PhpWord's Title, ListItem, and Image elements all break the pattern in different ways.
+
+2. **DOCX ZIP-builder pattern works the same as the T1.5 PDF builder.** Wrote `tests/Fixtures/Docx/DocxFixtureBuilder` — emits a minimal valid .docx as a ZIP byte string with the 5 mandatory files: `[Content_Types].xml`, `_rels/.rels`, `word/document.xml`, `word/_rels/document.xml.rels`, `word/styles.xml`. The styles.xml declares `Heading1..Heading6` paragraph styles; document.xml uses `<w:pPr><w:pStyle w:val="HeadingN"/>` to mark heading paragraphs. PhpWord parses this cleanly. **Reusable pattern for any XLSX, PPTX, ODT future support** (all are ZIP+XML packages with their own minimum-viable subset).
+
+3. **Document-level basename-as-H1 is the chunker handshake convention.** Every converter that emits markdown SHOULD start with `# {basename}\n\n` so MarkdownChunker section_aware mode produces a stable breadcrumb anchor (chunks land with `heading_path = "{basename} > {section title}"`). Codified across MarkdownPassthrough (T1.3), TextPassthrough (T1.3 with synthetic H1), PdfConverter (T1.5), and now DocxConverter (T1.6). T1.7 PdfPageChunker will follow the same convention with `heading_path = "{basename} > Page N"`.
+
+**Why it matters:**
+- Rule 1 saves the next PhpWord-touching agent a 10-min "why is Title throwing?" debug cycle.
+- Rule 2 means no more checked-in binary fixtures for the v3.0 file-format roadmap (PPTX/XLSX in v3.1 if needed).
+- Rule 3 keeps chunk metadata uniform across formats, which the admin KB tree and citation renderer rely on.
+
+**How to apply:**
+- For PhpWord work: `instanceof Title` is a separate branch from `instanceof AbstractContainer` — handle leaf-text via `getText()` + recursive call only if the result is itself an Element.
+- For new format converters: write an inline pure-PHP fixture builder under `tests/Fixtures/{Format}/` following T1.5/T1.6 pattern. Reject empty input with InvalidArgumentException.
+- Always start the converter's markdown output with `# {basename($doc->sourcePath)}\n\n`. Per-document headings nest UNDER the basename by adding 1 to the source level.
+
+**References:** `app/Services/Kb/Converters/DocxConverter.php` (extractText() Title branch), `tests/Fixtures/Docx/DocxFixtureBuilder.php` (5-file ZIP), `tests/Unit/Services/Kb/Converters/DocxConverterTest.php`, `tests/Feature/Kb/DocxIngestionTest.php`, `composer.json` (phpoffice/phpword require), README.md "Extending the Ingestion Pipeline".
+
+---
