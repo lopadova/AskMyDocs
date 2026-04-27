@@ -58,14 +58,30 @@ export function useChatMutation(): UseMutationResult<Message, Error, SendMessage
             // flight. The optimistic user row stays visible until the
             // `invalidateQueries` refetch replaces it with the canonical
             // server row.
+            //
+            // Dedupe by `assistantMessage.id` too: when the cache
+            // already contains a row with the same id (e.g. a prior
+            // GET refetch raced ahead, or a test fixture seeded the
+            // canonical reply), `[...filtered, assistantMessage]` would
+            // duplicate it. The dedupe keeps the merge idempotent: the
+            // same id appears AT MOST once after this call. Without it,
+            // MessageThread renders two MessageBubbles with the same
+            // id for ~100ms until the refetch reconciles — the bug
+            // documented in PR #72's `.first()` mitigation, now removed.
             qc.setQueryData<Message[]>(['messages', conversationId], (old) => {
                 if (!old) {
                     return [assistantMessage];
                 }
                 const optimisticId = context?.optimisticId;
-                const filtered = optimisticId === undefined
-                    ? old
-                    : old.filter((m) => m.id !== optimisticId);
+                const filtered = old.filter((m) => {
+                    if (optimisticId !== undefined && m.id === optimisticId) {
+                        return false;
+                    }
+                    if (m.id === assistantMessage.id) {
+                        return false;
+                    }
+                    return true;
+                });
                 return [...filtered, assistantMessage];
             });
             qc.invalidateQueries({ queryKey: ['conversations'] });

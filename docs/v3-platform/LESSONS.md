@@ -1056,3 +1056,49 @@ T2.9-FE ships the saved-presets dropdown — the user can save current filter st
 Stable, hierarchical, grepable. Playwright + Vitest both consume these directly.
 
 **References:** `frontend/src/features/chat/FilterPresetsDropdown.tsx` (component), `frontend/src/features/chat/FilterPresetsDropdown.test.tsx` (12 cases — empty state, list rendering, load, save enable-when-non-empty, save POST shape, delete confirm requirement, cancel reverting state), `frontend/e2e/chat-mention.spec.ts` (E2E covers preset save → load → list reflect against the real BE).
+
+## L28 — Optimistic mutations: dedupe by id when merging the server response
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + bug fix
+**Severity:** medium (test reliability + brief UX flicker)
+**Applies to:** any TanStack Query (or Redux/Zustand equivalent) mutation that combines optimistic updates with `setQueryData` merges of the server response.
+
+**Finding:**
+The chat composer's `useChatMutation.onSuccess` originally filtered the cache by the OPTIMISTIC id only:
+
+```ts
+const filtered = old.filter((m) => m.id !== optimisticId);
+return [...filtered, assistantMessage];
+```
+
+Failure mode: if the cache ALREADY contains a row with the same id as `assistantMessage` (from a prior GET refetch racing ahead, from a test fixture that pre-stubbed the canonical reply, or from an earlier mutation that landed before `cancelQueries` could fire), the merge produces `[same-id-A, same-id-A]`. React then renders TWO `MessageBubble` components with identical id for ~100ms until the next refetch reconciles. Visible as duplicate refusal-notice / confidence-badge elements; Playwright strict-mode locators trip on it.
+
+**Fix** — dedupe by BOTH the optimistic id AND the new message's id:
+
+```ts
+const filtered = old.filter((m) => {
+    if (optimisticId !== undefined && m.id === optimisticId) return false;
+    if (m.id === assistantMessage.id) return false;
+    return true;
+});
+return [...filtered, assistantMessage];
+```
+
+The merge is now idempotent: the new message's id appears AT MOST once after this call, regardless of what the cache contained before.
+
+**Why it matters:**
+- The "duplicate render" was visible to end users for ~100ms. Subtle but real.
+- The `.first()` mitigation in PR #72's chat-refusal spec masked the bug — using strict-mode locators is the test posture that surfaces real regressions.
+- Idempotent merges are a correctness invariant for any optimistic-then-server-confirms pattern.
+
+**General rule:**
+In ANY merge of optimistic + server response where both might exist in the cache simultaneously, dedupe by the natural key (id, slug, etc.). Two filters: by optimistic id (rollback the placeholder), by server response key (defensive, in case the cache pre-fetched the canonical row).
+
+**How to apply:**
+- New optimistic mutation → `onSuccess` filter chain MUST exclude both the optimistic id AND the server-id of the response payload.
+- Test it: write a Playwright spec where the GET stub returns the same id that POST will return. Without the dedupe, the spec sees 2 elements; with the dedupe, exactly 1.
+- Strict-mode locators are the contract: never reach for `.first()` without first asking "could there be two of the same id?". If yes, fix the merge instead of the assertion.
+
+**References:** `frontend/src/features/chat/use-chat-mutation.ts::onSuccess` (the dedupe filter), `frontend/e2e/chat-refusal.spec.ts` (Playwright suite running with strict-mode locators after the fix; PR #72's `.first()` calls reverted), `frontend/src/features/chat/MessageThread.tsx::messages.map((m) => <MessageBubble key={m.id} ... />)` (the renderer that exposed the bug).
