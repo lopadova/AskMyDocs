@@ -65,12 +65,34 @@ final class KbChatControllerFiltersTest extends TestCase
             ->andReturnUsing(function (...$args) {
                 $this->capturedProjectKey = $args[1] ?? null;
                 $this->capturedFilters = $args[4] ?? null;
+
+                // T3.3 — return a single high-similarity primary chunk so
+                // the controller's refusal short-circuit doesn't fire.
+                // T2.2's intent here is to verify filter threading, not
+                // refusal behaviour; refusal coverage lives in
+                // KbChatRefusalTest. Chunk shape mirrors what
+                // KbSearchService::searchWithContext emits in production.
+                $primary = collect([
+                    (object) [
+                        'id' => 1,
+                        'knowledge_document_id' => 1,
+                        'vector_score' => 0.90,  // well above 0.45 threshold
+                        'heading_path' => 'Heading',
+                        'chunk_text' => 'lorem',
+                        'document' => (object) [
+                            'id' => 1,
+                            'title' => 'Doc',
+                            'source_path' => 'docs/test.md',
+                        ],
+                    ],
+                ]);
+
                 return new SearchResult(
-                    primary: collect(),
+                    primary: $primary,
                     expanded: collect(),
                     rejected: collect(),
                     meta: [
-                        'primary_count' => 0,
+                        'primary_count' => 1,
                         'expanded_count' => 0,
                         'rejected_count' => 0,
                         'project_key' => $this->capturedProjectKey,
