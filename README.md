@@ -2781,6 +2781,79 @@ Use [GitHub Issues](../../issues). Please include:
 
 ## Changelog
 
+### v3.0.0 (2026-04-27) — Enterprise platform: pluggable pipeline + filters + anti-hallucination
+
+The v3.0 series turns AskMyDocs from "RAG chat with admin" into an
+enterprise knowledge platform with a **pluggable ingestion pipeline**
+(markdown / text / PDF / DOCX), **rich chat retrieval filters** (10
+dimensions + saved presets + @mention pinning), and **anti-hallucination
+tier-1** (deterministic refusal + composite confidence score).
+
+**M1 — Pluggable ingestion pipeline (PRs #36–#44)**
+- `ConverterInterface` + `ChunkerInterface` + `EnricherInterface`
+  contracts; `PipelineRegistry` with FQCN validation at boot
+- 4 source types shipped: markdown, text, PDF (`smalot/pdfparser`),
+  DOCX (`phpoffice/phpword`); one ingestion execution path
+  (`DocumentIngestor::ingest(SourceDocument)`)
+- `PdfPageChunker` (page-aware) co-exists with `MarkdownChunker`
+  via first-match-wins `supports()` mutex (R23 — codified)
+- `SourceType` enum (helper-only — column stays string for back-compat)
+- Two ingest entrypoints (CLI + HTTP) converge on the same path
+
+**M2 — Enterprise chat filters (PRs #45–#52, #67–#72)**
+- `RetrievalFilters` DTO with **10 dimensions**: `project_keys`,
+  `tag_slugs`, `source_types`, `canonical_types`, `connector_types`,
+  `doc_ids`, `folder_globs`, `date_from/to`, `languages`
+- Per-user **saved presets** (`/api/chat-filter-presets`) — RESTful
+  CRUD, 404-not-403 cross-user isolation, lossless round-trip
+- **@mention pinning**: `/api/kb/documents/search` autocomplete +
+  FE `MentionPopover` with cursor-context detection
+- React SPA: `Composer` redesigned with persistent `FilterBar` +
+  removable `FilterChip`s + tabbed `FilterPickerPopover` + saved
+  presets dropdown + admin Tags CRUD (`/app/admin/kb/tags`)
+- Folder globs support `**` cross-segment via in-house glob→regex
+  translator (PHP fnmatch + FNM_PATHNAME doesn't)
+- LIKE escape with explicit `ESCAPE '\\'` clause for SQLite + pgsql
+  portability (R19 reaffirmed in v3.0 context)
+
+**M3 — Anti-hallucination tier-1 (PRs #54–#65, #67)**
+- Deterministic **refusal short-circuit**: if no chunks pass the
+  similarity floor, `KbChatController` returns `refusal_reason='no_relevant_context'`
+  + `confidence=0` + empty citations **WITHOUT calling the LLM**
+  (proven via Mockery's `shouldNotReceive('chat')` — R26)
+- LLM **self-refusal sentinel** (`__NO_GROUNDED_ANSWER__` in the
+  prompt) → controller converts to `refusal_reason='llm_self_refusal'`;
+  exact-match-after-trim, never substring (preserves partial answers)
+- **Composite confidence score** 0..100 = `0.40·mean_top_k_sim +
+  0.20·threshold_margin + 0.20·chunk_diversity + 0.20·citation_density`
+  (`ConfidenceCalculator`, producer-side clamped, schema column
+  nullable for legacy rows)
+- API response shape: `confidence` + `refusal_reason` at the top
+  level; `meta.search_strategy` + `meta.retrieval_stats` +
+  `meta.latency_ms_breakdown` (R27 additive-only — `meta.latency_ms`
+  stays a flat int sibling)
+- Per-reason **i18n hierarchy** in `lang/{en,it}/kb.php`:
+  `kb.refusal.{reason}` with `kb.no_grounded_answer` fallback (R24)
+- FE: `ConfidenceBadge` (high/moderate/low/refused tiers) +
+  `RefusalNotice` (`role="status"`, NOT alert — refusal is a quality
+  signal, not an error)
+
+**M4 — Consolidamento (PR #75 — this release closure)**
+- 7 new permanent rules in CLAUDE.md (R23..R29)
+- 3 new skills under `.claude/skills/`:
+  `pluggable-pipeline-registry`, `optimistic-mutation-dedupe`,
+  `refusal-not-error-ux`
+- Full LESSONS digest at `docs/v3-platform/LESSONS-v3.0-digest.md`
+- COPILOT-FINDINGS.md updated with v3.0 PR cohort
+
+**Numbers**
+- ~30 sub-tasks executed across 4 milestones
+- ~25 PRs merged (sub-PRs + macro PRs + closeouts + recovery)
+- **PHPUnit: 985 tests / 3017 assertions** (was 905/2630 at start of v3.0 → +80 tests / +387 assertions)
+- **Vitest: 224 tests** (was 149 at start → +75 cases)
+- **Playwright: 28 spec scenarios** across `chat-filters`, `chat-mention`, `chat-refusal`, `admin-tags`
+- 28 LESSONS entries (T1.x..T2.9 date-stamped + L17..L28 numbered)
+
 ### v2.0.0 — Enterprise edition (10-PR roadmap A → J + canonical compilation)
 
 The 2.0 series promotes AskMyDocs from a single-user RAG chat tool into a
