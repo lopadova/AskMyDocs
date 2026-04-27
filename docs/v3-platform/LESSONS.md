@@ -609,3 +609,48 @@ T3.1 added two grounding columns (`confidence` tinyint 0-100, `refusal_reason` s
 - Test the BOUNDARY values (0, 1, 99, 100) explicitly in the migration test — guards against future regressions that flip the type to signed or shrink to a smaller width.
 
 **References:** `database/migrations/2026_04_27_000002_add_grounding_columns_to_messages_and_chat_logs_table.php`, `tests/Feature/Migrations/AddGroundingColumnsTest.php::test_messages_confidence_round_trips_boundary_values`.
+
+## L18 — Composite confidence formula: weighted-sum + producer-side clamp
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + design decision
+**Severity:** medium
+**Applies to:** future grounding-quality scoring services, any per-message numeric metric exposed via API.
+
+**Finding:**
+T3.2 ships `ConfidenceCalculator` with the formula codified in plan §2434:
+
+```
+confidence = 100 * (
+    0.40 * mean_top_k_similarity +
+    0.20 * threshold_margin +
+    0.20 * chunk_diversity +
+    0.20 * citation_density
+)
+```
+
+Three design choices worth pinning:
+
+1. **Weighted sum with explicit `const WEIGHT_*`** rather than a config-driven knob. The weights are part of the v3.0 grounding contract — a 60/40/0/0 split would produce wildly different numbers and break dashboards. Weights live in code where they're version-controlled and reviewable, not in `config/kb.php` where they're easy to tweak silently. If/when the weights need tuning, that's a code change with a test update — explicitly visible in PRs.
+
+2. **Producer-side clamp via `(int) round(max(0.0, min(100.0, $score)))`** at the very end of `compute()` is the load-bearing invariant — the schema column has no CHECK constraint (per L17). Every internal sub-calculation also clamps to [0,1] via `clamp01()` so intermediate floats can't poison the result. This is defense-in-depth for a number that ends up persisted forever in `messages.confidence` + `chat_logs.confidence`.
+
+3. **Boundary carve-outs are intentional and named**:
+   - **Zero chunks → 0** (defense-in-depth: caller is normally on the refusal short-circuit, but if it forgets, this still scores honestly).
+   - **threshold === min_used_score → margin contribution = 0** (a chunk that just-barely-passed pulls the score down even when other signals are good).
+   - **Zero answer words → density forced to 1** (refusal path doesn't pretend to cite anything; density should be neutral, not punitive — otherwise the refusal score would be artificially halved).
+   - **threshold === 1.0 → margin = 0 safely** (pathological config; don't divide by zero, don't throw — score the rest of the signals).
+
+**Why it matters:**
+- Hard-coded weights with named constants make the formula self-documenting in code review. A reviewer can see "0.40 weight for similarity" without cross-referencing config.
+- The producer-side clamp is the only thing standing between a poisoned float (NaN, Infinity, 117.3) and a persisted bad row. Test the clamp at the boundary (test cases `_perfect_inputs_clamp_at_100` and `_threshold_at_one_returns_zero_margin_safely`).
+- Carve-outs that aren't tested by name will silently regress. Each carve-out gets a dedicated test method (`test_zero_answer_words_does_not_penalise_density`, etc.) so a future regression is immediately attributable.
+
+**How to apply:**
+- New numeric metric service → start as a `final class` with `final readonly`-style constants for weights, never `config()->get(...)` for the formula constants themselves (config OK for the `min_threshold` input — it's a tunable, not a contract weight).
+- End the public method with the clamp + cast to the persistence type. Don't trust intermediate steps.
+- For any boundary case that justifies a carve-out, name a test method after it. A `// special case` comment without a test is a regression waiting to happen.
+- Accept both `object` and `array` chunk shapes via a helper (`fieldOf()`) — KbSearchService emits stdClass, fixtures use arrays, refactors break the calculator if it's tied to one shape.
+
+**References:** `app/Services/Kb/Grounding/ConfidenceCalculator.php::compute()` + `clamp01()` + `citationDensity()`, `tests/Unit/Services/Kb/Grounding/ConfidenceCalculatorTest.php` (11 cases including 4 dedicated boundary tests).
