@@ -771,3 +771,54 @@ chart.push({x: time, y: latencyMs});         // breaks if latency_ms = {retrieva
 **Architectural cost:** the ConfidenceCalculator (T3.2) is now wired into BOTH KbChatController and MessageController via constructor DI. The conversation flow has a thinner meta surface (no search_strategy / retrieval_stats — `$search->search()` doesn't expose them) — confidence is comparable across both surfaces but the dashboard rollups for retrieval-strategy-based queries should filter to the `/api/kb/chat` surface only. Document this asymmetry in the FE consumer.
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::buildSuccessResponse()` (sibling-key pattern), `app/Services/Kb/KbSearchService.php::searchWithContext()` (meta enrichment with retrieval_ms / search_strategy / retrieval_stats), `tests/Feature/Api/KbChatResponseShapeTest.php::test_legacy_latency_ms_stays_flat_int` (the additive-contract guard).
+
+## L22 — Per-reason i18n keys with generic fallback; never leak the raw key
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + i18n design
+**Severity:** medium (UX correctness + forward-compat hatch)
+**Applies to:** any growing taxonomy of user-visible reasons (refusal, validation errors, status messages, audit-event labels).
+
+**Finding:**
+T3.8-BE expands the refusal i18n from a single flat key (`kb.no_grounded_answer`) to a hierarchy:
+
+```
+kb.no_grounded_answer       (generic fallback)
+kb.refusal.no_relevant_context
+kb.refusal.llm_self_refusal
+... (future reasons add here)
+```
+
+The controllers resolve via `localizedRefusalMessage($reason)`:
+1. Try `kb.refusal.{reason}` first.
+2. If the translator returns the raw key (Laravel's "miss" sentinel), degrade to `kb.no_grounded_answer`.
+3. NEVER emit the raw dotted key to the user.
+
+**Why hierarchical, not flat:**
+The refusal taxonomy will grow. T3.x already defines two reasons; future tasks may add `tag_conflict_refusal`, `quota_exceeded_refusal`, `model_unsafe_refusal`. Flat strings would force every new reason to either:
+- Generate code that does its own per-reason `if-else` to pick a string (hard-codes copy in code, not lang files), OR
+- Use the same generic copy for all reasons (loses the actionable signal — "no docs match" vs "AI couldn't ground" vs "your filter scope conflicted" require different remedies).
+
+The hierarchy lets each reason carry specific copy WITHOUT touching code. Adding a new reason is two lines in `lang/{en,it}/kb.php` — the controller already knows how to look it up.
+
+**The fallback hatch matters:**
+Forward-compat with deployments where code lands before lang files. Without the fallback, a code change adding `'tag_conflict'` to the refusal taxonomy would respond with the literal string `"kb.refusal.tag_conflict"` until the lang PR ships. With the fallback, users see the generic message until the localization catches up — degraded UX, not broken UX.
+
+**The miss-sentinel detection:** Laravel's `__()` returns the raw dotted key when no translation is found. Check via `is_string($result) && $result !== $key`. Don't try to `Lang::has()` first — it's a separate filesystem lookup that double-costs every refusal. The string-equality check on the result is free.
+
+**Locale switching:** `App::setLocale('it')` triggers Italian copy from `lang/it/kb.php`. The test suite exercises this directly (no Accept-Language middleware involved) so the lang files themselves are validated. The `refusal_reason` tag in the JSON response stays in English regardless of locale — it's a machine-readable identifier the dashboard rolls up across users with different locales. Only the user-visible `answer` body localizes.
+
+**Cross-controller consistency:** the helper is duplicated (verbatim) in `KbChatController` and `MessageController`. Pulling it into a shared trait or service is tempting but premature — both controllers are likely to consolidate in M4 (the planned MessageController/KbChatController merge); duplicating once is cheaper than the refactor that would land + revert across PRs.
+
+**Test that would catch a regression:**
+- Reflection-based test on `localizedRefusalMessage()` asserting a known-reason returns specific copy AND an unknown-reason returns the generic. The fallback contract is the load-bearing part — without that test it would silently degrade to leaking dotted keys when a new reason ships before its lang lines.
+
+**How to apply:**
+- Growing user-visible taxonomy → use a `{namespace}.{category}.{reason}` hierarchy from day one. Adding reasons is cheap; restructuring later is expensive.
+- Always pair with a generic fallback at the parent path.
+- Test the fallback explicitly (reflection or a feature test with a fictitious reason).
+- The machine-readable identifier (e.g. `refusal_reason: 'no_relevant_context'`) NEVER localizes; only the human-visible string does.
+- When code introduces a new reason, the lang line is part of the same PR. Don't ship a code-only PR that depends on a follow-up lang PR — the fallback covers the deploy-window gap, not "we forgot the translation".
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::localizedRefusalMessage()`, `app/Http/Controllers/Api/MessageController.php::localizedRefusalMessage()` (mirror), `lang/en/kb.php`, `lang/it/kb.php`, `tests/Feature/Localization/RefusalI18nTest.php` (6 cases — 4 per-reason locale combos + helper-fallback contract + meta-shape locale invariance).

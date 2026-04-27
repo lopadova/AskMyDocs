@@ -116,8 +116,11 @@ final class KbChatSentinelTest extends TestCase
             ->assertJsonPath('refusal_reason', 'llm_self_refusal')
             ->assertJsonPath('confidence', 0)
             ->assertJsonPath('citations', [])
-            // Localized answer body (NOT the raw sentinel string).
-            ->assertJsonPath('answer', __('kb.no_grounded_answer'));
+            // T3.8-BE upgraded the answer body to the per-reason copy
+            // (`kb.refusal.llm_self_refusal`) instead of the generic
+            // fallback `kb.no_grounded_answer`. The literal sentinel
+            // string MUST never leak — that's the contract under test.
+            ->assertJsonPath('answer', __('kb.refusal.llm_self_refusal'));
 
         // Provider + model preserved in meta — the LLM call was paid in
         // full and the dashboard needs to attribute the refusal to a
