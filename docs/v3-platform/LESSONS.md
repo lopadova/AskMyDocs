@@ -822,3 +822,51 @@ Forward-compat with deployments where code lands before lang files. Without the 
 - When code introduces a new reason, the lang line is part of the same PR. Don't ship a code-only PR that depends on a follow-up lang PR — the fallback covers the deploy-window gap, not "we forgot the translation".
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::localizedRefusalMessage()`, `app/Http/Controllers/Api/MessageController.php::localizedRefusalMessage()` (mirror), `lang/en/kb.php`, `lang/it/kb.php`, `tests/Feature/Localization/RefusalI18nTest.php` (6 cases — 4 per-reason locale combos + helper-fallback contract + meta-shape locale invariance).
+
+## L24 — FE filter state owned by composer; bar component is stateless
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + component design
+**Severity:** medium (testability + reusability)
+**Applies to:** any feature where multiple sibling components share the same state surface (filters, selection, multi-step forms, drag selection, etc.).
+
+**Finding:**
+T2.7 ships the chat composer's multi-dimension FilterBar + FilterChip + FilterPickerPopover. Three components, all reading + writing the same `FilterState` object. Two tempting designs:
+
+1. **Bar owns state** — components read/write `useState` inside `FilterBar`. Easy at first; nightmare when the parent needs to seed filters from URL or persist to localStorage.
+2. **Composer owns state** — `useState<FilterState>` in `Composer`, passed to `FilterBar` as props with an `onChange` callback. Bar is stateless.
+
+T2.7 went with #2:
+- `Composer.tsx` owns `useState<FilterState>({})` and the `onChange={setFilters}` callback.
+- `FilterBar` is a pure render: `(filters, onChange) → JSX`.
+- `FilterPickerPopover` mutates only via `onApply(next)` — never internal state for the dimensions.
+- `FilterChip` is the leaf: `dimension + value + onRemove() → JSX`.
+
+**Why it matters:**
+- **Testability**: pure-render components are trivially Vitest-able with `render(<Bar filters={...} onChange={vi.fn()} />)` + `expect(onChange).toHaveBeenCalledWith({...})`. No `act()` wrappers, no `waitFor` for state propagation, no `useEffect` cleanup.
+- **Reusability**: the same `FilterBar` will be rendered inside the upcoming `KbChatPage` (stateless `/api/kb/chat`) AND a future MCP-tool config UI. Each parent owns its own state shape; the bar adapts via props.
+- **URL / localStorage / preset persistence (T2.9-FE)**: the parent reads + writes the persistence layer. The bar doesn't need to know it exists.
+- **Tracing**: when a filter doesn't apply, you grep for `setFilters(` in ONE file (Composer) instead of an `onChange → useState → useEffect → callback` chain.
+
+**Component responsibility split:**
+- `FilterChip`: render one removable pill, emit `onRemove()`. No knowledge of the dimension semantics — just a string and a callback.
+- `FilterBar`: render N chips for the active filters + a "+ Filter" button + a "Clear all" button when applicable. No persistence, no popover-state management.
+- `FilterPickerPopover`: render the multi-tab UI with checkboxes/inputs. Closes on Esc / click-outside. Emits `onApply(next)` — never touches `filters` directly.
+- `Composer`: owns `useState<FilterState>` + threads it into `useChatMutation`'s `mutate({ ..., filters })`.
+
+**testid naming convention codified:**
+- Chips: `filter-chip-{dimension}-{value}` + `-remove` for the × button
+- Bar: `chat-filter-bar`, `chat-filter-bar-add`, `chat-filter-bar-count`, `chat-filter-bar-clear`
+- Popover: `filter-popover`, `filter-tab-{dim}`, `filter-{dim}-option-{value}`, `filter-{dim}-input`, `filter-popover-close`
+- Predictable, semantic, grepable. Playwright scenarios read like prose.
+
+**FilterState type mirrors BE field names byte-for-byte (snake_case)** so the FE → BE payload is `JSON.stringify(filters)` with NO transformation step. R20 (route contracts match FE shape) — every key is auditable.
+
+**How to apply:**
+- Multi-component shared state → lift to the lowest common parent. Children become pure-render.
+- Stateless component takes `value + onChange` (controlled). Never `defaultValue + uncontrolled` for collaborative components.
+- testid convention: `feature-name-element-purpose` — never timestamp-based or random. Stable selectors are the foundation of robust E2E.
+- Type names match BE wire format. FE-only computed shapes get distinct names (`SelectedFilterPill`) so the boundary stays obvious.
+
+**References:** `frontend/src/features/chat/Composer.tsx` (state owner), `frontend/src/features/chat/FilterBar.tsx` (stateless), `frontend/src/features/chat/FilterChip.tsx` (leaf), `frontend/src/features/chat/FilterPickerPopover.tsx` (popover with internal `activeTab` state — that's a UX-only concern, NOT app state), `frontend/src/features/chat/chat.api.ts::FilterState` (snake_case mirror of `RetrievalFilters`), `tests/Feature/Api/KbChatControllerFiltersTest.php` (BE contract), `frontend/e2e/chat-filters.spec.ts` (FE+BE round-trip with payload assertion).

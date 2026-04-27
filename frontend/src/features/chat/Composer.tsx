@@ -1,14 +1,28 @@
 import { useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
+import { FilterBar } from './FilterBar';
 import { useChatMutation } from './use-chat-mutation';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
+import type { FilterState } from './chat.api';
 
 export interface ComposerProps {
     conversationId: number | null;
     projectLabel?: string;
     modelLabel?: string;
     onRequireConversation?: () => Promise<number | null>;
+    /**
+     * T2.7 — optional list of project keys to populate the filter
+     * picker's Project tab. Caller fetches from
+     * `/api/admin/projects/keys` (admin-only) and passes through.
+     * Empty list is a valid state — the popover renders an inline
+     * "No projects available" hint.
+     */
+    availableProjects?: string[];
+    /** Tags available for the current project scope (slug + display label + optional color). */
+    availableTags?: { slug: string; label: string; color?: string }[];
+    /** Doc-id → title map for chip labels (mention pinning, T2.8 follow-up). */
+    docLabels?: Record<number, string>;
 }
 
 /**
@@ -20,13 +34,26 @@ export interface ComposerProps {
  * `chat-composer-input`, the form is `chat-composer`, the submit is
  * `chat-composer-send`, and the inline error is `chat-composer-error`.
  */
-export function Composer({ conversationId, projectLabel, modelLabel, onRequireConversation }: ComposerProps): ReactNode {
+export function Composer({
+    conversationId,
+    projectLabel,
+    modelLabel,
+    onRequireConversation,
+    availableProjects = [],
+    availableTags = [],
+    docLabels = {},
+}: ComposerProps): ReactNode {
     const draft = useChatStore((s) => s.draft);
     const setDraft = useChatStore((s) => s.setDraft);
     const appendToDraft = useChatStore((s) => s.appendToDraft);
     const clearDraft = useChatStore((s) => s.clearDraft);
     const [focused, setFocused] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
+    // T2.7 — local filter state, owned by the composer. Persists across
+    // turns within the SAME composer mount so the user doesn't have to
+    // re-pick filters every time. Resetting on conversation change is
+    // a UX call we may revisit; for now keeping it simple.
+    const [filters, setFilters] = useState<FilterState>({});
     const mutation = useChatMutation();
 
     const send = async () => {
@@ -46,7 +73,7 @@ export function Composer({ conversationId, projectLabel, modelLabel, onRequireCo
         setLocalError(null);
         const content = trimmed;
         clearDraft();
-        mutation.mutate({ conversationId: targetId, content });
+        mutation.mutate({ conversationId: targetId, content, filters });
     };
 
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -83,6 +110,21 @@ export function Composer({ conversationId, projectLabel, modelLabel, onRequireCo
                     transition: 'box-shadow .25s',
                 }}
             >
+                {/*
+                  * T2.7 — FilterBar renders ABOVE the legacy context-chip
+                  * row. Together they form the "what's constraining this
+                  * answer" surface. The legacy chips (project label,
+                  * canonical-only, model) stay visible because they show
+                  * conversation-level config the user can't directly
+                  * change here; the FilterBar owns the per-turn filters.
+                  */}
+                <FilterBar
+                    filters={filters}
+                    onChange={setFilters}
+                    availableProjects={availableProjects}
+                    availableTags={availableTags}
+                    docLabels={docLabels}
+                />
                 <div style={{ display: 'flex', gap: 6, padding: '10px 12px 2px', flexWrap: 'wrap' }}>
                     {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
                     <ContextChip icon="Book" label="canonical only" />
