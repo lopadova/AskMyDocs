@@ -55,7 +55,8 @@ final class PipelineRegistryTest extends TestCase
         $this->assertContains('markdown-passthrough', $names);
         $this->assertContains('text-passthrough', $names);
         $this->assertContains('pdf-converter', $names);
-        $this->assertCount(3, $names);
+        $this->assertContains('docx-converter', $names);
+        $this->assertCount(4, $names);
     }
 
     public function test_lists_all_registered_chunkers_for_admin_ui(): void
