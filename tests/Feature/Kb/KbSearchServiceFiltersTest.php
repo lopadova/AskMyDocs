@@ -123,6 +123,85 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertContains(99, $sql['bindings']);
     }
 
+    public function test_apply_filters_doc_ids_empty_array_is_true_no_op_not_a_zero_eq_one_clause(): void
+    {
+        // T2.5 cycle-1 fix: the original test used a binding-count check
+        // which would silently pass even if Laravel compiled an unguarded
+        // `whereIn('id', [])` into a `0 = 1` always-false predicate (which
+        // would incorrectly filter EVERY result, not no-op). The proper
+        // assertion is comparing two queries:
+        //  (a) one with sourceTypes only
+        //  (b) one with sourceTypes + EMPTY docIds
+        // The SQL+bindings MUST be identical — proving the empty docIds
+        // contributed nothing. As defence-in-depth we also assert the
+        // SQL does NOT contain the `0 = 1` / `"id" in ()` patterns that
+        // would indicate an unguarded whereIn slipped through.
+        $baseline = $this->buildFilteredSql(new RetrievalFilters(
+            sourceTypes: ['markdown'],
+        ));
+        $withEmptyDocIds = $this->buildFilteredSql(new RetrievalFilters(
+            sourceTypes: ['markdown'],
+            docIds: [],
+        ));
+
+        $this->assertSame($baseline['sql'], $withEmptyDocIds['sql']);
+        $this->assertSame($baseline['bindings'], $withEmptyDocIds['bindings']);
+
+        // Defence-in-depth: an unguarded `whereIn('id', [])` would compile
+        // to one of these (Laravel grammars vary by dialect).
+        $this->assertStringNotContainsString('"id" in ()', $withEmptyDocIds['sql']);
+        $this->assertStringNotContainsString('0 = 1', $withEmptyDocIds['sql']);
+        $this->assertStringNotContainsString('1 = 0', $withEmptyDocIds['sql']);
+    }
+
+    public function test_apply_filters_doc_ids_single_value_uses_single_binding(): void
+    {
+        // T2.5 — single id produces `id in (?)` (NOT `id = ?`); the
+        // whereIn shape stays uniform regardless of array size, which
+        // simplifies the SQL builder + EXPLAIN plan reasoning.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(docIds: [42]));
+        $this->assertStringContainsString('"id" in (?)', $sql['sql']);
+        $this->assertContains(42, $sql['bindings']);
+        $this->assertCount(1, array_filter($sql['bindings'], fn ($v) => $v === 42));
+    }
+
+    public function test_apply_filters_doc_ids_combine_with_other_dimensions_in_single_whereHas(): void
+    {
+        // T2.5 cycle-1 fix: the original test only asserted each
+        // whereIn fragment was present SOMEWHERE in the SQL. A refactor
+        // that emitted multiple whereHas('document') subqueries (one per
+        // document-level dimension) would still satisfy the fragment
+        // assertions while violating the intended grouping invariant
+        // (which keeps the document-side EXPLAIN plan single-pass).
+        // Proper assertion: count `select * from "knowledge_documents"`
+        // occurrences — exactly ONE subquery should hold ALL the
+        // document-level constraints together.
+        $sql = $this->buildFilteredSql(new RetrievalFilters(
+            docIds: [1, 2, 3],
+            sourceTypes: ['pdf'],
+            languages: ['en'],
+        ));
+
+        $this->assertStringContainsString('"id" in (?, ?, ?)', $sql['sql']);
+        $this->assertStringContainsString('"source_type" in (?)', $sql['sql']);
+        $this->assertStringContainsString('"language" in (?)', $sql['sql']);
+        foreach ([1, 2, 3, 'pdf', 'en'] as $expected) {
+            $this->assertContains($expected, $sql['bindings']);
+        }
+
+        // Document-level subquery count: exactly ONE for the combined
+        // dimensions (NOT one per dimension). The pattern Eloquent emits
+        // for whereHas('document', fn) is `exists (select * from
+        // "knowledge_documents" ...)` — counting the literal substring
+        // is fine here because the SQL is fully deterministic at this
+        // layer.
+        $subqueryCount = substr_count(
+            $sql['sql'],
+            'select * from "knowledge_documents"',
+        );
+        $this->assertSame(1, $subqueryCount, 'expected document-level filters grouped in a SINGLE whereHas subquery');
+    }
+
     public function test_apply_filters_adds_whereHas_document_for_languages(): void
     {
         $sql = $this->buildFilteredSql(new RetrievalFilters(languages: ['it', 'en']));

@@ -482,3 +482,39 @@ Three concrete decisions surfaced during T2.4:
 **References:** `app/Support/KbPath.php::matchesAnyGlob()` + `globToRegex()`, `app/Services/Kb/KbSearchService.php::search()` (post-fetch folder-glob step), `tests/Unit/Support/KbPathTest.php` (6 new tests pinning the contract), `tests/Feature/Kb/KbSearchServiceFiltersTest.php::test_apply_filters_keeps_folder_globs_as_sql_no_op_filtering_happens_post_fetch`. Deferred follow-up: `app/Models/User.php:236` (R19 violation).
 
 ---
+
+## [2026-04-27 06:08] Sub-task T2.5 — Empty-array filter dimensions should be no-ops (implementation-specific today)
+
+**Type:** rule
+**Severity:** medium
+**Applies to:** RetrievalFilters dimensions, the FE composer payload shape, and any future filter implementation.
+
+**Finding:**
+T2.5 mostly verified the `doc_ids` whitelist that T2.1 already wired, and the verification surfaced a rule worth codifying for optional filter dimensions:
+
+**Empty-array dimensions should behave as no-ops, not as "match zero rows".** The practical risk of passing `[]` into `whereIn(...)` in Laravel is NOT invalid `IN ()` SQL — it's a compiled-to-always-false predicate (typically `0 = 1`) that silently filters out every row. T2.5 cycle-1 caught this in the test design: an unguarded empty whereIn would have passed the original binding-count assertion while silently breaking all results. Current implementation behaviour across dimensions is NOT uniform — document it accurately:
+
+- **SQL-backed dimensions guarded in `applyFilters()`**: `projectKeys` (chunk-level), and the document-level group `sourceTypes` / `canonicalTypes` / `docIds` / `languages` all check `!== []` before adding the `whereIn`. These are the cases the rule applies to directly.
+- **`tagSlugs` (T2.3)**: also guarded with `!== []`, but the implementation uses `whereExists` + a join (kdt + kb_tags), so the failure mode is "exists subquery that returns no rows" rather than "0 = 1".
+- **`connectorTypes`**: documented SQL no-op — NO clause is added in `applyFilters()` even when non-empty (deferred until v3.1 when a `connector_type` column lands). Listing it under "guarded with `!== []`" was wrong — the guard isn't there because the branch isn't there.
+- **`folderGlobs` (T2.4)**: applied POST-FETCH via `KbSearchService::filterByFolderGlobs()`, NOT inside `applyFilters()`. The empty-array no-op for it lives outside the SQL filter pass entirely.
+- **`dateFrom` / `dateTo`**: optional scalars, check `!== null`.
+- **`RetrievalFilters::isEmpty()`**: a TOP-LEVEL fast path that short-circuits `applyFilters()` when EVERY dimension is empty AND EVERY scalar is null. It is NOT proof that each individual dimension is uniformly guarded; partial-empty payloads (some dims set, others empty) still need each branch's own `!== []` guard.
+
+**Why it matters:**
+- For SQL-backed dimensions, the real failure mode is accidental zero-row behaviour from an empty `whereIn(...)` (compiles to `0 = 1`), not invalid SQL text. T2.5's original test relied on binding count and would have passed even under the broken behaviour — corrected to a SQL-equivalence assertion ("with empty docIds === without docIds at all") + defence-in-depth string checks for `0 = 1` / `1 = 0` / `"id" in ()`.
+- The FE composer (T2.7) should be able to send every filter dimension on every request, with `[]` meaning "nothing selected in this dimension", not "force zero results".
+- `connectorTypes` and `folderGlobs` need to be documented where they actually apply so future agents don't assume they're enforced inside `applyFilters()`.
+- For T2.7 / T2.8 (FE), sending `[]` or omitting the key should remain equivalent for unselected dimensions.
+- For T2.9 (presets), saving an empty preset should still round-trip as "no filters".
+
+**How to apply:**
+- For each new SQL-backed RetrievalFilters dimension added to `applyFilters()`: guard the branch against empty arrays before calling `whereIn(...)`. Test the empty-array case with a SQL-equivalence comparison (with-empty == without-the-dimension) PLUS defence-in-depth assertions that `0 = 1` / `1 = 0` / `IN ()` aren't present — binding-count alone is insufficient.
+- For optional scalars: keep using `!== null`.
+- DO NOT document a dimension as an `applyFilters()` SQL constraint unless it is actually enforced there. If a dimension is post-fetch (folderGlobs) or intentionally a no-op (connectorTypes), say that explicitly.
+- For new validation rules, `nullable` should continue to allow omission, `array` should allow `[]`, and the DTO `toFilters()` (T2.2) should keep normalizing omitted and explicitly-empty cases consistently.
+- New tests for new SQL-backed dimensions should include an "empty array is no-op" case (with the equivalence-comparison pattern from T2.5 cycle-1) alongside the "single value" and "multi value" cases. Dimensions applied outside SQL should be tested in the layer where they actually run (T2.4 unit-tests `filterByFolderGlobs` in isolation).
+
+**References:** `app/Services/Kb/Retrieval/RetrievalFilters.php::isEmpty()` (top-level fast path), `app/Services/Kb/KbSearchService.php::applyFilters()` (SQL-backed dimensions only — each with its `!== []` guard), `app/Services/Kb/KbSearchService.php::filterByFolderGlobs()` (post-fetch dimension), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (T2.5 added `test_apply_filters_doc_ids_empty_array_is_true_no_op_not_a_zero_eq_one_clause`, `test_apply_filters_doc_ids_single_value_uses_single_binding`, `test_apply_filters_doc_ids_combine_with_other_dimensions_in_single_whereHas`).
+
+---
