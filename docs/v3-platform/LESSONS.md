@@ -822,3 +822,43 @@ Forward-compat with deployments where code lands before lang files. Without the 
 - When code introduces a new reason, the lang line is part of the same PR. Don't ship a code-only PR that depends on a follow-up lang PR — the fallback covers the deploy-window gap, not "we forgot the translation".
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::localizedRefusalMessage()`, `app/Http/Controllers/Api/MessageController.php::localizedRefusalMessage()` (mirror), `lang/en/kb.php`, `lang/it/kb.php`, `tests/Feature/Localization/RefusalI18nTest.php` (6 cases — 4 per-reason locale combos + helper-fallback contract + meta-shape locale invariance).
+
+## L23 — FE renders BE-localized strings verbatim; no FE re-translation surface
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + i18n architecture decision
+**Severity:** medium (prevents drift between two translation surfaces)
+**Applies to:** any user-facing string that the BE already localizes (refusal payloads, error messages, status descriptions, audit-event labels).
+
+**Finding:**
+T3.6/T3.7 (M3-FE) ship `RefusalNotice` rendering BE-emitted refusal payloads. The plan §2904 prescribed `frontend/src/i18n/{en,it}.json` keys mirroring `lang/{en,it}/kb.php`'s refusal sub-tree. **We deliberately did NOT add the JSON files.**
+
+Reasoning:
+1. The BE already returns the localized `answer` string via `localizedRefusalMessage()` (L22 — per-reason hierarchy with generic fallback). The FE just renders what the BE delivered.
+2. Adding FE i18n keys mirroring the BE keys creates **two translation surfaces** for the same strings. They WILL drift — FE deploys land on a different cadence than BE deploys, and the next contributor to add a refusal reason will update one side without the other.
+3. Adding an i18n library to the FE (no `react-i18next` / `react-intl` exists today) is a separate scope-of-work decision that needs its own ADR — not a freebie inside the M3 wave.
+4. The existing FE chat UI is EN-only for non-content strings (button labels, hints, helper text). Refusal hints in `RefusalNotice` stay EN — consistent with the rest of the chat UI.
+
+**Where the FE strings stay EN-only (acceptable today):**
+- ConfidenceBadge tier labels: `high`/`moderate`/`low`/`refused` (inside the `aria-label`).
+- RefusalNotice per-reason hints: "Try refining your question, broadening filters, or adding more documents." etc.
+
+**Where the BE-localized string flows through (the load-bearing case):**
+- The user-visible refusal body (e.g. "No documents in the knowledge base match this question." vs "Nessun documento nella knowledge base corrisponde a questa domanda.") arrives in `message.content` and renders verbatim inside `<RefusalNotice body={...}>`.
+
+**Why it matters:**
+- Two translation surfaces for the same string is a future bug machine. The first time someone adds a new `refusal_reason` to the BE, lang lines, and forgets the FE JSON, users will see English text mixed with Italian on the same page.
+- Locale switching becomes one-source-of-truth: the BE's `App::setLocale()` (driven by `Accept-Language` middleware or user setting) controls everything user-visible. The FE doesn't have an opinion.
+- Forward-compat: if the project later adopts `react-i18next`, the BE-rendered strings still flow through cleanly. The new i18n surface goes around them, not through them.
+
+**How to apply:**
+- New BE-emitted user-visible string → render verbatim on the FE. Don't introduce a parallel FE key for the same content.
+- New FE-only user-visible string (button label, helper text, status indicator) → hardcoded EN today; bump to FE i18n only when the project adds an i18n library AND the same strings DON'T have a BE source.
+- Refusal taxonomy tags (`refusal_reason`) stay English — they're machine-readable identifiers, not user-visible strings (L22).
+- Test the contract: `expect(screen.getByTestId('refusal-notice-body')).toHaveTextContent('Italian copy here')` when the BE delivered Italian — pinning the verbatim-render invariant.
+
+**Trade-off accepted:**
+- The 2-3 EN-only labels in `ConfidenceBadge` + `RefusalNotice` (tier labels, hint copy) are NOT localized. This is a known limitation. When the project ships `react-i18next` (separate task), those strings move to the FE i18n surface. Until then, EN matches the rest of the chat UI.
+
+**References:** `frontend/src/features/chat/RefusalNotice.tsx` (renders `body` verbatim), `frontend/src/features/chat/ConfidenceBadge.tsx` (EN-only tier labels), `frontend/src/features/chat/chat.api.ts` (`refusal_reason` typed as English-tag string), `tests/Feature/Localization/RefusalI18nTest.php` (BE-side proves both en + it copy on the wire), `frontend/e2e/chat-refusal.spec.ts` (FE-side proves Italian body renders verbatim when BE delivered Italian).
