@@ -40,6 +40,32 @@ class KbChatController extends Controller
             filters: $filters,
         );
 
+        // T3.3 — deterministic refusal short-circuit. If too few primary
+        // chunks pass the refusal threshold, we don't call the LLM at all
+        // and return a refusal payload that the FE can render distinctly
+        // (see ConfidenceBadge / RefusalNotice — T3.6/T3.7, deferred).
+        // Threshold is intentionally above `default_min_similarity` so
+        // the search step over-retrieves but only confident chunks
+        // qualify for grounding.
+        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
+        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
+
+        $grounded = $result->primary->filter(
+            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
+        );
+
+        if ($grounded->count() < $refusalMinChunks) {
+            return $this->refusalResponse(
+                request: $request,
+                chatLog: $chatLog,
+                question: $question,
+                projectKey: $projectKey,
+                result: $result,
+                startTime: $startTime,
+                reason: 'no_relevant_context',
+            );
+        }
+
         $systemPrompt = view('prompts.kb_rag', [
             'chunks' => $result->primary,
             'expanded' => $result->expanded,
@@ -80,6 +106,12 @@ class KbChatController extends Controller
         return response()->json([
             'answer' => $aiResponse->content,
             'citations' => $citations,
+            // T3.3 — added to the happy-path response too so the FE shape
+            // is uniform across grounded vs refused. T3.5 will populate
+            // confidence with the real ConfidenceCalculator output; for
+            // now grounded answers carry null (FE renders no badge).
+            'confidence' => null,
+            'refusal_reason' => null,
             'meta' => [
                 'provider' => $aiResponse->provider,
                 'model' => $aiResponse->model,
@@ -93,6 +125,74 @@ class KbChatController extends Controller
                 // an extra round-trip. Mirrors the meta key set by
                 // KbSearchService::searchWithContext (T2.1).
                 'filters_selected' => $result->meta['filters_selected'] ?? 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Refusal payload — used when no chunks pass the similarity floor.
+     *
+     * Persists the chat log row even on refusal (analytics + the admin
+     * dashboard need to see refused turns to tune the threshold). Sets
+     * `confidence = 0` and `refusal_reason` on the chat_logs row via
+     * the `extra` field so existing single-row queries don't break.
+     *
+     * No LLM call. The latency reported is retrieval-only — useful for
+     * observability so we can tell apart "refused fast on missing data"
+     * from "refused after slow over-retrieval".
+     */
+    private function refusalResponse(
+        KbChatRequest $request,
+        ChatLogManager $chatLog,
+        string $question,
+        ?string $projectKey,
+        SearchResult $result,
+        float $startTime,
+        string $reason,
+    ): JsonResponse {
+        $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+        $answer = (string) __('kb.no_grounded_answer');
+
+        $chatLog->log(new ChatLogEntry(
+            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            userId: $request->user()?->id,
+            question: $question,
+            answer: $answer,
+            projectKey: $projectKey,
+            aiProvider: 'none',
+            aiModel: 'none',
+            chunksCount: 0,
+            sources: [],
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            latencyMs: $latencyMs,
+            clientIp: $request->ip(),
+            userAgent: $request->userAgent(),
+            extra: [
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+                'primary_count' => $result->primary->count(),
+                'expanded_count' => $result->expanded->count(),
+                'rejected_count' => $result->rejected->count(),
+            ],
+        ));
+
+        return response()->json([
+            'answer' => $answer,
+            'citations' => [],
+            'confidence' => 0,
+            'refusal_reason' => $reason,
+            'meta' => [
+                'provider' => null,
+                'model' => null,
+                'chunks_used' => 0,
+                'primary_count' => $result->primary->count(),
+                'expanded_count' => $result->expanded->count(),
+                'rejected_count' => $result->rejected->count(),
+                'latency_ms' => $latencyMs,
+                'filters_selected' => $result->meta['filters_selected'] ?? 0,
+                'refused_early' => true,
             ],
         ]);
     }

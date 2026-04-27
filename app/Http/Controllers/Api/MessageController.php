@@ -72,6 +72,29 @@ class MessageController extends Controller
             minSimilarity: config('kb.default_min_similarity', 0.30),
         );
 
+        // 3b. T3.3 — deterministic refusal short-circuit. Mirrors the
+        // KbChatController behaviour for the conversation flow: if the
+        // retrieved chunks don't pass the similarity floor, save a
+        // refusal assistant message and return WITHOUT calling the LLM.
+        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
+        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
+        $grounded = $chunks->filter(
+            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
+        );
+
+        if ($grounded->count() < $refusalMinChunks) {
+            return $this->refusalResponse(
+                request: $request,
+                chatLog: $chatLog,
+                conversation: $conversation,
+                question: $question,
+                projectKey: $projectKey,
+                userId: $userId,
+                startTime: $startTime,
+                reason: 'no_relevant_context',
+            );
+        }
+
         // 4. Get few-shot examples from positively-rated past answers
         $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
 
@@ -138,6 +161,82 @@ class MessageController extends Controller
             'content' => $aiResponse->content,
             'metadata' => $assistantMessage->metadata,
             'rating' => null,
+            'created_at' => $assistantMessage->created_at,
+        ]);
+    }
+
+    /**
+     * T3.3 — refusal payload for the conversation flow.
+     *
+     * Persists an assistant message with role='assistant', the i18n
+     * "no grounded answer" body, and metadata.refusal_reason +
+     * metadata.confidence so the FE can render it as a RefusalNotice
+     * (T3.7, deferred). Also writes the chat_log row so analytics see
+     * the refusal turn. The DB-level columns `messages.refusal_reason`
+     * + `messages.confidence` (T3.1) get populated alongside the
+     * metadata blob — keeps SQL aggregation cheap without scanning JSON.
+     */
+    private function refusalResponse(
+        Request $request,
+        ChatLogManager $chatLog,
+        Conversation $conversation,
+        string $question,
+        ?string $projectKey,
+        int $userId,
+        float $startTime,
+        string $reason,
+    ): JsonResponse {
+        $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+        $answer = (string) __('kb.no_grounded_answer');
+
+        $assistantMessage = $conversation->messages()->create([
+            'role' => 'assistant',
+            'content' => $answer,
+            'confidence' => 0,
+            'refusal_reason' => $reason,
+            'metadata' => [
+                'provider' => 'none',
+                'model' => 'none',
+                'chunks_count' => 0,
+                'latency_ms' => $latencyMs,
+                'citations' => [],
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+            ],
+        ]);
+
+        $conversation->touch();
+
+        $chatLog->log(new ChatLogEntry(
+            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            userId: $userId,
+            question: $question,
+            answer: $answer,
+            projectKey: $projectKey,
+            aiProvider: 'none',
+            aiModel: 'none',
+            chunksCount: 0,
+            sources: [],
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            latencyMs: $latencyMs,
+            clientIp: $request->ip(),
+            userAgent: $request->userAgent(),
+            extra: [
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+            ],
+        ));
+
+        return response()->json([
+            'id' => $assistantMessage->id,
+            'role' => 'assistant',
+            'content' => $answer,
+            'metadata' => $assistantMessage->metadata,
+            'rating' => null,
+            'confidence' => 0,
+            'refusal_reason' => $reason,
             'created_at' => $assistantMessage->created_at,
         ]);
     }

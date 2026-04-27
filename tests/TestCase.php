@@ -65,6 +65,13 @@ abstract class TestCase extends OrchestraTestCase
         $viewPath = __DIR__.'/../resources/views';
         $app['config']->set('view.paths', [realpath($viewPath) ?: $viewPath]);
 
+        // T3.3 — point the translator at the project's lang/ directory so
+        // `__('kb.no_grounded_answer')` resolves to the real string under
+        // tests (Testbench's default lang_path is its vendor skeleton,
+        // which has no `kb` namespace). Same realpath fallback as views.
+        $langPath = __DIR__.'/../lang';
+        $app->useLangPath(realpath($langPath) ?: $langPath);
+
         $app['config']->set('auth.providers.users.model', \App\Models\User::class);
 
         // bootstrap/app.php registers these aliases in production but

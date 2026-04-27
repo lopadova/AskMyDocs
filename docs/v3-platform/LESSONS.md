@@ -654,3 +654,37 @@ Three design choices worth pinning:
 - Accept both `object` and `array` chunk shapes via a helper (`fieldOf()`) — KbSearchService emits stdClass, fixtures use arrays, refactors break the calculator if it's tied to one shape.
 
 **References:** `app/Services/Kb/Grounding/ConfidenceCalculator.php::compute()` + `clamp01()` + `citationDensity()`, `tests/Unit/Services/Kb/Grounding/ConfidenceCalculatorTest.php` (11 cases including 4 dedicated boundary tests).
+
+## L19 — Refusal short-circuit must NEVER call the LLM; prove it with `shouldNotReceive`
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + security/cost invariant
+**Severity:** medium-high (cost + UX correctness)
+**Applies to:** every controller path that ought to skip an external API call when local conditions don't warrant it. Generalises beyond LLM to any expensive third-party service (OCR, payments, email).
+
+**Finding:**
+T3.3 ships the deterministic refusal short-circuit on `KbChatController` + `MessageController`. Two design points worth pinning:
+
+1. **The "no LLM call on refusal" invariant is the WHOLE point.** A refusal that still triggers a `chat/completions` request is worse than no refusal at all — it pays the API cost AND ships the hallucinated answer to the user. The early-return MUST live in the controller before the AI manager is invoked.
+
+2. **Test by Mockery's `shouldNotReceive('chat')` rather than `Http::assertNothingSent()`.** Both work, but `shouldNotReceive` is direct ("the controller did not call this method"), transport-agnostic ("doesn't matter how chat() was implemented"), and gives a clearer failure message ("Mockery: expected NO calls, got 1"). `Http::assertNothingSent()` only catches calls that go through `Http::` and would silently miss any future provider that uses a different HTTP client (Guzzle direct, cURL, etc.).
+
+3. **Existing tests that mocked KbSearchService with empty primary will start failing** when the refusal short-circuit ships. That's a CORRECT regression — those tests were stubbing "search returns nothing" while expecting the LLM was called downstream. After T3.3, empty-primary triggers refusal and `meta.provider = null`. The fix is to update the search mock to return a single high-similarity chunk (`vector_score: 0.90`, well above the 0.45 threshold). T2.2's `KbChatControllerFiltersTest` was the casualty here — the test's INTENT was to verify filter threading, not refusal, so the chunk-presence fix preserves the original intent.
+
+**Why it matters:**
+- A refusal path that costs $0.02 per call instead of $0.00 invalidates the whole feature ("anti-hallucination tier" was supposed to be free of LLM cost on refused turns).
+- The `shouldNotReceive` pattern surfaces regressions immediately. A future refactor that moves the LLM call before the refusal check would fail the test on the next CI run.
+- When introducing a new short-circuit, audit ALL existing tests that exercise the controller — any test that stubbed retrieval with empty results was implicitly relying on the controller blindly calling the LLM. That assumption is now wrong everywhere.
+
+**Mirror in MessageController too.** The conversation flow (`POST /conversations/{id}/messages`) uses `$search->search()` (flat collection, not `searchWithContext`), but the refusal logic is identical. Both controllers must check the same `kb.refusal.*` config keys and produce the same refusal payload shape so the FE can render either uniformly. Forgetting one of them ships an inconsistent UX where stateless `/api/kb/chat` refuses but stateful conversations still hallucinate.
+
+**i18n: lang_path under Testbench.** `__('kb.no_grounded_answer')` returns the raw key under Testbench unless `$app->useLangPath(__DIR__.'/../lang')` is set in `getEnvironmentSetUp`. Without it, every i18n string in tests reads as the literal key — the test then has to assert "string is non-empty" instead of asserting the localized content. Set the lang_path once in TestCase so `__()` works naturally everywhere.
+
+**How to apply:**
+- New short-circuit before an external call → write the `shouldNotReceive` test FIRST. If you can't make the mock fail when called, the test is too lax.
+- Audit existing tests touching the same controller — every "search returned X then LLM ran" stub needs to be re-examined.
+- Mirror the short-circuit across every controller that hits the same expensive call (chat, conversations, MCP tools, batch APIs). Don't ship inconsistent refusal between API surfaces.
+- Always set `useLangPath()` in Testbench's `getEnvironmentSetUp` when the project has any user-facing i18n string.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::refusalResponse()`, `app/Http/Controllers/Api/MessageController.php::refusalResponse()`, `tests/Feature/Api/KbChatRefusalTest.php` (9 cases — 5 prove no LLM call, 4 verify happy path through), `tests/TestCase.php::getEnvironmentSetUp` (`useLangPath` registration).
