@@ -1,7 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { FilterBar } from './FilterBar';
+
+// FilterPresetsDropdown (rendered inside FilterBar) uses TanStack
+// Query at the hook level — even when its internal popover is closed,
+// `useMutation` still needs a QueryClient in scope. Wrap each render
+// with a fresh client so test runs are isolated and the presets
+// dropdown can mount without crashing.
+function render(node: ReactElement) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return rtlRender(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+}
 
 describe('FilterBar', () => {
     it('renders the + Filter trigger even when no filters are active', () => {

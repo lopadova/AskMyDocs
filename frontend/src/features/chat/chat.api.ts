@@ -188,3 +188,54 @@ export const chatApi = {
         return data;
     },
 };
+
+/**
+ * T2.9-FE — saved filter presets CRUD.
+ *
+ * Endpoint surface (T2.9-BE shipped — see ChatFilterPresetController):
+ *   GET    /api/chat-filter-presets         → list current user's presets
+ *   POST   /api/chat-filter-presets         → create { name, filters }
+ *   PUT    /api/chat-filter-presets/{id}    → update { name, filters }
+ *   DELETE /api/chat-filter-presets/{id}    → 204
+ *
+ * Per-user authorization is enforced by the BE — cross-user IDs surface
+ * as 404. The FE never has to reason about other users' presets.
+ *
+ * Wire format wraps the rows in `{ data: [...] }` to match the rest of
+ * the v3.0 list endpoints; the FE unwraps consistently.
+ */
+
+export interface ChatFilterPreset {
+    id: number;
+    name: string;
+    filters: FilterState;
+    created_at?: string;
+    updated_at?: string;
+}
+
+export const chatFilterPresetsApi = {
+    async list(): Promise<ChatFilterPreset[]> {
+        const { data } = await api.get<{ data: ChatFilterPreset[] }>('/api/chat-filter-presets');
+        return data.data;
+    },
+
+    async create(name: string, filters: FilterState): Promise<ChatFilterPreset> {
+        const { data } = await api.post<{ data: ChatFilterPreset }>(
+            '/api/chat-filter-presets',
+            { name, filters },
+        );
+        return data.data;
+    },
+
+    async update(id: number, name: string, filters: FilterState): Promise<ChatFilterPreset> {
+        const { data } = await api.put<{ data: ChatFilterPreset }>(
+            `/api/chat-filter-presets/${id}`,
+            { name, filters },
+        );
+        return data.data;
+    },
+
+    async delete(id: number): Promise<void> {
+        await api.delete(`/api/chat-filter-presets/${id}`);
+    },
+};
