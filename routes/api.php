@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
+use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
@@ -74,6 +75,10 @@ Route::middleware([
 ])->group(function () {
     Route::post('/kb/chat', KbChatController::class);
     Route::post('/kb/ingest', KbIngestController::class);
+    // T2.6 — document title/path autocomplete for the FE chat composer's
+    // @mention popover (T2.7/T2.8 will consume it).
+    Route::get('/kb/documents/search', KbDocumentSearchController::class)
+        ->name('api.kb.documents.search');
     Route::delete('/kb/documents', KbDeleteController::class);
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
