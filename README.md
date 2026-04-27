@@ -482,8 +482,10 @@ Built-in converters (v3.0):
 
 Built-in chunkers (v3.0):
 
-- `MarkdownChunker` — handles `markdown`, `md`, `text`, `pdf`, `docx` source types (any source whose converter outputs markdown). For `pdf` the converter emits `# {basename}` + `## Page N` sections so the section_aware mode produces ≥1 chunk per page out-of-the-box.
-- `PdfPageChunker` (T1.7, not yet shipped) — will take over `pdf` source-type via the registry's first-match-wins rule and slice by page metadata directly instead of relying on the `## Page N` heading convention.
+- `PdfPageChunker` — handles `pdf` source-type. Slices on the `## Page N` heading boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` so citations like "see page N of foo.pdf" map 1:1 to a single chunk row. Pages exceeding `KB_CHUNK_HARD_CAP_TOKENS` are split intra-page on `\n\n` paragraph boundaries; all pieces of the same page share the same `heading_path` so page-level citations still resolve cleanly.
+- `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown). Uses `section_aware` mode: emits one chunk per ATX heading section with `heading_path` as a `>`-joined breadcrumb of H1-H3 ancestors. Falls back to `paragraph_split` (one chunk per blank-line-separated block) for documents without headings.
+
+The chunker registry is order-significant — `PdfPageChunker` is listed FIRST in `config/kb-pipeline.php`'s `chunkers` so the first-match-wins resolution prefers it for `pdf` over the markdown fallback.
 
 The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
 
