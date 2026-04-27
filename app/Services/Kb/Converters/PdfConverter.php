@@ -109,7 +109,10 @@ final class PdfConverter implements ConverterInterface
      *
      * @return list<string>
      *
-     * @throws ProcessRuntimeException when the binary is missing OR fails.
+     * @throws ProcessRuntimeException  when the `pdftotext` binary is missing
+     *                                  on PATH OR fails non-zero on the input.
+     * @throws \RuntimeException        when the temp file required for the
+     *                                  fallback can't be created/written.
      */
     private function extractWithPdftotext(string $bytes): array
     {
@@ -165,18 +168,22 @@ final class PdfConverter implements ConverterInterface
      */
     private function renderMarkdown(string $filename, array $pages): string
     {
-        $sections = '';
+        // Accumulate sections into an array + implode() once at the end
+        // instead of `.=` in the loop. For typical PDFs this is a wash;
+        // for large multi-hundred-page documents it avoids the quadratic
+        // realloc cost of repeated PHP string concatenation.
+        $sections = [];
         foreach ($pages as $i => $pageText) {
             $cleaned = $this->cleanText($pageText);
             if ($cleaned === '') {
                 continue;
             }
-            $sections .= '## Page ' . ($i + 1) . "\n\n{$cleaned}\n\n";
+            $sections[] = '## Page ' . ($i + 1) . "\n\n{$cleaned}\n\n";
         }
-        if ($sections === '') {
+        if ($sections === []) {
             return '';
         }
-        return "# {$filename}\n\n" . rtrim($sections) . "\n";
+        return "# {$filename}\n\n" . rtrim(implode('', $sections)) . "\n";
     }
 
     private function cleanText(string $text): string

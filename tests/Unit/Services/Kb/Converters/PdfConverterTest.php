@@ -84,12 +84,13 @@ final class PdfConverterTest extends TestCase
 
     public function test_skips_pages_that_extract_to_empty_text(): void
     {
-        // PdfFixtureBuilder requires non-empty page strings (it's enforced
-        // by the fixture builder), but pages with only whitespace-equivalent
-        // content (e.g. a single space — smalot will recover something but
-        // cleanText() strips it to '') should not produce heading-only chunks.
-        // We verify the behaviour by passing a real-text page alongside a
-        // single-space page and asserting only the real-text page survives.
+        // PdfFixtureBuilder requires at least one page, but individual page
+        // strings may still be empty or whitespace-only. Pages with only
+        // whitespace-equivalent content (e.g. a single space — smalot will
+        // recover something but cleanText() strips it to '') should not
+        // produce heading-only chunks. We verify the behaviour by passing a
+        // real-text page alongside a single-space page and asserting only
+        // the real-text page survives.
         $bytes = PdfFixtureBuilder::build([' ', 'Real content on second page.']);
         $result = (new PdfConverter())->convert($this->sourceDoc($bytes, 'docs/sparse.pdf'));
 
