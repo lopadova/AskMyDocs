@@ -82,6 +82,37 @@ final class PdfConverterTest extends TestCase
         $this->assertStringContainsString('Just a single page body.', $result->markdown);
     }
 
+    public function test_skips_pages_that_extract_to_empty_text(): void
+    {
+        // PdfFixtureBuilder requires non-empty page strings (it's enforced
+        // by the fixture builder), but pages with only whitespace-equivalent
+        // content (e.g. a single space — smalot will recover something but
+        // cleanText() strips it to '') should not produce heading-only chunks.
+        // We verify the behaviour by passing a real-text page alongside a
+        // single-space page and asserting only the real-text page survives.
+        $bytes = PdfFixtureBuilder::build([' ', 'Real content on second page.']);
+        $result = (new PdfConverter())->convert($this->sourceDoc($bytes, 'docs/sparse.pdf'));
+
+        // Only Page 2 has real text; Page 1's whitespace-only body is skipped.
+        $this->assertStringNotContainsString('## Page 1', $result->markdown);
+        $this->assertStringContainsString('## Page 2', $result->markdown);
+        $this->assertStringContainsString('Real content on second page.', $result->markdown);
+    }
+
+    public function test_returns_empty_markdown_when_every_page_is_empty(): void
+    {
+        // All-whitespace pages → empty markdown → MarkdownChunker returns []
+        // → no document/chunks persisted with meaningless content.
+        // Real-world trigger: scanned/image-only PDFs with no extractable text.
+        $bytes = PdfFixtureBuilder::build([' ', "\t", '   ']);
+        $result = (new PdfConverter())->convert($this->sourceDoc($bytes, 'docs/scan-only.pdf'));
+
+        $this->assertSame('', $result->markdown);
+        // Filename meta is still set so admin observability can attribute
+        // the empty source to its path.
+        $this->assertSame('scan-only.pdf', $result->extractionMeta['filename']);
+    }
+
     public function test_throws_runtime_exception_when_both_strategies_fail(): void
     {
         // A non-PDF byte string fails smalot AND pdftotext (the latter only if

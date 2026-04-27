@@ -146,16 +146,33 @@ final class PdfConverter implements ConverterInterface
     }
 
     /**
+     * Renders the per-page markdown. Pages whose text is empty/whitespace
+     * after cleanText() are SKIPPED — emitting `## Page N\n\n` with no body
+     * would otherwise produce heading-only chunks that pollute the vector
+     * index (real-world trigger: scanned/image-only PDFs where smalot
+     * extracts no text at all).
+     *
+     * If EVERY page is empty, returns an empty string so the downstream
+     * MarkdownChunker returns [] and no document/chunks get persisted with
+     * meaningless content. Mirrors TextPassthroughConverter's empty-body
+     * semantics.
+     *
      * @param  list<string>  $pages
      */
     private function renderMarkdown(string $filename, array $pages): string
     {
-        $md = "# {$filename}\n\n";
+        $sections = '';
         foreach ($pages as $i => $pageText) {
             $cleaned = $this->cleanText($pageText);
-            $md .= '## Page ' . ($i + 1) . "\n\n{$cleaned}\n\n";
+            if ($cleaned === '') {
+                continue;
+            }
+            $sections .= '## Page ' . ($i + 1) . "\n\n{$cleaned}\n\n";
         }
-        return rtrim($md) . "\n";
+        if ($sections === '') {
+            return '';
+        }
+        return "# {$filename}\n\n" . rtrim($sections) . "\n";
     }
 
     private function cleanText(string $text): string

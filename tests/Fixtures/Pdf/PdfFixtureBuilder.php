@@ -56,9 +56,20 @@ final class PdfFixtureBuilder
 
     /**
      * @param  list<string>  $pageTexts  one element = one page (ASCII only).
+     *
+     * @throws \InvalidArgumentException when `$pageTexts` is empty — a PDF
+     *         with zero pages produces an invalid `/Kids []` list and a
+     *         malformed Pages object that smalot cannot parse. Callers
+     *         must always provide ≥1 page.
      */
     public static function build(array $pageTexts): string
     {
+        if ($pageTexts === []) {
+            throw new \InvalidArgumentException(
+                'PdfFixtureBuilder::build() requires at least one page; got empty array.',
+            );
+        }
+
         $objects = [];
         $pageCount = count($pageTexts);
 
