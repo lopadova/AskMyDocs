@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
+use App\Ai\AiResponse;
 use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
@@ -15,6 +16,15 @@ use Illuminate\Support\Str;
 
 class KbChatController extends Controller
 {
+    /**
+     * T3.4 — literal sentinel string the LLM emits to signal self-refusal.
+     * The prompt template `prompts/kb_rag.blade.php` documents this contract
+     * under "Refusal Protocol". Detected via `=== trim($content)`, NOT
+     * `str_contains` — explanatory wrapping text means the LLM produced
+     * a partial answer and that's still useful to ship to the user.
+     */
+    private const SELF_REFUSAL_SENTINEL = '__NO_GROUNDED_ANSWER__';
+
     public function __invoke(
         KbChatRequest $request,
         AiManager $ai,
@@ -76,6 +86,24 @@ class KbChatController extends Controller
         $aiResponse = $ai->chat($systemPrompt, $question);
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
+
+        // T3.4 — sentinel detection. The prompt instructs the LLM to emit
+        // exactly `__NO_GROUNDED_ANSWER__` when it cannot ground the answer
+        // in the provided context. Compare with `===` after `trim()` —
+        // explanatory wrapping text should NOT trigger the refusal (the
+        // user benefits from the partial answer + skip-note pattern that
+        // the prompt also encourages).
+        if ($this->isSelfRefusalSentinel($aiResponse->content)) {
+            return $this->convertSentinelToRefusal(
+                request: $request,
+                chatLog: $chatLog,
+                question: $question,
+                projectKey: $projectKey,
+                result: $result,
+                aiResponse: $aiResponse,
+                latencyMs: $latencyMs,
+            );
+        }
 
         $citations = $this->buildCitations($result);
         $sources = $this->collectSources($result);
@@ -193,6 +221,92 @@ class KbChatController extends Controller
                 'latency_ms' => $latencyMs,
                 'filters_selected' => $result->meta['filters_selected'] ?? 0,
                 'refused_early' => true,
+            ],
+        ]);
+    }
+
+    /**
+     * T3.4 — exact sentinel match after trim. NOT a substring check; an
+     * answer like "I cannot help — __NO_GROUNDED_ANSWER__" still contains
+     * useful framing for the user, but a bare sentinel means the LLM
+     * decided no grounded answer exists. Whitespace tolerance handles
+     * providers that wrap responses in stray spaces/newlines.
+     */
+    private function isSelfRefusalSentinel(string $content): bool
+    {
+        return trim($content) === self::SELF_REFUSAL_SENTINEL;
+    }
+
+    /**
+     * T3.4 — convert an LLM-self-refusal sentinel response into a refusal
+     * payload. Different from {@see refusalResponse()} on TWO axes:
+     *
+     *   1. `refusal_reason` is `'llm_self_refusal'` — retrieval succeeded
+     *      but the LLM declared the chunks insufficient. Distinguishing
+     *      from `'no_relevant_context'` lets the dashboard tune the
+     *      similarity threshold (lots of `llm_self_refusal` ≈ threshold
+     *      too lenient) vs. retrieval (lots of `no_relevant_context` ≈
+     *      threshold too strict).
+     *   2. The chat-log row carries the REAL provider/model/tokens
+     *      because the LLM call was paid in full. Latency reflects the
+     *      end-to-end retrieval+LLM time, not retrieval-only.
+     *
+     * The user-facing answer is replaced with the i18n placeholder so the
+     * FE renders the RefusalNotice (T3.7, deferred) instead of the literal
+     * sentinel string.
+     */
+    private function convertSentinelToRefusal(
+        KbChatRequest $request,
+        ChatLogManager $chatLog,
+        string $question,
+        ?string $projectKey,
+        SearchResult $result,
+        AiResponse $aiResponse,
+        int $latencyMs,
+    ): JsonResponse {
+        $reason = 'llm_self_refusal';
+        $answer = (string) __('kb.no_grounded_answer');
+
+        $chatLog->log(new ChatLogEntry(
+            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            userId: $request->user()?->id,
+            question: $question,
+            answer: $answer,
+            projectKey: $projectKey,
+            aiProvider: $aiResponse->provider,
+            aiModel: $aiResponse->model,
+            chunksCount: $result->totalChunks(),
+            sources: $this->collectSources($result),
+            promptTokens: $aiResponse->promptTokens,
+            completionTokens: $aiResponse->completionTokens,
+            totalTokens: $aiResponse->totalTokens,
+            latencyMs: $latencyMs,
+            clientIp: $request->ip(),
+            userAgent: $request->userAgent(),
+            extra: [
+                'refusal_reason' => $reason,
+                'confidence' => 0,
+                'primary_count' => $result->primary->count(),
+                'expanded_count' => $result->expanded->count(),
+                'rejected_count' => $result->rejected->count(),
+            ],
+        ));
+
+        return response()->json([
+            'answer' => $answer,
+            'citations' => [],
+            'confidence' => 0,
+            'refusal_reason' => $reason,
+            'meta' => [
+                'provider' => $aiResponse->provider,
+                'model' => $aiResponse->model,
+                'chunks_used' => $result->totalChunks(),
+                'primary_count' => $result->primary->count(),
+                'expanded_count' => $result->expanded->count(),
+                'rejected_count' => $result->rejected->count(),
+                'latency_ms' => $latencyMs,
+                'filters_selected' => $result->meta['filters_selected'] ?? 0,
+                'refused_early' => false,  // LLM was called; only RETRIEVAL was sufficient.
             ],
         ]);
     }
