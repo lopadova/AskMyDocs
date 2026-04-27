@@ -40,9 +40,10 @@ class KbIngestController extends Controller
             'documents.*.source_path' => ['required', 'string', 'max:500'],
             'documents.*.title' => ['nullable', 'string', 'max:255'],
             'documents.*.mime_type' => ['nullable', 'string', 'max:200'],
-            // Body cap is generous (5 MB after base64) to accommodate
-            // multi-page PDFs / DOCX. Still subject to PHP's
-            // `post_max_size` and Laravel's request body limit.
+            // Body cap is generous (up to 7,000,000 characters; for base64
+            // payloads that's roughly 5.25 MB of raw bytes) to accommodate
+            // multi-page PDFs / DOCX. Still subject to PHP's `post_max_size`
+            // and Laravel's request body limit.
             'documents.*.content' => ['required', 'string', 'max:7000000'],
             'documents.*.metadata' => ['nullable', 'array'],
         ]);
@@ -72,10 +73,12 @@ class KbIngestController extends Controller
                         'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
                         $mimeType,
                         $sourcePath,
-                        implode(', ', array_map(
-                            fn (SourceType $t) => $t->toMime(),
-                            array_filter(SourceType::cases(), fn ($t) => $t !== SourceType::UNKNOWN),
-                        )),
+                        // Use the SourceType-owned authoritative list so
+                        // ALIASES like text/x-markdown are advertised too —
+                        // SourceType::cases()->toMime() would only emit
+                        // canonical forms and silently exclude accepted
+                        // aliases the validator actually recognises.
+                        implode(', ', SourceType::supportedMimes()),
                     )],
                 ]);
             }

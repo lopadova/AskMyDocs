@@ -9,16 +9,23 @@ namespace App\Support\Kb;
  *
  * The string values match the pre-T1.8 convention used by
  * `config/kb-pipeline.php::mime_to_source_type` and the `source_type`
- * column on `knowledge_documents`. Keeping the values stable means:
- *  - Existing rows read back into `SourceType::*` cases unchanged.
- *  - The KnowledgeDocument model can cast `source_type` to this enum
- *    transparently.
- *  - Config and CLI/API surfaces still accept/emit the bare string.
+ * column on `knowledge_documents`. The enum is HELPER-ONLY:
+ *  - Existing rows and config values continue to use the same string
+ *    tokens.
+ *  - Helper code (controllers, jobs, the folder walker) converts those
+ *    stable tokens to/from `SourceType::*` cases when deriving MIME,
+ *    extension, or binary/text handling.
+ *  - The KnowledgeDocument model does NOT cast `source_type` to this
+ *    enum — adding that cast would change the read shape from string
+ *    to enum and break the ~12 existing consumers (admin UI, search
+ *    queries, MCP tools) that rely on the string value. See LESSONS
+ *    T1.8 rule 1 for the rationale behind the helper-only approach.
  *
  * Use `fromMime()` to derive the enum from an HTTP/file-detected MIME
  * type, `fromExtension()` to derive it from a file extension (used by
  * `KbIngestFolderCommand` when walking the disk), `toMime()` to recover
- * the canonical MIME, and `isBinary()` to decide whether the
+ * the canonical MIME, `supportedMimes()` to enumerate every accepted
+ * MIME including aliases, and `isBinary()` to decide whether the
  * pipeline must read/transmit the source bytes as binary (PDF/DOCX) or
  * as text (markdown/text).
  */
@@ -115,5 +122,26 @@ enum SourceType: string
     public static function knownExtensions(): array
     {
         return ['md', 'markdown', 'txt', 'pdf', 'docx'];
+    }
+
+    /**
+     * @return list<string>  every accepted MIME type across every
+     *                       non-UNKNOWN SourceType, INCLUDING aliases
+     *                       like `text/x-markdown`. Used by
+     *                       KbIngestController to render the actionable
+     *                       422 error message ("Supported: ...") so
+     *                       operators see the full set of MIMEs the
+     *                       endpoint accepts (not just the canonical
+     *                       form returned by `toMime()`).
+     */
+    public static function supportedMimes(): array
+    {
+        return [
+            'text/markdown',
+            'text/x-markdown',
+            'text/plain',
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ];
     }
 }
