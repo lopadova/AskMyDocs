@@ -150,6 +150,13 @@ final class DocxConverter implements ConverterInterface
                 $level = max(2, min(6, $headingLevel + 1)); // basename = doc H1
                 return str_repeat('#', $level) . ' ' . $text;
             }
+            // PhpWord does not always promote `ListParagraph`-styled
+            // paragraphs to ListItem elements (numbering.xml may be missing
+            // from the package). Detect the style name as a fallback so
+            // bullet lists from Word documents still render as `- {text}`.
+            if ($this->isListParagraphStyle($element)) {
+                return '- ' . $text;
+            }
             return $text;
         }
 
@@ -196,6 +203,28 @@ final class DocxConverter implements ConverterInterface
     }
 
     /**
+     * Detects `ListParagraph` (Word's default bullet/numbered-list style)
+     * via the same paragraph-style channel as headings. Used as a fallback
+     * because PhpWord's reader only promotes paragraphs to ListItem when
+     * the package ships a complete `word/numbering.xml` definition; many
+     * real-world Word documents skip it.
+     */
+    private function isListParagraphStyle(AbstractElement $element): bool
+    {
+        $paragraphStyle = method_exists($element, 'getParagraphStyle')
+            ? $element->getParagraphStyle()
+            : null;
+        if ($paragraphStyle === null) {
+            return false;
+        }
+        $styleName = is_object($paragraphStyle) && method_exists($paragraphStyle, 'getStyleName')
+            ? (string) $paragraphStyle->getStyleName()
+            : (string) $paragraphStyle;
+
+        return strcasecmp($styleName, 'ListParagraph') === 0;
+    }
+
+    /**
      * Recursively concatenates all leaf text from a container element.
      */
     private function extractText(AbstractElement $element): string
@@ -238,31 +267,51 @@ final class DocxConverter implements ConverterInterface
     private function renderTable(Table $table): string
     {
         $rows = [];
-        foreach ($table->getRows() as $row) {
+        $columnCount = 0;
+        foreach ($table->getRows() as $rowIndex => $row) {
             $cells = [];
             foreach ($row->getCells() as $cell) {
                 $cellText = '';
                 foreach ($cell->getElements() as $cellElement) {
                     $cellText .= ' ' . $this->extractText($cellElement);
                 }
-                // Pipe-table cells must not contain raw `|`; escape them.
-                $cells[] = trim(str_replace('|', '\|', $cellText));
+                // Pipe-table cells must not contain raw `|` (would break the
+                // markdown column delimiter) or raw `\n` (would break the
+                // row delimiter). Escape both.
+                $cleaned = trim(str_replace(['|', "\r", "\n"], ['\|', ' ', ' '], $cellText));
+                $cells[] = $cleaned;
+            }
+            if ($rowIndex === 0) {
+                // Track the FIRST row's actual cell count — never derive it
+                // from the rendered string, because escaped `\|` characters
+                // would inflate `substr_count('|')` and produce an invalid
+                // header separator that breaks the markdown table.
+                $columnCount = count($cells);
             }
             $rows[] = '| ' . implode(' | ', $cells) . ' |';
         }
-        if ($rows === []) {
+        if ($rows === [] || $columnCount === 0) {
             return '';
         }
         // Insert the markdown header separator right after the FIRST row so
         // the first row becomes the table header.
-        $firstRow = $rows[0];
-        $columnCount = substr_count($firstRow, '|') - 1;
         $separator = '|' . str_repeat(' --- |', $columnCount);
 
         return $rows[0] . "\n" . $separator . (count($rows) > 1 ? "\n" . implode("\n", array_slice($rows, 1)) : '');
     }
 
     /**
+     * For NON-EMPTY conversions, the output starts with `# {basename}\n\n`
+     * so MarkdownChunker section_aware mode can use heading nesting
+     * (H1 > H2 ... breadcrumb) to attribute chunks back to the source file.
+     *
+     * For an empty extraction (zero blocks recovered), returns an empty
+     * string — same semantics as TextPassthroughConverter and PdfConverter:
+     * the chunker then returns [] and no embeddings get created for a
+     * filename-only document. (Whether an empty document row is still
+     * persisted by DocumentIngestor is the pipeline's concern, not this
+     * converter's.)
+     *
      * @param  list<string>  $blocks
      */
     private function renderMarkdown(string $filename, array $blocks): string
@@ -270,9 +319,6 @@ final class DocxConverter implements ConverterInterface
         if ($blocks === []) {
             return '';
         }
-        // Document-level H1 = basename so MarkdownChunker section_aware
-        // mode can use heading nesting (H1 > H2 ... breadcrumb) to attribute
-        // chunks back to the source file.
         return "# {$filename}\n\n" . implode("\n\n", $blocks) . "\n";
     }
 }

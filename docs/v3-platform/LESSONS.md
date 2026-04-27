@@ -299,7 +299,7 @@ Three concrete lessons surfaced during T1.6:
 **How to apply:**
 - For PhpWord work: `instanceof Title` is a separate branch from `instanceof AbstractContainer` — handle leaf-text via `getText()` + recursive call only if the result is itself an Element.
 - For new format converters: write an inline pure-PHP fixture builder under `tests/Fixtures/{Format}/` following T1.5/T1.6 pattern. Reject empty input with InvalidArgumentException.
-- Always start the converter's markdown output with `# {basename($doc->sourcePath)}\n\n`. Per-document headings nest UNDER the basename by adding 1 to the source level.
+- For NON-EMPTY conversions, start the converter's markdown output with `# {basename($doc->sourcePath)}\n\n`. Per-document headings nest UNDER the basename by adding 1 to the source level. For TRULY-EMPTY extractions (no recoverable text — e.g. scanned-only PDFs, blank docx), return an empty string so MarkdownChunker returns []; do NOT emit a filename-only heading because that would create a vector-index pollution chunk. Mirrors TextPassthroughConverter / PdfConverter empty-body semantics.
 
 **References:** `app/Services/Kb/Converters/DocxConverter.php` (extractText() Title branch), `tests/Fixtures/Docx/DocxFixtureBuilder.php` (5-file ZIP), `tests/Unit/Services/Kb/Converters/DocxConverterTest.php`, `tests/Feature/Kb/DocxIngestionTest.php`, `composer.json` (phpoffice/phpword require), README.md "Extending the Ingestion Pipeline".
 

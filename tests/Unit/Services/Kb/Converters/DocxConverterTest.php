@@ -95,6 +95,58 @@ final class DocxConverterTest extends TestCase
         $this->assertStringNotContainsString('## ', $result->markdown);
     }
 
+    public function test_renders_list_items_as_flat_bullets(): void
+    {
+        $bytes = DocxFixtureBuilder::build([
+            ['type' => 'list', 'text' => 'first item'],
+            ['type' => 'list', 'text' => 'second item'],
+            ['type' => 'list', 'text' => 'third item'],
+        ]);
+        $result = (new DocxConverter())->convert($this->sourceDoc($bytes, 'docs/list.docx'));
+
+        $this->assertStringContainsString('- first item', $result->markdown);
+        $this->assertStringContainsString('- second item', $result->markdown);
+        $this->assertStringContainsString('- third item', $result->markdown);
+    }
+
+    public function test_renders_table_as_pipe_table_with_header_separator(): void
+    {
+        $bytes = DocxFixtureBuilder::build([
+            ['type' => 'table', 'rows' => [
+                ['Header A', 'Header B', 'Header C'],
+                ['cell 1A', 'cell 1B', 'cell 1C'],
+                ['cell 2A', 'cell 2B', 'cell 2C'],
+            ]],
+        ]);
+        $result = (new DocxConverter())->convert($this->sourceDoc($bytes, 'docs/table.docx'));
+
+        $this->assertStringContainsString('| Header A | Header B | Header C |', $result->markdown);
+        $this->assertStringContainsString('| --- | --- | --- |', $result->markdown);
+        $this->assertStringContainsString('| cell 1A | cell 1B | cell 1C |', $result->markdown);
+        $this->assertStringContainsString('| cell 2A | cell 2B | cell 2C |', $result->markdown);
+    }
+
+    public function test_table_cells_with_pipe_chars_do_not_inflate_column_count(): void
+    {
+        // A cell containing literal `|` would, if escaped to `\|`, still
+        // contain the `|` character and inflate substr_count(). The
+        // column-count must come from the header row's actual cell count
+        // — verify by computing the expected header separator length.
+        $bytes = DocxFixtureBuilder::build([
+            ['type' => 'table', 'rows' => [
+                ['A', 'B'],
+                ['has | pipe', 'normal'],
+            ]],
+        ]);
+        $result = (new DocxConverter())->convert($this->sourceDoc($bytes, 'docs/pipes.docx'));
+
+        // Header should produce exactly `| --- | --- |` (2 columns), NOT 3.
+        $this->assertStringContainsString('| --- | --- |', $result->markdown);
+        $this->assertStringNotContainsString('| --- | --- | --- |', $result->markdown);
+        // The pipe inside a cell should be escaped (preserved as `\|`).
+        $this->assertStringContainsString('has \| pipe', $result->markdown);
+    }
+
     public function test_throws_runtime_exception_on_invalid_docx(): void
     {
         $this->expectException(\RuntimeException::class);

@@ -60,12 +60,26 @@ final class DocxFixtureBuilder
             throw new \RuntimeException('Failed to open zip archive for DocxFixtureBuilder.');
         }
 
-        $zip->addFromString('[Content_Types].xml', self::contentTypesXml());
-        $zip->addFromString('_rels/.rels', self::rootRelsXml());
-        $zip->addFromString('word/_rels/document.xml.rels', self::documentRelsXml());
-        $zip->addFromString('word/styles.xml', self::stylesXml());
-        $zip->addFromString('word/document.xml', self::documentXml($blocks));
-        $zip->close();
+        // Each addFromString() returns false on failure — silently ignoring
+        // would emit a corrupt/partial .docx that PhpWord then rejects in
+        // non-obvious ways. CLAUDE.md R4: surface side-effect failures.
+        $entries = [
+            '[Content_Types].xml'              => self::contentTypesXml(),
+            '_rels/.rels'                      => self::rootRelsXml(),
+            'word/_rels/document.xml.rels'     => self::documentRelsXml(),
+            'word/styles.xml'                  => self::stylesXml(),
+            'word/document.xml'                => self::documentXml($blocks),
+        ];
+        foreach ($entries as $name => $content) {
+            if ($zip->addFromString($name, $content) !== true) {
+                throw new \RuntimeException(
+                    sprintf('DocxFixtureBuilder failed to add zip entry "%s".', $name),
+                );
+            }
+        }
+        if ($zip->close() !== true) {
+            throw new \RuntimeException('DocxFixtureBuilder failed to close the zip archive.');
+        }
 
         $bytes = file_get_contents($tmp);
         if (is_file($tmp)) {
@@ -136,26 +150,72 @@ final class DocxFixtureBuilder
     }
 
     /**
-     * @param  list<array{type: 'heading'|'body', level?: int, text: string}>  $blocks
+     * @param  list<array{type: 'heading'|'body'|'list'|'table', level?: int, text?: string, rows?: list<list<string>>}>  $blocks
      */
     private static function documentXml(array $blocks): string
     {
         $body = '';
         foreach ($blocks as $block) {
-            $text = htmlspecialchars($block['text'], ENT_XML1 | ENT_QUOTES, 'UTF-8');
-            if ($block['type'] === 'heading') {
-                $level = max(1, min(6, $block['level'] ?? 1));
-                $body .= '<w:p>'
-                    . '<w:pPr><w:pStyle w:val="Heading' . $level . '"/></w:pPr>'
-                    . '<w:r><w:t>' . $text . '</w:t></w:r>'
-                    . '</w:p>';
-            } else {
-                $body .= '<w:p><w:r><w:t>' . $text . '</w:t></w:r></w:p>';
-            }
+            $body .= match ($block['type']) {
+                'heading' => self::headingXml(
+                    max(1, min(6, $block['level'] ?? 1)),
+                    self::escapeText($block['text'] ?? ''),
+                ),
+                'list'    => self::listItemXml(self::escapeText($block['text'] ?? '')),
+                'table'   => self::tableXml($block['rows'] ?? []),
+                default   => '<w:p><w:r><w:t>' . self::escapeText($block['text'] ?? '') . '</w:t></w:r></w:p>',
+            };
         }
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<w:document xmlns:w="' . self::NS_W . '">'
             . '<w:body>' . $body . '<w:sectPr/></w:body>'
             . '</w:document>';
+    }
+
+    private static function escapeText(string $s): string
+    {
+        return htmlspecialchars($s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+    }
+
+    private static function headingXml(int $level, string $escapedText): string
+    {
+        return '<w:p>'
+            . '<w:pPr><w:pStyle w:val="Heading' . $level . '"/></w:pPr>'
+            . '<w:r><w:t>' . $escapedText . '</w:t></w:r>'
+            . '</w:p>';
+    }
+
+    private static function listItemXml(string $escapedText): string
+    {
+        // ListParagraph + numPr is the standard OOXML markup for list items.
+        // PhpWord's reader recognises this as a ListItem element.
+        return '<w:p>'
+            . '<w:pPr>'
+            . '<w:pStyle w:val="ListParagraph"/>'
+            . '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+            . '</w:pPr>'
+            . '<w:r><w:t>' . $escapedText . '</w:t></w:r>'
+            . '</w:p>';
+    }
+
+    /**
+     * @param  list<list<string>>  $rows  rows[0] = header row by convention
+     */
+    private static function tableXml(array $rows): string
+    {
+        if ($rows === []) {
+            return '';
+        }
+        $tr = '';
+        foreach ($rows as $row) {
+            $tc = '';
+            foreach ($row as $cell) {
+                $tc .= '<w:tc>'
+                    . '<w:p><w:r><w:t>' . self::escapeText($cell) . '</w:t></w:r></w:p>'
+                    . '</w:tc>';
+            }
+            $tr .= '<w:tr>' . $tc . '</w:tr>';
+        }
+        return '<w:tbl>' . $tr . '</w:tbl>';
     }
 }
