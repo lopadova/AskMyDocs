@@ -399,3 +399,32 @@ Three concrete decisions surfaced during T2.1 — all binding for the rest of th
 **References:** `app/Services/Kb/Retrieval/RetrievalFilters.php`, `app/Services/Kb/KbSearchService.php::applyFilters()`, `app/Services/Kb/KbSearchService.php::search()` (back-compat plumbing), `app/Services/Kb/KbSearchService.php::searchWithContext()` (filters_active meta), `tests/Feature/Kb/KbSearchServiceFiltersTest.php` (reflection + SQL inspection pattern).
 
 ---
+
+## [2026-04-27 04:55] Sub-task T2.2 — KbChatRequest FormRequest + filters threading
+
+**Type:** rule + discovery
+**Severity:** medium
+**Applies to:** T2.6 (KbDocumentSearchController also accepts filters), T2.7 (FE composer payload shape), and any future API endpoint accepting RetrievalFilters.
+
+**Finding:**
+Three concrete decisions surfaced during T2.2:
+
+1. **`SourceType::cases()` IS the validator's source-of-truth for `filters.source_types.*`.** Plan §1729 hardcoded `'in:markdown,text,pdf,docx'` as the `in:` rule. Better: build the rule list from `SourceType::cases()` (rejecting UNKNOWN) at request-time so adding a new SourceType case in T1.x or v3.1 (e.g. `image`, `audio`) auto-extends the validator without a separate edit. This satisfies R6 (docs and config must stay coupled). **For T2.6**: the document-search controller uses the same source-type filter; reuse the same `SourceType::cases()` rule construction.
+
+2. **`ChatLogManager` is `final` — Mockery can't mock it.** Trying `Mockery::mock(ChatLogManager::class)` throws `Mockery\Exception: marked final and its methods cannot be replaced`. Two clean workarounds: (a) bind a real instance + disable via config (`config()->set('chat-log.enabled', false)` makes `log()` exit early at line 17), (b) build a fake `ChatLogDriverInterface` and bind it as the resolved driver. Option (a) is simpler for tests that don't care about chat-log assertions. **For any future test using ChatLogManager**: do NOT try to mock it; disable via config.
+
+3. **`KbChatRequest::effectiveProjectKey()` resolution priority is `filters.project_keys[0]` > legacy `project_key` > null.** Important for the chat-log row's single `project_key` column (still single-tenant in the schema today) — when a multi-tenant filters payload arrives, the FIRST tenant becomes the canonical attribution for observability. **For T2.6** if it builds a similar request: keep the same precedence so cross-endpoint behaviour stays consistent.
+
+**Why it matters:**
+- Rule 1 prevents an annoying coupling: every new SourceType would otherwise require manual touches in 2 places (enum + validator).
+- Rule 2 saves the next test-author 15 min of "why won't Mockery let me mock this".
+- Rule 3 keeps chat-log telemetry consistent — operators querying "all chats for project X" get correct row counts regardless of whether the FE used the legacy or new payload shape.
+
+**How to apply:**
+- For new validators on enum-backed fields: use `enum::cases()` to build the `in:` list rule, never hardcode the values.
+- For tests that need to silence final services: `config()->set('feature.enabled', false)` is the first thing to try.
+- For new endpoints accepting RetrievalFilters: copy `KbChatRequest::toFilters()` + `effectiveProjectKey()` shape so callers can mix legacy + new payloads consistently.
+
+**References:** `app/Http/Requests/Api/KbChatRequest.php` (rules + toFilters + effectiveProjectKey), `app/Http/Controllers/Api/KbChatController.php::__invoke` (filters threading + effective project_key + filters_selected echo), `tests/Feature/Api/KbChatControllerFiltersTest.php` (capture-and-stub KbSearchService pattern + chat-log disabled-via-config workaround), README.md "Chat filters (v3.0+)" section.
+
+---
