@@ -733,3 +733,41 @@ The split lets the dashboard distinguish "tune retrieval threshold" from "LLM is
 - Mirror across every controller that hits the same prompt (KbChatController + MessageController). Both must use the same sentinel constant + same detection helper.
 
 **References:** `app/Http/Controllers/Api/KbChatController.php::isSelfRefusalSentinel()` + `convertSentinelToRefusal()`, `app/Http/Controllers/Api/MessageController.php` (mirror), `resources/views/prompts/kb_rag.blade.php` "Refusal Protocol" section, `tests/Feature/Api/KbChatSentinelTest.php` (7 cases — bare/whitespace/substring/natural-IDK/grounded/meta-attribution/chunks-used).
+
+## L21 — Response-shape extensions are ADDITIVE only; never sub-objectify load-bearing keys
+
+**Date:** 2026-04-27
+**Author:** Claude (autonomous)
+**Type:** rule + API-contract discipline
+**Severity:** high (silently breaks every consumer)
+**Applies to:** any JSON response that already has shipped clients (FE app, MCP tools, public API, dashboards).
+
+**Finding:**
+T3.5 extends the `/api/kb/chat` response shape with confidence + retrieval_stats + search_strategy + per-stage latency breakdown. The plan §2731 originally specified `latency_ms` as a sub-object with `{retrieval, llm, total}`. Doing so would silently break every existing client that reads `meta.latency_ms` as an integer:
+
+```js
+// Existing FE chart code
+const latencyMs = response.meta.latency_ms;  // expects int
+chart.push({x: time, y: latencyMs});         // breaks if latency_ms = {retrieval, llm, total}
+```
+
+**Three rules to follow when extending a shipped response:**
+
+1. **Never rename top-level keys** — `latency_ms` stays `latency_ms`, never becomes `total_latency_ms` or `latencyMs` (camelCase). The diff between PHP arrays and JSON keys must remain stable.
+2. **Never sub-objectify a primitive that callers may already read.** `meta.latency_ms` was an int; introducing the breakdown adds `meta.latency_ms_breakdown` as a SIBLING — both keys coexist, the int total is preserved, and the breakdown carries the stages. Same approach for any future "we want richer X": add `X_breakdown` (or `X_details` / `X_extended`), don't morph `X`.
+3. **Default new keys to nullable / present-but-null.** The refusal paths (T3.3 `no_relevant_context` and T3.4 `llm_self_refusal`) emit the same extended meta shape — `search_strategy: null` and `retrieval_stats: null` are valid sentinel values. Clients can `??` over them without crashing on missing keys.
+
+**Why it matters:**
+- A single missed client (an old MCP tool, a dashboard built before T3.5, a CI integration that posts test queries) will produce a misleading "broken pipeline" alert. The cost of "we just refactored the API and 4 dashboards started showing zero" is days of triage.
+- Sub-objectifying after ship is a one-way door. You can't roll back without forcing every client to re-deploy. Sibling-keys are reversible — drop the new key, the old surface is unchanged.
+- The same logic applies to top-level fields. T3.3 added `confidence` + `refusal_reason` to the happy path with `null` defaults precisely so the FE shape stays uniform. Adding them as new top-level keys (vs nesting under `meta`) was deliberate — they're part of the answer payload, not metadata.
+
+**How to apply:**
+- New keys → ADD with sensible defaults. Don't mutate existing keys.
+- New sub-structure → put under `<original_key>_breakdown` or `<original_key>_details` as a sibling. Never override the original.
+- Refusal/error paths → same shape as happy path with sentinel values. NEVER strip keys based on path; the FE must use a uniform JSON-decoder.
+- Test the additive contract: write a test that asserts the OLD key is still int (`assertIsInt($resp->json('meta.latency_ms'))`). If the test fails, the contract was broken silently.
+
+**Architectural cost:** the ConfidenceCalculator (T3.2) is now wired into BOTH KbChatController and MessageController via constructor DI. The conversation flow has a thinner meta surface (no search_strategy / retrieval_stats — `$search->search()` doesn't expose them) — confidence is comparable across both surfaces but the dashboard rollups for retrieval-strategy-based queries should filter to the `/api/kb/chat` surface only. Document this asymmetry in the FE consumer.
+
+**References:** `app/Http/Controllers/Api/KbChatController.php::buildSuccessResponse()` (sibling-key pattern), `app/Services/Kb/KbSearchService.php::searchWithContext()` (meta enrichment with retrieval_ms / search_strategy / retrieval_stats), `tests/Feature/Api/KbChatResponseShapeTest.php::test_legacy_latency_ms_stays_flat_int` (the additive-contract guard).

@@ -7,6 +7,7 @@ use App\Ai\AiResponse;
 use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
+use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class KbChatController extends Controller
         AiManager $ai,
         KbSearchService $search,
         ChatLogManager $chatLog,
+        ConfidenceCalculator $confidence,
     ): JsonResponse {
         $question = (string) $request->input('question');
         // Effective single-project key for the legacy meta payload + the
@@ -108,6 +110,19 @@ class KbChatController extends Controller
         $citations = $this->buildCitations($result);
         $sources = $this->collectSources($result);
 
+        // T3.5 — composite confidence score for the grounded answer. Wires
+        // the ConfidenceCalculator (T3.2) into the hot path. citationsCount
+        // is the count of DOCUMENTS we ended up citing (one per source-path
+        // group), not the chunks themselves — that's what the user sees in
+        // the FE citations panel and what the prompt rewards via the
+        // citation-density signal.
+        $confidenceScore = $confidence->compute(
+            primaryChunks: $result->primary,
+            minThreshold: (float) config('kb.refusal.min_chunk_similarity', 0.45),
+            answerWords: str_word_count($aiResponse->content),
+            citationsCount: count($citations),
+        );
+
         $chatLog->log(new ChatLogEntry(
             sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
             userId: $request->user()?->id,
@@ -128,17 +143,51 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                // T3.5 — persist confidence on chat_logs row too so admin
+                // dashboards can roll up "average confidence per project"
+                // without joining messages.metadata. Mirrors T3.1 column
+                // additions on chat_logs.
+                'confidence' => $confidenceScore,
             ],
         ));
 
-        return response()->json([
-            'answer' => $aiResponse->content,
+        return response()->json($this->buildSuccessResponse(
+            answer: $aiResponse->content,
+            citations: $citations,
+            confidence: $confidenceScore,
+            aiResponse: $aiResponse,
+            result: $result,
+            totalLatencyMs: $latencyMs,
+        ));
+    }
+
+    /**
+     * T3.5 — happy-path response shape. Extracted so the conversation
+     * controller (MessageController) can compose the same shape without
+     * duplicating the meta-building logic. ADDITIVE-ONLY rule (L21):
+     * `latency_ms` stays a flat int (legacy clients), the breakdown
+     * lives under `latency_ms_breakdown` as a sibling. Same for
+     * `confidence` (now populated with a real score) and `refusal_reason`
+     * (still null on happy path) — both kept on every response for shape
+     * uniformity across grounded vs refused.
+     *
+     * @param  array<int, array<string, mixed>>  $citations
+     */
+    private function buildSuccessResponse(
+        string $answer,
+        array $citations,
+        int $confidence,
+        AiResponse $aiResponse,
+        SearchResult $result,
+        int $totalLatencyMs,
+    ): array {
+        $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? 0);
+        $llmMs = max(0, $totalLatencyMs - $retrievalMs);
+
+        return [
+            'answer' => $answer,
             'citations' => $citations,
-            // T3.3 — added to the happy-path response too so the FE shape
-            // is uniform across grounded vs refused. T3.5 will populate
-            // confidence with the real ConfidenceCalculator output; for
-            // now grounded answers carry null (FE renders no badge).
-            'confidence' => null,
+            'confidence' => $confidence,
             'refusal_reason' => null,
             'meta' => [
                 'provider' => $aiResponse->provider,
@@ -147,14 +196,25 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
-                'latency_ms' => $latencyMs,
-                // T2.2 — surface the user-selected filter count so the
-                // FE composer can render "5 filters selected" without
-                // an extra round-trip. Mirrors the meta key set by
-                // KbSearchService::searchWithContext (T2.1).
+                // L21 — `latency_ms` stays a flat int for back-compat;
+                // breakdown lives under `latency_ms_breakdown` as a
+                // sibling. Don't sub-objectify load-bearing keys.
+                'latency_ms' => $totalLatencyMs,
+                'latency_ms_breakdown' => [
+                    'retrieval' => $retrievalMs,
+                    'llm' => $llmMs,
+                    'total' => $totalLatencyMs,
+                ],
+                // T2.2 — surface the user-selected filter count.
                 'filters_selected' => $result->meta['filters_selected'] ?? 0,
+                // T3.5 — search_strategy + retrieval_stats sub-objects.
+                // Empty defaults if KbSearchService didn't emit them
+                // (e.g. older mocks in tests) so existing assertions
+                // that ignore meta.* don't see undefined keys.
+                'search_strategy' => $result->meta['search_strategy'] ?? null,
+                'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
             ],
-        ]);
+        ];
     }
 
     /**
@@ -206,6 +266,8 @@ class KbChatController extends Controller
             ],
         ));
 
+        $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? $latencyMs);
+
         return response()->json([
             'answer' => $answer,
             'citations' => [],
@@ -219,8 +281,15 @@ class KbChatController extends Controller
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
                 'latency_ms' => $latencyMs,
+                'latency_ms_breakdown' => [
+                    'retrieval' => $retrievalMs,
+                    'llm' => 0,  // No LLM call on the no_relevant_context path.
+                    'total' => $latencyMs,
+                ],
                 'filters_selected' => $result->meta['filters_selected'] ?? 0,
                 'refused_early' => true,
+                'search_strategy' => $result->meta['search_strategy'] ?? null,
+                'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
             ],
         ]);
     }
@@ -292,6 +361,9 @@ class KbChatController extends Controller
             ],
         ));
 
+        $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? 0);
+        $llmMs = max(0, $latencyMs - $retrievalMs);
+
         return response()->json([
             'answer' => $answer,
             'citations' => [],
@@ -305,8 +377,15 @@ class KbChatController extends Controller
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
                 'latency_ms' => $latencyMs,
+                'latency_ms_breakdown' => [
+                    'retrieval' => $retrievalMs,
+                    'llm' => $llmMs,  // LLM was called and paid for.
+                    'total' => $latencyMs,
+                ],
                 'filters_selected' => $result->meta['filters_selected'] ?? 0,
                 'refused_early' => false,  // LLM was called; only RETRIEVAL was sufficient.
+                'search_strategy' => $result->meta['search_strategy'] ?? null,
+                'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
             ],
         ]);
     }
