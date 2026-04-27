@@ -35,6 +35,11 @@ final class PipelineRegistryTest extends TestCase
         $r = app(PipelineRegistry::class);
         $this->assertInstanceOf(MarkdownChunker::class, $r->resolveChunker('markdown'));
         $this->assertInstanceOf(MarkdownChunker::class, $r->resolveChunker('md'));
+        $this->assertInstanceOf(MarkdownChunker::class, $r->resolveChunker('text'));
+        $this->assertInstanceOf(MarkdownChunker::class, $r->resolveChunker('docx'));
+        // T1.7 — PdfPageChunker registered FIRST in chunkers list; the
+        // first-match-wins rule resolves 'pdf' to it (not MarkdownChunker).
+        $this->assertInstanceOf(\App\Services\Kb\Chunkers\PdfPageChunker::class, $r->resolveChunker('pdf'));
     }
 
     public function test_throws_runtime_exception_on_unsupported_source_type(): void
@@ -64,8 +69,9 @@ final class PipelineRegistryTest extends TestCase
         $r = app(PipelineRegistry::class);
         $names = collect($r->allChunkers())->map(fn (ChunkerInterface $c) => $c->name())->all();
 
+        $this->assertContains('pdf-page-chunker', $names);
         $this->assertContains('markdown-section-aware', $names);
-        $this->assertCount(1, $names);
+        $this->assertCount(2, $names);
     }
 
     public function test_enrichers_list_is_empty_in_v3_0(): void

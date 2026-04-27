@@ -49,16 +49,14 @@ class MarkdownChunker implements ChunkerInterface
      * markdown reuses this chunker (no DRY violation):
      *  - `markdown` / `md` — MarkdownPassthroughConverter (T1.3)
      *  - `text`            — TextPassthroughConverter wraps body in `# basename`
-     *  - `pdf`             — PdfConverter (T1.5) emits `# basename` + `## Page N`
-     *                        until T1.7 introduces a dedicated PdfPageChunker
-     *                        that slices by page metadata directly.
      *  - `docx`            — DocxConverter (T1.6) outputs markdown headings.
      *
-     * T1.7 will REMOVE `pdf` from this list and register PdfPageChunker for
-     * the same source-type — at that point the registry's first-match-wins
-     * rule will make PdfPageChunker the resolver.
+     * `pdf` was REMOVED in T1.7 — PdfPageChunker now owns it and splits the
+     * converted markdown on `## Page N` heading boundaries. The registry's
+     * first-match-wins rule resolves `pdf` to PdfPageChunker because it's
+     * listed first in `config/kb-pipeline.php`.
      */
-    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'pdf', 'docx'];
+    private const SUPPORTED_SOURCE_TYPES = ['markdown', 'md', 'text', 'docx'];
 
     private WikilinkExtractor $wikilinks;
 

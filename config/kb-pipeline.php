@@ -31,10 +31,15 @@ return [
 
     /**
      * @var class-string<\App\Services\Kb\Contracts\ChunkerInterface>[]
+     *
+     * Order is significant — first match wins. PdfPageChunker is listed
+     * BEFORE MarkdownChunker so the registry resolves `pdf` source-type
+     * to the page-aware chunker even though MarkdownChunker would no
+     * longer claim 'pdf' anyway (defence-in-depth).
      */
     'chunkers' => [
+        \App\Services\Kb\Chunkers\PdfPageChunker::class,
         \App\Services\Kb\MarkdownChunker::class,
-        // PdfPageChunker added in T1.7
     ],
 
     /**

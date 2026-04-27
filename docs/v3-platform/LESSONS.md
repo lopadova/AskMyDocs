@@ -304,3 +304,32 @@ Three concrete lessons surfaced during T1.6:
 **References:** `app/Services/Kb/Converters/DocxConverter.php` (extractText() Title branch), `tests/Fixtures/Docx/DocxFixtureBuilder.php` (5-file ZIP), `tests/Unit/Services/Kb/Converters/DocxConverterTest.php`, `tests/Feature/Kb/DocxIngestionTest.php`, `composer.json` (phpoffice/phpword require), README.md "Extending the Ingestion Pipeline".
 
 ---
+
+## [2026-04-27 03:15] Sub-task T1.7 — PdfPageChunker + first-match-wins re-routing pattern
+
+**Type:** rule + pattern
+**Severity:** medium
+**Applies to:** T1.8 source_type enum + routing; any future task that introduces a more-specialised chunker for a source-type currently served by MarkdownChunker.
+
+**Finding:**
+Three concrete decisions surfaced during T1.7:
+
+1. **First-match-wins config order is the routing primitive.** `config/kb-pipeline.php` declares `chunkers` as an order-significant list, and `PipelineRegistry::resolveChunker()` returns the FIRST class whose `supports($sourceType)` returns true. To "take over" a source-type from a generic chunker (MarkdownChunker), the new specialised chunker is listed BEFORE the generic one. Belt-and-braces: ALSO remove the source-type from the generic chunker's `SUPPORTED_SOURCE_TYPES` so the generic one stops claiming it. Without the belt-and-braces, a future config-list reorder would silently re-route documents to the wrong chunker. **For T1.8**: when introducing the source_type enum, the same first-match-wins ordering remains the routing semantics — no enum-specific routing infrastructure needed.
+
+2. **Page-level heading_path is the right granularity for PDF citations.** `PdfPageChunker` currently splits on `## Page N` heading boundaries emitted by `PdfConverter`, and sets `heading_path = "Page N"` (not `"basename > Page N"`) for those page chunks. This keeps page citations short and unambiguous; the basename lives in `metadata.filename` for the citation renderer to compose `"page N of foo.pdf"`. This decision also means PDF chunks have a SHORTER heading_path than DOCX/Markdown chunks (which include the full breadcrumb) — the reranker's `head` term in its `0.6·vec + 0.3·kw + 0.1·head` fusion does NOT favor longer/shorter paths systematically, so the difference doesn't bias retrieval.
+
+3. **Hard-cap config knob is shared across chunkers.** Both MarkdownChunker and PdfPageChunker read `kb.chunking.hard_cap_tokens` (default 1024). Operators tune ONE knob to control embedding-cost / chunk-size trade-offs across all source types. **For T1.8 + future chunkers**: keep this convention — don't introduce per-chunker hard-cap configs unless there's a strong format-specific reason.
+
+**Why it matters:**
+- Rule 1 is the meta-pattern for ANY future "specialised processor takes over from generic" reroute (e.g. v3.1 might add a CodeChunker for `## File: foo.py` markdown that takes over `text` for source/code documents).
+- Rule 2 keeps citations operationally usable; longer heading paths look "richer" but are harder to display in chat bubbles.
+- Rule 3 is a decision recorded NOW so future chunkers don't fragment the operator tuning surface.
+
+**How to apply:**
+- New chunker takeover: (a) list new chunker BEFORE generic in `config/kb-pipeline.php` chunkers, (b) remove source-type from generic's SUPPORTED_SOURCE_TYPES.
+- Heading_path style: prefer minimal-but-citable (page number, file path segment, section title) over breadcrumbs that the chat UI will truncate anyway.
+- Hard-cap config: read from `kb.chunking.hard_cap_tokens`. Default 1024. Don't introduce per-chunker overrides without an ADR.
+
+**References:** `app/Services/Kb/Chunkers/PdfPageChunker.php`, `tests/Unit/Services/Kb/Chunkers/PdfPageChunkerTest.php`, `config/kb-pipeline.php` (PdfPageChunker listed first), `app/Services/Kb/MarkdownChunker.php` (pdf removed from SUPPORTED_SOURCE_TYPES), `tests/Feature/Kb/PipelineRegistryTest.php` (chunker count + pdf resolves to PdfPageChunker assertion).
+
+---
