@@ -59,9 +59,24 @@ final class DocxConverter implements ConverterInterface
     public function convert(SourceDocument $doc): ConvertedDocument
     {
         $start = hrtime(true);
+
         $tmp = tempnam(sys_get_temp_dir(), 'kb_docx_');
-        if ($tmp === false || file_put_contents($tmp, $doc->bytes) === false) {
-            throw new \RuntimeException('Failed to write temporary DOCX file for parsing.');
+        if ($tmp === false) {
+            throw new \RuntimeException(sprintf(
+                'DocxConverter failed to allocate a temporary file for "%s".',
+                $doc->sourcePath,
+            ));
+        }
+        if (file_put_contents($tmp, $doc->bytes) === false) {
+            // tempnam() created the file even though our write failed; clean
+            // up before throwing so we don't leak a 0-byte temp file.
+            if (is_file($tmp)) {
+                unlink($tmp);
+            }
+            throw new \RuntimeException(sprintf(
+                'DocxConverter failed to write a temporary DOCX file for "%s".',
+                $doc->sourcePath,
+            ));
         }
 
         try {
@@ -75,16 +90,29 @@ final class DocxConverter implements ConverterInterface
                 ), previous: $e);
             }
 
-            $blocks = [];
-            $sectionCount = 0;
-            foreach ($phpWord->getSections() as $section) {
-                $sectionCount++;
-                foreach ($section->getElements() as $element) {
-                    $rendered = $this->renderElement($element);
-                    if ($rendered !== '') {
-                        $blocks[] = $rendered;
+            try {
+                $blocks = [];
+                $sectionCount = 0;
+                foreach ($phpWord->getSections() as $section) {
+                    $sectionCount++;
+                    foreach ($section->getElements() as $element) {
+                        $rendered = $this->renderElement($element);
+                        if ($rendered !== '') {
+                            $blocks[] = $rendered;
+                        }
                     }
                 }
+            } catch (Throwable $e) {
+                // PhpWord can surface unexpected element shapes deep in the
+                // walk (e.g. ListItem with no TextObject on certain documents).
+                // Re-throw with the source path so ops debugging stays
+                // actionable; the original exception remains chained as
+                // `previous`.
+                throw new \RuntimeException(sprintf(
+                    'DocxConverter could not extract text from "%s": %s',
+                    $doc->sourcePath,
+                    $e->getMessage(),
+                ), previous: $e);
             }
         } finally {
             if (is_file($tmp)) {
@@ -288,6 +316,11 @@ final class DocxConverter implements ConverterInterface
                 // header separator that breaks the markdown table.
                 $columnCount = count($cells);
             }
+            // Real DOCX tables can have irregular rows (merged cells, body
+            // rows with more or fewer cells than the header). Pad / truncate
+            // each row to the header's column count so the resulting
+            // markdown table stays structurally valid for every viewer.
+            $cells = array_slice(array_pad($cells, $columnCount, ''), 0, $columnCount);
             $rows[] = '| ' . implode(' | ', $cells) . ' |';
         }
         if ($rows === [] || $columnCount === 0) {

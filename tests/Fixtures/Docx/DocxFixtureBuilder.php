@@ -25,8 +25,14 @@ use ZipArchive;
  * minimum DOCX subset PhpWord can parse, (d) unit and feature tests share
  * the same builder so assertion text stays aligned.
  *
+ * Supported block types (in `build()`):
+ *  - `heading` (with `level` 1..6)
+ *  - `body` (plain paragraph)
+ *  - `list` (bullet list — uses `ListParagraph` style + numPr stub)
+ *  - `table` (with `rows` as `list<list<string>>`; row 0 = header)
+ *
  * Limitations (intentional):
- *  - No images, no tables (a future test can extend the builder).
+ *  - No images or footnotes.
  *  - No theme / no fonts / no language tags.
  *  - ASCII text only (XML escapes anyway).
  */
@@ -36,7 +42,10 @@ final class DocxFixtureBuilder
     private const NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 
     /**
-     * @param  list<array{type: 'heading'|'body', level?: int, text: string}>  $blocks
+     * @param  list<array{type: 'heading'|'body'|'list'|'table', level?: int, text?: string, rows?: list<list<string>>}>  $blocks
+     *         For `heading`/`body`/`list` use `text`. For `heading` optionally
+     *         set `level` 1..6 (default 1). For `table` use `rows` as
+     *         `list<list<string>>` — row 0 is the header row by convention.
      *
      * @throws \InvalidArgumentException when `$blocks` is empty (an empty doc
      *         produces an empty `<w:body>` that PhpWord parses as zero
