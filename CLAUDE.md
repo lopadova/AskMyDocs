@@ -804,6 +804,56 @@ update with 422 (orphan-pivot guard); (d) test the cascade explicitly
 slug uniqueness blocks two tenants picking the same intuitive name.
 Pivot orphan rows make the FE crash on undefined relationships.
 
+### R37 — Branching strategy: `feature/v4.x` integration branches → main
+For AskMyDocs, `main` holds the **stable production release** (v3 today,
+v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
+release works in its own integration branch:
+
+- `main` ← stable production
+- `feature/v4.0` ← integration branch for entire v4.0 cycle (8 weeks)
+- `feature/v4.0/W1.B` ← sub-branch per sottotask, PR target = `feature/v4.0`
+- `feature/v4.1` ← integration branch for v4.1, PR sub-branches target it
+- ... and so on for v4.2, v4.3, v4.4
+
+**Merge to main happens ONCE per major release**, when:
+- All sub-branches merged into `feature/v4.x`
+- All tests + CI green on `feature/v4.x`
+- RC1/RC2 acceptance criteria passed
+- Then: `feature/v4.x` → `main` → tag `v4.x.0`
+
+**Why not merge sub-branches direct to main**:
+- v3 must stay stable on main for hotfixes during 6-month v4 development
+- Half-merged v4 features on main would break v3 production users
+- Single merge per release = single review surface, single deploy event
+
+**For new repos** (`padosoft/agent-llm`, `padosoft/laravel-flow`, etc.,
+created fresh for v4): PRs target `main` directly — no stable code to
+preserve; main and develop converge from day 1.
+
+Lorenzo decided this on 2026-04-28 during W1.B PR #78. Existing PR #78
+re-targeted from main to feature/v4.0.
+→ See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
+
+### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
+After opening or updating a PR, the agent MUST loop on (a) Copilot
+review comments and (b) CI status until BOTH conditions hold:
+**0 outstanding Copilot must-fix comments** AND **0 failing CI checks**.
+Stopping after a single push when CI is red, or "reporting status to
+user and waiting" when comments remain unaddressed, is a protocol
+violation. Each iteration: read `gh pr view <N> --comments` + `gh api
+.../pulls/<N>/comments` for inline reviews + `gh pr checks <N>` for CI
++ `gh run view <run-id> --log-failed` for failed jobs; fix all issues;
+run local test gate (phpunit + vitest + playwright + architecture);
+commit; push; LOOP. Exit only when reviewDecision is APPROVED (or no
+must-fix outstanding) and all checks SUCCESS or expected-SKIPPED. Wait
+60-180s after each push before re-checking (CI may not have started).
+Anti-pattern: "Push, see red, stop, report" — costs the user a wasted
+CI cycle and hands them a half-broken state. Lorenzo flagged this
+explicitly on PR #78 (2026-04-28). Applies to all repos under
+`lopadova/*` and `padosoft/*` and to any developer/agent working on
+this codebase, current and future.
+→ See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
+
 ### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`
 Every interactive admin or chat surface uses the testid hierarchy
 `feature-resource-{id}-{action[-substep]}` for stable, hierarchical,
