@@ -120,16 +120,16 @@ return new class extends Migration {
         Schema::table('knowledge_documents', function (Blueprint $t): void {
             // v3: uq_kb_doc_doc_id  (project_key, doc_id)
             // v3: uq_kb_doc_slug    (project_key, slug)
-            // v3: uq_kb_doc_source  (project_key, source_path, version_hash)
+            // v3: uq_kb_doc_version  (project_key, source_path, version_hash)
             // We drop only if they exist, then recreate tenant-scoped.
             // Note: dropUnique by name is the safe path on all drivers.
             try { $t->dropUnique('uq_kb_doc_doc_id'); } catch (\Throwable) {}
             try { $t->dropUnique('uq_kb_doc_slug'); } catch (\Throwable) {}
-            try { $t->dropUnique('uq_kb_doc_source'); } catch (\Throwable) {}
+            try { $t->dropUnique('uq_kb_doc_version'); } catch (\Throwable) {}
 
             $t->unique(['tenant_id', 'project_key', 'doc_id'], 'uq_kb_doc_doc_id');
             $t->unique(['tenant_id', 'project_key', 'slug'], 'uq_kb_doc_slug');
-            $t->unique(['tenant_id', 'project_key', 'source_path', 'version_hash'], 'uq_kb_doc_source');
+            $t->unique(['tenant_id', 'project_key', 'source_path', 'version_hash'], 'uq_kb_doc_version');
         });
     }
 
@@ -141,11 +141,11 @@ return new class extends Migration {
         Schema::table('knowledge_documents', function (Blueprint $t): void {
             try { $t->dropUnique('uq_kb_doc_doc_id'); } catch (\Throwable) {}
             try { $t->dropUnique('uq_kb_doc_slug'); } catch (\Throwable) {}
-            try { $t->dropUnique('uq_kb_doc_source'); } catch (\Throwable) {}
+            try { $t->dropUnique('uq_kb_doc_version'); } catch (\Throwable) {}
 
             $t->unique(['project_key', 'doc_id'], 'uq_kb_doc_doc_id');
             $t->unique(['project_key', 'slug'], 'uq_kb_doc_slug');
-            $t->unique(['project_key', 'source_path', 'version_hash'], 'uq_kb_doc_source');
+            $t->unique(['project_key', 'source_path', 'version_hash'], 'uq_kb_doc_version');
         });
     }
 
