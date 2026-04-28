@@ -43,7 +43,7 @@ jobs:
       # `composer install --no-dev` (these are require-dev only).
       - name: Clone Padosoft sister packages
         run: |
-          for repo in agent-llm laravel-flow eval-harness laravel-pii-redactor; do
+          for repo in laravel-ai-regolo laravel-flow eval-harness laravel-pii-redactor; do
             git clone --depth 1 "https://github.com/padosoft/${repo}.git" "../padosoft-${repo}"
           done
 
@@ -148,7 +148,7 @@ jobs:
       # Same fix as PHPUnit job: path repositories need sibling dirs.
       - name: Clone Padosoft sister packages
         run: |
-          for repo in agent-llm laravel-flow eval-harness laravel-pii-redactor; do
+          for repo in laravel-ai-regolo laravel-flow eval-harness laravel-pii-redactor; do
             git clone --depth 1 "https://github.com/padosoft/${repo}.git" "../padosoft-${repo}"
           done
 

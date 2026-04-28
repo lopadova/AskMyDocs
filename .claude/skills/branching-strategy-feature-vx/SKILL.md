@@ -32,7 +32,7 @@ main ← stable production release (v3 today, v4.0 next, v4.1 after, ...)
 
 **Merge to main happens ONCE per major release**, NEVER per sub-task.
 
-For **new repos** (`padosoft/agent-llm`, `padosoft/laravel-flow`, etc.,
+For **new repos** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, etc.,
 created fresh for v4): PRs target `main` directly — no stable code to
 preserve; main is develop is release from day 1.
 
@@ -126,7 +126,7 @@ Examples:
 
 ## When this rule does NOT apply
 
-- **New repos created for v4** (`padosoft/agent-llm`, `padosoft/laravel-flow`,
+- **New repos created for v4** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`,
   `padosoft/eval-harness`, `padosoft/laravel-pii-redactor`, `padosoft/askmydocs-pro`):
   no stable code yet, PRs target `main` directly, no integration branch needed.
 
