@@ -113,10 +113,15 @@ test.describe('Admin Log Viewer — Phase H1', () => {
 
         // Audit rows depend on DemoSeeder writing at least one row;
         // accept either `ready` (seeded row) or `empty` (no rows).
-        const auditState = await page
-            .getByTestId('audit-logs')
-            .getAttribute('data-state', { timeout: 15_000 });
-        expect(['ready', 'empty']).toContain(auditState);
+        // Poll via toHaveAttribute (NOT raw getAttribute) so we wait
+        // for TanStack Query's first fetch to settle out of `loading`
+        // — the synchronous read otherwise races and reports the
+        // transient state. Same pattern as `failed-jobs` below (R16).
+        await expect(page.getByTestId('audit-logs')).toHaveAttribute(
+            'data-state',
+            /^(empty|ready)$/,
+            { timeout: 15_000 },
+        );
 
         await page.getByTestId('logs-tab-failed').click();
         await expect(page.getByTestId('failed-jobs')).toBeVisible({ timeout: 15_000 });
