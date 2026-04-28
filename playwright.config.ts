@@ -47,7 +47,13 @@ export default defineConfig({
     webServer: skipWebServer
         ? undefined
         : {
-              command: 'php artisan serve --host=127.0.0.1 --port=8000',
+              // `--no-reload` is required to honour PHP_CLI_SERVER_WORKERS
+              // — without it Laravel's ServeCommand silently drops the
+              // env var and runs single-threaded again. See
+              // vendor/laravel/framework/src/Illuminate/Foundation/Console/ServeCommand.php
+              // line 105-108. PR #82 set the env var without the flag, so
+              // the workers configuration was never actually applied.
+              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8000',
               // `/healthz` returns a plain 200 with no auth / no DB hit.
               // The previous `baseURL` poll on `/` was hitting the home
               // route (auth middleware → 302 to /login) which CI's webServer
