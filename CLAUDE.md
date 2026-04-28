@@ -859,23 +859,40 @@ re-targeted from main to feature/v4.0.
 → See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
-After opening or updating a PR, the agent MUST loop on (a) Copilot
-review comments and (b) CI status until BOTH conditions hold:
-**0 outstanding Copilot must-fix comments** AND **0 failing CI checks**.
-Stopping after a single push when CI is red, or "reporting status to
-user and waiting" when comments remain unaddressed, is a protocol
-violation. Each iteration: read `gh pr view <N> --comments` + `gh api
-.../pulls/<N>/comments` for inline reviews + `gh pr checks <N>` for CI
-+ `gh run view <run-id> --log-failed` for failed jobs; fix all issues;
-run local test gate (phpunit + vitest + playwright + architecture);
-commit; push; LOOP. Exit only when reviewDecision is APPROVED (or no
-must-fix outstanding) and all checks SUCCESS or expected-SKIPPED. Wait
-60-180s after each push before re-checking (CI may not have started).
-Anti-pattern: "Push, see red, stop, report" — costs the user a wasted
-CI cycle and hands them a half-broken state. Lorenzo flagged this
-explicitly on PR #78 (2026-04-28). Applies to all repos under
-`lopadova/*` and `padosoft/*` and to any developer/agent working on
-this codebase, current and future.
+**The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
+
+1. Fine task — implementation complete.
+2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
+3. Apri PR with `gh pr create --reviewer copilot ...` — the
+   `--reviewer copilot` flag is **mandatory** on every PR.
+4. Attendi CI GitHub verde (typically 60–180 s).
+5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
+   Skipping this wait — even when CI is already green — is a protocol
+   violation.
+6. Leggi commenti (`gh pr view <N> --comments` + inline via
+   `gh api .../comments`) e fix locale.
+7. Ri-attendi CI tutta verde dopo il push del fix.
+8. Se Copilot ri-review trova nuovi commenti → GOTO step 5.
+9. Merge solo quando ENTRAMBI:
+   - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
+     Copilot comments;
+   - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
+     SKIPPED).
+
+Exit conditions are conjunctive: green CI alone is **not enough**.
+Anti-pattern: "Push, see green CI, merge now" — costs the user a code
+review pass that Copilot would have caught. Lorenzo flagged this
+explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
+PR #1/#2/#3 (2026-04-29) — they were merged without `--reviewer copilot`
+and without waiting for Copilot review, which is a protocol violation
+even though the code shipped clean.
+
+**Scope**: applies to all repos under `lopadova/*` and `padosoft/*`
+(current and future), to every developer and every AI agent working on
+the codebase, and to **every** PR — including docs-only PRs and CI-fix
+PRs. The only acceptable exception is a documented hotfix where every
+minute of delay is operationally costly; even then the post-merge
+review must run retroactively.
 → See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
 
 ### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`

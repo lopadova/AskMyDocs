@@ -13,33 +13,47 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 1. Copilot review has **0 outstanding comments** (all addressed)
 2. CI has **0 failing checks** (all green or expected-skipped)
 
-## The loop
+## The 9-step flow (canonical, applies to EVERY PR on EVERY repo)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ 1. fine task — implementation complete                            │
+│ 2. test tutti verdi in locale                                     │
+│    (phpunit + vitest + playwright + architecture)                 │
+│ 3. apri PR with --reviewer copilot   ← MANDATORY FLAG             │
+│ 4. attendi CI GitHub verde   (60-180s)                            │
+│ 5. attendi Copilot review commenti  (additional 2-15 min)         │
+│ 6. leggi commenti (gh pr view N --comments + inline) e fix        │
+│ 7. ri-attendi CI tutta verde (after fix push)                     │
+│ 8. (se Copilot ri-review) GOTO step 5                             │
+│ 9. merge solo dopo:                                               │
+│    - Copilot reviewDecision is APPROVED OR no must-fix outstanding│
+│    - All CI checks status COMPLETED + conclusion SUCCESS          │
+│      (or SKIPPED with explicit reason)                            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**KEY POINT (2026-04-29 reinforcement):** Step 3's `--reviewer copilot` flag and step 5's wait-for-Copilot-review are **NOT optional**. CI green alone is **not enough** — Copilot review (or explicit absence of must-fix comments) is the second gate. Skipping step 5 ("CI green, merge now") is a protocol violation, even on docs-only PRs.
+
+## The legacy loop (kept for fix-iteration phase only)
+
+When a PR has been opened and the FIRST review/CI cycle has surfaced issues:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. push commit                                           │
-│ 2. wait 60-180s for Copilot to start review + CI to run  │
-│ 3. read PR review comments  (gh pr view N --comments)    │
-│ 4. read inline review comments (gh api .../comments)     │
-│ 5. read CI status            (gh pr checks N)            │
-│ 6. for each failing CI: read failed log                  │
-│    (gh run view <run-id> --log-failed)                   │
-│ 7. fix all issues:                                       │
-│    - Copilot must-fix comments (bug, security, R-rule)   │
-│    - Copilot should-fix comments (style, quality)        │
-│    - CI failures (compilation, tests, lint)              │
-│ 8. run local test gate:                                  │
-│    - phpunit (985/985 must pass)                         │
-│    - vitest (frontend)                                   │
-│    - playwright (E2E)                                    │
-│    - architecture tests R30/R31/R32                      │
-│ 9. commit + push fix                                     │
-│ 10. GOTO step 2                                          │
+│ A. push fix commit                                       │
+│ B. wait 60-180s for Copilot re-review + CI to re-run     │
+│ C. read PR review comments  (gh pr view N --comments)    │
+│ D. read inline review comments (gh api .../comments)     │
+│ E. read CI status            (gh pr checks N)            │
+│ F. for each failing CI: read failed log                  │
+│ G. fix all issues + run local test gate                  │
+│ H. commit + push                                         │
+│ I. GOTO step B                                           │
 │                                                           │
 │ EXIT only when:                                          │
 │   - Copilot reviewDecision is APPROVED or no outstanding │
 │   - All checks status COMPLETED + conclusion SUCCESS     │
-│     (or SKIPPED with explicit reason)                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
