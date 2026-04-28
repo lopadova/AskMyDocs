@@ -11,6 +11,15 @@ abstract class TestCase extends OrchestraTestCase
         // Manual registration (instead of getPackageProviders) avoids
         // ProviderRepository's is_writable() check that fails on Windows
         // for paths containing spaces.
+
+        // laravel/ai SDK + padosoft/laravel-ai-regolo extension —
+        // registered first so the SDK's MultipleInstanceManager + the
+        // 'ai.provider.regolo' container binding exist before
+        // App\Providers\AiServiceProvider or any RegoloProvider call
+        // tries to resolve them.
+        $app->register(\Laravel\Ai\AiServiceProvider::class);
+        $app->register(\Padosoft\LaravelAiRegolo\LaravelAiRegoloServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);

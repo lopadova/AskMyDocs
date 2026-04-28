@@ -78,14 +78,30 @@ return [
             'timeout' => env('OPENROUTER_TIMEOUT', 120),
         ],
 
+        // Regolo entry uses the laravel/ai SDK shape because AskMyDocs's
+        // RegoloProvider delegates to the SDK + padosoft/laravel-ai-regolo
+        // package. The other four providers above stay on the AskMyDocs
+        // legacy shape until their SDK migration lands (W2.B.full follow-up).
         'regolo' => [
-            'api_key' => env('REGOLO_API_KEY'),
-            'base_url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
-            'chat_model' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
-            'embeddings_model' => env('REGOLO_EMBEDDINGS_MODEL', 'gte-Qwen2'),
-            'temperature' => env('REGOLO_TEMPERATURE', 0.2),
-            'max_tokens' => env('REGOLO_MAX_TOKENS', 4096),
+            'driver' => 'regolo',
+            'name' => 'regolo',
+            'key' => env('REGOLO_API_KEY'),
+            'url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
             'timeout' => env('REGOLO_TIMEOUT', 120),
+            'models' => [
+                'text' => [
+                    'default' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
+                    'cheapest' => env('REGOLO_CHAT_MODEL_CHEAPEST', 'Llama-3.1-8B-Instruct'),
+                    'smartest' => env('REGOLO_CHAT_MODEL_SMARTEST', 'Llama-3.3-70B-Instruct'),
+                ],
+                'embeddings' => [
+                    'default' => env('REGOLO_EMBEDDINGS_MODEL', 'Qwen3-Embedding-8B'),
+                    'dimensions' => env('REGOLO_EMBEDDINGS_DIMENSIONS', 4096),
+                ],
+                'reranking' => [
+                    'default' => env('REGOLO_RERANKING_MODEL', 'jina-reranker-v2'),
+                ],
+            ],
         ],
 
     ],
