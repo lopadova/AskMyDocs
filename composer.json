@@ -6,7 +6,7 @@
     "repositories": [
         {
             "type": "path",
-            "url": "../padosoft-agent-llm",
+            "url": "../padosoft-laravel-ai-regolo",
             "options": {"symlink": true}
         },
         {
@@ -39,7 +39,7 @@
         "laravel/mcp": "^0.7",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^11.0",
-        "padosoft/agent-llm": "dev-main",
+        "padosoft/laravel-ai-regolo": "dev-main",
         "padosoft/eval-harness": "dev-main",
         "padosoft/laravel-flow": "dev-main",
         "padosoft/laravel-pii-redactor": "dev-main",

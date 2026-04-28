@@ -850,7 +850,7 @@ release works in its own integration branch:
 - Half-merged v4 features on main would break v3 production users
 - Single merge per release = single review surface, single deploy event
 
-**For new repos** (`padosoft/agent-llm`, `padosoft/laravel-flow`, etc.,
+**For new repos** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, etc.,
 created fresh for v4): PRs target `main` directly — no stable code to
 preserve; main and develop converge from day 1.
 

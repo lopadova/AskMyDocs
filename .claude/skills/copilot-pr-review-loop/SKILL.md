@@ -59,7 +59,7 @@ said this is unacceptable (Lorenzo, 2026-04-28):
 Applies to **every PR** opened on:
 - `lopadova/AskMyDocs`
 - `padosoft/askmydocs-pro`
-- `padosoft/agent-llm`
+- `padosoft/laravel-ai-regolo`
 - `padosoft/laravel-flow`
 - `padosoft/eval-harness`
 - `padosoft/laravel-pii-redactor`
