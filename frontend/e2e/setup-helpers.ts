@@ -4,24 +4,29 @@ import type { APIResponse, Page } from '@playwright/test';
  * Setup-time helpers shared across auth.setup.ts, viewer.setup.ts, and
  * super-admin.setup.ts.
  *
- * `php artisan serve` runs PHP's built-in dev server, which (a) can drop
- * early POSTs while Laravel is still finishing its bootstrap, and (b) can
- * briefly stop accepting new connections while a previous request is
- * running a long `migrate:fresh` against Postgres.
+ * `php artisan serve` runs PHP's built-in dev server. Two failure modes
+ * we have observed on the CI runner:
+ *  (a) it drops early POSTs while Laravel is still finishing bootstrap;
+ *  (b) it stalls the accept loop while a long `migrate:fresh` is
+ *      running, causing every immediately-following connection to
+ *      ECONNREFUSED for the duration of the heavy request.
  *
- * The webServer probe in playwright.config.ts hits `/healthz` (no DB),
- * so the runner sees green before the full request stack is warm. The
- * three setup projects then chain reset/seed cycles serially — a flaky
- * window can ECONNREFUSED any one of them. Eight attempts at 1500ms
- * gives 12s of resilience per call, which has been enough on every
- * empirical CI run we've inspected.
+ * The structural fix lives in playwright.config.ts (the webServer env
+ * sets `PHP_CLI_SERVER_WORKERS=4`, which makes the built-in server
+ * fork worker children and serve requests concurrently). This retry
+ * loop is the belt-and-braces defence against the residual race during
+ * the very first POST after the server reports `/healthz` green.
+ *
+ * 16 attempts at 1500ms covers 24 s — comfortably longer than the 12 s
+ * window post-merge run #25078597176 stayed in ECONNREFUSED before the
+ * workers fix landed.
  */
 export async function postWithRetry(
     page: Page,
     path: string,
     body?: unknown,
 ): Promise<APIResponse> {
-    const MAX_ATTEMPTS = 8;
+    const MAX_ATTEMPTS = 16;
     const SLEEP_MS = 1500;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
