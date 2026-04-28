@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -27,9 +28,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class KbEdge extends Model
 {
+    use BelongsToTenant;
+
     protected $table = 'kb_edges';
 
     protected $fillable = [
+        'tenant_id',
         'edge_uid',
         'from_node_uid',
         'to_node_uid',
