@@ -1,6 +1,7 @@
 import { test as setup, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { resetAndSeed } from './setup-helpers';
 
 const AUTH_FILE = 'playwright/.auth/admin.json';
 const ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'admin@demo.local';
@@ -31,44 +32,13 @@ setup('authenticate as admin', async ({ page, context }) => {
     mkdirSync(dirname(AUTH_FILE), { recursive: true });
 
     // Reset + seed demo data. Both endpoints are guarded by APP_ENV=testing.
-    // Surface non-2xx loudly so a silent seeder failure doesn't manifest
-    // downstream as an opaque "credentials don't match our records" 422
-    // (the error mode caught on PR #33's previous run).
-    //
-    // Retry the first /testing/reset on socket-hang-up — `php artisan
-    // serve`'s built-in PHP server occasionally drops the first POST
-    // after boot if Laravel is still finishing its bootstrap. The
-    // workflow now runs `php artisan optimize` to pre-warm caches but
-    // a defensive retry covers the residual race.
-    let resetResponse;
-    for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-            resetResponse = await page.request.post('/testing/reset');
-            break;
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (attempt === 2) {
-                throw new Error(
-                    `/testing/reset failed after 3 attempts: ${message}`,
-                );
-            }
-            // Brief sleep — give artisan serve a moment to recover.
-            await new Promise((r) => setTimeout(r, 500));
-        }
-    }
-    if (!resetResponse || !resetResponse.ok()) {
-        throw new Error(
-            `/testing/reset failed: ${resetResponse?.status()} ${await resetResponse?.text()}`,
-        );
-    }
-    const seedResponse = await page.request.post('/testing/seed', {
-        data: { seeder: 'DemoSeeder' },
-    });
-    if (!seedResponse.ok()) {
-        throw new Error(
-            `/testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
-        );
-    }
+    // The shared `resetAndSeed` helper retries each call up to 8× at
+    // 1500ms intervals to cover the `php artisan serve` boot race and
+    // the post-reset slot when artisan briefly stops accepting new
+    // connections. Surfacing non-2xx loudly here keeps a silent seeder
+    // failure from manifesting downstream as an opaque
+    // "credentials don't match our records" 422 (PR #33 mode).
+    await resetAndSeed(page);
 
     await page.request.get('/sanctum/csrf-cookie');
 
