@@ -56,7 +56,19 @@ export default defineConfig({
               url: `${baseURL}/healthz`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
-              env: { APP_ENV: 'testing' },
+              env: {
+                  APP_ENV: 'testing',
+                  // PHP_CLI_SERVER_WORKERS spawns N worker children for
+                  // the PHP built-in dev server (PHP 7.4+). Without it,
+                  // `php artisan serve` is single-threaded and the
+                  // accept loop stalls during a long migrate:fresh
+                  // request, causing every concurrent / immediately-
+                  // following request to ECONNREFUSED for ≥12s — the
+                  // root of the recurring auth.setup flake. Four workers
+                  // is enough headroom for healthz + reset + seed +
+                  // login to land in parallel.
+                  PHP_CLI_SERVER_WORKERS: '4',
+              },
               stdout: 'pipe',
               stderr: 'pipe',
           },
