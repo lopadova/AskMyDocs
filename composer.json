@@ -3,6 +3,28 @@
     "description": "AskMyDocs - Enterprise AI Knowledge Base (RAG) on Laravel.",
     "type": "project",
     "license": "MIT",
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../padosoft-agent-llm",
+            "options": {"symlink": true}
+        },
+        {
+            "type": "path",
+            "url": "../padosoft-laravel-flow",
+            "options": {"symlink": true}
+        },
+        {
+            "type": "path",
+            "url": "../padosoft-eval-harness",
+            "options": {"symlink": true}
+        },
+        {
+            "type": "path",
+            "url": "../padosoft-laravel-pii-redactor",
+            "options": {"symlink": true}
+        }
+    ],
     "require": {
         "php": "^8.3",
         "laravel/framework": "^13.0",
@@ -17,6 +39,10 @@
         "laravel/mcp": "^0.7",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^11.0",
+        "padosoft/agent-llm": "dev-main",
+        "padosoft/eval-harness": "dev-main",
+        "padosoft/laravel-flow": "dev-main",
+        "padosoft/laravel-pii-redactor": "dev-main",
         "phpunit/phpunit": "^12.0"
     },
     "suggest": {

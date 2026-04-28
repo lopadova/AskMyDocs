@@ -2,9 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/v4.*']
   pull_request:
-    branches: [main]
+    branches: [main, 'feature/v4.*']
 
 jobs:
   phpunit:
@@ -37,6 +37,15 @@ jobs:
           path: ~/.composer/cache
           key: ${{ runner.os }}-php${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
           restore-keys: ${{ runner.os }}-php${{ matrix.php }}-composer-
+
+      # Clone the 4 padosoft/* sibling packages so the path repositories
+      # in composer.json resolve in CI. Production deploys MUST use
+      # `composer install --no-dev` (these are require-dev only).
+      - name: Clone Padosoft sister packages
+        run: |
+          for repo in agent-llm laravel-flow eval-harness laravel-pii-redactor; do
+            git clone --depth 1 "https://github.com/padosoft/${repo}.git" "../padosoft-${repo}"
+          done
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
@@ -135,6 +144,13 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
+      # Same fix as PHPUnit job: path repositories need sibling dirs.
+      - name: Clone Padosoft sister packages
+        run: |
+          for repo in agent-llm laravel-flow eval-harness laravel-pii-redactor; do
+            git clone --depth 1 "https://github.com/padosoft/${repo}.git" "../padosoft-${repo}"
+          done
 
       - name: Install PHP deps
         run: composer install --prefer-dist --no-interaction --no-progress
