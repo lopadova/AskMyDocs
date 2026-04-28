@@ -21,6 +21,7 @@ use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
+use App\Support\TenantContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -47,6 +48,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(PipelineRegistry::class, function ($app) {
             return new PipelineRegistry($app, (array) config('kb-pipeline', []));
         });
+
+        // v4.0/W1.D — TenantContext is request-scoped. Singleton so every
+        // service / controller / model trait sees the same instance within
+        // one request. Set by ResolveTenant middleware on incoming HTTP;
+        // reset between PHPUnit tests via the Application instance lifecycle.
+        $this->app->singleton(TenantContext::class);
     }
 
     public function boot(): void

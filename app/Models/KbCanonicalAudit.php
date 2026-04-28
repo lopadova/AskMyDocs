@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -33,11 +34,14 @@ use Illuminate\Database\Eloquent\Model;
  */
 class KbCanonicalAudit extends Model
 {
+    use BelongsToTenant;
+
     protected $table = 'kb_canonical_audit';
 
     public $timestamps = false;
 
     protected $fillable = [
+        'tenant_id',
         'project_key',
         'doc_id',
         'slug',

@@ -804,6 +804,30 @@ update with 422 (orphan-pivot guard); (d) test the cascade explicitly
 slug uniqueness blocks two tenants picking the same intuitive name.
 Pivot orphan rows make the FE crash on undefined relationships.
 
+### R30 — Cross-tenant isolation on every tenant-aware query
+Every Eloquent query against a tenant-aware table MUST be scoped to the
+active tenant via `forTenant($ctx->current())` (provided by the
+`BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
+different customers can legitimately share the same `project_key` — tenant
+boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
+Tenant-aware tables: knowledge_documents, knowledge_chunks,
+embedding_cache, chat_logs, conversations, messages, kb_nodes, kb_edges,
+kb_canonical_audit, project_memberships, kb_tags,
+knowledge_document_tags, knowledge_document_acl, admin_command_audit,
+admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
+→ See `.claude/skills/cross-tenant-isolation/SKILL.md`.
+
+### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
+Every Eloquent model under `app/Models/` representing a tenant-scoped
+domain entity MUST `use BelongsToTenant;` (auto-fills tenant_id on
+creating from `TenantContext`) and list `'tenant_id'` in `$fillable`
+(or use `$guarded = ['id']`). Every new migration creating a tenant-aware
+table MUST add `string('tenant_id', 50)->default('default')->index()`
+and start composite uniques with `tenant_id`. Architecture test
+`tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list
+and gates new entries.
+→ See `.claude/skills/tenant-id-mandatory/SKILL.md`.
+
 ### R37 — Branching strategy: `feature/v4.x` integration branches → main
 For AskMyDocs, `main` holds the **stable production release** (v3 today,
 v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major

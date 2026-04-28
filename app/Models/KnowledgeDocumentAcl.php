@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class KnowledgeDocumentAcl extends Model
 {
+    use BelongsToTenant;
+
     protected $table = 'knowledge_document_acl';
 
     protected $fillable = [
+        'tenant_id',
         'knowledge_document_id',
         'subject_type',
         'subject_id',

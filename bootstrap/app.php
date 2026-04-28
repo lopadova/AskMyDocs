@@ -13,6 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // v4.0/W1.D — ResolveTenant runs FIRST in every HTTP request so
+        // every controller / service / scope sees the right tenant on
+        // app(TenantContext::class)->current(). Defaults to 'default'
+        // when no header / claim is present (R31 backward-compat with v3).
+        $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
+
         // Route aliases exposed to routes/*.php and feature tests.
         //
         // `role` / `permission` / `role_or_permission` are Spatie's RBAC
@@ -25,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated
