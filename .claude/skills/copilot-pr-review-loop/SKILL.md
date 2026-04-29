@@ -35,7 +35,7 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**KEY POINT (2026-04-29 reinforcement):** Step 3's `--reviewer copilot` flag and step 5's wait-for-Copilot-review are **NOT optional**. CI green alone is **not enough** — Copilot review (or explicit absence of must-fix comments) is the second gate. Skipping step 5 ("CI green, merge now") is a protocol violation, even on docs-only PRs.
+**KEY POINT (2026-04-29 reinforcement):** Step 3's `--reviewer copilot-pull-request-reviewer` flag and step 5's wait-for-Copilot-review are **NOT optional**. CI green alone is **not enough** — Copilot review (or explicit absence of must-fix comments) is the second gate. Skipping step 5 ("CI green, merge now") is a protocol violation, even on docs-only PRs.
 
 ## The legacy loop (kept for fix-iteration phase only)
 
