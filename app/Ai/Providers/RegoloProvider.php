@@ -16,10 +16,12 @@ use Laravel\Ai\Messages\UserMessage;
  * extension package.
  *
  * The transport, retry, error-mapping, message-shape, tool-loop and
- * streaming logic now live in `padosoft/laravel-ai-regolo` (47 unit
- * tests, 6-cell PHP × Laravel matrix). This class only translates
- * between the AskMyDocs DTO surface (`AiResponse` / `EmbeddingsResponse`)
- * and the SDK DTO surface (`Laravel\Ai\Responses\AgentResponse` /
+ * streaming logic now live in `padosoft/laravel-ai-regolo` — the
+ * extension package owns the SDK-side test surface (matrix CI runs
+ * on every PHP × Laravel cell it supports; see the package's own
+ * README for the current count). This class only translates between
+ * the AskMyDocs DTO surface (`AiResponse` / `EmbeddingsResponse`) and
+ * the SDK DTO surface (`Laravel\Ai\Responses\AgentResponse` /
  * `EmbeddingsResponse`) so existing callers don't change.
  *
  * Configuration is read from `config('ai.providers.regolo')` in the
@@ -55,6 +57,21 @@ final class RegoloProvider implements AiProviderInterface
         }
 
         $last = end($messages);
+        if (($last['role'] ?? null) !== 'user') {
+            // The SDK's `Promptable::prompt(string $prompt, ...)` shape
+            // expects the *new* user turn as a string argument, with all
+            // earlier turns supplied via the agent's `messages` iterable.
+            // If the caller hands us a history that ends in an assistant /
+            // system / tool turn, treating `$last['content']` as the
+            // prompt would silently impersonate the assistant — at best a
+            // confusing model response, at worst a prompt-injection
+            // surface. Surface the misuse loudly.
+            throw new \InvalidArgumentException(sprintf(
+                'chatWithHistory requires the last message to have role="user"; got role="%s".',
+                $last['role'] ?? '(missing)'
+            ));
+        }
+
         $history = array_slice($messages, 0, -1);
 
         $agent = new AnonymousAgent(

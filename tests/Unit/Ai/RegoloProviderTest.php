@@ -13,9 +13,13 @@ use Tests\TestCase;
  * the padosoft/laravel-ai-regolo extension.
  *
  * Wire-level Regolo behaviour (request shape, retry, error mapping,
- * streaming, tool loop, etc.) is exhaustively covered by the 47 unit
- * tests in `padosoft/laravel-ai-regolo` (see
- * `vendor/padosoft/laravel-ai-regolo/tests/Unit/Gateway/Regolo/`).
+ * streaming, tool loop, etc.) is exhaustively covered by the SDK
+ * extension's own test surface in `padosoft/laravel-ai-regolo` (see
+ * `vendor/padosoft/laravel-ai-regolo/tests/Unit/Gateway/Regolo/` for
+ * the current scenario inventory). The exact test / assertion count
+ * is pinned in that package's README + CI sample-output block —
+ * intentionally not duplicated here so a future SDK release does not
+ * leave a stale number drifting in this comment.
  *
  * The tests here only pin the AskMyDocs adapter contract: that the
  * caller-facing `AiProviderInterface` keeps its existing shape and
@@ -160,6 +164,23 @@ class RegoloProviderTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         (new RegoloProvider(config('ai.providers.regolo')))->chatWithHistory('s', []);
+    }
+
+    public function test_chat_with_history_rejects_non_user_last_message(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant"');
+
+        // Sending a history that ends with an assistant turn would make
+        // the SDK treat the assistant's previous reply as the new user
+        // prompt — at best a confusing model output, at worst a prompt-
+        // injection surface. The provider must refuse the input
+        // explicitly so the bug surfaces at the call site.
+        (new RegoloProvider(config('ai.providers.regolo')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'Ciao.'],
+            ['role' => 'assistant', 'content' => 'Salve, in che cosa posso aiutarti?'],
+        ]);
     }
 
     public function test_respects_custom_base_url_via_config_url(): void
