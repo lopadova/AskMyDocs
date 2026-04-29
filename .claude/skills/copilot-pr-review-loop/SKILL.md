@@ -53,7 +53,10 @@ When a PR has been opened and the FIRST review/CI cycle has surfaced issues:
 │                                                           │
 │ EXIT only when:                                          │
 │   - Copilot reviewDecision is APPROVED or no outstanding │
-│   - All checks status COMPLETED + conclusion SUCCESS     │
+│     must-fix comments remain                              │
+│   - All checks have status COMPLETED with conclusion     │
+│     either SUCCESS or expected/justified SKIPPED         │
+│     (e.g. matrix cells gated by `if:` on a feature flag) │
 └─────────────────────────────────────────────────────────┘
 ```
 

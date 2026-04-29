@@ -863,8 +863,18 @@ re-targeted from main to feature/v4.0.
 
 1. Fine task — implementation complete.
 2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
-3. Apri PR with `gh pr create --reviewer copilot ...` — the
-   `--reviewer copilot` flag is **mandatory** on every PR.
+3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...` —
+   the flag is **mandatory** on every PR. Note: the short alias
+   `--reviewer copilot` only resolves when the repo / org has
+   **GitHub Copilot Code Review enabled** (Settings → Copilot → Code
+   review → "Enable for this repository"). On a fresh repo where
+   the feature is disabled, `gh` reports "could not request reviewer"
+   and the PR opens without a reviewer assigned. The fix is
+   one-time: enable the feature in the repo settings, then use the
+   full bot username `copilot-pull-request-reviewer` (the canonical
+   GitHub login) which works in both states. This is also what
+   `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
+   needs when Copilot is re-requested after each push.
 4. Attendi CI GitHub verde (typically 60–180 s).
 5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
    Skipping this wait — even when CI is already green — is a protocol
