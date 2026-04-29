@@ -864,17 +864,25 @@ re-targeted from main to feature/v4.0.
 1. Fine task — implementation complete.
 2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
 3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...` —
-   the flag is **mandatory** on every PR. Note: the short alias
-   `--reviewer copilot` only resolves when the repo / org has
-   **GitHub Copilot Code Review enabled** (Settings → Copilot → Code
-   review → "Enable for this repository"). On a fresh repo where
-   the feature is disabled, `gh` reports "could not request reviewer"
-   and the PR opens without a reviewer assigned. The fix is
-   one-time: enable the feature in the repo settings, then use the
-   full bot username `copilot-pull-request-reviewer` (the canonical
-   GitHub login) which works in both states. This is also what
-   `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
-   needs when Copilot is re-requested after each push.
+   the flag is **mandatory** on every PR. Two knobs interact:
+
+   - **The short alias `--reviewer copilot`** only resolves when the
+     repo / org has **GitHub Copilot Code Review enabled** (Settings →
+     Copilot → Code review → "Enable for this repository"). On a
+     fresh repo where the feature is disabled, `gh` reports "could
+     not request reviewer" and opens the PR without a reviewer
+     assigned.
+   - **The canonical login `copilot-pull-request-reviewer`** is the
+     bot's actual GitHub username. The `gh` CLI accepts it as a
+     reviewer **regardless of whether Copilot Code Review is enabled**
+     — i.e. the assignment itself succeeds in both states (CR
+     enabled → bot reviews automatically; CR disabled → bot is
+     listed as a reviewer but no automated review fires; enabling
+     CR later is a one-time setting toggle). Always pass the full
+     username so the assignment never silently fails.
+
+   Same login goes into `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
+   when Copilot is re-requested after each push.
 4. Attendi CI GitHub verde (typically 60–180 s).
 5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
    Skipping this wait — even when CI is already green — is a protocol
