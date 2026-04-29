@@ -96,7 +96,11 @@ return [
                 ],
                 'embeddings' => [
                     'default' => env('REGOLO_EMBEDDINGS_MODEL', 'Qwen3-Embedding-8B'),
-                    'dimensions' => env('REGOLO_EMBEDDINGS_DIMENSIONS', 4096),
+                    // env() returns a string from .env files; cast to int
+                    // because the SDK signature is `int $dimensions` and a
+                    // string value would crash on a strict TypeError when
+                    // the embeddings gateway is invoked.
+                    'dimensions' => (int) env('REGOLO_EMBEDDINGS_DIMENSIONS', 4096),
                 ],
                 'reranking' => [
                     'default' => env('REGOLO_RERANKING_MODEL', 'jina-reranker-v2'),
