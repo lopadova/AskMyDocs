@@ -893,7 +893,8 @@ Exit conditions are conjunctive: green CI alone is **not enough**.
 Anti-pattern: "Push, see green CI, merge now" — costs the user a code
 review pass that Copilot would have caught. Lorenzo flagged this
 explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
-PR #1/#2/#3 (2026-04-29) — they were merged without `--reviewer copilot`
+PR #1/#2/#3 (2026-04-29) — they were merged without
+`--reviewer copilot-pull-request-reviewer`
 and without waiting for Copilot review, which is a protocol violation
 even though the code shipped clean.
 

@@ -20,7 +20,9 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 │ 1. fine task — implementation complete                            │
 │ 2. test tutti verdi in locale                                     │
 │    (phpunit + vitest + playwright + architecture)                 │
-│ 3. apri PR with --reviewer copilot   ← MANDATORY FLAG             │
+│ 3. apri PR with --reviewer copilot-pull-request-reviewer          │
+│    ← MANDATORY FLAG (canonical bot login; "copilot" alias only    │
+│     works when Copilot Code Review is enabled in repo settings)   │
 │ 4. attendi CI GitHub verde   (60-180s)                            │
 │ 5. attendi Copilot review commenti  (additional 2-15 min)         │
 │ 6. leggi commenti (gh pr view N --comments + inline) e fix        │
