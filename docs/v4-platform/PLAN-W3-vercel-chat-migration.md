@@ -238,24 +238,159 @@ Same auth + filter contract as the synchronous route. Response is a stream of AI
 
 ---
 
-## 7. TestID preservation strategy
+## 7. Test plan — la disciplina è ferrea
 
-Goal: zero edits to `frontend/e2e/chat*.spec.ts` after migration.
+> Lorenzo 2026-04-30: "mi raccomando test playwright e scenari precisi
+> perchè stiamo cambiando tutto il frontend con vercel".
 
-- All 60+ existing testids preserved on the same DOM elements (Composer.tsx, MessageBubble.tsx, MessageThread.tsx, etc.).
-- The `data-state` attribute on `chat-thread` maps from SDK's `status` to the existing `idle | loading | ready | empty | error` enum:
+The test suite is the only proof that a 30-component / 60-testid FE
+rewrite preserved design fidelity 1:1. This section is the contract.
+Codified in memory `feedback_w3_vercel_test_rigor`.
+
+### 7.1 TestID preservation contract
+
+- All 60+ existing testids stay on the same DOM nodes (Composer.tsx, MessageBubble.tsx, MessageThread.tsx, etc.).
+- `data-role="user|assistant"` on `chat-message-{id}` from `message.role`.
+- `data-state` on `chat-thread` maps SDK's `status` to the existing enum:
 
 | SDK `status` | Our `data-state` |
 |---|---|
-| `submitted` (waiting for first chunk) | `loading` |
-| `streaming` (chunks arriving) | `loading` (treat as still loading) |
-| `ready` + messages.length > 0 | `ready` |
-| `ready` + messages.length === 0 | `empty` |
+| `submitted` (awaiting first chunk) | `loading` |
+| `streaming` (chunks arriving) | `loading` |
+| `ready` + `messages.length > 0` | `ready` |
+| `ready` + `messages.length === 0` | `empty` |
 | `error` | `error` |
 | (initial, no submit yet) | `idle` |
 
-- `data-role="user|assistant"` on `chat-message-{id}` derives from `message.role` (unchanged).
-- The Playwright `chat.spec.ts:22` "user asks question and the assistant reply renders" test currently stubs `POST /conversations/*/messages` with `page.route(...)`. After migration, the stub target moves to the SSE endpoint (`POST /conversations/*/messages/stream`) and the fulfill body uses the AI SDK SSE protocol (`text-delta` events + `finish`). The test ASSERTIONS stay identical — same locators, same data-state assertions.
+The mapping lives in a single helper `mapStatusToDataState()` with a Vitest unit test asserting the table above.
+
+### 7.2 Zero-edit gate on existing E2E specs
+
+The four existing chat suites — `chat.spec.ts`, `chat-filters.spec.ts`, `chat-mention.spec.ts`, `chat-refusal.spec.ts` — must stay 100% GREEN after W3.2 lands **without any modification to the spec files themselves**. CI gate:
+
+```bash
+git diff --stat origin/feature/v4.0...HEAD -- frontend/e2e/chat.spec.ts frontend/e2e/chat-filters.spec.ts frontend/e2e/chat-mention.spec.ts frontend/e2e/chat-refusal.spec.ts
+# expected: 0 lines changed
+```
+
+The W3.2 PR template includes a check that this diff is empty.
+
+The `page.route()` stub target in `chat.spec.ts:22` moves from `POST /conversations/*/messages` to `POST /conversations/*/messages/stream`, but the stub body becomes a single AI SDK SSE event sequence (`text-delta` + `finish`). The CHANGE happens inside the route handler implementation in the SPA / shared helpers, NOT in the spec file. Spec assertions stay byte-identical.
+
+### 7.3 NEW Playwright spec files
+
+#### `frontend/e2e/chat-stream.spec.ts` — token-level streaming UX
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Happy progressive render | Assistant message text grows over time — sample at t=200 ms, t=600 ms, t=2 s; text length monotonically increases; `data-state="loading"` until last chunk; `data-state="ready"` after `finish` event |
+| 2 | Status transitions in order | Watch `data-state` values via `page.evaluate(...)` polling: must observe `idle → loading → ready` (no skips, no regressions) |
+| 3 | Cursor / typing indicator visible during stream | `[data-testid="chat-typing-indicator"]` present while `data-state="loading"`; absent after `ready` |
+| 4 | `stop()` mid-stream truncates message | After 500 ms of streaming, click `chat-composer-stop`; assert message text frozen at that point; SDK emits `finish` with `finish_reason: 'stopped'`; `data-state="ready"` |
+| 5 | Network error mid-stream | `page.route(...).abort()` after first chunk; assert `data-state="error"` + `chat-thread-error` visible; previously-rendered text preserved (no rollback) |
+
+#### `frontend/e2e/chat-stream-refusal.spec.ts` — refusal as `data-refusal` part
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | `no_relevant_context` refusal mid-stream | Stub returns `data-refusal` events (no `text-delta`); `chat-message-{id}` has NO assistant text body; `refusal-notice` with `data-reason="no_relevant_context"` visible; grey `confidence-badge` |
+| 2 | `llm_self_refusal` refusal | Same as above with `data-reason="llm_self_refusal"`; LLM-self-refusal hint visible |
+| 3 | Italian-locale refusal body | BE owns localization; FE renders verbatim; assert exact Italian copy from `refusal-notice-body` |
+
+#### `frontend/e2e/chat-stream-citations.spec.ts` — `source` parts arrive at start of stream
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Sources arrive before text | Stub emits `source` events first, then `text-delta`; `chat-citations` and `chat-citation-{idx}` visible BEFORE text is complete |
+| 2 | Hover citation chip mid-stream | At t=500 ms (mid-stream), hover `chat-citation-0`; `chat-citations-popover` opens with title + excerpt; stream continues uninterrupted to completion |
+| 3 | Citation count matches `parts.filter(type='source').length` | Stub emits 5 `source` events; assert `chat-citations` `data-count="5"` |
+
+#### `frontend/e2e/chat-stream-filters.spec.ts` — filters round-trip during streaming
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Filters posted with stream request | Add source-pdf chip + folder glob; submit; intercept `POST /conversations/*/messages/stream` request body; assert `filters.source_types: ['pdf']` + `filters.folder_globs: [...]` |
+| 2 | Filter chips persist during stream | While `data-state="loading"`, filter bar still shows chips; clicking `clear-all` mid-stream still works (filters clear; stream uninterrupted) |
+| 3 | Filter popover open mid-stream | Click `chat-filter-bar-add` while `data-state="loading"`; popover opens normally; selecting a project doesn't stop the stream |
+
+#### `frontend/e2e/chat-stream-mention.spec.ts` — `@mention` round-trip during streaming
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Mention popover during stream | Type `@policy` while previous message still streaming; mention popover renders with results; stream continues |
+| 2 | Selected mention persists across stream completion | Add mention; submit; stream completes; new turn starts with `filters.doc_ids` still containing the mention |
+
+#### `frontend/e2e/chat-stream-presets.spec.ts` — saved filter presets during streaming
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Load preset mid-stream | While streaming, open presets dropdown, click load on a preset; live filter state replaced; stream uninterrupted |
+| 2 | Save preset from current filters | Add filters; submit (start stream); during stream, click `chat-filter-presets-save`; preset saved via `POST /api/chat-filter-presets` |
+
+### 7.4 Visual regression — every representative state
+
+`toHaveScreenshot({ maxDiffPixels: 0 })` (NOT ratio-based) on each:
+
+| Spec file | State |
+|---|---|
+| `chat.visual.spec.ts` | empty thread (`chat-thread-empty`) |
+| | composer empty / with text / with filter chips / with mention popover open / with preset menu open |
+| | filter popover open on each of 7 tabs (project, tag, source, canonical, folder, date, language) |
+| | thread error state |
+| `chat-stream.visual.spec.ts` | mid-stream assistant (sampled at 50% completion) |
+| | complete assistant with citations strip (1, 3, 5 chips) |
+| | complete assistant with refusal notice (each of 3 reasons) |
+| | complete assistant with confidence badge (each of 4 tiers: high / moderate / low / refused) |
+| | complete assistant with thinking trace expanded |
+
+Snapshots committed to `frontend/e2e/__screenshots__/`. CI runs without `--update-snapshots` — pixel diff fails the build.
+
+### 7.5 PHPUnit `MessageStreamControllerTest`
+
+Covers:
+
+| # | Scenario | Asserts |
+|---|---|---|
+| 1 | Happy path: text-delta + finish | SSE response stream parses cleanly; events in order: optional `source` events → `text-delta` events → `finish` |
+| 2 | Refusal: `data-refusal` events instead of text-delta | No `text-delta` in stream; one `data-refusal` event with `reason: 'no_relevant_context'` |
+| 3 | Empty content → 422 | Standard JSON 422 response (no SSE) |
+| 4 | Filters round-trip | filters in body → KbSearchService called with filters → cited chunks reflect filters |
+| 5 | R30 cross-tenant rejection | conversation belongs to tenant A; request from tenant B → 403 |
+| 6 | R32 memory privacy | chat_log row written with correct tenant_id; no leak across tenants |
+| 7 | Provider streaming fallback | provider that doesn't support streaming → SSE still emits one `text-delta` + `finish` |
+| 8 | SSE protocol drift | response body matches AI SDK spec byte-for-byte (use a recorded fixture for golden comparison) |
+
+### 7.6 Vitest unit tests
+
+| File | Coverage |
+|---|---|
+| `mapStatusToDataState.test.ts` | the 6-row mapping table from §7.1 |
+| `prepareSendMessagesRequest.test.ts` | filters / doc_ids passed via body parameter survive the SDK's request construction |
+| `useChatAdapter.test.tsx` | optimistic add → server ack → dedupe behaviour matches the deleted `use-chat-mutation` test surface |
+| `MessageBubble.parts.test.tsx` | each `parts` type renders to the correct sub-component (text → Markdown, source → CitationsPopover, data-refusal → RefusalNotice, data-confidence → ConfidenceBadge) |
+
+### 7.7 Pre-migration baseline capture (before W3.2 starts)
+
+Before any FE code changes in W3.2, run the FULL existing chat suite + the new stream tests on the W3.1 codebase (sync backend still active for chat*.spec.ts; SSE backend active for new chat-stream*.spec.ts) and capture:
+
+- Playwright HTML reports → `tests/baseline/W3-pre-migration/playwright-report/`
+- `toHaveScreenshot()` baselines → `tests/baseline/W3-pre-migration/screenshots/`
+- Lighthouse trace for `/app/chat` → `tests/baseline/W3-pre-migration/lighthouse.json`
+- Vitest snapshot files → `tests/baseline/W3-pre-migration/vitest-snapshots/`
+
+These artefacts ARE the design-fidelity reference. The W3.2 PR acceptance gate diffs against them.
+
+### 7.8 W3.2 PR template acceptance checklist
+
+- [ ] `git diff --stat origin/feature/v4.0...HEAD -- frontend/e2e/chat.spec.ts frontend/e2e/chat-filters.spec.ts frontend/e2e/chat-mention.spec.ts frontend/e2e/chat-refusal.spec.ts` shows 0 lines
+- [ ] All NEW chat-stream*.spec.ts files added per §7.3
+- [ ] All NEW visual regression snapshots committed per §7.4
+- [ ] PHPUnit `MessageStreamControllerTest` 8 scenarios green; old `MessageControllerTest` still green
+- [ ] Vitest unit tests in §7.6 green
+- [ ] Lighthouse INP / TTI / CLS on `/app/chat` within ±5% of W3-pre-migration baseline
+- [ ] Architecture testsuite (R30/R31/R32) untouched + green
+- [ ] Copilot review converged to 0 outstanding must-fix
+- [ ] CI all checks COMPLETED + SUCCESS
 
 ---
 
