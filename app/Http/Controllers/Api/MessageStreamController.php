@@ -474,8 +474,16 @@ class MessageStreamController extends Controller
     private function emit(StreamChunk $chunk): void
     {
         echo $chunk->toSseFrame();
+        // Drain output buffers so the browser receives the SSE event
+        // immediately. The `ob_get_level() > 0` guard ensures we only
+        // call `ob_flush()` when there's an active buffer; without
+        // that guard ob_flush emits a notice. R7 forbids @-silenced
+        // errors, so we surface any real failure instead of hiding
+        // it — in practice the guard above makes the call safe and
+        // a notice from this line would mean the SAPI has buffer
+        // state that's worth investigating.
         if (function_exists('ob_get_level') && ob_get_level() > 0) {
-            @ob_flush();
+            ob_flush();
         }
         flush();
     }

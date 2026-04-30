@@ -148,9 +148,11 @@ class StreamChunkTest extends TestCase
 
         $frame = $chunk->toSseFrame();
 
-        // JSON_UNESCAPED_UNICODE keeps the em-dash + accents readable
-        // on the wire; without it the FE sees `—` literals and
-        // has to double-decode.
+        // JSON_UNESCAPED_UNICODE keeps the em-dash + accents as raw
+        // UTF-8 bytes on the wire instead of as `—` escape
+        // sequences. Both forms are valid JSON and the FE decoder
+        // handles either, but raw UTF-8 keeps the payload readable
+        // in dev tools / logs / golden fixture diffs.
         $this->assertStringContainsString('—', $frame);
         $this->assertStringContainsString('riformula', $frame);
     }
