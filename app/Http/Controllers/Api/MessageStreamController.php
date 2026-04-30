@@ -14,10 +14,13 @@ use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -82,15 +85,28 @@ class MessageStreamController extends Controller
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
-    ): StreamedResponse {
+    ): Response {
+        // Force JSON for both auth and validation failures: SSE
+        // clients send `Accept: text/event-stream`, which makes
+        // Laravel's default `abort(403)` and `$request->validate()`
+        // fall back to HTML pages / 302 redirects instead of the
+        // 403/422 JSON the streaming caller can parse. Returning
+        // `JsonResponse` explicitly avoids that path entirely.
         if ($conversation->user_id !== $request->user()->id) {
-            abort(403);
+            return new JsonResponse(['message' => 'Forbidden.'], 403);
         }
 
-        $validated = $request->validate(array_merge(
-            ['content' => ['required', 'string', 'max:10000']],
-            $this->retrievalFilterRules(),
-        ));
+        try {
+            $validated = $request->validate(array_merge(
+                ['content' => ['required', 'string', 'max:10000']],
+                $this->retrievalFilterRules(),
+            ));
+        } catch (ValidationException $e) {
+            return new JsonResponse([
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
+        }
 
         $question = $validated['content'];
         $projectKey = $conversation->project_key;
@@ -474,7 +490,14 @@ class MessageStreamController extends Controller
     private function streamingResponse(\Closure $callback): StreamedResponse
     {
         return new StreamedResponse($callback, 200, [
-            'Content-Type' => 'text/event-stream',
+            // Explicit charset so the wire contract is deterministic
+            // across SAPIs / proxies. Laravel's default-charset shim
+            // appends `; charset=UTF-8` to text/* responses, but some
+            // proxies strip / replace it. Setting it ourselves makes
+            // the feature test's
+            // `assertHeader('Content-Type', 'text/event-stream; charset=UTF-8')`
+            // pass everywhere, not just on the dev server.
+            'Content-Type' => 'text/event-stream; charset=UTF-8',
             'Cache-Control' => 'no-cache, no-transform',
             // X-Accel-Buffering=no disables nginx buffering on prod
             // deployments behind nginx — without it the browser sees
