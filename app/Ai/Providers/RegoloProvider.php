@@ -46,6 +46,39 @@ final class RegoloProvider implements AiProviderInterface
         return $this->toAiResponse($sdkResponse);
     }
 
+    /**
+     * Run a multi-turn chat completion through the Regolo gateway.
+     *
+     * Tightens the `AiProviderInterface::chatWithHistory()` contract
+     * with three preconditions specific to the laravel/ai SDK shape
+     * this adapter targets — the SDK's `Promptable::prompt(string)`
+     * signature would otherwise turn caller bugs into silent
+     * prompt-injection surfaces or PHP TypeErrors mid-loop. Other
+     * providers in `app/Ai/Providers/` accept laxer input today;
+     * tightening on the interface itself is deferred until those
+     * providers migrate to the SDK.
+     *
+     * @param  string  $systemPrompt  System prompt prepended via the
+     *                                SDK agent's instructions slot.
+     * @param  array<int, array{role: string, content: string}>  $messages
+     *                                Full message history. Must:
+     *                                - be non-empty;
+     *                                - end with `role === 'user'`;
+     *                                - have a non-empty string `content`
+     *                                  on every entry (history + last);
+     *                                - only carry roles `user` /
+     *                                  `assistant` (no `system` / `tool`
+     *                                  — system goes via $systemPrompt).
+     * @param  array<string, mixed>  $options  Optional `model`,
+     *                                `max_tokens`, `temperature`
+     *                                overrides. Numeric strings are
+     *                                accepted; non-numeric values for
+     *                                max_tokens/temperature throw.
+     *
+     * @throws \InvalidArgumentException When any precondition above is
+     *         violated. Catch this at the call site to differentiate
+     *         caller bugs from genuine network/provider failures.
+     */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         if (empty($messages)) {
