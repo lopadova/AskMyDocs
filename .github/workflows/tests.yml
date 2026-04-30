@@ -229,12 +229,53 @@ jobs:
           # The auth.setup retry loop now handles the boot race
           # without preemptive caching.
 
-      # playwright.config.ts `webServer` launches `php artisan serve`
-      # automatically, waits on baseURL readiness, and shuts it down
-      # after the suite. No explicit background server step needed.
+      # Start Laravel explicitly in the workflow instead of relying on
+      # playwright.config.ts `webServer`. The `webServer` block boots
+      # artisan-serve under Playwright's own process supervisor and pipes
+      # stdout/stderr internally — when artisan-serve crashes between the
+      # `/healthz` probe answering 200 and the first heavy `/testing/reset`
+      # call (the recurring auth.setup ECONNREFUSED flake), the server log
+      # is swallowed and the failure looks like a generic timeout. Running
+      # the server here gives us:
+      #   1. an explicit PID file so we know whether artisan-serve died,
+      #   2. a real on-disk log we can `tail` in the failure-dump step,
+      #   3. an unambiguous binding to 127.0.0.1:8000 (matches the auth.setup
+      #      `apiRequestContext.post('/testing/reset')` resolution).
+      # `E2E_SKIP_WEBSERVER=1` tells playwright.config.ts to skip its own
+      # webServer block so we don't double-bind port 8000 (EADDRINUSE).
+      - name: Start Laravel server (testing)
+        env:
+          APP_ENV: testing
+          # Honoured because we explicitly run `--no-reload` below — without
+          # the flag, Laravel's ServeCommand silently drops the env var and
+          # runs the built-in PHP server single-threaded.
+          PHP_CLI_SERVER_WORKERS: '4'
+        run: |
+          php artisan serve --no-reload --host=127.0.0.1 --port=8000 \
+              > storage/logs/artisan-serve.log 2>&1 &
+          echo $! > /tmp/artisan-serve.pid
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then
+              echo "Backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not start in time"
+          echo "=== storage/logs/artisan-serve.log ==="
+          tail -200 storage/logs/artisan-serve.log || true
+          exit 1
+
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
+          # Skip playwright.config.ts's own webServer block — we already
+          # started + health-checked the server above. Without this flag
+          # Playwright would race ours and EADDRINUSE on port 8000.
+          E2E_SKIP_WEBSERVER: '1'
         run: npm run e2e
 
       - name: Dump Laravel log on failure
@@ -245,6 +286,13 @@ jobs:
             tail -200 storage/logs/laravel.log
           else
             echo "(no laravel.log file present)"
+          fi
+          echo ""
+          echo "=== storage/logs/artisan-serve.log (last 200 lines) ==="
+          if [ -f storage/logs/artisan-serve.log ]; then
+            tail -200 storage/logs/artisan-serve.log
+          else
+            echo "(no artisan-serve.log file present)"
           fi
           echo ""
           echo "=== ls storage/framework/sessions ==="
