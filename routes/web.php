@@ -8,6 +8,7 @@ use App\Http\Controllers\TestingController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\MessageStreamController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -52,6 +53,13 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
         Route::post('/{conversation}/messages', [MessageController::class, 'store']);
+        // v4.0/W3.1 — SSE streaming variant of POST /messages.
+        // Same auth/validation/filter contract as the synchronous
+        // route; emits AI SDK protocol events (text-delta + source +
+        // data-confidence + data-refusal + finish) instead of one
+        // JSON response. The synchronous route stays in place for
+        // legacy callers and PHPUnit feature tests.
+        Route::post('/{conversation}/messages/stream', [MessageStreamController::class, 'store']);
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
     });
