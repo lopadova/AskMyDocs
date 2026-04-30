@@ -5,34 +5,6 @@
     "license": "MIT",
     "repositories": [
         {
-            "type": "path",
-            "url": "../padosoft-laravel-ai-regolo",
-            "options": {"symlink": true},
-            "canonical": false
-        },
-        {
-            "type": "path",
-            "url": "../padosoft-laravel-flow",
-            "options": {"symlink": true},
-            "canonical": false
-        },
-        {
-            "type": "path",
-            "url": "../padosoft-eval-harness",
-            "options": {"symlink": true},
-            "canonical": false
-        },
-        {
-            "type": "path",
-            "url": "../padosoft-laravel-pii-redactor",
-            "options": {"symlink": true},
-            "canonical": false
-        },
-        {
-            "type": "vcs",
-            "url": "https://github.com/padosoft/laravel-ai-regolo"
-        },
-        {
             "type": "vcs",
             "url": "https://github.com/padosoft/laravel-flow"
         },
