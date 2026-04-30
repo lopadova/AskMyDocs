@@ -29,7 +29,7 @@ class AiManager
         if (! $provider->supportsEmbeddings()) {
             throw new InvalidArgumentException(
                 "Provider [{$name}] does not support embeddings. "
-                . 'Set AI_EMBEDDINGS_PROVIDER to openai or gemini.'
+                . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, or regolo.'
             );
         }
 

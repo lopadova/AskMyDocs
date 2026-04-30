@@ -384,7 +384,7 @@ OPENAI_API_KEY=sk-...
 
 #### Regolo.ai (by Seeweb)
 
-EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports both chat and embeddings. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
+EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports chat, streaming, embeddings, and reranking via the [`padosoft/laravel-ai-regolo`](https://github.com/padosoft/laravel-ai-regolo) extension on top of the official `laravel/ai` SDK. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
 
 ```env
 AI_PROVIDER=regolo
@@ -392,8 +392,27 @@ AI_EMBEDDINGS_PROVIDER=regolo
 
 REGOLO_API_KEY=...
 REGOLO_BASE_URL=https://api.regolo.ai/v1
+
+# Chat models — `cheapest` / `smartest` aliases pick the right model for
+# cost-vs-quality shortcuts (see `Lab::Cheapest` / `Lab::Smartest` in laravel/ai).
 REGOLO_CHAT_MODEL=Llama-3.3-70B-Instruct
-REGOLO_EMBEDDINGS_MODEL=gte-Qwen2
+REGOLO_CHAT_MODEL_CHEAPEST=Llama-3.1-8B-Instruct
+REGOLO_CHAT_MODEL_SMARTEST=Llama-3.3-70B-Instruct
+
+# Embeddings — set KB_EMBEDDINGS_DIMENSIONS to the same value below.
+REGOLO_EMBEDDINGS_MODEL=Qwen3-Embedding-8B
+REGOLO_EMBEDDINGS_DIMENSIONS=4096
+
+# Reranker — used when KB_RERANKING_ENABLED=true.
+REGOLO_RERANKING_MODEL=jina-reranker-v2
+
+# Transport + per-call defaults. `REGOLO_MAX_TOKENS` / `REGOLO_TEMPERATURE`
+# are the provider-level fallbacks; per-call `$options['max_tokens']` /
+# `$options['temperature']` (e.g. `ConversationController::generateTitle`
+# capping titles at 60 tokens) take precedence.
+REGOLO_TIMEOUT=120
+REGOLO_MAX_TOKENS=4096
+REGOLO_TEMPERATURE=0.2
 ```
 
 #### Embedding dimension gotcha
