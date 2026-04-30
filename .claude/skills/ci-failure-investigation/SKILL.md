@@ -85,6 +85,109 @@ full failure context first.
 - **Removing diagnostic throws too early** — keep them in for the full
   red→green CI cycle. Remove them in a polish commit only after the
   fix is verified green.
+- **Chasing process management when the request is too heavy** — see
+  the `auth.setup` ECONNREFUSED rabbit hole below.
+
+## The `auth.setup` ECONNREFUSED rabbit hole (PR #83 lesson)
+
+Symptom seen across multiple PRs:
+
+```
+✘ [setup] auth.setup.ts: authenticate as admin
+  Error: /testing/reset failed after 16 attempts:
+  apiRequestContext.post: connect ECONNREFUSED 127.0.0.1:8000
+```
+
+### Wrong rabbit hole (what NOT to do)
+
+The `php artisan serve` log shows the server bound on :8000 and
+answered `/healthz` in 500 ms, then went silent. Tempting next moves:
+
+- `setsid -f` to detach artisan-serve from the runner step's session
+- `lsof -ti tcp:8000 -sTCP:LISTEN` to find the listener PID
+- PGID-based `kill -- -$PGID` cleanup with belt-and-braces lsof sweep
+- `nohup`, `disown`, `bash -c '...'` wrapping
+
+PR #83 went through ~7 commits of these variants without converging.
+None of them fix the underlying issue, because the underlying issue
+is NOT a process-management problem.
+
+### Right diagnosis (the structural fix in PR #85)
+
+PHP's built-in dev server (`php artisan serve` / `php -S`) has a
+**single-threaded accept loop per worker**. When one HTTP handler
+runs a multi-second blocking operation (`migrate:fresh`, large
+seeder, asset compilation, image generation), every subsequent
+connection on that worker stalls / refuses. With
+`PHP_CLI_SERVER_WORKERS=4` you have 4 such loops, but the FIRST heavy
+request often arrives before workers fan out and you stall worker
+zero anyway. `--no-reload` does not help. Detaching from the runner
+session does not help. The server is doing its job — it's blocked
+on the work the test asked it to do.
+
+The fix is to stop asking the dev server to do that work:
+
+1. Move `migrate:fresh` to a CLI step BEFORE Playwright starts:
+   ```yaml
+   - name: Migrate + seed test data
+     env: { APP_ENV: testing }
+     run: |
+       php artisan key:generate --force
+       php artisan migrate:fresh --force      # ← was `migrate --force`
+   ```
+2. Tell the test setup to skip the HTTP `/testing/reset` call when
+   the workflow already did the migration:
+   ```ts
+   const SKIP_HTTP_RESET = process.env.E2E_SKIP_HTTP_RESET === '1';
+   if (!SKIP_HTTP_RESET) {
+       await postWithRetry(page, '/testing/reset');
+   }
+   await postWithRetry(page, '/testing/seed', { seeder });
+   ```
+3. Set the env var on the Playwright step:
+   ```yaml
+   - name: Run Playwright (chromium)
+     env:
+       E2E_SKIP_HTTP_RESET: '1'
+     run: npm run e2e
+   ```
+
+The diff is ~58 lines across two files. The remaining HTTP traffic
+(login, seed, normal pages) is light enough that the dev server
+handles it without breaking a sweat.
+
+### Trigger conditions for the structural fix
+
+If ALL FOUR are true, the move-work-to-CLI fix is the right answer
+(don't spelunk artisan-serve internals):
+
+- The failing endpoint runs `migrate:fresh`, big seeders, or any
+  multi-second blocking artisan command inside one HTTP request.
+- The endpoint is hit ONCE at suite startup (not per-test).
+- The work is idempotent (CLI can run it once per workflow start).
+- The test environment is disposable (CI runner / local docker, not
+  shared with humans).
+
+### What to ask BEFORE editing process flags
+
+1. "What is the failing endpoint actually DOING under the hood?"
+   `grep -rn '/testing/reset' app/Http/` and read the controller.
+2. "Could that work happen via CLI BEFORE the web server starts
+   handling traffic?" If yes, that is your fix.
+3. Only if the answer is "no, the work has to happen inside the
+   request lifecycle" should you start looking at process detachment
+   knobs — and even then, prefer FrankenPHP / RoadRunner / php-fpm
+   over making `php artisan serve` more reliable.
+
+### Cross-references
+
+- Memory: `feedback_heavy_work_belongs_in_cli_not_http.md` (private).
+- CLAUDE.md: the in-repo rule mirrors this section.
+- Worked example: PR #85 commit `e2c87c29`. Read its diff before
+  attempting any future ECONNREFUSED fix on this codebase.
+- Anti-pattern: PR #83 commits `6071b81 → 4cde177` (7 process-
+  management iterations without converging). Skim if you feel
+  tempted to detach a child process from a bash session in CI.
 
 ## When this rule kicks in
 

@@ -912,6 +912,59 @@ minute of delay is operationally costly; even then the post-merge
 review must run retroactively.
 → See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
 
+### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
+**The architectural rule for any CI flake of the form
+"Playwright auth.setup ECONNREFUSED on `/testing/reset` after
+`/healthz` answered green":**
+
+- Do **NOT** start the investigation by detaching the artisan-serve
+  process (`setsid -f`, `nohup`, `disown`, PGID kills, `lsof`-based
+  PID capture, stability-gate healthz polling). PHP's built-in dev
+  server has a single-threaded accept loop per worker; when one
+  handler runs `migrate:fresh` or any multi-second blocking task the
+  loop stalls and every subsequent connection ECONNREFUSEs. That is
+  the dev server doing its job, not a process-management bug.
+- **DO** ask: "what does the failing endpoint actually run? Could that
+  work happen via a CLI artisan step BEFORE Playwright starts?"
+  If yes, that is the fix.
+
+The structural fix that landed on PR #85 is the canonical example:
+
+1. Workflow step before Playwright runs `migrate:fresh` from the CLI:
+   ```yaml
+   - name: Migrate + seed test data
+     env: { APP_ENV: testing }
+     run: |
+       php artisan key:generate --force
+       php artisan migrate:fresh --force
+   ```
+2. `setup-helpers.ts` skips the HTTP `/testing/reset` call when
+   `E2E_SKIP_HTTP_RESET=1` is set; only the lighter `/testing/seed`
+   call goes through the dev server.
+3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
+
+The remaining HTTP traffic is light enough that `php artisan serve`
+handles it without breaking a sweat. The flake disappears.
+
+**Trigger conditions for the CLI move** (all four must be true):
+- The failing endpoint runs `migrate:fresh`, big seeders, or any
+  multi-second blocking artisan command.
+- The endpoint is hit ONCE at suite startup (not per-test).
+- The work is idempotent (CLI can run it once per workflow start).
+- The test environment is disposable (CI runner / local docker, not
+  shared with humans).
+
+**Anti-pattern reference**: PR #83 commits `6071b81 → 4cde177` —
+seven process-management iterations (setsid, lsof, PGID, defensive
+sweep) without converging. Read those commits when you feel tempted
+to detach a child process from a bash session in a GitHub Actions
+step. The fix Copilot landed on PR #85 (`e2c87c29`) is ~58 lines
+across two files and was correct on the first try.
+
+→ See `.claude/skills/ci-failure-investigation/SKILL.md` (R22) for
+the artefact-first investigation flow that should surface this rule
+before the rabbit hole opens.
+
 ### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`
 Every interactive admin or chat surface uses the testid hierarchy
 `feature-resource-{id}-{action[-substep]}` for stable, hierarchical,
