@@ -19,21 +19,22 @@ import { composer, newConversationButton, thread, waitForThreadReady } from './h
  */
 
 test.describe('Chat', () => {
-    test('user asks question and the assistant reply renders', async ({ page }, testInfo) => {
-        // Per-test budget bumped to 60 s. The default 20 s per-test
-        // timeout in `playwright.config.ts` is too tight for this
-        // specific scenario: the auto-fixture (resetDb + seedDb +
-        // login) burns ~10 s on a cold CI runner, page.goto('/app/chat')
-        // adds ~3-5 s while the SPA boots, and the inner assertions
-        // (waitForThreadReady 45_000, toBeVisible 30_000) advertise
-        // budgets that exceed the outer cap. The scenario stubs the
-        // AI provider so the wall-clock interaction is sub-second,
-        // but the cumulative setup variance pushed the OUTER cap to
-        // fire in 2 of the last 4 CI runs (PR #83 commits bb04800
-        // and 972b761). 60 s gives 3× headroom over worst-case
-        // observed without affecting the assertion semantics.
-        testInfo.setTimeout(60_000);
-
+    // Per-test budget bumped to 60 s via the test-options object (NOT
+    // `testInfo.setTimeout()` inside the body — that fires too late to
+    // cover the auto-fixture/before-hook portion, and the fixture is
+    // exactly where the cold-CI variance lives). The default 20 s
+    // per-test timeout in `playwright.config.ts` is too tight for
+    // this specific scenario: the auto-fixture (resetDb + seedDb +
+    // login) burns ~10 s on a cold CI runner, page.goto('/app/chat')
+    // adds ~3-5 s while the SPA boots, and the inner assertions
+    // (waitForThreadReady 45_000, toBeVisible 30_000) advertise
+    // budgets that exceed the outer cap. The scenario stubs the AI
+    // provider so the wall-clock interaction is sub-second, but the
+    // cumulative setup variance pushed the OUTER cap to fire in 2 of
+    // the last 4 CI runs (PR #83 commits bb04800 and 972b761). 60 s
+    // gives 3× headroom over worst-case observed without affecting
+    // the assertion semantics.
+    test('user asks question and the assistant reply renders', { timeout: 60_000 }, async ({ page }) => {
         // Copilot #12 fix: stub the assistant reply instead of calling
         // the real AI provider. Hitting OpenRouter in CI is flaky
         // (missing API credentials) and makes the Playwright gate

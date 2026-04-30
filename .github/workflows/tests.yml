@@ -324,6 +324,14 @@ jobs:
         # The redirect `>` is parsed by the OUTER bash and applied
         # BEFORE `exec setsid`, so PHP inherits the redirected fd 1/2.
         run: |
+          # `mkdir -p storage/logs` is also done in "Prepare .env for
+          # testing", but repeat here to make this step self-contained:
+          # if a future refactor moves the step order, the `>` redirect
+          # below would otherwise crash with "No such file or directory"
+          # and leave the runner with no Laravel server, surfacing as
+          # an opaque "server never started" failure 60 s later.
+          # `mkdir -p` is idempotent (no-op if the dir already exists).
+          mkdir -p storage/logs
           setsid -f php artisan serve --no-reload --host=127.0.0.1 --port=8000 \
               > storage/logs/artisan-serve.log 2>&1
           echo "artisan-serve dispatched via setsid -f (PID captured in Wait for backend via lsof)"

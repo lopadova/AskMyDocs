@@ -1,6 +1,17 @@
 import type { APIRequestContext, APIResponse, BrowserContext, Page } from '@playwright/test';
 
 /**
+ * Resolved Playwright base URL — mirrors `playwright.config.ts`
+ * `baseURL`. Used to scope cookie lookups in `loginAsProjectUser()`
+ * so the XSRF cookie lookup picks the AUT cookie even if a future
+ * spec spawns a second origin (e.g. an OAuth pop-up on a different
+ * host). Picking the first `XSRF-TOKEN` by name alone breaks under
+ * those conditions; filtering by `domain`/`path` keeps the helper
+ * robust.
+ */
+export const E2E_BASE_URL = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:8000';
+
+/**
  * Per-project login credentials, keyed by Playwright project name as
  * declared in `playwright.config.ts` (NOT spec filenames). Each user
  * is seeded via `User::firstOrCreate()` keyed on email so the
@@ -290,11 +301,15 @@ export async function loginAsProjectUser(
             `loginAsProjectUser: /sanctum/csrf-cookie failed on page context: ${pageCsrfResponse.status()} ${await pageCsrfResponse.text()}`,
         );
     }
-    const cookies = await context.cookies();
+    // Filter by AUT origin so a future spec that spawns a second
+    // domain (OAuth pop-up, embedded preview, etc.) can't make us
+    // pick its XSRF-TOKEN cookie by accident. `context.cookies(url)`
+    // returns only the cookies that would be sent to that URL.
+    const cookies = await context.cookies(E2E_BASE_URL);
     const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
     if (!xsrfCookie) {
         throw new Error(
-            'loginAsProjectUser: XSRF-TOKEN cookie missing on page context after /sanctum/csrf-cookie',
+            `loginAsProjectUser: XSRF-TOKEN cookie missing on page context for ${E2E_BASE_URL} after /sanctum/csrf-cookie`,
         );
     }
     const loginResponse = await page.request.post('/api/auth/login', {
@@ -334,8 +349,16 @@ export async function loginAsProjectUser(
             `loginAsProjectUser: /sanctum/csrf-cookie failed on top-level request context: ${csrfResponse.status()} ${await csrfResponse.text()}`,
         );
     }
+    // Filter by AUT origin (host:port from E2E_BASE_URL) so a future
+    // spec that issues requests to a non-AUT domain doesn't pollute
+    // the storageState cookie list with another origin's XSRF cookie.
+    // `request.storageState()` has no URL filter (unlike
+    // `context.cookies(url)`), so we match by hostname.
     const requestStorage = await request.storageState();
-    const requestXsrf = requestStorage.cookies.find((c) => c.name === 'XSRF-TOKEN');
+    const baseHost = new URL(E2E_BASE_URL).hostname;
+    const requestXsrf = requestStorage.cookies.find(
+        (c) => c.name === 'XSRF-TOKEN' && c.domain.replace(/^\./, '') === baseHost,
+    );
     if (!requestXsrf) {
         // Throwing instead of returning silently: a missing XSRF cookie
         // here means the top-level `request` context can't perform an
@@ -344,7 +367,7 @@ export async function loginAsProjectUser(
         // root cause at the point of failure instead of letting it
         // cascade into a downstream selector timeout.
         throw new Error(
-            'loginAsProjectUser: XSRF-TOKEN cookie missing on top-level request context after /sanctum/csrf-cookie — Sanctum stateful misconfiguration or session storage wiped mid-request',
+            `loginAsProjectUser: XSRF-TOKEN cookie missing on top-level request context for host ${baseHost} after /sanctum/csrf-cookie — Sanctum stateful misconfiguration or session storage wiped mid-request`,
         );
     }
     const reqLoginResponse = await request.post('/api/auth/login', {
