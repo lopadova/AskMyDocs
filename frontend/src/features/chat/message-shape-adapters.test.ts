@@ -82,12 +82,19 @@ describe('getCitations', () => {
         expect(getCitations(appMsg({ metadata: { provider: 'openai' } }))).toEqual([]);
     });
 
-    it('converts SDK source-url parts to MessageCitation shape', () => {
+    it('converts SDK source parts (BE wire-format type=source) to MessageCitation shape', () => {
+        // PLAN-W3 §5.5 mandates the discriminator `p.type === 'source'`
+        // — a CUSTOM extension to the SDK's UIPart type union which
+        // only knows `source-url` / `source-document` natively. The
+        // SDK passes unknown chunk types through verbatim, so the
+        // adapter sees `type: 'source'` and the `as never` cast is
+        // necessary to satisfy TypeScript's structural check on
+        // UIPart.type. Same shape as BE `StreamChunk::source()`.
         const m = uiMsg({
             parts: [
                 { type: 'text', text: 'According to the docs…' },
-                { type: 'source-url', sourceId: '42', title: 'Vacation Policy', url: '/kb/42' },
-                { type: 'source-url', sourceId: '7', title: 'Onboarding', url: '/kb/7' },
+                { type: 'source', sourceId: '42', title: 'Vacation Policy', url: '/kb/42', origin: 'primary' } as never,
+                { type: 'source', sourceId: '7', title: 'Onboarding', url: '/kb/7', origin: 'primary' } as never,
             ],
         });
 
@@ -110,15 +117,74 @@ describe('getCitations', () => {
         expect(getCitations(uiMsg({ parts: [] }))).toEqual([]);
     });
 
-    it('falls back to title=url when source-url part has no title', () => {
+    it("does NOT match SDK's generic source-url variant — BE emits type=source", () => {
+        // The SDK's generic `source-url` discriminator is NOT what
+        // AskMyDocs emits. This test pins the discriminator so a
+        // future Copilot-style "use source-url to align with SDK
+        // conventions" suggestion fails the suite immediately.
         const m = uiMsg({
-            parts: [{ type: 'source-url', sourceId: 'abc', url: 'https://example.com/foo' }],
+            parts: [
+                { type: 'source-url', sourceId: '99', title: 'Should be ignored', url: '/kb/99' },
+            ],
+        });
+        expect(getCitations(m)).toEqual([]);
+    });
+
+    it('falls back to title=url when source part has no title', () => {
+        const m = uiMsg({
+            parts: [{ type: 'source', sourceId: 'abc', url: 'https://example.com/foo', origin: 'primary' } as never],
         });
 
         expect(getCitations(m)[0].title).toBe('https://example.com/foo');
         // Non-numeric sourceId leaves document_id null so the FE
         // falls back to title-based resolution.
         expect(getCitations(m)[0].document_id).toBeNull();
+    });
+
+    it('falls back to title=sourceId when source part has neither title nor url (canonical citation)', () => {
+        // Canonical citations may emit a `source` chunk with no
+        // public URL — `StreamChunk::source(?string $url)` allows
+        // null. The chip must still render a non-empty label so
+        // the user sees the citation; we fall back to sourceId.
+        const m = uiMsg({
+            parts: [{ type: 'source', sourceId: 'dec-cache-v2', url: null, origin: 'primary' } as never],
+        });
+        expect(getCitations(m)[0].title).toBe('dec-cache-v2');
+    });
+
+    it('round-trips BE-provided origin tags onto FE legacy vocabulary', () => {
+        // BE `KbSearchService::SearchResult` groupings: primary |
+        // expanded | rejected. FE `MessageCitation.origin` legacy
+        // vocabulary: primary | related | rejected. Adapter maps
+        // expanded → related to keep the existing CitationsPopover
+        // bucket logic unchanged. (W3.1 BE today hard-codes 'primary'
+        // for every source chunk; this mapping is forward-compatible
+        // with a future BE patch that threads the real group label.)
+        const m = uiMsg({
+            parts: [
+                { type: 'source', sourceId: '1', title: 'Primary doc', url: '/kb/1', origin: 'primary' } as never,
+                { type: 'source', sourceId: '2', title: 'Expanded via graph', url: '/kb/2', origin: 'expanded' } as never,
+                { type: 'source', sourceId: '3', title: 'Rejected approach', url: '/kb/3', origin: 'rejected' } as never,
+                { type: 'source', sourceId: '4', title: 'Already-translated alias', url: '/kb/4', origin: 'related' } as never,
+            ],
+        });
+        const citations = getCitations(m);
+        expect(citations[0].origin).toBe('primary');
+        expect(citations[1].origin).toBe('related'); // expanded → related
+        expect(citations[2].origin).toBe('rejected');
+        expect(citations[3].origin).toBe('related'); // pass-through
+    });
+
+    it('coerces unknown / missing origin to primary (defensive)', () => {
+        const m = uiMsg({
+            parts: [
+                { type: 'source', sourceId: '1', title: 'A', url: '/a' /* origin missing */ } as never,
+                { type: 'source', sourceId: '2', title: 'B', url: '/b', origin: 'totally-made-up' } as never,
+            ],
+        });
+        const citations = getCitations(m);
+        expect(citations[0].origin).toBe('primary');
+        expect(citations[1].origin).toBe('primary');
     });
 });
 
@@ -193,7 +259,7 @@ describe('getRefusalReason', () => {
         const m = uiMsg({
             parts: [
                 { type: 'text', text: 'A clean answer' },
-                { type: 'source-url', sourceId: '1', url: '/kb/1', title: 'Doc' },
+                { type: 'source', sourceId: '1', url: '/kb/1', title: 'Doc', origin: 'primary' } as never,
             ],
         });
         expect(getRefusalReason(m)).toBeNull();
@@ -306,7 +372,7 @@ describe('mixed-shape integration', () => {
             parts: [
                 { type: 'reasoning', text: 'Let me check the docs first' },
                 { type: 'text', text: 'According to the policy…' },
-                { type: 'source-url', sourceId: '99', title: 'Policy', url: '/kb/99' },
+                { type: 'source', sourceId: '99', title: 'Policy', url: '/kb/99', origin: 'primary' } as never,
                 { type: 'data-confidence', data: { confidence: 64, tier: 'moderate' } } as never,
                 // No data-refusal part — this is a normal answer turn.
             ],

@@ -244,6 +244,15 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
         // map correctly. Switching conversations remounts the hook with
         // a different id, which forces fresh state.
         id: conversationId === null ? 'pending' : `conv-${conversationId}`,
+        // `messages` (NOT `initialMessages`) is the v3 SDK API per
+        // `ChatInit<UI_MESSAGE>.messages?: UI_MESSAGE[]` — the v2
+        // option name `initialMessages` was renamed when v3 unified
+        // initial state with the live message buffer (`useChat()`
+        // seeds the internal store from `messages` and the user
+        // controls subsequent state via `sendMessage()` / etc.).
+        // Our hook's option API exposes `initialMessages` as a more
+        // familiar React-developer name and translates here — see
+        // the `UseChatStreamOptions.initialMessages` JSDoc above.
         messages: initial,
         transport,
         onFinish,

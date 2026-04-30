@@ -97,37 +97,84 @@ function readDataPartField<T = unknown>(
 }
 
 /**
- * Convert a SDK `source-url` part to the AskMyDocs `MessageCitation`
- * shape. Only `title` round-trips faithfully; the other citation
- * fields (document_id, source_path, source_type, headings,
- * chunks_used) live in the AskMyDocs domain and don't have a place in
- * the SDK's source part. They land as `null` / sensible defaults so
- * the existing `CitationsPopover` still renders without changes — the
- * popover already tolerates absent fields.
+ * Map a BE-emitted origin tag to the legacy FE `MessageCitation.origin`
+ * vocabulary (`primary` | `related` | `rejected`). The BE
+ * `KbSearchService::SearchResult` uses `expanded` for graph-expanded
+ * citations; `KbChatController::appendCitationsFor()` already
+ * translates that to `related` on the synchronous JSON path
+ * (`'expanded' => 'related'`) — see `app/Http/Controllers/Api/KbChatController.php`.
+ *
+ * The W3.1 streaming controller currently hard-codes `origin: 'primary'`
+ * for every citation chunk (see `MessageStreamController::store()`),
+ * so today this mapping only ever sees `'primary'`. The fallback
+ * branches are present so a future W3.1 fix that threads the real
+ * group label into the chunk doesn't require a paired FE patch —
+ * the adapter accepts both legacy (`related`) and BE-internal
+ * (`expanded`) spellings.
+ *
+ * Unknown values default to `'primary'` so the existing
+ * `CitationsPopover` always has a valid bucket to render into.
+ */
+type CitationOrigin = NonNullable<MessageCitation['origin']>;
+
+function coerceCitationOrigin(value: unknown): CitationOrigin {
+    if (typeof value !== 'string') {
+        return 'primary';
+    }
+    if (value === 'primary' || value === 'related' || value === 'rejected') {
+        return value;
+    }
+    if (value === 'expanded') {
+        // BE-internal alias — translated to the FE legacy name so
+        // the existing CitationsPopover bucket continues to render.
+        return 'related';
+    }
+    return 'primary';
+}
+
+/**
+ * Convert a SDK `source` part (BE wire-format `type: 'source'` per
+ * `StreamChunk::TYPE_SOURCE` — NOT the SDK's generic `source-url`
+ * variant) to the AskMyDocs `MessageCitation` shape. `title`
+ * round-trips faithfully; `origin` round-trips from the BE payload
+ * (W3.1 emits one of `primary` / `expanded` / `rejected` matching
+ * the `KbSearchService` `SearchResult` groupings — never hard-code
+ * here). The other citation fields (source_path, source_type,
+ * headings, chunks_used) live in the AskMyDocs domain and don't
+ * have a place in the SDK's source part — they land as `null` /
+ * sensible defaults so the existing `CitationsPopover` still
+ * renders without changes.
  *
  * `document_id` we attempt to recover from `sourceId` only when it
  * looks like a positive integer (the W3.1 `StreamChunk::source()`
  * factory passes `(string) $document->id`). When the BE later
  * switches to non-numeric source ids (e.g. UUIDs), this conversion
  * yields `null` and `WikilinkHover` falls back to title-based
- * resolution — same path the legacy `Message.metadata` flow uses for
- * imported citations that lacked a numeric id.
+ * resolution.
+ *
+ * `url` is nullable per `StreamChunk::source(?string $url, ...)` —
+ * canonical citations without a public URL still emit a `source`
+ * chunk so the user sees the citation chip. When `url` is null AND
+ * `title` is missing, the chip falls back to the source id so the
+ * UI never renders an empty label.
  */
-function sourceUrlPartToCitation(part: {
+function sourcePartToCitation(part: {
     sourceId: string;
     title?: string;
-    url: string;
+    url?: string | null;
+    origin?: string;
 }): MessageCitation {
     const numeric = Number.parseInt(part.sourceId, 10);
     const documentId = Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+    const label = part.title ?? part.url ?? part.sourceId;
     return {
         document_id: documentId,
-        title: part.title ?? part.url,
+        title: label,
         source_path: null,
         source_type: null,
         headings: [],
         chunks_used: 1,
-        origin: 'primary',
+        origin: coerceCitationOrigin(part.origin),
     };
 }
 
@@ -137,11 +184,23 @@ export function getCitations(m: RenderableMessage): MessageCitation[] {
     }
     const citations: MessageCitation[] = [];
     for (const part of m.parts) {
-        if (part.type !== 'source-url') {
+        // BE wire format uses `type: 'source'` (StreamChunk::TYPE_SOURCE)
+        // per PLAN-W3 §5.5. This is a CUSTOM extension to the SDK's
+        // UIPart type union (which only knows `source-url` /
+        // `source-document` natively); the SDK passes unknown chunk
+        // types through verbatim, so we read `part.type === 'source'`
+        // here. The TypeScript cast is necessary because `'source'`
+        // is not in the SDK's structural UIPart.type union.
+        const partType = (part as { type: string }).type;
+        if (partType !== 'source') {
             continue;
         }
-        // Narrow to the SourceUrlUIPart shape for the conversion.
-        citations.push(sourceUrlPartToCitation(part));
+        citations.push(sourcePartToCitation(part as unknown as {
+            sourceId: string;
+            title?: string;
+            url?: string | null;
+            origin?: string;
+        }));
     }
     return citations;
 }
