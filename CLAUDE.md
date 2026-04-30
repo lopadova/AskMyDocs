@@ -859,25 +859,36 @@ re-targeted from main to feature/v4.0.
 → See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
-**The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
+**The 10-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
 
 1. Fine task — implementation complete.
 2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
-3. Apri PR with `gh pr create --reviewer copilot ...` — the
-   `--reviewer copilot` flag is **mandatory** on every PR.
+3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...`
+   — the reviewer flag is **mandatory** on every PR. The first review
+   request fires automatically off the PR-creation reviewer field.
 4. Attendi CI GitHub verde (typically 60–180 s).
 5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
    Skipping this wait — even when CI is already green — is a protocol
    violation.
 6. Leggi commenti (`gh pr view <N> --comments` + inline via
    `gh api .../comments`) e fix locale.
-7. Ri-attendi CI tutta verde dopo il push del fix.
-8. Se Copilot ri-review trova nuovi commenti → GOTO step 5.
-9. Merge solo quando ENTRAMBI:
-   - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
-     Copilot comments;
-   - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
-     SKIPPED).
+7. Push del fix.
+8. **Ri-richiedi review Copilot ESPLICITAMENTE** dopo ogni push
+   successivo all'apertura del PR:
+   ```bash
+   gh pr edit <N> --add-reviewer copilot-pull-request-reviewer
+   ```
+   Un `git push` da solo NON ritriggera la review automatica — la
+   richiesta originale viene consumata dalla PRIMA review e non
+   si ri-attiva sui commit successivi. Senza questo step il watcher
+   aspetta in eterno per una review che non arriva mai.
+9. Ri-attendi CI tutta verde + Copilot ri-review.
+   Se Copilot ri-review trova nuovi commenti → GOTO step 5.
+10. Merge solo quando ENTRAMBI:
+    - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
+      Copilot comments;
+    - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
+      SKIPPED).
 
 Exit conditions are conjunctive: green CI alone is **not enough**.
 Anti-pattern: "Push, see green CI, merge now" — costs the user a code
@@ -886,6 +897,12 @@ explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
 PR #1/#2/#3 (2026-04-29) — they were merged without `--reviewer copilot`
 and without waiting for Copilot review, which is a protocol violation
 even though the code shipped clean.
+
+Step 8 (re-request) was added on 2026-04-30 after Lorenzo caught
+Claude waiting 90+ minutes for a Copilot review on PR #84 commit
+3c0158c that never arrived because the agent never re-requested
+the review after `git push`. The CLI re-request is one call and
+costs nothing; skipping it costs an entire CI iteration window.
 
 **Scope**: applies to all repos under `lopadova/*` and `padosoft/*`
 (current and future), to every developer and every AI agent working on
