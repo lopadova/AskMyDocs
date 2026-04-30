@@ -141,6 +141,31 @@ describe('getCitations', () => {
         expect(getCitations(m)[0].document_id).toBeNull();
     });
 
+    it('rejects non-integer sourceIds when computing document_id (strict parse)', () => {
+        // Number.parseInt('42abc', 10) returns 42 (parses leading
+        // digits), which would silently misclassify slug-like ids
+        // as numeric document_ids. The adapter uses Number() +
+        // Number.isInteger() so only fully-numeric strings round-
+        // trip; everything else yields document_id=null and
+        // WikilinkHover falls back to title-based resolution.
+        const cases = [
+            { sourceId: '42abc', expectDocId: null },
+            { sourceId: 'doc-42', expectDocId: null },
+            { sourceId: 'dec-cache-v2', expectDocId: null },
+            { sourceId: '42.5', expectDocId: null },        // float rejected
+            { sourceId: '0', expectDocId: null },           // non-positive rejected
+            { sourceId: '-1', expectDocId: null },          // negative rejected
+            { sourceId: '42', expectDocId: 42 },            // happy path
+            { sourceId: '1', expectDocId: 1 },
+        ];
+        for (const c of cases) {
+            const m = uiMsg({
+                parts: [{ type: 'source', sourceId: c.sourceId, title: 'X', url: '/x', origin: 'primary' } as never],
+            });
+            expect(getCitations(m)[0].document_id).toBe(c.expectDocId);
+        }
+    });
+
     it('falls back to title=sourceId when source part has neither title nor url (canonical citation)', () => {
         // Canonical citations may emit a `source` chunk with no
         // public URL — `StreamChunk::source(?string $url)` allows

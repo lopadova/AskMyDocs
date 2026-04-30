@@ -164,8 +164,17 @@ function sourcePartToCitation(part: {
     url?: string | null;
     origin?: string;
 }): MessageCitation {
-    const numeric = Number.parseInt(part.sourceId, 10);
-    const documentId = Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+    // Strict all-digits guard — `Number.parseInt('42abc', 10)` returns
+    // 42 because parseInt parses LEADING digits and stops at the
+    // first non-digit, silently misclassifying non-integer sourceIds
+    // like `'doc-42'` / `'42abc'` / `'dec-cache-v2'` as document_id 42.
+    // `Number('42abc')` returns NaN (strict), so we use it instead;
+    // `Number.isInteger()` then rejects floats and Infinity. This
+    // matches the W3.1 BE which always emits the doc id as `(string)
+    // $document->id` for numeric ids and a slug for canonical refs —
+    // canonical slugs must NOT round-trip to a misleading document_id.
+    const numeric = Number(part.sourceId);
+    const documentId = Number.isInteger(numeric) && numeric > 0 ? numeric : null;
     const label = part.title ?? part.url ?? part.sourceId;
     return {
         document_id: documentId,
