@@ -216,7 +216,11 @@ jobs:
           # admin-dashboard.spec.ts's happy path fails on dashboard-health.
           mkdir -p storage/app/kb
 
-      - name: Migrate + seed test data
+      - name: Migrate test database (CLI)
+        # Step name reflects what actually runs here: key generation +
+        # `migrate:fresh`. Seeding still happens via POST /testing/seed
+        # during Playwright setup (see frontend/e2e/setup-helpers.ts);
+        # only the heavy migration is moved off the HTTP path.
         env:
           APP_ENV: testing
         run: |
