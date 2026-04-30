@@ -2,12 +2,21 @@ import type { APIRequestContext, APIResponse, BrowserContext, Page } from '@play
 
 /**
  * Per-project login credentials, keyed by Playwright project name as
- * declared in `playwright.config.ts` (NOT spec filenames). Mirrors the
- * seeded users in `database/seeders/DemoSeeder.php` and
- * `database/seeders/EmptyAdminSeeder.php` — both seeders re-create
- * these accounts via `User::firstOrCreate()` keyed on email after a
- * `migrate:fresh`, so the email/password pair stays valid across
- * resets even though the bcrypt hash is regenerated each time.
+ * declared in `playwright.config.ts` (NOT spec filenames). Each user
+ * is seeded via `User::firstOrCreate()` keyed on email so the
+ * email/password pair stays valid across `migrate:fresh` resets even
+ * though the bcrypt hash is regenerated each time. Coverage by seeder:
+ *
+ *  - `admin@demo.local`  — DemoSeeder + EmptyAdminSeeder (+ chained
+ *    AdminDegradedSeeder, AdminInsightsSeeder via DemoSeeder).
+ *  - `viewer@demo.local` — DemoSeeder + EmptyAdminSeeder.
+ *  - `super@demo.local`  — DemoSeeder ONLY. EmptyAdminSeeder does NOT
+ *    seed the super-admin user, so spec bodies running under the
+ *    `chromium-super-admin` project must NOT switch to
+ *    EmptyAdminSeeder via mid-test `seedDb()` — they would lose the
+ *    user record they just authenticated with. The `super-admin-setup`
+ *    project boots through DemoSeeder via the auto-fixture and stays
+ *    on it for the duration of the suite.
  *
  * Setup projects (`setup`, `viewer-setup`, `super-admin-setup` —
  * driven by `auth.setup.ts`, `viewer.setup.ts`, `super-admin.setup.ts`)
@@ -68,10 +77,18 @@ function asRequest(target: RequestTarget): APIRequestContext {
  *
  *  - BOOT_RETRY_ATTEMPTS = 30 × 1500 ms ≈ 45 s. Used by
  *    `resetAndSeed()` only — that helper runs at SETUP-project boot
- *    (auth.setup / viewer.setup / super-admin.setup) where the first
- *    POST after `php artisan serve` reports `/healthz` green can still
- *    ECONNREFUSE for tens of seconds. Setup projects do NOT inherit
- *    the per-test 20 s cap, so a 45 s budget is safe there.
+ *    (project names `setup` / `viewer-setup` / `super-admin-setup`,
+ *    driven by `auth.setup.ts` / `viewer.setup.ts` /
+ *    `super-admin.setup.ts`) where the first POST after `php artisan
+ *    serve` reports `/healthz` green can still ECONNREFUSE for tens
+ *    of seconds. Setup projects DO inherit the global per-test
+ *    `timeout: 20_000` from `playwright.config.ts` — the 45 s ceiling
+ *    is THEORETICAL worst-case. In practice the cold-boot flake
+ *    clears within 1–3 retries (~3 s), so the budget rarely drains
+ *    past 5 s. If a future workload genuinely needs the full window
+ *    (e.g. a slower CI runner), override `timeout` on the setup
+ *    project explicitly via `playwright.config.ts`'s project entry
+ *    rather than silently relying on Playwright not noticing.
  *
  *  - WARM_RETRY_ATTEMPTS = 3 × 1500 ms = 4.5 s. Used by `resetDb()`
  *    and `seedDb()` — both are called from spec bodies and the

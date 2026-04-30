@@ -192,10 +192,15 @@ jobs:
           # openssl-generated base64 string through sed.
 
           # Postgres + pgvector via the service container above — same
-          # engine production runs. Playwright boots the server via
-          # playwright.config.ts webServer; migrations exercise pgvector
-          # cleanly because ensureVectorExtensionExists() can issue
-          # CREATE EXTENSION here.
+          # engine production runs. In CI the workflow starts Laravel
+          # explicitly via the "Start Laravel server (testing)" step
+          # below and sets `E2E_SKIP_WEBSERVER=1` so playwright.config.ts
+          # skips its own `webServer` block (avoids EADDRINUSE on
+          # 127.0.0.1:8000). For LOCAL `npm run e2e` runs the
+          # `webServer` block boots `php artisan serve` itself.
+          # Migrations exercise pgvector cleanly because
+          # ensureVectorExtensionExists() can issue CREATE EXTENSION
+          # here.
           set_env DB_CONNECTION pgsql
           set_env DB_HOST       127.0.0.1
           set_env DB_PORT       5432
