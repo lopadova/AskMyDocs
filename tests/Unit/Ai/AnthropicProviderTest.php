@@ -92,4 +92,60 @@ class AnthropicProviderTest extends TestCase
 
         $this->assertSame('only this', $res->content);
     }
+
+    public function test_chat_stream_via_fallback_emits_text_delta_then_finish(): void
+    {
+        // The fallback streaming path delegates to chatWithHistory and
+        // re-emits the response as one text-delta + one finish chunk.
+        // This is the W3.1 default for every provider; native HTTP-SSE
+        // streaming is a follow-up enhancement that overrides
+        // chatStream() per-provider without breaking this contract.
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [
+                    ['type' => 'text', 'text' => 'Streamed reply'],
+                ],
+                'usage' => ['input_tokens' => 12, 'output_tokens' => 7],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $p = new AnthropicProvider($this->config());
+        $chunks = iterator_to_array($p->chatStream('SYS', [
+            ['role' => 'user', 'content' => 'Hi'],
+        ]), preserve_keys: false);
+
+        $this->assertCount(2, $chunks, 'fallback streaming yields exactly text-delta + finish');
+        $this->assertSame('text-delta', $chunks[0]->type);
+        $this->assertSame('Streamed reply', $chunks[0]->payload['textDelta']);
+        $this->assertSame('finish', $chunks[1]->type);
+        $this->assertSame('end_turn', $chunks[1]->payload['finishReason']);
+        $this->assertSame(12, $chunks[1]->payload['usage']['promptTokens']);
+        $this->assertSame(7, $chunks[1]->payload['usage']['completionTokens']);
+    }
+
+    public function test_chat_stream_skips_text_delta_on_empty_response(): void
+    {
+        // Edge case: provider returns empty content (rare but possible
+        // with strict tool-only responses). The fallback skips the
+        // text-delta in that case so the FE doesn't render an empty
+        // assistant bubble; only the finish event fires.
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [],
+                'usage' => ['input_tokens' => 1, 'output_tokens' => 0],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $p = new AnthropicProvider($this->config());
+        $chunks = iterator_to_array($p->chatStream('SYS', [
+            ['role' => 'user', 'content' => 'Hi'],
+        ]), preserve_keys: false);
+
+        $this->assertCount(1, $chunks, 'no text-delta when response content is empty');
+        $this->assertSame('finish', $chunks[0]->type);
+    }
 }
