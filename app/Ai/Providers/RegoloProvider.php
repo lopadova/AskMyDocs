@@ -53,7 +53,7 @@ final class RegoloProvider implements AiProviderInterface
         }
 
         $last = end($messages);
-        if (($last['role'] ?? null) !== 'user') {
+        if (! is_array($last) || ($last['role'] ?? null) !== 'user') {
             // The SDK's `Promptable::prompt(string $prompt, ...)` shape
             // expects the *new* user turn as a string argument, with all
             // earlier turns supplied via the agent's `messages` iterable.
@@ -64,8 +64,18 @@ final class RegoloProvider implements AiProviderInterface
             // surface. Surface the misuse loudly.
             throw new \InvalidArgumentException(sprintf(
                 'chatWithHistory requires the last message to have role="user"; got role="%s".',
-                $last['role'] ?? '(missing)'
+                is_array($last) ? ($last['role'] ?? '(missing)') : '(non-array)'
             ));
+        }
+        if (! is_string($last['content'] ?? null) || $last['content'] === '') {
+            // The SDK's `prompt()` is `string $prompt` — feeding it null,
+            // an int, or an empty string would emit a PHP TypeError
+            // (or a silent empty prompt) downstream. Reject up front so
+            // the caller sees a deterministic exception identical in
+            // shape to the role guard above.
+            throw new \InvalidArgumentException(
+                'chatWithHistory requires the last message to have a non-empty string "content".'
+            );
         }
 
         $history = array_slice($messages, 0, -1);
@@ -119,10 +129,32 @@ final class RegoloProvider implements AiProviderInterface
     private function mapHistoryToSdkMessages(array $history): array
     {
         return array_map(
-            fn (array $msg) => match ($msg['role']) {
-                'user' => new UserMessage($msg['content']),
-                'assistant' => new AssistantMessage($msg['content']),
-                default => throw new \InvalidArgumentException("Unsupported message role [{$msg['role']}]."),
+            function (mixed $msg): UserMessage|AssistantMessage {
+                // Validate shape up front so a malformed entry surfaces
+                // as a deterministic InvalidArgumentException instead of
+                // a PHP "undefined array key" warning followed by a
+                // confusing match() failure.
+                if (! is_array($msg)) {
+                    throw new \InvalidArgumentException(
+                        'History entries must be associative arrays with role+content keys.'
+                    );
+                }
+                $role = $msg['role'] ?? null;
+                $content = $msg['content'] ?? null;
+                if (! is_string($content) || $content === '') {
+                    throw new \InvalidArgumentException(
+                        'History entry requires a non-empty string "content".'
+                    );
+                }
+
+                return match ($role) {
+                    'user' => new UserMessage($content),
+                    'assistant' => new AssistantMessage($content),
+                    default => throw new \InvalidArgumentException(sprintf(
+                        'Unsupported message role [%s].',
+                        is_string($role) ? $role : '(missing)'
+                    )),
+                };
             },
             $history,
         );

@@ -219,6 +219,40 @@ class RegoloProviderTest extends TestCase
         ]);
     }
 
+    public function test_chat_with_history_rejects_last_message_missing_content(): void
+    {
+        $this->setupConfig();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('non-empty string "content"');
+
+        // A malformed last message (missing `content` key) would otherwise
+        // emit a PHP "undefined array key" notice and feed null to the
+        // SDK's `prompt(string)` argument, raising a TypeError far from
+        // the adapter boundary. The guard turns it into a deterministic
+        // `InvalidArgumentException` callers can catch.
+        (new RegoloProvider(config('ai.providers.regolo')))->chatWithHistory('s', [
+            ['role' => 'user'],
+        ]);
+    }
+
+    public function test_chat_with_history_rejects_history_entry_missing_content(): void
+    {
+        $this->setupConfig();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('non-empty string "content"');
+
+        // Same shape guard for entries earlier in the history (mapped
+        // through `mapHistoryToSdkMessages()`). Without the guard the
+        // map() callable raised a "undefined array key" warning before
+        // failing — the new behaviour is a single clear exception.
+        (new RegoloProvider(config('ai.providers.regolo')))->chatWithHistory('s', [
+            ['role' => 'user'], // missing content
+            ['role' => 'user', 'content' => 'q'],
+        ]);
+    }
+
     public function test_chat_options_max_tokens_and_temperature_propagate_to_request(): void
     {
         $this->setupConfig();
