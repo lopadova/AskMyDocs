@@ -88,6 +88,18 @@ return [
             'key' => env('REGOLO_API_KEY'),
             'url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
             'timeout' => env('REGOLO_TIMEOUT', 120),
+            // Provider-level defaults for every chat call. Per-call
+            // overrides via `$options['max_tokens']` / `$options['temperature']`
+            // (e.g. `ConversationController::generateTitle` capping
+            // titles at 60 tokens) take precedence — see
+            // `RegoloProvider::resolveMaxTokens()` /
+            // `resolveTemperature()`. Both reach the SDK via
+            // `RegoloAnonymousAgent::maxTokens()` /
+            // `temperature()`, then propagate through
+            // `Laravel\Ai\Gateway\TextGenerationOptions::forAgent()`
+            // into `padosoft/laravel-ai-regolo`'s `BuildsTextRequests`.
+            'max_tokens' => (int) env('REGOLO_MAX_TOKENS', 4096),
+            'temperature' => (float) env('REGOLO_TEMPERATURE', 0.2),
             'models' => [
                 'text' => [
                     'default' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),

@@ -170,7 +170,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant"');
+        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant".');
 
         // Sending a history that ends with an assistant turn would make
         // the SDK treat the assistant's previous reply as the new user
@@ -198,5 +198,55 @@ class RegoloProviderTest extends TestCase
         $p->chat('s', 'u');
 
         Http::assertSent(fn (\Illuminate\Http\Client\Request $req) => str_starts_with($req->url(), 'https://custom.regolo.example/v1/'));
+    }
+
+    public function test_chat_with_history_rejects_unsupported_role_in_history(): void
+    {
+        $this->setupConfig();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unsupported message role');
+
+        // The provider only accepts user/assistant roles in the history
+        // tail because the laravel/ai SDK shape carries `system` via the
+        // dedicated `instructions` argument, not as a history message.
+        // A `system` (or `tool`) entry slipped into the history must
+        // surface loudly at the adapter boundary so the misuse never
+        // reaches the wire as a malformed message list.
+        (new RegoloProvider(config('ai.providers.regolo')))->chatWithHistory('s', [
+            ['role' => 'system', 'content' => 'should-not-be-here'],
+            ['role' => 'user', 'content' => 'Hi'],
+        ]);
+    }
+
+    public function test_chat_options_max_tokens_and_temperature_propagate_to_request(): void
+    {
+        $this->setupConfig();
+        Http::fake([
+            'api.regolo.ai/v1/chat/completions' => Http::response([
+                'model' => 'Llama-3.3-70B-Instruct',
+                'choices' => [['message' => ['content' => 'short'], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
+            ], 200),
+        ]);
+
+        // Per-call overrides MUST propagate end-to-end:
+        //   RegoloProvider::chat($options)
+        //     → RegoloAnonymousAgent::maxTokens()/temperature()
+        //     → Laravel\Ai\Gateway\TextGenerationOptions::forAgent()
+        //     → padosoft/laravel-ai-regolo BuildsTextRequests::buildTextRequest()
+        //     → wire `body['max_tokens']` / `body['temperature']`.
+        // ConversationController::generateTitle relies on this — capping
+        // titles at 60 tokens. A regression here silently hands the
+        // provider's own default (4096) to Regolo.
+        $p = new RegoloProvider(config('ai.providers.regolo'));
+        $p->chat('s', 'u', ['max_tokens' => 60, 'temperature' => 0.7]);
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $req) {
+            $body = $req->data();
+
+            return ($body['max_tokens'] ?? null) === 60
+                && ($body['temperature'] ?? null) === 0.7;
+        });
     }
 }

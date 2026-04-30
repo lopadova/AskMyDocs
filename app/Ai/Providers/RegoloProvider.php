@@ -5,7 +5,7 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
-use Laravel\Ai\AnonymousAgent;
+use App\Ai\Providers\Internal\RegoloAnonymousAgent;
 use Laravel\Ai\Embeddings;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
@@ -33,11 +33,7 @@ final class RegoloProvider implements AiProviderInterface
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
-        $agent = new AnonymousAgent(
-            instructions: $systemPrompt,
-            messages: [],
-            tools: [],
-        );
+        $agent = $this->makeAgent($systemPrompt, [], $options);
 
         $sdkResponse = $agent->prompt(
             $userMessage,
@@ -74,10 +70,10 @@ final class RegoloProvider implements AiProviderInterface
 
         $history = array_slice($messages, 0, -1);
 
-        $agent = new AnonymousAgent(
-            instructions: $systemPrompt,
-            messages: $this->mapHistoryToSdkMessages($history),
-            tools: [],
+        $agent = $this->makeAgent(
+            $systemPrompt,
+            $this->mapHistoryToSdkMessages($history),
+            $options,
         );
 
         $sdkResponse = $agent->prompt(
@@ -137,6 +133,50 @@ final class RegoloProvider implements AiProviderInterface
         return $options['model']
             ?? $this->config['models']['text']['default']
             ?? null;
+    }
+
+    /**
+     * Build the per-call agent.
+     *
+     * The laravel/ai SDK's `TextGenerationOptions::forAgent()` reads
+     * `maxTokens()` and `temperature()` methods from the agent instance
+     * (or PHP attributes on the class) when building the gateway
+     * request — see `vendor/laravel/ai/src/Gateway/TextGenerationOptions.php`.
+     * Plain `AnonymousAgent` exposes neither, which silently dropped
+     * caller-supplied `$options['max_tokens']` (and provider-level
+     * `temperature`) on the floor and broke `ConversationController::generateTitle`.
+     *
+     * `RegoloAnonymousAgent` adds the two methods so per-call options
+     * reach `BuildsTextRequests::buildTextRequest()` in
+     * `padosoft/laravel-ai-regolo`, which forwards them as
+     * `body['max_tokens']` / `body['temperature']` on the wire.
+     *
+     * @param  iterable<int, UserMessage|AssistantMessage>  $messages
+     * @param  array<string, mixed>  $options
+     */
+    private function makeAgent(string $systemPrompt, iterable $messages, array $options): RegoloAnonymousAgent
+    {
+        return new RegoloAnonymousAgent(
+            instructions: $systemPrompt,
+            messages: $messages,
+            tools: [],
+            maxTokens: $this->resolveMaxTokens($options),
+            temperature: $this->resolveTemperature($options),
+        );
+    }
+
+    private function resolveMaxTokens(array $options): ?int
+    {
+        $value = $options['max_tokens'] ?? $this->config['max_tokens'] ?? null;
+
+        return is_null($value) ? null : (int) $value;
+    }
+
+    private function resolveTemperature(array $options): ?float
+    {
+        $value = $options['temperature'] ?? $this->config['temperature'] ?? null;
+
+        return is_null($value) ? null : (float) $value;
     }
 
     private function toAiResponse(\Laravel\Ai\Responses\AgentResponse $sdkResponse): AiResponse
