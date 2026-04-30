@@ -272,16 +272,26 @@ jobs:
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then
               echo "Backend is up after ${i}s"
-              # Capture PID NOW that the port is bound. `lsof -ti tcp:8000
-              # -sTCP:LISTEN` returns ONLY the process actually listening,
-              # bypassing the recurring pgrep ambiguity (any process with
-              # 'artisan serve' in argv was matching, including transient
-              # bash wrappers). The PID feeds the `Stop Laravel server`
-              # cleanup step at job end — Copilot round-? finding 09:15:45.
+              # Capture the SERVER's process group NOW that the port is
+              # bound. With PHP_CLI_SERVER_WORKERS=4 the parent process
+              # forks 4 worker children, all sharing the same PGID
+              # (created by `setsid -f` in the previous step). lsof can
+              # report any of these as the listener; instead of guessing
+              # which is "the" PID, capture the PGID once — `kill -- -PGID`
+              # in the cleanup step takes down the parent + every worker
+              # atomically, with no risk of a single worker outliving
+              # the cleanup and holding port 8000. Copilot round-?
+              # finding 09:24:28-29 (multi-listener edge case).
               pid=$(lsof -ti tcp:8000 -sTCP:LISTEN | head -1)
               if [ -n "$pid" ]; then
-                echo "$pid" > /tmp/artisan-serve.pid
-                echo "Captured artisan-serve listener PID=$pid"
+                pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+                if [ -n "$pgid" ]; then
+                  echo "$pgid" > /tmp/artisan-serve.pgid
+                  echo "Captured artisan-serve PGID=$pgid (sample listener PID=$pid)"
+                else
+                  echo "WARN: ps could not derive PGID from PID=$pid; falling back to PID-only kill"
+                  echo "$pid" > /tmp/artisan-serve.pid
+                fi
               else
                 echo "WARN: lsof found no listener on :8000 despite healthz 200"
               fi
@@ -333,34 +343,59 @@ jobs:
 
       - name: Stop Laravel server
         # `if: always()` so the cleanup runs whether Playwright passed,
-        # failed, or the job was cancelled. Otherwise the artisan-serve
-        # process backgrounded by `Start Laravel server (testing)`
-        # outlives the test step and keeps holding port 8000 + a PHP
-        # interpreter for the rest of the runner's lifetime — wasteful
-        # on cancelled runs, and leaves a zombie if a follow-up step
-        # ever tries to bind 8000 again.
+        # failed, or the job was cancelled. Without this the
+        # artisan-serve process group outlives the test step and keeps
+        # holding port 8000 + a pool of PHP interpreters.
+        #
+        # PGID-based kill (preferred): `setsid -f` in the start step put
+        # PHP in a NEW process group; PHP_CLI_SERVER_WORKERS=4 forks 4
+        # worker children that inherit the same PGID. `kill -- -$PGID`
+        # signals every process in that group atomically — no risk of a
+        # single worker surviving the cleanup. The PID-only fallback
+        # remains for the (unlikely) case where ps could not derive a
+        # PGID from the captured listener PID.
         if: always()
         run: |
-          if [ -f /tmp/artisan-serve.pid ]; then
+          term_then_kill() {
+            local target="$1"  # e.g. "-12345" for PGID, "12345" for single PID
+            local label="$2"
+            kill -TERM -- "$target" 2>/dev/null || true
+            # Give the process(es) ~2s to flush + exit cleanly.
+            sleep 2
+            if kill -0 -- "$target" 2>/dev/null; then
+              echo "$label still alive after SIGTERM — sending SIGKILL"
+              kill -KILL -- "$target" 2>/dev/null || true
+            fi
+          }
+
+          if [ -f /tmp/artisan-serve.pgid ]; then
+            pgid=$(cat /tmp/artisan-serve.pgid)
+            echo "Stopping artisan-serve process group (pgid=$pgid)..."
+            term_then_kill "-$pgid" "artisan-serve PG"
+            rm -f /tmp/artisan-serve.pgid
+          elif [ -f /tmp/artisan-serve.pid ]; then
             pid=$(cat /tmp/artisan-serve.pid)
             if kill -0 "$pid" 2>/dev/null; then
-              echo "Stopping artisan-serve (pid=$pid)..."
-              kill -TERM "$pid" || true
-              # Give it a couple of seconds to flush; force-kill if it
-              # ignores SIGTERM. `wait` is safer than fixed sleep but
-              # the process is a `&`-detached child, not a job — fall
-              # back to a short sleep + SIGKILL.
-              sleep 2
-              if kill -0 "$pid" 2>/dev/null; then
-                echo "artisan-serve still alive — sending SIGKILL"
-                kill -KILL "$pid" || true
-              fi
+              echo "Stopping artisan-serve (pid=$pid, PGID-fallback path)..."
+              term_then_kill "$pid" "artisan-serve PID"
             else
               echo "artisan-serve (pid=$pid) already exited; tail of log:"
               tail -50 storage/logs/artisan-serve.log 2>/dev/null || true
             fi
             rm -f /tmp/artisan-serve.pid
           else
-            echo "(no /tmp/artisan-serve.pid — server step never ran or failed early)"
+            echo "(no /tmp/artisan-serve.pgid or .pid — server step never ran or failed early)"
+          fi
+
+          # Belt-and-braces: even after PGID kill, run lsof one more
+          # time and SIGKILL anything still holding :8000. This catches
+          # any process the runner spawned that bypassed our PGID
+          # accounting (defensive cleanup; should be a no-op).
+          remaining=$(lsof -ti tcp:8000 -sTCP:LISTEN 2>/dev/null || true)
+          if [ -n "$remaining" ]; then
+            echo "WARN: residual listeners on :8000 after PGID kill: $remaining"
+            for pid in $remaining; do
+              kill -KILL "$pid" 2>/dev/null || true
+            done
           fi
 
