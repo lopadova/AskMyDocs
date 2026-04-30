@@ -1,6 +1,8 @@
 # v4.0 Week 2 closure — 2026-04-30
 
-W2 deliverable per `project_v40_week_sequence`: **`padosoft/laravel-ai-regolo` v0.1 + AskMyDocs adopta `laravel/ai` SDK**.
+W2 deliverable per `project_v40_week_sequence`: **`padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK**.
+
+(Lorenzo's `project_v40_week_sequence` memory phrased the original target as "v0.1" — by the time W2 closed the package had already iterated through `v0.1.x` to `v0.2.2` and AskMyDocs pinned `^0.2`. This closure file uses the actual shipped version.)
 
 ## Sub-tasks shipped
 
@@ -21,7 +23,7 @@ W2 deliverable per `project_v40_week_sequence`: **`padosoft/laravel-ai-regolo` v
 ## Lessons captured (added during W2)
 
 - **R36 step 8** — `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer` is mandatory after every push; without it Copilot does not auto-re-review and the loop stalls indefinitely (Lorenzo flagged a 90 min wait incident on PR #84 commit `3c0158c`)
-- **R38** — heavy work belongs in CLI workflow steps, not behind `php artisan serve`. The structural fix that landed on PR #85 (and the matching changes here on PR #83) is the canonical example: move `migrate:fresh` to a CLI step before Playwright starts; sets `E2E_SKIP_HTTP_RESET=1` so setup helpers skip the redundant boot reset
+- **R38** — heavy work belongs in CLI workflow steps, not behind `php artisan serve`. PR #83 (merged at `349080f`) is the canonical Week 2 example: move `migrate:fresh` to a CLI step before Playwright starts; set `E2E_SKIP_HTTP_RESET=1` so setup helpers skip the redundant boot reset. (PR #85 is referenced in CLAUDE.md R38 as the upstream "worked example" but is outside this Week 2 closure scope.)
 - **R37** — `feature/v4.x` integration branch + sub-branches per sottotask; `feature/v4.0` accumulates W1..W8 work; merge to `main` happens once at v4.0 RC
 - **Auto-merge convention** (memory `feedback_auto_merge_when_ready`) — Claude merges PRs himself when R36 step-9 conditions are met, no longer waits for Lorenzo's manual click
 

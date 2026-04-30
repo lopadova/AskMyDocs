@@ -36,7 +36,7 @@ Compiled from explore agent `2026-04-30 W3 mapping`.
 
 ### 2.1 Layout shell
 - `frontend/src/routes/index.tsx:133-142` — flat `chatRoute` + `chatConversationRoute` siblings
-- `frontend/src/features/chat/ChatView.tsx:22-118` — three-column layout (sidebar / thread+composer / future graph)
+- `frontend/src/features/chat/ChatView.tsx` (component spans the full file, ~150 lines) — three-column layout (sidebar / thread+composer / future graph)
 - URL is the source of truth for `activeConversationId` (R11 §5)
 
 ### 2.2 Composer (`Composer.tsx:39-320`)
@@ -51,7 +51,7 @@ Compiled from explore agent `2026-04-30 W3 mapping`.
 - Auto-scroll on new messages
 - Empty state with three suggested prompts (`EmptyThread()`)
 
-### 2.4 Message rendering (`MessageBubble.tsx:33-150`)
+### 2.4 Message rendering (`MessageBubble.tsx`)
 - User messages: right-aligned bubble
 - Assistant messages: full-width with sub-components:
   - `<ThinkingTrace>` (for `metadata.reasoning_steps`)
@@ -98,7 +98,7 @@ Compiled from explore agent `2026-04-30 W3 mapping`.
 
 `@ai-sdk/react` exports:
 
-- `useChat({ api, transport, onFinish, onError })` — the core hook. Returns `{ messages, input, handleInputChange, handleSubmit, status, error, stop, reload, append }`. Manages message list, input field, streaming, and SSE plumbing.
+- `useChat({ id, initialMessages, api, transport, onFinish, onError, ... })` — the core hook. The options shown here are non-exhaustive: later sections of this plan rely on `id` (per-conversation state) and `initialMessages` (hydrate from server-fetched thread). Returns `{ messages, input, handleInputChange, handleSubmit, status, error, stop, reload, append }`. Manages message list, input field, streaming, and SSE plumbing.
 - `Message` type with `parts: MessagePart[]` where `MessagePart` covers text, tool-call, tool-result, source, file. Citations + reasoning naturally model as parts.
 - `DefaultChatTransport` for `/api/chat`-style streaming endpoints; custom transport for non-standard routes.
 - Hooks for tool-call rendering (`useChatToolCallStreamPart`), inferring sources, etc.
@@ -217,12 +217,49 @@ Configure `useChat` with a custom transport that wraps the existing JSON respons
 ```
 POST /conversations/{id}/messages/stream  → SSE
 ```
-Same auth + filter contract as the synchronous route. Response is a stream of AI SDK protocol events:
-- `data: text-delta` for token chunks
-- `data: source` for citations (one event per citation, emitted at the start of streaming)
-- `data: data-confidence` for the confidence score (emitted once when known)
-- `data: data-refusal` for refusal events (emitted instead of `text-delta`s when `refusal_reason !== null`)
-- `data: finish` with usage + finish_reason
+Same auth + filter contract as the synchronous route. Response headers:
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache, no-transform
+X-Accel-Buffering: no              # disable nginx buffering on prod
+Connection: keep-alive
+```
+
+Each SSE message is `data: <json-payload>\n\n`. Payload is a discriminated union on `type`:
+
+```
+data: {"type":"source","sourceId":"doc-101","title":"Remote work policy","url":"/app/admin/kb/hr-portal/remote-work-policy","origin":"primary"}
+
+data: {"type":"text-delta","textDelta":"The remote work stipend"}
+
+data: {"type":"text-delta","textDelta":" applies to full-time employees"}
+
+data: {"type":"data-confidence","confidence":82,"tier":"high"}
+
+data: {"type":"text-delta","textDelta":" after 90 days."}
+
+data: {"type":"finish","finishReason":"stop","usage":{"promptTokens":1234,"completionTokens":56}}
+```
+
+Refusal stream variant (no `text-delta` events):
+
+```
+data: {"type":"data-refusal","reason":"no_relevant_context","body":"...","hint":"..."}
+
+data: {"type":"data-confidence","confidence":null,"tier":"refused"}
+
+data: {"type":"finish","finishReason":"refusal","usage":{"promptTokens":1234,"completionTokens":0}}
+```
+
+Wire-format invariants:
+- Each event MUST end with `\n\n` (SSE framing).
+- `data:` payload MUST be valid JSON (no comment lines, no multi-line `data:` continuations).
+- `text-delta` order is significant; concatenating all `textDelta` strings in order MUST equal the full assistant text.
+- `source` events MUST emit before the first `text-delta` (so the citations strip can render before the answer).
+- Exactly one `finish` event terminates the stream; no events after it.
+
+PHPUnit `MessageStreamControllerTest` (§7.5) ships a recorded fixture file `tests/fixtures/sse/happy-path.txt` that the protocol-drift test (§7.5 #8) compares byte-for-byte against the live response.
 
 ### 6.2 Provider streaming adapter
 - `AiProviderInterface::chatStream(...)` returns `iterable<ChunkEvent>` (PHP generator).
@@ -266,16 +303,23 @@ The mapping lives in a single helper `mapStatusToDataState()` with a Vitest unit
 
 ### 7.2 Zero-edit gate on existing E2E specs
 
-The four existing chat suites — `chat.spec.ts`, `chat-filters.spec.ts`, `chat-mention.spec.ts`, `chat-refusal.spec.ts` — must stay 100% GREEN after W3.2 lands **without any modification to the spec files themselves**. CI gate:
+The compatibility goal is that **selectors, `getByTestId(...)`, `getByRole(...)`, ARIA expectations, `data-state` assertions, and other DOM-observable chat behaviour remain unchanged** in the four existing chat suites — `chat.spec.ts`, `chat-filters.spec.ts`, `chat-mention.spec.ts`, `chat-refusal.spec.ts`.
+
+**Important consistency note:** today those specs stub `POST /conversations/*/messages` via `page.route()` directly inside the spec files. A naïve app switch to `POST /conversations/*/messages/stream` would break those matchers and would force per-spec edits — that is exactly the situation the zero-edit goal forbids.
+
+The W3.2 implementation order is therefore:
+
+1. **First** — extract the chat-network stubbing into a shared Playwright helper (e.g. `frontend/e2e/helpers/stub-chat.ts` exporting `stubChatHappyPath(page, payload)`, `stubChatRefusal(page, reason)`, etc.). The four existing spec files start delegating to this helper. This refactor itself is a small dedicated PR (or the first commit of W3.2) and the four spec files end up with TRIVIAL edits (one-line stub calls in place of the inline `page.route(...)` block).
+2. **Then** — only the helper changes to point at `/conversations/*/messages/stream` and to fulfill with one AI SDK SSE event sequence (`source` + `text-delta` + `finish`). After that, the four spec files stay byte-identical AND continue to pass.
+
+CI gate post-extraction:
 
 ```bash
+# After the helper-extraction commit lands, this diff must show 0 lines for the 4 specs:
 git diff --stat origin/feature/v4.0...HEAD -- frontend/e2e/chat.spec.ts frontend/e2e/chat-filters.spec.ts frontend/e2e/chat-mention.spec.ts frontend/e2e/chat-refusal.spec.ts
-# expected: 0 lines changed
 ```
 
-The W3.2 PR template includes a check that this diff is empty.
-
-The `page.route()` stub target in `chat.spec.ts:22` moves from `POST /conversations/*/messages` to `POST /conversations/*/messages/stream`, but the stub body becomes a single AI SDK SSE event sequence (`text-delta` + `finish`). The CHANGE happens inside the route handler implementation in the SPA / shared helpers, NOT in the spec file. Spec assertions stay byte-identical.
+The W3.2 PR template includes both checks: (a) the helper-extraction commit is present, (b) the post-extraction diff against the 4 specs is 0 lines.
 
 ### 7.3 NEW Playwright spec files
 
@@ -343,7 +387,7 @@ The `page.route()` stub target in `chat.spec.ts:22` moves from `POST /conversati
 | | complete assistant with confidence badge (each of 4 tiers: high / moderate / low / refused) |
 | | complete assistant with thinking trace expanded |
 
-Snapshots committed to `frontend/e2e/__screenshots__/`. CI runs without `--update-snapshots` — pixel diff fails the build.
+Snapshot baselines are committed in Playwright's default per-spec `*-snapshots/` folders next to each visual spec (i.e. `frontend/e2e/chat.visual.spec.ts-snapshots/` etc.). The current `playwright.config.ts` does not customise the snapshot path template; W3.2 may set `snapshotPathTemplate` in `playwright.config.ts` to consolidate baselines under a single folder if Lorenzo prefers — that's a config choice not required for correctness. CI runs without `--update-snapshots` — pixel diff fails the build.
 
 ### 7.5 PHPUnit `MessageStreamControllerTest`
 
