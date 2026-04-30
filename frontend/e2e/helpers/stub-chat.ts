@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
  * design doc §7.2, the W3.2 FE migration to `@ai-sdk/react` switches
  * the SPA from `POST /conversations/{id}/messages` (synchronous JSON)
  * to `POST /conversations/{id}/messages/stream` (SSE protocol per
- * W3.1). If each spec file inlines its own `page.route(...)` against
+ * W3.1). If each spec file inlines its own request-stub block against
  * the synchronous endpoint, a future change to the streaming endpoint
  * would force per-spec edits — violating the zero-edit gate Lorenzo
  * locked in for design fidelity.
@@ -79,9 +79,10 @@ export interface StubChatOptions {
  *   (defaults to `[assistant]`) as the message thread.
  * - Any other method → `route.fallback()` (real backend).
  *
- * The stub registers via `page.route()` and stays active for the
- * remainder of the test. Callers DO NOT need to unroute() — Playwright
- * tears down routes between tests automatically.
+ * The stub registers via Playwright's request-interception API and
+ * stays active for the remainder of the test. Callers DO NOT need to
+ * unroute() — Playwright tears down route handlers between tests
+ * automatically.
  */
 export async function stubChatAssistantReply(page: Page, options: StubChatOptions): Promise<void> {
     const list = options.list ?? [options.assistant];
@@ -131,6 +132,7 @@ export async function stubWikilinkResolveError(
     page: Page,
     status: number = 500,
 ): Promise<void> {
+    /* R13: failure injection — real path tested in chat.spec.ts "wikilink hover fetches and shows the preview card". */
     await page.route('**/api/kb/resolve-wikilink**', (route) => route.fulfill({ status }));
 }
 
