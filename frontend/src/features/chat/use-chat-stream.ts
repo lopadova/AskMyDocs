@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useChat as sdkUseChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { isFilterStateEmpty, type FilterState, type Message as AppMessage } from './chat.api';
@@ -108,20 +108,41 @@ export function buildStreamEndpoint(conversationId: number | null): string {
  * stringified value already in the existing DOM contract).
  */
 export function appMessageToUiMessage(m: AppMessage): UIMessage {
+    // Return a fully-shaped UIMessage WITHOUT a type assertion so
+    // TypeScript catches drift when the SDK adds / renames required
+    // fields. The SDK's UIMessage shape (per `ai` v6) needs `id`,
+    // `role`, and `parts`; older SDK majors also accepted a top-level
+    // `content` field that we keep populated for backwards
+    // compatibility (some part-renderers still read it as a fast
+    // path). Both surfaces stay byte-identical to the BE Message
+    // content.
     return {
         id: String(m.id),
         role: m.role,
         parts: [{ type: 'text', text: m.content }],
-    } as UIMessage;
+    };
 }
 
 export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIMessage> {
     const { conversationId, filters, initialMessages, onFinish, onError } = options;
 
+    // `filters` flows into `prepareSendMessagesRequest` through a ref
+    // so the transport stays stable across filter changes. Closing
+    // OVER the value (the previous implementation) froze the filter
+    // snapshot at the render that created the transport — Composer
+    // updates filters via `setFilters(prev => ({ ...prev, ... }))`,
+    // so subsequent sends would have used stale data. The ref +
+    // useEffect-on-render pattern lets us read the latest snapshot
+    // inside the request preparer without re-creating the transport
+    // (which would tear down in-flight streams).
+    const filtersRef = useRef(filters);
+    useEffect(() => {
+        filtersRef.current = filters;
+    }, [filters]);
+
     // Memoise the transport so React doesn't tear down + rebuild it
     // on every render. It depends only on the conversation id; the
-    // filters mutate per-turn and feed in via the closure inside
-    // `prepareSendMessagesRequest` below.
+    // filters mutate per-turn and feed in via the ref above.
     const transport = useMemo(() => {
         const apiUrl = buildStreamEndpoint(conversationId);
         return new DefaultChatTransport<UIMessage>({
@@ -144,18 +165,14 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                     ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
                     .map((p) => p.text)
                     .join('') ?? '';
+                const liveFilters = filtersRef.current;
                 const body: { content: string; filters?: FilterState } = { content };
-                if (filters && !isFilterStateEmpty(filters)) {
-                    body.filters = filters;
+                if (liveFilters && !isFilterStateEmpty(liveFilters)) {
+                    body.filters = liveFilters;
                 }
                 return { body };
             },
         });
-        // Filters intentionally NOT in the deps array — re-creating the
-        // transport on every keystroke would tear down in-flight
-        // streams. The closure captures `filters` by reference each
-        // render; subsequent sends pick up the latest snapshot.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [conversationId]);
 
     const initial = useMemo(

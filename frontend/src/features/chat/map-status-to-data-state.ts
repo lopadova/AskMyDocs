@@ -32,12 +32,16 @@
 export type DataState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 /**
- * Vercel AI SDK status union, copied from `@ai-sdk/react`'s
- * `UseChatHelpers` to avoid pulling the full SDK runtime into this
- * pure-helper module. Kept in sync with the SDK version pinned in
- * `package.json` (^3.0.x).
+ * Vercel AI SDK status union, derived from the SDK's own type
+ * exports via a type-only import so `@ai-sdk/react` doesn't pull
+ * runtime code into this pure-helper module AND any future status
+ * additions / renames in the SDK surface as TypeScript errors here
+ * (instead of silently drifting). Kept in sync with the SDK version
+ * pinned in `package.json` (^3.0.x).
  */
-export type SdkStatus = 'submitted' | 'streaming' | 'ready' | 'error';
+import type { UseChatHelpers } from '@ai-sdk/react';
+import type { UIMessage } from 'ai';
+export type SdkStatus = UseChatHelpers<UIMessage>['status'];
 
 export interface MapStatusInput {
     conversationId: number | null;

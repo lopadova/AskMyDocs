@@ -38,7 +38,7 @@ export interface StubChatMessage {
     metadata: Record<string, unknown> | null;
     rating: 'positive' | 'negative' | null;
     created_at: string;
-    confidence?: number;
+    confidence?: number | null;
     refusal_reason?: 'no_relevant_context' | 'llm_self_refusal' | null;
 }
 
@@ -87,14 +87,27 @@ export interface StubChatOptions {
 export async function stubChatAssistantReply(page: Page, options: StubChatOptions): Promise<void> {
     const list = options.list ?? [options.assistant];
 
+    // Track POST observation per route handler so the GET refetch
+    // returns `[]` BEFORE the user sends a message, and the seeded
+    // `list` AFTER. Without this gate, the chat thread would render
+    // the stubbed assistant message immediately on page load — the
+    // user could `data-state="ready"` without the send round-trip
+    // ever firing, weakening the E2E assertion that the send flow
+    // actually executes (R16: tests must exercise the behaviour they
+    // claim). Closure-scoped boolean is fine because `page.route` is
+    // re-registered per-test (Playwright tears down route handlers
+    // between tests automatically).
+    let postObserved = false;
+
     await page.route('**/conversations/*/messages', async (route) => {
         const method = route.request().method();
 
         if (method === 'GET') {
+            const body = postObserved ? list : [];
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify(list),
+                body: JSON.stringify(body),
             });
             return;
         }
@@ -112,6 +125,7 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
             options.onPost(body);
         }
 
+        postObserved = true;
         await route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -125,8 +139,8 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
  * the "wikilink resolver 500 degrades gracefully" scenario in
  * chat.spec.ts (R13: failure injection). When this helper is wired,
  * any `GET /api/kb/resolve-wikilink?...` returns the supplied status
- * with an empty body, so the FE's hover popover sees a non-OK
- * response and falls back to plain `[[slug]]` text without crashing.
+ * response, the React Query fetcher rethrows, and the UI renders the
+ * `wikilink-preview-error` state instead of a resolved preview.
  */
 export async function stubWikilinkResolveError(
     page: Page,
@@ -144,14 +158,19 @@ export async function stubWikilinkResolveError(
  * fixtures terse without sacrificing the explicit shape contract.
  */
 export function buildAssistantMessage(
-    overrides: Partial<StubChatMessage> & { id: number; content: string },
+    overrides: Omit<Partial<StubChatMessage>, 'role'> & { id: number; content: string },
 ): StubChatMessage {
+    // `role` deliberately excluded from the override surface (Omit
+    // above) AND assigned AFTER the spread so the helper-name
+    // invariant ("assistant message") cannot be silently violated by
+    // a caller that passes `role: 'user'`. A user-message helper
+    // exists separately (buildUserMessage()).
     return {
-        role: 'assistant',
         metadata: { provider: 'mock', model: 'mock', citations: [] },
         rating: null,
         created_at: new Date().toISOString(),
         ...overrides,
+        role: 'assistant',
     };
 }
 
@@ -161,13 +180,17 @@ export function buildAssistantMessage(
  * hover etc.). Same defaults pattern as `buildAssistantMessage()`.
  */
 export function buildUserMessage(
-    overrides: Partial<StubChatMessage> & { id: number; content: string },
+    overrides: Omit<Partial<StubChatMessage>, 'role'> & { id: number; content: string },
 ): StubChatMessage {
+    // Same role-override guard as buildAssistantMessage(): role is
+    // applied AFTER the spread and excluded from the override surface
+    // so the helper invariant ("user message") holds even when a
+    // caller spreads a different StubChatMessage as overrides.
     return {
-        role: 'user',
         metadata: null,
         rating: null,
         created_at: new Date().toISOString(),
         ...overrides,
+        role: 'user',
     };
 }
