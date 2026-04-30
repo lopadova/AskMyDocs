@@ -20,11 +20,20 @@ import { isFilterStateEmpty, type FilterState, type Message as AppMessage } from
  * that import this module without a DOM don't crash at module-load
  * time.
  */
-function readXsrfCookie(): string | null {
+export function readXsrfCookie(): string | null {
     if (typeof document === 'undefined') {
         return null;
     }
-    const match = document.cookie.split('; ').find((row) => row.startsWith('XSRF-TOKEN='));
+    // Split on `;` (NOT `'; '`) and trim each row. RFC 6265 examples
+    // include the space after the semicolon, but browsers are not
+    // required to emit it — Edge / Safari historically have, some
+    // older mobile browsers don't, and a programmatic `document.cookie =
+    // "x=y;z=w"` can produce a no-space serialization. Splitting on
+    // `';'` + trim makes the parse tolerant of both shapes.
+    const match = document.cookie
+        .split(';')
+        .map((row) => row.trim())
+        .find((row) => row.startsWith('XSRF-TOKEN='));
     if (match === undefined) {
         return null;
     }
