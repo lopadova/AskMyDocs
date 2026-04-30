@@ -26,6 +26,27 @@ export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
+    /*
+     * v4.0/W3.2 — Consolidate visual-regression snapshots under a
+     * single `frontend/e2e/__visual__/` tree (PLAN-W3 §7.4).
+     *
+     * Default Playwright behaviour places snapshots beside each spec
+     * in `<spec>-snapshots/` folders, which scatters golden images
+     * across the repo and makes bulk-update / grep operations awkward.
+     * Channelling every `toHaveScreenshot()` call through this
+     * template gives a deterministic, easy-to-audit location:
+     *
+     *   frontend/e2e/__visual__/<spec-relative-path>/<test-name>-<projectName>-<platform>.png
+     *
+     * Rationale (Lorenzo, 2026-04-30): "easier to grep + bulk-update"
+     * once the W3.2 swap commit captures the FE rewrite baseline.
+     * Pixel-perfect comparisons (maxDiffPixels: 0) live alongside the
+     * snapshots — see `chat-visual.spec.ts` for the 15 representative
+     * states the FE-rewrite gate compares against.
+     *
+     * Supported since Playwright 1.28; the project pins ^1.59.
+     */
+    snapshotPathTemplate: '{testDir}/__visual__/{testFilePath}/{arg}-{projectName}-{platform}{ext}',
     // Retries kept at 0 in CI while the suite is being stabilised on
     // the new pgvector-enabled Playwright job — a flaky test can
     // compound to hours of runner time with retries:2 (60 tests * 90s
