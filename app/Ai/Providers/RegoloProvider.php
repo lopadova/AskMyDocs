@@ -38,7 +38,7 @@ final class RegoloProvider implements AiProviderInterface
         $sdkResponse = $agent->prompt(
             $userMessage,
             [],
-            'regolo',
+            $this->name(),
             $this->resolveTextModel($options),
             $this->config['timeout'] ?? null,
         );
@@ -89,7 +89,7 @@ final class RegoloProvider implements AiProviderInterface
         $sdkResponse = $agent->prompt(
             $last['content'],
             [],
-            'regolo',
+            $this->name(),
             $this->resolveTextModel($options),
             $this->config['timeout'] ?? null,
         );
@@ -100,7 +100,7 @@ final class RegoloProvider implements AiProviderInterface
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
         $sdkResponse = Embeddings::for($texts)->generate(
-            'regolo',
+            $this->name(),
             $this->config['models']['embeddings']['default'] ?? null,
         );
 

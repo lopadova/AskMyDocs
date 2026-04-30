@@ -57,7 +57,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         Http::fake([
-            'api.regolo.ai/v1/chat/completions' => Http::response([
+            'api.regolo.ai/*' => Http::response([
                 'id' => 'chatcmpl-1',
                 'object' => 'chat.completion',
                 'created' => 1745846400,
@@ -88,7 +88,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         Http::fake([
-            'api.regolo.ai/v1/chat/completions' => Http::response([
+            'api.regolo.ai/*' => Http::response([
                 'model' => 'Llama-3.3-70B-Instruct',
                 'choices' => [['message' => ['content' => 'ok'], 'finish_reason' => 'stop']],
                 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
@@ -120,7 +120,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         Http::fake([
-            'api.regolo.ai/v1/chat/completions' => Http::response([
+            'api.regolo.ai/*' => Http::response([
                 'model' => 'Llama-3.1-8B-Instruct',
                 'choices' => [['message' => ['content' => 'x'], 'finish_reason' => 'stop']],
                 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
@@ -137,7 +137,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         Http::fake([
-            'api.regolo.ai/v1/embeddings' => Http::response([
+            'api.regolo.ai/*' => Http::response([
                 'object' => 'list',
                 'model' => 'Qwen3-Embedding-8B',
                 'data' => [
@@ -257,7 +257,7 @@ class RegoloProviderTest extends TestCase
     {
         $this->setupConfig();
         Http::fake([
-            'api.regolo.ai/v1/chat/completions' => Http::response([
+            'api.regolo.ai/*' => Http::response([
                 'model' => 'Llama-3.3-70B-Instruct',
                 'choices' => [['message' => ['content' => 'short'], 'finish_reason' => 'stop']],
                 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
