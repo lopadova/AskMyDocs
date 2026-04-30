@@ -945,12 +945,21 @@ The structural fix that landed on PR #85 is the canonical example:
    ```
 2. Every E2E call site that needs to wipe the DB goes through a
    single `resetDb(target)` helper in `frontend/e2e/setup-helpers.ts`.
-   The helper is a no-op when `E2E_SKIP_HTTP_RESET=1` and posts to
-   `/testing/reset` otherwise. Direct `page.request.post('/testing/reset')`
-   or `request.post('/testing/reset')` calls in spec / fixture code
-   bypass the flag and re-introduce the flake — always import the
-   helper. The setup-time `resetAndSeed(target)` then chains
-   `resetDb(target)` + the lighter `/testing/seed` call.
+   `resetDb()` ALWAYS posts to `/testing/reset` — it does NOT honour
+   `E2E_SKIP_HTTP_RESET`. The flag is intentionally narrow: it only
+   short-circuits the redundant initial reset inside the setup-time
+   `resetAndSeed(target)` helper (which is what auth.setup /
+   viewer.setup / super-admin.setup call during the boot-race
+   window). Per-scenario reseeding — `admin-dashboard.spec.ts`
+   switching to `EmptyAdminSeeder`, `admin-insights.spec.ts`
+   wiping snapshots before `DemoSeeder`, the `seeded` auto-fixture
+   in `fixtures.ts` running before every test — needs an actual DB
+   wipe. `/testing/seed` only INSERTS rows; it does not truncate, so
+   skipping `/testing/reset` mid-suite would leave cross-scenario
+   state and produce order-dependent assertions. Direct
+   `request.post('/testing/reset')` calls in spec / fixture code are
+   forbidden anyway: they bypass the (future-extensible) helper and
+   make wipe semantics impossible to refactor in one place.
 3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
 
 The remaining HTTP traffic is light enough that `php artisan serve`

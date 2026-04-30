@@ -82,24 +82,23 @@ export async function postWithRetry(
  * Single entry point for "wipe the DB before this test/setup runs".
  *
  * Always import this helper — never `page.request.post('/testing/reset')`
- * directly. Direct calls bypass `E2E_SKIP_HTTP_RESET` and force the dev
- * server to execute a blocking `migrate:fresh` inside an HTTP request,
- * which is exactly the failure mode the CI fix is meant to avoid (R38).
+ * directly. The helper exists to (a) keep all reset call-sites grepable
+ * for future refactors and (b) guarantee a deterministic DB state per
+ * scenario. UNLIKE `resetAndSeed()` below, this function does NOT honour
+ * `E2E_SKIP_HTTP_RESET`: per-scenario reseeding (e.g. `EmptyAdminSeeder`
+ * after `DemoSeeder`) requires an actual wipe — `/testing/seed` only
+ * inserts rows, it does not truncate, so skipping the reset would leave
+ * cross-scenario state and produce order-dependent assertions.
  *
- * Behaviour:
- * - In CI (`E2E_SKIP_HTTP_RESET=1`): no-op. The workflow already ran
- *   `php artisan migrate:fresh --force` from the CLI before the dev
- *   server started, so the DB is clean.
- * - Local runs (flag unset): hits POST /testing/reset via the dev
- *   server, with the postWithRetry early-boot retry loop.
+ * The boot-time race that motivated `E2E_SKIP_HTTP_RESET` lives only in
+ * the auth.setup window (very first POST after `php artisan serve`
+ * boots). By the time spec scenarios run, the dev server is warm and a
+ * fresh `/testing/reset` lands without flake.
  *
  * Throws on a non-2xx HTTP response so the calling test fails loudly
  * instead of running against a partially-reset database.
  */
 export async function resetDb(target: RequestTarget): Promise<void> {
-    if (SKIP_HTTP_RESET) {
-        return;
-    }
     const resetResponse = await postWithRetry(target, '/testing/reset');
     if (!resetResponse.ok()) {
         throw new Error(
@@ -109,7 +108,16 @@ export async function resetDb(target: RequestTarget): Promise<void> {
 }
 
 export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
-    await resetDb(target);
+    if (!SKIP_HTTP_RESET) {
+        // Boot-race protection: in CI the workflow already ran
+        // `php artisan migrate:fresh --force` from the CLI BEFORE the
+        // dev server started, so the DB is clean and this initial
+        // /testing/reset would be redundant work that risks the
+        // single-threaded accept-loop stall (R38). Skip it. Spec-level
+        // `resetDb()` calls keep working because they hit the dev
+        // server only AFTER it has handled `/healthz` (i.e., warm).
+        await resetDb(target);
+    }
     const seedResponse = await postWithRetry(target, '/testing/seed', { seeder });
     if (!seedResponse.ok()) {
         throw new Error(
