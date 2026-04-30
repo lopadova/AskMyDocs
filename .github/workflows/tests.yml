@@ -306,3 +306,36 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+      - name: Stop Laravel server
+        # `if: always()` so the cleanup runs whether Playwright passed,
+        # failed, or the job was cancelled. Otherwise the artisan-serve
+        # process backgrounded by `Start Laravel server (testing)`
+        # outlives the test step and keeps holding port 8000 + a PHP
+        # interpreter for the rest of the runner's lifetime — wasteful
+        # on cancelled runs, and leaves a zombie if a follow-up step
+        # ever tries to bind 8000 again.
+        if: always()
+        run: |
+          if [ -f /tmp/artisan-serve.pid ]; then
+            pid=$(cat /tmp/artisan-serve.pid)
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "Stopping artisan-serve (pid=$pid)..."
+              kill -TERM "$pid" || true
+              # Give it a couple of seconds to flush; force-kill if it
+              # ignores SIGTERM. `wait` is safer than fixed sleep but
+              # the process is a `&`-detached child, not a job — fall
+              # back to a short sleep + SIGKILL.
+              sleep 2
+              if kill -0 "$pid" 2>/dev/null; then
+                echo "artisan-serve still alive — sending SIGKILL"
+                kill -KILL "$pid" || true
+              fi
+            else
+              echo "artisan-serve (pid=$pid) already exited; tail of log:"
+              tail -50 storage/logs/artisan-serve.log 2>/dev/null || true
+            fi
+            rm -f /tmp/artisan-serve.pid
+          else
+            echo "(no /tmp/artisan-serve.pid — server step never ran or failed early)"
+          fi
+
