@@ -221,7 +221,14 @@ jobs:
           APP_ENV: testing
         run: |
           php artisan key:generate --force
-          php artisan migrate --force
+          # Use migrate:fresh so E2E starts from a clean, fully-migrated
+          # schema without relying on /testing/reset inside the HTTP server.
+          # Running `migrate:fresh` from an HTTP request served by
+          # `php artisan serve` is fragile in CI: the blocking migration
+          # can stall the PHP built-in server's accept loop, causing every
+          # immediately-following connection to ECONNREFUSED. Doing it here
+          # — from the CLI before Playwright starts — eliminates that race.
+          php artisan migrate:fresh --force
           # NOTE: previous attempt at `php artisan optimize` here
           # turned the artisan-serve socket-hang-up into ECONNREFUSED
           # (the cached config + closure routes interfere with how
@@ -235,6 +242,14 @@ jobs:
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
+          APP_URL: http://127.0.0.1:8000
+          # Tells setup-helpers.ts to skip POST /testing/reset (migrate:fresh
+          # via HTTP). The DB was already reset cleanly above from the CLI.
+          # Skipping the HTTP reset prevents `php artisan serve` from
+          # executing a blocking migration inside an HTTP request, which
+          # was the root cause of ECONNREFUSED on 127.0.0.1:8000 during
+          # the setup phase (see CLAUDE.md §R22 and setup-helpers.ts).
+          E2E_SKIP_HTTP_RESET: '1'
         run: npm run e2e
 
       - name: Dump Laravel log on failure
