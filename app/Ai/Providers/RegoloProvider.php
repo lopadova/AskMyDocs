@@ -5,6 +5,7 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
+use App\Ai\Providers\Concerns\FallbackStreaming;
 use App\Ai\Providers\Internal\RegoloAnonymousAgent;
 use Laravel\Ai\Embeddings;
 use Laravel\Ai\Messages\AssistantMessage;
@@ -29,6 +30,8 @@ use Laravel\Ai\Messages\UserMessage;
  */
 final class RegoloProvider implements AiProviderInterface
 {
+    use FallbackStreaming;
+
     public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
@@ -128,6 +131,18 @@ final class RegoloProvider implements AiProviderInterface
         );
 
         return $this->toAiResponse($sdkResponse);
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // The padosoft/laravel-ai-regolo package + laravel/ai SDK do
+        // expose a `stream()` API on agents, but wiring it into our
+        // chunk shape needs careful handling of the SDK's stream
+        // protocol (non-trivial). For W3.1 we ship the fallback to
+        // unblock the streaming endpoint end-to-end; native streaming
+        // for Regolo lands as a follow-up enhancement that overrides
+        // this method body without changing the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse

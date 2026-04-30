@@ -5,10 +5,13 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
+use App\Ai\Providers\Concerns\FallbackStreaming;
 use Illuminate\Support\Facades\Http;
 
 final class AnthropicProvider implements AiProviderInterface
 {
+    use FallbackStreaming;
+
     public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
@@ -60,6 +63,17 @@ final class AnthropicProvider implements AiProviderInterface
             totalTokens: ($inputTokens + $outputTokens) ?: null,
             finishReason: $data['stop_reason'] ?? null,
         );
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // Anthropic supports SSE streaming natively (`stream: true`),
+        // but we wire the fallback for now — token-by-token rendering
+        // is a follow-up enhancement. The fallback emits the full
+        // assistant response as a single text-delta + finish, which
+        // the Vercel SDK on the FE renders identically to a complete
+        // synchronous response.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse

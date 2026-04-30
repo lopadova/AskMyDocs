@@ -5,10 +5,13 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
+use App\Ai\Providers\Concerns\FallbackStreaming;
 use Illuminate\Support\Facades\Http;
 
 final class GeminiProvider implements AiProviderInterface
 {
+    use FallbackStreaming;
+
     private string $baseUrl;
 
     public function __construct(private readonly array $config)
@@ -84,6 +87,15 @@ final class GeminiProvider implements AiProviderInterface
             provider: $this->name(),
             model: $model,
         );
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // Gemini supports streaming via the `streamGenerateContent`
+        // endpoint with SSE. Wired to the fallback for now — W3.1
+        // ships the foundation; provider-native streaming overrides
+        // can land per-provider without changing the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function name(): string
