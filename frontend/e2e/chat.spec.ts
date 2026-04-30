@@ -1,6 +1,11 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, newConversationButton, thread, waitForThreadReady } from './helpers';
+import {
+    buildAssistantMessage,
+    stubChatAssistantReply,
+    stubWikilinkResolveError,
+} from './helpers/stub-chat';
 
 /*
  * Chat E2E scenarios. Every test runs against the authed storage state
@@ -54,23 +59,11 @@ test.describe('Chat', () => {
             // message render — not the provider integration, which
             // is covered by PHPUnit feature tests on
             // MessageController.
-            await page.route('**/conversations/*/messages', async (route) => {
-                if (route.request().method() !== 'POST') {
-                    await route.fallback();
-                    return;
-                }
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify({
-                        id: 1001,
-                        role: 'assistant',
-                        content: 'The remote work stipend applies to full-time employees after 90 days.',
-                        metadata: { provider: 'mock', model: 'mock', citations: [] },
-                        rating: null,
-                        created_at: new Date().toISOString(),
-                    }),
-                });
+            await stubChatAssistantReply(page, {
+                assistant: buildAssistantMessage({
+                    id: 1001,
+                    content: 'The remote work stipend applies to full-time employees after 90 days.',
+                }),
             });
 
             await page.goto('/app/chat');
@@ -117,23 +110,9 @@ test.describe('Chat', () => {
             rating: null,
             created_at: new Date().toISOString(),
         };
-        await page.route('**/conversations/*/messages', async (route) => {
-            const method = route.request().method();
-            if (method === 'POST') {
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify(assistantMessage),
-                });
-            } else if (method === 'GET') {
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify([userMessage, assistantMessage]),
-                });
-            } else {
-                await route.fallback();
-            }
+        await stubChatAssistantReply(page, {
+            assistant: assistantMessage,
+            list: [userMessage, assistantMessage],
         });
 
         await page.goto('/app/chat');
@@ -177,7 +156,7 @@ test.describe('Chat', () => {
 
     test('wikilink resolver 500 degrades gracefully', async ({ page }) => {
         /* R13: failure injection — real path tested in "wikilink hover fetches and shows the preview card". */
-        await page.route('**/api/kb/resolve-wikilink**', (route) => route.fulfill({ status: 500 }));
+        await stubWikilinkResolveError(page, 500);
         // Stub both POST and GET — see the happy-path test for why the
         // GET stub matters (invalidateQueries refetch would otherwise
         // wipe the wikilink message).
@@ -197,23 +176,9 @@ test.describe('Chat', () => {
             rating: null,
             created_at: new Date().toISOString(),
         };
-        await page.route('**/conversations/*/messages', async (route) => {
-            const method = route.request().method();
-            if (method === 'POST') {
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify(assistantMessage),
-                });
-            } else if (method === 'GET') {
-                await route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify([userMessage, assistantMessage]),
-                });
-            } else {
-                await route.fallback();
-            }
+        await stubChatAssistantReply(page, {
+            assistant: assistantMessage,
+            list: [userMessage, assistantMessage],
         });
 
         await page.goto('/app/chat');
