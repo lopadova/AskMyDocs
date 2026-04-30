@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
 import { stubChatAssistantReply, type StubChatMessage } from './helpers/stub-chat';
@@ -20,7 +20,7 @@ import { stubChatAssistantReply, type StubChatMessage } from './helpers/stub-cha
  * — wraps the shared helper and adapts the legacy single-arg
  * shape to the new options object.
  */
-async function stubAssistantReply(page: import('@playwright/test').Page, body: StubChatMessage): Promise<void> {
+async function stubAssistantReply(page: Page, body: StubChatMessage): Promise<void> {
     await stubChatAssistantReply(page, { assistant: body });
 }
 

@@ -55,25 +55,31 @@ test.describe('Chat-stream token-level UX', () => {
         const t = thread(page);
         const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]');
 
-        // Sample 1 — early in the stream, partial text.
-        await page.waitForTimeout(200);
-        const lenAt200ms = (await assistant.first().innerText()).length;
+        // Sample 1 — wait until the FIRST chunk renders (deterministic,
+        // not a fixed-time gamble). Per R12 we poll observable state
+        // instead of waitForTimeout — flakiness on slower machines is
+        // the failure mode the rule guards against.
+        await expect
+            .poll(async () => (await assistant.first().innerText()).length, { timeout: 5_000 })
+            .toBeGreaterThan(0);
+        const lenInitial = (await assistant.first().innerText()).length;
         await expect(t).toHaveAttribute('data-state', 'loading');
 
-        // Sample 2 — later in the stream.
-        await page.waitForTimeout(400);
-        const lenAt600ms = (await assistant.first().innerText()).length;
+        // Sample 2 — wait until the body grows beyond the initial
+        // sample. Proves the user observes incremental growth, not
+        // an all-at-once render.
+        await expect
+            .poll(async () => (await assistant.first().innerText()).length, { timeout: 5_000 })
+            .toBeGreaterThan(lenInitial);
+        const lenMid = (await assistant.first().innerText()).length;
 
-        // Sample 3 — well after streaming should be done.
-        await page.waitForTimeout(1400);
-        const lenAt2s = (await assistant.first().innerText()).length;
-
-        // Strictly monotonic, with growth between t=200 ms and t=2 s.
-        expect(lenAt200ms).toBeLessThanOrEqual(lenAt600ms);
-        expect(lenAt600ms).toBeLessThanOrEqual(lenAt2s);
-        expect(lenAt2s).toBeGreaterThan(lenAt200ms);
-
+        // Sample 3 — stream completes; capture the final length.
         await waitForThreadReady(page, 30_000);
+        const lenFinal = (await assistant.first().innerText()).length;
+
+        // Monotonic growth across the three observed states.
+        expect(lenMid).toBeGreaterThan(lenInitial);
+        expect(lenFinal).toBeGreaterThanOrEqual(lenMid);
         await expect(t).toHaveAttribute('data-state', 'ready');
     });
 

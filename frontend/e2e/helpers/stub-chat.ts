@@ -19,14 +19,13 @@ import type { Page } from '@playwright/test';
  * migrates to the streaming endpoint, ONLY this file changes — every
  * spec call site stays byte-identical and continues to pass.
  *
- * TODO(R13): when this helper switches from
- * `POST /conversations/{id}/messages` to
- * `POST /conversations/{id}/messages/stream`, update
- * `scripts/verify-e2e-real-data.sh` in the SAME commit so the
- * external-proxy allowlist (`EXTERNAL_PROXY_PATTERNS`) still permits
- * the stubbed chat endpoint. Otherwise the R13 verification step
- * fails on the helper-switch commit because the new URL pattern
- * isn't on the allowlist.
+ * NOTE(R13): the `EXTERNAL_PROXY_PATTERNS` entry in
+ * `scripts/verify-e2e-real-data.sh` matches
+ * `/conversations/[^"]*/messages` — un-anchored at the right edge,
+ * so it already covers BOTH the synchronous `…/messages` URL the
+ * helper targets today AND the W3.2 `…/messages/stream` URL the
+ * helper-switch commit will target. No allowlist edit is required
+ * when the URL flips; the verification step stays green.
  *
  * @see feedback_w3_vercel_test_rigor (memory)
  * @see docs/v4-platform/PLAN-W3-vercel-chat-migration.md §7.2

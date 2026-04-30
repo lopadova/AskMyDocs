@@ -150,11 +150,20 @@ describe('getRefusalReason', () => {
         expect(getRefusalReason(appMsg({ metadata: { provider: 'openai' } }))).toBeNull();
     });
 
-    it('coerces unknown refusal_reason values to null (defensive)', () => {
-        // BE contract says only the two known values can land here, but
-        // a stale row or third-party importer might surface garbage.
+    it('passes unknown refusal_reason values through as-is (open string union)', () => {
+        // The type now uses `KnownRefusalReason | (string & {})` so a
+        // future BE-emitted reason ('rate_limited', 'safety_filter',
+        // ...) round-trips faithfully without forcing a parallel FE
+        // migration. Empty / non-string values still coerce to null.
         const m = appMsg({ refusal_reason: 'totally-made-up' as unknown as string });
-        expect(getRefusalReason(m)).toBeNull();
+        expect(getRefusalReason(m)).toBe('totally-made-up');
+    });
+
+    it('returns null for empty / whitespace-only refusal_reason strings', () => {
+        const empty = appMsg({ refusal_reason: '' as unknown as string });
+        const whitespace = appMsg({ refusal_reason: '   ' as unknown as string });
+        expect(getRefusalReason(empty)).toBeNull();
+        expect(getRefusalReason(whitespace)).toBeNull();
     });
 
     it('reads SDK data-refusal part (.data.reason — normalized SDK shape)', () => {

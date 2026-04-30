@@ -48,15 +48,27 @@ export function isUiMessage(m: RenderableMessage): m is UIMessage {
 }
 
 const VALID_REFUSAL_REASONS = ['no_relevant_context', 'llm_self_refusal'] as const;
-type RefusalReason = typeof VALID_REFUSAL_REASONS[number];
+type KnownRefusalReason = typeof VALID_REFUSAL_REASONS[number];
+// Open the union with `(string & {})` so future BE-emitted reasons
+// don't silently degrade to `null` while still keeping
+// IntelliSense narrowing on the known tags. Pre-T3.5 callers can
+// keep treating the value as a string discriminator without code
+// changes — `KbChatController` returns one of the known tags today,
+// any future tag round-trips faithfully without forcing a parallel
+// migration here.
+type RefusalReason = KnownRefusalReason | (string & {});
 
 function coerceRefusalReason(value: unknown): RefusalReason | null {
     if (typeof value !== 'string') {
         return null;
     }
-    return (VALID_REFUSAL_REASONS as readonly string[]).includes(value)
-        ? (value as RefusalReason)
-        : null;
+    const normalized = value.trim();
+    if (normalized.length === 0) {
+        return null;
+    }
+    return (VALID_REFUSAL_REASONS as readonly string[]).includes(normalized)
+        ? (normalized as KnownRefusalReason)
+        : normalized;
 }
 
 /**

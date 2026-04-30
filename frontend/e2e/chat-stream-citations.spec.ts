@@ -108,10 +108,18 @@ test.describe('Chat-stream citations as source parts', () => {
         await send.click();
 
         // Wait until streaming is genuinely under way + chip rendered.
+        // Per R12 we poll observable state (assistant body has begun
+        // rendering text) rather than wait for a fixed 500 ms — that
+        // would race on slow CI runners and pass-spuriously on fast
+        // ones where the stream is already finished by the time the
+        // sleep returns.
         await expect(thread(page)).toHaveAttribute('data-state', 'loading');
         const chip = page.getByTestId('chat-citation-0');
         await expect(chip).toBeVisible({ timeout: 5_000 });
-        await page.waitForTimeout(500);
+        const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]');
+        await expect
+            .poll(async () => (await assistant.first().innerText()).length, { timeout: 5_000 })
+            .toBeGreaterThan(0);
 
         // Mid-stream hover — popover opens without disrupting the
         // streaming text.

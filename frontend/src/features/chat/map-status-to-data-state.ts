@@ -1,3 +1,6 @@
+import type { UseChatHelpers } from '@ai-sdk/react';
+import type { UIMessage } from 'ai';
+
 /**
  * v4.0/W3.2 — adapter that maps Vercel AI SDK's `useChat()` status
  * enum to AskMyDocs's `data-state` attribute on `chat-thread`. Per
@@ -39,8 +42,6 @@ export type DataState = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
  * (instead of silently drifting). Kept in sync with the SDK version
  * pinned in `package.json` (^3.0.x).
  */
-import type { UseChatHelpers } from '@ai-sdk/react';
-import type { UIMessage } from 'ai';
 export type SdkStatus = UseChatHelpers<UIMessage>['status'];
 
 export interface MapStatusInput {

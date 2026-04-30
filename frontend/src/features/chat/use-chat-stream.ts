@@ -1,7 +1,35 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useChat as sdkUseChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
+import { ensureCsrfCookie } from '../../lib/api';
 import { isFilterStateEmpty, type FilterState, type Message as AppMessage } from './chat.api';
+
+/**
+ * Read the `XSRF-TOKEN` cookie value (URL-decoded) so we can echo it
+ * back in the `X-XSRF-TOKEN` request header on the streaming POST.
+ * Laravel's CSRF middleware requires this header on state-changing
+ * requests under the `web` middleware group; the synchronous chat
+ * route works because the shared axios instance forwards the
+ * cookie automatically when `withCredentials: true`. The Vercel SDK's
+ * `DefaultChatTransport` uses `fetch` instead of axios, so we have
+ * to thread the header through manually — without it, the streaming
+ * POST 419s.
+ *
+ * `cookie` access is browser-only (no SSR concern in this SPA), but
+ * we still guard against `document` being undefined so unit tests
+ * that import this module without a DOM don't crash at module-load
+ * time.
+ */
+function readXsrfCookie(): string | null {
+    if (typeof document === 'undefined') {
+        return null;
+    }
+    const match = document.cookie.split('; ').find((row) => row.startsWith('XSRF-TOKEN='));
+    if (match === undefined) {
+        return null;
+    }
+    return decodeURIComponent(match.slice('XSRF-TOKEN='.length));
+}
 
 /**
  * v4.0/W3.2 — adapter hook over `@ai-sdk/react`'s `useChat()` that
@@ -140,6 +168,16 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
         filtersRef.current = filters;
     }, [filters]);
 
+    // Prime the XSRF-TOKEN cookie at hook mount so the first
+    // `sendMessage()` doesn't 419. Idempotent (`csrfPrimed` flag
+    // inside `ensureCsrfCookie()`); cheap repeat call. We don't
+    // await the result here — the SDK's first POST kicks off when
+    // the user submits, which is gated by user interaction (typing
+    // + clicking send), giving the Promise plenty of time to land.
+    useEffect(() => {
+        void ensureCsrfCookie();
+    }, []);
+
     // Memoise the transport so React doesn't tear down + rebuild it
     // on every render. It depends only on the conversation id; the
     // filters mutate per-turn and feed in via the ref above.
@@ -159,6 +197,19 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
             // prepareSendMessagesRequest, reading the LAST message's
             // text content as the `content` field. This tracks the
             // synchronous `chatApi.sendMessage()` payload byte-for-byte.
+            //
+            // We also thread the X-XSRF-TOKEN header through here:
+            // the SDK's DefaultChatTransport uses `fetch` (NOT
+            // axios), so it doesn't get the automatic cookie→header
+            // forwarding the shared axios instance has. Reading the
+            // current cookie inside `prepareSendMessagesRequest`
+            // (instead of capturing at memo time) means a refreshed
+            // session cookie after a 419-and-retry is picked up
+            // without remounting the hook. Sanctum also expects
+            // `X-Requested-With: XMLHttpRequest` to recognize the
+            // call as an SPA request via
+            // `EnsureFrontendRequestsAreStateful` — match the axios
+            // instance's default header set.
             prepareSendMessagesRequest: ({ messages }) => {
                 const last = messages[messages.length - 1];
                 const content = last?.parts
@@ -170,7 +221,15 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                 if (liveFilters && !isFilterStateEmpty(liveFilters)) {
                     body.filters = liveFilters;
                 }
-                return { body };
+                const headers: Record<string, string> = {
+                    Accept: 'text/event-stream',
+                    'X-Requested-With': 'XMLHttpRequest',
+                };
+                const xsrf = readXsrfCookie();
+                if (xsrf !== null) {
+                    headers['X-XSRF-TOKEN'] = xsrf;
+                }
+                return { body, headers };
             },
         });
     }, [conversationId]);
