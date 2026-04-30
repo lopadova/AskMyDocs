@@ -173,9 +173,16 @@ export async function postWithRetry(
  */
 export async function resetDb(
     target: RequestTarget,
-    options: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS },
+    options: RetryOptions = {},
 ): Promise<void> {
-    const resetResponse = await postWithRetry(target, '/testing/reset', undefined, options);
+    // Default to WARM_RETRY_ATTEMPTS regardless of whether the caller
+    // passed `{}` or `{ sleepMs: ... }` — without this merge, an
+    // options object that omits `maxAttempts` would silently fall back
+    // to BOOT_RETRY_ATTEMPTS via `postWithRetry()`'s default and the
+    // retry window (≈45 s) would blow past Playwright's per-test cap
+    // (20 s). Setup-time callers (resetAndSeed) override explicitly.
+    const merged: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS, ...options };
+    const resetResponse = await postWithRetry(target, '/testing/reset', undefined, merged);
     if (!resetResponse.ok()) {
         throw new Error(
             `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
@@ -199,9 +206,12 @@ export async function resetDb(
 export async function seedDb(
     target: RequestTarget,
     seeder = 'DemoSeeder',
-    options: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS },
+    options: RetryOptions = {},
 ): Promise<void> {
-    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder }, options);
+    // Same warm-default merge as `resetDb()` — see the comment there
+    // for the per-test-timeout rationale.
+    const merged: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS, ...options };
+    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder }, merged);
     if (!seedResponse.ok()) {
         throw new Error(
             `/testing/seed (${seeder}) failed: ${seedResponse.status()} ${await seedResponse.text()}`,
@@ -265,12 +275,17 @@ export async function loginAsProjectUser(
     const creds = PROJECT_CREDENTIALS[projectName];
     if (!creds) return;
 
-    await page.request.get('/sanctum/csrf-cookie');
+    const pageCsrfResponse = await page.request.get('/sanctum/csrf-cookie');
+    if (!pageCsrfResponse.ok()) {
+        throw new Error(
+            `loginAsProjectUser: /sanctum/csrf-cookie failed on page context: ${pageCsrfResponse.status()} ${await pageCsrfResponse.text()}`,
+        );
+    }
     const cookies = await context.cookies();
     const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
     if (!xsrfCookie) {
         throw new Error(
-            'loginAsProjectUser: XSRF-TOKEN cookie missing after /sanctum/csrf-cookie',
+            'loginAsProjectUser: XSRF-TOKEN cookie missing on page context after /sanctum/csrf-cookie',
         );
     }
     const loginResponse = await page.request.post('/api/auth/login', {
@@ -304,10 +319,25 @@ export async function loginAsProjectUser(
     // Re-login on the top-level `request` fixture's cookie jar too —
     // see the long comment in fixtures.ts for the rationale (Playwright
     // keeps `request` and `page.request` cookie jars separate).
-    await request.get('/sanctum/csrf-cookie');
+    const csrfResponse = await request.get('/sanctum/csrf-cookie');
+    if (!csrfResponse.ok()) {
+        throw new Error(
+            `loginAsProjectUser: /sanctum/csrf-cookie failed on top-level request context: ${csrfResponse.status()} ${await csrfResponse.text()}`,
+        );
+    }
     const requestStorage = await request.storageState();
     const requestXsrf = requestStorage.cookies.find((c) => c.name === 'XSRF-TOKEN');
-    if (!requestXsrf) return;
+    if (!requestXsrf) {
+        // Throwing instead of returning silently: a missing XSRF cookie
+        // here means the top-level `request` context can't perform an
+        // authenticated POST later, which surfaces as confusing 401/419
+        // failures in spec bodies that use `{ request }`. Surface the
+        // root cause at the point of failure instead of letting it
+        // cascade into a downstream selector timeout.
+        throw new Error(
+            'loginAsProjectUser: XSRF-TOKEN cookie missing on top-level request context after /sanctum/csrf-cookie — Sanctum stateful misconfiguration or session storage wiped mid-request',
+        );
+    }
     const reqLoginResponse = await request.post('/api/auth/login', {
         data: creds,
         headers: {
