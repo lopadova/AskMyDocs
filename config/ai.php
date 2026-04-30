@@ -11,7 +11,7 @@ return [
     | provider via AI_EMBEDDINGS_PROVIDER (useful when using Anthropic or
     | OpenRouter for chat, since they don't offer an embeddings endpoint).
     |
-    | Supported: "openai", "anthropic", "gemini", "openrouter"
+    | Supported: "openai", "anthropic", "gemini", "openrouter", "regolo"
     |
     */
 
@@ -24,7 +24,9 @@ return [
     |
     | Provider used specifically for generating embeddings. If null, the
     | default provider is used. Must be a provider that supports embeddings
-    | (openai, gemini). Anthropic and OpenRouter do NOT support embeddings.
+    | (openai, gemini, regolo). Anthropic and OpenRouter do NOT support
+    | embeddings. Regolo serves Qwen3-Embedding-8B at 4096 dims — see the
+    | KB_EMBEDDINGS_DIMENSIONS warning in `.env.example` if you switch.
     |
     */
 
