@@ -598,13 +598,20 @@ class MessageStreamController extends Controller
     private function resolveStreamingModel(\App\Ai\AiProviderInterface $provider): string
     {
         $providerName = $provider->name();
-        $modelKey = "ai.providers.{$providerName}.chat_model";
-        $configured = config($modelKey);
+        // OpenAI / Anthropic / Gemini / OpenRouter all use the flat
+        // `chat_model` config key.
+        $configured = config("ai.providers.{$providerName}.chat_model");
         if (is_string($configured) && $configured !== '') {
             return $configured;
         }
-        // Some providers (Regolo) nest the chat model deeper.
-        $nested = config("ai.providers.{$providerName}.models.chat.default");
+        // Regolo nests its chat model under `models.text.default`
+        // (NOT `models.chat.default`) — see config/ai.php where
+        // `models.text.{default,cheapest,smartest}` host the
+        // chat-completion model variants and `models.embeddings`
+        // hosts the embeddings model. Reading the wrong key
+        // silently fell back to "unknown" in chat-log rows for
+        // every Regolo-backed streaming turn.
+        $nested = config("ai.providers.{$providerName}.models.text.default");
         if (is_string($nested) && $nested !== '') {
             return $nested;
         }
