@@ -283,4 +283,35 @@ class RegoloProviderTest extends TestCase
                 && ($body['temperature'] ?? null) === 0.7;
         });
     }
+
+    public function test_chat_rejects_non_numeric_max_tokens(): void
+    {
+        $this->setupConfig();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_tokens must be numeric');
+
+        // `(int) 'abc'` would silently yield 0 and reach the wire as
+        // `max_tokens=0`, which the model interprets as "no limit"
+        // (or as a hard zero on stricter gateways) — neither matches
+        // caller intent. Reject loudly at the adapter boundary.
+        (new RegoloProvider(config('ai.providers.regolo')))->chat('s', 'u', [
+            'max_tokens' => 'abc',
+        ]);
+    }
+
+    public function test_chat_rejects_non_numeric_temperature(): void
+    {
+        $this->setupConfig();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('temperature must be numeric');
+
+        // `(float) 'hot'` would silently yield 0.0 — a greedy-decode
+        // setting — quietly changing the model's sampling behaviour
+        // for every call. Same reject-at-boundary stance as max_tokens.
+        (new RegoloProvider(config('ai.providers.regolo')))->chat('s', 'u', [
+            'temperature' => 'hot',
+        ]);
+    }
 }

@@ -200,15 +200,39 @@ final class RegoloProvider implements AiProviderInterface
     private function resolveMaxTokens(array $options): ?int
     {
         $value = $options['max_tokens'] ?? $this->config['max_tokens'] ?? null;
+        if ($value === null) {
+            return null;
+        }
+        // `(int) 'abc'` quietly yields 0, which propagates to the wire
+        // as `max_tokens=0` — a confusing bug surface for callers that
+        // typo the option key value. Reject non-numeric input loudly.
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'max_tokens must be numeric (int or numeric string); got %s.',
+                get_debug_type($value)
+            ));
+        }
 
-        return is_null($value) ? null : (int) $value;
+        return (int) $value;
     }
 
     private function resolveTemperature(array $options): ?float
     {
         $value = $options['temperature'] ?? $this->config['temperature'] ?? null;
+        if ($value === null) {
+            return null;
+        }
+        // Same rationale as resolveMaxTokens: `(float) 'hot'` becomes
+        // 0.0 silently; downstream the model interprets that as
+        // greedy-decode and quietly changes behaviour.
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'temperature must be numeric (float, int, or numeric string); got %s.',
+                get_debug_type($value)
+            ));
+        }
 
-        return is_null($value) ? null : (float) $value;
+        return (float) $value;
     }
 
     private function toAiResponse(\Laravel\Ai\Responses\AgentResponse $sdkResponse): AiResponse
