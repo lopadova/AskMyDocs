@@ -42,9 +42,10 @@ use Tests\TestCase;
  *
  * The streaming endpoint runs inside a `StreamedResponse` callback that
  * fires when the response is "sent". In PHPUnit test mode we trigger
- * the callback explicitly via {@see captureStream()} which captures
- * the SSE output buffer and parses it back into a list of
- * `StreamChunk` instances for assertion.
+ * the callback explicitly via Laravel's `TestResponse::streamedContent()`
+ * (called from {@see postStreamRaw()}) which captures the SSE output
+ * buffer; {@see parseSseStream()} then turns the raw text into a list
+ * of `StreamChunk` instances for assertion.
  *
  * Why we mock the AI provider (`Anthropic` here): the streaming
  * controller calls `AiManager::chatStream()` which delegates to a
@@ -417,18 +418,26 @@ final class MessageStreamControllerTest extends TestCase
     private function mockSearchWithUngroundedChunks(): void
     {
         $search = Mockery::mock(KbSearchService::class);
+        // Production-shape associative array — `vector_score` below
+        // the 0.45 threshold forces the refusal short-circuit.
         $search->shouldReceive('search')->andReturn(collect([
-            (object) [
-                'id' => 1,
-                'knowledge_document_id' => 1,
-                'vector_score' => 0.20, // below 0.45 threshold → refusal
+            [
+                'chunk_id' => 1,
+                'project_key' => 'hr-portal',
                 'heading_path' => 'h',
                 'chunk_text' => 'irrelevant',
-                'document' => (object) [
+                'metadata' => [],
+                'vector_score' => 0.20,
+                'document' => [
                     'id' => 1,
                     'title' => 'Doc',
                     'source_path' => 'docs/x.md',
                     'source_type' => 'markdown',
+                    'doc_id' => null,
+                    'slug' => null,
+                    'is_canonical' => false,
+                    'canonical_type' => null,
+                    'canonical_status' => null,
                 ],
             ],
         ]));
@@ -437,18 +446,32 @@ final class MessageStreamControllerTest extends TestCase
 
     private function groundedChunkCollection(): \Illuminate\Support\Collection
     {
+        // Mirror the actual shape returned by `KbSearchService::search()`
+        // — associative arrays with `chunk_id` + `vector_score` and a
+        // nested `document.id` (NOT a flat `knowledge_document_id`).
+        // The streaming controller uses `data_get($c, 'vector_score')`
+        // which works for both objects and arrays, but writing the
+        // fixtures in the production shape catches future regressions
+        // where the controller (or ConfidenceCalculator, etc.) starts
+        // to depend on the array-only contract.
         return collect([
-            (object) [
-                'id' => 1,
-                'knowledge_document_id' => 1,
-                'vector_score' => 0.85,
+            [
+                'chunk_id' => 1,
+                'project_key' => 'hr-portal',
                 'heading_path' => 'Stipend',
                 'chunk_text' => 'Eligibility section',
-                'document' => (object) [
+                'metadata' => [],
+                'vector_score' => 0.85,
+                'document' => [
                     'id' => 1,
                     'title' => 'Remote work policy',
                     'source_path' => 'hr/policies/remote-work.md',
                     'source_type' => 'markdown',
+                    'doc_id' => null,
+                    'slug' => null,
+                    'is_canonical' => false,
+                    'canonical_type' => null,
+                    'canonical_status' => null,
                 ],
             ],
         ]);
