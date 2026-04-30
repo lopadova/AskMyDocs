@@ -107,6 +107,28 @@ export async function resetDb(target: RequestTarget): Promise<void> {
     }
 }
 
+/**
+ * Single entry point for "seed the DB with <seeder> before this test/setup
+ * runs". Always import this helper — never call `request.post('/testing/seed', ...)`
+ * directly. Reasons match `resetDb()`: (a) keep all seed call-sites grepable
+ * for future refactors and (b) guarantee the seeder ran successfully — a
+ * silent 422/500 from the seed endpoint would otherwise leave the test running
+ * against a partially-seeded DB and surface as an opaque downstream
+ * "data-state=error" or "element not visible" 15 s later instead of the real
+ * cause.
+ *
+ * Throws on a non-2xx HTTP response so the calling test fails loudly with
+ * the seeder name + status + body in the error message.
+ */
+export async function seedDb(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
+    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder });
+    if (!seedResponse.ok()) {
+        throw new Error(
+            `/testing/seed (${seeder}) failed: ${seedResponse.status()} ${await seedResponse.text()}`,
+        );
+    }
+}
+
 export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
     if (!SKIP_HTTP_RESET) {
         // Boot-race protection: in CI the workflow already ran
@@ -118,10 +140,5 @@ export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder')
         // server only AFTER it has handled `/healthz` (i.e., warm).
         await resetDb(target);
     }
-    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder });
-    if (!seedResponse.ok()) {
-        throw new Error(
-            `/testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
-        );
-    }
+    await seedDb(target, seeder);
 }

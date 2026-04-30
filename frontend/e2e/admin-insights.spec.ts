@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { resetDb } from './setup-helpers';
+import { resetDb, seedDb } from './setup-helpers';
 
 /*
  * PR14 — Phase I. Admin AI insights scenarios.
@@ -21,7 +21,7 @@ test.describe('Admin AI Insights — Phase I', () => {
     }) => {
         // Seed one snapshot in the DB so the view has deterministic
         // data — DemoSeeder doesn't include an insights row by default.
-        await request.post('/testing/seed', { data: { seeder: 'AdminInsightsSeeder' } });
+        await seedDb(request, 'AdminInsightsSeeder');
 
         await page.goto('/app/admin/insights');
 
@@ -49,7 +49,7 @@ test.describe('Admin AI Insights — Phase I', () => {
         // the fixtures autorun), so by the time we land here there is
         // NO admin_insights_snapshots row.
         await resetDb(request);
-        await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+        await seedDb(request, 'DemoSeeder');
 
         await page.goto('/app/admin/insights');
         await expect(page.getByTestId('insights-view')).toBeVisible({ timeout: 15_000 });

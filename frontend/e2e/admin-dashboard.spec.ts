@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { resetDb } from './setup-helpers';
+import { resetDb, seedDb } from './setup-helpers';
 
 /*
  * PR6 — Phase F1. Admin Dashboard E2E scenarios.
@@ -93,7 +93,7 @@ test.describe('Admin Dashboard', () => {
         // exist. TanStack Query keys are independent from the network
         // interception — this is pure real-data testing.
         await resetDb(request);
-        await request.post('/testing/seed', { data: { seeder: 'EmptyAdminSeeder' } });
+        await seedDb(request, 'EmptyAdminSeeder');
 
         await page.goto('/app/admin');
 
@@ -115,7 +115,7 @@ test.describe('Admin Dashboard', () => {
     test('health degraded — failed_jobs threshold flips queue chip', async ({ page, request }) => {
         // Seed a degraded stack: DemoSeeder + 15 failed_jobs rows.
         await resetDb(request);
-        await request.post('/testing/seed', { data: { seeder: 'AdminDegradedSeeder' } });
+        await seedDb(request, 'AdminDegradedSeeder');
 
         await page.goto('/app/admin');
 

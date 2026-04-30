@@ -235,10 +235,18 @@ jobs:
           # single-threaded accept loop when it runs inside an HTTP request
           # (the recurring auth.setup ECONNREFUSED flake on /testing/reset).
           # Running `migrate:fresh` here from the CLI BEFORE Playwright
-          # starts the web server moves the heavy work off the HTTP path
-          # entirely. The Playwright step then sets E2E_SKIP_HTTP_RESET=1
-          # so the test setup helper skips POST /testing/reset and only
-          # calls the lighter POST /testing/seed via HTTP.
+          # starts the web server eliminates the boot-race window: the
+          # Playwright step then sets E2E_SKIP_HTTP_RESET=1, which
+          # narrows the skip to the SETUP-time `resetAndSeed()` call
+          # (auth.setup / viewer.setup / super-admin.setup) — those run
+          # against a freshly-booted dev server and are the only HTTP
+          # path that ever observed the stall. Per-spec `resetDb()`
+          # calls in `frontend/e2e/fixtures.ts` and the spec files
+          # STILL hit POST /testing/reset every test: by then the dev
+          # server is warm (auth.setup has handled `/healthz` + login)
+          # and per-scenario state isolation requires an actual truncate.
+          # Heavy work was moved off the COLD-START HTTP path, not off
+          # the HTTP path entirely.
           php artisan migrate:fresh --force
 
       # Start Laravel explicitly in the workflow instead of relying on

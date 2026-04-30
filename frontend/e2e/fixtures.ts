@@ -1,15 +1,22 @@
 import { test as base, expect } from '@playwright/test';
-import { resetDb } from './setup-helpers';
+import { resetDb, seedDb } from './setup-helpers';
 
 /*
  * Shared fixtures for AskMyDocs E2E.
  *
  * The `seeded` auto-fixture runs before every test:
- *   1. resetDb(page) → POST /testing/reset → migrate:fresh
- *      (no-op in CI when E2E_SKIP_HTTP_RESET=1; the workflow already
- *      ran `migrate:fresh` from the CLI before the dev server started.
- *      See R38 in CLAUDE.md and `setup-helpers.ts` for the rationale.)
- *   2. POST /testing/seed { DemoSeeder }
+ *   1. resetDb(page) → POST /testing/reset → migrate:fresh.
+ *      Always wipes (no env-driven short-circuit) — per-scenario state
+ *      isolation requires an actual truncate so each test starts from a
+ *      known baseline regardless of what the previous spec left behind.
+ *      Safe to run here: the dev server is already warm by the time
+ *      fixtures execute (auth.setup has handled `/healthz` + login),
+ *      so there is no boot-race window. The R38 boot-race protection
+ *      (`E2E_SKIP_HTTP_RESET`) only narrows `resetAndSeed()` in
+ *      setup-helpers — it intentionally does NOT cover this call.
+ *   2. seedDb(page, 'DemoSeeder') → POST /testing/seed { DemoSeeder }
+ *      (throws on non-2xx, so a seeder regression surfaces here
+ *      instead of as a downstream selector timeout).
  *   3. Re-establishes the project's auth via /api/auth/login
  *
  * Step 3 is non-obvious but load-bearing. The setup projects
@@ -39,18 +46,14 @@ const PROJECT_CREDENTIALS: Record<string, { email: string; password: string }> =
 export const test = base.extend<{ seeded: void }>({
     seeded: [
         async ({ page, context, request }, use, testInfo) => {
-            // resetDb() respects E2E_SKIP_HTTP_RESET — in CI the DB is
-            // already clean from the CLI `migrate:fresh` step, so this
-            // is a no-op. Locally it does the HTTP reset as before.
+            // resetDb() always wipes (no env-driven short-circuit) so each
+            // spec starts from a known baseline regardless of what the
+            // previous test left behind. Safe here because the dev server
+            // is already warm by the time fixtures execute — the R38
+            // boot-race protection (`E2E_SKIP_HTTP_RESET`) only narrows
+            // `resetAndSeed()` in setup-helpers, not this call.
             await resetDb(page);
-            const seedResponse = await page.request.post('/testing/seed', {
-                data: { seeder: 'DemoSeeder' },
-            });
-            if (!seedResponse.ok()) {
-                throw new Error(
-                    `seeded fixture: /testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
-                );
-            }
+            await seedDb(page, 'DemoSeeder');
 
             // Re-login as the project's user. The storageState cookie
             // from setup is no longer valid because migrate:fresh
