@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
+import { stubChatAssistantReply, type StubChatMessage } from './helpers/stub-chat';
 
 /*
  * v4.0/W3.2 — Visual regression scenarios per PLAN-W3 §7.4.
@@ -34,37 +35,23 @@ import { composer, thread, waitForThreadReady } from './helpers';
 test.describe.configure({ timeout: 60_000 });
 
 /**
- * Stub the assistant reply with a fixed payload so the visual frame
- * is deterministic. Mirrors the inline pattern in `chat-refusal.spec.ts`
- * — duplicated here intentionally so this file is self-contained
- * and the W3.2 swap commit can rewrite it to use the SDK helper
- * shape without coupling to a sibling helper that may also be
- * rewritten.
+ * Thin wrapper that delegates to the centralised
+ * `stubChatAssistantReply()` so this file inherits the `postObserved`
+ * race-fix (GET returns `[]` BEFORE the user's POST is observed,
+ * `[assistant]` AFTER) without duplicating the request-interception
+ * machinery here. The earlier hand-rolled local stub eagerly
+ * answered the GET refetch with the seeded message even before the
+ * `send.click()` POST fired — Playwright tests rely on the chat UI
+ * fetching messages on mount, so the visual frame would already
+ * contain the assistant turn at the moment of the screenshot,
+ * weakening "user sends → assistant renders → screenshot" into
+ * "page loads with seeded thread → screenshot".
  *
- * R13: only intercepts `**\/conversations/*\/messages`, which is on
- * the EXTERNAL_PROXY allowlist (POST triggers the AI provider).
+ * R13: only intercepts `**\/conversations/*\/messages`, on the
+ * EXTERNAL_PROXY allowlist (POST triggers the AI provider).
  */
-async function stubAssistantReply(page: Page, message: Record<string, unknown>): Promise<void> {
-    await page.route('**/conversations/*/messages', async (route) => {
-        const method = route.request().method();
-        if (method === 'GET') {
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify([message]),
-            });
-            return;
-        }
-        if (method !== 'POST') {
-            await route.fallback();
-            return;
-        }
-        await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(message),
-        });
-    });
+async function stubAssistantReply(page: Page, message: StubChatMessage): Promise<void> {
+    await stubChatAssistantReply(page, { assistant: message });
 }
 
 const SKIP_REASON = 'Visual baseline pending W3.2 SDK swap';
