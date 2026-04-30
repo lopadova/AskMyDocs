@@ -242,16 +242,19 @@ jobs:
           php artisan migrate:fresh --force
 
       # Start Laravel explicitly in the workflow instead of relying on
-      # playwright.config.ts `webServer`. The `webServer` block boots
+      # playwright.config.ts `webServer`. The webServer block boots
       # artisan-serve under Playwright's own process supervisor and pipes
-      # stdout/stderr internally — when artisan-serve crashes between the
-      # `/healthz` probe answering 200 and the first heavy `/testing/reset`
-      # call (the recurring auth.setup ECONNREFUSED flake), the server log
-      # is swallowed and the failure looks like a generic timeout. Running
-      # the server here gives us:
+      # stdout/stderr internally — historically that path swallowed the
+      # server log when artisan-serve crashed mid-run, and the failure
+      # surfaced as an opaque generic timeout. Note: with R38 in place
+      # (migrate:fresh from CLI + E2E_SKIP_HTTP_RESET=1) the original
+      # auth.setup ECONNREFUSED window on /testing/reset no longer
+      # exists — the dev server now only handles light traffic
+      # (healthz + /testing/seed + login + page navigations + admin
+      # API calls), all single-request safe. The remaining reasons to
+      # start the server here ourselves:
       #   1. a real on-disk log we can `tail` in the failure-dump step,
-      #   2. an unambiguous binding to 127.0.0.1:8000 (matches the auth.setup
-      #      `apiRequestContext.post('/testing/reset')` resolution),
+      #   2. an unambiguous binding to 127.0.0.1:8000,
       #   3. a deterministic process group (created by `setsid -f` below
       #      and captured as a PGID via `lsof tcp:8000` + `ps -o pgid=` in
       #      the next step) that the cleanup step can SIGTERM/SIGKILL at
@@ -323,7 +326,6 @@ jobs:
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
-          APP_URL: http://127.0.0.1:8000
           # Skip playwright.config.ts's own webServer block — we already
           # started + health-checked the server above. Without this flag
           # Playwright would race ours and EADDRINUSE on port 8000.

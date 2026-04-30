@@ -1,10 +1,14 @@
 import { test as base, expect } from '@playwright/test';
+import { resetDb } from './setup-helpers';
 
 /*
  * Shared fixtures for AskMyDocs E2E.
  *
  * The `seeded` auto-fixture runs before every test:
- *   1. POST /testing/reset → migrate:fresh
+ *   1. resetDb(page) → POST /testing/reset → migrate:fresh
+ *      (no-op in CI when E2E_SKIP_HTTP_RESET=1; the workflow already
+ *      ran `migrate:fresh` from the CLI before the dev server started.
+ *      See R38 in CLAUDE.md and `setup-helpers.ts` for the rationale.)
  *   2. POST /testing/seed { DemoSeeder }
  *   3. Re-establishes the project's auth via /api/auth/login
  *
@@ -35,12 +39,10 @@ const PROJECT_CREDENTIALS: Record<string, { email: string; password: string }> =
 export const test = base.extend<{ seeded: void }>({
     seeded: [
         async ({ page, context, request }, use, testInfo) => {
-            const resetResponse = await page.request.post('/testing/reset');
-            if (!resetResponse.ok()) {
-                throw new Error(
-                    `seeded fixture: /testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
-                );
-            }
+            // resetDb() respects E2E_SKIP_HTTP_RESET — in CI the DB is
+            // already clean from the CLI `migrate:fresh` step, so this
+            // is a no-op. Locally it does the HTTP reset as before.
+            await resetDb(page);
             const seedResponse = await page.request.post('/testing/seed', {
                 data: { seeder: 'DemoSeeder' },
             });

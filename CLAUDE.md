@@ -932,17 +932,25 @@ review must run retroactively.
 
 The structural fix that landed on PR #85 is the canonical example:
 
-1. Workflow step before Playwright runs `migrate:fresh` from the CLI:
+1. Workflow step before Playwright runs `migrate:fresh` from the CLI.
+   `APP_KEY` is already written into `.env` by an earlier "Prepare .env
+   for testing" step, so the migrate step deliberately does NOT run
+   `php artisan key:generate --force` — that would append a duplicate
+   `APP_KEY=` line and leave the resolved value ambiguous.
    ```yaml
-   - name: Migrate + seed test data
+   - name: Migrate test database (CLI)
      env: { APP_ENV: testing }
      run: |
-       php artisan key:generate --force
        php artisan migrate:fresh --force
    ```
-2. `setup-helpers.ts` skips the HTTP `/testing/reset` call when
-   `E2E_SKIP_HTTP_RESET=1` is set; only the lighter `/testing/seed`
-   call goes through the dev server.
+2. Every E2E call site that needs to wipe the DB goes through a
+   single `resetDb(target)` helper in `frontend/e2e/setup-helpers.ts`.
+   The helper is a no-op when `E2E_SKIP_HTTP_RESET=1` and posts to
+   `/testing/reset` otherwise. Direct `page.request.post('/testing/reset')`
+   or `request.post('/testing/reset')` calls in spec / fixture code
+   bypass the flag and re-introduce the flake — always import the
+   helper. The setup-time `resetAndSeed(target)` then chains
+   `resetDb(target)` + the lighter `/testing/seed` call.
 3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
 
 The remaining HTTP traffic is light enough that `php artisan serve`

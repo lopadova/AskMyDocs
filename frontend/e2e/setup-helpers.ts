@@ -1,4 +1,16 @@
-import type { APIResponse, Page } from '@playwright/test';
+import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
+
+/**
+ * Either a Page (for setup-time helpers that have one) or a raw
+ * APIRequestContext (for spec-level fixtures that don't navigate).
+ * Used by the public DB-reset helpers below so callers can pass
+ * whichever they have without re-wrapping.
+ */
+type RequestTarget = Page | APIRequestContext;
+
+function asRequest(target: RequestTarget): APIRequestContext {
+    return 'request' in target ? target.request : target;
+}
 
 /*
  * Setup-time helpers shared across auth.setup.ts, viewer.setup.ts, and
@@ -45,15 +57,16 @@ import type { APIResponse, Page } from '@playwright/test';
 const SKIP_HTTP_RESET = process.env.E2E_SKIP_HTTP_RESET === '1';
 
 export async function postWithRetry(
-    page: Page,
+    target: RequestTarget,
     path: string,
     body?: unknown,
 ): Promise<APIResponse> {
+    const request = asRequest(target);
     const MAX_ATTEMPTS = 30;
     const SLEEP_MS = 1500;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         try {
-            return await page.request.post(path, body ? { data: body } : undefined);
+            return await request.post(path, body ? { data: body } : undefined);
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
             if (attempt === MAX_ATTEMPTS - 1) {
@@ -65,20 +78,39 @@ export async function postWithRetry(
     throw new Error(`${path} unreachable`);
 }
 
-export async function resetAndSeed(page: Page, seeder = 'DemoSeeder'): Promise<void> {
-    if (!SKIP_HTTP_RESET) {
-        // Local runs: reset the DB via the HTTP endpoint so the dev server
-        // is the single entry point for both reset and seed. In CI, this
-        // is skipped because `migrate:fresh` was already run from the CLI
-        // before Playwright started (E2E_SKIP_HTTP_RESET=1).
-        const resetResponse = await postWithRetry(page, '/testing/reset');
-        if (!resetResponse.ok()) {
-            throw new Error(
-                `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
-            );
-        }
+/**
+ * Single entry point for "wipe the DB before this test/setup runs".
+ *
+ * Always import this helper — never `page.request.post('/testing/reset')`
+ * directly. Direct calls bypass `E2E_SKIP_HTTP_RESET` and force the dev
+ * server to execute a blocking `migrate:fresh` inside an HTTP request,
+ * which is exactly the failure mode the CI fix is meant to avoid (R38).
+ *
+ * Behaviour:
+ * - In CI (`E2E_SKIP_HTTP_RESET=1`): no-op. The workflow already ran
+ *   `php artisan migrate:fresh --force` from the CLI before the dev
+ *   server started, so the DB is clean.
+ * - Local runs (flag unset): hits POST /testing/reset via the dev
+ *   server, with the postWithRetry early-boot retry loop.
+ *
+ * Throws on a non-2xx HTTP response so the calling test fails loudly
+ * instead of running against a partially-reset database.
+ */
+export async function resetDb(target: RequestTarget): Promise<void> {
+    if (SKIP_HTTP_RESET) {
+        return;
     }
-    const seedResponse = await postWithRetry(page, '/testing/seed', { seeder });
+    const resetResponse = await postWithRetry(target, '/testing/reset');
+    if (!resetResponse.ok()) {
+        throw new Error(
+            `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
+        );
+    }
+}
+
+export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
+    await resetDb(target);
+    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder });
     if (!seedResponse.ok()) {
         throw new Error(
             `/testing/seed failed: ${seedResponse.status()} ${await seedResponse.text()}`,
