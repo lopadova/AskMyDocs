@@ -111,11 +111,11 @@ export function appMessageToUiMessage(m: AppMessage): UIMessage {
     // Return a fully-shaped UIMessage WITHOUT a type assertion so
     // TypeScript catches drift when the SDK adds / renames required
     // fields. The SDK's UIMessage shape (per `ai` v6) needs `id`,
-    // `role`, and `parts`; older SDK majors also accepted a top-level
-    // `content` field that we keep populated for backwards
-    // compatibility (some part-renderers still read it as a fast
-    // path). Both surfaces stay byte-identical to the BE Message
-    // content.
+    // `role`, and `parts`. The earlier draft of this comment claimed
+    // we also kept a top-level `content` field for SDK-major
+    // backwards compat — that was incorrect (the older shape was
+    // already replaced by the parts-only contract in `ai` v6). The
+    // text payload lives EXCLUSIVELY in `parts[0]` for the v6 SDK.
     return {
         id: String(m.id),
         role: m.role,

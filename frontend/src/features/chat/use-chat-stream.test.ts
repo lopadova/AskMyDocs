@@ -24,15 +24,16 @@ describe('buildStreamEndpoint', () => {
         expect(buildStreamEndpoint(null)).toBe('/conversations/0/messages/stream');
     });
 
-    it('zero is treated as a real id (not the null sentinel)', () => {
-        // Defensive: conversation ids are auto-increment positive
-        // integers, but if a fixture ever passes 0 the helper must
-        // not overlap with the null sentinel path. The result happens
-        // to coincide because both use `0` in the URL — that's fine
-        // because both behaviours (404) are identical. We assert the
-        // string shape so a future change to the null sentinel
-        // doesn't silently break this.
-        expect(buildStreamEndpoint(0)).toBe('/conversations/0/messages/stream');
+    it('id zero produces the same URL as the null sentinel (intentionally reserved)', () => {
+        // Conversation ids are expected to be auto-increment positive
+        // integers, so `0` is intentionally reserved for the inert
+        // pre-conversation URL shape used by the null sentinel above.
+        // This test documents that the overlap is deliberate rather
+        // than claiming `0` produces a distinct endpoint. If callers
+        // need to disambiguate (e.g. a fixture that genuinely tests
+        // a "conversation id zero" code path), the helper would
+        // need a separate sentinel value (e.g. -1).
+        expect(buildStreamEndpoint(0)).toBe(buildStreamEndpoint(null));
     });
 });
 
