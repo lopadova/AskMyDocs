@@ -250,10 +250,30 @@ jobs:
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.
           PHP_CLI_SERVER_WORKERS: '4'
+        # `setsid -f` runs the child in a NEW session + new process group
+        # and forks (so this step's bash exits immediately with 0). Without
+        # it the artisan-serve process inherited the runner step's process
+        # group, and on some runs the GitHub Actions runner / kernel
+        # cleaned up the PG between this step and the next — the server
+        # answered `/healthz` (Wait for backend saw it green) and then
+        # silently died before Playwright posted to `/testing/reset`,
+        # producing the recurring auth.setup ECONNREFUSED flake. The
+        # detached child is now adopted by init (PID 1) and survives until
+        # the explicit `Stop Laravel server` step at the end of the job.
         run: |
-          php artisan serve --no-reload --host=127.0.0.1 --port=8000 \
-              > storage/logs/artisan-serve.log 2>&1 &
-          echo $! > /tmp/artisan-serve.pid
+          setsid -f bash -c 'php artisan serve --no-reload --host=127.0.0.1 --port=8000 > storage/logs/artisan-serve.log 2>&1'
+          # `setsid -f` returns immediately after fork; the child is
+          # detached so $! does not carry the PID. Brief sleep + pgrep
+          # captures the actual artisan-serve PID for the cleanup step.
+          sleep 1
+          pid=$(pgrep -f 'artisan serve --no-reload' | head -1)
+          if [ -z "$pid" ]; then
+            echo "ERROR: artisan-serve did not appear in pgrep within 1s"
+            cat storage/logs/artisan-serve.log || true
+            exit 1
+          fi
+          echo "$pid" > /tmp/artisan-serve.pid
+          echo "artisan-serve detached, pid=$pid"
 
       - name: Wait for backend
         run: |
