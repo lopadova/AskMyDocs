@@ -170,8 +170,19 @@ jobs:
         run: |
           cp .env.example .env || true
           php -r "file_exists('.env') || copy('.env.example', '.env');" || true
-          echo "APP_ENV=testing" >> .env
-          echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
+          # Replace defaults in-place via sed so .env ends up with exactly
+          # ONE APP_ENV / APP_KEY line. `echo ... >> .env` would duplicate
+          # both keys (`.env.example` already declares `APP_ENV=local` and
+          # an empty `APP_KEY=`); Laravel reads top-down and the LAST
+          # occurrence wins, but the duplicates are ambiguous to the
+          # reader and Copilot review (correctly) flagged them.
+          sed -i 's/^APP_ENV=.*/APP_ENV=testing/' .env
+          # APP_KEY is generated below by `php artisan key:generate
+          # --force` (see "Migrate test database (CLI)") — it REPLACES
+          # the empty `APP_KEY=` line from `.env.example` in-place, no
+          # duplicate, and avoids the shell-escaping hazard of piping
+          # an openssl-generated base64 string (which can contain `/`)
+          # through sed.
           # Postgres + pgvector via the service container above — same
           # engine production runs. Playwright boots the server via
           # playwright.config.ts webServer; migrations exercise pgvector
@@ -217,19 +228,20 @@ jobs:
           mkdir -p storage/app/kb
 
       - name: Migrate test database (CLI)
-        # Step name reflects what actually runs here: only `migrate:fresh`.
-        # Seeding still happens via POST /testing/seed during Playwright
-        # setup (see frontend/e2e/setup-helpers.ts); only the heavy
-        # migration is moved off the HTTP path.
+        # Step name reflects what actually runs here: `key:generate` +
+        # `migrate:fresh`. Seeding still happens via POST /testing/seed
+        # during Playwright setup (see frontend/e2e/setup-helpers.ts);
+        # only the heavy migration is moved off the HTTP path.
         #
-        # APP_KEY is already written into `.env` by the previous step
-        # ("Prepare .env for testing", `echo "APP_KEY=base64:..." >> .env`),
-        # so we deliberately do NOT run `php artisan key:generate --force`
-        # here — that would append a second `APP_KEY=` line to .env and
-        # leave it ambiguous which value `php` ends up reading.
+        # `key:generate --force` runs FIRST so it replaces the empty
+        # `APP_KEY=` line copied from `.env.example` (the previous step
+        # leaves it empty deliberately — see "Prepare .env for testing"
+        # for the rationale). This produces exactly one APP_KEY=base64:…
+        # definition in .env, no duplicates, no ambiguity.
         env:
           APP_ENV: testing
         run: |
+          php artisan key:generate --force
           # `migrate:fresh` from CLI (instead of `migrate`) — see R38 in
           # CLAUDE.md. The heavy migration can stall `php artisan serve`'s
           # single-threaded accept loop when it runs inside an HTTP request
