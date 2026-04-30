@@ -82,19 +82,24 @@ describe('getCitations', () => {
         expect(getCitations(appMsg({ metadata: { provider: 'openai' } }))).toEqual([]);
     });
 
-    it('converts SDK source parts (BE wire-format type=source) to MessageCitation shape', () => {
+    it('converts SDK source parts (BE wire-format type=source, sourceId=doc-N) to MessageCitation shape', () => {
         // PLAN-W3 §5.5 mandates the discriminator `p.type === 'source'`
         // — a CUSTOM extension to the SDK's UIPart type union which
         // only knows `source-url` / `source-document` natively. The
         // SDK passes unknown chunk types through verbatim, so the
         // adapter sees `type: 'source'` and the `as never` cast is
         // necessary to satisfy TypeScript's structural check on
-        // UIPart.type. Same shape as BE `StreamChunk::source()`.
+        // UIPart.type.
+        //
+        // The W3.1 streaming controller emits sourceId as
+        // `'doc-' . $document->id` (see MessageStreamController::store()
+        // line 369). The adapter strips the prefix before parsing the
+        // numeric tail. Fixtures here mirror the real BE wire shape.
         const m = uiMsg({
             parts: [
                 { type: 'text', text: 'According to the docs…' },
-                { type: 'source', sourceId: '42', title: 'Vacation Policy', url: '/kb/42', origin: 'primary' } as never,
-                { type: 'source', sourceId: '7', title: 'Onboarding', url: '/kb/7', origin: 'primary' } as never,
+                { type: 'source', sourceId: 'doc-42', title: 'Vacation Policy', url: '/kb/42', origin: 'primary' } as never,
+                { type: 'source', sourceId: 'doc-7', title: 'Onboarding', url: '/kb/7', origin: 'primary' } as never,
             ],
         });
 
@@ -111,6 +116,31 @@ describe('getCitations', () => {
         });
         expect(citations[1].document_id).toBe(7);
         expect(citations[1].title).toBe('Onboarding');
+    });
+
+    it('strips BE doc- prefix from sourceId before parsing document_id', () => {
+        // Pin the BE wire shape: MessageStreamController::store() emits
+        // `'doc-' . $document->id`. The adapter MUST strip this before
+        // parsing — without the strip, every citation would land with
+        // document_id:null because Number('doc-42') is NaN.
+        const cases = [
+            { sourceId: 'doc-42', expectDocId: 42 },
+            { sourceId: 'doc-1', expectDocId: 1 },
+            { sourceId: 'doc-9999', expectDocId: 9999 },
+            // Unprefixed numeric still works (forward-compat with
+            // a future BE patch that drops the prefix).
+            { sourceId: '42', expectDocId: 42 },
+            // doc-unknown — BE fallback when document_id is null
+            { sourceId: 'doc-unknown', expectDocId: null },
+            // Malformed prefix tail still rejects
+            { sourceId: 'doc-42abc', expectDocId: null },
+        ];
+        for (const c of cases) {
+            const m = uiMsg({
+                parts: [{ type: 'source', sourceId: c.sourceId, title: 'X', url: '/x', origin: 'primary' } as never],
+            });
+            expect(getCitations(m)[0].document_id).toBe(c.expectDocId);
+        }
     });
 
     it('returns [] for SDK UIMessage with empty parts array', () => {
@@ -141,22 +171,25 @@ describe('getCitations', () => {
         expect(getCitations(m)[0].document_id).toBeNull();
     });
 
-    it('rejects non-integer sourceIds when computing document_id (strict parse)', () => {
+    it('rejects malformed integer sourceIds (strict parse, post-strip)', () => {
         // Number.parseInt('42abc', 10) returns 42 (parses leading
         // digits), which would silently misclassify slug-like ids
         // as numeric document_ids. The adapter uses Number() +
         // Number.isInteger() so only fully-numeric strings round-
         // trip; everything else yields document_id=null and
         // WikilinkHover falls back to title-based resolution.
+        // Cases below cover BOTH unprefixed AND BE-prefixed shapes.
         const cases = [
-            { sourceId: '42abc', expectDocId: null },
-            { sourceId: 'doc-42', expectDocId: null },
-            { sourceId: 'dec-cache-v2', expectDocId: null },
-            { sourceId: '42.5', expectDocId: null },        // float rejected
-            { sourceId: '0', expectDocId: null },           // non-positive rejected
-            { sourceId: '-1', expectDocId: null },          // negative rejected
-            { sourceId: '42', expectDocId: 42 },            // happy path
-            { sourceId: '1', expectDocId: 1 },
+            { sourceId: '42abc', expectDocId: null },             // suffix garbage
+            { sourceId: 'doc-42abc', expectDocId: null },         // post-strip suffix garbage
+            { sourceId: 'dec-cache-v2', expectDocId: null },      // canonical slug
+            { sourceId: 'doc-cache-v2', expectDocId: null },      // looks like prefix but tail isn't numeric
+            { sourceId: '42.5', expectDocId: null },              // float rejected
+            { sourceId: 'doc-42.5', expectDocId: null },          // float post-strip
+            { sourceId: '0', expectDocId: null },                 // non-positive rejected
+            { sourceId: 'doc-0', expectDocId: null },             // non-positive post-strip
+            { sourceId: '-1', expectDocId: null },                // negative rejected
+            { sourceId: 'doc--1', expectDocId: null },            // negative post-strip (double-hyphen)
         ];
         for (const c of cases) {
             const m = uiMsg({

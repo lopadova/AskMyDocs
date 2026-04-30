@@ -227,22 +227,27 @@ test.describe('Chat-stream token-level UX', () => {
         // chunk has rendered. data-state must transition from
         // 'loading' to 'error'. chat-thread-error must be visible.
         // The previously-rendered partial text must remain (no rollback).
-        let chunkCount = 0;
-        await page.route('**/conversations/*/messages/stream', async (route) => {
-            chunkCount += 1;
-            if (chunkCount === 1) {
-                // Let the first chunk through (real backend) — but
-                // since the route handler abort() doesn't allow
-                // partial fulfillment, the spec author for the W3.2
-                // swap commit may need to use page.unroute() after
-                // the first response observed. Document the intent
-                // clearly here.
-                await route.fallback();
-                return;
-            }
-            await route.abort('failed');
-        });
-
+        //
+        // IMPORTANT for the swap-commit author: SSE is ONE long-lived
+        // HTTP request. Playwright's request-interception API fires
+        // once per request, NOT per chunk — so a counter-based
+        // abort-after-N-chunks does NOT work via the request-router
+        // alone. Two cleaner options:
+        //
+        //   (a) Server-side scaffold — extend the W3.1 streaming
+        //       controller with a `?testing_abort_after=N` query
+        //       param that closes the connection after emitting N
+        //       chunks. Toggle gated behind APP_ENV=testing.
+        //
+        //   (b) Client-side fetch wrap — `page.addInitScript()` that
+        //       monkey-patches `window.fetch` for the streaming URL,
+        //       wraps the ReadableStream, lets N bytes through, then
+        //       errors the stream. The SDK's transport sees a stream
+        //       error and propagates `status: 'error'`.
+        //
+        // Stub the conversations-messages refetch via the centralised
+        // helper as usual; the abort injection is layered on TOP of
+        // that stub by the swap-commit author per (a) or (b).
         await stubChatAssistantReply(page, {
             assistant: buildAssistantMessage({
                 id: 9005,

@@ -135,28 +135,37 @@ function coerceCitationOrigin(value: unknown): CitationOrigin {
 /**
  * Convert a SDK `source` part (BE wire-format `type: 'source'` per
  * `StreamChunk::TYPE_SOURCE` — NOT the SDK's generic `source-url`
- * variant) to the AskMyDocs `MessageCitation` shape. `title`
- * round-trips faithfully; `origin` round-trips from the BE payload
- * (W3.1 emits one of `primary` / `expanded` / `rejected` matching
- * the `KbSearchService` `SearchResult` groupings — never hard-code
- * here). The other citation fields (source_path, source_type,
- * headings, chunks_used) live in the AskMyDocs domain and don't
- * have a place in the SDK's source part — they land as `null` /
- * sensible defaults so the existing `CitationsPopover` still
- * renders without changes.
+ * variant) to the AskMyDocs `MessageCitation` shape.
  *
- * `document_id` we attempt to recover from `sourceId` only when it
- * looks like a positive integer (the W3.1 `StreamChunk::source()`
- * factory passes `(string) $document->id`). When the BE later
- * switches to non-numeric source ids (e.g. UUIDs), this conversion
- * yields `null` and `WikilinkHover` falls back to title-based
- * resolution.
+ * **`sourceId` shape**: the W3.1 streaming controller emits
+ * `'doc-' . $document->id` (see `MessageStreamController::store()`
+ * `StreamChunk::source(sourceId: 'doc-' . ...)`). The adapter strips
+ * the `doc-` prefix before parsing the numeric tail so the
+ * `WikilinkHover` numeric-id resolution path fires for the happy
+ * path. Non-prefixed payloads (a future BE patch, or canonical
+ * slug-only citations) pass through verbatim, and any sourceId
+ * whose tail isn't a positive integer yields `document_id: null` —
+ * `WikilinkHover` then falls back to title-based resolution.
  *
- * `url` is nullable per `StreamChunk::source(?string $url, ...)` —
- * canonical citations without a public URL still emit a `source`
+ * **`origin` mapping**: NOTE that W3.1 today hard-codes
+ * `origin: 'primary'` for every citation chunk regardless of the
+ * `KbSearchService::SearchResult` group it came from
+ * (`MessageStreamController::store()` line 372). The adapter is
+ * forward-compatible with a BE patch that threads the real group
+ * label (`primary` | `expanded` | `rejected`) — `coerceCitationOrigin()`
+ * maps `expanded` → `related` for FE legacy compatibility.
+ *
+ * **`url`** is nullable per `StreamChunk::source(?string $url, ...)`
+ * — canonical citations without a public URL still emit a `source`
  * chunk so the user sees the citation chip. When `url` is null AND
- * `title` is missing, the chip falls back to the source id so the
- * UI never renders an empty label.
+ * `title` is missing, the chip falls back to the source id (with
+ * `doc-` prefix retained as a last-resort label) so the UI never
+ * renders an empty cell.
+ *
+ * Other citation fields (source_path, source_type, headings,
+ * chunks_used) live in the AskMyDocs domain and don't have a place
+ * in the SDK's source part — they land as `null` / sensible
+ * defaults so the existing `CitationsPopover` still renders.
  */
 function sourcePartToCitation(part: {
     sourceId: string;
@@ -164,16 +173,20 @@ function sourcePartToCitation(part: {
     url?: string | null;
     origin?: string;
 }): MessageCitation {
-    // Strict all-digits guard — `Number.parseInt('42abc', 10)` returns
-    // 42 because parseInt parses LEADING digits and stops at the
-    // first non-digit, silently misclassifying non-integer sourceIds
-    // like `'doc-42'` / `'42abc'` / `'dec-cache-v2'` as document_id 42.
-    // `Number('42abc')` returns NaN (strict), so we use it instead;
-    // `Number.isInteger()` then rejects floats and Infinity. This
-    // matches the W3.1 BE which always emits the doc id as `(string)
-    // $document->id` for numeric ids and a slug for canonical refs —
-    // canonical slugs must NOT round-trip to a misleading document_id.
-    const numeric = Number(part.sourceId);
+    // Strip the BE `doc-` prefix (see MessageStreamController::store()
+    // line 369 — `'doc-' . ($citation['document_id'] ?? 'unknown')`).
+    // Without this, the cycle-5 strict-integer check `Number('doc-42')`
+    // returns NaN, so every citation would land with document_id:null
+    // and the wikilink numeric-id path would never fire.
+    const idTail = part.sourceId.startsWith('doc-')
+        ? part.sourceId.slice('doc-'.length)
+        : part.sourceId;
+    // Strict integer parse — `Number.parseInt('42abc', 10)` returns 42
+    // (parses leading digits then stops), silently misclassifying
+    // partially-numeric tails (`'doc-42abc'` post-strip) as document_id
+    // 42. `Number()` rejects strictly: NaN for any non-numeric input.
+    // `Number.isInteger()` additionally rejects floats and Infinity.
+    const numeric = Number(idTail);
     const documentId = Number.isInteger(numeric) && numeric > 0 ? numeric : null;
     const label = part.title ?? part.url ?? part.sourceId;
     return {
