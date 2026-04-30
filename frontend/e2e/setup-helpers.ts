@@ -1,14 +1,16 @@
 import type { APIRequestContext, APIResponse, BrowserContext, Page } from '@playwright/test';
 
 /**
- * Per-project login credentials, keyed by Playwright project name.
- * Mirrors the seeded users in `database/seeders/DemoSeeder.php` and
+ * Per-project login credentials, keyed by Playwright project name as
+ * declared in `playwright.config.ts` (NOT spec filenames). Mirrors the
+ * seeded users in `database/seeders/DemoSeeder.php` and
  * `database/seeders/EmptyAdminSeeder.php` — both seeders re-create
  * these accounts via `User::firstOrCreate()` keyed on email after a
  * `migrate:fresh`, so the email/password pair stays valid across
  * resets even though the bcrypt hash is regenerated each time.
  *
- * Setup projects (`auth.setup`, `viewer.setup`, `super-admin.setup`)
+ * Setup projects (`setup`, `viewer-setup`, `super-admin-setup` —
+ * driven by `auth.setup.ts`, `viewer.setup.ts`, `super-admin.setup.ts`)
  * are not listed because they perform their own login flow against
  * the storageState at boot and don't reuse this map.
  */
@@ -31,8 +33,9 @@ function asRequest(target: RequestTarget): APIRequestContext {
 }
 
 /*
- * Setup-time helpers shared across auth.setup.ts, viewer.setup.ts, and
- * super-admin.setup.ts.
+ * Setup-time helpers shared across the spec files `auth.setup.ts`,
+ * `viewer.setup.ts`, and `super-admin.setup.ts` (project names in
+ * `playwright.config.ts`: `setup`, `viewer-setup`, `super-admin-setup`).
  *
  * `php artisan serve` runs PHP's built-in dev server. Two failure modes
  * we have observed on the CI runner:
@@ -60,10 +63,27 @@ function asRequest(target: RequestTarget): APIRequestContext {
  * against the residual race during the very first POST after the
  * server reports `/healthz` green.
  *
- * 30 attempts at 1500ms covers 45 s — enough headroom for /testing/seed
- * on a freshly migrated Postgres schema and for any first-request boot
- * race on a cold CI runner.
+ * Retry budgets are split by phase to fit within Playwright's per-test
+ * timeout (20_000 ms in `playwright.config.ts`):
+ *
+ *  - BOOT_RETRY_ATTEMPTS = 30 × 1500 ms ≈ 45 s. Used by
+ *    `resetAndSeed()` only — that helper runs at SETUP-project boot
+ *    (auth.setup / viewer.setup / super-admin.setup) where the first
+ *    POST after `php artisan serve` reports `/healthz` green can still
+ *    ECONNREFUSE for tens of seconds. Setup projects do NOT inherit
+ *    the per-test 20 s cap, so a 45 s budget is safe there.
+ *
+ *  - WARM_RETRY_ATTEMPTS = 3 × 1500 ms = 4.5 s. Used by `resetDb()`
+ *    and `seedDb()` — both are called from spec bodies and the
+ *    auto-fixture in `frontend/e2e/fixtures.ts` AFTER the dev server
+ *    is warm. A 4.5 s worst-case retry budget fits comfortably inside
+ *    the 20 s per-test cap, so a transient flake throws this helper's
+ *    informative error instead of dying as a generic Playwright
+ *    timeout where the failure mode is opaque.
  */
+const BOOT_RETRY_ATTEMPTS = 30;
+const WARM_RETRY_ATTEMPTS = 3;
+const RETRY_SLEEP_MS = 1500;
 
 /**
  * When true, skip the heavy POST /testing/reset (migrate:fresh) because
@@ -74,23 +94,41 @@ function asRequest(target: RequestTarget): APIRequestContext {
  */
 const SKIP_HTTP_RESET = process.env.E2E_SKIP_HTTP_RESET === '1';
 
+export interface RetryOptions {
+    /**
+     * Maximum number of attempts before throwing. Defaults to
+     * BOOT_RETRY_ATTEMPTS (30) — appropriate for setup-project boot
+     * where the first POST after `php artisan serve` answers `/healthz`
+     * can still ECONNREFUSE for tens of seconds. Pass
+     * WARM_RETRY_ATTEMPTS (3) for spec-body / fixture calls where the
+     * server is already warm and Playwright's per-test 20 s timeout
+     * caps the retry window.
+     */
+    maxAttempts?: number;
+    /**
+     * Sleep between attempts. Defaults to RETRY_SLEEP_MS (1500).
+     */
+    sleepMs?: number;
+}
+
 export async function postWithRetry(
     target: RequestTarget,
     path: string,
     body?: unknown,
+    options: RetryOptions = {},
 ): Promise<APIResponse> {
     const request = asRequest(target);
-    const MAX_ATTEMPTS = 30;
-    const SLEEP_MS = 1500;
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const maxAttempts = options.maxAttempts ?? BOOT_RETRY_ATTEMPTS;
+    const sleepMs = options.sleepMs ?? RETRY_SLEEP_MS;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
             return await request.post(path, body ? { data: body } : undefined);
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            if (attempt === MAX_ATTEMPTS - 1) {
-                throw new Error(`${path} failed after ${MAX_ATTEMPTS} attempts: ${message}`);
+            if (attempt === maxAttempts - 1) {
+                throw new Error(`${path} failed after ${maxAttempts} attempts: ${message}`);
             }
-            await new Promise((r) => setTimeout(r, SLEEP_MS));
+            await new Promise((r) => setTimeout(r, sleepMs));
         }
     }
     throw new Error(`${path} unreachable`);
@@ -116,8 +154,11 @@ export async function postWithRetry(
  * Throws on a non-2xx HTTP response so the calling test fails loudly
  * instead of running against a partially-reset database.
  */
-export async function resetDb(target: RequestTarget): Promise<void> {
-    const resetResponse = await postWithRetry(target, '/testing/reset');
+export async function resetDb(
+    target: RequestTarget,
+    options: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS },
+): Promise<void> {
+    const resetResponse = await postWithRetry(target, '/testing/reset', undefined, options);
     if (!resetResponse.ok()) {
         throw new Error(
             `/testing/reset failed: ${resetResponse.status()} ${await resetResponse.text()}`,
@@ -138,8 +179,12 @@ export async function resetDb(target: RequestTarget): Promise<void> {
  * Throws on a non-2xx HTTP response so the calling test fails loudly with
  * the seeder name + status + body in the error message.
  */
-export async function seedDb(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
-    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder });
+export async function seedDb(
+    target: RequestTarget,
+    seeder = 'DemoSeeder',
+    options: RetryOptions = { maxAttempts: WARM_RETRY_ATTEMPTS },
+): Promise<void> {
+    const seedResponse = await postWithRetry(target, '/testing/seed', { seeder }, options);
     if (!seedResponse.ok()) {
         throw new Error(
             `/testing/seed (${seeder}) failed: ${seedResponse.status()} ${await seedResponse.text()}`,
@@ -148,6 +193,12 @@ export async function seedDb(target: RequestTarget, seeder = 'DemoSeeder'): Prom
 }
 
 export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder'): Promise<void> {
+    // Setup-project boot path: pass the full BOOT_RETRY_ATTEMPTS budget
+    // explicitly so the resetDb/seedDb defaults (which are sized for
+    // warm-server per-test calls) don't underbudget the cold-boot
+    // window where the first POST after `/healthz` answers green can
+    // still ECONNREFUSE for tens of seconds.
+    const bootRetry: RetryOptions = { maxAttempts: BOOT_RETRY_ATTEMPTS };
     if (!SKIP_HTTP_RESET) {
         // Boot-race protection: in CI the workflow already ran
         // `php artisan migrate:fresh --force` from the CLI BEFORE the
@@ -156,9 +207,9 @@ export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder')
         // single-threaded accept-loop stall (R38). Skip it. Spec-level
         // `resetDb()` calls keep working because they hit the dev
         // server only AFTER it has handled `/healthz` (i.e., warm).
-        await resetDb(target);
+        await resetDb(target, bootRetry);
     }
-    await seedDb(target, seeder);
+    await seedDb(target, seeder, bootRetry);
 }
 
 /**

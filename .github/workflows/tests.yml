@@ -170,30 +170,38 @@ jobs:
         run: |
           cp .env.example .env || true
           php -r "file_exists('.env') || copy('.env.example', '.env');" || true
-          # Replace defaults in-place via sed so .env ends up with exactly
-          # ONE APP_ENV / APP_KEY line. `echo ... >> .env` would duplicate
-          # both keys (`.env.example` already declares `APP_ENV=local` and
-          # an empty `APP_KEY=`); Laravel reads top-down and the LAST
-          # occurrence wins, but the duplicates are ambiguous to the
-          # reader and Copilot review (correctly) flagged them.
-          sed -i 's/^APP_ENV=.*/APP_ENV=testing/' .env
+          # Override every key via in-place sed so .env ends up with
+          # exactly ONE definition per setting. `.env.example` already
+          # declares APP_ENV / APP_KEY / DB_* / CACHE_STORE /
+          # SESSION_DRIVER / QUEUE_CONNECTION; using `echo ... >> .env`
+          # for any of these would duplicate the line (Laravel reads
+          # top-down and the LAST occurrence wins, but duplicates are
+          # ambiguous and Copilot review flagged them on PR #83).
+          # `set_env <KEY> <VALUE>` uses `|` as the sed delimiter so
+          # values with `/` (e.g. URLs) survive without escaping; the
+          # function REQUIRES the key to exist in .env.example because
+          # `sed s|^KEY=.*|KEY=…|` is a no-op when the line is absent.
+          # Every key below is verified present in .env.example —
+          # adding a NEW key (not in the example) needs `>> .env`.
+          set_env() { sed -i "s|^${1}=.*|${1}=${2}|" .env; }
+          set_env APP_ENV testing
           # APP_KEY is generated below by `php artisan key:generate
           # --force` (see "Migrate test database (CLI)") — it REPLACES
-          # the empty `APP_KEY=` line from `.env.example` in-place, no
-          # duplicate, and avoids the shell-escaping hazard of piping
-          # an openssl-generated base64 string (which can contain `/`)
-          # through sed.
+          # the empty `APP_KEY=` line from `.env.example` in-place,
+          # avoiding the shell-escaping hazard of piping an
+          # openssl-generated base64 string through sed.
+
           # Postgres + pgvector via the service container above — same
           # engine production runs. Playwright boots the server via
           # playwright.config.ts webServer; migrations exercise pgvector
           # cleanly because ensureVectorExtensionExists() can issue
           # CREATE EXTENSION here.
-          echo "DB_CONNECTION=pgsql" >> .env
-          echo "DB_HOST=127.0.0.1" >> .env
-          echo "DB_PORT=5432" >> .env
-          echo "DB_DATABASE=askmydocs_test" >> .env
-          echo "DB_USERNAME=askmydocs" >> .env
-          echo "DB_PASSWORD=askmydocs" >> .env
+          set_env DB_CONNECTION pgsql
+          set_env DB_HOST       127.0.0.1
+          set_env DB_PORT       5432
+          set_env DB_DATABASE   askmydocs_test
+          set_env DB_USERNAME   askmydocs
+          set_env DB_PASSWORD   askmydocs
           # Cache/session intentionally NOT on the database — the project
           # has no cache/sessions table migration (production uses redis
           # or file). Spatie's permission migration calls
@@ -202,8 +210,8 @@ jobs:
           # `array` is sufficient for migrations + a Playwright run;
           # `file` persists session cookies across HTTP requests so
           # login flows survive across page navigations.
-          echo "CACHE_STORE=array" >> .env
-          echo "SESSION_DRIVER=file" >> .env
+          set_env CACHE_STORE     array
+          set_env SESSION_DRIVER  file
           # Database-backed queue so /api/kb/ingest dispatches enqueue
           # the job (returning 202) without running it immediately.
           # `sync` would execute IngestDocumentJob on the request thread,
@@ -211,7 +219,7 @@ jobs:
           # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
           # The test only asserts the 202; the actual indexing flow is
           # covered by PHPUnit feature tests with Http::fake().
-          echo "QUEUE_CONNECTION=database" >> .env
+          set_env QUEUE_CONNECTION database
           # `storage/framework/*` is gitignored except for `.gitkeep`,
           # so the cache/sessions/views subdirs may not exist on a
           # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
