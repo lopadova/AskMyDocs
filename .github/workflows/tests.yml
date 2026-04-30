@@ -181,9 +181,18 @@ jobs:
           # values with `/` (e.g. URLs) survive without escaping; the
           # function REQUIRES the key to exist in .env.example because
           # `sed s|^KEY=.*|KEY=…|` is a no-op when the line is absent.
-          # Every key below is verified present in .env.example —
-          # adding a NEW key (not in the example) needs `>> .env`.
-          set_env() { sed -i "s|^${1}=.*|${1}=${2}|" .env; }
+          # Fail loudly if the key is missing — silently no-opping
+          # would let `.env.example` defaults bleed through into the
+          # CI run (e.g. `APP_ENV=local` instead of `testing`) and
+          # surface as a confusing downstream test failure 5 minutes
+          # later. Adding a NEW key (not in the example) needs `>> .env`.
+          set_env() {
+              if ! grep -qE "^${1}=" .env; then
+                  echo "::error::set_env: key '${1}' missing from .env (was it removed from .env.example?)"
+                  exit 1
+              fi
+              sed -i "s|^${1}=.*|${1}=${2}|" .env
+          }
           set_env APP_ENV testing
           # APP_KEY is generated below by `php artisan key:generate
           # --force` (see "Migrate test database (CLI)") — it REPLACES

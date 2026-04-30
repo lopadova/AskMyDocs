@@ -81,14 +81,23 @@ function asRequest(target: RequestTarget): APIRequestContext {
  *    driven by `auth.setup.ts` / `viewer.setup.ts` /
  *    `super-admin.setup.ts`) where the first POST after `php artisan
  *    serve` reports `/healthz` green can still ECONNREFUSE for tens
- *    of seconds. Setup projects DO inherit the global per-test
- *    `timeout: 20_000` from `playwright.config.ts` — the 45 s ceiling
- *    is THEORETICAL worst-case. In practice the cold-boot flake
- *    clears within 1–3 retries (~3 s), so the budget rarely drains
- *    past 5 s. If a future workload genuinely needs the full window
- *    (e.g. a slower CI runner), override `timeout` on the setup
- *    project explicitly via `playwright.config.ts`'s project entry
- *    rather than silently relying on Playwright not noticing.
+ *    of seconds. Per-test timeout interaction:
+ *      - `auth.setup.ts` (project `setup`) explicitly overrides to
+ *        `setup.setTimeout(120_000)` — that's where `migrate:fresh`
+ *        boot races are concentrated, and 45 s budget fits there.
+ *      - `viewer.setup.ts` and `super-admin.setup.ts` do NOT override
+ *        and inherit the global 20 s cap. They run AFTER `auth.setup`
+ *        via `dependencies: ['setup']`, so by the time they execute
+ *        the dev server is already warm — `resetAndSeed()` only does
+ *        a single warm-server `seedDb()` (because `E2E_SKIP_HTTP_RESET=1`
+ *        in CI skips the reset), which typically completes in ~1 s
+ *        and never exhausts the 45 s ceiling. In practice the cold-
+ *        boot retry budget exists for `auth.setup`'s benefit.
+ *    If a future workload changes this (e.g. running `migrate:fresh`
+ *    via HTTP from `viewer-setup` / `super-admin-setup`), override
+ *    `timeout` on those project entries in `playwright.config.ts`
+ *    rather than silently relying on the existing budget being
+ *    enough.
  *
  *  - WARM_RETRY_ATTEMPTS = 3 × 1500 ms = 4.5 s. Used by `resetDb()`
  *    and `seedDb()` — both are called from spec bodies and the
