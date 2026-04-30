@@ -306,7 +306,11 @@ class MessageStreamController extends Controller
      * via `useChat({ onFinish })` and re-renders as RefusalNotice if
      * `refusal_reason` is set — same pattern as the synchronous flow.
      *
-     * @param  Collection<int, Message>|Collection<int, mixed>  $chunks
+     * @param  Collection<int, array<string, mixed>>  $chunks  KB search
+     *         results from `KbSearchService::search()` — each element
+     *         is an associative array (post-Reranker mapping) with
+     *         keys including `vector_score`, `chunk_text`, `document.*`.
+     *         NOT `App\Models\Message` instances.
      * @param  list<array{role: string, content: string}>  $history
      * @param  list<array<string, mixed>>  $citations
      */
