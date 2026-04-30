@@ -15,7 +15,7 @@ import type { Page } from '@playwright/test';
  *
  * The contract here is "stub the chat-completion call site" without
  * naming the URL/protocol. Today the helper fulfills the synchronous
- * JSON shape against `POST /conversations/*/messages`. When the SPA
+ * JSON shape against `POST /conversations/{id}/messages`. When the SPA
  * migrates to the streaming endpoint, ONLY this file changes — every
  * spec call site stays byte-identical and continues to pass.
  *
@@ -44,12 +44,12 @@ export interface StubChatMessage {
 
 export interface StubChatOptions {
     /**
-     * The assistant message returned on `POST /conversations/*/messages`.
+     * The assistant message returned on `POST /conversations/{id}/messages`.
      */
     assistant: StubChatMessage;
 
     /**
-     * The full message list returned on `GET /conversations/*/messages`
+     * The full message list returned on `GET /conversations/{id}/messages`
      * (the refetch `useChatMutation` triggers via `invalidateQueries`
      * on success). Defaults to `[assistant]` — sufficient for tests
      * that don't assert on the refetch result. Tests that render the
@@ -73,9 +73,9 @@ export interface StubChatOptions {
 /**
  * Stub the chat-completion request/response cycle for a single test.
  *
- * - POST `/conversations/*/messages` → returns `options.assistant`
+ * - POST `/conversations/{id}/messages` → returns `options.assistant`
  *   as the assistant Message JSON.
- * - GET `/conversations/*/messages` → returns `options.list`
+ * - GET `/conversations/{id}/messages` → returns `options.list`
  *   (defaults to `[assistant]`) as the message thread.
  * - Any other method → `route.fallback()` (real backend).
  *
