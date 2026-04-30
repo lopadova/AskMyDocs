@@ -8,6 +8,12 @@ import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
 import { FeedbackButtons } from './FeedbackButtons';
 import type { Message } from './chat.api';
+import {
+    getCitations,
+    getConfidence,
+    getReasoningSteps,
+    getRefusalReason,
+} from './message-shape-adapters';
 
 export interface MessageBubbleProps {
     conversationId: number;
@@ -29,13 +35,17 @@ export interface MessageBubbleProps {
  * field is absent the component is intentionally skipped — no more
  * `undefined ? undefined : undefined` dead code that made the trace
  * unreachable even for providers that supply it.
+ *
+ * v4.0/W3.2: citation / refusal / confidence / reasoning reads go
+ * through `message-shape-adapters` so the renderer can ALSO accept the
+ * SDK `UIMessage` shape after the bigger swap commit lands. Today the
+ * `message` prop still types as the legacy `Message`, so the adapter
+ * exercises only the AppMessage branch — but the DOM contract is
+ * unchanged.
  */
 export function MessageBubble({ conversationId, message, projectKey, streaming = false }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
-    const rawSteps = message.metadata?.reasoning_steps;
-    const thinking = Array.isArray(rawSteps) && rawSteps.every((s) => typeof s === 'string')
-        ? (rawSteps as string[])
-        : undefined;
+    const thinking = getReasoningSteps(message);
 
     if (isUser) {
         return (
@@ -64,14 +74,20 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
         );
     }
 
+    // `meta` still carries the provider-meta tail (model, latency,
+    // token count) used in the action-row footer. Citations / refusal
+    // / confidence reads go through the adapters so the same component
+    // works for both AppMessage and UIMessage shapes.
     const meta = message.metadata ?? {};
-    const citations = meta.citations ?? [];
+    const citations = getCitations(message);
 
     // T3.5 — confidence + refusal_reason live at BOTH the top level
-    // and in metadata. Read top-level first; fall back to metadata for
-    // any client that loaded the message before T3.5 shipped.
-    const refusalReason = message.refusal_reason ?? meta.refusal_reason ?? null;
-    const confidence = message.confidence ?? meta.confidence ?? null;
+    // and in metadata for AppMessage; getRefusalReason / getConfidence
+    // encapsulate the precedence rule (top-level wins) and the
+    // SDK-shape branch (read from `data-refusal` / `data-confidence`
+    // parts respectively).
+    const refusalReason = getRefusalReason(message);
+    const confidence = getConfidence(message);
     const isRefusal = refusalReason != null;
 
     return (
