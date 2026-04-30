@@ -20,12 +20,19 @@ import type { Page } from '@playwright/test';
  * spec call site stays byte-identical and continues to pass.
  *
  * NOTE(R13): the `EXTERNAL_PROXY_PATTERNS` entry in
- * `scripts/verify-e2e-real-data.sh` matches
- * `/conversations/[^"]*/messages` — un-anchored at the right edge,
- * so it already covers BOTH the synchronous `…/messages` URL the
- * helper targets today AND the W3.2 `…/messages/stream` URL the
- * helper-switch commit will target. No allowlist edit is required
- * when the URL flips; the verification step stays green.
+ * `scripts/verify-e2e-real-data.sh` matches the conversations-
+ * messages route shape with no anchor at the right edge, so it
+ * already covers BOTH the synchronous form (path ends with the
+ * `messages` segment) AND the W3.2 streaming form (same path with
+ * a trailing `/stream` segment). No allowlist edit is required
+ * when the helper-switch commit flips the URL; the verification
+ * step stays green.
+ *
+ * Why this NOTE doesn't quote the regex literal: a `*` followed
+ * by `/` inside a JSDoc backtick code-span terminates the
+ * comment block prematurely (the comment lexer is not
+ * code-span-aware). Caused a CI Playwright parse failure on
+ * commit d05af7a; do not re-introduce.
  *
  * @see feedback_w3_vercel_test_rigor (memory)
  * @see docs/v4-platform/PLAN-W3-vercel-chat-migration.md §7.2
