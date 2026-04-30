@@ -859,24 +859,136 @@ re-targeted from main to feature/v4.0.
 → See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
-After opening or updating a PR, the agent MUST loop on (a) Copilot
-review comments and (b) CI status until BOTH conditions hold:
-**0 outstanding Copilot must-fix comments** AND **0 failing CI checks**.
-Stopping after a single push when CI is red, or "reporting status to
-user and waiting" when comments remain unaddressed, is a protocol
-violation. Each iteration: read `gh pr view <N> --comments` + `gh api
-.../pulls/<N>/comments` for inline reviews + `gh pr checks <N>` for CI
-+ `gh run view <run-id> --log-failed` for failed jobs; fix all issues;
-run local test gate (phpunit + vitest + playwright + architecture);
-commit; push; LOOP. Exit only when reviewDecision is APPROVED (or no
-must-fix outstanding) and all checks SUCCESS or expected-SKIPPED. Wait
-60-180s after each push before re-checking (CI may not have started).
-Anti-pattern: "Push, see red, stop, report" — costs the user a wasted
-CI cycle and hands them a half-broken state. Lorenzo flagged this
-explicitly on PR #78 (2026-04-28). Applies to all repos under
-`lopadova/*` and `padosoft/*` and to any developer/agent working on
-this codebase, current and future.
+**The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
+
+1. Fine task — implementation complete.
+2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
+3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...` —
+   the flag is **mandatory** on every PR. Two knobs interact:
+
+   - **The short alias `--reviewer copilot`** only resolves when the
+     repo / org has **GitHub Copilot Code Review enabled** (Settings →
+     Copilot → Code review → "Enable for this repository"). On a
+     fresh repo where the feature is disabled, `gh` reports "could
+     not request reviewer" and opens the PR without a reviewer
+     assigned.
+   - **The canonical login `copilot-pull-request-reviewer`** is the
+     bot's actual GitHub username. The `gh` CLI accepts it as a
+     reviewer **regardless of whether Copilot Code Review is enabled**
+     — i.e. the assignment itself succeeds in both states (CR
+     enabled → bot reviews automatically; CR disabled → bot is
+     listed as a reviewer but no automated review fires; enabling
+     CR later is a one-time setting toggle). Always pass the full
+     username so the assignment never silently fails.
+
+   Same login goes into `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
+   when Copilot is re-requested after each push.
+4. Attendi CI GitHub verde (typically 60–180 s).
+5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
+   Skipping this wait — even when CI is already green — is a protocol
+   violation.
+6. Leggi commenti (`gh pr view <N> --comments` + inline via
+   `gh api .../comments`) e fix locale.
+7. Ri-attendi CI tutta verde dopo il push del fix.
+8. Se Copilot ri-review trova nuovi commenti → GOTO step 5.
+9. Merge solo quando ENTRAMBI:
+   - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
+     Copilot comments;
+   - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
+     SKIPPED).
+
+Exit conditions are conjunctive: green CI alone is **not enough**.
+Anti-pattern: "Push, see green CI, merge now" — costs the user a code
+review pass that Copilot would have caught. Lorenzo flagged this
+explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
+PR #1/#2/#3 (2026-04-29) — they were merged without
+`--reviewer copilot-pull-request-reviewer`
+and without waiting for Copilot review, which is a protocol violation
+even though the code shipped clean.
+
+**Scope**: applies to all repos under `lopadova/*` and `padosoft/*`
+(current and future), to every developer and every AI agent working on
+the codebase, and to **every** PR — including docs-only PRs and CI-fix
+PRs. The only acceptable exception is a documented hotfix where every
+minute of delay is operationally costly; even then the post-merge
+review must run retroactively.
 → See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
+
+### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
+**The architectural rule for any CI flake of the form
+"Playwright auth.setup ECONNREFUSED on `/testing/reset` after
+`/healthz` answered green":**
+
+- Do **NOT** start the investigation by detaching the artisan-serve
+  process (`setsid -f`, `nohup`, `disown`, PGID kills, `lsof`-based
+  PID capture, stability-gate healthz polling). PHP's built-in dev
+  server has a single-threaded accept loop per worker; when one
+  handler runs `migrate:fresh` or any multi-second blocking task the
+  loop stalls and every subsequent connection ECONNREFUSEs. That is
+  the dev server doing its job, not a process-management bug.
+- **DO** ask: "what does the failing endpoint actually run? Could that
+  work happen via a CLI artisan step BEFORE Playwright starts?"
+  If yes, that is the fix.
+
+The structural fix that landed on PR #85 is the canonical example:
+
+1. Workflow step before Playwright runs `migrate:fresh` from the CLI.
+   `key:generate --force` runs FIRST so it REPLACES the empty
+   `APP_KEY=` line copied from `.env.example` in-place — the earlier
+   "Prepare .env for testing" step deliberately leaves the line empty
+   (using `sed -i 's|^APP_ENV=.*|APP_ENV=testing|' .env` for APP_ENV
+   in-place replacement, no `echo "APP_KEY=..." >> .env` for APP_KEY)
+   so `key:generate` has nothing to duplicate. Net effect: exactly
+   one `APP_ENV=` and one `APP_KEY=base64:…` definition in .env, no
+   shell-escaping hazard from piping openssl-generated base64
+   (which can contain `/`) through sed.
+   ```yaml
+   - name: Migrate test database (CLI)
+     env: { APP_ENV: testing }
+     run: |
+       php artisan key:generate --force      # replaces empty APP_KEY=
+       php artisan migrate:fresh --force
+   ```
+2. Every E2E call site that needs to wipe the DB goes through a
+   single `resetDb(target)` helper in `frontend/e2e/setup-helpers.ts`.
+   `resetDb()` ALWAYS posts to `/testing/reset` — it does NOT honour
+   `E2E_SKIP_HTTP_RESET`. The flag is intentionally narrow: it only
+   short-circuits the redundant initial reset inside the setup-time
+   `resetAndSeed(target)` helper (which is what auth.setup /
+   viewer.setup / super-admin.setup call during the boot-race
+   window). Per-scenario reseeding — `admin-dashboard.spec.ts`
+   switching to `EmptyAdminSeeder`, `admin-insights.spec.ts`
+   wiping snapshots before `DemoSeeder`, the `seeded` auto-fixture
+   in `fixtures.ts` running before every test — needs an actual DB
+   wipe. `/testing/seed` only INSERTS rows; it does not truncate, so
+   skipping `/testing/reset` mid-suite would leave cross-scenario
+   state and produce order-dependent assertions. Direct
+   `request.post('/testing/reset')` calls in spec / fixture code are
+   forbidden anyway: they bypass the (future-extensible) helper and
+   make wipe semantics impossible to refactor in one place.
+3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
+
+The remaining HTTP traffic is light enough that `php artisan serve`
+handles it without breaking a sweat. The flake disappears.
+
+**Trigger conditions for the CLI move** (all four must be true):
+- The failing endpoint runs `migrate:fresh`, big seeders, or any
+  multi-second blocking artisan command.
+- The endpoint is hit ONCE at suite startup (not per-test).
+- The work is idempotent (CLI can run it once per workflow start).
+- The test environment is disposable (CI runner / local docker, not
+  shared with humans).
+
+**Anti-pattern reference**: PR #83 commits `6071b81 → 4cde177` —
+seven process-management iterations (setsid, lsof, PGID, defensive
+sweep) without converging. Read those commits when you feel tempted
+to detach a child process from a bash session in a GitHub Actions
+step. The fix Copilot landed on PR #85 (`e2c87c29`) is ~58 lines
+across two files and was correct on the first try.
+
+→ See `.claude/skills/ci-failure-investigation/SKILL.md` (R22) for
+the artefact-first investigation flow that should surface this rule
+before the rabbit hole opens.
 
 ### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`
 Every interactive admin or chat surface uses the testid hierarchy

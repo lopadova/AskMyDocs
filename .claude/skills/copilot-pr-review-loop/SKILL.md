@@ -13,33 +13,52 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 1. Copilot review has **0 outstanding comments** (all addressed)
 2. CI has **0 failing checks** (all green or expected-skipped)
 
-## The loop
+## The 9-step flow (canonical, applies to EVERY PR on EVERY repo)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ 1. fine task — implementation complete                            │
+│ 2. test tutti verdi in locale                                     │
+│    (phpunit + vitest + playwright + architecture)                 │
+│ 3. apri PR with --reviewer copilot-pull-request-reviewer          │
+│    ← MANDATORY FLAG (canonical bot login; "copilot" alias only    │
+│     works when Copilot Code Review is enabled in repo settings)   │
+│ 4. attendi CI GitHub verde   (60-180s)                            │
+│ 5. attendi Copilot review commenti  (additional 2-15 min)         │
+│ 6. leggi commenti (gh pr view N --comments + inline) e fix        │
+│ 7. ri-attendi CI tutta verde (after fix push)                     │
+│ 8. (se Copilot ri-review) GOTO step 5                             │
+│ 9. merge solo dopo:                                               │
+│    - Copilot reviewDecision is APPROVED OR no must-fix outstanding│
+│    - All CI checks status COMPLETED + conclusion SUCCESS          │
+│      (or SKIPPED with explicit reason)                            │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**KEY POINT (2026-04-29 reinforcement):** Step 3's `--reviewer copilot-pull-request-reviewer` flag and step 5's wait-for-Copilot-review are **NOT optional**. CI green alone is **not enough** — Copilot review (or explicit absence of must-fix comments) is the second gate. Skipping step 5 ("CI green, merge now") is a protocol violation, even on docs-only PRs.
+
+## The legacy loop (kept for fix-iteration phase only)
+
+When a PR has been opened and the FIRST review/CI cycle has surfaced issues:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. push commit                                           │
-│ 2. wait 60-180s for Copilot to start review + CI to run  │
-│ 3. read PR review comments  (gh pr view N --comments)    │
-│ 4. read inline review comments (gh api .../comments)     │
-│ 5. read CI status            (gh pr checks N)            │
-│ 6. for each failing CI: read failed log                  │
-│    (gh run view <run-id> --log-failed)                   │
-│ 7. fix all issues:                                       │
-│    - Copilot must-fix comments (bug, security, R-rule)   │
-│    - Copilot should-fix comments (style, quality)        │
-│    - CI failures (compilation, tests, lint)              │
-│ 8. run local test gate:                                  │
-│    - phpunit (985/985 must pass)                         │
-│    - vitest (frontend)                                   │
-│    - playwright (E2E)                                    │
-│    - architecture tests R30/R31/R32                      │
-│ 9. commit + push fix                                     │
-│ 10. GOTO step 2                                          │
+│ A. push fix commit                                       │
+│ B. wait 60-180s for Copilot re-review + CI to re-run     │
+│ C. read PR review comments  (gh pr view N --comments)    │
+│ D. read inline review comments (gh api .../comments)     │
+│ E. read CI status            (gh pr checks N)            │
+│ F. for each failing CI: read failed log                  │
+│ G. fix all issues + run local test gate                  │
+│ H. commit + push                                         │
+│ I. GOTO step B                                           │
 │                                                           │
 │ EXIT only when:                                          │
 │   - Copilot reviewDecision is APPROVED or no outstanding │
-│   - All checks status COMPLETED + conclusion SUCCESS     │
-│     (or SKIPPED with explicit reason)                    │
+│     must-fix comments remain                              │
+│   - All checks have status COMPLETED with conclusion     │
+│     either SUCCESS or expected/justified SKIPPED         │
+│     (e.g. matrix cells gated by `if:` on a feature flag) │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -78,13 +97,21 @@ gh pr create \
   --base main \
   --head feature/<branch> \
   --body-file .github/PULL_REQUEST_TEMPLATE.md \
-  --reviewer copilot
+  --reviewer copilot-pull-request-reviewer
 ```
 
-Note: `--reviewer copilot` may fail with "could not resolve user". In
-that case, the repo must have Copilot Code Review enabled at:
-`Settings → General → Pull Requests → Allow GitHub Copilot to review`.
-Ask the user to enable it once per repo (one-time manual setup).
+Use the canonical bot login `copilot-pull-request-reviewer` — `gh`
+accepts it whether or not Copilot Code Review is enabled in the repo,
+so the assignment never silently fails. The short alias
+`--reviewer copilot` only resolves when Copilot Code Review is
+enabled at `Settings → Copilot → Code review → "Enable for this
+repository"` (the GitHub UI path may drift across versions; on older
+UIs the toggle lived under `Settings → General → Pull Requests →
+Allow GitHub Copilot to review`). On a fresh repo where the feature
+is disabled, `gh` reports "could not resolve user" and opens the PR
+with no reviewer assigned. See CLAUDE.md R36 step 3 for the full
+rationale and the precise interplay between the alias and the
+canonical login.
 
 ### Phase B — Read review (after 60-180s wait)
 ```bash

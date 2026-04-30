@@ -5,30 +5,24 @@
     "license": "MIT",
     "repositories": [
         {
-            "type": "path",
-            "url": "../padosoft-laravel-ai-regolo",
-            "options": {"symlink": true}
+            "type": "vcs",
+            "url": "https://github.com/padosoft/laravel-flow"
         },
         {
-            "type": "path",
-            "url": "../padosoft-laravel-flow",
-            "options": {"symlink": true}
+            "type": "vcs",
+            "url": "https://github.com/padosoft/eval-harness"
         },
         {
-            "type": "path",
-            "url": "../padosoft-eval-harness",
-            "options": {"symlink": true}
-        },
-        {
-            "type": "path",
-            "url": "../padosoft-laravel-pii-redactor",
-            "options": {"symlink": true}
+            "type": "vcs",
+            "url": "https://github.com/padosoft/laravel-pii-redactor"
         }
     ],
     "require": {
         "php": "^8.3",
+        "laravel/ai": "^0.6",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
+        "padosoft/laravel-ai-regolo": "^0.1.2",
         "phpoffice/phpword": "^1.3",
         "smalot/pdfparser": "^2.10",
         "spatie/laravel-activitylog": "^4.12|^5.0",
@@ -39,7 +33,6 @@
         "laravel/mcp": "^0.7",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^11.0",
-        "padosoft/laravel-ai-regolo": "dev-main",
         "padosoft/eval-harness": "dev-main",
         "padosoft/laravel-flow": "dev-main",
         "padosoft/laravel-pii-redactor": "dev-main",
