@@ -1,39 +1,27 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
+import { stubChatAssistantReply, type StubChatMessage } from './helpers/stub-chat';
 
 /**
- * Stub BOTH POST /conversations/<id>/messages (the assistant-reply
- * endpoint) and GET /conversations/<id>/messages (the list refetch
- * useChatMutation triggers via invalidateQueries on success).
+ * v4.0/W3.2 helper-extraction-first: the previous local
+ * `stubAssistantReply()` is now centralised as
+ * `stubChatAssistantReply()` in `helpers/stub-chat.ts`. The shared
+ * helper handles BOTH POST `/conversations/<id>/messages` and the
+ * GET refetch that `useChatMutation` triggers via
+ * `invalidateQueries` on success. Without the GET stub, the refetch
+ * hits the real BE with no record of the mocked POST → assistant
+ * message disappears. Refusal tests use the default `list:
+ * [assistant]` because the user message isn't asserted on in any
+ * of the refusal scenarios (the RefusalNotice replaces both turns'
+ * rendering).
  *
- * Without the GET stub, the refetch hits the real BE which has no
- * record of the mocked POST → assistant message disappears before
- * the assertions land. Mirrors the chat.spec.ts pattern (Copilot #12
- * fix). Keeping it as a helper so each test stays focused on
- * declaring its own assistant payload.
+ * Local helper signature kept so per-scenario fixtures stay terse
+ * — wraps the shared helper and adapts the legacy single-arg
+ * shape to the new options object.
  */
-async function stubAssistantReply(page: Page, body: Record<string, unknown>): Promise<void> {
-    await page.route('**/conversations/*/messages', async (route) => {
-        const method = route.request().method();
-        if (method === 'GET') {
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify([body]),
-            });
-            return;
-        }
-        if (method !== 'POST') {
-            await route.fallback();
-            return;
-        }
-        await route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify(body),
-        });
-    });
+async function stubAssistantReply(page: Page, body: StubChatMessage): Promise<void> {
+    await stubChatAssistantReply(page, { assistant: body });
 }
 
 /*
