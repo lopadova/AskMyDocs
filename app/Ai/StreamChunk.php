@@ -48,8 +48,14 @@ final readonly class StreamChunk
         public array $payload,
     ) {
         if (array_key_exists('type', $payload)) {
+            // get_debug_type() is safe for any value (object, array,
+            // resource, scalar) — the previous string interpolation
+            // could fault when `$payload['type']` was non-stringable
+            // (array/object), turning this defensive guard into a
+            // worse failure than the one it was meant to catch.
+            $debugType = get_debug_type($payload['type']);
             throw new InvalidArgumentException(
-                "StreamChunk payload cannot contain a 'type' key (reserved for the discriminator); got payload with type={$payload['type']}",
+                "StreamChunk payload cannot contain a 'type' key (reserved for the discriminator); got payload with type of {$debugType}",
             );
         }
     }

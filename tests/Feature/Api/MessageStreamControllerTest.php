@@ -28,7 +28,15 @@ use Tests\TestCase;
  *   3. Empty content → 422
  *   4. Filters round-trip (filters in body → filters reach search)
  *   5. R30 cross-tenant rejection (403 on conversation owned by another user)
- *   6. R32 memory privacy (chat-log row carries the right tenant)
+ *   6. Streamed-flag persistence on Message metadata (chat-log
+ *      driver is gated off in these tests via `chat-log.enabled=false`,
+ *      so this scenario observes the `streamed: true` marker landing
+ *      in `Message::metadata` AND `Message::metadata.provider`,
+ *      which proves the streaming path took persistence through the
+ *      same code as MessageController. R32 memory privacy is
+ *      enforced at the BelongsToTenant + chat_logs.tenant_id layer
+ *      and is covered by the dedicated tenant-isolation architecture
+ *      tests (R30/R31), not here.
  *   7. Provider streaming fallback (one-chunk emit when provider doesn't stream natively)
  *   8. SSE protocol drift — wire format byte-for-byte stable across the test
  *
@@ -53,8 +61,6 @@ final class MessageStreamControllerTest extends TestCase
 
     private User $user;
     private Conversation $conversation;
-    /** @var array<string, mixed>|null */
-    private ?array $capturedFiltersInput = null;
 
     protected function setUp(): void
     {
@@ -116,7 +122,6 @@ final class MessageStreamControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        $this->capturedFiltersInput = null;
         Mockery::close();
         parent::tearDown();
     }
