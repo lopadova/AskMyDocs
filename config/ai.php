@@ -100,18 +100,15 @@ return [
             // `temperature()`, then propagate through
             // `Laravel\Ai\Gateway\TextGenerationOptions::forAgent()`
             // into `padosoft/laravel-ai-regolo`'s `BuildsTextRequests`.
-            // `(int)` / `(float)` casts are LOSSY for non-numeric env
-            // values (`'abc'` → 0, `''` → 0). The provider adapter's
-            // `RegoloProvider::resolveMaxTokens()` / `resolveTemperature()`
-            // re-validates with `is_numeric()` and throws when given a
-            // non-numeric ARRAY-OPTION at runtime — but a non-numeric
-            // env var is silently flattened to 0 here at config-load
-            // time and bypasses that guard. Operators: keep the env
-            // values blank (use the defaults) or genuinely numeric.
-            // We don't throw at config-load because a closure here
-            // would break `php artisan config:cache`.
-            'max_tokens' => (int) env('REGOLO_MAX_TOKENS', 4096),
-            'temperature' => (float) env('REGOLO_TEMPERATURE', 0.2),
+            // `is_numeric($v = env(...)) ? cast($v) : default` falls
+            // back to the default when the env var is non-numeric or
+            // empty. Naked `(int) env(...)` would silently turn `'abc'`
+            // or `''` into `0` and bypass `RegoloProvider::resolveMaxTokens()`'s
+            // own runtime guard (which only fires on per-call $options,
+            // not on this config-layer fallback). The assignment-in-
+            // expression pattern is `config:cache`-safe (no closure).
+            'max_tokens' => is_numeric($v = env('REGOLO_MAX_TOKENS')) ? (int) $v : 4096,
+            'temperature' => is_numeric($v = env('REGOLO_TEMPERATURE')) ? (float) $v : 0.2,
             'models' => [
                 'text' => [
                     'default' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
@@ -120,11 +117,13 @@ return [
                 ],
                 'embeddings' => [
                     'default' => env('REGOLO_EMBEDDINGS_MODEL', 'Qwen3-Embedding-8B'),
-                    // env() returns a string from .env files; cast to int
-                    // because the SDK signature is `int $dimensions` and a
-                    // string value would crash on a strict TypeError when
-                    // the embeddings gateway is invoked.
-                    'dimensions' => (int) env('REGOLO_EMBEDDINGS_DIMENSIONS', 4096),
+                    // SDK signature is `int $dimensions` so the cast is
+                    // load-bearing — a string would TypeError downstream.
+                    // Same `is_numeric()` fallback as max_tokens / temperature
+                    // above so a non-numeric env (`'abc'` / `''`) doesn't
+                    // collapse to 0 (which would later surface as a confusing
+                    // pgvector dimension-mismatch on the FIRST embedding).
+                    'dimensions' => is_numeric($v = env('REGOLO_EMBEDDINGS_DIMENSIONS')) ? (int) $v : 4096,
                 ],
                 'reranking' => [
                     'default' => env('REGOLO_RERANKING_MODEL', 'jina-reranker-v2'),
