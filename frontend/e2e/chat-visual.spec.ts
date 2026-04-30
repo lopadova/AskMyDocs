@@ -205,12 +205,12 @@ test.describe('Chat visual regression (PLAN §7.4)', () => {
                 content: 'Should not be visible — refetch fails before this lands.',
             }),
         });
-        await page.route('**/conversations/*/messages', (route) => {
+        await page.route('**/conversations/*/messages', async (route) => {
             if (route.request().method() === 'GET') {
-                void route.fulfill({ status: 500, body: 'Internal Server Error' });
+                await route.fulfill({ status: 500, body: 'Internal Server Error' });
                 return;
             }
-            void route.fallback();
+            await route.fallback();
         });
         await page.goto('/app/chat');
         // Force a conversation context so the GET fires.
@@ -224,15 +224,24 @@ test.describe('Chat visual regression (PLAN §7.4)', () => {
         test.skip(true, SKIP_REASON);
         /*
          * The mid-stream frame is captured by stalling the assistant
-         * payload mid-flight: the fulfil() resolves with HALF the body
-         * after a short delay so the UI commits the streaming bubble
+         * payload mid-flight so the UI commits the streaming bubble
          * (data-state=loading on chat-thread, partial Markdown body)
-         * to the DOM before the test reads it.
+         * to the DOM before the screenshot fires.
+         *
+         * Per R12 we use a deterministic gate (an external Promise
+         * the test explicitly releases AFTER the screenshot) instead
+         * of a fixed `setTimeout(N)`. Fixed sleeps are flaky across
+         * machines/CI and work against the repo's polling-based
+         * convention.
          *
          * The W3.2 swap commit will replace this with a true SSE
          * stream pause via the AI SDK's streaming primitives — at
          * which point the same selectors keep the assertion stable.
          */
+        let releasePost: () => void = () => {};
+        const postBlocked = new Promise<void>((resolve) => {
+            releasePost = resolve;
+        });
         await page.route('**/conversations/*/messages', async (route) => {
             const method = route.request().method();
             if (method === 'GET') {
@@ -247,10 +256,13 @@ test.describe('Chat visual regression (PLAN §7.4)', () => {
                 await route.fallback();
                 return;
             }
-            // 600ms stall — long enough that the streaming placeholder
-            // commits to the DOM but short enough for the 60s test
-            // timeout. The screenshot is taken BEFORE this resolves.
-            await new Promise((resolve) => setTimeout(resolve, 600));
+            // Block the POST until the test signals release. The
+            // screenshot fires while data-state="loading"; the
+            // release happens AFTER the screenshot so the route
+            // handler can resolve cleanly and the test ends without
+            // a dangling promise. Determinism guaranteed by the
+            // explicit release signal — no time-based race.
+            await postBlocked;
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
@@ -268,9 +280,12 @@ test.describe('Chat visual regression (PLAN §7.4)', () => {
         await composer(page).input.fill('Long-form mid-stream frame');
         await composer(page).send.click();
         // Capture while the thread is still loading (i.e. before
-        // the stalled fulfil resolves).
+        // the stalled POST resolves).
         await expect(thread(page)).toHaveAttribute('data-state', 'loading', { timeout: 5_000 });
         await expect(page).toHaveScreenshot('15-mid-stream-assistant.png', PIXEL_PERFECT);
+        // Unblock the route handler so the test cleanup completes
+        // without a dangling promise.
+        releasePost();
     });
 
     // -------------------------------------------------------------
