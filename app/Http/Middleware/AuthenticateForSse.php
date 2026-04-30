@@ -8,7 +8,6 @@ use Closure;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 /**
  * v4.0/W3.1 — `auth` middleware variant for SSE streaming routes.

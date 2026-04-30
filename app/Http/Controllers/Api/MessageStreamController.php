@@ -92,10 +92,12 @@ class MessageStreamController extends Controller
         // `$request->validate()` fall back to HTML pages / 302
         // redirects instead of the 403/422 JSON the streaming caller
         // can parse. Returning `JsonResponse` explicitly avoids that
-        // path. Note: unauthenticated requests are handled by the
-        // `auth` middleware upstream of this controller (typically a
-        // 302 redirect under SSE Accept too — that's a separate
-        // concern handled by the SPA's auth bootstrap, not here).
+        // path. Unauthenticated requests are handled by the `auth.sse`
+        // middleware (App\Http\Middleware\AuthenticateForSse, registered
+        // in bootstrap/app.php) upstream of this controller — it
+        // returns a deterministic JSON 401 instead of the default
+        // 302 → /login redirect, so the streaming caller can re-trigger
+        // the SPA auth bootstrap and retry without parsing HTML.
         if ($conversation->user_id !== $request->user()->id) {
             return new JsonResponse(['message' => 'Forbidden.'], 403);
         }
@@ -240,18 +242,22 @@ class MessageStreamController extends Controller
             $reason, $answer, $conversation, $chatLog, $question,
             $projectKey, $userId, $startTime, $sessionId, $clientIp, $userAgent
         ): void {
-            // The data-refusal chunk carries the LOCALIZED body so the
-            // FE renders it verbatim — BE owns localization (R24).
+            // Emit data-refusal + data-confidence FIRST so the FE
+            // renders the refusal notice immediately. The terminal
+            // `finish` event waits until the Message + chat-log rows
+            // are persisted — clients that treat `finish` as
+            // "everything is consistent now" (e.g. `useChat({
+            // onFinish })` fetching the persisted Message via
+            // `/messages` to reconcile its cache) can rely on the
+            // ordering.
             $this->emit(StreamChunk::dataRefusal(
                 reason: $reason,
+                // The data-refusal chunk carries the LOCALIZED body
+                // so the FE renders it verbatim — BE owns
+                // localization (R24).
                 body: $answer,
             ));
             $this->emit(StreamChunk::dataConfidence(null, 'refused'));
-            $this->emit(StreamChunk::finish(
-                finishReason: 'refusal',
-                promptTokens: 0,
-                completionTokens: 0,
-            ));
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
@@ -295,6 +301,15 @@ class MessageStreamController extends Controller
                     'confidence' => 0,
                     'streamed' => true,
                 ],
+            ));
+
+            // Terminal event AFTER persistence — guarantees that any
+            // client refetch triggered by `finish` sees the
+            // assistant Message row in the DB.
+            $this->emit(StreamChunk::finish(
+                finishReason: 'refusal',
+                promptTokens: 0,
+                completionTokens: 0,
             ));
         });
     }
@@ -426,20 +441,24 @@ class MessageStreamController extends Controller
             );
             $tier = $this->confidenceTier($isSelfRefusal ? null : $confidenceScore);
 
-            // Emit data-confidence + finish AFTER the LLM stream.
+            // Emit data-confidence first (the FE renders the badge
+            // as soon as the score is known) — but DELAY the
+            // terminal `finish` event until AFTER the assistant
+            // Message + chat-log rows are persisted. Clients that
+            // treat `finish` as "the DB state is now consistent"
+            // (e.g. `useChat({ onFinish })` fetching the persisted
+            // Message via `/messages` to reconcile its cache) need
+            // that ordering to avoid a race window where the
+            // refetch returns an empty thread.
             $this->emit(StreamChunk::dataConfidence(
                 confidence: $isSelfRefusal ? null : $confidenceScore,
                 tier: $tier,
             ));
-            $this->emit(StreamChunk::finish(
-                finishReason: $isSelfRefusal ? 'refusal' : $finishReason,
-                promptTokens: $promptTokens,
-                completionTokens: $completionTokens,
-            ));
 
-            // Persist assistant message AFTER the stream emits — the
-            // FE useChat({ onFinish }) callback fetches the persisted
-            // shape and reconciles via the optimistic dedupe path.
+            // Persist assistant message BEFORE the terminal finish
+            // event. The FE `useChat({ onFinish })` callback fetches
+            // the persisted shape and reconciles via the optimistic
+            // dedupe path (R25).
             $persistedContent = $isSelfRefusal
                 ? $this->localizedRefusalMessage('llm_self_refusal')
                 : $assistantContent;
@@ -490,6 +509,20 @@ class MessageStreamController extends Controller
                     'confidence' => $confidenceScore,
                     'streamed' => true,
                 ],
+            ));
+
+            // Terminal event AFTER persistence — guarantees that any
+            // client refetch triggered by `finish` sees the
+            // assistant Message row in the DB. Without this ordering,
+            // useChat({ onFinish }) → invalidateQueries(['messages',
+            // conversationId]) → GET /messages can land in the
+            // window between `finish` arriving and the Message row
+            // being committed, returning an empty thread and
+            // breaking the optimistic-mutation dedupe path.
+            $this->emit(StreamChunk::finish(
+                finishReason: $isSelfRefusal ? 'refusal' : $finishReason,
+                promptTokens: $promptTokens,
+                completionTokens: $completionTokens,
             ));
         });
     }
