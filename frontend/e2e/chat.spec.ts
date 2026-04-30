@@ -19,41 +19,69 @@ import { composer, newConversationButton, thread, waitForThreadReady } from './h
  */
 
 test.describe('Chat', () => {
-    test('user asks question and the assistant reply renders', async ({ page }) => {
-        // Copilot #12 fix: stub the assistant reply instead of calling
-        // the real AI provider. Hitting OpenRouter in CI is flaky
-        // (missing API credentials) and makes the Playwright gate
-        // non-deterministic. The goal of this scenario is to verify
-        // the UI round-trip — composer → message render — not the
-        // provider integration, which is covered by PHPUnit feature
-        // tests on MessageController.
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 1001,
-                    role: 'assistant',
-                    content: 'The remote work stipend applies to full-time employees after 90 days.',
-                    metadata: { provider: 'mock', model: 'mock', citations: [] },
-                    rating: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
-        });
+    // The "user asks question..." scenario lives in a nested describe
+    // so we can bump its per-test budget to 60 s without affecting the
+    // 4 fast scenarios in this file. Playwright's per-test `timeout`
+    // option is NOT exposed on the `TestDetails` object passed as the
+    // second arg to `test()` — only `tag` / `annotation` are. The
+    // documented surfaces that DO override the per-test timeout are
+    // `test.setTimeout()` (only covers the body, not fixtures) and
+    // `test.describe.configure({ timeout })` (covers fixtures + body
+    // + after-each for every test in the describe). Since the
+    // 60-second budget is needed to cover the `seeded` auto-fixture
+    // on cold CI runners (where resetDb + seedDb + login already
+    // consumes ~10 s and the SPA boot adds another 3–5 s before
+    // page.goto('/app/chat') even returns), `describe.configure` is
+    // the correct knob.
+    //
+    // Earlier iterations of this fix tried `testInfo.setTimeout()`
+    // inside the body (commit 2c4a640) and `{ timeout: 60_000 }` in
+    // the test-options object (commit 9b0eb3e); both were silently
+    // ineffective — TypeScript accepted the options object via
+    // structural typing, but Playwright ignored the unknown property
+    // and the test kept firing the global 20 s cap. The flake
+    // surfaced again on 9b0eb3e CI, confirming the documented
+    // describe-scoped pattern below is the only working knob.
+    test.describe('AI-stubbed chat round-trip', () => {
+        test.describe.configure({ timeout: 60_000 });
 
-        await page.goto('/app/chat');
-        const { input, send } = composer(page);
-        await input.fill('How does the remote work stipend apply?');
-        await send.click();
-        await waitForThreadReady(page, 45_000);
-        await expect(thread(page)).toHaveAttribute('data-state', 'ready');
-        const firstAssistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').first();
-        await expect(firstAssistant).toBeVisible({ timeout: 30_000 });
+        test('user asks question and the assistant reply renders', async ({ page }) => {
+            // Copilot #12 fix: stub the assistant reply instead of
+            // calling the real AI provider. Hitting OpenRouter in CI
+            // is flaky (missing API credentials) and makes the
+            // Playwright gate non-deterministic. The goal of this
+            // scenario is to verify the UI round-trip — composer →
+            // message render — not the provider integration, which
+            // is covered by PHPUnit feature tests on
+            // MessageController.
+            await page.route('**/conversations/*/messages', async (route) => {
+                if (route.request().method() !== 'POST') {
+                    await route.fallback();
+                    return;
+                }
+                await route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({
+                        id: 1001,
+                        role: 'assistant',
+                        content: 'The remote work stipend applies to full-time employees after 90 days.',
+                        metadata: { provider: 'mock', model: 'mock', citations: [] },
+                        rating: null,
+                        created_at: new Date().toISOString(),
+                    }),
+                });
+            });
+
+            await page.goto('/app/chat');
+            const { input, send } = composer(page);
+            await input.fill('How does the remote work stipend apply?');
+            await send.click();
+            await waitForThreadReady(page, 45_000);
+            await expect(thread(page)).toHaveAttribute('data-state', 'ready');
+            const firstAssistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').first();
+            await expect(firstAssistant).toBeVisible({ timeout: 30_000 });
+        });
     });
 
     test('empty message surfaces a 422-style validation error', async ({ page }) => {

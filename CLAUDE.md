@@ -859,50 +859,52 @@ re-targeted from main to feature/v4.0.
 → See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
 
 ### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
-**The 10-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
+**The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
 
 1. Fine task — implementation complete.
 2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
-3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...`
-   — the reviewer flag is **mandatory** on every PR. The first review
-   request fires automatically off the PR-creation reviewer field.
+3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...` —
+   the flag is **mandatory** on every PR. Two knobs interact:
+
+   - **The short alias `--reviewer copilot`** only resolves when the
+     repo / org has **GitHub Copilot Code Review enabled** (Settings →
+     Copilot → Code review → "Enable for this repository"). On a
+     fresh repo where the feature is disabled, `gh` reports "could
+     not request reviewer" and opens the PR without a reviewer
+     assigned.
+   - **The canonical login `copilot-pull-request-reviewer`** is the
+     bot's actual GitHub username. The `gh` CLI accepts it as a
+     reviewer **regardless of whether Copilot Code Review is enabled**
+     — i.e. the assignment itself succeeds in both states (CR
+     enabled → bot reviews automatically; CR disabled → bot is
+     listed as a reviewer but no automated review fires; enabling
+     CR later is a one-time setting toggle). Always pass the full
+     username so the assignment never silently fails.
+
+   Same login goes into `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
+   when Copilot is re-requested after each push.
 4. Attendi CI GitHub verde (typically 60–180 s).
 5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
    Skipping this wait — even when CI is already green — is a protocol
    violation.
 6. Leggi commenti (`gh pr view <N> --comments` + inline via
    `gh api .../comments`) e fix locale.
-7. Push del fix.
-8. **Ri-richiedi review Copilot ESPLICITAMENTE** dopo ogni push
-   successivo all'apertura del PR:
-   ```bash
-   gh pr edit <N> --add-reviewer copilot-pull-request-reviewer
-   ```
-   Un `git push` da solo NON ritriggera la review automatica — la
-   richiesta originale viene consumata dalla PRIMA review e non
-   si ri-attiva sui commit successivi. Senza questo step il watcher
-   aspetta in eterno per una review che non arriva mai.
-9. Ri-attendi CI tutta verde + Copilot ri-review.
-   Se Copilot ri-review trova nuovi commenti → GOTO step 5.
-10. Merge solo quando ENTRAMBI:
-    - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
-      Copilot comments;
-    - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
-      SKIPPED).
+7. Ri-attendi CI tutta verde dopo il push del fix.
+8. Se Copilot ri-review trova nuovi commenti → GOTO step 5.
+9. Merge solo quando ENTRAMBI:
+   - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
+     Copilot comments;
+   - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
+     SKIPPED).
 
 Exit conditions are conjunctive: green CI alone is **not enough**.
 Anti-pattern: "Push, see green CI, merge now" — costs the user a code
 review pass that Copilot would have caught. Lorenzo flagged this
 explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
-PR #1/#2/#3 (2026-04-29) — they were merged without `--reviewer copilot`
+PR #1/#2/#3 (2026-04-29) — they were merged without
+`--reviewer copilot-pull-request-reviewer`
 and without waiting for Copilot review, which is a protocol violation
 even though the code shipped clean.
-
-Step 8 (re-request) was added on 2026-04-30 after Lorenzo caught
-Claude waiting 90+ minutes for a Copilot review on PR #84 commit
-3c0158c that never arrived because the agent never re-requested
-the review after `git push`. The CLI re-request is one call and
-costs nothing; skipping it costs an entire CI iteration window.
 
 **Scope**: applies to all repos under `lopadova/*` and `padosoft/*`
 (current and future), to every developer and every AI agent working on
@@ -930,17 +932,40 @@ review must run retroactively.
 
 The structural fix that landed on PR #85 is the canonical example:
 
-1. Workflow step before Playwright runs `migrate:fresh` from the CLI:
+1. Workflow step before Playwright runs `migrate:fresh` from the CLI.
+   `key:generate --force` runs FIRST so it REPLACES the empty
+   `APP_KEY=` line copied from `.env.example` in-place — the earlier
+   "Prepare .env for testing" step deliberately leaves the line empty
+   (using `sed -i 's|^APP_ENV=.*|APP_ENV=testing|' .env` for APP_ENV
+   in-place replacement, no `echo "APP_KEY=..." >> .env` for APP_KEY)
+   so `key:generate` has nothing to duplicate. Net effect: exactly
+   one `APP_ENV=` and one `APP_KEY=base64:…` definition in .env, no
+   shell-escaping hazard from piping openssl-generated base64
+   (which can contain `/`) through sed.
    ```yaml
-   - name: Migrate + seed test data
+   - name: Migrate test database (CLI)
      env: { APP_ENV: testing }
      run: |
-       php artisan key:generate --force
+       php artisan key:generate --force      # replaces empty APP_KEY=
        php artisan migrate:fresh --force
    ```
-2. `setup-helpers.ts` skips the HTTP `/testing/reset` call when
-   `E2E_SKIP_HTTP_RESET=1` is set; only the lighter `/testing/seed`
-   call goes through the dev server.
+2. Every E2E call site that needs to wipe the DB goes through a
+   single `resetDb(target)` helper in `frontend/e2e/setup-helpers.ts`.
+   `resetDb()` ALWAYS posts to `/testing/reset` — it does NOT honour
+   `E2E_SKIP_HTTP_RESET`. The flag is intentionally narrow: it only
+   short-circuits the redundant initial reset inside the setup-time
+   `resetAndSeed(target)` helper (which is what auth.setup /
+   viewer.setup / super-admin.setup call during the boot-race
+   window). Per-scenario reseeding — `admin-dashboard.spec.ts`
+   switching to `EmptyAdminSeeder`, `admin-insights.spec.ts`
+   wiping snapshots before `DemoSeeder`, the `seeded` auto-fixture
+   in `fixtures.ts` running before every test — needs an actual DB
+   wipe. `/testing/seed` only INSERTS rows; it does not truncate, so
+   skipping `/testing/reset` mid-suite would leave cross-scenario
+   state and produce order-dependent assertions. Direct
+   `request.post('/testing/reset')` calls in spec / fixture code are
+   forbidden anyway: they bypass the (future-extensible) helper and
+   make wipe semantics impossible to refactor in one place.
 3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
 
 The remaining HTTP traffic is light enough that `php artisan serve`

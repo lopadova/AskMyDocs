@@ -48,11 +48,15 @@ export default defineConfig({
         ? undefined
         : {
               // `--no-reload` is required to honour PHP_CLI_SERVER_WORKERS
-              // — without it Laravel's ServeCommand silently drops the
-              // env var and runs single-threaded again. See
-              // vendor/laravel/framework/src/Illuminate/Foundation/Console/ServeCommand.php
-              // line 105-108. PR #82 set the env var without the flag, so
-              // the workers configuration was never actually applied.
+              // — without it Laravel's `ServeCommand` silently drops the
+              // env var and runs single-threaded again. The handling
+              // sits at the top of `ServeCommand::handle()` (search for
+              // `PHP_CLI_SERVER_WORKERS` in vendor/laravel/framework's
+              // `Illuminate/Foundation/Console/ServeCommand.php`); we
+              // intentionally don't pin a line number because the file
+              // drifts across patch / minor framework upgrades. PR #82
+              // set the env var without the flag, so the workers
+              // configuration was never actually applied.
               command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8000',
               // `/healthz` returns a plain 200 with no auth / no DB hit.
               // The previous `baseURL` poll on `/` was hitting the home
@@ -65,14 +69,18 @@ export default defineConfig({
               env: {
                   APP_ENV: 'testing',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
-                  // the PHP built-in dev server (PHP 7.4+). Without it,
-                  // `php artisan serve` is single-threaded and the
-                  // accept loop stalls during a long migrate:fresh
-                  // request, causing every concurrent / immediately-
-                  // following request to ECONNREFUSED for ≥12s — the
-                  // root of the recurring auth.setup flake. Four workers
-                  // is enough headroom for healthz + reset + seed +
-                  // login to land in parallel.
+                  // the PHP built-in dev server (PHP 7.4+). Without
+                  // this env var (AND `--no-reload` above so the var
+                  // is actually honoured by ServeCommand), `php artisan
+                  // serve` falls back to its default single-process /
+                  // single-accept-loop mode and stalls during a long
+                  // migrate:fresh request, causing every concurrent /
+                  // immediately-following request to ECONNREFUSED for
+                  // ≥12s — the root of the recurring auth.setup flake.
+                  // With both knobs set the server runs four worker
+                  // children in parallel — enough headroom for
+                  // healthz + reset + seed + login to land at the
+                  // same time.
                   PHP_CLI_SERVER_WORKERS: '4',
               },
               stdout: 'pipe',
@@ -81,8 +89,9 @@ export default defineConfig({
     projects: [
         // Setup projects are chained sequentially via `dependencies` so
         // they don't all hammer /testing/reset (migrate:fresh on real
-        // Postgres) at the same instant. PHP's built-in `artisan serve`
-        // is single-threaded; three parallel migrate:fresh requests
+        // Postgres) at the same instant. Even with
+        // PHP_CLI_SERVER_WORKERS=4 + --no-reload (see webServer.env
+        // above) three parallel migrate:fresh requests
         // queue + sometimes lock the server long enough for downstream
         // requests to ECONNREFUSED. Chaining keeps the API surface
         // exercised one-at-a-time during boot.

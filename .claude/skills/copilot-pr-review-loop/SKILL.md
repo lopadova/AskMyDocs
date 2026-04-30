@@ -1,6 +1,6 @@
 ---
 name: copilot-pr-review-loop
-description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot review + CI status until ALL Copilot comments resolved AND ALL CI checks green. NEVER stop after a single push. Trigger when opening a PR with `gh pr create`, after `git push` to a PR branch, or when user asks to "fix PR" / "address review" / "make CI green". Applies to ALL repos lopadova/* and padosoft/*. The loop is mandatory for current and future sessions and for any developer working on this codebase.
+description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot review + CI status until ALL Copilot comments resolved AND ALL CI checks green. NEVER stop after a single push. Trigger when opening a PR with `gh pr create`, after `gh pr push`, or when user asks to "fix PR" / "address review" / "make CI green". Applies to ALL repos lopadova/* and padosoft/*. The loop is mandatory for current and future sessions and for any developer working on this codebase.
 ---
 
 # Copilot PR Review + CI Loop — MANDATORY
@@ -13,36 +13,29 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 1. Copilot review has **0 outstanding comments** (all addressed)
 2. CI has **0 failing checks** (all green or expected-skipped)
 
-## The 10-step flow (canonical, applies to EVERY PR on EVERY repo)
+## The 9-step flow (canonical, applies to EVERY PR on EVERY repo)
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│ 1. fine task — implementation complete                                │
-│ 2. test tutti verdi in locale                                         │
-│    (phpunit + vitest + playwright + architecture)                     │
-│ 3. apri PR with --reviewer copilot-pull-request-reviewer              │
-│    ← MANDATORY FLAG (FIRST PR-open carries the review request)        │
-│ 4. attendi CI GitHub verde   (60-180s)                                │
-│ 5. attendi Copilot review commenti  (additional 2-15 min)             │
-│ 6. leggi commenti (gh pr view N --comments + inline) e fix            │
-│ 7. push del fix                                                       │
-│ 8. RE-REQUEST Copilot review EXPLICITLY                               │
-│      gh pr edit <N> --add-reviewer copilot-pull-request-reviewer      │
-│    ← MANDATORY after EVERY push to an existing PR                     │
-│      (a plain push does NOT auto-trigger a new Copilot review;        │
-│       the original request was satisfied by the FIRST review and      │
-│       does not re-fire on subsequent commits)                         │
-│ 9. ri-attendi CI tutta verde + Copilot re-review (GOTO step 5)        │
-│ 10. merge solo dopo:                                                  │
-│     - Copilot reviewDecision is APPROVED OR no must-fix outstanding   │
-│     - All CI checks status COMPLETED + conclusion SUCCESS             │
-│       (or SKIPPED with explicit reason)                               │
-└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ 1. fine task — implementation complete                            │
+│ 2. test tutti verdi in locale                                     │
+│    (phpunit + vitest + playwright + architecture)                 │
+│ 3. apri PR with --reviewer copilot-pull-request-reviewer          │
+│    ← MANDATORY FLAG (canonical bot login; "copilot" alias only    │
+│     works when Copilot Code Review is enabled in repo settings)   │
+│ 4. attendi CI GitHub verde   (60-180s)                            │
+│ 5. attendi Copilot review commenti  (additional 2-15 min)         │
+│ 6. leggi commenti (gh pr view N --comments + inline) e fix        │
+│ 7. ri-attendi CI tutta verde (after fix push)                     │
+│ 8. (se Copilot ri-review) GOTO step 5                             │
+│ 9. merge solo dopo:                                               │
+│    - Copilot reviewDecision is APPROVED OR no must-fix outstanding│
+│    - All CI checks status COMPLETED + conclusion SUCCESS          │
+│      (or SKIPPED with explicit reason)                            │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 **KEY POINT (2026-04-29 reinforcement):** Step 3's `--reviewer copilot-pull-request-reviewer` flag and step 5's wait-for-Copilot-review are **NOT optional**. CI green alone is **not enough** — Copilot review (or explicit absence of must-fix comments) is the second gate. Skipping step 5 ("CI green, merge now") is a protocol violation, even on docs-only PRs.
-
-**KEY POINT (2026-04-30 reinforcement — step 8):** A plain `git push` to a PR branch updates the head commit but does NOT re-fire a Copilot review. The PR-creation request from step 3 is consumed by the FIRST review; subsequent pushes need an EXPLICIT re-request. Without step 8, the watcher polls forever for a review that will never come. Lorenzo caught Claude waiting 90+ minutes on PR #84 commit 3c0158c for this exact reason — the fix is one CLI call after every push.
 
 ## The legacy loop (kept for fix-iteration phase only)
 
@@ -62,7 +55,10 @@ When a PR has been opened and the FIRST review/CI cycle has surfaced issues:
 │                                                           │
 │ EXIT only when:                                          │
 │   - Copilot reviewDecision is APPROVED or no outstanding │
-│   - All checks status COMPLETED + conclusion SUCCESS     │
+│     must-fix comments remain                              │
+│   - All checks have status COMPLETED with conclusion     │
+│     either SUCCESS or expected/justified SKIPPED         │
+│     (e.g. matrix cells gated by `if:` on a feature flag) │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -146,19 +142,11 @@ npm run e2e                           # playwright must pass
 vendor/bin/phpunit --testsuite Architecture  # R30+R31+R32+R34+R35
 ```
 
-### Phase E — Commit + push + re-request review
+### Phase E — Commit + push
 ```bash
 git add <changed files>
 git commit -m "fix(...): address Copilot review on PR #<N> + CI green"
 git push origin <branch>
-
-# MANDATORY after every push to an existing PR — without this,
-# Copilot will NOT re-review the new commit and the watcher polls
-# forever. The CLI may print "user already requested" if the prior
-# round's review hasn't been dismissed yet; that's a no-op and
-# safe to ignore. Failure with "could not resolve user" means the
-# repo lacks Copilot Code Review (one-time Settings toggle).
-gh pr edit <N> --add-reviewer copilot-pull-request-reviewer
 ```
 
 Then GOTO Phase B. Never stop after a single push.

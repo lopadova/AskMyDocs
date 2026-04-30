@@ -121,19 +121,33 @@ seeder, asset compilation, image generation), every subsequent
 connection on that worker stalls / refuses. With
 `PHP_CLI_SERVER_WORKERS=4` you have 4 such loops, but the FIRST heavy
 request often arrives before workers fan out and you stall worker
-zero anyway. `--no-reload` does not help. Detaching from the runner
-session does not help. The server is doing its job — it's blocked
-on the work the test asked it to do.
+zero anyway. `--no-reload` doesn't fix the heavy-work-in-HTTP problem
+on its own (the worker still blocks on the long handler) — it IS,
+however, required separately so Laravel's ServeCommand actually honors
+the `PHP_CLI_SERVER_WORKERS` env var when Playwright manages the
+server, so keep it on the `php artisan serve` invocation regardless.
+Detaching from the runner session does not help either. The server is
+doing its job — it's blocked on the work the test asked it to do.
 
 The fix is to stop asking the dev server to do that work:
 
-1. Move `migrate:fresh` to a CLI step BEFORE Playwright starts:
+1. Move `migrate:fresh` to a CLI step BEFORE Playwright starts.
+   `key:generate --force` runs FIRST so it REPLACES the empty
+   `APP_KEY=` line in `.env` (copied from `.env.example`) in-place
+   with a real value, producing exactly one `APP_KEY=base64:…`
+   definition. The earlier "Prepare .env for testing" step deliberately
+   leaves the APP_KEY line empty (no `echo "APP_KEY=..." >> .env`) so
+   `key:generate` has nothing to duplicate. APP_ENV gets the same
+   in-place treatment via `sed` in the prepare step. Seeding is
+   intentionally NOT bundled here — it stays on the HTTP path via
+   `/testing/seed` because it's small and per-scenario seeders need
+   to switch dynamically (e.g. `EmptyAdminSeeder` after `DemoSeeder`).
    ```yaml
-   - name: Migrate + seed test data
+   - name: Migrate test database (CLI)
      env: { APP_ENV: testing }
      run: |
-       php artisan key:generate --force
-       php artisan migrate:fresh --force      # ← was `migrate --force`
+       php artisan key:generate --force        # replaces empty APP_KEY=
+       php artisan migrate:fresh --force       # ← was `migrate --force`
    ```
 2. Tell the test setup to skip the HTTP `/testing/reset` call when
    the workflow already did the migration:
