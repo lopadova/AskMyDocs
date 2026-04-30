@@ -12,12 +12,13 @@ import type { APIResponse, Page } from '@playwright/test';
  *      ECONNREFUSED for the duration of the heavy request.
  *
  * The structural fix for (b) in CI is to run `migrate:fresh` from the
- * CLI before Playwright starts the web server (see the "Migrate + seed
- * test data" step in .github/workflows/tests.yml). When the env var
- * E2E_SKIP_HTTP_RESET=1 is set, `resetAndSeed()` skips the
- * POST /testing/reset call entirely and only runs /testing/seed — the
- * DB is already clean from the CLI step and the server never has to
- * execute a blocking `migrate:fresh` inside an HTTP request.
+ * CLI before Playwright starts the web server (see the
+ * "Migrate test database (CLI)" step in .github/workflows/tests.yml).
+ * When the env var E2E_SKIP_HTTP_RESET=1 is set, `resetAndSeed()`
+ * skips the POST /testing/reset call entirely and only runs
+ * /testing/seed — the DB is already clean from the CLI step and the
+ * server never has to execute a blocking `migrate:fresh` inside an
+ * HTTP request.
  *
  * For local runs (E2E_SKIP_HTTP_RESET not set), the original behaviour
  * is preserved: /testing/reset runs first, then /testing/seed.

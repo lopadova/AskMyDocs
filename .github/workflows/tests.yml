@@ -217,14 +217,19 @@ jobs:
           mkdir -p storage/app/kb
 
       - name: Migrate test database (CLI)
-        # Step name reflects what actually runs here: key generation +
-        # `migrate:fresh`. Seeding still happens via POST /testing/seed
-        # during Playwright setup (see frontend/e2e/setup-helpers.ts);
-        # only the heavy migration is moved off the HTTP path.
+        # Step name reflects what actually runs here: only `migrate:fresh`.
+        # Seeding still happens via POST /testing/seed during Playwright
+        # setup (see frontend/e2e/setup-helpers.ts); only the heavy
+        # migration is moved off the HTTP path.
+        #
+        # APP_KEY is already written into `.env` by the previous step
+        # ("Prepare .env for testing", `echo "APP_KEY=base64:..." >> .env`),
+        # so we deliberately do NOT run `php artisan key:generate --force`
+        # here — that would append a second `APP_KEY=` line to .env and
+        # leave it ambiguous which value `php` ends up reading.
         env:
           APP_ENV: testing
         run: |
-          php artisan key:generate --force
           # `migrate:fresh` from CLI (instead of `migrate`) — see R38 in
           # CLAUDE.md. The heavy migration can stall `php artisan serve`'s
           # single-threaded accept loop when it runs inside an HTTP request
@@ -244,10 +249,14 @@ jobs:
       # call (the recurring auth.setup ECONNREFUSED flake), the server log
       # is swallowed and the failure looks like a generic timeout. Running
       # the server here gives us:
-      #   1. an explicit PID file so we know whether artisan-serve died,
-      #   2. a real on-disk log we can `tail` in the failure-dump step,
-      #   3. an unambiguous binding to 127.0.0.1:8000 (matches the auth.setup
-      #      `apiRequestContext.post('/testing/reset')` resolution).
+      #   1. a real on-disk log we can `tail` in the failure-dump step,
+      #   2. an unambiguous binding to 127.0.0.1:8000 (matches the auth.setup
+      #      `apiRequestContext.post('/testing/reset')` resolution),
+      #   3. a deterministic process group (created by `setsid -f` below
+      #      and captured as a PGID via `lsof tcp:8000` + `ps -o pgid=` in
+      #      the next step) that the cleanup step can SIGTERM/SIGKILL at
+      #      job end — see `Wait for backend` for the actual capture, and
+      #      `Stop Laravel server` for the kill path.
       # `E2E_SKIP_WEBSERVER=1` tells playwright.config.ts to skip its own
       # webServer block so we don't double-bind port 8000 (EADDRINUSE).
       - name: Start Laravel server (testing)
