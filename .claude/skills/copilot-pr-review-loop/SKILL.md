@@ -101,13 +101,21 @@ gh pr create \
   --base main \
   --head feature/<branch> \
   --body-file .github/PULL_REQUEST_TEMPLATE.md \
-  --reviewer copilot
+  --reviewer copilot-pull-request-reviewer
 ```
 
-Note: `--reviewer copilot` may fail with "could not resolve user". In
-that case, the repo must have Copilot Code Review enabled at:
-`Settings → General → Pull Requests → Allow GitHub Copilot to review`.
-Ask the user to enable it once per repo (one-time manual setup).
+Use the canonical bot login `copilot-pull-request-reviewer` — `gh`
+accepts it whether or not Copilot Code Review is enabled in the repo,
+so the assignment never silently fails. The short alias
+`--reviewer copilot` only resolves when Copilot Code Review is
+enabled at `Settings → Copilot → Code review → "Enable for this
+repository"` (the GitHub UI path may drift across versions; on older
+UIs the toggle lived under `Settings → General → Pull Requests →
+Allow GitHub Copilot to review`). On a fresh repo where the feature
+is disabled, `gh` reports "could not resolve user" and opens the PR
+with no reviewer assigned. See CLAUDE.md R36 step 3 for the full
+rationale and the precise interplay between the alias and the
+canonical login.
 
 ### Phase B — Read review (after 60-180s wait)
 ```bash
