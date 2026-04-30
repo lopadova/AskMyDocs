@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
-use App\Ai\AiManager;
-use App\Ai\Providers\AnthropicProvider;
 use App\Ai\StreamChunk;
 use App\Http\Controllers\Api\MessageStreamController;
 use App\Models\Conversation;

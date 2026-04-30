@@ -34,11 +34,25 @@ final readonly class StreamChunk
 
     /**
      * @param  array<string, mixed>  $payload
+     *
+     * @throws InvalidArgumentException If `$payload` contains a `type`
+     *         key — that key is reserved for the discriminator the
+     *         constructor itself sets and would silently override
+     *         `$this->type` in `toArray()` / `toSseFrame()` via the
+     *         `[...$this->payload]` spread, producing an invalid frame.
+     *         Use the named-constructor factories below for the
+     *         normal call path.
      */
     public function __construct(
         public string $type,
         public array $payload,
-    ) {}
+    ) {
+        if (array_key_exists('type', $payload)) {
+            throw new InvalidArgumentException(
+                "StreamChunk payload cannot contain a 'type' key (reserved for the discriminator); got payload with type={$payload['type']}",
+            );
+        }
+    }
 
     public static function textDelta(string $delta): self
     {

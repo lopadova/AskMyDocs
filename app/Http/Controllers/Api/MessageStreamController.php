@@ -127,8 +127,13 @@ class MessageStreamController extends Controller
 
         $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
         $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
+        // Use `data_get` so the predicate works whether each chunk is
+        // an array (KbSearchService::search() return shape) or an
+        // object (test fixtures sometimes pass stdClass instances).
+        // Same defensive read pattern as the rest of this controller's
+        // chunk-touching code.
         $grounded = $chunks->filter(
-            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
+            fn ($c) => (float) (data_get($c, 'vector_score') ?? 0) >= $refusalThreshold
         );
 
         // Capture session id at controller entry — header() reads from
@@ -359,16 +364,31 @@ class MessageStreamController extends Controller
             $refusalReason = $isSelfRefusal ? 'llm_self_refusal' : null;
 
             // Build provider/model/usage from the captured finish event.
-            // Fallback to `unknown` when a provider didn't emit it
-            // (defensive — the StreamChunk::finish() factory always
-            // produces a usable shape, but iterating provider impls
-            // could in theory drop it).
-            $promptTokens = $finishChunk?->payload['usage']['promptTokens'] ?? null;
-            $completionTokens = $finishChunk?->payload['usage']['completionTokens'] ?? null;
-            $finishReason = $finishChunk?->payload['finishReason'] ?? 'stop';
+            // Defensive read — `$finishChunk?->payload['usage'][...]` is
+            // NOT null-safe on its own: the nullsafe applies only to
+            // the property access, and the chained array indexing on
+            // a null `payload` would still throw. Guard explicitly.
+            $promptTokens = null;
+            $completionTokens = null;
+            $finishReason = 'stop';
+            if ($finishChunk !== null) {
+                $promptTokens = data_get($finishChunk->payload, 'usage.promptTokens');
+                $completionTokens = data_get($finishChunk->payload, 'usage.completionTokens');
+                $finishReason = data_get($finishChunk->payload, 'finishReason') ?? 'stop';
+            }
             $providerName = config('ai.default', 'openai');
             $providerInstance = $ai->provider();
             $modelName = $this->resolveStreamingModel($providerInstance);
+
+            // Total-tokens computation: null when BOTH counts are null
+            // (provider didn't return usage); otherwise the sum, which
+            // may legitimately be 0 for tool-only / empty responses.
+            // The previous `(($a ?? 0) + ($b ?? 0)) ?: null` collapsed
+            // a real `0+0` to null, hiding zero-token turns from
+            // chat-log analytics.
+            $totalTokens = ($promptTokens === null && $completionTokens === null)
+                ? null
+                : ($promptTokens ?? 0) + ($completionTokens ?? 0);
 
             $confidenceScore = $isSelfRefusal ? 0 : $confidence->compute(
                 primaryChunks: $chunks,
@@ -406,7 +426,7 @@ class MessageStreamController extends Controller
                     'model' => $modelName,
                     'prompt_tokens' => $promptTokens,
                     'completion_tokens' => $completionTokens,
-                    'total_tokens' => ($promptTokens ?? 0) + ($completionTokens ?? 0) ?: null,
+                    'total_tokens' => $totalTokens,
                     'chunks_count' => $chunks->count(),
                     'latency_ms' => $latencyMs,
                     'citations' => $isSelfRefusal ? [] : $citations,
@@ -431,7 +451,7 @@ class MessageStreamController extends Controller
                 sources: $chunks->pluck('document.source_path')->filter()->unique()->values()->all(),
                 promptTokens: $promptTokens,
                 completionTokens: $completionTokens,
-                totalTokens: ($promptTokens ?? 0) + ($completionTokens ?? 0) ?: null,
+                totalTokens: $totalTokens,
                 latencyMs: $latencyMs,
                 clientIp: $clientIp,
                 userAgent: $userAgent,

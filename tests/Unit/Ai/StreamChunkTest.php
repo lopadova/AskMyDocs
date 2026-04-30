@@ -169,6 +169,19 @@ class StreamChunkTest extends TestCase
         $this->assertSame($expected, $chunk->toArray());
     }
 
+    public function test_constructor_rejects_payload_with_reserved_type_key(): void
+    {
+        // Defensive guard against a payload that smuggles in a `type`
+        // key — without the guard, `[...$this->payload]` in toSseFrame
+        // / toArray would silently override the discriminator and
+        // emit an invalid frame. The guard catches the programming
+        // mistake at construction time, where the failure mode is
+        // unambiguous.
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/payload cannot contain a \'type\' key/');
+        new StreamChunk('text-delta', ['type' => 'oops', 'textDelta' => 'hi']);
+    }
+
     public function test_to_sse_frame_throws_on_non_serializable_payload(): void
     {
         // Programming-mistake guard: if a future factory accidentally
