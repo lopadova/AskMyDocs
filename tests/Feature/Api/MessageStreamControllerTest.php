@@ -7,7 +7,6 @@ namespace Tests\Feature\Api;
 use App\Ai\StreamChunk;
 use App\Http\Controllers\Api\MessageStreamController;
 use App\Models\Conversation;
-use App\Models\Message;
 use App\Models\User;
 use App\Services\Kb\KbSearchService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -200,7 +199,15 @@ final class MessageStreamControllerTest extends TestCase
 
     public function test_3_empty_content_returns_422(): void
     {
+        // Send the production SSE Accept header to exercise the
+        // controller's explicit ValidationException catch + JsonResponse
+        // path — without it, Laravel's default `$request->validate()`
+        // would emit a 302 redirect to the previous page when
+        // `expectsJson()` is false (the SSE-Accept case). Asserting 422
+        // JSON here proves the explicit catch defends streaming clients
+        // that don't naturally trigger Laravel's JSON path.
         $response = $this->actingAs($this->user)
+            ->withHeaders(['Accept' => 'text/event-stream'])
             ->postJson('/conversations/' . $this->conversation->id . '/messages/stream', [
                 'content' => '',
             ]);
@@ -241,15 +248,21 @@ final class MessageStreamControllerTest extends TestCase
     public function test_5_cross_tenant_rejection_returns_403(): void
     {
         // Conversation belongs to a different user → R30 cross-tenant
-        // rejection at the controller's auth check.
+        // rejection at the controller's auth check. SSE Accept header
+        // exercises the explicit `JsonResponse(['message' =>
+        // 'Forbidden.'], 403)` branch; without the explicit return,
+        // Laravel's `abort(403)` under SSE-Accept would render an HTML
+        // 403 page that the streaming client can't parse.
         $otherUser = $this->makeUser();
 
         $response = $this->actingAs($otherUser)
+            ->withHeaders(['Accept' => 'text/event-stream'])
             ->postJson('/conversations/' . $this->conversation->id . '/messages/stream', [
                 'content' => 'whatever',
             ]);
 
         $response->assertStatus(403);
+        $response->assertJsonPath('message', 'Forbidden.');
 
         // No assistant message persisted on the original conversation.
         $this->assertSame(0, $this->conversation->messages()->where('role', 'assistant')->count());
@@ -354,7 +367,16 @@ final class MessageStreamControllerTest extends TestCase
 
     private function postStreamRaw(string $url, array $payload): string
     {
+        // Send `Accept: text/event-stream` so the test exercises the
+        // production SSE-client behaviour. With the default Accept
+        // (application/json), Laravel's `expectsJson()` returns true
+        // and validation/auth failures naturally land as JSON — but
+        // the production caller sends `Accept: text/event-stream`,
+        // and the controller's explicit JsonResponse(403/422) branches
+        // exist precisely to handle that case. Test what production
+        // actually sends.
         $response = $this->actingAs($this->user)
+            ->withHeaders(['Accept' => 'text/event-stream'])
             ->postJson($url, $payload);
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'text/event-stream; charset=UTF-8');

@@ -86,12 +86,16 @@ class MessageStreamController extends Controller
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
     ): Response {
-        // Force JSON for both auth and validation failures: SSE
-        // clients send `Accept: text/event-stream`, which makes
-        // Laravel's default `abort(403)` and `$request->validate()`
-        // fall back to HTML pages / 302 redirects instead of the
-        // 403/422 JSON the streaming caller can parse. Returning
-        // `JsonResponse` explicitly avoids that path entirely.
+        // Force JSON for both authorization (403) and validation
+        // (422) failures: SSE clients send `Accept: text/event-stream`,
+        // which makes Laravel's default `abort(403)` and
+        // `$request->validate()` fall back to HTML pages / 302
+        // redirects instead of the 403/422 JSON the streaming caller
+        // can parse. Returning `JsonResponse` explicitly avoids that
+        // path. Note: unauthenticated requests are handled by the
+        // `auth` middleware upstream of this controller (typically a
+        // 302 redirect under SSE Accept too — that's a separate
+        // concern handled by the SPA's auth bootstrap, not here).
         if ($conversation->user_id !== $request->user()->id) {
             return new JsonResponse(['message' => 'Forbidden.'], 403);
         }
@@ -162,6 +166,7 @@ class MessageStreamController extends Controller
 
         if ($grounded->count() < $refusalMinChunks) {
             return $this->streamRefusal(
+                request: $request,
                 conversation: $conversation,
                 chatLog: $chatLog,
                 question: $question,
@@ -186,6 +191,7 @@ class MessageStreamController extends Controller
         $citations = $this->buildCitations($chunks);
 
         return $this->streamHappyPath(
+            request: $request,
             ai: $ai,
             confidence: $confidence,
             conversation: $conversation,
@@ -216,6 +222,7 @@ class MessageStreamController extends Controller
      *                          RefusalNotice rendering vocabulary.
      */
     private function streamRefusal(
+        Request $request,
         Conversation $conversation,
         ChatLogManager $chatLog,
         string $question,
@@ -229,7 +236,7 @@ class MessageStreamController extends Controller
     ): StreamedResponse {
         $answer = $this->localizedRefusalMessage($reason);
 
-        return $this->streamingResponse(function () use (
+        return $this->streamingResponse($request, function () use (
             $reason, $answer, $conversation, $chatLog, $question,
             $projectKey, $userId, $startTime, $sessionId, $clientIp, $userAgent
         ): void {
@@ -315,6 +322,7 @@ class MessageStreamController extends Controller
      * @param  list<array<string, mixed>>  $citations
      */
     private function streamHappyPath(
+        Request $request,
         AiManager $ai,
         ConfidenceCalculator $confidence,
         Conversation $conversation,
@@ -332,7 +340,7 @@ class MessageStreamController extends Controller
         ?string $clientIp,
         ?string $userAgent,
     ): StreamedResponse {
-        return $this->streamingResponse(function () use (
+        return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
             $chunks, $citations, $question, $projectKey, $userId, $startTime,
             $fewShotCount, $sessionId, $clientIp, $userAgent
@@ -490,10 +498,31 @@ class MessageStreamController extends Controller
      * Build the SSE response wrapper: correct headers + the streaming
      * callback. The callback closes over the per-request state and
      * runs after the response head has been flushed to the browser.
+     *
+     * Session-lock release: PHP's session handler holds an exclusive
+     * lock on the session row/file for the duration of the request.
+     * Under the `auth` (web/session) middleware group that means a
+     * long-lived `StreamedResponse` blocks every subsequent request
+     * from the same user (e.g. UI actions while the chat is
+     * streaming) on the lock. Save + close the session BEFORE
+     * invoking the user callback so concurrent same-user requests
+     * proceed normally during the stream.
      */
-    private function streamingResponse(\Closure $callback): StreamedResponse
+    private function streamingResponse(Request $request, \Closure $callback): StreamedResponse
     {
-        return new StreamedResponse($callback, 200, [
+        return new StreamedResponse(function () use ($request, $callback) {
+            // Save + close the session BEFORE invoking the user
+            // callback so concurrent same-user requests proceed
+            // normally during the stream. `hasSession()` guards the
+            // testbench / non-web context where the session isn't
+            // wired up — calling save() unconditionally there opens
+            // an output buffer PHPUnit 12 strict-mode flags as
+            // unclosed.
+            if ($request->hasSession()) {
+                $request->session()->save();
+            }
+            $callback();
+        }, 200, [
             // Explicit charset so the wire contract is deterministic
             // across SAPIs / proxies. Laravel's default-charset shim
             // appends `; charset=UTF-8` to text/* responses, but some
