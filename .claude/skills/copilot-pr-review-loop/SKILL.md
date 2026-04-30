@@ -104,10 +104,14 @@ Use the canonical bot login `copilot-pull-request-reviewer` — `gh`
 accepts it whether or not Copilot Code Review is enabled in the repo,
 so the assignment never silently fails. The short alias
 `--reviewer copilot` only resolves when Copilot Code Review is
-enabled at `Settings → General → Pull Requests → Allow GitHub
-Copilot to review`; on a fresh repo where the feature is off, `gh`
-reports "could not resolve user" and opens the PR with no reviewer
-assigned. See CLAUDE.md R36 step 3 for the full rationale.
+enabled at `Settings → Copilot → Code review → "Enable for this
+repository"` (the GitHub UI path may drift across versions; on older
+UIs the toggle lived under `Settings → General → Pull Requests →
+Allow GitHub Copilot to review`). On a fresh repo where the feature
+is disabled, `gh` reports "could not resolve user" and opens the PR
+with no reviewer assigned. See CLAUDE.md R36 step 3 for the full
+rationale and the precise interplay between the alias and the
+canonical login.
 
 ### Phase B — Read review (after 60-180s wait)
 ```bash
