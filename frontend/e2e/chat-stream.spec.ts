@@ -101,24 +101,33 @@ test.describe('Chat-stream token-level UX', () => {
         await page.goto('/app/chat');
         await expect(thread(page)).toHaveAttribute('data-state', 'idle');
 
+        // Per R12 we drive transition-capture through `expect.poll`,
+        // which is Playwright's first-class polling primitive (50 ms
+        // built-in cadence by default, configurable via `intervals`).
+        // The poller's CALLBACK accumulates the observed sequence as
+        // a side effect and the polling exits cleanly the first time
+        // 'ready' appears — no manual race between a parallel `while`
+        // loop and `waitForThreadReady`. The previous shape was a
+        // hand-rolled poll loop with `page.waitForTimeout(50)` which
+        // is the exact pattern R12 forbids.
         const observed: string[] = [];
-        const stopPolling = { current: false };
-        const pollPromise = (async () => {
-            while (!stopPolling.current) {
-                const state = await thread(page).getAttribute('data-state');
-                if (state && observed[observed.length - 1] !== state) {
-                    observed.push(state);
-                }
-                await page.waitForTimeout(50);
-            }
-        })();
 
         const { input, send } = composer(page);
         await input.fill('Trace state transitions please.');
         await send.click();
-        await waitForThreadReady(page, 30_000);
-        stopPolling.current = true;
-        await pollPromise;
+
+        await expect
+            .poll(
+                async () => {
+                    const state = await thread(page).getAttribute('data-state');
+                    if (state && observed[observed.length - 1] !== state) {
+                        observed.push(state);
+                    }
+                    return state;
+                },
+                { timeout: 30_000, intervals: [50, 100, 250] },
+            )
+            .toBe('ready');
 
         // Observed must be a strict prefix of [idle, loading, ready].
         const expectedSequence = ['idle', 'loading', 'ready'];
@@ -185,11 +194,16 @@ test.describe('Chat-stream token-level UX', () => {
         await input.fill('Generate a long answer please.');
         await send.click();
 
-        // Wait until streaming is genuinely under way.
+        // Wait until streaming is genuinely under way — text has begun
+        // rendering. Per R12 we poll observable state (assistant body
+        // length > 0) instead of a fixed `waitForTimeout(500)` which
+        // races on slow CI / pass-spuriously on fast machines where
+        // the stream may already be finished.
         await expect(thread(page)).toHaveAttribute('data-state', 'loading');
-        await page.waitForTimeout(500);
-
         const assistant = page.locator('[data-testid^="chat-message-"][data-role="assistant"]').first();
+        await expect
+            .poll(async () => (await assistant.innerText()).length, { timeout: 5_000 })
+            .toBeGreaterThan(0);
         const lengthBeforeStop = (await assistant.innerText()).length;
 
         await page.getByTestId('chat-composer-stop').click();
