@@ -221,13 +221,16 @@ jobs:
           APP_ENV: testing
         run: |
           php artisan key:generate --force
-          php artisan migrate --force
-          # NOTE: previous attempt at `php artisan optimize` here
-          # turned the artisan-serve socket-hang-up into ECONNREFUSED
-          # (the cached config + closure routes interfere with how
-          # `php artisan serve` boots its single-threaded handler).
-          # The auth.setup retry loop now handles the boot race
-          # without preemptive caching.
+          # `migrate:fresh` from CLI (instead of `migrate`) — see R38 in
+          # CLAUDE.md. The heavy migration can stall `php artisan serve`'s
+          # single-threaded accept loop when it runs inside an HTTP request
+          # (the recurring auth.setup ECONNREFUSED flake on /testing/reset).
+          # Running `migrate:fresh` here from the CLI BEFORE Playwright
+          # starts the web server moves the heavy work off the HTTP path
+          # entirely. The Playwright step then sets E2E_SKIP_HTTP_RESET=1
+          # so the test setup helper skips POST /testing/reset and only
+          # calls the lighter POST /testing/seed via HTTP.
+          php artisan migrate:fresh --force
 
       # Start Laravel explicitly in the workflow instead of relying on
       # playwright.config.ts `webServer`. The `webServer` block boots
@@ -307,10 +310,19 @@ jobs:
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
+          APP_URL: http://127.0.0.1:8000
           # Skip playwright.config.ts's own webServer block — we already
           # started + health-checked the server above. Without this flag
           # Playwright would race ours and EADDRINUSE on port 8000.
           E2E_SKIP_WEBSERVER: '1'
+          # Tells setup-helpers.ts to skip POST /testing/reset (a
+          # `migrate:fresh` via HTTP). The DB was already reset cleanly
+          # above from the CLI step. Skipping the HTTP reset prevents
+          # `php artisan serve` from executing a blocking migration
+          # inside an HTTP request — the root cause of ECONNREFUSED on
+          # 127.0.0.1:8000 during the setup phase. See R38 + the
+          # `ci-failure-investigation` skill rabbit-hole section.
+          E2E_SKIP_HTTP_RESET: '1'
         run: npm run e2e
 
       - name: Dump Laravel log on failure
