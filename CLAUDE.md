@@ -933,14 +933,20 @@ review must run retroactively.
 The structural fix that landed on PR #85 is the canonical example:
 
 1. Workflow step before Playwright runs `migrate:fresh` from the CLI.
-   `APP_KEY` is already written into `.env` by an earlier "Prepare .env
-   for testing" step, so the migrate step deliberately does NOT run
-   `php artisan key:generate --force` — that would append a duplicate
-   `APP_KEY=` line and leave the resolved value ambiguous.
+   `key:generate --force` runs FIRST so it REPLACES the empty
+   `APP_KEY=` line copied from `.env.example` in-place — the earlier
+   "Prepare .env for testing" step deliberately leaves the line empty
+   (using `sed -i 's|^APP_ENV=.*|APP_ENV=testing|' .env` for APP_ENV
+   in-place replacement, no `echo "APP_KEY=..." >> .env` for APP_KEY)
+   so `key:generate` has nothing to duplicate. Net effect: exactly
+   one `APP_ENV=` and one `APP_KEY=base64:…` definition in .env, no
+   shell-escaping hazard from piping openssl-generated base64
+   (which can contain `/`) through sed.
    ```yaml
    - name: Migrate test database (CLI)
      env: { APP_ENV: testing }
      run: |
+       php artisan key:generate --force      # replaces empty APP_KEY=
        php artisan migrate:fresh --force
    ```
 2. Every E2E call site that needs to wipe the DB goes through a
