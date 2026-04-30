@@ -223,7 +223,15 @@ final class RegoloProvider implements AiProviderInterface
             promptTokens: $promptTokens > 0 ? $promptTokens : null,
             completionTokens: $completionTokens > 0 ? $completionTokens : null,
             totalTokens: ($promptTokens + $completionTokens) > 0 ? $promptTokens + $completionTokens : null,
-            finishReason: $sdkResponse->steps->first()?->finishReason?->value,
+            // The SDK's `steps` collection accumulates one entry per
+            // model turn — including intermediate tool-call steps in a
+            // multi-step loop. Only the LAST step carries the
+            // completion reason for the final assistant text the
+            // caller receives via `$sdkResponse->text`. `first()` would
+            // return the reason for the FIRST model turn (often
+            // `tool_calls` mid-loop), which mismatches the body and
+            // confuses chat-log analytics + few-shot routing.
+            finishReason: $sdkResponse->steps->last()?->finishReason?->value,
         );
     }
 }
