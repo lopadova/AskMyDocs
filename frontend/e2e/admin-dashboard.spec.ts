@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
-import { resetDb, seedDb } from './setup-helpers';
+import { loginAsProjectUser, resetDb, seedDb } from './setup-helpers';
 
 /*
  * PR6 — Phase F1. Admin Dashboard E2E scenarios.
@@ -87,13 +87,18 @@ test.describe('Admin Dashboard', () => {
         await expect(chatVolume).toHaveAttribute('data-state', 'error', { timeout: 30_000 });
     });
 
-    test('empty state — every chart shows <chart>-empty', async ({ page, request }) => {
+    test('empty state — every chart shows <chart>-empty', async ({ page, context, request }, testInfo) => {
         // Override the default seeded fixture: start from scratch and
         // apply the Empty seeder so no chat logs / canonical docs / chunks
         // exist. TanStack Query keys are independent from the network
         // interception — this is pure real-data testing.
+        // The mid-test migrate:fresh invalidates the session set up by
+        // the auto-fixture (EmptyAdminSeeder re-creates admin@demo.local
+        // with a fresh bcrypt hash), so re-login before navigating or
+        // RequireAuth bounces the SPA to /login.
         await resetDb(request);
         await seedDb(request, 'EmptyAdminSeeder');
+        await loginAsProjectUser(page, context, request, testInfo.project.name);
 
         await page.goto('/app/admin');
 
@@ -112,10 +117,16 @@ test.describe('Admin Dashboard', () => {
         await expect(page.getByTestId('activity-feed-empty')).toBeVisible();
     });
 
-    test('health degraded — failed_jobs threshold flips queue chip', async ({ page, request }) => {
+    test('health degraded — failed_jobs threshold flips queue chip', async ({ page, context, request }, testInfo) => {
         // Seed a degraded stack: DemoSeeder + 15 failed_jobs rows.
+        // The mid-test migrate:fresh invalidates the session set up by
+        // the auto-fixture (AdminDegradedSeeder calls DemoSeeder which
+        // re-creates admin@demo.local with a fresh bcrypt hash), so
+        // re-login before navigating or RequireAuth bounces the SPA to
+        // /login.
         await resetDb(request);
         await seedDb(request, 'AdminDegradedSeeder');
+        await loginAsProjectUser(page, context, request, testInfo.project.name);
 
         await page.goto('/app/admin');
 

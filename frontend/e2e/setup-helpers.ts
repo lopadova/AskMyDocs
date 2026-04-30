@@ -1,4 +1,22 @@
-import type { APIRequestContext, APIResponse, Page } from '@playwright/test';
+import type { APIRequestContext, APIResponse, BrowserContext, Page } from '@playwright/test';
+
+/**
+ * Per-project login credentials, keyed by Playwright project name.
+ * Mirrors the seeded users in `database/seeders/DemoSeeder.php` and
+ * `database/seeders/EmptyAdminSeeder.php` — both seeders re-create
+ * these accounts via `User::firstOrCreate()` keyed on email after a
+ * `migrate:fresh`, so the email/password pair stays valid across
+ * resets even though the bcrypt hash is regenerated each time.
+ *
+ * Setup projects (`auth.setup`, `viewer.setup`, `super-admin.setup`)
+ * are not listed because they perform their own login flow against
+ * the storageState at boot and don't reuse this map.
+ */
+export const PROJECT_CREDENTIALS: Record<string, { email: string; password: string }> = {
+    chromium: { email: 'admin@demo.local', password: 'password' },
+    'chromium-viewer': { email: 'viewer@demo.local', password: 'password' },
+    'chromium-super-admin': { email: 'super@demo.local', password: 'password' },
+};
 
 /**
  * Either a Page (for setup-time helpers that have one) or a raw
@@ -141,4 +159,97 @@ export async function resetAndSeed(target: RequestTarget, seeder = 'DemoSeeder')
         await resetDb(target);
     }
     await seedDb(target, seeder);
+}
+
+/**
+ * Re-establish the project's auth session after a `resetDb()`/`seedDb()`
+ * pair inside a spec body. The auto-fixture in `frontend/e2e/fixtures.ts`
+ * handles this once before each test, but specs that perform an additional
+ * `migrate:fresh` (e.g. switching from `DemoSeeder` to `EmptyAdminSeeder`)
+ * end up with a stale session because:
+ *   - `migrate:fresh` drops the `users` and `sessions` tables.
+ *   - The seeder re-creates the user via `User::firstOrCreate()` with
+ *     a fresh `bcrypt` hash — different from the hash the auto-fixture
+ *     used to log in.
+ *   - The session cookie still in the cookie jar points at a session
+ *     row that no longer exists, AND the password hash check in
+ *     Laravel's session middleware now fails.
+ *
+ * Without this re-login, `page.goto('/app/admin')` is racy: the SPA's
+ * `RequireAuth` boot calls `/api/auth/me`, gets 401, and redirects to
+ * `/login`. Test assertions on admin-shell test-ids then time out.
+ *
+ * The function performs the same CSRF + login + `/me` verification dance
+ * the auto-fixture runs at boot, against BOTH the page-scoped cookie
+ * jar (`page.request`) AND the top-level `request` fixture's cookie
+ * jar (Playwright keeps these separate by default).
+ *
+ * Pass `testInfo.project.name` so the helper picks the right credentials
+ * from `PROJECT_CREDENTIALS`. Unknown project names are a no-op (matches
+ * the auto-fixture behaviour for the setup projects).
+ */
+export async function loginAsProjectUser(
+    page: Page,
+    context: BrowserContext,
+    request: APIRequestContext,
+    projectName: string,
+): Promise<void> {
+    const creds = PROJECT_CREDENTIALS[projectName];
+    if (!creds) return;
+
+    await page.request.get('/sanctum/csrf-cookie');
+    const cookies = await context.cookies();
+    const xsrfCookie = cookies.find((c) => c.name === 'XSRF-TOKEN');
+    if (!xsrfCookie) {
+        throw new Error(
+            'loginAsProjectUser: XSRF-TOKEN cookie missing after /sanctum/csrf-cookie',
+        );
+    }
+    const loginResponse = await page.request.post('/api/auth/login', {
+        data: creds,
+        headers: {
+            'X-XSRF-TOKEN': decodeURIComponent(xsrfCookie.value),
+            Accept: 'application/json',
+        },
+    });
+    if (!loginResponse.ok()) {
+        throw new Error(
+            `loginAsProjectUser: page-context login failed for ${creds.email} on project ${projectName}: ${loginResponse.status()} ${await loginResponse.text()}`,
+        );
+    }
+
+    const meResponse = await page.request.get('/api/auth/me', {
+        headers: { Accept: 'application/json' },
+    });
+    if (!meResponse.ok()) {
+        throw new Error(
+            `loginAsProjectUser: /api/auth/me failed AFTER successful login for ${creds.email}: ${meResponse.status()} ${await meResponse.text()}`,
+        );
+    }
+    const mePayload = (await meResponse.json()) as { user?: { email?: string } };
+    if (mePayload.user?.email !== creds.email) {
+        throw new Error(
+            `loginAsProjectUser: /api/auth/me returned wrong user. expected ${creds.email}, got ${mePayload.user?.email ?? '(no user)'}`,
+        );
+    }
+
+    // Re-login on the top-level `request` fixture's cookie jar too —
+    // see the long comment in fixtures.ts for the rationale (Playwright
+    // keeps `request` and `page.request` cookie jars separate).
+    await request.get('/sanctum/csrf-cookie');
+    const requestStorage = await request.storageState();
+    const requestXsrf = requestStorage.cookies.find((c) => c.name === 'XSRF-TOKEN');
+    if (!requestXsrf) return;
+    const reqLoginResponse = await request.post('/api/auth/login', {
+        data: creds,
+        headers: {
+            'X-XSRF-TOKEN': decodeURIComponent(requestXsrf.value),
+            Accept: 'application/json',
+        },
+    });
+    if (!reqLoginResponse.ok()) {
+        throw new Error(
+            `loginAsProjectUser: top-level request re-login failed for ${creds.email}: ${reqLoginResponse.status()} ${await reqLoginResponse.text()}`,
+        );
+    }
 }
