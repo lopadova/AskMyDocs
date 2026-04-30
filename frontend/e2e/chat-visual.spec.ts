@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
-import { stubChatAssistantReply, type StubChatMessage } from './helpers/stub-chat';
+import { buildAssistantMessage, stubChatAssistantReply, type StubChatMessage } from './helpers/stub-chat';
 
 /*
  * v4.0/W3.2 — Visual regression scenarios per PLAN-W3 §7.4.
@@ -191,6 +191,20 @@ test.describe('Chat visual regression (PLAN §7.4)', () => {
          * only realistic way to drive `data-state="error"` on the
          * thread without losing pixel determinism. Counterpart real-
          * data scenarios live in chat.spec.ts. */
+        // Stub the POST send via the centralised helper FIRST so the
+        // user-message submit completes deterministically (without
+        // this, the POST `route.fallback()` below would fall through
+        // to the REAL chat endpoint when this test is unskipped,
+        // potentially incurring real LLM cost in CI). Then layer the
+        // GET 500 on top — Playwright runs handlers LIFO, so the
+        // GET-500 handler matches first and the POST falls through
+        // to the centralised helper's POST handler beneath it.
+        await stubChatAssistantReply(page, {
+            assistant: buildAssistantMessage({
+                id: 7000,
+                content: 'Should not be visible — refetch fails before this lands.',
+            }),
+        });
         await page.route('**/conversations/*/messages', (route) => {
             if (route.request().method() === 'GET') {
                 void route.fulfill({ status: 500, body: 'Internal Server Error' });

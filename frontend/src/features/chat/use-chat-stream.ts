@@ -230,8 +230,19 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                 if (liveFilters && !isFilterStateEmpty(liveFilters)) {
                     body.filters = liveFilters;
                 }
+                // Multi-value Accept: SSE on the success path, JSON
+                // on the auth/error path. Laravel's auth + Sanctum
+                // middleware inspects Accept to decide between JSON
+                // 401 and an HTML redirect to /login — SPA convention
+                // (see frontend/src/lib/api.ts) is `application/json`
+                // so the SDK can parse the error and surface it via
+                // `useChatStream().error`. Pure `text/event-stream`
+                // would let Laravel return an HTML redirect that
+                // would break the stream parser. Comma-separated
+                // multi-value is HTTP/1.1 standard (RFC 9110 §12.5.1)
+                // and Laravel's middleware handles it correctly.
                 const headers: Record<string, string> = {
-                    Accept: 'text/event-stream',
+                    Accept: 'text/event-stream, application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 };
                 const xsrf = readXsrfCookie();

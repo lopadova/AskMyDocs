@@ -117,15 +117,6 @@ describe('readXsrfCookie', () => {
         }
     });
 
-    it('returns null when document is undefined (SSR / module-import without DOM)', () => {
-        // The guard is reached when the module is imported in a
-        // pre-DOM environment (e.g. unit tests that don't need
-        // jsdom). Direct test difficult here without faking the
-        // global; the assertion below covers the empty-cookie path,
-        // which is the OTHER branch that yields null.
-        expect.assertions(0);
-    });
-
     it('returns null when no XSRF-TOKEN cookie is set', () => {
         // jsdom's document.cookie starts empty.
         expect(readXsrfCookie()).toBeNull();
