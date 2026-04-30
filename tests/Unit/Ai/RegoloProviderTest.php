@@ -284,6 +284,36 @@ class RegoloProviderTest extends TestCase
         });
     }
 
+    public function test_chat_uses_provider_level_defaults_when_options_omitted(): void
+    {
+        // Provider-level defaults from `config('ai.providers.regolo.max_tokens')`
+        // and `temperature` MUST reach the wire when the caller omits the
+        // per-call options. Pinned here to detect regressions where the
+        // resolve helpers would silently drop the config layer (e.g. by
+        // changing the precedence chain).
+        $this->setupConfig([
+            'max_tokens' => 1234,
+            'temperature' => 0.42,
+        ]);
+        Http::fake([
+            'api.regolo.ai/*' => Http::response([
+                'model' => 'Llama-3.3-70B-Instruct',
+                'choices' => [['message' => ['content' => 'ok'], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1],
+            ], 200),
+        ]);
+
+        $p = new RegoloProvider(config('ai.providers.regolo'));
+        $p->chat('s', 'u'); // no $options
+
+        Http::assertSent(function (\Illuminate\Http\Client\Request $req) {
+            $body = $req->data();
+
+            return ($body['max_tokens'] ?? null) === 1234
+                && ($body['temperature'] ?? null) === 0.42;
+        });
+    }
+
     public function test_chat_rejects_non_numeric_max_tokens(): void
     {
         $this->setupConfig();

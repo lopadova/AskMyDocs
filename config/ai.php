@@ -100,6 +100,16 @@ return [
             // `temperature()`, then propagate through
             // `Laravel\Ai\Gateway\TextGenerationOptions::forAgent()`
             // into `padosoft/laravel-ai-regolo`'s `BuildsTextRequests`.
+            // `(int)` / `(float)` casts are LOSSY for non-numeric env
+            // values (`'abc'` → 0, `''` → 0). The provider adapter's
+            // `RegoloProvider::resolveMaxTokens()` / `resolveTemperature()`
+            // re-validates with `is_numeric()` and throws when given a
+            // non-numeric ARRAY-OPTION at runtime — but a non-numeric
+            // env var is silently flattened to 0 here at config-load
+            // time and bypasses that guard. Operators: keep the env
+            // values blank (use the defaults) or genuinely numeric.
+            // We don't throw at config-load because a closure here
+            // would break `php artisan config:cache`.
             'max_tokens' => (int) env('REGOLO_MAX_TOKENS', 4096),
             'temperature' => (float) env('REGOLO_TEMPERATURE', 0.2),
             'models' => [
