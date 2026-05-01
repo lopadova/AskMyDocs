@@ -1,0 +1,119 @@
+# Italian Patent Box dossier — FY2026 (Padosoft)
+#
+# This file is a TEMPLATE config consumed by:
+#
+#   php artisan patent-box:cross-repo tools/patent-box/2026.yml
+#
+# Before running, the operator MUST adjust the following placeholder
+# values for the local environment:
+#
+#   1. `tax_identity.p_iva` — the placeholder `IT00000000000` is NOT
+#      a real P.IVA. Replace with the actual Padosoft VAT number on
+#      the operator's machine (do NOT commit the real value back into
+#      the repo — keep this file checked in with the placeholder).
+#   2. `repositories[*].path` — the `./repos/<repo-name>` paths assume
+#      the operator clones every Padosoft repo into a single `./repos/`
+#      sibling directory. Adjust to the actual local layout.
+#   3. `ip_outputs[*].registration_id` / `application_id` — the SIAE
+#      registration IDs and UIBM patent application IDs are filed
+#      progressively during 2026; replace each `SIAE-2026-...` /
+#      `PCT/IT2026/...` placeholder with the actual identifier as soon
+#      as it is issued.
+#
+# The four sister Padosoft packages tracked here (laravel-flow,
+# eval-harness, laravel-pii-redactor, plus the meta_self entry
+# laravel-patent-box-tracker) are listed even when implementation is
+# still in flight: the cross-repo runner walks each repo's actual
+# state at run time, so an empty repo simply produces zero qualifying
+# commits — the dossier shape is unchanged.
+#
+# See the package README for the full schema reference:
+#   https://github.com/padosoft/laravel-patent-box-tracker#cross-repository-dossier-the-canonical-padosoft-use-case
+
+fiscal_year: 2026
+
+period:
+  from: '2026-01-01'
+  to: '2026-12-31'
+
+tax_identity:
+  denomination: Padosoft di Lorenzo Padovani
+  # Placeholder VAT number. NEVER commit the real P.IVA into the
+  # public repository; replace locally before running.
+  p_iva: IT00000000000
+  regime: documentazione_idonea
+
+cost_model:
+  hourly_rate_eur: 80
+  daily_hours_max: 8
+
+classifier:
+  provider: regolo
+  model: claude-sonnet-4-6
+
+repositories:
+  # ===== AskMyDocs — primary IP =====
+  - path: ./repos/askmydocs
+    role: primary_ip
+
+  # ===== Padosoft Apache packages — supporting infrastructure =====
+  - path: ./repos/laravel-ai-regolo
+    role: support
+
+  # TODO: pending W5 — laravel-flow v0.1 ships in week 5 of v4.0.
+  - path: ./repos/laravel-flow
+    role: support
+
+  # TODO: pending W6 — eval-harness v0.1 ships in week 6 of v4.0.
+  - path: ./repos/eval-harness
+    role: support
+
+  # TODO: pending W7 — laravel-pii-redactor v0.1 ships in week 7 of v4.0.
+  - path: ./repos/laravel-pii-redactor
+    role: support
+
+  # ===== Meta — the tracker itself, dogfooded against its own history =====
+  - path: ./repos/laravel-patent-box-tracker
+    role: meta_self
+
+manual_supplement:
+  # Hours spent on R&D NOT visible in commit history — design
+  # whiteboarding, paper reading, attendee-mode at conferences,
+  # commercialista consultations on Patent Box compliance, etc.
+  off_keyboard_research_hours: 60
+  conferences:
+    - name: Laracon EU 2026
+      days: 3
+
+ip_outputs:
+  # SIAE software registrations — copyright on bespoke software per
+  # Italian law n. 633/1941 art. 64-bis. The Patent Box covers
+  # software protected by copyright; SIAE registration is the
+  # canonical proof.
+  - kind: software_siae
+    title: AskMyDocs Enterprise Platform v4.0
+    registration_id: SIAE-2026-...
+
+  - kind: software_siae
+    title: AskMyDocs Pro
+    registration_id: SIAE-2026-...
+
+  - kind: software_siae
+    title: Canonical Knowledge Compilation Engine
+    registration_id: SIAE-2026-...
+
+  # UIBM patent applications — three patent applications planned for
+  # filing during FY2026; replace each placeholder application_id
+  # with the actual identifier as it is issued by UIBM (or the EPO
+  # for European patents, or WIPO for PCT applications).
+  - kind: brevetto_uibm
+    title: Anti-hallucination retrieval architecture
+    application_id: PCT/IT2026/...
+
+  - kind: brevetto_uibm
+    title: Cross-tenant isolation enforcement layer for RAG systems
+    application_id: PCT/IT2026/...
+
+  - kind: brevetto_uibm
+    title: Auto-generated Patent Box dossier from git history
+    application_id: PCT/IT2026/...
