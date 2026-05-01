@@ -122,14 +122,36 @@ export function MessageThread({
                         {error?.message ?? 'Could not load messages.'}
                     </div>
                 )}
-                {messages.map((m) => (
-                    <MessageBubble
-                        key={getMessageId(m)}
-                        conversationId={conversationId as number}
-                        message={m}
-                        projectKey={projectKey}
-                    />
-                ))}
+                {/*
+                  * Render the thread only when a conversation is
+                  * active. With `conversationId === null` the thread
+                  * shows the empty card (handled above by
+                  * `state === 'empty'`); we'd otherwise force-cast
+                  * conversationId to `number` for MessageBubble's
+                  * required prop, hiding a runtime hazard if the SDK
+                  * ever populates `messages` before activeId lands.
+                  *
+                  * The `streaming` prop is set on the LAST assistant
+                  * bubble when the SDK is mid-stream — this drives
+                  * the typing caret + hides the action row /
+                  * citations on the in-flight turn. Without this
+                  * wiring (lost when the legacy `isSending`
+                  * placeholder was removed), the caret never appears
+                  * during token-by-token render.
+                  */}
+                {conversationId !== null && messages.map((m, i) => {
+                    const isLast = i === messages.length - 1;
+                    const streaming = isStreaming && isLast && m.role === 'assistant';
+                    return (
+                        <MessageBubble
+                            key={getMessageId(m)}
+                            conversationId={conversationId}
+                            message={m}
+                            projectKey={projectKey}
+                            streaming={streaming}
+                        />
+                    );
+                })}
             </div>
         </section>
     );

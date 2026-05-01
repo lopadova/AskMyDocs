@@ -33,6 +33,25 @@ import type { RenderableMessage } from './message-shape-adapters';
  * streaming hook can read them when building each turn's request body
  * (see `useChatStream`'s `prepareSendMessagesRequest`).
  */
+/**
+ * Normalize an `unknown` error value (TanStack Query's `error` field
+ * is `unknown` by default) into the `Error | null` shape the
+ * downstream `MessageThread`/`Composer` props expect. Previously we
+ * cast via `as Error`, which silently hides non-Error values that
+ * would crash on `.message` access in render. This wraps anything
+ * non-Error into `new Error(String(e))` so the rendered error
+ * message stays informative regardless of the underlying throw.
+ */
+function toError(e: unknown): Error | null {
+    if (e == null) {
+        return null;
+    }
+    if (e instanceof Error) {
+        return e;
+    }
+    return new Error(typeof e === 'string' ? e : String(e));
+}
+
 export function ChatView(): ReactNode {
     const navigate = useNavigate();
     const params = useParams({ strict: false }) as { conversationId?: string };
@@ -291,7 +310,7 @@ export function ChatView(): ReactNode {
                     messages={threadMessages}
                     sdkStatus={chat.status}
                     isLoadingHistory={initialQuery.isLoading}
-                    error={chat.error ?? (initialQuery.error as Error | null | undefined) ?? null}
+                    error={chat.error ?? toError(initialQuery.error)}
                 />
 
                 <Composer
