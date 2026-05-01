@@ -35,18 +35,30 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * §6 + `project_v40_w3_decisions` (Lorenzo confirmed Option B on
  * 2026-04-30).
  *
- * Wire format (one SSE message per chunk):
+ * Wire format — SDK v6 `UIMessageChunk` shape (one SSE message per
+ * chunk). See `StreamChunk` for the canonical envelope.
  *
- *     data: {"type":"source", ...}\n\n
- *     data: {"type":"text-delta","textDelta":"..."}\n\n
- *     data: {"type":"data-confidence","confidence":82,"tier":"high"}\n\n
+ *     data: {"type":"start"}\n\n
+ *     data: {"type":"source-url","sourceId":"doc-1","url":"...","title":"..."}\n\n
+ *     data: {"type":"text-start","id":"text_xxx"}\n\n
+ *     data: {"type":"text-delta","id":"text_xxx","delta":"..."}\n\n
+ *     data: {"type":"text-end","id":"text_xxx"}\n\n
+ *     data: {"type":"data-confidence","data":{"confidence":82,"tier":"high"}}\n\n
  *     data: {"type":"finish","finishReason":"stop","usage":{...}}\n\n
  *
- * Refusal stream variant (no `text-delta` events):
+ * Refusal stream variant (no text envelope):
  *
- *     data: {"type":"data-refusal","reason":"no_relevant_context",...}\n\n
- *     data: {"type":"data-confidence","confidence":null,"tier":"refused"}\n\n
- *     data: {"type":"finish","finishReason":"refusal","usage":{...}}\n\n
+ *     data: {"type":"start"}\n\n
+ *     data: {"type":"data-refusal","data":{"reason":"...","body":"...","hint":null}}\n\n
+ *     data: {"type":"data-confidence","data":{"confidence":null,"tier":"refused"}}\n\n
+ *     data: {"type":"finish","finishReason":"stop","usage":{...}}\n\n
+ *
+ * Refusal turns finish with `'stop'` (NOT `'refusal'`) per the SDK
+ * `FinishReason` union — refusal is an application-level
+ * categorization carried on the persisted Message row's
+ * `refusal_reason` column AND in the `data-refusal` stream chunk;
+ * surfacing it on `finish` would fall outside the SDK union and
+ * `useChat()`'s stream parser would reject the chunk.
  *
  * Persistence semantics: the user message is saved BEFORE the stream
  * starts (so a client that disconnects mid-stream still has the user
@@ -242,6 +254,11 @@ class MessageStreamController extends Controller
             $reason, $answer, $conversation, $chatLog, $question,
             $projectKey, $userId, $startTime, $sessionId, $clientIp, $userAgent
         ): void {
+            // SDK v6 envelope opener — every UIMessage stream MUST
+            // begin with a `start` chunk before any text/data parts
+            // so `useChat()` knows a new assistant turn has begun.
+            $this->emit(StreamChunk::start());
+
             // Emit data-refusal + data-confidence FIRST so the FE
             // renders the refusal notice immediately. The terminal
             // `finish` event waits until the Message + chat-log rows
@@ -305,9 +322,14 @@ class MessageStreamController extends Controller
 
             // Terminal event AFTER persistence — guarantees that any
             // client refetch triggered by `finish` sees the
-            // assistant Message row in the DB.
+            // assistant Message row in the DB. Refusal turns close
+            // with `'stop'` per the SDK `FinishReason` union; the
+            // application-level "this was a refusal" signal lives
+            // on the persisted Message's `refusal_reason` column
+            // AND in the upstream `data-refusal` chunk, not on the
+            // wire-level finish reason.
             $this->emit(StreamChunk::finish(
-                finishReason: 'refusal',
+                finishReason: 'stop',
                 promptTokens: 0,
                 completionTokens: 0,
             ));
@@ -360,28 +382,46 @@ class MessageStreamController extends Controller
             $chunks, $citations, $question, $projectKey, $userId, $startTime,
             $fewShotCount, $sessionId, $clientIp, $userAgent
         ): void {
-            // Emit `source` chunks BEFORE any `text-delta` per the wire
-            // format invariant (PLAN §6.1). The FE's CitationsPopover
-            // renders the chips as the events arrive — popover is
-            // visible by the time the answer text starts streaming.
+            // SDK v6 envelope opener — every UIMessage stream MUST
+            // begin with a `start` chunk before any text/data parts.
+            $this->emit(StreamChunk::start());
+
+            // Emit `source-url` chunks BEFORE any `text-delta` per the
+            // wire format invariant (PLAN §6.1). The FE's
+            // CitationsPopover renders the chips as the events arrive
+            // — popover is visible by the time the answer text starts
+            // streaming.
             foreach ($citations as $citation) {
-                $this->emit(StreamChunk::source(
+                // SDK `source-url` mandates a non-null URL. When the
+                // citation has no canonical path (rejected-approach
+                // injection, transient sources), emit a synthetic
+                // in-app fallback so the FE chip still renders. The
+                // `#doc-X` form is harmless as a non-navigable
+                // anchor and lets `coerceCitationOrigin()` keep
+                // defaulting to `'primary'`.
+                $url = $this->citationUrl($citation, $projectKey)
+                    ?? '#doc-' . ($citation['document_id'] ?? 'unknown');
+
+                $this->emit(StreamChunk::sourceUrl(
                     sourceId: 'doc-' . ($citation['document_id'] ?? 'unknown'),
+                    url: $url,
                     title: (string) ($citation['title'] ?? 'Untitled'),
-                    url: $this->citationUrl($citation, $projectKey),
-                    origin: 'primary',
                 ));
             }
 
-            // Stream the LLM response. Each provider's chatStream()
-            // yields StreamChunk instances; we re-emit them as SSE
-            // frames AND collect the text into a buffer for
-            // post-stream persistence.
+            // Stream the LLM response. Providers (via FallbackStreaming
+            // or a native chatStream() override) yield the SDK v6
+            // text envelope: `text-start` → 1+ `text-delta` →
+            // `text-end` → `finish`. We re-emit each non-finish chunk
+            // as an SSE frame AND collect the `delta` payloads into a
+            // buffer for post-stream persistence. The `finish` chunk
+            // is captured (not forwarded) — we emit our own terminal
+            // `finish` after persistence + `data-confidence`.
             $assistantContent = '';
             $finishChunk = null;
             foreach ($ai->chatStream($systemPrompt, $history) as $chunk) {
                 if ($chunk->type === StreamChunk::TYPE_TEXT_DELTA) {
-                    $assistantContent .= (string) ($chunk->payload['textDelta'] ?? '');
+                    $assistantContent .= (string) ($chunk->payload['delta'] ?? '');
                 }
                 if ($chunk->type === StreamChunk::TYPE_FINISH) {
                     // Capture the finish chunk but DON'T re-emit it yet
@@ -519,8 +559,18 @@ class MessageStreamController extends Controller
             // window between `finish` arriving and the Message row
             // being committed, returning an empty thread and
             // breaking the optimistic-mutation dedupe path.
+            //
+            // LLM self-refusals collapse to `'stop'` per SDK union —
+            // the application-level "this was a refusal" signal lives
+            // on the persisted Message's `refusal_reason` column.
+            // Provider finish reasons arrive already normalized by
+            // `StreamChunk::normalizeFinishReason()` upstream; we
+            // re-normalize defensively in case a future native-streaming
+            // path skips the trait.
             $this->emit(StreamChunk::finish(
-                finishReason: $isSelfRefusal ? 'refusal' : $finishReason,
+                finishReason: $isSelfRefusal
+                    ? 'stop'
+                    : StreamChunk::normalizeFinishReason(is_string($finishReason) ? $finishReason : null),
                 promptTokens: $promptTokens,
                 completionTokens: $completionTokens,
             ));
