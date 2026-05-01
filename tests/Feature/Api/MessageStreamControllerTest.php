@@ -150,10 +150,19 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertSame(StreamChunk::TYPE_FINISH, end($types));
 
         // Source-url precedes text-start (citation chips render before
-        // the answer body starts streaming).
+        // the answer body starts streaming). Defensive guards: if
+        // either chunk is missing `array_search()` returns `false`,
+        // and `false < int` would coerce to `0 < int` and pass
+        // spuriously — `assertNotFalse` catches the missing-chunk
+        // case explicitly even though the `assertContains` calls
+        // above already do. PHPUnit's `assertLessThan($expected,
+        // $actual)` asserts `$actual < $expected`, so the
+        // arguments below pin `sourceIdx < textStartIdx`.
         $sourceIdx = array_search(StreamChunk::TYPE_SOURCE_URL, $types, strict: true);
         $textStartIdx = array_search(StreamChunk::TYPE_TEXT_START, $types, strict: true);
-        $this->assertLessThan($textStartIdx, $sourceIdx);
+        $this->assertNotFalse($sourceIdx, 'source-url chunk must be present before ordering is asserted');
+        $this->assertNotFalse($textStartIdx, 'text-start chunk must be present before ordering is asserted');
+        $this->assertLessThan($textStartIdx, $sourceIdx, 'source-url should precede text-start');
 
         // Text envelope is well-formed: text-start + text-end carry
         // the same id, and every text-delta in between matches that
