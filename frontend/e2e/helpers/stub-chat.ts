@@ -209,21 +209,49 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
 }
 
 /**
- * Compose an SSE response body from a `StubChatMessage`. Mirrors the
- * BE wire format produced by `MessageStreamController::store()` —
- * citations emitted as `source` chunks BEFORE the body, then a
- * single `text-delta` carrying the full assistant content (the
- * stub doesn't fragment the text since the chat*.spec.ts tests
- * don't assert on mid-stream sampling), then a `finish` chunk.
+ * Compose an SSE response body from a `StubChatMessage` in the
+ * `@ai-sdk/react` v6 UI Message Stream Protocol shape (see
+ * `node_modules/ai/dist/index.d.mts` `UIMessageChunk`).
  *
- * The format is `data: {json}\n\n` per SSE framing, matching the
- * BE's `StreamChunk::toSseFrame()`. The SDK's transport reader
- * consumes these chunks and the FE adapters surface them.
+ * IMPORTANT: this differs from the BE's W3.1 wire format in two
+ * places — the BE's `MessageStreamController` emits `text-delta`
+ * with a `textDelta` field (legacy SDK v3 spelling) and `source`
+ * type (instead of `source-url`). PR #87 verified the BE's emit
+ * shape but never round-tripped through the SDK parser. Closing
+ * the gap on the production BE is a follow-up PR; the stub
+ * deliberately emits the SDK-correct shape so the chat*.spec.ts
+ * suite can validate the FE swap end-to-end.
+ *
+ * The chunk sequence:
+ *   1. `start` — opens the assistant message with messageId
+ *   2. `source-url` × N — citations (canonical citations without
+ *      a public URL fall back to `/`-anchored placeholder so the
+ *      SDK's required `url` field is satisfied)
+ *   3. Either:
+ *      a) `data-refusal` + `data-confidence` (refusal path)
+ *      b) `text-start` → `text-delta` → `text-end` + optional
+ *         `data-confidence` (happy path)
+ *   4. `finish` — terminal
+ *
+ * Frame format is `data: {json}\n\n` per SSE framing.
  */
 function buildSseStreamBody(assistant: StubChatMessage): string {
     const lines: string[] = [];
+    const messageId = `stub-msg-${assistant.id}`;
+    const textPartId = `${messageId}-text`;
 
-    // Source citations BEFORE text-delta (PLAN-W3 §6.1 invariant).
+    const emit = (chunk: object): void => {
+        lines.push(`data: ${JSON.stringify(chunk)}\n\n`);
+    };
+
+    // 1. Open the message envelope.
+    emit({ type: 'start', messageId });
+
+    // 2. Source citations BEFORE text-delta (the FE's CitationsPopover
+    //    renders the chips as the events arrive). The SDK's
+    //    `source-url` shape requires `sourceId` + `url`; canonical
+    //    citations without a public URL get a `/`-anchored placeholder
+    //    so the parser doesn't reject the chunk.
     const meta = assistant.metadata as Record<string, unknown> | null;
     const citations = (meta?.citations as Array<{
         document_id?: number | null;
@@ -232,55 +260,56 @@ function buildSseStreamBody(assistant: StubChatMessage): string {
     }> | undefined) ?? [];
     for (const c of citations) {
         const sourceId = c.document_id != null ? `doc-${c.document_id}` : 'doc-unknown';
-        lines.push(`data: ${JSON.stringify({
-            type: 'source',
+        emit({
+            type: 'source-url',
             sourceId,
+            url: c.url ?? `/kb/${sourceId}`,
             title: c.title ?? 'Untitled',
-            url: c.url ?? null,
-            origin: 'primary',
-        })}\n\n`);
+        });
     }
 
-    // Refusal payload (BE emits data-refusal + data-confidence
-    // BEFORE the assistant text on the refusal path, instead of
-    // text-delta + source chunks).
     if (assistant.refusal_reason != null) {
-        lines.push(`data: ${JSON.stringify({
+        // 3a. Refusal path. BE emits data-refusal + data-confidence
+        //     BEFORE the assistant text. The SDK's `data-${name}`
+        //     custom-part shape wraps the payload under `.data`.
+        emit({
             type: 'data-refusal',
-            reason: assistant.refusal_reason,
-            body: assistant.content,
-        })}\n\n`);
-        lines.push(`data: ${JSON.stringify({
+            data: {
+                reason: assistant.refusal_reason,
+                body: assistant.content,
+            },
+        });
+        emit({
             type: 'data-confidence',
-            confidence: 0,
-            tier: 'refused',
-        })}\n\n`);
+            data: { confidence: 0, tier: 'refused' },
+        });
     } else {
-        // Happy-path text delta + confidence.
-        lines.push(`data: ${JSON.stringify({
-            type: 'text-delta',
-            textDelta: assistant.content,
-        })}\n\n`);
+        // 3b. Happy path: text-start → text-delta → text-end. The
+        //     SDK accumulates `delta` strings between matching
+        //     id'd text-start / text-end pairs into the assistant
+        //     message's text content.
+        emit({ type: 'text-start', id: textPartId });
+        emit({ type: 'text-delta', id: textPartId, delta: assistant.content });
+        emit({ type: 'text-end', id: textPartId });
+
         if (typeof assistant.confidence === 'number') {
             const tier = assistant.confidence >= 80
                 ? 'high'
                 : assistant.confidence >= 50
                     ? 'moderate'
                     : 'low';
-            lines.push(`data: ${JSON.stringify({
+            emit({
                 type: 'data-confidence',
-                confidence: assistant.confidence,
-                tier,
-            })}\n\n`);
+                data: { confidence: assistant.confidence, tier },
+            });
         }
     }
 
-    // Terminal finish chunk (always last).
-    lines.push(`data: ${JSON.stringify({
+    // 4. Terminal finish chunk.
+    emit({
         type: 'finish',
-        finishReason: assistant.refusal_reason != null ? 'refusal' : 'stop',
-        usage: { promptTokens: null, completionTokens: null },
-    })}\n\n`);
+        finishReason: assistant.refusal_reason != null ? 'stop' : 'stop',
+    });
 
     return lines.join('');
 }

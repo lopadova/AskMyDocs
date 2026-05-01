@@ -206,15 +206,23 @@ export function getCitations(m: RenderableMessage): MessageCitation[] {
     }
     const citations: MessageCitation[] = [];
     for (const part of m.parts) {
-        // BE wire format uses `type: 'source'` (StreamChunk::TYPE_SOURCE)
-        // per PLAN-W3 §5.5. This is a CUSTOM extension to the SDK's
-        // UIPart type union (which only knows `source-url` /
-        // `source-document` natively); the SDK passes unknown chunk
-        // types through verbatim, so we read `part.type === 'source'`
-        // here. The TypeScript cast is necessary because `'source'`
-        // is not in the SDK's structural UIPart.type union.
+        // We accept BOTH discriminators:
+        //   - `source-url` is the SDK v6 native shape per
+        //     `UIMessageChunk` in `node_modules/ai/dist/index.d.mts`
+        //     — what the SDK's stream parser produces when the wire
+        //     format declares the SDK-canonical type.
+        //   - `source` was PLAN-W3 §5.5's original intent and is what
+        //     the W3.1 BE currently emits via `StreamChunk::TYPE_SOURCE`.
+        //     The W3.1 BE wire format predates the FE swap; aligning
+        //     the BE to the SDK shape is a follow-up PR. Until then,
+        //     the adapter handles both so the FE renders citations
+        //     regardless of which side is ahead.
+        // The TypeScript cast is necessary because `'source'` is not
+        // in the SDK's structural UIPart.type union (the SDK passes
+        // unknown chunk types through verbatim when the BE emits a
+        // custom shape).
         const partType = (part as { type: string }).type;
-        if (partType !== 'source') {
+        if (partType !== 'source' && partType !== 'source-url') {
             continue;
         }
         citations.push(sourcePartToCitation(part as unknown as {

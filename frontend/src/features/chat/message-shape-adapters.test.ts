@@ -149,17 +149,22 @@ describe('getCitations', () => {
         expect(getCitations(uiMsg({ parts: [] }))).toEqual([]);
     });
 
-    it("does NOT match SDK's generic source-url variant — BE emits type=source", () => {
-        // The SDK's generic `source-url` discriminator is NOT what
-        // AskMyDocs emits. This test pins the discriminator so a
-        // future Copilot-style "use source-url to align with SDK
-        // conventions" suggestion fails the suite immediately.
+    it("ALSO matches SDK-native 'source-url' variant — handles both discriminators during BE migration", () => {
+        // PR #88's design pinned the BE's custom `'source'`
+        // discriminator (PLAN-W3 §5.5). PR #89 discovered the SDK's
+        // stream parser actually emits `'source-url'` per the v6
+        // UIMessageChunk union. Until the W3.1 BE catches up, the
+        // adapter accepts BOTH so production traffic and SDK-native
+        // stubs both render citations correctly.
         const m = uiMsg({
             parts: [
-                { type: 'source-url', sourceId: '99', title: 'Should be ignored', url: '/kb/99' },
+                { type: 'source-url', sourceId: 'doc-99', title: 'SDK-native shape', url: '/kb/99' },
             ],
         });
-        expect(getCitations(m)).toEqual([]);
+        const citations = getCitations(m);
+        expect(citations).toHaveLength(1);
+        expect(citations[0].document_id).toBe(99);
+        expect(citations[0].title).toBe('SDK-native shape');
     });
 
     it('falls back to title=url when source part has no title', () => {
