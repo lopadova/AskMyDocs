@@ -58,12 +58,34 @@ export function MessageThread({
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
+    // Stream-aware auto-scroll trigger. During token-by-token streaming
+    // the assistant message accretes text inside the SAME message
+    // object — `messages.length` and `sdkStatus` both stay constant
+    // (`'streaming'` throughout). Without a length-aware tracker the
+    // scroll wouldn't follow the growing bubble. Computing the total
+    // text length across all parts of all messages on every render
+    // gives the effect a stable scalar to depend on; when ANY
+    // text-delta lands, the value changes and the scroll fires.
+    const totalTextLength = messages.reduce((acc, m) => {
+        if (!('parts' in m) || !Array.isArray((m as { parts?: unknown[] }).parts)) {
+            const content = (m as { content?: string }).content ?? '';
+            return acc + content.length;
+        }
+        const parts = (m as { parts: Array<{ type: string; text?: string }> }).parts;
+        for (const p of parts) {
+            if (p.type === 'text' && typeof p.text === 'string') {
+                acc += p.text.length;
+            }
+        }
+        return acc;
+    }, 0);
+
     useEffect(() => {
         threadRef.current?.scrollTo({
             top: threadRef.current.scrollHeight,
             behavior: 'smooth',
         });
-    }, [messages.length, sdkStatus]);
+    }, [messages.length, sdkStatus, totalTextLength]);
 
     const state = mapStatusToDataState({
         conversationId,

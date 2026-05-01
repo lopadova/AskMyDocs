@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ConversationList } from './ConversationList';
@@ -157,12 +157,30 @@ export function ChatView(): ReactNode {
     // round-trip needed.
     const [pendingSend, setPendingSend] = useState<string | null>(null);
 
+    // The effect's dispatch is guarded by:
+    //   1. Synchronous `setPendingSend(null)` BEFORE any await — so a
+    //      re-render triggered by `chat.sendMessage`'s internal state
+    //      mutation reads `pendingSend === null` and skips.
+    //   2. Effect deps EXCLUDE `chat` — `chat` is a fresh object every
+    //      render of `useChatStream`, but its `sendMessage` is stable
+    //      relative to the SDK state map (re-derived from id). We
+    //      capture the latest `sendMessage` via a ref outside the
+    //      dispatch path so the queued message uses the CURRENT
+    //      transport/conversationId without forcing the effect to
+    //      re-fire on every render. (Re-firing would dispatch the
+    //      same message multiple times during the streaming window.)
+    const sendMessageRef = useRef(chat.sendMessage);
+    sendMessageRef.current = chat.sendMessage;
+
     useEffect(() => {
         if (pendingSend !== null && activeId !== null) {
-            void chat.sendMessage({ text: pendingSend });
+            // Clear FIRST so a re-entry during the awaited dispatch
+            // doesn't see the old pending value.
+            const text = pendingSend;
             setPendingSend(null);
+            void sendMessageRef.current({ text });
         }
-    }, [pendingSend, activeId, chat]);
+    }, [pendingSend, activeId]);
 
     const handleSend = async (content: string): Promise<void> => {
         if (activeId !== null) {

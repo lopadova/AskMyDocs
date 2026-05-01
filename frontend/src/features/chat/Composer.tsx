@@ -107,6 +107,13 @@ export function Composer({
             setLocalError('Message is required.');
             return;
         }
+        // Block concurrent sends while a stream is in flight. Even
+        // though the UI morphs Send → Stop, the user can still
+        // submit via Enter; without this guard a second send queues
+        // up and the SDK's transport may emit two POSTs back-to-back.
+        if (isStreaming) {
+            return;
+        }
         let targetId = conversationId;
         if (targetId === null && onRequireConversation) {
             targetId = await onRequireConversation();
@@ -118,7 +125,17 @@ export function Composer({
         setLocalError(null);
         const content = trimmed;
         clearDraft();
-        await onSend(content);
+        try {
+            await onSend(content);
+        } catch (err) {
+            // Restore the draft so the user doesn't lose their typed
+            // message on transport / 419 / network failure. The error
+            // surface (chat-composer-error) renders via the `error`
+            // prop from `useChatStream().error` set by the SDK; this
+            // path only restores the COMPOSER's local state.
+            setDraft(content);
+            setLocalError(err instanceof Error ? err.message : 'Failed to send message.');
+        }
     };
 
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
