@@ -17,26 +17,22 @@ use Mockery;
 use Tests\TestCase;
 
 /**
- * v4.0/W3.1 — feature tests for the SSE streaming chat endpoint.
+ * v4.0/W3.3 — feature tests for the SSE streaming chat endpoint, pinned
+ * to the SDK v6 `UIMessageChunk` wire format that `@ai-sdk/react`'s
+ * `useChat()` parses verbatim. PR #87 introduced the 8 scenarios below
+ * for the W3.1 wire format; PR #88/#89 migrated the FE; this PR realigns
+ * the BE emit to match the SDK so chat works end-to-end in production.
  *
  * Maps to the 8 scenarios required by
  * `docs/v4-platform/PLAN-W3-vercel-chat-migration.md` §7.5:
  *
- *   1. Happy path: text-delta + finish chunks emit in order
- *   2. Refusal: data-refusal events instead of text-delta
+ *   1. Happy path: start → source-url → text envelope → data-confidence → finish
+ *   2. Refusal: data-refusal events instead of text envelope
  *   3. Empty content → 422
  *   4. Filters round-trip (filters in body → filters reach search)
  *   5. R30 cross-tenant rejection (403 on conversation owned by another user)
- *   6. Streamed-flag persistence on Message metadata (chat-log
- *      driver is gated off in these tests via `chat-log.enabled=false`,
- *      so this scenario observes the `streamed: true` marker landing
- *      in `Message::metadata` AND `Message::metadata.provider`,
- *      which proves the streaming path took persistence through the
- *      same code as MessageController. R32 memory privacy is
- *      enforced at the BelongsToTenant + chat_logs.tenant_id layer
- *      and is covered by the dedicated tenant-isolation architecture
- *      tests (R30/R31), not here.
- *   7. Provider streaming fallback (one-chunk emit when provider doesn't stream natively)
+ *   6. Streamed-flag persistence on Message metadata
+ *   7. Provider streaming fallback (one text-delta inside a text-start/text-end envelope)
  *   8. SSE protocol drift — wire format byte-for-byte stable across the test
  *
  * The streaming endpoint runs inside a `StreamedResponse` callback that
@@ -84,7 +80,7 @@ final class MessageStreamControllerTest extends TestCase
 
         // Anthropic as the chat provider — its fallback streaming hits
         // Http::fake() cleanly. Other providers work the same way for
-        // any test that mocks the underlying transport; W3.1 covers
+        // any test that mocks the underlying transport; W3.3 covers
         // the contract once via Anthropic and trusts the FallbackStreaming
         // trait + StreamChunkTest unit tests to cover the rest.
         config()->set('ai.default', 'anthropic');
@@ -126,7 +122,7 @@ final class MessageStreamControllerTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_1_happy_path_emits_text_delta_then_finish_in_order(): void
+    public function test_1_happy_path_emits_sdk_v6_envelope_in_canonical_order(): void
     {
         $this->mockSearchWithGroundedChunks();
         $this->mockAnthropicResponse(content: 'The remote work stipend applies after 90 days.');
@@ -137,16 +133,46 @@ final class MessageStreamControllerTest extends TestCase
 
         $types = array_map(fn (StreamChunk $c) => $c->type, $chunks);
 
-        // Wire format invariant: source events come BEFORE text-delta;
-        // data-confidence comes AFTER text-delta and BEFORE finish;
-        // finish is the terminal event. Citations are present because
-        // the mocked search returns a grounded primary with a document.
+        // SDK v6 UIMessageChunk envelope invariants:
+        //   - `start` is the very first chunk
+        //   - `source-url` chunks come BEFORE any `text-start`
+        //   - text body lives inside a `text-start` / `text-delta` /
+        //     `text-end` envelope (one matched id throughout)
+        //   - `data-confidence` comes AFTER the text envelope and
+        //     BEFORE the terminal `finish`
+        //   - `finish` is the last chunk
+        $this->assertSame(StreamChunk::TYPE_START, $types[0]);
+        $this->assertContains(StreamChunk::TYPE_SOURCE_URL, $types);
+        $this->assertContains(StreamChunk::TYPE_TEXT_START, $types);
         $this->assertContains(StreamChunk::TYPE_TEXT_DELTA, $types);
+        $this->assertContains(StreamChunk::TYPE_TEXT_END, $types);
         $this->assertContains(StreamChunk::TYPE_DATA_CONFIDENCE, $types);
         $this->assertSame(StreamChunk::TYPE_FINISH, end($types));
 
+        // Source-url precedes text-start (citation chips render before
+        // the answer body starts streaming).
+        $sourceIdx = array_search(StreamChunk::TYPE_SOURCE_URL, $types, strict: true);
+        $textStartIdx = array_search(StreamChunk::TYPE_TEXT_START, $types, strict: true);
+        $this->assertLessThan($textStartIdx, $sourceIdx);
+
+        // Text envelope is well-formed: text-start + text-end carry
+        // the same id, and every text-delta in between matches that
+        // id (SDK stitches deltas back into one rendered part by id).
+        $textStart = $this->findChunkByType($chunks, StreamChunk::TYPE_TEXT_START);
+        $textEnd = $this->findChunkByType($chunks, StreamChunk::TYPE_TEXT_END);
+        $textId = $textStart->payload['id'];
+        $this->assertSame($textId, $textEnd->payload['id']);
+        foreach ($chunks as $chunk) {
+            if ($chunk->type !== StreamChunk::TYPE_TEXT_DELTA) {
+                continue;
+            }
+            $this->assertSame($textId, $chunk->payload['id'], 'every text-delta uses the same id');
+        }
+
+        // Finish reason is in the SDK union — Anthropic's `end_turn`
+        // normalizes to `'stop'` upstream of the wire.
         $finish = end($chunks);
-        $this->assertSame('end_turn', $finish->payload['finishReason']);
+        $this->assertSame('stop', $finish->payload['finishReason']);
 
         // Assistant message persisted with full content.
         $assistant = $this->conversation->messages()->where('role', 'assistant')->first();
@@ -156,7 +182,7 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertTrue((bool) ($assistant->metadata['streamed'] ?? false));
     }
 
-    public function test_2_refusal_emits_data_refusal_instead_of_text_delta(): void
+    public function test_2_refusal_emits_data_refusal_instead_of_text_envelope(): void
     {
         // No grounded chunks (all below threshold) → refusal short-circuit.
         $this->mockSearchWithUngroundedChunks();
@@ -169,22 +195,32 @@ final class MessageStreamControllerTest extends TestCase
 
         $types = array_map(fn (StreamChunk $c) => $c->type, $chunks);
 
-        // Refusal stream variant: data-refusal + data-confidence(refused) + finish.
-        // No text-delta events.
+        // Refusal stream variant: start → data-refusal → data-confidence(refused) → finish.
+        // No text envelope (no text-start / text-delta / text-end).
+        $this->assertSame(StreamChunk::TYPE_START, $types[0]);
+        $this->assertNotContains(StreamChunk::TYPE_TEXT_START, $types);
         $this->assertNotContains(StreamChunk::TYPE_TEXT_DELTA, $types);
+        $this->assertNotContains(StreamChunk::TYPE_TEXT_END, $types);
         $this->assertContains(StreamChunk::TYPE_DATA_REFUSAL, $types);
         $this->assertContains(StreamChunk::TYPE_DATA_CONFIDENCE, $types);
         $this->assertSame(StreamChunk::TYPE_FINISH, end($types));
 
+        // SDK `data-*` chunks wrap their payload under `data`.
         $refusal = $this->findChunkByType($chunks, StreamChunk::TYPE_DATA_REFUSAL);
-        $this->assertSame('no_relevant_context', $refusal->payload['reason']);
+        $this->assertSame('no_relevant_context', $refusal->payload['data']['reason']);
+        $this->assertIsString($refusal->payload['data']['body']);
+        $this->assertNotEmpty($refusal->payload['data']['body']);
 
         $confidence = $this->findChunkByType($chunks, StreamChunk::TYPE_DATA_CONFIDENCE);
-        $this->assertSame('refused', $confidence->payload['tier']);
-        $this->assertNull($confidence->payload['confidence']);
+        $this->assertSame('refused', $confidence->payload['data']['tier']);
+        $this->assertNull($confidence->payload['data']['confidence']);
 
+        // Refusal turns close with `'stop'` per SDK FinishReason union.
+        // The application-level "this was a refusal" signal lives on
+        // the persisted Message's `refusal_reason` column AND in the
+        // `data-refusal` chunk above — never on `finish.finishReason`.
         $finish = end($chunks);
-        $this->assertSame('refusal', $finish->payload['finishReason']);
+        $this->assertSame('stop', $finish->payload['finishReason']);
 
         // Persisted assistant message carries the refusal reason in the
         // dedicated column AND inside metadata (T3.5).
@@ -293,13 +329,13 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertSame('anthropic', $assistant->metadata['provider'] ?? null);
     }
 
-    public function test_7_fallback_streaming_emits_one_text_delta_for_non_streaming_provider(): void
+    public function test_7_fallback_streaming_emits_one_text_delta_inside_text_envelope(): void
     {
         // Anthropic uses FallbackStreaming → exactly one text-delta
-        // chunk for the full reply (no token-by-token splitting). This
-        // proves the fallback path satisfies the same contract as
-        // native streaming for FE consumption (the SDK happily renders
-        // a single big delta as the complete answer).
+        // chunk inside one text-start/text-end envelope. This proves
+        // the fallback path satisfies the SDK v6 contract (matched
+        // ids across the envelope) for FE consumption (the SDK
+        // happily renders a single big delta as the complete answer).
         $this->mockSearchWithGroundedChunks();
         $this->mockAnthropicResponse(content: 'Single-chunk reply');
 
@@ -307,24 +343,28 @@ final class MessageStreamControllerTest extends TestCase
             'content' => 'Q?',
         ]);
 
-        $textDeltas = array_filter(
-            $chunks,
-            fn (StreamChunk $c) => $c->type === StreamChunk::TYPE_TEXT_DELTA,
-        );
+        $textStarts = array_values(array_filter($chunks, fn (StreamChunk $c) => $c->type === StreamChunk::TYPE_TEXT_START));
+        $textDeltas = array_values(array_filter($chunks, fn (StreamChunk $c) => $c->type === StreamChunk::TYPE_TEXT_DELTA));
+        $textEnds = array_values(array_filter($chunks, fn (StreamChunk $c) => $c->type === StreamChunk::TYPE_TEXT_END));
 
+        $this->assertCount(1, $textStarts, 'fallback streaming opens exactly one text part');
         $this->assertCount(1, $textDeltas, 'fallback streaming yields exactly one text-delta');
-        $this->assertSame(
-            'Single-chunk reply',
-            array_values($textDeltas)[0]->payload['textDelta'],
-        );
+        $this->assertCount(1, $textEnds, 'fallback streaming closes the text part exactly once');
+
+        // SDK v6 shape: text-delta carries `delta` (not `textDelta`)
+        // plus the matching `id`.
+        $this->assertSame('Single-chunk reply', $textDeltas[0]->payload['delta']);
+        $this->assertSame($textStarts[0]->payload['id'], $textDeltas[0]->payload['id']);
+        $this->assertSame($textStarts[0]->payload['id'], $textEnds[0]->payload['id']);
     }
 
-    public function test_8_sse_wire_format_is_stable(): void
+    public function test_8_sse_wire_format_is_stable_under_sdk_v6_envelope(): void
     {
         // Protocol-drift gate. Each SSE message starts with `data: `
         // and ends with `\n\n`. The JSON payload merges `type` at top
-        // level (no nesting under `payload`). Concatenating all
-        // text-delta `textDelta` values reconstructs the full
+        // level (no nesting under `payload`). `text-delta` chunks
+        // carry SDK v6 `delta` + `id` (NOT W3.1's `textDelta`).
+        // Concatenating all `delta` values reconstructs the full
         // assistant text.
         $this->mockSearchWithGroundedChunks();
         $this->mockAnthropicResponse(content: 'Hello world.');
@@ -343,12 +383,19 @@ final class MessageStreamControllerTest extends TestCase
             $this->assertArrayHasKey('type', $decoded);
         }
 
-        // Reconstruct text from text-delta chunks.
+        // Reconstruct text from `delta` field on text-delta chunks
+        // (SDK v6 shape — NOT W3.1's `textDelta`). The reconstruction
+        // proves the streaming controller emits the SDK-canonical
+        // field name end-to-end.
         $reconstructed = '';
+        $textIdSeen = null;
         foreach ($events as $event) {
             $payload = json_decode(substr($event, strlen('data: ')), associative: true, flags: JSON_THROW_ON_ERROR);
             if ($payload['type'] === StreamChunk::TYPE_TEXT_DELTA) {
-                $reconstructed .= (string) $payload['textDelta'];
+                $reconstructed .= (string) $payload['delta'];
+                $this->assertArrayHasKey('id', $payload, 'text-delta carries SDK v6 `id` field');
+                $textIdSeen ??= $payload['id'];
+                $this->assertSame($textIdSeen, $payload['id'], 'all text-delta chunks share one id');
             }
         }
         $this->assertSame('Hello world.', $reconstructed);
