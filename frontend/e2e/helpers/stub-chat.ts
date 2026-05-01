@@ -117,20 +117,40 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
     // The W3.2 swap commit moved the FE chat send from the
     // synchronous JSON endpoint (`POST /conversations/{id}/messages`)
     // to the SSE streaming endpoint (`POST /conversations/{id}/messages/stream`).
-    // The route pattern below intercepts BOTH so the existing
-    // chat*.spec.ts call sites (which still expect the synchronous
-    // shape) and the new chat-stream*.spec.ts (which exercise the
-    // SSE flow) share one helper.
+    // Playwright's `**` glob spans path segments, so the pattern
+    // below intercepts BOTH shapes via ONE handler. (A bare `*`
+    // would match `/messages` and `/messages-rating` but NOT
+    // `/messages/stream` — the new segment after the slash escapes
+    // a single-`*` glob.)
     //
     // The stub responds to:
-    //   - GET  /conversations/*/messages       → JSON history list
-    //   - POST /conversations/*/messages/stream → SSE event stream
-    //   - POST /conversations/*/messages       → JSON (legacy fallback,
-    //     kept so any non-migrated component still gets a deterministic
-    //     reply during the cross-component transition)
-    await page.route('**/conversations/*/messages*', async (route) => {
+    //   - GET  /conversations/{id}/messages        → JSON history list
+    //   - POST /conversations/{id}/messages/stream → SSE event stream
+    //   - POST /conversations/{id}/messages        → JSON (legacy fallback,
+    //     kept so any non-migrated component still gets a
+    //     deterministic reply during the cross-component transition)
+    //
+    // The handler bails out for unrelated /messages/* sub-paths
+    // (e.g. `/messages/{id}/rating`) by inspecting the URL — those
+    // calls fall through to the real backend per R13.
+    await page.route('**/conversations/*/messages/**', handleChat);
+    await page.route('**/conversations/*/messages', handleChat);
+
+    async function handleChat(route: Parameters<Parameters<Page['route']>[1]>[0]): Promise<void> {
         const url = route.request().url();
         const method = route.request().method();
+
+        // Bail out for unrelated /messages/* sub-paths (e.g.
+        // `/messages/{id}/rating`, `/messages/{id}/feedback`). Those
+        // calls hit the real backend per R13 — the stub only owns
+        // the chat-completion call site.
+        const path = new URL(url).pathname;
+        const isExactMessages = /\/conversations\/[^/]+\/messages$/.test(path);
+        const isStream = /\/conversations\/[^/]+\/messages\/stream$/.test(path);
+        if (!isExactMessages && !isStream) {
+            await route.fallback();
+            return;
+        }
 
         if (method === 'GET') {
             const body = postObserved ? list : [];
@@ -165,7 +185,7 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         // body works because the SDK's parser handles concatenated
         // chunks in one response — the chat*.spec.ts tests don't
         // assert on mid-stream timing, only the final DOM state.
-        if (url.endsWith('/stream')) {
+        if (isStream) {
             const sseBody = buildSseStreamBody(options.assistant);
             await route.fulfill({
                 status: 200,
@@ -185,7 +205,7 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
             contentType: 'application/json',
             body: JSON.stringify(options.assistant),
         });
-    });
+    }
 }
 
 /**
