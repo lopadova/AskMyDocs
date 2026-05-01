@@ -142,8 +142,8 @@ gh api repos/<owner>/<repo>/pulls/<PR>/reviews --jq '.[] | {user: .user.login, s
 ```
 
 A correct polling exit condition checks ALL of:
-1. `[.statusCheckRollup[] | .conclusion] | unique == ["SUCCESS"]` — CI green.
-2. Either (a) `reviewDecision == "APPROVED"` from the formal bot, OR (b) every must-fix from the formal bot has been addressed in commits since the review's `submitted_at`.
+1. `[.statusCheckRollup[] | .conclusion] as $c | ($c | all(. != null)) and (($c | unique) - ["SUCCESS", "SKIPPED"] | length == 0)` — CI green (allow `SUCCESS` + expected `SKIPPED`, but no pending/null or failing conclusions).
+2. Either (a) the formal review bot has an `APPROVED` review in `/pulls/<PR>/reviews` when filtered by `user.login == "copilot-pull-request-reviewer[bot]"`, OR (b) every must-fix from that formal bot has been addressed in commits since the review's `submitted_at`. Do not attribute PR-level `reviewDecision` to the formal bot; it is only an aggregate PR signal.
 3. The most recent `Copilot` user-bot issue comment (after the latest push) does NOT contain new must-fix issues. Look for explicit verdict tokens: "Ready to merge", "All fixes verified", "No new issues found", or the corresponding negative tokens "Found N issues", "Must fix", "Blocking".
 
 If the formal bot has not posted a re-review (which is the common case after the first push), criterion 3 is the authoritative gate. Trigger the user-bot every push:
