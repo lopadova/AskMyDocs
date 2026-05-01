@@ -206,15 +206,23 @@ export function getCitations(m: RenderableMessage): MessageCitation[] {
     }
     const citations: MessageCitation[] = [];
     for (const part of m.parts) {
-        // BE wire format uses `type: 'source'` (StreamChunk::TYPE_SOURCE)
-        // per PLAN-W3 §5.5. This is a CUSTOM extension to the SDK's
-        // UIPart type union (which only knows `source-url` /
-        // `source-document` natively); the SDK passes unknown chunk
-        // types through verbatim, so we read `part.type === 'source'`
-        // here. The TypeScript cast is necessary because `'source'`
-        // is not in the SDK's structural UIPart.type union.
+        // We accept BOTH discriminators:
+        //   - `source-url` is the SDK v6 native shape per
+        //     `UIMessageChunk` in `node_modules/ai/dist/index.d.mts`
+        //     — what the SDK's stream parser produces when the wire
+        //     format declares the SDK-canonical type.
+        //   - `source` was PLAN-W3 §5.5's original intent and is what
+        //     the W3.1 BE currently emits via `StreamChunk::TYPE_SOURCE`.
+        //     The W3.1 BE wire format predates the FE swap; aligning
+        //     the BE to the SDK shape is a follow-up PR. Until then,
+        //     the adapter handles both so the FE renders citations
+        //     regardless of which side is ahead.
+        // The TypeScript cast is necessary because `'source'` is not
+        // in the SDK's structural UIPart.type union (the SDK passes
+        // unknown chunk types through verbatim when the BE emits a
+        // custom shape).
         const partType = (part as { type: string }).type;
-        if (partType !== 'source') {
+        if (partType !== 'source' && partType !== 'source-url') {
             continue;
         }
         citations.push(sourcePartToCitation(part as unknown as {
@@ -305,4 +313,95 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
         }
     }
     return steps.length === 0 ? undefined : steps;
+}
+
+/**
+ * Extract the refusal body string from a refusal message. For
+ * AppMessage (legacy synchronous flow) the BE persists the localized
+ * refusal string as the message's top-level `content` field. For
+ * UIMessage (SDK streaming flow) the BE emits `data-refusal` with
+ * the body field. The adapter reads via `readDataPartField`, which
+ * checks the SDK-normalized shape (`part.data.body`) first and
+ * falls back to a flat shape (`part.body`) for resilience against
+ * the BE wire format that may not yet wrap the payload under `data`.
+ * The BE DOES NOT emit a `text-delta` chunk on the refusal path
+ * (see `StreamChunk::dataRefusal` — W3.1 design choice that keeps
+ * refusal payloads cleanly separable from grounded answers). Without
+ * this dedicated helper,
+ * `getTextContent(uiRefusal)` returns "" because there are no
+ * text parts to join, and `RefusalNotice` renders an empty body.
+ *
+ * Returns `null` when no refusal payload is present so the caller
+ * (MessageBubble) can guard cleanly. The `null` branch only fires
+ * when `getRefusalReason` would also return `null`, i.e. the
+ * message isn't a refusal — callers should compute both together.
+ */
+export function getRefusalBody(m: RenderableMessage): string | null {
+    // Defer to `getRefusalReason` for the "is this a refusal?"
+    // decision so the two helpers stay consistent: empty/whitespace
+    // refusal_reason strings coerce to null in both. Without this
+    // shared decision, an AppMessage with `refusal_reason: ''` (or
+    // whitespace) would have `getRefusalReason() === null` (via
+    // `coerceRefusalReason`'s trim+length check) but
+    // `getRefusalBody()` would return `m.content` because the
+    // earlier `!= null` check accepts empty strings.
+    if (getRefusalReason(m) === null) {
+        return null;
+    }
+    if (!isUiMessage(m)) {
+        return m.content ?? null;
+    }
+    for (const part of m.parts) {
+        if (part.type !== 'data-refusal') {
+            continue;
+        }
+        const body = readDataPartField<unknown>(
+            part as unknown as { type: string; [key: string]: unknown },
+            'body',
+        );
+        return typeof body === 'string' ? body : null;
+    }
+    return null;
+}
+
+/**
+ * Extract the user-visible text content of a message. For `AppMessage`
+ * (legacy synchronous flow) this is the top-level `content` field.
+ * For `UIMessage` (SDK streaming flow) the SDK splits the body into
+ * `parts: UIMessagePart[]`; we join all `text` parts in order so the
+ * renderer sees a coherent string body.
+ *
+ * Used by `MessageBubble` after the swap commit lands the
+ * `useChatStream()` integration — the bubble must render the same
+ * string regardless of which shape lands in props.
+ *
+ * For refusal payloads the body lives in `data-refusal.body` not in
+ * text-delta chunks; callers that may render either should also
+ * call `getRefusalBody` and prefer its result when present.
+ */
+export function getTextContent(m: RenderableMessage): string {
+    if (!isUiMessage(m)) {
+        return m.content ?? '';
+    }
+    return m.parts
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map((p) => p.text)
+        .join('');
+}
+
+/**
+ * Return the message id verbatim. `AppMessage.id` is a number (BE
+ * persisted ids; optimistic placeholders use negative numbers), while
+ * `UIMessage.id` is a string (SDK convention). The renderer uses the
+ * id only for keys + the `chat-message-{id}` testid template — both
+ * uses tolerate either form because:
+ *   1. React's `key={id}` accepts string or number.
+ *   2. The testid template stringifies via template literals.
+ *
+ * Returning `string | number` keeps the typed surface honest; callers
+ * that need a stable string (e.g. the testid attribute) just use it
+ * inside a template literal.
+ */
+export function getMessageId(m: RenderableMessage): string | number {
+    return m.id;
 }

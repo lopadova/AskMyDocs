@@ -3,8 +3,11 @@ import type { UIMessage } from 'ai';
 import {
     getCitations,
     getConfidence,
+    getMessageId,
     getReasoningSteps,
+    getRefusalBody,
     getRefusalReason,
+    getTextContent,
     isUiMessage,
 } from './message-shape-adapters';
 import type { Message as AppMessage, MessageCitation } from './chat.api';
@@ -147,17 +150,22 @@ describe('getCitations', () => {
         expect(getCitations(uiMsg({ parts: [] }))).toEqual([]);
     });
 
-    it("does NOT match SDK's generic source-url variant — BE emits type=source", () => {
-        // The SDK's generic `source-url` discriminator is NOT what
-        // AskMyDocs emits. This test pins the discriminator so a
-        // future Copilot-style "use source-url to align with SDK
-        // conventions" suggestion fails the suite immediately.
+    it("ALSO matches SDK-native 'source-url' variant — handles both discriminators during BE migration", () => {
+        // PR #88's design pinned the BE's custom `'source'`
+        // discriminator (PLAN-W3 §5.5). PR #89 discovered the SDK's
+        // stream parser actually emits `'source-url'` per the v6
+        // UIMessageChunk union. Until the W3.1 BE catches up, the
+        // adapter accepts BOTH so production traffic and SDK-native
+        // stubs both render citations correctly.
         const m = uiMsg({
             parts: [
-                { type: 'source-url', sourceId: '99', title: 'Should be ignored', url: '/kb/99' },
+                { type: 'source-url', sourceId: 'doc-99', title: 'SDK-native shape', url: '/kb/99' },
             ],
         });
-        expect(getCitations(m)).toEqual([]);
+        const citations = getCitations(m);
+        expect(citations).toHaveLength(1);
+        expect(citations[0].document_id).toBe(99);
+        expect(citations[0].title).toBe('SDK-native shape');
     });
 
     it('falls back to title=url when source part has no title', () => {
@@ -442,5 +450,201 @@ describe('mixed-shape integration', () => {
         expect(getCitations(m)[0].document_id).toBe(99);
         expect(getConfidence(m)).toBe(64);
         expect(getRefusalReason(m)).toBeNull();
+    });
+});
+
+describe('getTextContent', () => {
+    it('returns top-level content for AppMessage', () => {
+        expect(getTextContent({
+            id: 1,
+            role: 'user',
+            content: 'How does PTO work?',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe('How does PTO work?');
+    });
+
+    it('returns empty string when AppMessage has no content', () => {
+        expect(getTextContent({
+            id: 1,
+            role: 'assistant',
+            content: '',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe('');
+    });
+
+    it('joins all text parts in order for UIMessage', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'text', text: 'Hello, ' },
+                { type: 'text', text: 'world.' },
+            ],
+        };
+        expect(getTextContent(m)).toBe('Hello, world.');
+    });
+
+    it('skips non-text parts (source, reasoning, data) when joining', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'reasoning', text: 'Thinking…' } as never,
+                { type: 'text', text: 'According to the docs, ' },
+                { type: 'source', sourceId: 'doc-42', title: 'Policy', url: '/kb/42', origin: 'primary' } as never,
+                { type: 'text', text: 'PTO accrues monthly.' },
+            ],
+        };
+        expect(getTextContent(m)).toBe('According to the docs, PTO accrues monthly.');
+    });
+
+    it('returns empty string for UIMessage with no text parts', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'reasoning', text: 'Hmm' } as never,
+            ],
+        };
+        expect(getTextContent(m)).toBe('');
+    });
+});
+
+describe('getMessageId', () => {
+    it('returns numeric id verbatim for AppMessage', () => {
+        expect(getMessageId({
+            id: 42,
+            role: 'user',
+            content: 'X',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe(42);
+    });
+
+    it('returns string id verbatim for UIMessage', () => {
+        const m: UIMessage = {
+            id: 'msg-abc-123',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'X' }],
+        };
+        expect(getMessageId(m)).toBe('msg-abc-123');
+    });
+
+    it('returns negative numeric id for optimistic AppMessage placeholders', () => {
+        // Optimistic placeholders in the legacy mutation flow used
+        // negative ids; we keep them so the test contract holds.
+        // (After the swap, the SDK manages the optimistic placeholder
+        // directly and AppMessage with negative ids no longer flows
+        // through MessageBubble — but the adapter must not silently
+        // mangle them either.)
+        expect(getMessageId({
+            id: -123,
+            role: 'user',
+            content: 'X',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe(-123);
+    });
+});
+
+describe('getRefusalBody', () => {
+    it('returns content for AppMessage with top-level refusal_reason', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'No documents in the knowledge base match this question.',
+            refusal_reason: 'no_relevant_context',
+        });
+        expect(getRefusalBody(m)).toBe('No documents in the knowledge base match this question.');
+    });
+
+    it('returns content for AppMessage with refusal_reason inside metadata', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'AI cannot answer based on docs.',
+            metadata: {
+                provider: 'openai',
+                refusal_reason: 'llm_self_refusal',
+            },
+        });
+        expect(getRefusalBody(m)).toBe('AI cannot answer based on docs.');
+    });
+
+    it('returns null for AppMessage that is NOT a refusal (no refusal_reason)', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'Grounded answer body',
+            refusal_reason: null,
+            metadata: { provider: 'openai' },
+        });
+        expect(getRefusalBody(m)).toBeNull();
+    });
+
+    it('reads body from SDK data-refusal part (.data.body — normalized SDK shape)', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                {
+                    type: 'data-refusal',
+                    data: {
+                        reason: 'no_relevant_context',
+                        body: 'No documents match.',
+                    },
+                } as never,
+            ],
+        };
+        expect(getRefusalBody(m)).toBe('No documents match.');
+    });
+
+    it('reads body from data-refusal flat-shape fallback', () => {
+        // BE wire format may surface body at the part's top level
+        // before the SDK normalizes; the helper handles both. The
+        // part needs a `reason` field too — the helper now defers
+        // the "is this a refusal?" decision to `getRefusalReason`,
+        // which requires a non-empty reason.
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [{ type: 'data-refusal', reason: 'no_relevant_context', body: 'Flat-shape body' } as never],
+        };
+        expect(getRefusalBody(m)).toBe('Flat-shape body');
+    });
+
+    it('returns null for UIMessage with no data-refusal part', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'A grounded answer' }],
+        };
+        expect(getRefusalBody(m)).toBeNull();
+    });
+
+    it('returns null for empty/whitespace refusal_reason — consistent with getRefusalReason', () => {
+        // The two helpers share the same "is this a refusal?"
+        // decision. Empty/whitespace refusal_reason coerces to null
+        // in getRefusalReason; getRefusalBody must agree so a stale
+        // row with refusal_reason='' doesn't render content as if
+        // it were a refusal body.
+        const empty = appMsg({
+            role: 'assistant',
+            content: 'Should not render as refusal',
+            refusal_reason: '' as unknown as string,
+        });
+        const whitespace = appMsg({
+            role: 'assistant',
+            content: 'Should not render as refusal',
+            refusal_reason: '   ' as unknown as string,
+        });
+        expect(getRefusalBody(empty)).toBeNull();
+        expect(getRefusalBody(whitespace)).toBeNull();
+        // Sanity-check the contract pairing: getRefusalReason agrees.
+        expect(getRefusalReason(empty)).toBeNull();
+        expect(getRefusalReason(whitespace)).toBeNull();
     });
 });

@@ -114,8 +114,36 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
     // between tests automatically).
     let postObserved = false;
 
-    await page.route('**/conversations/*/messages', async (route) => {
+    // The W3.2 swap commit moved the FE chat send from the
+    // synchronous JSON endpoint (`POST /conversations/{id}/messages`)
+    // to the SSE streaming endpoint
+    // (`POST /conversations/{id}/messages/stream`). Two separate
+    // route registrations match the EXACT URL shapes we care about,
+    // dispatching to the same async handler; sub-paths like
+    // `/messages/{id}/feedback` fall through to the real backend
+    // automatically per R13 because no route matches them.
+    //
+    // The stub responds to:
+    //   - GET  /conversations/{id}/messages        → JSON history list
+    //   - POST /conversations/{id}/messages/stream → SSE event stream
+    //   - POST /conversations/{id}/messages        → JSON (legacy fallback,
+    //     kept so any non-migrated component still gets a
+    //     deterministic reply during the cross-component transition)
+    //
+    // Why two registrations rather than one wide glob: a `**`
+    // segment-spanning pattern would match every sub-path under
+    // `/messages/` (rating, feedback, regenerate, etc.) and the
+    // handler would need a manual URL-regex bouncer. Two narrow
+    // patterns keep the routing intent visible and avoid the
+    // bouncer entirely.
+    await page.route('**/conversations/*/messages', handleChat);
+    await page.route('**/conversations/*/messages/stream', handleChat);
+
+    async function handleChat(route: Parameters<Parameters<Page['route']>[1]>[0]): Promise<void> {
+        const url = route.request().url();
         const method = route.request().method();
+        const path = new URL(url).pathname;
+        const isStream = path.endsWith('/stream');
 
         if (method === 'GET') {
             const body = postObserved ? list : [];
@@ -141,12 +169,154 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         }
 
         postObserved = true;
+
+        // Streaming endpoint → emit SSE protocol in the SDK v6
+        // `UIMessageChunk` shape (start / text-start /
+        // text-delta(id+delta) / text-end / source-url / data-* /
+        // finish). NOTE: this differs from the W3.1 BE wire format
+        // (`MessageStreamController::store()`) which still emits
+        // the legacy `text-delta` with `textDelta` field + `source`
+        // discriminator + no envelope. Aligning the BE to the SDK
+        // shape is a follow-up PR (see PR #89's "Out of scope"
+        // section). The stub emits the SDK-canonical shape so the
+        // FE swap is testable end-to-end without waiting on the BE
+        // catch-up.
+        //
+        // Single-shot fulfill with the whole stream body works
+        // because the SDK's parser handles concatenated chunks in
+        // one response — chat*.spec.ts tests assert on the final
+        // DOM state, not on mid-stream timing.
+        if (isStream) {
+            const sseBody = buildSseStreamBody(options.assistant);
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/event-stream',
+                body: sseBody,
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    Connection: 'keep-alive',
+                },
+            });
+            return;
+        }
+
+        // Synchronous endpoint → legacy JSON shape (untouched).
         await route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify(options.assistant),
         });
+    }
+}
+
+/**
+ * Compose an SSE response body from a `StubChatMessage` in the
+ * `@ai-sdk/react` v6 UI Message Stream Protocol shape (see
+ * `node_modules/ai/dist/index.d.mts` `UIMessageChunk`).
+ *
+ * IMPORTANT: this differs from the BE's W3.1 wire format in two
+ * places — the BE's `MessageStreamController` emits `text-delta`
+ * with a `textDelta` field (legacy SDK v3 spelling) and `source`
+ * type (instead of `source-url`). PR #87 verified the BE's emit
+ * shape but never round-tripped through the SDK parser. Closing
+ * the gap on the production BE is a follow-up PR; the stub
+ * deliberately emits the SDK-correct shape so the chat*.spec.ts
+ * suite can validate the FE swap end-to-end.
+ *
+ * The chunk sequence:
+ *   1. `start` — opens the assistant message with messageId
+ *   2. `source-url` × N — citations (canonical citations without
+ *      a public URL fall back to `/`-anchored placeholder so the
+ *      SDK's required `url` field is satisfied)
+ *   3. Either:
+ *      a) `data-refusal` + `data-confidence` (refusal path)
+ *      b) `text-start` → `text-delta` → `text-end` + optional
+ *         `data-confidence` (happy path)
+ *   4. `finish` — terminal
+ *
+ * Frame format is `data: {json}\n\n` per SSE framing.
+ */
+function buildSseStreamBody(assistant: StubChatMessage): string {
+    const lines: string[] = [];
+    const messageId = `stub-msg-${assistant.id}`;
+    const textPartId = `${messageId}-text`;
+
+    const emit = (chunk: object): void => {
+        lines.push(`data: ${JSON.stringify(chunk)}\n\n`);
+    };
+
+    // 1. Open the message envelope.
+    emit({ type: 'start', messageId });
+
+    // 2. Source citations BEFORE text-delta (the FE's CitationsPopover
+    //    renders the chips as the events arrive). The SDK's
+    //    `source-url` shape requires `sourceId` + `url`; canonical
+    //    citations without a public URL get a `/`-anchored placeholder
+    //    so the parser doesn't reject the chunk.
+    const meta = assistant.metadata as Record<string, unknown> | null;
+    const citations = (meta?.citations as Array<{
+        document_id?: number | null;
+        title?: string;
+        url?: string | null;
+    }> | undefined) ?? [];
+    for (const c of citations) {
+        const sourceId = c.document_id != null ? `doc-${c.document_id}` : 'doc-unknown';
+        emit({
+            type: 'source-url',
+            sourceId,
+            url: c.url ?? `/kb/${sourceId}`,
+            title: c.title ?? 'Untitled',
+        });
+    }
+
+    if (assistant.refusal_reason != null) {
+        // 3a. Refusal path. BE emits data-refusal + data-confidence
+        //     BEFORE the assistant text. The SDK's `data-${name}`
+        //     custom-part shape wraps the payload under `.data`.
+        emit({
+            type: 'data-refusal',
+            data: {
+                reason: assistant.refusal_reason,
+                body: assistant.content,
+            },
+        });
+        emit({
+            type: 'data-confidence',
+            data: { confidence: 0, tier: 'refused' },
+        });
+    } else {
+        // 3b. Happy path: text-start → text-delta → text-end. The
+        //     SDK accumulates `delta` strings between matching
+        //     id'd text-start / text-end pairs into the assistant
+        //     message's text content.
+        emit({ type: 'text-start', id: textPartId });
+        emit({ type: 'text-delta', id: textPartId, delta: assistant.content });
+        emit({ type: 'text-end', id: textPartId });
+
+        if (typeof assistant.confidence === 'number') {
+            const tier = assistant.confidence >= 80
+                ? 'high'
+                : assistant.confidence >= 50
+                    ? 'moderate'
+                    : 'low';
+            emit({
+                type: 'data-confidence',
+                data: { confidence: assistant.confidence, tier },
+            });
+        }
+    }
+
+    // 4. Terminal finish chunk. The SDK v6 `UIMessageChunk.finish`
+    // type's `finishReason` union doesn't include `'refusal'`
+    // (the BE has its own broader vocabulary), so we always emit
+    // `'stop'` here — refusal vs grounded paths differ in the
+    // `data-refusal` chunk presence above, not in the finish marker.
+    emit({
+        type: 'finish',
+        finishReason: 'stop',
     });
+
+    return lines.join('');
 }
 
 /**
