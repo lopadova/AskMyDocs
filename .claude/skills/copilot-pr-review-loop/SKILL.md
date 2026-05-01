@@ -114,16 +114,46 @@ rationale and the precise interplay between the alias and the
 canonical login.
 
 ### Phase B — Read review (after 60-180s wait)
+
+**There are TWO Copilot bots that post on a PR. Both must be polled — missing the second one means missing the verdict.**
+
+| Bot login | Type | Posts where | Triggers when |
+|---|---|---|---|
+| `copilot-pull-request-reviewer[bot]` | App / Bot | `pull-request reviews` (`/pulls/<N>/reviews`) + inline review comments (`/pulls/<N>/comments`) | At PR open (automatic), and **only** at PR open — does NOT re-fire on subsequent pushes or on `@copilot review` mentions |
+| `Copilot` | User type Bot | issue-thread comments (`/issues/<N>/comments`) | In response to every `@copilot review` mention. Posts the conversational summary including verdicts like "Ready to merge" or "Re-review complete. All N fixes verified correct." |
+
+A polling loop that filters reviews on `select(.user.login == "copilot-pull-request-reviewer[bot]")` will see exactly **ONE** review (the initial automatic one) and then sit silent forever — even when `Copilot` has explicitly approved the PR via an issue comment. This was the failure mode on `padosoft/laravel-patent-box-tracker` PR #2 cycle 2 (2026-05-01).
+
 ```bash
-# overview
+# overview — covers reviewDecision and CI rollup
 gh pr view <PR> --json state,reviewDecision,mergeable,statusCheckRollup
 
-# top-level comments
+# top-level + issue-thread comments (HERE is where the `Copilot` user bot replies)
 gh pr view <PR> --comments
 
-# inline review comments (specific lines)
+# OR explicitly query the issue-thread API (the same comments)
+gh api repos/<owner>/<repo>/issues/<PR>/comments --jq '.[] | {user: .user.login, created_at, body}'
+
+# inline review comments (specific lines — `copilot-pull-request-reviewer[bot]` posts here)
 gh api repos/<owner>/<repo>/pulls/<PR>/comments --jq '.[] | {body, path, line}'
+
+# formal pull-request reviews (`copilot-pull-request-reviewer[bot]` only — NOT the user-bot)
+gh api repos/<owner>/<repo>/pulls/<PR>/reviews --jq '.[] | {user: .user.login, state, submitted_at}'
 ```
+
+A correct polling exit condition checks ALL of:
+1. `[.statusCheckRollup[] | .conclusion] | unique == ["SUCCESS"]` — CI green.
+2. Either (a) `reviewDecision == "APPROVED"` from the formal bot, OR (b) every must-fix from the formal bot has been addressed in commits since the review's `submitted_at`.
+3. The most recent `Copilot` user-bot issue comment (after the latest push) does NOT contain new must-fix issues. Look for explicit verdict tokens: "Ready to merge", "All fixes verified", "No new issues found", or the corresponding negative tokens "Found N issues", "Must fix", "Blocking".
+
+If the formal bot has not posted a re-review (which is the common case after the first push), criterion 3 is the authoritative gate. Trigger the user-bot every push:
+
+```bash
+gh api -X POST repos/<owner>/<repo>/issues/<PR>/comments \
+  -f body="@copilot review"
+```
+
+Wait 30s–5min for the user-bot reply to appear in `/issues/<PR>/comments` under `user.login == "Copilot"`.
 
 ### Phase C — Read CI failures
 ```bash
@@ -186,6 +216,8 @@ Reply explaining; mark resolved when consensus reached.
 - ❌ Merge with CI red (any check failure)
 - ❌ Run only phpunit and skip vitest / playwright / architecture
 - ❌ Wait less than 60s after push before checking CI (CI may not have started)
+- ❌ **Poll only `copilot-pull-request-reviewer[bot]` and ignore `Copilot` (User type Bot)** — the formal bot fires once at PR open and almost never re-reviews; the conversational `Copilot` bot is the one that posts "Ready to merge" / "Re-review complete" verdicts in issue-thread comments after every `@copilot review` mention. Missing it means waiting indefinitely on a phantom review that already happened. (Discovered on `padosoft/laravel-patent-box-tracker` PR #2 cycle 2 on 2026-05-01: Copilot user-bot had posted the explicit "Ready to merge" verdict 50+ minutes earlier; the agent sat idle because the polling loop filtered for the wrong login.)
+- ❌ Treat absence of new formal `pull-request reviews` after a push as "Copilot is silent / timeout" — the user-bot may have already posted the verdict in `/issues/<N>/comments`. Check that channel before declaring timeout.
 
 ## Operational tip — CI iteration time budget
 
