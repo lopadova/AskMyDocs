@@ -3,7 +3,7 @@ import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
 import type { RenderableMessage } from './message-shape-adapters';
-import { getMessageId } from './message-shape-adapters';
+import { getMessageId, getTextContent } from './message-shape-adapters';
 
 export interface MessageThreadProps {
     conversationId: number | null;
@@ -62,23 +62,14 @@ export function MessageThread({
     // the assistant message accretes text inside the SAME message
     // object — `messages.length` and `sdkStatus` both stay constant
     // (`'streaming'` throughout). Without a length-aware tracker the
-    // scroll wouldn't follow the growing bubble. Computing the total
-    // text length across all parts of all messages on every render
-    // gives the effect a stable scalar to depend on; when ANY
-    // text-delta lands, the value changes and the scroll fires.
-    const totalTextLength = messages.reduce((acc, m) => {
-        if (!('parts' in m) || !Array.isArray((m as { parts?: unknown[] }).parts)) {
-            const content = (m as { content?: string }).content ?? '';
-            return acc + content.length;
-        }
-        const parts = (m as { parts: Array<{ type: string; text?: string }> }).parts;
-        for (const p of parts) {
-            if (p.type === 'text' && typeof p.text === 'string') {
-                acc += p.text.length;
-            }
-        }
-        return acc;
-    }, 0);
+    // scroll wouldn't follow the growing bubble. We delegate text
+    // extraction to the `getTextContent` adapter (which handles both
+    // AppMessage and UIMessage shapes correctly) and sum the lengths;
+    // when ANY text-delta lands, the value changes and the scroll fires.
+    const totalTextLength = messages.reduce(
+        (acc, m) => acc + getTextContent(m).length,
+        0,
+    );
 
     useEffect(() => {
         threadRef.current?.scrollTo({

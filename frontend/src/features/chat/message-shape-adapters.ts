@@ -320,10 +320,14 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
  * AppMessage (legacy synchronous flow) the BE persists the localized
  * refusal string as the message's top-level `content` field. For
  * UIMessage (SDK streaming flow) the BE emits `data-refusal` with
- * the body under `payload.body` and DOES NOT emit a `text-delta`
- * chunk on the refusal path (see `StreamChunk::dataRefusal` —
- * W3.1 design choice that keeps refusal payloads cleanly
- * separable from grounded answers). Without this dedicated helper,
+ * the body field. The adapter reads via `readDataPartField`, which
+ * checks the SDK-normalized shape (`part.data.body`) first and
+ * falls back to a flat shape (`part.body`) for resilience against
+ * the BE wire format that may not yet wrap the payload under `data`.
+ * The BE DOES NOT emit a `text-delta` chunk on the refusal path
+ * (see `StreamChunk::dataRefusal` — W3.1 design choice that keeps
+ * refusal payloads cleanly separable from grounded answers). Without
+ * this dedicated helper,
  * `getTextContent(uiRefusal)` returns "" because there are no
  * text parts to join, and `RefusalNotice` renders an empty body.
  *

@@ -116,12 +116,12 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
 
     // The W3.2 swap commit moved the FE chat send from the
     // synchronous JSON endpoint (`POST /conversations/{id}/messages`)
-    // to the SSE streaming endpoint (`POST /conversations/{id}/messages/stream`).
-    // Playwright's `**` glob spans path segments, so the pattern
-    // below intercepts BOTH shapes via ONE handler. (A bare `*`
-    // would match `/messages` and `/messages-rating` but NOT
-    // `/messages/stream` — the new segment after the slash escapes
-    // a single-`*` glob.)
+    // to the SSE streaming endpoint
+    // (`POST /conversations/{id}/messages/stream`). Two separate
+    // route registrations match the EXACT URL shapes we care about,
+    // dispatching to the same async handler; sub-paths like
+    // `/messages/{id}/feedback` fall through to the real backend
+    // automatically per R13 because no route matches them.
     //
     // The stub responds to:
     //   - GET  /conversations/{id}/messages        → JSON history list
@@ -130,27 +130,20 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
     //     kept so any non-migrated component still gets a
     //     deterministic reply during the cross-component transition)
     //
-    // The handler bails out for unrelated /messages/* sub-paths
-    // (e.g. `/messages/{id}/rating`) by inspecting the URL — those
-    // calls fall through to the real backend per R13.
-    await page.route('**/conversations/*/messages/**', handleChat);
+    // Why two registrations rather than one wide glob: a `**`
+    // segment-spanning pattern would match every sub-path under
+    // `/messages/` (rating, feedback, regenerate, etc.) and the
+    // handler would need a manual URL-regex bouncer. Two narrow
+    // patterns keep the routing intent visible and avoid the
+    // bouncer entirely.
     await page.route('**/conversations/*/messages', handleChat);
+    await page.route('**/conversations/*/messages/stream', handleChat);
 
     async function handleChat(route: Parameters<Parameters<Page['route']>[1]>[0]): Promise<void> {
         const url = route.request().url();
         const method = route.request().method();
-
-        // Bail out for unrelated /messages/* sub-paths (e.g.
-        // `/messages/{id}/rating`, `/messages/{id}/feedback`). Those
-        // calls hit the real backend per R13 — the stub only owns
-        // the chat-completion call site.
         const path = new URL(url).pathname;
-        const isExactMessages = /\/conversations\/[^/]+\/messages$/.test(path);
-        const isStream = /\/conversations\/[^/]+\/messages\/stream$/.test(path);
-        if (!isExactMessages && !isStream) {
-            await route.fallback();
-            return;
-        }
+        const isStream = path.endsWith('/stream');
 
         if (method === 'GET') {
             const body = postObserved ? list : [];
