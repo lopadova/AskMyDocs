@@ -306,10 +306,14 @@ function buildSseStreamBody(assistant: StubChatMessage): string {
         }
     }
 
-    // 4. Terminal finish chunk.
+    // 4. Terminal finish chunk. The SDK v6 `UIMessageChunk.finish`
+    // type's `finishReason` union doesn't include `'refusal'`
+    // (the BE has its own broader vocabulary), so we always emit
+    // `'stop'` here — refusal vs grounded paths differ in the
+    // `data-refusal` chunk presence above, not in the finish marker.
     emit({
         type: 'finish',
-        finishReason: assistant.refusal_reason != null ? 'stop' : 'stop',
+        finishReason: 'stop',
     });
 
     return lines.join('');

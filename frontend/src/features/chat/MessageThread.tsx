@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
@@ -64,11 +64,16 @@ export function MessageThread({
     // (`'streaming'` throughout). Without a length-aware tracker the
     // scroll wouldn't follow the growing bubble. We delegate text
     // extraction to the `getTextContent` adapter (which handles both
-    // AppMessage and UIMessage shapes correctly) and sum the lengths;
-    // when ANY text-delta lands, the value changes and the scroll fires.
-    const totalTextLength = messages.reduce(
-        (acc, m) => acc + getTextContent(m).length,
-        0,
+    // AppMessage and UIMessage shapes correctly) and sum the lengths.
+    //
+    // Memoized: token-by-token streaming triggers many renders/sec,
+    // and the reduce is O(messageCount × parts.length). Memoizing on
+    // `messages` keeps it O(1) for renders that don't actually change
+    // the array reference (the SDK mutates messages by reference on
+    // each delta, so the memo invalidates correctly when text grows).
+    const totalTextLength = useMemo(
+        () => messages.reduce((acc, m) => acc + getTextContent(m).length, 0),
+        [messages],
     );
 
     const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';

@@ -297,6 +297,7 @@ export function ChatView(): ReactNode {
                 <Composer
                     conversationId={activeId}
                     projectLabel={projectLabel}
+                    projectKey={projectKey}
                     modelLabel={headerMeta}
                     onRequireConversation={requireConversation}
                     filters={filters}

@@ -10,6 +10,15 @@ import type { FilterState } from './chat.api';
 export interface ComposerProps {
     conversationId: number | null;
     projectLabel?: string;
+    /**
+     * Project SLUG (e.g. `'hr-portal'`) — used for mention scoping
+     * via MentionPopover/useMentionSearch which queries the BE
+     * `/api/kb/mention-search?project_keys=...` with slug values.
+     * `projectLabel` is the display string ("HR Portal") and is
+     * NOT a valid filter value; passing the label there scoped
+     * the mention search against a non-existent slug.
+     */
+    projectKey?: string | null;
     modelLabel?: string;
     onRequireConversation?: () => Promise<number | null>;
     /**
@@ -70,6 +79,7 @@ export interface ComposerProps {
 export function Composer({
     conversationId,
     projectLabel,
+    projectKey,
     modelLabel,
     onRequireConversation,
     availableProjects = [],
@@ -313,7 +323,7 @@ export function Composer({
                 {mentionQuery !== null && (
                     <MentionPopover
                         query={mentionQuery}
-                        projectKeys={projectLabel ? [projectLabel] : undefined}
+                        projectKeys={projectKey ? [projectKey] : undefined}
                         excludeIds={filters.doc_ids ?? []}
                         open={mentionQuery !== null}
                         onSelect={onMentionSelect}
