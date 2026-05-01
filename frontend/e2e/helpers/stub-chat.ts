@@ -170,14 +170,22 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
 
         postObserved = true;
 
-        // Streaming endpoint → emit SSE protocol per StreamChunk wire
-        // format (PLAN-W3 §6.1). The SDK parses each `data: {...}`
-        // line, accumulates the text-delta into the assistant
-        // message body, and surfaces the data-* parts to the
-        // adapter layer. Single-shot fulfill with the whole stream
-        // body works because the SDK's parser handles concatenated
-        // chunks in one response — the chat*.spec.ts tests don't
-        // assert on mid-stream timing, only the final DOM state.
+        // Streaming endpoint → emit SSE protocol in the SDK v6
+        // `UIMessageChunk` shape (start / text-start /
+        // text-delta(id+delta) / text-end / source-url / data-* /
+        // finish). NOTE: this differs from the W3.1 BE wire format
+        // (`MessageStreamController::store()`) which still emits
+        // the legacy `text-delta` with `textDelta` field + `source`
+        // discriminator + no envelope. Aligning the BE to the SDK
+        // shape is a follow-up PR (see PR #89's "Out of scope"
+        // section). The stub emits the SDK-canonical shape so the
+        // FE swap is testable end-to-end without waiting on the BE
+        // catch-up.
+        //
+        // Single-shot fulfill with the whole stream body works
+        // because the SDK's parser handles concatenated chunks in
+        // one response — chat*.spec.ts tests assert on the final
+        // DOM state, not on mid-stream timing.
         if (isStream) {
             const sseBody = buildSseStreamBody(options.assistant);
             await route.fulfill({

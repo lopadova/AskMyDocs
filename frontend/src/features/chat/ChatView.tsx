@@ -100,6 +100,14 @@ export function ChatView(): ReactNode {
             // (so the SDK's transient UIMessage gets swapped for the
             // BE-persisted AppMessage that carries metadata,
             // citations, and feedback rating).
+            // The closure captures `activeId` from the render that
+            // installed this `onFinish`. If the user navigates to a
+            // different conversation mid-stream, the captured value
+            // stays bound to the conversation the stream was FOR —
+            // which is exactly what we want to invalidate, since
+            // that's the cache whose persisted message just landed
+            // on the BE. Invalidating the user's CURRENT location
+            // would refetch the wrong conversation's messages.
             void qc.invalidateQueries({ queryKey: ['conversations'] });
             if (activeId !== null) {
                 void qc.invalidateQueries({ queryKey: ['messages', activeId] });
