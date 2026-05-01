@@ -180,13 +180,31 @@ export function ChatView(): ReactNode {
     const sendMessageRef = useRef(chat.sendMessage);
     sendMessageRef.current = chat.sendMessage;
 
+    // Settle ref for the queued first-message Promise. handleSend
+    // resolves only when the underlying chat.sendMessage settles, so
+    // Composer's try/catch can restore the draft on rejection.
+    // Without this chain, the queued send's rejection is `void`d
+    // inside the effect and the Composer sees an immediate resolve
+    // (incorrect — the user thinks the send succeeded).
+    const pendingSettleRef = useRef<((result: { error?: Error }) => void) | null>(null);
+
     useEffect(() => {
         if (pendingSend !== null && activeId !== null) {
             // Clear FIRST so a re-entry during the awaited dispatch
             // doesn't see the old pending value.
             const text = pendingSend;
+            const settle = pendingSettleRef.current;
             setPendingSend(null);
-            void sendMessageRef.current({ text });
+            sendMessageRef.current({ text })
+                .then(() => settle?.({}))
+                .catch((err: unknown) => {
+                    settle?.({
+                        error: err instanceof Error ? err : new Error(String(err)),
+                    });
+                })
+                .finally(() => {
+                    pendingSettleRef.current = null;
+                });
         }
     }, [pendingSend, activeId]);
 
@@ -196,8 +214,17 @@ export function ChatView(): ReactNode {
             return;
         }
         // First message on a brand-new chat — queue and let the
-        // useEffect dispatch once activeId propagates.
-        setPendingSend(content);
+        // useEffect dispatch once activeId propagates. Chain the
+        // queued dispatch's settle through `pendingSettleRef` so
+        // this Promise mirrors the underlying chat.sendMessage
+        // result; rejection bubbles up to Composer's try/catch.
+        const result = await new Promise<{ error?: Error }>((resolve) => {
+            pendingSettleRef.current = resolve;
+            setPendingSend(content);
+        });
+        if (result.error) {
+            throw result.error;
+        }
     };
 
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';

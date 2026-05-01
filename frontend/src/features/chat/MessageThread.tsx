@@ -71,12 +71,23 @@ export function MessageThread({
         0,
     );
 
+    const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
+
     useEffect(() => {
+        // Scroll behavior matches the user's expectation in each
+        // phase: during streaming, the assistant body grows
+        // token-by-token and EVERY delta would queue a fresh smooth
+        // scroll → continuous interrupted animation on fast streams
+        // (the browser cancels each smooth scroll mid-flight when
+        // the next one starts). Use `'auto'` (instant) during the
+        // streaming window so the bottom-pinning is steady, then
+        // fall back to `'smooth'` for the final settle on
+        // status='ready' / new turn arrival.
         threadRef.current?.scrollTo({
             top: threadRef.current.scrollHeight,
-            behavior: 'smooth',
+            behavior: isStreaming ? 'auto' : 'smooth',
         });
-    }, [messages.length, sdkStatus, totalTextLength]);
+    }, [messages.length, sdkStatus, totalTextLength, isStreaming]);
 
     const state = mapStatusToDataState({
         conversationId,
@@ -85,8 +96,6 @@ export function MessageThread({
         messageCount: messages.length,
         sdkStatus,
     });
-
-    const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
 
     return (
         <section
