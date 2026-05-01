@@ -29,7 +29,7 @@ The current state of practice for software IP is manually compiled spreadsheets 
 
 ### 1.1 Dogfooding angle
 
-Lorenzo (Padosoft ditta individuale) is filing for the Italian Patent Box on the AskMyDocs IP — `lopadova/askmydocs` (CE) and the v4.0 work on `feature/v4.0` plus the sister Padosoft Apache packages (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, `padosoft/eval-harness`, `padosoft/laravel-pii-redactor`, `padosoft/patent-box-tracker` itself). The package ships in W4 SO THAT the W5–W8 work it tracks is captured from day 1 — and the W2–W3 work that already happened is reconstructed from `feature/v4.0` history at the same time.
+Lorenzo (Padosoft ditta individuale) is filing for the Italian Patent Box on the AskMyDocs IP — `lopadova/askmydocs` (CE) and the v4.0 work on `feature/v4.0` plus the sister Padosoft Apache packages (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, `padosoft/eval-harness`, `padosoft/laravel-pii-redactor`, `padosoft/laravel-patent-box-tracker` itself). The package ships in W4 SO THAT the W5–W8 work it tracks is captured from day 1 — and the W2–W3 work that already happened is reconstructed from `feature/v4.0` history at the same time.
 
 ### 1.2 Community angle
 

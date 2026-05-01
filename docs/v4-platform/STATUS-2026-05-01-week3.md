@@ -9,7 +9,7 @@ The W3 design doc — `docs/v4-platform/PLAN-W3-vercel-chat-migration.md` — lo
 | Sub-task | PR | Merge SHA on `feature/v4.0` | Outcome |
 |---|---|---|---|
 | W3.0 — design doc + W2 closure | #86 | `0db114e` | Design doc landed; five decision points (§4.4/§7/§8) ratified; sub-branch reservation for W3.1 / W3.2 / W3.3 |
-| W3.1 — backend SSE streaming endpoint | #87 | `8aa8cee` | `POST /conversations/{id}/messages/stream` live; per-provider streaming adapter with single-chunk fallback; PHPUnit `MessageStreamControllerTest` 8 scenarios green; recorded SSE fixture for byte-for-byte protocol-drift assertion |
+| W3.1 — backend SSE streaming endpoint | #87 | `8aa8cee` | `POST /conversations/{conversation}/messages/stream` live; per-provider streaming adapter with single-chunk fallback; PHPUnit `MessageStreamControllerTest` 8 scenarios green; inline SSE wire-format stability assertion in `MessageStreamControllerTest::test_8_sse_wire_format_is_stable_under_sdk_v6_envelope` |
 | W3.2 — Vercel AI SDK chat foundation | #88 | `948ef9c` | `useChatStream()` hook + transport + message-shape adapters + scaffolded test surface; `mapStatusToDataState()` helper landed with the unit test from `PLAN-W3` §7.1; existing `chat*.spec.ts` untouched |
 | W3.2 — atomic chat swap onto `useChatStream()` | #89 | `dd8ca5c` | `ChatView` + `MessageThread` + `Composer` + `MessageBubble` migrated in a single atomic commit; `use-chat-mutation.ts` deleted; 60+ testids preserved; pixel-level `toHaveScreenshot` snapshots committed across 15 representative states |
 | W3.3 — BE wire format catch-up | #90 | `ee82ef9` | `StreamChunk` + `FallbackStreaming` + `MessageStreamController` realigned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained to the SDK union via `normalizeFinishReason()`) |
@@ -22,7 +22,7 @@ The W3 design doc — `docs/v4-platform/PLAN-W3-vercel-chat-migration.md` — lo
   - PR #88 (W3.2 foundation): **9 cycles**
   - PR #89 (W3.2 atomic swap): **13 cycles** — the highest single-PR cycle count in v4.0 to date, driven by the swap surface (4 components + adapter layer + 15 visual snapshots all interacting)
   - PR #90 (W3.3 wire format): **3 cycles**
-- Pre-migration baseline (Lighthouse `/app/chat`, Vitest snapshots, Playwright HTML report) recorded under `tests/baseline/W3-pre-migration/` before W3.2 started; post-migration INP / TTI / CLS within ±5% on every measurement
+- Pre-migration baseline (Lighthouse `/app/chat`, Vitest snapshots, Playwright HTML report) captured before W3.2 started — kept as CI artifacts / local archive, not committed under this repo; post-migration INP / TTI / CLS within ±5% on every measurement
 - All architecture tests still pass (R30/R31 tenant isolation, R32 memory privacy, R34/R35 KB / canonical invariants)
 - The four pre-existing chat suites — `chat.spec.ts`, `chat-filters.spec.ts`, `chat-mention.spec.ts`, `chat-refusal.spec.ts` — stayed BYTE-IDENTICAL post-swap (helper-extraction commit `frontend/e2e/helpers/stub-chat.ts` from W3.2 foundation absorbed every wire change in one place; `git diff --stat origin/feature/v4.0...HEAD -- <four files>` showed 0 lines)
 - Six new `chat-stream*.spec.ts` files added per `PLAN-W3` §7.3, covering streaming UX, refusal as `data-refusal` part, citation `source` parts arriving before text, filters / mentions / presets round-trip during streaming
