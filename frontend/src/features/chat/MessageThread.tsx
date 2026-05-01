@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
 import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
@@ -66,14 +66,16 @@ export function MessageThread({
     // extraction to the `getTextContent` adapter (which handles both
     // AppMessage and UIMessage shapes correctly) and sum the lengths.
     //
-    // Memoized: token-by-token streaming triggers many renders/sec,
-    // and the reduce is O(messageCount × parts.length). Memoizing on
-    // `messages` keeps it O(1) for renders that don't actually change
-    // the array reference (the SDK mutates messages by reference on
-    // each delta, so the memo invalidates correctly when text grows).
-    const totalTextLength = useMemo(
-        () => messages.reduce((acc, m) => acc + getTextContent(m).length, 0),
-        [messages],
+    // Computed inline (no useMemo) on purpose: the SDK's internal
+    // state-update strategy isn't part of its public contract, so a
+    // memo keyed on the `messages` reference could go stale if the
+    // SDK ever mutates in place. The reduce is O(messageCount ×
+    // parts) which is trivial for typical chat threads (≤100
+    // messages, ≤1ms per render); the useEffect below depends on
+    // the resulting scalar so it always detects growth correctly.
+    const totalTextLength = messages.reduce(
+        (acc, m) => acc + getTextContent(m).length,
+        0,
     );
 
     const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
