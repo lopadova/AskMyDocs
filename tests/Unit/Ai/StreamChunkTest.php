@@ -196,7 +196,8 @@ class StreamChunkTest extends TestCase
     public function test_normalize_finish_reason_maps_provider_vocabularies_to_sdk_union(
         ?string $providerReason,
         string $expected,
-    ): void {
+    ): void
+    {
         $this->assertSame($expected, StreamChunk::normalizeFinishReason($providerReason));
     }
 
