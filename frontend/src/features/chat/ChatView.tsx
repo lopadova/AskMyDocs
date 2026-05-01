@@ -133,14 +133,45 @@ export function ChatView(): ReactNode {
         }
     };
 
+    // Deferred-send queue. When the user sends the first message on
+    // a brand-new chat (activeId === null), Composer's send() awaits
+    // `onRequireConversation()` which calls `setActive(newId)`. That
+    // state change is async — the resulting re-render hasn't
+    // propagated by the time the await resumes, so a direct
+    // `chat.sendMessage()` call would post against the OLD (id=null)
+    // useChatStream instance whose transport URL is
+    // `/conversations/0/messages/stream` and whose internal state
+    // map is keyed under `id='pending'`. The user's message would
+    // land in an orphaned SDK state while MessageThread reads from
+    // the freshly-rebuilt `id='conv-N'` state map (empty) → silent
+    // disappearance.
+    //
+    // Fix: queue the send via state. The useEffect below fires AFTER
+    // React has propagated the conversationId update (and the
+    // useChatStream hook has rebuilt with the new id + transport),
+    // so `chat.sendMessage` runs against the CURRENT chat instance
+    // and the message lands in the rendered state map.
+    //
+    // For the conversationId-already-set path (subsequent messages
+    // in an existing thread), we send synchronously — no queue
+    // round-trip needed.
+    const [pendingSend, setPendingSend] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (pendingSend !== null && activeId !== null) {
+            void chat.sendMessage({ text: pendingSend });
+            setPendingSend(null);
+        }
+    }, [pendingSend, activeId, chat]);
+
     const handleSend = async (content: string): Promise<void> => {
-        // The SDK's sendMessage signature accepts `{ text }` and routes
-        // through our DefaultChatTransport's prepareSendMessagesRequest
-        // which reshapes to `{ content, filters }`. Filters are read
-        // from the ChatView state at request-build time via the
-        // filtersRef inside useChatStream — i.e. the LATEST value, not
-        // the snapshot at hook-mount time.
-        await chat.sendMessage({ text: content });
+        if (activeId !== null) {
+            await chat.sendMessage({ text: content });
+            return;
+        }
+        // First message on a brand-new chat — queue and let the
+        // useEffect dispatch once activeId propagates.
+        setPendingSend(content);
     };
 
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
