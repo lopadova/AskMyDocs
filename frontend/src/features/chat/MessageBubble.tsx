@@ -162,13 +162,14 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                         <MessageActions content={textContent} />
                         {/*
                           * FeedbackButtons posts to
-                          * /conversations/{conv}/messages/{id}/rating which requires
-                          * a numeric persisted id. SDK UIMessage carries a string
-                          * id during the brief window between stream-finish and
-                          * the TanStack invalidation that swaps the cached
+                          * /conversations/{conv}/messages/{id}/feedback (see
+                          * `chatApi.rateMessage()`) which requires a numeric
+                          * persisted id. SDK UIMessage carries a string id
+                          * during the window between stream-finish and the
+                          * TanStack invalidation that swaps the cached
                           * UIMessage for the persisted AppMessage. Hide the
-                          * buttons in that transient state — they reappear once
-                          * the refetch lands the canonical row.
+                          * buttons in that transient state — they reappear
+                          * once the refetch lands the canonical row.
                           */}
                         {typeof messageId === 'number' && !isUiMessage(message) && (
                             <FeedbackButtons

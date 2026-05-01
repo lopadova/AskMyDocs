@@ -88,6 +88,15 @@ export function Composer({
     const clearDraft = useChatStore((s) => s.clearDraft);
     const [focused, setFocused] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
+    // Re-entrancy guard for the submit action itself. `isStreaming`
+    // catches the SDK's stream-in-flight state, but there's a brief
+    // window between `send()`'s entry and the SDK setting status to
+    // 'submitted' (especially on the FIRST message where we await
+    // onRequireConversation first). Without this ref a fast
+    // double-click / double-Enter would queue two POSTs back-to-back
+    // before isStreaming flips. Ref (not state) so we don't trigger
+    // an extra render when toggling.
+    const isSubmittingRef = useRef(false);
     // T2.8 — @mention popover state. `mentionQuery` is the chars after
     // the most recent unmatched `@` (truncated to next whitespace). It
     // drives use-mention-search via MentionPopover. `mentionAnchor` is
@@ -102,39 +111,46 @@ export function Composer({
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
 
     const send = async () => {
+        // Re-entrancy + concurrency guard. `isStreaming` catches the
+        // mid-stream window; `isSubmittingRef` catches the brief
+        // pre-stream window (between submit and the SDK's status
+        // transition to 'submitted'). Together they reject every
+        // double-fire path — Enter spam, click spam, programmatic
+        // form-submit + Enter combo.
+        if (isStreaming || isSubmittingRef.current) {
+            return;
+        }
         const trimmed = draft.trim();
         if (!trimmed) {
             setLocalError('Message is required.');
             return;
         }
-        // Block concurrent sends while a stream is in flight. Even
-        // though the UI morphs Send → Stop, the user can still
-        // submit via Enter; without this guard a second send queues
-        // up and the SDK's transport may emit two POSTs back-to-back.
-        if (isStreaming) {
-            return;
-        }
-        let targetId = conversationId;
-        if (targetId === null && onRequireConversation) {
-            targetId = await onRequireConversation();
-        }
-        if (targetId === null) {
-            setLocalError('Could not start a new conversation.');
-            return;
-        }
-        setLocalError(null);
-        const content = trimmed;
-        clearDraft();
+        isSubmittingRef.current = true;
         try {
-            await onSend(content);
-        } catch (err) {
-            // Restore the draft so the user doesn't lose their typed
-            // message on transport / 419 / network failure. The error
-            // surface (chat-composer-error) renders via the `error`
-            // prop from `useChatStream().error` set by the SDK; this
-            // path only restores the COMPOSER's local state.
-            setDraft(content);
-            setLocalError(err instanceof Error ? err.message : 'Failed to send message.');
+            let targetId = conversationId;
+            if (targetId === null && onRequireConversation) {
+                targetId = await onRequireConversation();
+            }
+            if (targetId === null) {
+                setLocalError('Could not start a new conversation.');
+                return;
+            }
+            setLocalError(null);
+            const content = trimmed;
+            clearDraft();
+            try {
+                await onSend(content);
+            } catch (err) {
+                // Restore the draft so the user doesn't lose their typed
+                // message on transport / 419 / network failure. The error
+                // surface (chat-composer-error) renders via the `error`
+                // prop from `useChatStream().error` set by the SDK; this
+                // path only restores the COMPOSER's local state.
+                setDraft(content);
+                setLocalError(err instanceof Error ? err.message : 'Failed to send message.');
+            }
+        } finally {
+            isSubmittingRef.current = false;
         }
     };
 
@@ -274,6 +290,7 @@ export function Composer({
                     aria-controls={mentionQuery !== null ? 'mention-popover' : undefined}
                     ref={textareaRef}
                     value={draft}
+                    disabled={isStreaming}
                     onChange={onChange}
                     onFocus={() => setFocused(true)}
                     onBlur={() => setFocused(false)}
@@ -316,7 +333,9 @@ export function Composer({
                     >
                         <Icon.Plus size={13} />
                     </button>
-                    <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                    {!isStreaming && (
+                        <VoiceInput onTranscript={(t) => appendToDraft((draft ? ' ' : '') + t)} />
+                    )}
                     <span style={{ flex: 1 }} />
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
