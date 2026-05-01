@@ -604,11 +604,14 @@ describe('getRefusalBody', () => {
 
     it('reads body from data-refusal flat-shape fallback', () => {
         // BE wire format may surface body at the part's top level
-        // before the SDK normalizes; the helper handles both.
+        // before the SDK normalizes; the helper handles both. The
+        // part needs a `reason` field too — the helper now defers
+        // the "is this a refusal?" decision to `getRefusalReason`,
+        // which requires a non-empty reason.
         const m: UIMessage = {
             id: '7',
             role: 'assistant',
-            parts: [{ type: 'data-refusal', body: 'Flat-shape body' } as never],
+            parts: [{ type: 'data-refusal', reason: 'no_relevant_context', body: 'Flat-shape body' } as never],
         };
         expect(getRefusalBody(m)).toBe('Flat-shape body');
     });
@@ -620,5 +623,28 @@ describe('getRefusalBody', () => {
             parts: [{ type: 'text', text: 'A grounded answer' }],
         };
         expect(getRefusalBody(m)).toBeNull();
+    });
+
+    it('returns null for empty/whitespace refusal_reason — consistent with getRefusalReason', () => {
+        // The two helpers share the same "is this a refusal?"
+        // decision. Empty/whitespace refusal_reason coerces to null
+        // in getRefusalReason; getRefusalBody must agree so a stale
+        // row with refusal_reason='' doesn't render content as if
+        // it were a refusal body.
+        const empty = appMsg({
+            role: 'assistant',
+            content: 'Should not render as refusal',
+            refusal_reason: '' as unknown as string,
+        });
+        const whitespace = appMsg({
+            role: 'assistant',
+            content: 'Should not render as refusal',
+            refusal_reason: '   ' as unknown as string,
+        });
+        expect(getRefusalBody(empty)).toBeNull();
+        expect(getRefusalBody(whitespace)).toBeNull();
+        // Sanity-check the contract pairing: getRefusalReason agrees.
+        expect(getRefusalReason(empty)).toBeNull();
+        expect(getRefusalReason(whitespace)).toBeNull();
     });
 });

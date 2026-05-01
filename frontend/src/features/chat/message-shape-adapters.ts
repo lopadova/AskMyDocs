@@ -337,10 +337,19 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
  * message isn't a refusal — callers should compute both together.
  */
 export function getRefusalBody(m: RenderableMessage): string | null {
+    // Defer to `getRefusalReason` for the "is this a refusal?"
+    // decision so the two helpers stay consistent: empty/whitespace
+    // refusal_reason strings coerce to null in both. Without this
+    // shared decision, an AppMessage with `refusal_reason: ''` (or
+    // whitespace) would have `getRefusalReason() === null` (via
+    // `coerceRefusalReason`'s trim+length check) but
+    // `getRefusalBody()` would return `m.content` because the
+    // earlier `!= null` check accepts empty strings.
+    if (getRefusalReason(m) === null) {
+        return null;
+    }
     if (!isUiMessage(m)) {
-        return m.refusal_reason != null || m.metadata?.refusal_reason != null
-            ? (m.content ?? null)
-            : null;
+        return m.content ?? null;
     }
     for (const part of m.parts) {
         if (part.type !== 'data-refusal') {
