@@ -7,17 +7,27 @@ import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
 import { FeedbackButtons } from './FeedbackButtons';
-import type { Message } from './chat.api';
 import {
     getCitations,
     getConfidence,
+    getMessageId,
     getReasoningSteps,
     getRefusalReason,
+    getTextContent,
+    isUiMessage,
+    type RenderableMessage,
 } from './message-shape-adapters';
 
 export interface MessageBubbleProps {
     conversationId: number;
-    message: Message;
+    /**
+     * Accepts BOTH the legacy AppMessage (TanStack cache + persisted
+     * server row) AND the SDK UIMessage (delivered by useChat() over
+     * the W3.1 SSE endpoint). All renderer reads go through the
+     * adapter functions so the DOM contract stays byte-identical
+     * between the two shapes.
+     */
+    message: RenderableMessage;
     projectKey?: string | null;
     streaming?: boolean;
 }
@@ -46,11 +56,13 @@ export interface MessageBubbleProps {
 export function MessageBubble({ conversationId, message, projectKey, streaming = false }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
+    const messageId = getMessageId(message);
+    const textContent = getTextContent(message);
 
     if (isUser) {
         return (
             <div
-                data-testid={`chat-message-${message.id}`}
+                data-testid={`chat-message-${messageId}`}
                 data-role="user"
                 className="popin"
                 style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}
@@ -68,17 +80,21 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                         whiteSpace: 'pre-wrap',
                     }}
                 >
-                    {message.content}
+                    {textContent}
                 </div>
             </div>
         );
     }
 
-    // `meta` still carries the provider-meta tail (model, latency,
-    // token count) used in the action-row footer. Citations / refusal
-    // / confidence reads go through the adapters so the same component
-    // works for both AppMessage and UIMessage shapes.
-    const meta = message.metadata ?? {};
+    // `meta` carries the provider-meta tail (model, latency, token
+    // count) used in the action-row footer. The legacy AppMessage
+    // exposes this on `metadata`; the SDK UIMessage's `metadata` slot
+    // has different semantics (generic typed metadata, not the
+    // AskMyDocs MessageMetadata shape) so we read it ONLY for the
+    // legacy branch. The streaming flow renders without provider meta
+    // until the BE persists the message and TanStack invalidates →
+    // refetches the legacy shape.
+    const meta = isUiMessage(message) ? {} : (message.metadata ?? {});
     const citations = getCitations(message);
 
     // T3.5 — confidence + refusal_reason live at BOTH the top level
@@ -92,7 +108,7 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
 
     return (
         <div
-            data-testid={`chat-message-${message.id}`}
+            data-testid={`chat-message-${messageId}`}
             data-role="assistant"
             data-refusal-reason={refusalReason ?? ''}
             className="popin"
@@ -115,13 +131,13 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
                 {isRefusal ? (
-                    <RefusalNotice body={message.content} reason={refusalReason ?? 'unknown'} />
+                    <RefusalNotice body={textContent} reason={refusalReason ?? 'unknown'} />
                 ) : (
                     <div
-                        data-testid={`chat-message-${message.id}-body`}
+                        data-testid={`chat-message-${messageId}-body`}
                         style={{ fontSize: 13.5, color: 'var(--fg-1)' }}
                     >
-                        <Markdown source={message.content} project={projectKey ?? undefined} />
+                        <Markdown source={textContent} project={projectKey ?? undefined} />
                         {streaming && <span className="caret" />}
                     </div>
                 )}
@@ -136,12 +152,24 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                 )}
                 {!streaming && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>
-                        <MessageActions content={message.content} />
-                        <FeedbackButtons
-                            conversationId={conversationId}
-                            messageId={message.id}
-                            initialRating={message.rating}
-                        />
+                        <MessageActions content={textContent} />
+                        {/*
+                          * FeedbackButtons posts to
+                          * /conversations/{conv}/messages/{id}/rating which requires
+                          * a numeric persisted id. SDK UIMessage carries a string
+                          * id during the brief window between stream-finish and
+                          * the TanStack invalidation that swaps the cached
+                          * UIMessage for the persisted AppMessage. Hide the
+                          * buttons in that transient state — they reappear once
+                          * the refetch lands the canonical row.
+                          */}
+                        {typeof messageId === 'number' && !isUiMessage(message) && (
+                            <FeedbackButtons
+                                conversationId={conversationId}
+                                messageId={messageId}
+                                initialRating={message.rating}
+                            />
+                        )}
                         <span style={{ flex: 1 }} />
                         {/*
                           * T3.6 — confidence badge to the right of

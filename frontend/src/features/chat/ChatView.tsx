@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ConversationList } from './ConversationList';
 import { MessageThread } from './MessageThread';
 import { Composer } from './Composer';
-import { chatApi, type Conversation } from './chat.api';
+import { chatApi, type Conversation, type FilterState, type Message as AppMessage } from './chat.api';
 import { useChatStore } from './chat.store';
 import { PROJECTS } from '../../lib/seed';
 import { Icon } from '../../components/Icons';
-import { useChatMutation } from './use-chat-mutation';
+import { useChatStream } from './use-chat-stream';
+import type { RenderableMessage } from './message-shape-adapters';
 
 /**
  * Chat feature root. Three columns:
@@ -18,6 +19,19 @@ import { useChatMutation } from './use-chat-mutation';
  *
  * The route `/app/chat/:conversationId?` drives the active conversation;
  * navigating programmatically updates the URL via TanStack Router.
+ *
+ * v4.0/W3.2: ChatView owns the SDK streaming hook (`useChatStream`)
+ * and threads its outputs (messages, status, error, sendMessage, stop)
+ * down to MessageThread + Composer. The legacy `useChatMutation` flow
+ * is gone — the SDK manages optimistic placeholder, streaming text
+ * accretion, and stream lifecycle. Initial conversation history still
+ * comes from a TanStack Query GET (the SDK doesn't fetch history
+ * itself); the result seeds `useChatStream`'s `initialMessages` so
+ * thread navigation back-and-forth doesn't lose prior turns.
+ *
+ * Filters are lifted from Composer-local state to ChatView so the
+ * streaming hook can read them when building each turn's request body
+ * (see `useChatStream`'s `prepareSendMessagesRequest`).
  */
 export function ChatView(): ReactNode {
     const navigate = useNavigate();
@@ -25,7 +39,6 @@ export function ChatView(): ReactNode {
     const qc = useQueryClient();
     const activeId = useChatStore((s) => s.activeConversationId);
     const setActive = useChatStore((s) => s.setActiveConversation);
-    const mutationStatus = useChatMutation();
 
     // Sync URL param → store. The URL is the source of truth (R11 §5).
     //
@@ -46,6 +59,53 @@ export function ChatView(): ReactNode {
     const projectKey = project?.key ?? null;
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
+
+    // v4.0/W3.2: filters lifted from Composer to ChatView so the
+    // streaming hook can read them when building each turn's
+    // request body. Composer is now a controlled component for
+    // filters via `filters` + `onFiltersChange` props.
+    const [filters, setFilters] = useState<FilterState>({});
+
+    // Initial message history. The SDK's `useChat()` doesn't fetch
+    // history from the BE — it only manages live state. This query
+    // pulls the persisted thread once per conversation; the result
+    // seeds `useChatStream`'s `initialMessages`. After mount the SDK
+    // takes over; we set staleTime to Infinity so a hot remount
+    // (e.g. tab focus) doesn't refetch and clobber the live SDK
+    // messages with a stale snapshot.
+    const initialQuery = useQuery<AppMessage[]>({
+        queryKey: ['messages', activeId ?? 'none'],
+        queryFn: () => {
+            if (activeId === null) {
+                return Promise.resolve<AppMessage[]>([]);
+            }
+            return chatApi.listMessages(activeId);
+        },
+        enabled: activeId !== null,
+        staleTime: Infinity,
+    });
+
+    const initialMessages = useMemo<AppMessage[] | undefined>(
+        () => initialQuery.data,
+        [initialQuery.data],
+    );
+
+    const chat = useChatStream({
+        conversationId: activeId,
+        filters,
+        initialMessages,
+        onFinish: () => {
+            // Refetch the conversations list (sidebar's recent activity
+            // ordering) and the messages list for THIS conversation
+            // (so the SDK's transient UIMessage gets swapped for the
+            // BE-persisted AppMessage that carries metadata,
+            // citations, and feedback rating).
+            void qc.invalidateQueries({ queryKey: ['conversations'] });
+            if (activeId !== null) {
+                void qc.invalidateQueries({ queryKey: ['messages', activeId] });
+            }
+        },
+    });
 
     const onSelect = (id: number | null) => {
         setActive(id);
@@ -73,16 +133,22 @@ export function ChatView(): ReactNode {
         }
     };
 
-    const thread = useMemo(
-        () => (
-            <MessageThread
-                conversationId={activeId}
-                projectKey={projectKey}
-                isSending={mutationStatus.isPending}
-            />
-        ),
-        [activeId, projectKey, mutationStatus.isPending],
-    );
+    const handleSend = async (content: string): Promise<void> => {
+        // The SDK's sendMessage signature accepts `{ text }` and routes
+        // through our DefaultChatTransport's prepareSendMessagesRequest
+        // which reshapes to `{ content, filters }`. Filters are read
+        // from the ChatView state at request-build time via the
+        // filtersRef inside useChatStream — i.e. the LATEST value, not
+        // the snapshot at hook-mount time.
+        await chat.sendMessage({ text: content });
+    };
+
+    const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
+
+    // The SDK returns `messages: UIMessage[]`. MessageThread accepts
+    // RenderableMessage[] (= AppMessage | UIMessage); the cast widens
+    // the array element type so both shapes flow through.
+    const threadMessages: RenderableMessage[] = chat.messages;
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
@@ -135,13 +201,26 @@ export function ChatView(): ReactNode {
                     </button>
                 </header>
 
-                {thread}
+                <MessageThread
+                    conversationId={activeId}
+                    projectKey={projectKey}
+                    messages={threadMessages}
+                    sdkStatus={chat.status}
+                    isLoadingHistory={initialQuery.isLoading}
+                    error={chat.error ?? (initialQuery.error as Error | null | undefined) ?? null}
+                />
 
                 <Composer
                     conversationId={activeId}
                     projectLabel={projectLabel}
                     modelLabel={headerMeta}
                     onRequireConversation={requireConversation}
+                    filters={filters}
+                    onFiltersChange={setFilters}
+                    onSend={handleSend}
+                    onStop={chat.stop}
+                    isStreaming={isStreaming}
+                    error={chat.error ?? null}
                 />
             </div>
         </div>

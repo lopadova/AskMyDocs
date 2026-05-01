@@ -3,8 +3,10 @@ import type { UIMessage } from 'ai';
 import {
     getCitations,
     getConfidence,
+    getMessageId,
     getReasoningSteps,
     getRefusalReason,
+    getTextContent,
     isUiMessage,
 } from './message-shape-adapters';
 import type { Message as AppMessage, MessageCitation } from './chat.api';
@@ -442,5 +444,105 @@ describe('mixed-shape integration', () => {
         expect(getCitations(m)[0].document_id).toBe(99);
         expect(getConfidence(m)).toBe(64);
         expect(getRefusalReason(m)).toBeNull();
+    });
+});
+
+describe('getTextContent', () => {
+    it('returns top-level content for AppMessage', () => {
+        expect(getTextContent({
+            id: 1,
+            role: 'user',
+            content: 'How does PTO work?',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe('How does PTO work?');
+    });
+
+    it('returns empty string when AppMessage has no content', () => {
+        expect(getTextContent({
+            id: 1,
+            role: 'assistant',
+            content: '',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe('');
+    });
+
+    it('joins all text parts in order for UIMessage', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'text', text: 'Hello, ' },
+                { type: 'text', text: 'world.' },
+            ],
+        };
+        expect(getTextContent(m)).toBe('Hello, world.');
+    });
+
+    it('skips non-text parts (source, reasoning, data) when joining', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'reasoning', text: 'Thinking…' } as never,
+                { type: 'text', text: 'According to the docs, ' },
+                { type: 'source', sourceId: 'doc-42', title: 'Policy', url: '/kb/42', origin: 'primary' } as never,
+                { type: 'text', text: 'PTO accrues monthly.' },
+            ],
+        };
+        expect(getTextContent(m)).toBe('According to the docs, PTO accrues monthly.');
+    });
+
+    it('returns empty string for UIMessage with no text parts', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                { type: 'reasoning', text: 'Hmm' } as never,
+            ],
+        };
+        expect(getTextContent(m)).toBe('');
+    });
+});
+
+describe('getMessageId', () => {
+    it('returns numeric id verbatim for AppMessage', () => {
+        expect(getMessageId({
+            id: 42,
+            role: 'user',
+            content: 'X',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe(42);
+    });
+
+    it('returns string id verbatim for UIMessage', () => {
+        const m: UIMessage = {
+            id: 'msg-abc-123',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'X' }],
+        };
+        expect(getMessageId(m)).toBe('msg-abc-123');
+    });
+
+    it('returns negative numeric id for optimistic AppMessage placeholders', () => {
+        // Optimistic placeholders in the legacy mutation flow used
+        // negative ids; we keep them so the test contract holds.
+        // (After the swap, the SDK manages the optimistic placeholder
+        // directly and AppMessage with negative ids no longer flows
+        // through MessageBubble — but the adapter must not silently
+        // mangle them either.)
+        expect(getMessageId({
+            id: -123,
+            role: 'user',
+            content: 'X',
+            metadata: null,
+            rating: null,
+            created_at: '2026-04-30T20:00:00Z',
+        } satisfies AppMessage)).toBe(-123);
     });
 });

@@ -2,7 +2,6 @@ import { useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode 
 import { Icon } from '../../components/Icons';
 import { FilterBar } from './FilterBar';
 import { MentionPopover } from './MentionPopover';
-import { useChatMutation } from './use-chat-mutation';
 import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
 import type { MentionResult } from './use-mention-search';
@@ -25,6 +24,38 @@ export interface ComposerProps {
     availableTags?: { slug: string; label: string; color?: string }[];
     /** Doc-id → title map for chip labels (mention pinning, T2.8 follow-up). */
     docLabels?: Record<number, string>;
+    /**
+     * v4.0/W3.2 — controlled filters. Lifted from Composer-local
+     * state to ChatView so the streaming hook can read the live
+     * value when it builds each turn's request body.
+     */
+    filters: FilterState;
+    onFiltersChange: (next: FilterState | ((prev: FilterState) => FilterState)) => void;
+    /**
+     * Send handler. ChatView wraps `useChatStream().sendMessage()`
+     * (with the conversation-creation flow if `conversationId` is
+     * null) and passes it through. Returns once the request is in
+     * flight; the streaming response surfaces via MessageThread's
+     * messages prop.
+     */
+    onSend: (content: string) => void | Promise<void>;
+    /**
+     * Stop the current stream mid-flight. Renders the
+     * `chat-composer-stop` button when `isStreaming` is true (the
+     * Send button morphs into Stop). Coming from
+     * `useChatStream().stop()`.
+     */
+    onStop?: () => void;
+    /**
+     * True while the SDK is mid-turn (`status === 'submitted' |
+     * 'streaming'`). Disables the textarea + flips Send → Stop.
+     */
+    isStreaming: boolean;
+    /**
+     * Surface from `useChatStream().error`. Renders the
+     * chat-composer-error inline when set.
+     */
+    error?: Error | null;
 }
 
 /**
@@ -44,6 +75,12 @@ export function Composer({
     availableProjects = [],
     availableTags = [],
     docLabels = {},
+    filters,
+    onFiltersChange,
+    onSend,
+    onStop,
+    isStreaming,
+    error,
 }: ComposerProps): ReactNode {
     const draft = useChatStore((s) => s.draft);
     const setDraft = useChatStore((s) => s.setDraft);
@@ -51,11 +88,6 @@ export function Composer({
     const clearDraft = useChatStore((s) => s.clearDraft);
     const [focused, setFocused] = useState(false);
     const [localError, setLocalError] = useState<string | null>(null);
-    // T2.7 — local filter state, owned by the composer. Persists across
-    // turns within the SAME composer mount so the user doesn't have to
-    // re-pick filters every time. Resetting on conversation change is
-    // a UX call we may revisit; for now keeping it simple.
-    const [filters, setFilters] = useState<FilterState>({});
     // T2.8 — @mention popover state. `mentionQuery` is the chars after
     // the most recent unmatched `@` (truncated to next whitespace). It
     // drives use-mention-search via MentionPopover. `mentionAnchor` is
@@ -68,7 +100,6 @@ export function Composer({
     // mention, so the FilterBar can show "Doc: HR Policy v2" instead of
     // "#42". Survives across turns inside the same composer mount.
     const [docLabelMap, setDocLabelMap] = useState<Record<number, string>>(docLabels);
-    const mutation = useChatMutation();
 
     const send = async () => {
         const trimmed = draft.trim();
@@ -87,7 +118,7 @@ export function Composer({
         setLocalError(null);
         const content = trimmed;
         clearDraft();
-        mutation.mutate({ conversationId: targetId, content, filters });
+        await onSend(content);
     };
 
     const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -147,7 +178,7 @@ export function Composer({
             setDraft(next);
         }
 
-        setFilters((prev) => {
+        onFiltersChange((prev) => {
             const existing = prev.doc_ids ?? [];
             if (existing.includes(doc.id)) {
                 return prev;
@@ -164,7 +195,7 @@ export function Composer({
         textareaRef.current?.focus();
     };
 
-    const serverError = mutation.isError ? (mutation.error?.message ?? 'Provider returned an error.') : null;
+    const serverError = error ? (error.message ?? 'Provider returned an error.') : null;
 
     return (
         <div style={{ padding: '12px 24px 18px' }}>
@@ -194,7 +225,7 @@ export function Composer({
                   */}
                 <FilterBar
                     filters={filters}
-                    onChange={setFilters}
+                    onChange={onFiltersChange}
                     availableProjects={availableProjects}
                     availableTags={availableTags}
                     docLabels={docLabelMap}
@@ -273,27 +304,51 @@ export function Composer({
                     <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
                         {draft.length > 0 ? `${draft.length} chars` : ''}
                     </span>
-                    <button
-                        type="submit"
-                        className="btn primary sm"
-                        data-testid="chat-composer-send"
-                        disabled={mutation.isPending}
-                        aria-busy={mutation.isPending}
-                        style={{ opacity: mutation.isPending ? 0.5 : 1 }}
-                    >
-                        <Icon.Send size={12} />
-                        Send
-                        <span
-                            className="kbd"
-                            style={{
-                                background: 'rgba(10,10,20,.2)',
-                                color: '#0a0a14',
-                                borderColor: 'rgba(10,10,20,.15)',
-                            }}
+                    {/*
+                      * v4.0/W3.2 — Send / Stop morph: while a stream
+                      * is in flight (`isStreaming`), render
+                      * `chat-composer-stop` instead of
+                      * `chat-composer-send` so the user can abort the
+                      * stream without remembering a keyboard shortcut.
+                      * The two buttons share the same primary slot so
+                      * the layout stays stable; the testid changes so
+                      * Playwright scenarios can target whichever is
+                      * relevant. The send button stays as a `submit`
+                      * button so Enter still works pre-stream;
+                      * `chat-composer-stop` is `type="button"` so it
+                      * doesn't accidentally fire form submit.
+                      */}
+                    {isStreaming ? (
+                        <button
+                            type="button"
+                            className="btn primary sm"
+                            data-testid="chat-composer-stop"
+                            onClick={() => onStop?.()}
+                            aria-label="Stop streaming"
                         >
-                            ⏎
-                        </span>
-                    </button>
+                            <Icon.Close size={12} />
+                            Stop
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            className="btn primary sm"
+                            data-testid="chat-composer-send"
+                        >
+                            <Icon.Send size={12} />
+                            Send
+                            <span
+                                className="kbd"
+                                style={{
+                                    background: 'rgba(10,10,20,.2)',
+                                    color: '#0a0a14',
+                                    borderColor: 'rgba(10,10,20,.15)',
+                                }}
+                            >
+                                ⏎
+                            </span>
+                        </button>
+                    )}
                 </div>
             </form>
             {localError && (

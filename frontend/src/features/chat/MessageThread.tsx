@@ -1,45 +1,79 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { chatApi, type Message } from './chat.api';
 import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
+import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
+import type { RenderableMessage } from './message-shape-adapters';
+import { getMessageId } from './message-shape-adapters';
 
 export interface MessageThreadProps {
     conversationId: number | null;
     projectKey?: string | null;
-    isSending?: boolean;
+    /**
+     * Messages to render. Owner (ChatView) calls `useChatStream()` and
+     * threads `chat.messages` here. Both legacy AppMessage (from the
+     * initial GET history fetch) and SDK UIMessage (live streaming
+     * shape) are accepted via the shape adapters in MessageBubble.
+     */
+    messages: RenderableMessage[];
+    /**
+     * SDK status from `useChatStream().status`. Drives the
+     * `data-state` attribute via `mapStatusToDataState()`.
+     */
+    sdkStatus?: SdkStatus;
+    /**
+     * Set when the initial GET /messages history fetch is in flight
+     * (TanStack Query). Maps to `data-state="loading"` BEFORE the SDK
+     * takes over the streaming lifecycle.
+     */
+    isLoadingHistory?: boolean;
+    /**
+     * Surface from `useChatStream().error` (or the initial-fetch
+     * error). Drives `data-state="error"` + chat-thread-error.
+     */
+    error?: Error | null;
 }
 
 /**
- * Scrollable message thread. Scrolls to the bottom whenever new
- * messages arrive. Empty state shows three suggested prompts so a
- * brand-new user has somewhere to start.
+ * Scrollable message thread. Auto-scrolls to the bottom whenever new
+ * messages arrive OR while a stream is in flight (the assistant
+ * bubble grows token-by-token so the user always sees the latest).
  *
  * R11: `data-state ∈ {idle, loading, ready, empty, error}` +
  * `aria-live="polite"` so screen readers announce new messages, and
- * `aria-busy` flips during send.
+ * `aria-busy` flips during streaming.
+ *
+ * v4.0/W3.2: dropped the local `useQuery(['messages'])`. ChatView
+ * owns the SDK hook and threads messages + status here. The internal
+ * `resolveState` helper is replaced by `mapStatusToDataState()` so
+ * the SDK's full status set (`submitted` | `streaming` | `ready` |
+ * `error`) maps to the existing `data-state` vocabulary.
  */
-export function MessageThread({ conversationId, projectKey, isSending = false }: MessageThreadProps): ReactNode {
+export function MessageThread({
+    conversationId,
+    projectKey,
+    messages,
+    sdkStatus,
+    isLoadingHistory = false,
+    error = null,
+}: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
-    const { data, isLoading, isError, error } = useQuery<Message[]>({
-        queryKey: ['messages', conversationId ?? 'none'],
-        queryFn: () => {
-            if (conversationId === null) {
-                return Promise.resolve<Message[]>([]);
-            }
-            return chatApi.listMessages(conversationId);
-        },
-        enabled: conversationId !== null,
-        staleTime: 0,
+    useEffect(() => {
+        threadRef.current?.scrollTo({
+            top: threadRef.current.scrollHeight,
+            behavior: 'smooth',
+        });
+    }, [messages.length, sdkStatus]);
+
+    const state = mapStatusToDataState({
+        conversationId,
+        isLoading: isLoadingHistory,
+        isError: error !== null,
+        messageCount: messages.length,
+        sdkStatus,
     });
 
-    useEffect(() => {
-        threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
-    }, [data?.length, isSending]);
-
-    const messages = data ?? [];
-    const state = resolveState({ conversationId, isLoading, isError, messageCount: messages.length });
+    const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
 
     return (
         <section
@@ -48,7 +82,7 @@ export function MessageThread({ conversationId, projectKey, isSending = false }:
             data-state={state}
             aria-label="Conversation messages"
             aria-live="polite"
-            aria-busy={isLoading || isSending}
+            aria-busy={isLoadingHistory || isStreaming}
             className="grid-bg"
             style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}
         >
@@ -56,55 +90,20 @@ export function MessageThread({ conversationId, projectKey, isSending = false }:
                 {state === 'empty' && <EmptyThread />}
                 {state === 'error' && (
                     <div data-testid="chat-thread-error" role="alert" style={errorStyle}>
-                        {(error as Error | undefined)?.message ?? 'Could not load messages.'}
+                        {error?.message ?? 'Could not load messages.'}
                     </div>
                 )}
                 {messages.map((m) => (
                     <MessageBubble
-                        key={m.id}
+                        key={getMessageId(m)}
                         conversationId={conversationId as number}
                         message={m}
                         projectKey={projectKey}
                     />
                 ))}
-                {isSending && (
-                    <MessageBubble
-                        conversationId={conversationId as number}
-                        message={{
-                            id: -1,
-                            role: 'assistant',
-                            content: '',
-                            metadata: null,
-                            rating: null,
-                            created_at: new Date().toISOString(),
-                        }}
-                        streaming
-                    />
-                )}
             </div>
         </section>
     );
-}
-
-function resolveState(args: {
-    conversationId: number | null;
-    isLoading: boolean;
-    isError: boolean;
-    messageCount: number;
-}): 'idle' | 'loading' | 'ready' | 'empty' | 'error' {
-    if (args.conversationId === null) {
-        return 'idle';
-    }
-    if (args.isLoading) {
-        return 'loading';
-    }
-    if (args.isError) {
-        return 'error';
-    }
-    if (args.messageCount === 0) {
-        return 'empty';
-    }
-    return 'ready';
 }
 
 const errorStyle = {

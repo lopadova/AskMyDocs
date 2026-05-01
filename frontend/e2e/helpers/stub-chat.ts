@@ -114,7 +114,22 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
     // between tests automatically).
     let postObserved = false;
 
-    await page.route('**/conversations/*/messages', async (route) => {
+    // The W3.2 swap commit moved the FE chat send from the
+    // synchronous JSON endpoint (`POST /conversations/{id}/messages`)
+    // to the SSE streaming endpoint (`POST /conversations/{id}/messages/stream`).
+    // The route pattern below intercepts BOTH so the existing
+    // chat*.spec.ts call sites (which still expect the synchronous
+    // shape) and the new chat-stream*.spec.ts (which exercise the
+    // SSE flow) share one helper.
+    //
+    // The stub responds to:
+    //   - GET  /conversations/*/messages       → JSON history list
+    //   - POST /conversations/*/messages/stream → SSE event stream
+    //   - POST /conversations/*/messages       → JSON (legacy fallback,
+    //     kept so any non-migrated component still gets a deterministic
+    //     reply during the cross-component transition)
+    await page.route('**/conversations/*/messages*', async (route) => {
+        const url = route.request().url();
         const method = route.request().method();
 
         if (method === 'GET') {
@@ -141,12 +156,113 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         }
 
         postObserved = true;
+
+        // Streaming endpoint → emit SSE protocol per StreamChunk wire
+        // format (PLAN-W3 §6.1). The SDK parses each `data: {...}`
+        // line, accumulates the text-delta into the assistant
+        // message body, and surfaces the data-* parts to the
+        // adapter layer. Single-shot fulfill with the whole stream
+        // body works because the SDK's parser handles concatenated
+        // chunks in one response — the chat*.spec.ts tests don't
+        // assert on mid-stream timing, only the final DOM state.
+        if (url.endsWith('/stream')) {
+            const sseBody = buildSseStreamBody(options.assistant);
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/event-stream',
+                body: sseBody,
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    Connection: 'keep-alive',
+                },
+            });
+            return;
+        }
+
+        // Synchronous endpoint → legacy JSON shape (untouched).
         await route.fulfill({
             status: 200,
             contentType: 'application/json',
             body: JSON.stringify(options.assistant),
         });
     });
+}
+
+/**
+ * Compose an SSE response body from a `StubChatMessage`. Mirrors the
+ * BE wire format produced by `MessageStreamController::store()` —
+ * citations emitted as `source` chunks BEFORE the body, then a
+ * single `text-delta` carrying the full assistant content (the
+ * stub doesn't fragment the text since the chat*.spec.ts tests
+ * don't assert on mid-stream sampling), then a `finish` chunk.
+ *
+ * The format is `data: {json}\n\n` per SSE framing, matching the
+ * BE's `StreamChunk::toSseFrame()`. The SDK's transport reader
+ * consumes these chunks and the FE adapters surface them.
+ */
+function buildSseStreamBody(assistant: StubChatMessage): string {
+    const lines: string[] = [];
+
+    // Source citations BEFORE text-delta (PLAN-W3 §6.1 invariant).
+    const meta = assistant.metadata as Record<string, unknown> | null;
+    const citations = (meta?.citations as Array<{
+        document_id?: number | null;
+        title?: string;
+        url?: string | null;
+    }> | undefined) ?? [];
+    for (const c of citations) {
+        const sourceId = c.document_id != null ? `doc-${c.document_id}` : 'doc-unknown';
+        lines.push(`data: ${JSON.stringify({
+            type: 'source',
+            sourceId,
+            title: c.title ?? 'Untitled',
+            url: c.url ?? null,
+            origin: 'primary',
+        })}\n\n`);
+    }
+
+    // Refusal payload (BE emits data-refusal + data-confidence
+    // BEFORE the assistant text on the refusal path, instead of
+    // text-delta + source chunks).
+    if (assistant.refusal_reason != null) {
+        lines.push(`data: ${JSON.stringify({
+            type: 'data-refusal',
+            reason: assistant.refusal_reason,
+            body: assistant.content,
+        })}\n\n`);
+        lines.push(`data: ${JSON.stringify({
+            type: 'data-confidence',
+            confidence: 0,
+            tier: 'refused',
+        })}\n\n`);
+    } else {
+        // Happy-path text delta + confidence.
+        lines.push(`data: ${JSON.stringify({
+            type: 'text-delta',
+            textDelta: assistant.content,
+        })}\n\n`);
+        if (typeof assistant.confidence === 'number') {
+            const tier = assistant.confidence >= 80
+                ? 'high'
+                : assistant.confidence >= 50
+                    ? 'moderate'
+                    : 'low';
+            lines.push(`data: ${JSON.stringify({
+                type: 'data-confidence',
+                confidence: assistant.confidence,
+                tier,
+            })}\n\n`);
+        }
+    }
+
+    // Terminal finish chunk (always last).
+    lines.push(`data: ${JSON.stringify({
+        type: 'finish',
+        finishReason: assistant.refusal_reason != null ? 'refusal' : 'stop',
+        usage: { promptTokens: null, completionTokens: null },
+    })}\n\n`);
+
+    return lines.join('');
 }
 
 /**

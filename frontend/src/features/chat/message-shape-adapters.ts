@@ -306,3 +306,41 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
     }
     return steps.length === 0 ? undefined : steps;
 }
+
+/**
+ * Extract the user-visible text content of a message. For `AppMessage`
+ * (legacy synchronous flow) this is the top-level `content` field.
+ * For `UIMessage` (SDK streaming flow) the SDK splits the body into
+ * `parts: UIMessagePart[]`; we join all `text` parts in order so the
+ * renderer sees a coherent string body.
+ *
+ * Used by `MessageBubble` after the swap commit lands the
+ * `useChatStream()` integration — the bubble must render the same
+ * string regardless of which shape lands in props.
+ */
+export function getTextContent(m: RenderableMessage): string {
+    if (!isUiMessage(m)) {
+        return m.content ?? '';
+    }
+    return m.parts
+        .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+        .map((p) => p.text)
+        .join('');
+}
+
+/**
+ * Return the message id verbatim. `AppMessage.id` is a number (BE
+ * persisted ids; optimistic placeholders use negative numbers), while
+ * `UIMessage.id` is a string (SDK convention). The renderer uses the
+ * id only for keys + the `chat-message-{id}` testid template — both
+ * uses tolerate either form because:
+ *   1. React's `key={id}` accepts string or number.
+ *   2. The testid template stringifies via template literals.
+ *
+ * Returning `string | number` keeps the typed surface honest; callers
+ * that need a stable string (e.g. the testid attribute) just use it
+ * inside a template literal.
+ */
+export function getMessageId(m: RenderableMessage): string | number {
+    return m.id;
+}
