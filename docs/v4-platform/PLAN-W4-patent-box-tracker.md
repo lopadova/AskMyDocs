@@ -441,13 +441,24 @@ An architecture test enforces these:
 ```php
 // tests/Architecture/StandaloneAgnosticTest.php
 test('package source code does not reference AskMyDocs symbols', function () {
-    $files = glob(__DIR__ . '/../../src/**/*.php');
-    foreach ($files as $f) {
-        $contents = file_get_contents($f);
+    $srcPath = __DIR__ . '/../../src';
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($srcPath, FilesystemIterator::SKIP_DOTS)
+    );
+
+    foreach ($iterator as $file) {
+        if (! $file->isFile() || $file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $contents = file_get_contents($file->getPathname());
         expect($contents)
             ->not->toContain('KnowledgeDocument')
             ->not->toContain('KbSearchService')
-            ->not->toContain('kb_documents')
+            ->not->toContain('knowledge_documents')
+            ->not->toContain('knowledge_chunks')
+            ->not->toContain('kb_nodes')
+            ->not->toContain('kb_edges')
             ->not->toContain('lopadova/askmydocs');
     }
 });

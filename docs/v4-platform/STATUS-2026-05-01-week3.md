@@ -12,7 +12,7 @@ The W3 design doc — `docs/v4-platform/PLAN-W3-vercel-chat-migration.md` — lo
 | W3.1 — backend SSE streaming endpoint | #87 | `8aa8cee` | `POST /conversations/{id}/messages/stream` live; per-provider streaming adapter with single-chunk fallback; PHPUnit `MessageStreamControllerTest` 8 scenarios green; recorded SSE fixture for byte-for-byte protocol-drift assertion |
 | W3.2 — Vercel AI SDK chat foundation | #88 | `948ef9c` | `useChatStream()` hook + transport + message-shape adapters + scaffolded test surface; `mapStatusToDataState()` helper landed with the unit test from `PLAN-W3` §7.1; existing `chat*.spec.ts` untouched |
 | W3.2 — atomic chat swap onto `useChatStream()` | #89 | `dd8ca5c` | `ChatView` + `MessageThread` + `Composer` + `MessageBubble` migrated in a single atomic commit; `use-chat-mutation.ts` deleted; 60+ testids preserved; pixel-level `toHaveScreenshot` snapshots committed across 15 representative states |
-| W3.3 — BE wire format catch-up | #90 | `ee82ef9` | `StreamChunk` + `FallbackStreaming` + `MessageStreamController` realigned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `dataConfidence` + `dataRefusal` nested under `data:{}`; `finish` constrained to the SDK union via `normalizeFinishReason()`) |
+| W3.3 — BE wire format catch-up | #90 | `ee82ef9` | `StreamChunk` + `FallbackStreaming` + `MessageStreamController` realigned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained to the SDK union via `normalizeFinishReason()`) |
 
 ## Acceptance gates passed
 
