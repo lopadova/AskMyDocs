@@ -316,6 +316,42 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
 }
 
 /**
+ * Extract the refusal body string from a refusal message. For
+ * AppMessage (legacy synchronous flow) the BE persists the localized
+ * refusal string as the message's top-level `content` field. For
+ * UIMessage (SDK streaming flow) the BE emits `data-refusal` with
+ * the body under `payload.body` and DOES NOT emit a `text-delta`
+ * chunk on the refusal path (see `StreamChunk::dataRefusal` —
+ * W3.1 design choice that keeps refusal payloads cleanly
+ * separable from grounded answers). Without this dedicated helper,
+ * `getTextContent(uiRefusal)` returns "" because there are no
+ * text parts to join, and `RefusalNotice` renders an empty body.
+ *
+ * Returns `null` when no refusal payload is present so the caller
+ * (MessageBubble) can guard cleanly. The `null` branch only fires
+ * when `getRefusalReason` would also return `null`, i.e. the
+ * message isn't a refusal — callers should compute both together.
+ */
+export function getRefusalBody(m: RenderableMessage): string | null {
+    if (!isUiMessage(m)) {
+        return m.refusal_reason != null || m.metadata?.refusal_reason != null
+            ? (m.content ?? null)
+            : null;
+    }
+    for (const part of m.parts) {
+        if (part.type !== 'data-refusal') {
+            continue;
+        }
+        const body = readDataPartField<unknown>(
+            part as unknown as { type: string; [key: string]: unknown },
+            'body',
+        );
+        return typeof body === 'string' ? body : null;
+    }
+    return null;
+}
+
+/**
  * Extract the user-visible text content of a message. For `AppMessage`
  * (legacy synchronous flow) this is the top-level `content` field.
  * For `UIMessage` (SDK streaming flow) the SDK splits the body into
@@ -325,6 +361,10 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
  * Used by `MessageBubble` after the swap commit lands the
  * `useChatStream()` integration — the bubble must render the same
  * string regardless of which shape lands in props.
+ *
+ * For refusal payloads the body lives in `data-refusal.body` not in
+ * text-delta chunks; callers that may render either should also
+ * call `getRefusalBody` and prefer its result when present.
  */
 export function getTextContent(m: RenderableMessage): string {
     if (!isUiMessage(m)) {

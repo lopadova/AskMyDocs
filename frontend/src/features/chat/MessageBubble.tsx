@@ -12,6 +12,7 @@ import {
     getConfidence,
     getMessageId,
     getReasoningSteps,
+    getRefusalBody,
     getRefusalReason,
     getTextContent,
     isUiMessage,
@@ -131,7 +132,13 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
                 {isRefusal ? (
-                    <RefusalNotice body={textContent} reason={refusalReason ?? 'unknown'} />
+                    // For UIMessage refusals, the body is in the
+                    // `data-refusal` payload (NO text-delta on the
+                    // refusal path per W3.1 BE design). For AppMessage
+                    // refusals, both `getRefusalBody` and `getTextContent`
+                    // resolve to the same `m.content`. Either way,
+                    // prefer the dedicated helper.
+                    <RefusalNotice body={getRefusalBody(message) ?? textContent} reason={refusalReason ?? 'unknown'} />
                 ) : (
                     <div
                         data-testid={`chat-message-${messageId}-body`}

@@ -5,6 +5,7 @@ import {
     getConfidence,
     getMessageId,
     getReasoningSteps,
+    getRefusalBody,
     getRefusalReason,
     getTextContent,
     isUiMessage,
@@ -549,5 +550,75 @@ describe('getMessageId', () => {
             rating: null,
             created_at: '2026-04-30T20:00:00Z',
         } satisfies AppMessage)).toBe(-123);
+    });
+});
+
+describe('getRefusalBody', () => {
+    it('returns content for AppMessage with top-level refusal_reason', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'No documents in the knowledge base match this question.',
+            refusal_reason: 'no_relevant_context',
+        });
+        expect(getRefusalBody(m)).toBe('No documents in the knowledge base match this question.');
+    });
+
+    it('returns content for AppMessage with refusal_reason inside metadata', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'AI cannot answer based on docs.',
+            metadata: {
+                provider: 'openai',
+                refusal_reason: 'llm_self_refusal',
+            },
+        });
+        expect(getRefusalBody(m)).toBe('AI cannot answer based on docs.');
+    });
+
+    it('returns null for AppMessage that is NOT a refusal (no refusal_reason)', () => {
+        const m = appMsg({
+            role: 'assistant',
+            content: 'Grounded answer body',
+            refusal_reason: null,
+            metadata: { provider: 'openai' },
+        });
+        expect(getRefusalBody(m)).toBeNull();
+    });
+
+    it('reads body from SDK data-refusal part (.data.body — normalized SDK shape)', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [
+                {
+                    type: 'data-refusal',
+                    data: {
+                        reason: 'no_relevant_context',
+                        body: 'No documents match.',
+                    },
+                } as never,
+            ],
+        };
+        expect(getRefusalBody(m)).toBe('No documents match.');
+    });
+
+    it('reads body from data-refusal flat-shape fallback', () => {
+        // BE wire format may surface body at the part's top level
+        // before the SDK normalizes; the helper handles both.
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [{ type: 'data-refusal', body: 'Flat-shape body' } as never],
+        };
+        expect(getRefusalBody(m)).toBe('Flat-shape body');
+    });
+
+    it('returns null for UIMessage with no data-refusal part', () => {
+        const m: UIMessage = {
+            id: '7',
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'A grounded answer' }],
+        };
+        expect(getRefusalBody(m)).toBeNull();
     });
 });
