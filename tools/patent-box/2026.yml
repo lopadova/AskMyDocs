@@ -2,7 +2,30 @@
 #
 # This file is a TEMPLATE config consumed by:
 #
-#   php artisan patent-box:cross-repo tools/patent-box/2026.yml
+#   php artisan patent-box:cross-repo path/to/2026.yml
+#
+# Where to run it from
+# --------------------
+#
+# `padosoft/laravel-patent-box-tracker` is intentionally decoupled from
+# AskMyDocs (per `feedback_packages_standalone_agnostic` — every
+# `padosoft/*` package is 100% standalone, AskMyDocs USES the packages,
+# never the reverse). AskMyDocs's own `composer.json` does NOT require
+# the tracker, so `php artisan patent-box:cross-repo` is NOT runnable
+# from an AskMyDocs checkout out-of-the-box.
+#
+# Run it instead from a Laravel project where the tracker is composer-
+# installed:
+#
+#   composer require padosoft/laravel-patent-box-tracker
+#   php artisan patent-box:cross-repo path/to/2026.yml
+#
+# Lorenzo's local layout: every Padosoft repo (askmydocs, laravel-ai-
+# regolo, laravel-flow, eval-harness, laravel-pii-redactor, laravel-
+# patent-box-tracker, …) is cloned under a single parent directory
+# (`/ABS/PATH/TO/<repo-name>`). The `path:` fields below use that pattern —
+# operators with a different local layout MUST adjust the absolute
+# paths to match their actual checkouts.
 #
 # Before running, the operator MUST adjust the following placeholder
 # values for the local environment:
@@ -11,9 +34,11 @@
 #      a real P.IVA. Replace with the actual Padosoft VAT number on
 #      the operator's machine (do NOT commit the real value back into
 #      the repo — keep this file checked in with the placeholder).
-#   2. `repositories[*].path` — the `./repos/<repo-name>` paths assume
-#      the operator clones every Padosoft repo into a single `./repos/`
-#      sibling directory. Adjust to the actual local layout.
+#   2. `repositories[*].path` — the `/ABS/PATH/TO/<repo-name>` paths assume
+#      the operator clones every Padosoft repo into the `/ABS/PATH/TO/`
+#      parent directory. Replace with the actual absolute paths on
+#      your machine (e.g. `/home/lorenzo/Code/askmydocs`,
+#      `C:/Users/<you>/Documents/.../askmydocs`, etc.).
 #   3. `ip_outputs[*].registration_id` / `application_id` — the SIAE
 #      registration IDs and UIBM patent application IDs are filed
 #      progressively during 2026; replace each `SIAE-2026-...` /
@@ -52,28 +77,35 @@ classifier:
   model: claude-sonnet-4-6
 
 repositories:
+  # IMPORTANT: every `path:` MUST be an absolute filesystem path that PHP
+  # can resolve directly — `~` is shell expansion and is NOT expanded by
+  # PHP / Symfony Filesystem calls. Replace each `/ABS/PATH/TO/<repo-name>`
+  # placeholder with your local checkout path (e.g.
+  # `/Users/lorenzo/Code/askmydocs` on macOS, `/home/lorenzo/Code/askmydocs`
+  # on Linux, `C:/Users/lorenzo/Code/askmydocs` on Windows).
+
   # ===== AskMyDocs — primary IP =====
-  - path: ./repos/askmydocs
+  - path: /ABS/PATH/TO/askmydocs
     role: primary_ip
 
   # ===== Padosoft Apache packages — supporting infrastructure =====
-  - path: ./repos/laravel-ai-regolo
+  - path: /ABS/PATH/TO/laravel-ai-regolo
     role: support
 
-  # TODO: pending W5 — laravel-flow v0.1 ships in week 5 of v4.0.
-  - path: ./repos/laravel-flow
+  # laravel-flow v0.1.0 shipped 2026-05-02 (W5 of v4.0).
+  - path: /ABS/PATH/TO/laravel-flow
     role: support
 
   # TODO: pending W6 — eval-harness v0.1 ships in week 6 of v4.0.
-  - path: ./repos/eval-harness
+  - path: /ABS/PATH/TO/eval-harness
     role: support
 
   # TODO: pending W7 — laravel-pii-redactor v0.1 ships in week 7 of v4.0.
-  - path: ./repos/laravel-pii-redactor
+  - path: /ABS/PATH/TO/laravel-pii-redactor
     role: support
 
   # ===== Meta — the tracker itself, dogfooded against its own history =====
-  - path: ./repos/laravel-patent-box-tracker
+  - path: /ABS/PATH/TO/laravel-patent-box-tracker
     role: meta_self
 
 manual_supplement:
