@@ -1009,17 +1009,22 @@ visible release-candidate tag. After each Wn closure on
 `feature/vX.Y` (every sub-task PR merged + CI green + closure status
 doc shipped under `docs/v4-platform/STATUS-{date}-week{N}.md`):
 
-1. Open a small docs PR refreshing **README.md** "Features at a glance"
-   + "Roadmap" sections to reflect what just shipped, plus the
-   **CHANGELOG.md** `[Unreleased]` block under a new
-   `## [vX.Y.0-rcN] - {date}` heading.
-2. After the docs PR merges, tag `vX.Y.0-rcN` on the integration
-   branch HEAD (NOT on `main` — main still hosts the previous stable
-   major):
+1. Open a small docs PR refreshing **`README.md`** — specifically the
+   `### Key Features` and `## Changelog` sections (AskMyDocs keeps the
+   changelog inline in the main README; there is no separate
+   `CHANGELOG.md` file). Add a new entry under `## Changelog` with the
+   `vX.Y.0-rcN` heading + bullet list of Wn deliverables, and refresh
+   `### Key Features` so the freshly-shipped capabilities surface above
+   the fold for prospective consumers.
+2. **Capture the closure-commit SHA before the docs PR merges**, then
+   tag at that exact SHA — never against the moving `feature/vX.Y` ref,
+   because another PR landing between `gh release create` and the docs
+   PR merge would silently shift the rc to the new HEAD:
    ```bash
+   CLOSURE_SHA=$(git rev-parse origin/feature/vX.Y)
    gh release create vX.Y.0-rcN \
      --repo lopadova/AskMyDocs \
-     --target feature/vX.Y \
+     --target "$CLOSURE_SHA" \
      --title "vX.Y.0-rcN — Wn milestone" \
      --prerelease \
      --notes "..."

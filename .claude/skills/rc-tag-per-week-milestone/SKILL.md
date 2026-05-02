@@ -1,6 +1,6 @@
 ---
 name: rc-tag-per-week-milestone
-description: At the end of every Wn weekly milestone on AskMyDocs `feature/vX.Y` (CI green + closure status doc shipped), tag `vX.Y.0-rcN` on the integration branch with a refreshed README + CHANGELOG. Final `vX.Y.0` GA fires only when the last Wn of the cycle closes (W8 for v4.0) and `feature/vX.Y` merges into `main` per R37. Trigger after merging the LAST sub-task PR of any Wn closure on AskMyDocs, or when the user asks "should we tag rc?" / "release candidate" / "milestone tag".
+description: At the end of every Wn weekly milestone on AskMyDocs `feature/vX.Y` (CI green + closure status doc shipped), tag `vX.Y.0-rcN` on the integration branch's exact closure-commit SHA with a refreshed README. Final `vX.Y.0` GA fires only when the last Wn of the cycle closes (W8 for v4.0) and `feature/vX.Y` merges into `main` per R37. Trigger after merging the LAST sub-task PR of any Wn closure on AskMyDocs, or when the user asks "should we tag rc?" / "release candidate" / "milestone tag".
 ---
 
 # RC tag per Wn milestone — MANDATORY at every closure
@@ -31,11 +31,10 @@ Then the next major (v4.1) cycle starts — same rule applies, rc1 after the fir
 
 | Pre-condition | How to verify |
 |---|---|
-| Every sub-task PR of Wn merged into `feature/vX.Y` | `gh pr list --repo lopadova/AskMyDocs --state open --base feature/vX.Y` returns empty |
+| Every sub-task PR of Wn **MERGED** into `feature/vX.Y` (not just closed) | `gh pr list --repo lopadova/AskMyDocs --state merged --base feature/vX.Y --search "milestone:Wn"` lists each expected sub-task; cross-check against the Wn closure status doc's "sub-tasks shipped" table. A sub-task PR closed without merge — easy to miss with a `--state open` check — must NOT count as shipped. |
 | CI green on integration HEAD | `gh run list --repo lopadova/AskMyDocs --branch feature/vX.Y --limit 1 --json conclusion --jq '.[0].conclusion'` returns `"success"` |
 | Closure status doc shipped | `git ls-tree origin/feature/vX.Y -- docs/v4-platform/STATUS-{date}-week{N}.md` returns the file |
-| README "Features at a glance" + "Roadmap" reflect the new milestone | Read sections + diff against the previous rc tag |
-| CHANGELOG.md has the Wn entries | grep for the Wn-related commits in `## [Unreleased]` |
+| `README.md` reflects the new milestone — AskMyDocs keeps an inline `## Changelog` and a `### Key Features` block in the main README (NO separate `CHANGELOG.md`); both must show the Wn deliverables | Read both sections + diff against the previous rc tag |
 
 If any check fails, ship the docs PR first; tag after merge.
 
@@ -48,32 +47,42 @@ cd "C:/Users/lopad/Documents/DocLore/Visual Basic/Ai/AskMyDocs"
 git checkout feature/vX.Y && git pull
 git checkout -b feature/vX.Y-Wn-rc-readme
 
-# Edit README.md — Features at a glance + Roadmap sections
-# Edit CHANGELOG.md — promote the [Unreleased] block to [vX.Y.0-rcN] - {date},
-# add a fresh empty [Unreleased] block above
+# Edit README.md — refresh `### Key Features` so the freshly-shipped
+# capabilities surface above the fold; add a new entry under
+# `## Changelog` with the `vX.Y.0-rcN — {date}` heading and a bullet
+# list of the Wn deliverables. AskMyDocs keeps its changelog inline
+# in README.md; there is NO separate CHANGELOG.md.
 
-git add README.md CHANGELOG.md
-git commit -m "docs(vX.Y/Wn): refresh README + CHANGELOG for vX.Y.0-rcN milestone"
+git add README.md
+git commit -m "docs(vX.Y/Wn): refresh README + inline changelog for vX.Y.0-rcN milestone"
 git push -u origin feature/vX.Y-Wn-rc-readme
 
 gh pr create --base feature/vX.Y --head feature/vX.Y-Wn-rc-readme \
   --reviewer copilot-pull-request-reviewer \
-  --title "docs(vX.Y/Wn): refresh README + CHANGELOG for vX.Y.0-rcN milestone" \
+  --title "docs(vX.Y/Wn): refresh README + inline changelog for vX.Y.0-rcN milestone" \
   --body "..."
 ```
 
 R36 loop applies — wait for CI green + Copilot 0 outstanding must-fix before merging.
 
-### 2. Tag the rc
+### 2. Tag the rc at the exact closure SHA
 
-After the docs PR merges:
+After the docs PR merges, capture the precise commit SHA at the
+closure point and tag against THAT, never against the moving branch
+ref. Resolving against the branch is race-prone: another PR landing
+between `gh release create` and the docs-PR merge would silently shift
+the rc to the new HEAD.
 
 ```bash
 git checkout feature/vX.Y && git pull
 
+# Pin the rc to the EXACT closure commit, not the moving branch ref.
+CLOSURE_SHA=$(git rev-parse origin/feature/vX.Y)
+echo "Tagging vX.Y.0-rcN at $CLOSURE_SHA"
+
 gh release create vX.Y.0-rcN \
   --repo lopadova/AskMyDocs \
-  --target feature/vX.Y \
+  --target "$CLOSURE_SHA" \
   --title "vX.Y.0-rcN — Wn milestone" \
   --prerelease \
   --notes "$(cat <<'EOF'
