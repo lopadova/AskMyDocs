@@ -23,10 +23,16 @@ return new class extends Migration {
         'knowledge_documents',
         'knowledge_chunks',
         // 'embedding_cache' is intentionally EXCLUDED — the cache is a
-        // cross-tenant reuse layer keyed by (text_hash, provider, model)
-        // and globally unique on text_hash. EmbeddingCacheService queries
-        // are NOT tenant-scoped on purpose; tenant_id here would create
-        // confusing "first-tenant-wins" ownership semantics. See PR #98
+        // cross-tenant reuse layer. The schema enforces UNIQUE on
+        // `text_hash` alone (see
+        // 0001_01_01_000006_create_embedding_cache_table.php).
+        // EmbeddingCacheService additionally filters by provider + model
+        // for retrieval (informational columns), so identical text under
+        // a different provider/model produces a cache miss; the supported
+        // way to evict stale entries when the embedding model changes is
+        // EmbeddingCacheService::flush($provider). tenant_id here would
+        // create confusing "first-tenant-wins" ownership semantics that
+        // contradict the cross-tenant reuse contract. See PR #98 / PR #99
         // Copilot review (2026-05-02).
         'chat_logs',
         'conversations',
