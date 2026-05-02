@@ -61,9 +61,12 @@ Route::middleware('auth')->group(function () {
 // v4.0/W3.1 — SSE streaming variant of POST /messages, registered
 // OUTSIDE the `auth` middleware group so we can apply our SSE-aware
 // auth variant. Same conversation/auth/validation/filter contract as
-// the synchronous route, but emits AI SDK protocol events
-// (text-delta + source + data-confidence + data-refusal + finish)
-// instead of one JSON response. SSE clients send
+// the synchronous route, but emits AI SDK v6 `UIMessageChunk` frames
+// (`start` / `text-start` / `text-delta(id, delta)` / `text-end` /
+// `source-url`; `data-confidence` and `data-refusal` carried under
+// `data:{}`; `finish` constrained to the SDK union via
+// `normalizeFinishReason()`) — see PR #90 (W3.3 BE wire format
+// catch-up) — instead of one JSON response. SSE clients send
 // `Accept: text/event-stream` (not `application/json`), and the
 // default `auth` middleware redirects unauthenticated requests to
 // `/login` (302 + HTML) which the streaming client can't parse.

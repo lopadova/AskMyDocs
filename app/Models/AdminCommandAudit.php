@@ -27,9 +27,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * has no SoftDeletes trait and no timestamps auto-management (the
  * started_at / completed_at pair is the canonical event clock).
  *
- * NOT tenant-scoped — this is a global ops-level record, not a KB
- * projection. `kb:delete` invocations do write a row here AND a
- * `kb_canonical_audit` row per R10.
+ * Tenant-scoped via the `BelongsToTenant` trait. Admin maintenance
+ * commands are per-tenant operations: a tenant administrator running
+ * `kb:delete` or `kb:rebuild-graph` invokes the command against their
+ * own KB, and the audit row inherits the active `TenantContext` so the
+ * forensic trail stays partitioned per tenant. `kb:delete` invocations
+ * also write a `kb_canonical_audit` row per R10. PR #98 Copilot review
+ * (2026-05-02) clarified the docblock to match the trait usage.
  *
  * @property int $id
  * @property int|null $user_id

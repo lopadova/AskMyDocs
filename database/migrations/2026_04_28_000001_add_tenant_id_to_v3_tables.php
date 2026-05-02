@@ -44,11 +44,25 @@ return new class extends Migration {
      *  - users / roles / permissions    (cross-tenant identity)
      *  - jobs / failed_jobs              (queue plumbing)
      *  - activity_log                    (Spatie, polymorphic subject)
+     *  - embedding_cache                 (cross-tenant reuse layer; the
+     *                                     schema enforces UNIQUE on
+     *                                     `text_hash` alone — see
+     *                                     2026_01_01_000006_create_embedding_cache_table.php.
+     *                                     EmbeddingCacheService filters by
+     *                                     provider + model on retrieval
+     *                                     (informational columns), so
+     *                                     mixing models produces a cache
+     *                                     miss; flush stale entries via
+     *                                     EmbeddingCacheService::flush($provider).
+     *                                     tenant_id here would create
+     *                                     "first-tenant-wins" ownership
+     *                                     semantics that contradict the
+     *                                     cross-tenant reuse contract.
+     *                                     PR #98 / PR #99 Copilot review.)
      */
     private const TABLES = [
         'knowledge_documents',
         'knowledge_chunks',
-        'embedding_cache',
         'chat_logs',
         'conversations',
         'messages',
