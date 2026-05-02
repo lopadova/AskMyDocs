@@ -1002,6 +1002,61 @@ cross-feature memorisation isn't required when convention holds.
 Stateless components (`FilterBar`, `TagsList`) take `(value, onChange)`
 controlled props — state lifts to the lowest common parent.
 
+### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
+Standing convention from 2026-05-02. R37 says "merge to main once per
+major release"; R39 fills the gap by giving every weekly milestone a
+visible release-candidate tag. After each Wn closure on
+`feature/vX.Y` (every sub-task PR merged + CI green + closure status
+doc shipped under `docs/v4-platform/STATUS-{date}-week{N}.md`):
+
+1. Open a small docs PR refreshing **README.md** "Features at a glance"
+   + "Roadmap" sections to reflect what just shipped, plus the
+   **CHANGELOG.md** `[Unreleased]` block under a new
+   `## [vX.Y.0-rcN] - {date}` heading.
+2. After the docs PR merges, tag `vX.Y.0-rcN` on the integration
+   branch HEAD (NOT on `main` — main still hosts the previous stable
+   major):
+   ```bash
+   gh release create vX.Y.0-rcN \
+     --repo lopadova/AskMyDocs \
+     --target feature/vX.Y \
+     --title "vX.Y.0-rcN — Wn milestone" \
+     --prerelease \
+     --notes "..."
+   ```
+3. Increment `N` once per Wn closure: rc1 after W4, rc2 after W5, etc.
+   The final `vX.Y.0` GA tag fires only when the LAST Wn closes (W8
+   for v4.0) and the integration branch merges into `main` per R37.
+
+Why a release-candidate and not a final tag at every Wn:
+- Composer / Packagist semver: `^X.Y` resolution skips RC builds by
+  default. Consumers explicitly opt in via `^X.Y@beta` or
+  `^X.Y.0-rcN` if they want the milestone preview. The stable channel
+  remains the previous major until the GA ships.
+- Each rc is a checkpoint. If something regresses between Wn and
+  Wn+1, the rc tag is a known-good rollback target.
+- Audit + community visibility: tagging publicly demonstrates progress
+  every week without committing to a final API contract — and gives
+  Patent Box auditors a clean per-week artefact to point at.
+
+Anti-patterns:
+- ❌ Tagging the rc on `main` — rejected by R37.
+- ❌ Skipping the README + CHANGELOG refresh — leaves consumers staring
+  at a stale "Roadmap" claiming the freshly-shipped feature is still
+  pending.
+- ❌ Tagging mid-Wn (between sub-task merges) — wait for the closure
+  status doc to land first.
+- ❌ Re-tagging the same `rcN` after subsequent commits — bump to
+  `rcN+1` instead.
+
+Scope: applies to AskMyDocs (`lopadova/AskMyDocs`) integration-branch
+cycles. Standalone `padosoft/*` packages tag their own normal-semver
+`v0.1.0` final at the end of their respective Wn (already established
+for `padosoft/laravel-patent-box-tracker` after W4). Those follow
+plain SemVer, NOT the RC convention.
+
+→ See `.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
