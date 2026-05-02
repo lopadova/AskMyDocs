@@ -26,8 +26,8 @@ and the GA tag itself land in a follow-up parent-session step.
 | W6 | `padosoft/eval-harness` v0.1.0 | eval-harness #2..#7 (W6.0..W6.C) | n/a (separate repo) | `docs/v4-platform/STATUS-2026-05-02-week6.md` + Packagist [`v0.1.0`](https://github.com/padosoft/eval-harness/releases/tag/v0.1.0) |
 | W7 | `padosoft/laravel-pii-redactor` v0.1.0 + `padosoft/askmydocs-pro` foundation seed (BSL-1.1, private) | laravel-pii-redactor #2..#3 (W7.0..W7.A); askmydocs-pro #1..#2 (W7.B + W7.B fix-up) | n/a (separate repos) | `docs/v4-platform/STATUS-2026-05-02-week7.md` + Packagist [`v0.1.0`](https://github.com/padosoft/laravel-pii-redactor/releases/tag/v0.1.0) |
 | W7.G | RC2 / RC3 / RC4 cuts + W5+W6+W7 closure docs + README + dogfood YAML refresh | AskMyDocs #96 | `6d58fab` | Tagged [`v4.0.0-rc2`](https://github.com/lopadova/AskMyDocs/releases/tag/v4.0.0-rc2) / [`v4.0.0-rc3`](https://github.com/lopadova/AskMyDocs/releases/tag/v4.0.0-rc3) / [`v4.0.0-rc4`](https://github.com/lopadova/AskMyDocs/releases/tag/v4.0.0-rc4) on the closure SHA per R39 |
-| W8.A | RC acceptance gates audit + closure status doc (this PR) | AskMyDocs #TBD on merge | TBD on merge | This document — `docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md` |
-| W8.B | `feature/v4.0` → `main` integration merge + `v4.0.0` GA tag | AskMyDocs #TBD on merge | TBD on merge | Once-per-major event per R37; lands after W8.A |
+| W8.A | RC acceptance gates audit + closure status doc (this PR) | AskMyDocs #97 | filled in on merge | This document — `docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md` |
+| W8.B | `feature/v4.0` → `main` integration merge + `v4.0.0` GA tag | AskMyDocs PR not yet created — lands after W8.A merges | n/a until W8.B opens | Once-per-major event per R37 |
 
 The cycle-wide governance PRs (#92 dual-bot Copilot skill, #94 R39
 codification) are referenced inline inside the per-week closure docs
@@ -73,8 +73,11 @@ speculation — each gate is paired with the query that confirmed it.
   rollup `status=completed conclusion=success`, with all five jobs
   individually completed/success — `Vitest`, `PHPUnit (PHP 8.3)`,
   `PHPUnit (PHP 8.4)`, `PHPUnit (PHP 8.5)`, `Playwright E2E`. The
-  `tests.yml` workflow defines push-trigger only on `feature/v4.x`
-  branches, so the 5-job rollup is the full integration gate.
+  `tests.yml` workflow triggers on both `push` and `pull_request`
+  events scoped to `main` and `feature/v4.*` branches; the rollup
+  on the integration branch's HEAD is the same five jobs Lorenzo
+  gates merge on for every PR, so a green rollup on `6d58fab`
+  represents the full integration gate.
 - [x] **Architecture suite green on the matrix.** The architecture
   tests (`tests/Architecture/TenantContextTest.php` enforcing R30
   cross-tenant isolation, `tests/Architecture/TenantIdMandatoryTest.php`
@@ -121,13 +124,16 @@ speculation — each gate is paired with the query that confirmed it.
   .claude/skills/rc-tag-per-week-milestone/SKILL.md` returns all
   three. The R36 / R37 / R39 operational detail lives in those
   files; CLAUDE.md cross-references each via `→ See …/SKILL.md`.
-- [x] **Memory MEMORY.md references the v4 cycle.** Skipped per
-  spec — the agent's `~/.claude/projects/.../memory/MEMORY.md`
-  is a private workspace, not in the repo. Cycle-relevant entries
-  (`project_v40_week_sequence`, `project_v40_w3_decisions`,
-  `feedback_copilot_pr_review_loop`, `feedback_auto_merge_when_ready`,
-  `feedback_packages_standalone_agnostic`, etc.) exist locally and
-  drive the agent narrative captured inside the public closure docs.
+- [N/A] **Memory `MEMORY.md` references the v4 cycle.** Out of repo
+  by design — the agent's `~/.claude/projects/.../memory/MEMORY.md`
+  is a private workspace and not auditable from this repo, so this
+  item is **explicitly excluded from the public acceptance gate
+  list**. Listed here only to make the original task spec's gate
+  enumeration complete; no automated query confirms it because no
+  repo artefact exists to query. The narrative-level v4 cycle entries
+  the agent maintains locally are captured in the public closure
+  docs (`STATUS-2026-04-30-week2.md` through this document) and in
+  CLAUDE.md rules R36 / R37 / R38 / R39.
 - [x] **`tools/patent-box/2026.yml` template config valid.** The
   W4.F (`951e2e6`) refresh and the W7.G (`6d58fab`) refresh both
   walked the schema validator on the template (tax_identity placeholder
@@ -140,7 +146,8 @@ speculation — each gate is paired with the query that confirmed it.
   comment carries the four distinct dates verbatim so operators
   reading the dogfood config see the correct release timeline.
 
-**Result: 12 / 12 gates green.** No remediation PRs needed before the
+**Result: 11 / 11 auditable gates green** (one gate marked N/A per the
+out-of-repo justification above). No remediation PRs needed before the
 W8.B integration → main merge.
 
 ## Lessons captured during W8
