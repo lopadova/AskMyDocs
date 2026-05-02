@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
@@ -34,6 +35,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class AdminInsightsSnapshot extends Model
 {
+    use BelongsToTenant;
+
     protected $table = 'admin_insights_snapshots';
 
     /**

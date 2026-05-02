@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { loginAsProjectUser, resetDb, seedDb } from './setup-helpers';
 
 /*
  * PR14 — Phase I. Admin AI insights scenarios.
@@ -20,7 +21,7 @@ test.describe('Admin AI Insights — Phase I', () => {
     }) => {
         // Seed one snapshot in the DB so the view has deterministic
         // data — DemoSeeder doesn't include an insights row by default.
-        await request.post('/testing/seed', { data: { seeder: 'AdminInsightsSeeder' } });
+        await seedDb(request, 'AdminInsightsSeeder');
 
         await page.goto('/app/admin/insights');
 
@@ -42,13 +43,18 @@ test.describe('Admin AI Insights — Phase I', () => {
         await expect(page.getByTestId('insights-highlights')).toBeVisible();
     });
 
-    test('failure — no snapshot yet surfaces the empty state', async ({ page, request }) => {
+    test('failure — no snapshot yet surfaces the empty state', async ({ page, context, request }, testInfo) => {
         // Reset to baseline DemoSeeder (no snapshot row) and navigate.
         // /testing/reset wipes the DB before DemoSeeder re-runs (via
         // the fixtures autorun), so by the time we land here there is
-        // NO admin_insights_snapshots row.
-        await request.post('/testing/reset');
-        await request.post('/testing/seed', { data: { seeder: 'DemoSeeder' } });
+        // NO admin_insights_snapshots row. The mid-test migrate:fresh
+        // also invalidates the session set up by the auto-fixture
+        // (DemoSeeder re-creates admin@demo.local with a fresh bcrypt
+        // hash), so re-login before navigating or RequireAuth bounces
+        // the SPA to /login.
+        await resetDb(request);
+        await seedDb(request, 'DemoSeeder');
+        await loginAsProjectUser(page, context, request, testInfo.project.name);
 
         await page.goto('/app/admin/insights');
         await expect(page.getByTestId('insights-view')).toBeVisible({ timeout: 15_000 });

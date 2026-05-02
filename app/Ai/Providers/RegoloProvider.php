@@ -5,87 +5,158 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
-use Illuminate\Support\Facades\Http;
+use App\Ai\Providers\Concerns\FallbackStreaming;
+use App\Ai\Providers\Internal\RegoloAnonymousAgent;
+use Laravel\Ai\Embeddings;
+use Laravel\Ai\Messages\AssistantMessage;
+use Laravel\Ai\Messages\UserMessage;
 
 /**
- * Regolo.ai provider (by Seeweb) — OpenAI-compatible REST API.
+ * Regolo provider — adapts AskMyDocs's `AiProviderInterface` over the
+ * official `laravel/ai` SDK and the `padosoft/laravel-ai-regolo`
+ * extension package.
  *
- * Docs: https://docs.regolo.ai/
+ * The transport, retry, error-mapping, message-shape, tool-loop and
+ * streaming logic now live in `padosoft/laravel-ai-regolo` — the
+ * extension package owns the SDK-side test surface (matrix CI runs
+ * on every PHP × Laravel cell it supports; see the package's own
+ * README for the current count). This class only translates between
+ * the AskMyDocs DTO surface (`AiResponse` / `EmbeddingsResponse`) and
+ * the SDK DTO surface (`Laravel\Ai\Responses\AgentResponse` /
+ * `EmbeddingsResponse`) so existing callers don't change.
  *
- * Regolo exposes the same request/response shape as OpenAI for both
- * /v1/chat/completions and /v1/embeddings, so the wire format mirrors
- * OpenAiProvider. Only the base URL and default model differ.
+ * Configuration is read from `config('ai.providers.regolo')` in the
+ * SDK shape — see `config/ai.php` for the canonical entry.
  */
 final class RegoloProvider implements AiProviderInterface
 {
-    private string $baseUrl;
+    use FallbackStreaming;
 
-    public function __construct(private readonly array $config)
-    {
-        $this->baseUrl = rtrim($config['base_url'] ?? 'https://api.regolo.ai/v1', '/');
-    }
+    public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
-        return $this->chatWithHistory($systemPrompt, [
-            ['role' => 'user', 'content' => $userMessage],
-        ], $options);
+        $agent = $this->makeAgent($systemPrompt, [], $options);
+
+        $sdkResponse = $agent->prompt(
+            $userMessage,
+            [],
+            $this->name(),
+            $this->resolveTextModel($options),
+            $this->config['timeout'] ?? null,
+        );
+
+        return $this->toAiResponse($sdkResponse);
     }
 
+    /**
+     * Run a multi-turn chat completion through the Regolo gateway.
+     *
+     * Tightens the `AiProviderInterface::chatWithHistory()` contract
+     * with three preconditions specific to the laravel/ai SDK shape
+     * this adapter targets — the SDK's `Promptable::prompt(string)`
+     * signature would otherwise turn caller bugs into silent
+     * prompt-injection surfaces or PHP TypeErrors mid-loop. Other
+     * providers in `app/Ai/Providers/` accept laxer input today;
+     * tightening on the interface itself is deferred until those
+     * providers migrate to the SDK.
+     *
+     * @param  string  $systemPrompt  System prompt prepended via the
+     *                                SDK agent's instructions slot.
+     * @param  array<int, array{role: string, content: string}>  $messages
+     *                                Full message history. Must:
+     *                                - be non-empty;
+     *                                - end with `role === 'user'`;
+     *                                - have a non-empty string `content`
+     *                                  on every entry (history + last);
+     *                                - only carry roles `user` /
+     *                                  `assistant` (no `system` / `tool`
+     *                                  — system goes via $systemPrompt).
+     * @param  array<string, mixed>  $options  Optional `model`,
+     *                                `max_tokens`, `temperature`
+     *                                overrides. Numeric strings are
+     *                                accepted; non-numeric values for
+     *                                max_tokens/temperature throw.
+     *
+     * @throws \InvalidArgumentException When any precondition above is
+     *         violated. Catch this at the call site to differentiate
+     *         caller bugs from genuine network/provider failures.
+     */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
-
-        foreach ($messages as $msg) {
-            $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
+        if (empty($messages)) {
+            throw new \InvalidArgumentException('chatWithHistory requires at least one message.');
         }
 
-        $response = Http::withToken($this->config['api_key'])
-            ->timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/chat/completions", [
-                'model' => $options['model'] ?? $this->config['chat_model'] ?? 'Llama-3.3-70B-Instruct',
-                'messages' => $apiMessages,
-                'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
-                'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
-            ]);
+        $last = end($messages);
+        if (! is_array($last) || ($last['role'] ?? null) !== 'user') {
+            // The SDK's `Promptable::prompt(string $prompt, ...)` shape
+            // expects the *new* user turn as a string argument, with all
+            // earlier turns supplied via the agent's `messages` iterable.
+            // If the caller hands us a history that ends in an assistant /
+            // system / tool turn, treating `$last['content']` as the
+            // prompt would silently impersonate the assistant — at best a
+            // confusing model response, at worst a prompt-injection
+            // surface. Surface the misuse loudly.
+            throw new \InvalidArgumentException(sprintf(
+                'chatWithHistory requires the last message to have role="user"; got role="%s".',
+                is_array($last) ? ($last['role'] ?? '(missing)') : '(non-array)'
+            ));
+        }
+        if (! is_string($last['content'] ?? null) || $last['content'] === '') {
+            // The SDK's `prompt()` is `string $prompt` — feeding it null,
+            // an int, or an empty string would emit a PHP TypeError
+            // (or a silent empty prompt) downstream. Reject up front so
+            // the caller sees a deterministic exception identical in
+            // shape to the role guard above.
+            throw new \InvalidArgumentException(
+                'chatWithHistory requires the last message to have a non-empty string "content".'
+            );
+        }
 
-        $response->throw();
-        $data = $response->json();
+        $history = array_slice($messages, 0, -1);
 
-        return new AiResponse(
-            content: $data['choices'][0]['message']['content'] ?? '',
-            provider: $this->name(),
-            model: $data['model'] ?? $this->config['chat_model'] ?? 'unknown',
-            promptTokens: $data['usage']['prompt_tokens'] ?? null,
-            completionTokens: $data['usage']['completion_tokens'] ?? null,
-            totalTokens: $data['usage']['total_tokens'] ?? null,
-            finishReason: $data['choices'][0]['finish_reason'] ?? null,
+        $agent = $this->makeAgent(
+            $systemPrompt,
+            $this->mapHistoryToSdkMessages($history),
+            $options,
         );
+
+        $sdkResponse = $agent->prompt(
+            $last['content'],
+            [],
+            $this->name(),
+            $this->resolveTextModel($options),
+            $this->config['timeout'] ?? null,
+        );
+
+        return $this->toAiResponse($sdkResponse);
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // The padosoft/laravel-ai-regolo package + laravel/ai SDK do
+        // expose a `stream()` API on agents, but wiring it into our
+        // chunk shape needs careful handling of the SDK's stream
+        // protocol (non-trivial). For W3.1 we ship the fallback to
+        // unblock the streaming endpoint end-to-end; native streaming
+        // for Regolo lands as a follow-up enhancement that overrides
+        // this method body without changing the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
-        $response = Http::withToken($this->config['api_key'])
-            ->timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/embeddings", [
-                'model' => $this->config['embeddings_model'] ?? 'gte-Qwen2',
-                'input' => $texts,
-            ]);
-
-        $response->throw();
-        $data = $response->json();
-
-        $embeddings = collect($data['data'] ?? [])
-            ->sortBy('index')
-            ->pluck('embedding')
-            ->values()
-            ->all();
+        $sdkResponse = Embeddings::for($texts)->generate(
+            $this->name(),
+            $this->config['models']['embeddings']['default'] ?? null,
+        );
 
         return new EmbeddingsResponse(
-            embeddings: $embeddings,
+            embeddings: $sdkResponse->embeddings,
             provider: $this->name(),
-            model: $data['model'] ?? ($this->config['embeddings_model'] ?? 'unknown'),
-            totalTokens: $data['usage']['total_tokens'] ?? null,
+            model: $sdkResponse->meta->model,
+            totalTokens: $sdkResponse->tokens,
         );
     }
 
@@ -97,5 +168,142 @@ final class RegoloProvider implements AiProviderInterface
     public function supportsEmbeddings(): bool
     {
         return true;
+    }
+
+    /**
+     * @param  array<int, array{role: string, content: string}>  $history
+     * @return array<int, UserMessage|AssistantMessage>
+     */
+    private function mapHistoryToSdkMessages(array $history): array
+    {
+        return array_map(
+            function (mixed $msg): UserMessage|AssistantMessage {
+                // Validate shape up front so a malformed entry surfaces
+                // as a deterministic InvalidArgumentException instead of
+                // a PHP "undefined array key" warning followed by a
+                // confusing match() failure.
+                if (! is_array($msg)) {
+                    throw new \InvalidArgumentException(
+                        'History entries must be associative arrays with role+content keys.'
+                    );
+                }
+                $role = $msg['role'] ?? null;
+                $content = $msg['content'] ?? null;
+                if (! is_string($content) || $content === '') {
+                    throw new \InvalidArgumentException(
+                        'History entry requires a non-empty string "content".'
+                    );
+                }
+
+                return match ($role) {
+                    'user' => new UserMessage($content),
+                    'assistant' => new AssistantMessage($content),
+                    default => throw new \InvalidArgumentException(sprintf(
+                        'Unsupported message role [%s].',
+                        is_string($role) ? $role : '(missing)'
+                    )),
+                };
+            },
+            $history,
+        );
+    }
+
+    private function resolveTextModel(array $options): ?string
+    {
+        return $options['model']
+            ?? $this->config['models']['text']['default']
+            ?? null;
+    }
+
+    /**
+     * Build the per-call agent.
+     *
+     * The laravel/ai SDK's `TextGenerationOptions::forAgent()` reads
+     * `maxTokens()` and `temperature()` methods from the agent instance
+     * (or PHP attributes on the class) when building the gateway
+     * request — see `vendor/laravel/ai/src/Gateway/TextGenerationOptions.php`.
+     * Plain `AnonymousAgent` exposes neither, which silently dropped
+     * caller-supplied `$options['max_tokens']` (and provider-level
+     * `temperature`) on the floor and broke `ConversationController::generateTitle`.
+     *
+     * `RegoloAnonymousAgent` adds the two methods so per-call options
+     * reach `BuildsTextRequests::buildTextRequest()` in
+     * `padosoft/laravel-ai-regolo`, which forwards them as
+     * `body['max_tokens']` / `body['temperature']` on the wire.
+     *
+     * @param  iterable<int, UserMessage|AssistantMessage>  $messages
+     * @param  array<string, mixed>  $options
+     */
+    private function makeAgent(string $systemPrompt, iterable $messages, array $options): RegoloAnonymousAgent
+    {
+        return new RegoloAnonymousAgent(
+            instructions: $systemPrompt,
+            messages: $messages,
+            tools: [],
+            maxTokens: $this->resolveMaxTokens($options),
+            temperature: $this->resolveTemperature($options),
+        );
+    }
+
+    private function resolveMaxTokens(array $options): ?int
+    {
+        $value = $options['max_tokens'] ?? $this->config['max_tokens'] ?? null;
+        if ($value === null) {
+            return null;
+        }
+        // `(int) 'abc'` quietly yields 0, which propagates to the wire
+        // as `max_tokens=0` — a confusing bug surface for callers that
+        // typo the option key value. Reject non-numeric input loudly.
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'max_tokens must be numeric (int or numeric string); got %s.',
+                get_debug_type($value)
+            ));
+        }
+
+        return (int) $value;
+    }
+
+    private function resolveTemperature(array $options): ?float
+    {
+        $value = $options['temperature'] ?? $this->config['temperature'] ?? null;
+        if ($value === null) {
+            return null;
+        }
+        // Same rationale as resolveMaxTokens: `(float) 'hot'` becomes
+        // 0.0 silently; downstream the model interprets that as
+        // greedy-decode and quietly changes behaviour.
+        if (! is_numeric($value)) {
+            throw new \InvalidArgumentException(sprintf(
+                'temperature must be numeric (float, int, or numeric string); got %s.',
+                get_debug_type($value)
+            ));
+        }
+
+        return (float) $value;
+    }
+
+    private function toAiResponse(\Laravel\Ai\Responses\AgentResponse $sdkResponse): AiResponse
+    {
+        $promptTokens = $sdkResponse->usage->promptTokens;
+        $completionTokens = $sdkResponse->usage->completionTokens;
+
+        return new AiResponse(
+            content: $sdkResponse->text,
+            provider: $this->name(),
+            model: $sdkResponse->meta->model,
+            promptTokens: $promptTokens > 0 ? $promptTokens : null,
+            completionTokens: $completionTokens > 0 ? $completionTokens : null,
+            totalTokens: ($promptTokens + $completionTokens) > 0 ? $promptTokens + $completionTokens : null,
+            // The SDK's `steps` collection accumulates one entry per
+            // model turn — including intermediate tool-call steps in a
+            // multi-step loop. Only the LAST step carries the
+            // completion reason for the final assistant text the
+            // caller receives via `$sdkResponse->text`. `first()` would
+            // return the reason for the FIRST model turn (often
+            // `tool_calls` mid-loop), which mismatches the body and
+            // confuses chat-log analytics + few-shot routing.
+            finishReason: $sdkResponse->steps->last()?->finishReason?->value,
+        );
     }
 }

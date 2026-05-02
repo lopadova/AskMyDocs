@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer } from './helpers';
+import { buildAssistantMessage, stubChatAssistantReply } from './helpers/stub-chat';
 
 /*
  * T2.7 — Chat composer filter UX scenarios.
@@ -97,29 +98,20 @@ test.describe('Chat composer filters', () => {
         // assertion (R20 — route contracts match FE payload shape).
         let capturedBody: { content?: string; filters?: Record<string, unknown> } | null = null;
 
-        await page.route('**/conversations/*/messages', async (route) => {
-            if (route.request().method() !== 'POST') {
-                await route.fallback();
-                return;
-            }
-            capturedBody = route.request().postDataJSON();
-            await route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    id: 3001,
-                    role: 'assistant',
-                    content: 'Filtered answer body.',
-                    metadata: {
-                        provider: 'mock',
-                        model: 'mock',
-                        citations: [],
-                        filters_selected: 2,
-                    },
-                    rating: null,
-                    created_at: new Date().toISOString(),
-                }),
-            });
+        await stubChatAssistantReply(page, {
+            assistant: buildAssistantMessage({
+                id: 3001,
+                content: 'Filtered answer body.',
+                metadata: {
+                    provider: 'mock',
+                    model: 'mock',
+                    citations: [],
+                    filters_selected: 2,
+                },
+            }),
+            onPost: (body) => {
+                capturedBody = body;
+            },
         });
 
         await page.goto('/app/chat');

@@ -2,9 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/v4.*']
   pull_request:
-    branches: [main]
+    branches: [main, 'feature/v4.*']
 
 jobs:
   phpunit:
@@ -170,19 +170,52 @@ jobs:
         run: |
           cp .env.example .env || true
           php -r "file_exists('.env') || copy('.env.example', '.env');" || true
-          echo "APP_ENV=testing" >> .env
-          echo "APP_KEY=base64:$(openssl rand -base64 32)" >> .env
+          # Override every key via in-place sed so .env ends up with
+          # exactly ONE definition per setting. `.env.example` already
+          # declares APP_ENV / APP_KEY / DB_* / CACHE_STORE /
+          # SESSION_DRIVER / QUEUE_CONNECTION; using `echo ... >> .env`
+          # for any of these would duplicate the line (Laravel reads
+          # top-down and the LAST occurrence wins, but duplicates are
+          # ambiguous and Copilot review flagged them on PR #83).
+          # `set_env <KEY> <VALUE>` uses `|` as the sed delimiter so
+          # values with `/` (e.g. URLs) survive without escaping; the
+          # function REQUIRES the key to exist in .env.example because
+          # `sed s|^KEY=.*|KEY=…|` is a no-op when the line is absent.
+          # Fail loudly if the key is missing — silently no-opping
+          # would let `.env.example` defaults bleed through into the
+          # CI run (e.g. `APP_ENV=local` instead of `testing`) and
+          # surface as a confusing downstream test failure 5 minutes
+          # later. Adding a NEW key (not in the example) needs `>> .env`.
+          set_env() {
+              if ! grep -qE "^${1}=" .env; then
+                  echo "::error::set_env: key '${1}' missing from .env (was it removed from .env.example?)"
+                  exit 1
+              fi
+              sed -i "s|^${1}=.*|${1}=${2}|" .env
+          }
+          set_env APP_ENV testing
+          # APP_KEY is generated below by `php artisan key:generate
+          # --force` (see "Migrate test database (CLI)") — it REPLACES
+          # the empty `APP_KEY=` line from `.env.example` in-place,
+          # avoiding the shell-escaping hazard of piping an
+          # openssl-generated base64 string through sed.
+
           # Postgres + pgvector via the service container above — same
-          # engine production runs. Playwright boots the server via
-          # playwright.config.ts webServer; migrations exercise pgvector
-          # cleanly because ensureVectorExtensionExists() can issue
-          # CREATE EXTENSION here.
-          echo "DB_CONNECTION=pgsql" >> .env
-          echo "DB_HOST=127.0.0.1" >> .env
-          echo "DB_PORT=5432" >> .env
-          echo "DB_DATABASE=askmydocs_test" >> .env
-          echo "DB_USERNAME=askmydocs" >> .env
-          echo "DB_PASSWORD=askmydocs" >> .env
+          # engine production runs. In CI the workflow starts Laravel
+          # explicitly via the "Start Laravel server (testing)" step
+          # below and sets `E2E_SKIP_WEBSERVER=1` so playwright.config.ts
+          # skips its own `webServer` block (avoids EADDRINUSE on
+          # 127.0.0.1:8000). For LOCAL `npm run e2e` runs the
+          # `webServer` block boots `php artisan serve` itself.
+          # Migrations exercise pgvector cleanly because
+          # ensureVectorExtensionExists() can issue CREATE EXTENSION
+          # here.
+          set_env DB_CONNECTION pgsql
+          set_env DB_HOST       127.0.0.1
+          set_env DB_PORT       5432
+          set_env DB_DATABASE   askmydocs_test
+          set_env DB_USERNAME   askmydocs
+          set_env DB_PASSWORD   askmydocs
           # Cache/session intentionally NOT on the database — the project
           # has no cache/sessions table migration (production uses redis
           # or file). Spatie's permission migration calls
@@ -191,8 +224,8 @@ jobs:
           # `array` is sufficient for migrations + a Playwright run;
           # `file` persists session cookies across HTTP requests so
           # login flows survive across page navigations.
-          echo "CACHE_STORE=array" >> .env
-          echo "SESSION_DRIVER=file" >> .env
+          set_env CACHE_STORE     array
+          set_env SESSION_DRIVER  file
           # Database-backed queue so /api/kb/ingest dispatches enqueue
           # the job (returning 202) without running it immediately.
           # `sync` would execute IngestDocumentJob on the request thread,
@@ -200,7 +233,7 @@ jobs:
           # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
           # The test only asserts the 202; the actual indexing flow is
           # covered by PHPUnit feature tests with Http::fake().
-          echo "QUEUE_CONNECTION=database" >> .env
+          set_env QUEUE_CONNECTION database
           # `storage/framework/*` is gitignored except for `.gitkeep`,
           # so the cache/sessions/views subdirs may not exist on a
           # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
@@ -216,25 +249,145 @@ jobs:
           # admin-dashboard.spec.ts's happy path fails on dashboard-health.
           mkdir -p storage/app/kb
 
-      - name: Migrate + seed test data
+      - name: Migrate test database (CLI)
+        # Step name reflects what actually runs here: `key:generate` +
+        # `migrate:fresh`. Seeding still happens via POST /testing/seed
+        # during Playwright setup (see frontend/e2e/setup-helpers.ts);
+        # only the heavy migration is moved off the HTTP path.
+        #
+        # `key:generate --force` runs FIRST so it replaces the empty
+        # `APP_KEY=` line copied from `.env.example` (the previous step
+        # leaves it empty deliberately — see "Prepare .env for testing"
+        # for the rationale). This produces exactly one APP_KEY=base64:…
+        # definition in .env, no duplicates, no ambiguity.
         env:
           APP_ENV: testing
         run: |
           php artisan key:generate --force
-          php artisan migrate --force
-          # NOTE: previous attempt at `php artisan optimize` here
-          # turned the artisan-serve socket-hang-up into ECONNREFUSED
-          # (the cached config + closure routes interfere with how
-          # `php artisan serve` boots its single-threaded handler).
-          # The auth.setup retry loop now handles the boot race
-          # without preemptive caching.
+          # `migrate:fresh` from CLI (instead of `migrate`) — see R38 in
+          # CLAUDE.md. The heavy migration can stall `php artisan serve`'s
+          # single-threaded accept loop when it runs inside an HTTP request
+          # (the recurring auth.setup ECONNREFUSED flake on /testing/reset).
+          # Running `migrate:fresh` here from the CLI BEFORE Playwright
+          # starts the web server eliminates the boot-race window: the
+          # Playwright step then sets E2E_SKIP_HTTP_RESET=1, which
+          # narrows the skip to the SETUP-time `resetAndSeed()` call
+          # (auth.setup / viewer.setup / super-admin.setup) — those run
+          # against a freshly-booted dev server and are the only HTTP
+          # path that ever observed the stall. Per-spec `resetDb()`
+          # calls in `frontend/e2e/fixtures.ts` and the spec files
+          # STILL hit POST /testing/reset every test: by then the dev
+          # server is warm (auth.setup has handled `/healthz` + login)
+          # and per-scenario state isolation requires an actual truncate.
+          # Heavy work was moved off the COLD-START HTTP path, not off
+          # the HTTP path entirely.
+          php artisan migrate:fresh --force
 
-      # playwright.config.ts `webServer` launches `php artisan serve`
-      # automatically, waits on baseURL readiness, and shuts it down
-      # after the suite. No explicit background server step needed.
+      # Start Laravel explicitly in the workflow instead of relying on
+      # playwright.config.ts `webServer`. The webServer block boots
+      # artisan-serve under Playwright's own process supervisor and pipes
+      # stdout/stderr internally — historically that path swallowed the
+      # server log when artisan-serve crashed mid-run, and the failure
+      # surfaced as an opaque generic timeout. Note: with R38 in place
+      # (migrate:fresh from CLI + E2E_SKIP_HTTP_RESET=1) the original
+      # auth.setup ECONNREFUSED window on /testing/reset no longer
+      # exists — the dev server now only handles light traffic
+      # (healthz + /testing/seed + login + page navigations + admin
+      # API calls), all single-request safe. The remaining reasons to
+      # start the server here ourselves:
+      #   1. a real on-disk log we can `tail` in the failure-dump step,
+      #   2. an unambiguous binding to 127.0.0.1:8000,
+      #   3. a deterministic process group (created by `setsid -f` below
+      #      and captured as a PGID via `lsof tcp:8000` + `ps -o pgid=` in
+      #      the next step) that the cleanup step can SIGTERM/SIGKILL at
+      #      job end — see `Wait for backend` for the actual capture, and
+      #      `Stop Laravel server` for the kill path.
+      # `E2E_SKIP_WEBSERVER=1` tells playwright.config.ts to skip its own
+      # webServer block so we don't double-bind port 8000 (EADDRINUSE).
+      - name: Start Laravel server (testing)
+        env:
+          APP_ENV: testing
+          # Honoured because we explicitly run `--no-reload` below — without
+          # the flag, Laravel's ServeCommand silently drops the env var and
+          # runs the built-in PHP server single-threaded.
+          PHP_CLI_SERVER_WORKERS: '4'
+        # `setsid -f` runs `php artisan serve` DIRECTLY in a new session
+        # (no `bash -c` wrapper). Earlier attempt with `setsid -f bash -c
+        # '...'` detached the BASH wrapper, but PHP remained a child of
+        # bash; when bash got cleaned up at the runner step boundary,
+        # PHP died via terminal hangup cascade. Confirmed by Copilot's
+        # round-? finding + the artisan-serve.log dump showing the
+        # server died ~1.5s after `/healthz` responded — matching the
+        # bash-wrapper PID lifetime, not the actual PHP server.
+        # Putting setsid on php DIRECTLY puts PHP itself in the new
+        # session/PG, immune to runner cleanup of the previous step's PG.
+        # The redirect `>` is parsed by the OUTER bash and applied
+        # BEFORE `exec setsid`, so PHP inherits the redirected fd 1/2.
+        run: |
+          # `mkdir -p storage/logs` is also done in "Prepare .env for
+          # testing", but repeat here to make this step self-contained:
+          # if a future refactor moves the step order, the `>` redirect
+          # below would otherwise crash with "No such file or directory"
+          # and leave the runner with no Laravel server, surfacing as
+          # an opaque "server never started" failure 60 s later.
+          # `mkdir -p` is idempotent (no-op if the dir already exists).
+          mkdir -p storage/logs
+          setsid -f php artisan serve --no-reload --host=127.0.0.1 --port=8000 \
+              > storage/logs/artisan-serve.log 2>&1
+          echo "artisan-serve dispatched via setsid -f (PID captured in Wait for backend via lsof)"
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/healthz >/dev/null; then
+              echo "Backend is up after ${i}s"
+              # Capture the SERVER's process group NOW that the port is
+              # bound. With PHP_CLI_SERVER_WORKERS=4 the parent process
+              # forks 4 worker children, all sharing the same PGID
+              # (created by `setsid -f` in the previous step). lsof can
+              # report any of these as the listener; instead of guessing
+              # which is "the" PID, capture the PGID once — `kill -- -PGID`
+              # in the cleanup step takes down the parent + every worker
+              # atomically, with no risk of a single worker outliving
+              # the cleanup and holding port 8000. Copilot round-?
+              # finding 09:24:28-29 (multi-listener edge case).
+              pid=$(lsof -ti tcp:8000 -sTCP:LISTEN | head -1)
+              if [ -n "$pid" ]; then
+                pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+                if [ -n "$pgid" ]; then
+                  echo "$pgid" > /tmp/artisan-serve.pgid
+                  echo "Captured artisan-serve PGID=$pgid (sample listener PID=$pid)"
+                else
+                  echo "WARN: ps could not derive PGID from PID=$pid; falling back to PID-only kill"
+                  echo "$pid" > /tmp/artisan-serve.pid
+                fi
+              else
+                echo "WARN: lsof found no listener on :8000 despite healthz 200"
+              fi
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not start in time"
+          echo "=== storage/logs/artisan-serve.log ==="
+          tail -200 storage/logs/artisan-serve.log || true
+          exit 1
+
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
+          # Skip playwright.config.ts's own webServer block — we already
+          # started + health-checked the server above. Without this flag
+          # Playwright would race ours and EADDRINUSE on port 8000.
+          E2E_SKIP_WEBSERVER: '1'
+          # Tells setup-helpers.ts to skip POST /testing/reset (a
+          # `migrate:fresh` via HTTP). The DB was already reset cleanly
+          # above from the CLI step. Skipping the HTTP reset prevents
+          # `php artisan serve` from executing a blocking migration
+          # inside an HTTP request — the root cause of ECONNREFUSED on
+          # 127.0.0.1:8000 during the setup phase. See R38 + the
+          # `ci-failure-investigation` skill rabbit-hole section.
+          E2E_SKIP_HTTP_RESET: '1'
         run: npm run e2e
 
       - name: Dump Laravel log on failure
@@ -247,6 +400,13 @@ jobs:
             echo "(no laravel.log file present)"
           fi
           echo ""
+          echo "=== storage/logs/artisan-serve.log (last 200 lines) ==="
+          if [ -f storage/logs/artisan-serve.log ]; then
+            tail -200 storage/logs/artisan-serve.log
+          else
+            echo "(no artisan-serve.log file present)"
+          fi
+          echo ""
           echo "=== ls storage/framework/sessions ==="
           ls -la storage/framework/sessions || echo "(no sessions dir)"
 
@@ -257,4 +417,62 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+      - name: Stop Laravel server
+        # `if: always()` so the cleanup runs whether Playwright passed,
+        # failed, or the job was cancelled. Without this the
+        # artisan-serve process group outlives the test step and keeps
+        # holding port 8000 + a pool of PHP interpreters.
+        #
+        # PGID-based kill (preferred): `setsid -f` in the start step put
+        # PHP in a NEW process group; PHP_CLI_SERVER_WORKERS=4 forks 4
+        # worker children that inherit the same PGID. `kill -- -$PGID`
+        # signals every process in that group atomically — no risk of a
+        # single worker surviving the cleanup. The PID-only fallback
+        # remains for the (unlikely) case where ps could not derive a
+        # PGID from the captured listener PID.
+        if: always()
+        run: |
+          term_then_kill() {
+            local target="$1"  # e.g. "-12345" for PGID, "12345" for single PID
+            local label="$2"
+            kill -TERM -- "$target" 2>/dev/null || true
+            # Give the process(es) ~2s to flush + exit cleanly.
+            sleep 2
+            if kill -0 -- "$target" 2>/dev/null; then
+              echo "$label still alive after SIGTERM — sending SIGKILL"
+              kill -KILL -- "$target" 2>/dev/null || true
+            fi
+          }
+
+          if [ -f /tmp/artisan-serve.pgid ]; then
+            pgid=$(cat /tmp/artisan-serve.pgid)
+            echo "Stopping artisan-serve process group (pgid=$pgid)..."
+            term_then_kill "-$pgid" "artisan-serve PG"
+            rm -f /tmp/artisan-serve.pgid
+          elif [ -f /tmp/artisan-serve.pid ]; then
+            pid=$(cat /tmp/artisan-serve.pid)
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "Stopping artisan-serve (pid=$pid, PGID-fallback path)..."
+              term_then_kill "$pid" "artisan-serve PID"
+            else
+              echo "artisan-serve (pid=$pid) already exited; tail of log:"
+              tail -50 storage/logs/artisan-serve.log 2>/dev/null || true
+            fi
+            rm -f /tmp/artisan-serve.pid
+          else
+            echo "(no /tmp/artisan-serve.pgid or .pid — server step never ran or failed early)"
+          fi
+
+          # Belt-and-braces: even after PGID kill, run lsof one more
+          # time and SIGKILL anything still holding :8000. This catches
+          # any process the runner spawned that bypassed our PGID
+          # accounting (defensive cleanup; should be a no-op).
+          remaining=$(lsof -ti tcp:8000 -sTCP:LISTEN 2>/dev/null || true)
+          if [ -n "$remaining" ]; then
+            echo "WARN: residual listeners on :8000 after PGID kill: $remaining"
+            for pid in $remaining; do
+              kill -KILL "$pid" 2>/dev/null || true
+            done
+          fi
 

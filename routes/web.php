@@ -8,6 +8,7 @@ use App\Http\Controllers\TestingController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\MessageStreamController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -56,6 +57,23 @@ Route::middleware('auth')->group(function () {
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
     });
 });
+
+// v4.0/W3.1 — SSE streaming variant of POST /messages, registered
+// OUTSIDE the `auth` middleware group so we can apply our SSE-aware
+// auth variant. Same conversation/auth/validation/filter contract as
+// the synchronous route, but emits AI SDK v6 `UIMessageChunk` frames
+// (`start` / `text-start` / `text-delta(id, delta)` / `text-end` /
+// `source-url`; `data-confidence` and `data-refusal` carried under
+// `data:{}`; `finish` constrained to the SDK union via
+// `normalizeFinishReason()`) — see PR #90 (W3.3 BE wire format
+// catch-up) — instead of one JSON response. SSE clients send
+// `Accept: text/event-stream` (not `application/json`), and the
+// default `auth` middleware redirects unauthenticated requests to
+// `/login` (302 + HTML) which the streaming client can't parse.
+// `auth.sse` (see bootstrap/app.php) returns JSON 401 instead so the
+// SPA's auth bootstrap can re-establish the session and retry.
+Route::post('/conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store'])
+    ->middleware('auth.sse');
 
 /*
 |--------------------------------------------------------------------------

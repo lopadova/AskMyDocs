@@ -26,6 +26,27 @@ export default defineConfig({
     testDir: './frontend/e2e',
     fullyParallel: true,
     forbidOnly: !!process.env.CI,
+    /*
+     * v4.0/W3.2 — Consolidate visual-regression snapshots under a
+     * single `frontend/e2e/__visual__/` tree (PLAN-W3 §7.4).
+     *
+     * Default Playwright behaviour places snapshots beside each spec
+     * in `<spec>-snapshots/` folders, which scatters golden images
+     * across the repo and makes bulk-update / grep operations awkward.
+     * Channelling every `toHaveScreenshot()` call through this
+     * template gives a deterministic, easy-to-audit location:
+     *
+     *   frontend/e2e/__visual__/<spec-relative-path>/<test-name>-<projectName>-<platform>.png
+     *
+     * Rationale (Lorenzo, 2026-04-30): "easier to grep + bulk-update"
+     * once the W3.2 swap commit captures the FE rewrite baseline.
+     * Pixel-perfect comparisons (maxDiffPixels: 0) live alongside the
+     * snapshots — see `chat-visual.spec.ts` for the 15 representative
+     * states the FE-rewrite gate compares against.
+     *
+     * Supported since Playwright 1.28; the project pins ^1.59.
+     */
+    snapshotPathTemplate: '{testDir}/__visual__/{testFilePath}/{arg}-{projectName}-{platform}{ext}',
     // Retries kept at 0 in CI while the suite is being stabilised on
     // the new pgvector-enabled Playwright job — a flaky test can
     // compound to hours of runner time with retries:2 (60 tests * 90s
@@ -47,7 +68,17 @@ export default defineConfig({
     webServer: skipWebServer
         ? undefined
         : {
-              command: 'php artisan serve --host=127.0.0.1 --port=8000',
+              // `--no-reload` is required to honour PHP_CLI_SERVER_WORKERS
+              // — without it Laravel's `ServeCommand` silently drops the
+              // env var and runs single-threaded again. The handling
+              // sits at the top of `ServeCommand::handle()` (search for
+              // `PHP_CLI_SERVER_WORKERS` in vendor/laravel/framework's
+              // `Illuminate/Foundation/Console/ServeCommand.php`); we
+              // intentionally don't pin a line number because the file
+              // drifts across patch / minor framework upgrades. PR #82
+              // set the env var without the flag, so the workers
+              // configuration was never actually applied.
+              command: 'php artisan serve --no-reload --host=127.0.0.1 --port=8000',
               // `/healthz` returns a plain 200 with no auth / no DB hit.
               // The previous `baseURL` poll on `/` was hitting the home
               // route (auth middleware → 302 to /login) which CI's webServer
@@ -56,15 +87,32 @@ export default defineConfig({
               url: `${baseURL}/healthz`,
               reuseExistingServer: !process.env.CI,
               timeout: 120_000,
-              env: { APP_ENV: 'testing' },
+              env: {
+                  APP_ENV: 'testing',
+                  // PHP_CLI_SERVER_WORKERS spawns N worker children for
+                  // the PHP built-in dev server (PHP 7.4+). Without
+                  // this env var (AND `--no-reload` above so the var
+                  // is actually honoured by ServeCommand), `php artisan
+                  // serve` falls back to its default single-process /
+                  // single-accept-loop mode and stalls during a long
+                  // migrate:fresh request, causing every concurrent /
+                  // immediately-following request to ECONNREFUSED for
+                  // ≥12s — the root of the recurring auth.setup flake.
+                  // With both knobs set the server runs four worker
+                  // children in parallel — enough headroom for
+                  // healthz + reset + seed + login to land at the
+                  // same time.
+                  PHP_CLI_SERVER_WORKERS: '4',
+              },
               stdout: 'pipe',
               stderr: 'pipe',
           },
     projects: [
         // Setup projects are chained sequentially via `dependencies` so
         // they don't all hammer /testing/reset (migrate:fresh on real
-        // Postgres) at the same instant. PHP's built-in `artisan serve`
-        // is single-threaded; three parallel migrate:fresh requests
+        // Postgres) at the same instant. Even with
+        // PHP_CLI_SERVER_WORKERS=4 + --no-reload (see webServer.env
+        // above) three parallel migrate:fresh requests
         // queue + sometimes lock the server long enough for downstream
         // requests to ECONNREFUSED. Chaining keeps the API surface
         // exercised one-at-a-time during boot.

@@ -92,4 +92,74 @@ class AnthropicProviderTest extends TestCase
 
         $this->assertSame('only this', $res->content);
     }
+
+    public function test_chat_stream_via_fallback_emits_text_envelope_then_finish(): void
+    {
+        // The fallback streaming path delegates to chatWithHistory and
+        // re-emits the response as one SDK v6 text envelope (text-start,
+        // text-delta, text-end) followed by one finish chunk. Native
+        // HTTP-SSE streaming is a follow-up enhancement that overrides
+        // chatStream() per-provider without breaking this contract.
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [
+                    ['type' => 'text', 'text' => 'Streamed reply'],
+                ],
+                'usage' => ['input_tokens' => 12, 'output_tokens' => 7],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $p = new AnthropicProvider($this->config());
+        $chunks = iterator_to_array($p->chatStream('SYS', [
+            ['role' => 'user', 'content' => 'Hi'],
+        ]), preserve_keys: false);
+
+        $this->assertCount(4, $chunks, 'fallback streaming yields text-start + text-delta + text-end + finish');
+        $this->assertSame('text-start', $chunks[0]->type);
+        $this->assertSame('text-delta', $chunks[1]->type);
+        $this->assertSame('text-end', $chunks[2]->type);
+        $this->assertSame('finish', $chunks[3]->type);
+
+        // Text envelope MUST share one id end-to-end so SDK v6 can
+        // stitch the deltas back into a single rendered text part.
+        $textId = $chunks[0]->payload['id'];
+        $this->assertSame($textId, $chunks[1]->payload['id']);
+        $this->assertSame($textId, $chunks[2]->payload['id']);
+
+        // SDK v6 shape: text-delta carries `delta` (NOT `textDelta`).
+        $this->assertSame('Streamed reply', $chunks[1]->payload['delta']);
+
+        // Anthropic's `end_turn` normalizes to SDK union `'stop'` —
+        // see StreamChunk::normalizeFinishReason().
+        $this->assertSame('stop', $chunks[3]->payload['finishReason']);
+        $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
+        $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
+    }
+
+    public function test_chat_stream_skips_text_envelope_on_empty_response(): void
+    {
+        // Edge case: provider returns empty content (rare but possible
+        // with strict tool-only responses). The fallback skips the
+        // entire text envelope (text-start / text-delta / text-end) in
+        // that case so the FE doesn't render an empty assistant
+        // bubble; only the finish event fires.
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [],
+                'usage' => ['input_tokens' => 1, 'output_tokens' => 0],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $p = new AnthropicProvider($this->config());
+        $chunks = iterator_to_array($p->chatStream('SYS', [
+            ['role' => 'user', 'content' => 'Hi'],
+        ]), preserve_keys: false);
+
+        $this->assertCount(1, $chunks, 'no text envelope when response content is empty');
+        $this->assertSame('finish', $chunks[0]->type);
+    }
 }

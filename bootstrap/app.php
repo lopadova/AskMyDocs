@@ -13,6 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // v4.0/W1.D — ResolveTenant runs FIRST in every HTTP request so
+        // every controller / service / scope sees the right tenant on
+        // app(TenantContext::class)->current(). Defaults to 'default'
+        // when no header / claim is present (R31 backward-compat with v3).
+        $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
+
         // Route aliases exposed to routes/*.php and feature tests.
         //
         // `role` / `permission` / `role_or_permission` are Spatie's RBAC
@@ -25,6 +31,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
+            'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
+            // v4.0/W3.1 — `auth` variant for SSE streaming routes that
+            // returns JSON 401 instead of a 302 → /login redirect when
+            // the session is expired. SSE clients send
+            // `Accept: text/event-stream` (not application/json), so
+            // the default `auth` middleware's redirect-on-no-session
+            // behaviour produces an unparseable HTML response. Used by
+            // `POST /conversations/{conversation}/messages/stream`.
+            'auth.sse' => \App\Http\Middleware\AuthenticateForSse::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated

@@ -5,10 +5,13 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
+use App\Ai\Providers\Concerns\FallbackStreaming;
 use Illuminate\Support\Facades\Http;
 
 final class OpenRouterProvider implements AiProviderInterface
 {
+    use FallbackStreaming;
+
     private string $baseUrl;
 
     public function __construct(private readonly array $config)
@@ -56,6 +59,15 @@ final class OpenRouterProvider implements AiProviderInterface
             totalTokens: $data['usage']['total_tokens'] ?? null,
             finishReason: $data['choices'][0]['finish_reason'] ?? null,
         );
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // OpenRouter relays streaming for any upstream model that
+        // supports it (`stream: true` over SSE). Fallback shipped in
+        // W3.1; native streaming variant lands later without breaking
+        // the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse

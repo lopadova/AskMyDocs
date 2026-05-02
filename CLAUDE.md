@@ -804,6 +804,192 @@ update with 422 (orphan-pivot guard); (d) test the cascade explicitly
 slug uniqueness blocks two tenants picking the same intuitive name.
 Pivot orphan rows make the FE crash on undefined relationships.
 
+### R30 — Cross-tenant isolation on every tenant-aware query
+Every Eloquent query against a tenant-aware table MUST be scoped to the
+active tenant via `forTenant($ctx->current())` (provided by the
+`BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
+different customers can legitimately share the same `project_key` — tenant
+boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
+Tenant-aware tables: knowledge_documents, knowledge_chunks,
+embedding_cache, chat_logs, conversations, messages, kb_nodes, kb_edges,
+kb_canonical_audit, project_memberships, kb_tags,
+knowledge_document_tags, knowledge_document_acl, admin_command_audit,
+admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
+→ See `.claude/skills/cross-tenant-isolation/SKILL.md`.
+
+### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
+Every Eloquent model under `app/Models/` representing a tenant-scoped
+domain entity MUST `use BelongsToTenant;` (auto-fills tenant_id on
+creating from `TenantContext`) and list `'tenant_id'` in `$fillable`
+(or use `$guarded = ['id']`). Every new migration creating a tenant-aware
+table MUST add `string('tenant_id', 50)->default('default')->index()`
+and start composite uniques with `tenant_id`. Architecture test
+`tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list
+and gates new entries.
+→ See `.claude/skills/tenant-id-mandatory/SKILL.md`.
+
+### R37 — Branching strategy: `feature/v4.x` integration branches → main
+For AskMyDocs, `main` holds the **stable production release** (v3 today,
+v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
+release works in its own integration branch:
+
+- `main` ← stable production
+- `feature/v4.0` ← integration branch for entire v4.0 cycle (8 weeks)
+- `feature/v4.0/W1.B` ← sub-branch per sottotask, PR target = `feature/v4.0`
+- `feature/v4.1` ← integration branch for v4.1, PR sub-branches target it
+- ... and so on for v4.2, v4.3, v4.4
+
+**Merge to main happens ONCE per major release**, when:
+- All sub-branches merged into `feature/v4.x`
+- All tests + CI green on `feature/v4.x`
+- RC1/RC2 acceptance criteria passed
+- Then: `feature/v4.x` → `main` → tag `v4.x.0`
+
+**Why not merge sub-branches direct to main**:
+- v3 must stay stable on main for hotfixes during 6-month v4 development
+- Half-merged v4 features on main would break v3 production users
+- Single merge per release = single review surface, single deploy event
+
+**For new repos** (`padosoft/laravel-ai-regolo`, `padosoft/laravel-flow`, etc.,
+created fresh for v4): PRs target `main` directly — no stable code to
+preserve; main and develop converge from day 1.
+
+Lorenzo decided this on 2026-04-28 during W1.B PR #78. Existing PR #78
+re-targeted from main to feature/v4.0.
+→ See `.claude/skills/branching-strategy-feature-vx/SKILL.md`.
+
+### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
+**The 9-step canonical flow** for every PR on every Lorenzo / Padosoft repo:
+
+1. Fine task — implementation complete.
+2. Test tutti verdi in **locale** (phpunit + vitest + playwright + architecture).
+3. Apri PR with `gh pr create --reviewer copilot-pull-request-reviewer ...` —
+   the flag is **mandatory** on every PR. Two knobs interact:
+
+   - **The short alias `--reviewer copilot`** only resolves when the
+     repo / org has **GitHub Copilot Code Review enabled** (Settings →
+     Copilot → Code review → "Enable for this repository"). On a
+     fresh repo where the feature is disabled, `gh` reports "could
+     not request reviewer" and opens the PR without a reviewer
+     assigned.
+   - **The canonical login `copilot-pull-request-reviewer`** is the
+     bot's actual GitHub username. The `gh` CLI accepts it as a
+     reviewer **regardless of whether Copilot Code Review is enabled**
+     — i.e. the assignment itself succeeds in both states (CR
+     enabled → bot reviews automatically; CR disabled → bot is
+     listed as a reviewer but no automated review fires; enabling
+     CR later is a one-time setting toggle). Always pass the full
+     username so the assignment never silently fails.
+
+   Same login goes into `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer`
+   when Copilot is re-requested after each push.
+4. Attendi CI GitHub verde (typically 60–180 s).
+5. **Attendi Copilot review commenti** (typically 2–15 min after PR open).
+   Skipping this wait — even when CI is already green — is a protocol
+   violation.
+6. Leggi commenti (`gh pr view <N> --comments` + inline via
+   `gh api .../comments`) e fix locale.
+7. Ri-attendi CI tutta verde dopo il push del fix.
+8. Se Copilot ri-review trova nuovi commenti → GOTO step 5.
+9. Merge solo quando ENTRAMBI:
+   - `reviewDecision = APPROVED` **oppure** zero outstanding must-fix
+     Copilot comments;
+   - all CI checks `status COMPLETED + conclusion SUCCESS` (or expected
+     SKIPPED).
+
+Exit conditions are conjunctive: green CI alone is **not enough**.
+Anti-pattern: "Push, see green CI, merge now" — costs the user a code
+review pass that Copilot would have caught. Lorenzo flagged this
+explicitly on PR #78 (2026-04-28) and reinforced it on padosoft
+PR #1/#2/#3 (2026-04-29) — they were merged without
+`--reviewer copilot-pull-request-reviewer`
+and without waiting for Copilot review, which is a protocol violation
+even though the code shipped clean.
+
+**Scope**: applies to all repos under `lopadova/*` and `padosoft/*`
+(current and future), to every developer and every AI agent working on
+the codebase, and to **every** PR — including docs-only PRs and CI-fix
+PRs. The only acceptable exception is a documented hotfix where every
+minute of delay is operationally costly; even then the post-merge
+review must run retroactively.
+→ See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
+
+### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
+**The architectural rule for any CI flake of the form
+"Playwright auth.setup ECONNREFUSED on `/testing/reset` after
+`/healthz` answered green":**
+
+- Do **NOT** start the investigation by detaching the artisan-serve
+  process (`setsid -f`, `nohup`, `disown`, PGID kills, `lsof`-based
+  PID capture, stability-gate healthz polling). PHP's built-in dev
+  server has a single-threaded accept loop per worker; when one
+  handler runs `migrate:fresh` or any multi-second blocking task the
+  loop stalls and every subsequent connection ECONNREFUSEs. That is
+  the dev server doing its job, not a process-management bug.
+- **DO** ask: "what does the failing endpoint actually run? Could that
+  work happen via a CLI artisan step BEFORE Playwright starts?"
+  If yes, that is the fix.
+
+The structural fix that landed on PR #85 is the canonical example:
+
+1. Workflow step before Playwright runs `migrate:fresh` from the CLI.
+   `key:generate --force` runs FIRST so it REPLACES the empty
+   `APP_KEY=` line copied from `.env.example` in-place — the earlier
+   "Prepare .env for testing" step deliberately leaves the line empty
+   (using `sed -i 's|^APP_ENV=.*|APP_ENV=testing|' .env` for APP_ENV
+   in-place replacement, no `echo "APP_KEY=..." >> .env` for APP_KEY)
+   so `key:generate` has nothing to duplicate. Net effect: exactly
+   one `APP_ENV=` and one `APP_KEY=base64:…` definition in .env, no
+   shell-escaping hazard from piping openssl-generated base64
+   (which can contain `/`) through sed.
+   ```yaml
+   - name: Migrate test database (CLI)
+     env: { APP_ENV: testing }
+     run: |
+       php artisan key:generate --force      # replaces empty APP_KEY=
+       php artisan migrate:fresh --force
+   ```
+2. Every E2E call site that needs to wipe the DB goes through a
+   single `resetDb(target)` helper in `frontend/e2e/setup-helpers.ts`.
+   `resetDb()` ALWAYS posts to `/testing/reset` — it does NOT honour
+   `E2E_SKIP_HTTP_RESET`. The flag is intentionally narrow: it only
+   short-circuits the redundant initial reset inside the setup-time
+   `resetAndSeed(target)` helper (which is what auth.setup /
+   viewer.setup / super-admin.setup call during the boot-race
+   window). Per-scenario reseeding — `admin-dashboard.spec.ts`
+   switching to `EmptyAdminSeeder`, `admin-insights.spec.ts`
+   wiping snapshots before `DemoSeeder`, the `seeded` auto-fixture
+   in `fixtures.ts` running before every test — needs an actual DB
+   wipe. `/testing/seed` only INSERTS rows; it does not truncate, so
+   skipping `/testing/reset` mid-suite would leave cross-scenario
+   state and produce order-dependent assertions. Direct
+   `request.post('/testing/reset')` calls in spec / fixture code are
+   forbidden anyway: they bypass the (future-extensible) helper and
+   make wipe semantics impossible to refactor in one place.
+3. The Playwright step sets `E2E_SKIP_HTTP_RESET: '1'`.
+
+The remaining HTTP traffic is light enough that `php artisan serve`
+handles it without breaking a sweat. The flake disappears.
+
+**Trigger conditions for the CLI move** (all four must be true):
+- The failing endpoint runs `migrate:fresh`, big seeders, or any
+  multi-second blocking artisan command.
+- The endpoint is hit ONCE at suite startup (not per-test).
+- The work is idempotent (CLI can run it once per workflow start).
+- The test environment is disposable (CI runner / local docker, not
+  shared with humans).
+
+**Anti-pattern reference**: PR #83 commits `6071b81 → 4cde177` —
+seven process-management iterations (setsid, lsof, PGID, defensive
+sweep) without converging. Read those commits when you feel tempted
+to detach a child process from a bash session in a GitHub Actions
+step. The fix Copilot landed on PR #85 (`e2c87c29`) is ~58 lines
+across two files and was correct on the first try.
+
+→ See `.claude/skills/ci-failure-investigation/SKILL.md` (R22) for
+the artefact-first investigation flow that should surface this rule
+before the rabbit hole opens.
+
 ### R29 — testid hierarchy: `feature-resource-{id}-{action[-substep]}`
 Every interactive admin or chat surface uses the testid hierarchy
 `feature-resource-{id}-{action[-substep]}` for stable, hierarchical,
@@ -815,6 +1001,66 @@ buttons follow `feature-action`: `chat-filter-bar-add`,
 cross-feature memorisation isn't required when convention holds.
 Stateless components (`FilterBar`, `TagsList`) take `(value, onChange)`
 controlled props — state lifts to the lowest common parent.
+
+### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
+Standing convention from 2026-05-02. R37 says "merge to main once per
+major release"; R39 fills the gap by giving every weekly milestone a
+visible release-candidate tag. After each Wn closure on
+`feature/vX.Y` (every sub-task PR merged + CI green + closure status
+doc shipped under `docs/v4-platform/STATUS-{date}-week{N}.md`):
+
+1. Open a small docs PR refreshing **`README.md`** — specifically the
+   `### Key Features` and `## Changelog` sections (AskMyDocs keeps the
+   changelog inline in the main README; there is no separate
+   `CHANGELOG.md` file). Add a new entry under `## Changelog` with the
+   `vX.Y.0-rcN` heading + bullet list of Wn deliverables, and refresh
+   `### Key Features` so the freshly-shipped capabilities surface above
+   the fold for prospective consumers.
+2. **Capture the closure-commit SHA before the docs PR merges**, then
+   tag at that exact SHA — never against the moving `feature/vX.Y` ref,
+   because another PR landing between `gh release create` and the docs
+   PR merge would silently shift the rc to the new HEAD:
+   ```bash
+   CLOSURE_SHA=$(git rev-parse origin/feature/vX.Y)
+   gh release create vX.Y.0-rcN \
+     --repo lopadova/AskMyDocs \
+     --target "$CLOSURE_SHA" \
+     --title "vX.Y.0-rcN — Wn milestone" \
+     --prerelease \
+     --notes "..."
+   ```
+3. Increment `N` once per Wn closure: rc1 after W4, rc2 after W5, etc.
+   The final `vX.Y.0` GA tag fires only when the LAST Wn closes (W8
+   for v4.0) and the integration branch merges into `main` per R37.
+
+Why a release-candidate and not a final tag at every Wn:
+- Composer / Packagist semver: `^X.Y` resolution skips RC builds by
+  default. Consumers explicitly opt in via `^X.Y@beta` or
+  `^X.Y.0-rcN` if they want the milestone preview. The stable channel
+  remains the previous major until the GA ships.
+- Each rc is a checkpoint. If something regresses between Wn and
+  Wn+1, the rc tag is a known-good rollback target.
+- Audit + community visibility: tagging publicly demonstrates progress
+  every week without committing to a final API contract — and gives
+  Patent Box auditors a clean per-week artefact to point at.
+
+Anti-patterns:
+- ❌ Tagging the rc on `main` — rejected by R37.
+- ❌ Skipping the README + CHANGELOG refresh — leaves consumers staring
+  at a stale "Roadmap" claiming the freshly-shipped feature is still
+  pending.
+- ❌ Tagging mid-Wn (between sub-task merges) — wait for the closure
+  status doc to land first.
+- ❌ Re-tagging the same `rcN` after subsequent commits — bump to
+  `rcN+1` instead.
+
+Scope: applies to AskMyDocs (`lopadova/AskMyDocs`) integration-branch
+cycles. Standalone `padosoft/*` packages tag their own normal-semver
+`v0.1.0` final at the end of their respective Wn (already established
+for `padosoft/laravel-patent-box-tracker` after W4). Those follow
+plain SemVer, NOT the RC convention.
+
+→ See `.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
 
 ---
 

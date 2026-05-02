@@ -5,10 +5,13 @@ namespace App\Ai\Providers;
 use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
+use App\Ai\Providers\Concerns\FallbackStreaming;
 use Illuminate\Support\Facades\Http;
 
 final class OpenAiProvider implements AiProviderInterface
 {
+    use FallbackStreaming;
+
     private string $baseUrl;
 
     public function __construct(private readonly array $config)
@@ -78,6 +81,16 @@ final class OpenAiProvider implements AiProviderInterface
             model: $data['model'],
             totalTokens: $data['usage']['total_tokens'] ?? null,
         );
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // OpenAI supports `stream: true` over SSE. This W3.1 PR ships
+        // the fallback path so the streaming endpoint works end-to-end
+        // for every configured provider; native HTTP-SSE streaming is
+        // a planned follow-up (W3.2-adjacent or post-W3) and replaces
+        // this body without changing the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 
     public function name(): string

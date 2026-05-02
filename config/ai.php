@@ -11,7 +11,7 @@ return [
     | provider via AI_EMBEDDINGS_PROVIDER (useful when using Anthropic or
     | OpenRouter for chat, since they don't offer an embeddings endpoint).
     |
-    | Supported: "openai", "anthropic", "gemini", "openrouter"
+    | Supported: "openai", "anthropic", "gemini", "openrouter", "regolo"
     |
     */
 
@@ -24,7 +24,9 @@ return [
     |
     | Provider used specifically for generating embeddings. If null, the
     | default provider is used. Must be a provider that supports embeddings
-    | (openai, gemini). Anthropic and OpenRouter do NOT support embeddings.
+    | (openai, gemini, regolo). Anthropic and OpenRouter do NOT support
+    | embeddings. Regolo serves Qwen3-Embedding-8B at 4096 dims — see the
+    | KB_EMBEDDINGS_DIMENSIONS warning in `.env.example` if you switch.
     |
     */
 
@@ -78,14 +80,55 @@ return [
             'timeout' => env('OPENROUTER_TIMEOUT', 120),
         ],
 
+        // Regolo entry uses the laravel/ai SDK shape because AskMyDocs's
+        // RegoloProvider delegates to the SDK + padosoft/laravel-ai-regolo
+        // package. The other four providers above stay on the AskMyDocs
+        // legacy shape until their SDK migration lands (W2.B.full follow-up).
         'regolo' => [
-            'api_key' => env('REGOLO_API_KEY'),
-            'base_url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
-            'chat_model' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
-            'embeddings_model' => env('REGOLO_EMBEDDINGS_MODEL', 'gte-Qwen2'),
-            'temperature' => env('REGOLO_TEMPERATURE', 0.2),
-            'max_tokens' => env('REGOLO_MAX_TOKENS', 4096),
+            'driver' => 'regolo',
+            'name' => 'regolo',
+            'key' => env('REGOLO_API_KEY'),
+            'url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
             'timeout' => env('REGOLO_TIMEOUT', 120),
+            // Provider-level defaults for every chat call. Per-call
+            // overrides via `$options['max_tokens']` / `$options['temperature']`
+            // (e.g. `ConversationController::generateTitle` capping
+            // titles at 60 tokens) take precedence — see
+            // `RegoloProvider::resolveMaxTokens()` /
+            // `resolveTemperature()`. Both reach the SDK via
+            // `RegoloAnonymousAgent::maxTokens()` /
+            // `temperature()`, then propagate through
+            // `Laravel\Ai\Gateway\TextGenerationOptions::forAgent()`
+            // into `padosoft/laravel-ai-regolo`'s `BuildsTextRequests`.
+            // `is_numeric($v = env(...)) ? cast($v) : default` falls
+            // back to the default when the env var is non-numeric or
+            // empty. Naked `(int) env(...)` would silently turn `'abc'`
+            // or `''` into `0` and bypass `RegoloProvider::resolveMaxTokens()`'s
+            // own runtime guard (which only fires on per-call $options,
+            // not on this config-layer fallback). The assignment-in-
+            // expression pattern is `config:cache`-safe (no closure).
+            'max_tokens' => is_numeric($v = env('REGOLO_MAX_TOKENS')) ? (int) $v : 4096,
+            'temperature' => is_numeric($v = env('REGOLO_TEMPERATURE')) ? (float) $v : 0.2,
+            'models' => [
+                'text' => [
+                    'default' => env('REGOLO_CHAT_MODEL', 'Llama-3.3-70B-Instruct'),
+                    'cheapest' => env('REGOLO_CHAT_MODEL_CHEAPEST', 'Llama-3.1-8B-Instruct'),
+                    'smartest' => env('REGOLO_CHAT_MODEL_SMARTEST', 'Llama-3.3-70B-Instruct'),
+                ],
+                'embeddings' => [
+                    'default' => env('REGOLO_EMBEDDINGS_MODEL', 'Qwen3-Embedding-8B'),
+                    // SDK signature is `int $dimensions` so the cast is
+                    // load-bearing — a string would TypeError downstream.
+                    // Same `is_numeric()` fallback as max_tokens / temperature
+                    // above so a non-numeric env (`'abc'` / `''`) doesn't
+                    // collapse to 0 (which would later surface as a confusing
+                    // pgvector dimension-mismatch on the FIRST embedding).
+                    'dimensions' => is_numeric($v = env('REGOLO_EMBEDDINGS_DIMENSIONS')) ? (int) $v : 4096,
+                ],
+                'reranking' => [
+                    'default' => env('REGOLO_RERANKING_MODEL', 'jina-reranker-v2'),
+                ],
+            ],
         ],
 
     ],

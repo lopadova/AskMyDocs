@@ -38,6 +38,21 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.0 platform additions (release candidate — W1..W7 shipped)
+
+| Feature | Description |
+|---|---|
+| **Vercel AI SDK chat streaming** | End-to-end token streaming on the chat surface (W3 — PRs #87/#88/#89/#90). The backend SSE endpoint emits SDK v6 `UIMessageChunk` frames; the React composer consumes them via `useChatStream()` for incremental answer rendering with citations |
+| **`padosoft/laravel-ai-regolo` SDK adoption** | The Regolo provider delegates to the standalone `padosoft/laravel-ai-regolo` package backed by `laravel/ai` (W2 — PRs #83/#84). All five chat providers now share the same SDK abstraction; provider swap stays a one-line `.env` change |
+| **`padosoft/laravel-patent-box-tracker` v0.1 dogfood** | W4 ships the standalone `padosoft/laravel-patent-box-tracker` package on Packagist plus the `tools/patent-box/2026.yml` template config. AskMyDocs is intentionally decoupled from the tracker (per `feedback_packages_standalone_agnostic`); operators run `php artisan patent-box:cross-repo /path/to/AskMyDocs/tools/patent-box/2026.yml` from a separate Laravel project that has `padosoft/laravel-patent-box-tracker` installed (`composer require padosoft/laravel-patent-box-tracker`) — Lorenzo's FY2026 Italian Patent Box dossier (Padosoft ditta individuale) is generated this way against AskMyDocs `feature/v4.0` plus the sister Padosoft repositories |
+| **`padosoft/laravel-flow` v0.1 saga / compensation engine** | W5 ships the standalone `padosoft/laravel-flow` package on Packagist (`composer require padosoft/laravel-flow:^0.1`) — fluent definition API + reverse-order compensation chain with aggregated `FlowCompensationException` + native dry-run mode + four Laravel events. Closure: `docs/v4-platform/STATUS-2026-05-02-week5.md` |
+| **`padosoft/eval-harness` v0.1 RAG / LLM evaluation framework** | W6 ships the standalone `padosoft/eval-harness` package on Packagist (`composer require padosoft/eval-harness:^0.1`) — pluggable golden-dataset YAML loader + R23 metric registry (FQCN validation at boot + `supports()` mutex) + three first-party metrics (ExactMatch, CosineEmbedding, LlmAsJudge) + two report renderers (Markdown for review, canonical JSON for machine consumption per R27) + `eval-harness:run` Artisan command. Closure: `docs/v4-platform/STATUS-2026-05-02-week6.md` |
+| **`padosoft/laravel-pii-redactor` v0.1 Italian fiscal identifier coverage** | W7 ships the standalone `padosoft/laravel-pii-redactor` package on Packagist (`composer require padosoft/laravel-pii-redactor:^0.1`) — six checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, Codice Fiscale with the DM 23/12/1976 CIN checksum, Partita IVA with Luhn-IT) + four redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible with `detokenise()`, Drop). Regex + checksum based — zero LLM dependency. Closure: `docs/v4-platform/STATUS-2026-05-02-week7.md` |
+| **`padosoft/askmydocs-pro` foundation seeded** | W7 seeds the private BSL-1.1 commercial sister package — LICENSE with the four canonical BSL parameters (Change Date 4 years from each release, Change License Apache-2.0), composer manifest declaring the v4 sister-package dependency train (`lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`), `.claude/` vibe-coding pack, CI lint loop. Product code lands in v4.1+. Closure: `docs/v4-platform/STATUS-2026-05-02-week7.md` |
+| **`tenant_id` foundation** | Per-tenant scoping migration + `TenantContext` singleton + R30 cross-tenant isolation rule + R31 mandatory `tenant_id` on every tenant-aware model + architecture suite that gates new entries (W1 — PR #79). Default tenant `'default'` preserves v3.x backward compatibility on every tenant-aware table |
+| **Canonical compilation foundation** | Composer path repositories for the four new `padosoft/*` v4 packages (W1.B — PR #78) + Padosoft company Claude pack imported under `.claude/` (W1.H — PR #80), so AI-driven contribution stays consistent across the package family |
+| **AI vibe-coding `.claude/` pack** | Every `padosoft/*` package ships the same `.claude/` skill + rules pack documented in the README's top section so contributors using Claude Code, Cursor, or Copilot inherit the recurring-review-finding fixes (R1..R39) automatically |
+
 #### RAG core
 
 | Feature | Description |
@@ -384,7 +399,7 @@ OPENAI_API_KEY=sk-...
 
 #### Regolo.ai (by Seeweb)
 
-EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports both chat and embeddings. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
+EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports chat, streaming, embeddings, and reranking via the [`padosoft/laravel-ai-regolo`](https://github.com/padosoft/laravel-ai-regolo) extension on top of the official `laravel/ai` SDK. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
 
 ```env
 AI_PROVIDER=regolo
@@ -392,8 +407,27 @@ AI_EMBEDDINGS_PROVIDER=regolo
 
 REGOLO_API_KEY=...
 REGOLO_BASE_URL=https://api.regolo.ai/v1
+
+# Chat models — `cheapest` / `smartest` aliases pick the right model for
+# cost-vs-quality shortcuts (see `Lab::Cheapest` / `Lab::Smartest` in laravel/ai).
 REGOLO_CHAT_MODEL=Llama-3.3-70B-Instruct
-REGOLO_EMBEDDINGS_MODEL=gte-Qwen2
+REGOLO_CHAT_MODEL_CHEAPEST=Llama-3.1-8B-Instruct
+REGOLO_CHAT_MODEL_SMARTEST=Llama-3.3-70B-Instruct
+
+# Embeddings — set KB_EMBEDDINGS_DIMENSIONS to the same value below.
+REGOLO_EMBEDDINGS_MODEL=Qwen3-Embedding-8B
+REGOLO_EMBEDDINGS_DIMENSIONS=4096
+
+# Reranker — used when KB_RERANKING_ENABLED=true.
+REGOLO_RERANKING_MODEL=jina-reranker-v2
+
+# Transport + per-call defaults. `REGOLO_MAX_TOKENS` / `REGOLO_TEMPERATURE`
+# are the provider-level fallbacks; per-call `$options['max_tokens']` /
+# `$options['temperature']` (e.g. `ConversationController::generateTitle`
+# capping titles at 60 tokens) take precedence.
+REGOLO_TIMEOUT=120
+REGOLO_MAX_TOKENS=4096
+REGOLO_TEMPERATURE=0.2
 ```
 
 #### Embedding dimension gotcha
@@ -2836,6 +2870,131 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.0.0-rc4 — 2026-05-02 (W7 milestone)
+
+- `padosoft/laravel-pii-redactor` v0.1.0 published on Packagist — 6 checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, Codice Fiscale with the DM 23/12/1976 CIN checksum, Partita IVA with Luhn-IT + zero-payload sentinel) + 4 redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible, Drop). Regex + checksum based — zero LLM dependency. PR #3 → `956089b`.
+- `padosoft/askmydocs-pro` foundation seeded (private BSL-1.1). LICENSE with the four canonical BSL parameters (Change Date 4 years from each release date, Change License Apache-2.0); composer manifest declares the v4 sister-package dependency train (`lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`); `.claude/` vibe-coding pack imported; CI lint loop wired up with the empty-`src/` tolerance branch. Product code lands in v4.1+. PR #1 → `085a89c` (foundation) + PR #2 → `53577ce` (Copilot review fix-up — BSL "Change License" canonical-US-spelling, CONTRIBUTING foundation-only-state caveat, CHANGELOG surface-decision).
+- Closure status doc: `docs/v4-platform/STATUS-2026-05-02-week7.md`.
+
+### v4.0.0-rc3 — 2026-05-02 (W6 milestone)
+
+- `padosoft/eval-harness` v0.1.0 published on Packagist — RAG / LLM evaluation framework. Pluggable golden-dataset YAML loader (strict-schema with 11 distinct validation failure modes) + R23 metric registry with FQCN validation at boot + `supports()` mutex check + 3 first-party metrics (ExactMatch byte-equality, CosineEmbedding `1 - cosine_distance` with dimensionality + zero-vector guards, LlmAsJudge with deterministic seed + temp 0 + `response_format=json_object` + strict-JSON parser with code-fence fallback) + 2 report renderers (Markdown diff-friendly, canonical JSON additive-only per R27) + `eval-harness:run` Artisan command exiting non-zero on captured failures + opt-in Live testsuite (`EVAL_HARNESS_LIVE_API_KEY` gate per `feedback_package_live_testsuite_opt_in`). PR #3 → `7012aa2`.
+- Closure status doc: `docs/v4-platform/STATUS-2026-05-02-week6.md`.
+
+### v4.0.0-rc2 — 2026-05-02 (W5 milestone)
+
+- `padosoft/laravel-flow` v0.1.0 published on Packagist — saga / compensation engine. Fluent definition API (`FlowDefinitionBuilder` with `withInput` / `step` / `compensateWith` / `withDryRun` / `register`) + reverse-order compensation chain (best-effort with aggregated `FlowCompensationException` carrying every individual compensator's failure) + native dry-run mode (`FlowStepResult::dryRunSkipped`) + 4 Laravel events (`FlowStepStarted` / `FlowStepCompleted` / `FlowStepFailed` / `FlowCompensated`) + readonly DTOs (`FlowDefinition`, `FlowStep`, `FlowContext`, `FlowStepResult`, `FlowRun`) + `Flow` Facade alias + non-final `FlowException` parent class per the W4.C lesson. PR #3 → `208a9d1`.
+- Closure status doc: `docs/v4-platform/STATUS-2026-05-02-week5.md`.
+
+### v4.0.0-rc1 — 2026-05-02 — W1..W4 milestone (release candidate)
+
+The v4.0 series promotes AskMyDocs onto the Vercel AI SDK chat surface,
+extracts shared infrastructure into a family of standalone `padosoft/*`
+Composer packages, and lays the architectural foundation for true
+multi-tenant deployments. This is a **release candidate** — `v4.0.0` GA
+fires at the end of W8 when `feature/v4.0` merges into `main` per R37.
+Stable consumers stay on v3.x; opt into the rc with
+`composer require lopadova/askmydocs:^4.0.0-rc1`.
+
+**W1 — `tenant_id` foundation + R30/R31 architecture invariants**
+- `tenant_id` column added across every tenant-aware table
+  (knowledge_documents, knowledge_chunks, embedding_cache, chat_logs,
+  conversations, messages, kb_nodes, kb_edges, kb_canonical_audit,
+  project_memberships, kb_tags, knowledge_document_tags,
+  knowledge_document_acl, admin_command_audit, admin_command_nonces,
+  admin_insights_snapshots, chat_filter_presets) with
+  `default 'default'` so every v3.x row stays addressable
+- `TenantContext` singleton + `BelongsToTenant` trait (auto-fills
+  `tenant_id` on `creating` from the active tenant) + `ResolveTenant`
+  HTTP middleware + `--tenant=X` CLI option
+- **R30** — every Eloquent query against tenant-aware tables MUST be
+  scoped to the active tenant via `forTenant()` or
+  `where('tenant_id', $ctx->current())`; cross-tenant leak = GDPR
+  catastrophe
+- **R31** — every tenant-aware model MUST `use BelongsToTenant;` and
+  list `'tenant_id'` in `$fillable`; architecture test
+  `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model
+  list and gates new entries
+- Composer path repositories wired for the four new `padosoft/*` v4
+  packages (PR #78); Padosoft company Claude pack imported under
+  `.claude/` (PR #80)
+
+**W2 — `padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK**
+- `padosoft/agent-llm` renamed to `padosoft/laravel-ai-regolo` (PR #81);
+  the package now ships as a standalone Apache-2.0 Composer package
+- AskMyDocs's `RegoloProvider` delegates to the new package which
+  itself sits on top of the `laravel/ai` SDK (PRs #83/#84) — one
+  shared SDK abstraction across all five chat providers
+- Driver test parity ported from the upstream Python SDK into PHP, with
+  added robustness scenarios (timeouts, retries, malformed JSON)
+
+**W3 — Vercel AI SDK chat migration (token-streaming end-to-end)**
+- Backend SSE endpoint + 8-scenario PHPUnit suite (PR #87)
+- React foundation + tests for the new streaming chat surface (PR #88)
+- Atomic chat swap onto `useChatStream()` — drops the legacy mutation
+  flow; `ChatView` + `MessageThread` + `Composer` + `MessageBubble` all
+  refactored in a single commit (PR #89)
+- BE wire format aligned to SDK v6 `UIMessageChunk` shape; FE adapter
+  supports both `'source'` and `'source-url'` chunk types for forward
+  compat (PR #90)
+
+**W4 — Patent Box auto-tracker (`padosoft/laravel-patent-box-tracker` v0.1)**
+- Standalone Apache-2.0 Composer package shipped to Packagist
+  (`padosoft/laravel-patent-box-tracker:^0.1`) — first of its kind, no
+  equivalent Italian-Patent-Box-aware Laravel package exists on
+  Packagist as of 2026-05
+- 8-section architecture: evidence collectors (`Sources\*`),
+  classifier with deterministic seed (`Classifier\*`), audit-trail
+  models + migrations, dossier renderers (PDF via Browsershot +
+  DomPDF fallback, JSON canonical output), per-commit hash chain,
+  `Console\TrackCommand` + `Console\CrossRepoCommand`, fluent builder
+  `PatentBoxTracker::for(...)->coveringPeriod()->classifiedBy()->run()`,
+  Italian Blade dossier template
+- ~5,800 LOC, 163 PHPUnit tests / 1079 assertions, opt-in Live
+  testsuite, CI matrix PHP 8.3 / 8.4 / 8.5 × Laravel 12 / 13
+- Standalone-agnostic invariant enforced by architecture test — zero
+  references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables,
+  or `lopadova/askmydocs` in package source
+- Real-world dogfood: AskMyDocs ships `tools/patent-box/2026.yml` —
+  Lorenzo's FY2026 Italian Patent Box dossier (Padosoft ditta
+  individuale, regime `documentazione_idonea`) is generated from a
+  separate Laravel runner project that has the tracker installed
+  (`composer require padosoft/laravel-patent-box-tracker`) by running
+  `php artisan patent-box:cross-repo /path/to/AskMyDocs/tools/patent-box/2026.yml`
+  against AskMyDocs `feature/v4.0` plus the five sister Padosoft
+  repositories — the YAML lives under AskMyDocs but the artisan
+  command runs from the consumer Laravel project, never from
+  AskMyDocs itself
+- Closure status doc at `docs/v4-platform/STATUS-2026-05-01-week4.md`
+- **R39** — tag `vX.Y.0-rcN` at every Wn milestone closure on AskMyDocs
+  `feature/vX.Y` — codified in `CLAUDE.md` + skill
+  `.claude/skills/rc-tag-per-week-milestone/`
+
+**Pull requests merged on `feature/v4.0` since v3.0.0**
+- #78 W1.B — Composer path repositories for 4 new padosoft/* packages
+- #79 W1.C+D+E — `tenant_id` foundation: migration + `TenantContext` + R30/R31
+- #80 W1.H — import Padosoft company Claude pack
+- #81 W2.A.0 — rename `padosoft/agent-llm` → `padosoft/laravel-ai-regolo`
+- #82 W2 — `PHP_CLI_SERVER_WORKERS=4` + 24s retry for artisan-serve flake (e2e)
+- #83 W2.B prep — R36 9-step flow + `laravel/ai` SDK foundation
+- #84 W2.B refactor — `RegoloProvider` delegates to `laravel/ai` + `padosoft/laravel-ai-regolo`
+- #86 W3 — Vercel AI SDK chat migration design doc + W2 closure
+- #87 W3.1 — backend SSE streaming endpoint + 8-scenario PHPUnit suite
+- #88 W3.2 — Vercel AI SDK chat migration (foundation + tests; SDK swap to follow)
+- #89 W3.2 — atomic chat swap onto `useChatStream()` — drop legacy mutation flow
+- #90 W3.3 — align BE SSE wire format to SDK v6 `UIMessageChunk` shape
+- #91 W4 — W3 closure + Patent Box tracker design doc
+- #92 — copilot-pr-review-loop skill: codify dual-bot polling pattern
+- #93 W4 — W4 closure status + Patent Box tracker dogfood YAML config
+- #94 — R39 rule (tag `vX.Y.0-rcN` at every Wn milestone closure)
+- #95 W4.F — README + STATUS-week4 + dogfood YAML refresh for `v4.0.0-rc1` (this PR)
+
+**Roadmap — still pending in v4.0**
+- ~~**W5** — `padosoft/laravel-flow` v0.1 (saga / workflow orchestration)~~ — shipped 2026-05-02 (`v4.0.0-rc2`); closure under `STATUS-2026-05-02-week5.md`
+- ~~**W6** — `padosoft/eval-harness` v0.1 (LLM evaluation harness)~~ — shipped 2026-05-02 (`v4.0.0-rc3`); closure under `STATUS-2026-05-02-week6.md`
+- ~~**W7** — `padosoft/laravel-pii-redactor` v0.1 (PII redaction layer) + `padosoft/askmydocs-pro` foundation~~ — shipped 2026-05-02 (`v4.0.0-rc4`); closure under `STATUS-2026-05-02-week7.md`
+- **W8** — final v4.0.0 GA + merge `feature/v4.0` → `main` per R37
 
 ### v3.0.0 (2026-04-27) — Enterprise platform: pluggable pipeline + filters + anti-hallucination
 

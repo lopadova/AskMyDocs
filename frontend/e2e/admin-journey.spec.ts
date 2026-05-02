@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { seedDb } from './setup-helpers';
 
 /*
  * PR15 — Phase J. Golden-path admin journey.
@@ -260,7 +261,7 @@ test.describe('Admin golden-path journey — Phase J', () => {
         // AdminInsightsSeeder is designed to be idempotent on top of
         // DemoSeeder.
 
-        await request.post('/testing/seed', { data: { seeder: 'AdminInsightsSeeder' } });
+        await seedDb(request, 'AdminInsightsSeeder');
         await page.goto('/app/admin/insights');
         await expect(page.getByTestId('insights-view')).toHaveAttribute('data-state', 'ready', {
             timeout: 15_000,

@@ -29,7 +29,7 @@ class AiManager
         if (! $provider->supportsEmbeddings()) {
             throw new InvalidArgumentException(
                 "Provider [{$name}] does not support embeddings. "
-                . 'Set AI_EMBEDDINGS_PROVIDER to openai or gemini.'
+                . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, or regolo.'
             );
         }
 
@@ -49,6 +49,18 @@ class AiManager
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         return $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
+    }
+
+    /**
+     * Multi-turn streaming chat. See `AiProviderInterface::chatStream()`
+     * for the chunk-event protocol.
+     *
+     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * @return \Generator<int, StreamChunk, void, void>
+     */
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        return $this->provider()->chatStream($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse

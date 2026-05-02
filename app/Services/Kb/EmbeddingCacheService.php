@@ -9,11 +9,19 @@ use App\Models\EmbeddingCache;
 /**
  * Embedding cache layer that sits in front of AiManager::generateEmbeddings().
  *
- * For each text, the cache is checked first (keyed by SHA-256 hash + provider + model).
- * Only texts with a cache miss are sent to the API. Results are stored for future reuse.
+ * Cache key: `text_hash` (SHA-256 of the input text) — the only UNIQUE
+ * constraint on the table. `provider` + `model` are informational columns
+ * used as retrieval-time filters so callers only reuse vectors produced by
+ * the same model; identical text under a different provider/model causes a
+ * deliberate cache miss. When the embedding model changes, flush stale
+ * entries via `flush($provider)` BEFORE the first ingest/search; otherwise
+ * the first miss-and-insert on an already-cached text_hash will throw a
+ * duplicate-key exception (intentional — it surfaces the missed flush).
  *
- * This eliminates redundant API calls when re-ingesting unchanged documents or
- * when the same query is searched multiple times.
+ * Only texts with a cache miss are sent to the AI API. Results are stored
+ * for future cross-tenant reuse. This eliminates redundant API calls when
+ * re-ingesting unchanged documents or when the same query is searched
+ * multiple times.
  */
 class EmbeddingCacheService
 {

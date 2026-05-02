@@ -1,45 +1,108 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { chatApi, type Message } from './chat.api';
 import { MessageBubble } from './MessageBubble';
 import { Icon } from '../../components/Icons';
+import { mapStatusToDataState, type SdkStatus } from './map-status-to-data-state';
+import type { RenderableMessage } from './message-shape-adapters';
+import { getMessageId, getTextContent } from './message-shape-adapters';
 
 export interface MessageThreadProps {
     conversationId: number | null;
     projectKey?: string | null;
-    isSending?: boolean;
+    /**
+     * Messages to render. Owner (ChatView) calls `useChatStream()` and
+     * threads `chat.messages` here. Both legacy AppMessage (from the
+     * initial GET history fetch) and SDK UIMessage (live streaming
+     * shape) are accepted via the shape adapters in MessageBubble.
+     */
+    messages: RenderableMessage[];
+    /**
+     * SDK status from `useChatStream().status`. Drives the
+     * `data-state` attribute via `mapStatusToDataState()`.
+     */
+    sdkStatus?: SdkStatus;
+    /**
+     * Set when the initial GET /messages history fetch is in flight
+     * (TanStack Query). Maps to `data-state="loading"` BEFORE the SDK
+     * takes over the streaming lifecycle.
+     */
+    isLoadingHistory?: boolean;
+    /**
+     * Surface from `useChatStream().error` (or the initial-fetch
+     * error). Drives `data-state="error"` + chat-thread-error.
+     */
+    error?: Error | null;
 }
 
 /**
- * Scrollable message thread. Scrolls to the bottom whenever new
- * messages arrive. Empty state shows three suggested prompts so a
- * brand-new user has somewhere to start.
+ * Scrollable message thread. Auto-scrolls to the bottom whenever new
+ * messages arrive OR while a stream is in flight (the assistant
+ * bubble grows token-by-token so the user always sees the latest).
  *
  * R11: `data-state ∈ {idle, loading, ready, empty, error}` +
  * `aria-live="polite"` so screen readers announce new messages, and
- * `aria-busy` flips during send.
+ * `aria-busy` flips during streaming.
+ *
+ * v4.0/W3.2: dropped the local `useQuery(['messages'])`. ChatView
+ * owns the SDK hook and threads messages + status here. The internal
+ * `resolveState` helper is replaced by `mapStatusToDataState()` so
+ * the SDK's full status set (`submitted` | `streaming` | `ready` |
+ * `error`) maps to the existing `data-state` vocabulary.
  */
-export function MessageThread({ conversationId, projectKey, isSending = false }: MessageThreadProps): ReactNode {
+export function MessageThread({
+    conversationId,
+    projectKey,
+    messages,
+    sdkStatus,
+    isLoadingHistory = false,
+    error = null,
+}: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
-    const { data, isLoading, isError, error } = useQuery<Message[]>({
-        queryKey: ['messages', conversationId ?? 'none'],
-        queryFn: () => {
-            if (conversationId === null) {
-                return Promise.resolve<Message[]>([]);
-            }
-            return chatApi.listMessages(conversationId);
-        },
-        enabled: conversationId !== null,
-        staleTime: 0,
-    });
+    // Stream-aware auto-scroll trigger. During token-by-token streaming
+    // the assistant message accretes text inside the SAME message
+    // object — `messages.length` and `sdkStatus` both stay constant
+    // (`'streaming'` throughout). Without a length-aware tracker the
+    // scroll wouldn't follow the growing bubble. We delegate text
+    // extraction to the `getTextContent` adapter (which handles both
+    // AppMessage and UIMessage shapes correctly) and sum the lengths.
+    //
+    // Computed inline (no useMemo) on purpose: the SDK's internal
+    // state-update strategy isn't part of its public contract, so a
+    // memo keyed on the `messages` reference could go stale if the
+    // SDK ever mutates in place. The reduce is O(messageCount ×
+    // parts) which is trivial for typical chat threads (≤100
+    // messages, ≤1ms per render); the useEffect below depends on
+    // the resulting scalar so it always detects growth correctly.
+    const totalTextLength = messages.reduce(
+        (acc, m) => acc + getTextContent(m).length,
+        0,
+    );
+
+    const isStreaming = sdkStatus === 'submitted' || sdkStatus === 'streaming';
 
     useEffect(() => {
-        threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
-    }, [data?.length, isSending]);
+        // Scroll behavior matches the user's expectation in each
+        // phase: during streaming, the assistant body grows
+        // token-by-token and EVERY delta would queue a fresh smooth
+        // scroll → continuous interrupted animation on fast streams
+        // (the browser cancels each smooth scroll mid-flight when
+        // the next one starts). Use `'auto'` (instant) during the
+        // streaming window so the bottom-pinning is steady, then
+        // fall back to `'smooth'` for the final settle on
+        // status='ready' / new turn arrival.
+        threadRef.current?.scrollTo({
+            top: threadRef.current.scrollHeight,
+            behavior: isStreaming ? 'auto' : 'smooth',
+        });
+    }, [messages.length, sdkStatus, totalTextLength, isStreaming]);
 
-    const messages = data ?? [];
-    const state = resolveState({ conversationId, isLoading, isError, messageCount: messages.length });
+    const state = mapStatusToDataState({
+        conversationId,
+        isLoading: isLoadingHistory,
+        isError: error !== null,
+        messageCount: messages.length,
+        sdkStatus,
+    });
 
     return (
         <section
@@ -48,7 +111,7 @@ export function MessageThread({ conversationId, projectKey, isSending = false }:
             data-state={state}
             aria-label="Conversation messages"
             aria-live="polite"
-            aria-busy={isLoading || isSending}
+            aria-busy={isLoadingHistory || isStreaming}
             className="grid-bg"
             style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}
         >
@@ -56,55 +119,42 @@ export function MessageThread({ conversationId, projectKey, isSending = false }:
                 {state === 'empty' && <EmptyThread />}
                 {state === 'error' && (
                     <div data-testid="chat-thread-error" role="alert" style={errorStyle}>
-                        {(error as Error | undefined)?.message ?? 'Could not load messages.'}
+                        {error?.message ?? 'Could not load messages.'}
                     </div>
                 )}
-                {messages.map((m) => (
-                    <MessageBubble
-                        key={m.id}
-                        conversationId={conversationId as number}
-                        message={m}
-                        projectKey={projectKey}
-                    />
-                ))}
-                {isSending && (
-                    <MessageBubble
-                        conversationId={conversationId as number}
-                        message={{
-                            id: -1,
-                            role: 'assistant',
-                            content: '',
-                            metadata: null,
-                            rating: null,
-                            created_at: new Date().toISOString(),
-                        }}
-                        streaming
-                    />
-                )}
+                {/*
+                  * Render the thread only when a conversation is
+                  * active. With `conversationId === null` the thread
+                  * shows the empty card (handled above by
+                  * `state === 'empty'`); we'd otherwise force-cast
+                  * conversationId to `number` for MessageBubble's
+                  * required prop, hiding a runtime hazard if the SDK
+                  * ever populates `messages` before activeId lands.
+                  *
+                  * The `streaming` prop is set on the LAST assistant
+                  * bubble when the SDK is mid-stream — this drives
+                  * the typing caret + hides the action row /
+                  * citations on the in-flight turn. Without this
+                  * wiring (lost when the legacy `isSending`
+                  * placeholder was removed), the caret never appears
+                  * during token-by-token render.
+                  */}
+                {conversationId !== null && messages.map((m, i) => {
+                    const isLast = i === messages.length - 1;
+                    const streaming = isStreaming && isLast && m.role === 'assistant';
+                    return (
+                        <MessageBubble
+                            key={getMessageId(m)}
+                            conversationId={conversationId}
+                            message={m}
+                            projectKey={projectKey}
+                            streaming={streaming}
+                        />
+                    );
+                })}
             </div>
         </section>
     );
-}
-
-function resolveState(args: {
-    conversationId: number | null;
-    isLoading: boolean;
-    isError: boolean;
-    messageCount: number;
-}): 'idle' | 'loading' | 'ready' | 'empty' | 'error' {
-    if (args.conversationId === null) {
-        return 'idle';
-    }
-    if (args.isLoading) {
-        return 'loading';
-    }
-    if (args.isError) {
-        return 'error';
-    }
-    if (args.messageCount === 0) {
-        return 'empty';
-    }
-    return 'ready';
 }
 
 const errorStyle = {
