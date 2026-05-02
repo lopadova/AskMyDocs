@@ -12,7 +12,7 @@
 # `padosoft/*` package is 100% standalone, AskMyDocs USES the packages,
 # never the reverse). AskMyDocs's own `composer.json` does NOT require
 # the tracker, so `php artisan patent-box:cross-repo` is NOT runnable
-# from an AskMyDocs checkout out of the box.
+# from an AskMyDocs checkout out-of-the-box.
 #
 # Run it instead from a Laravel project where the tracker is composer-
 # installed:
@@ -23,7 +23,7 @@
 # Lorenzo's local layout: every Padosoft repo (askmydocs, laravel-ai-
 # regolo, laravel-flow, eval-harness, laravel-pii-redactor, laravel-
 # patent-box-tracker, …) is cloned under a single parent directory
-# (`~/Code/<repo-name>`). The `path:` fields below use that pattern —
+# (`/ABS/PATH/TO/<repo-name>`). The `path:` fields below use that pattern —
 # operators with a different local layout MUST adjust the absolute
 # paths to match their actual checkouts.
 #
@@ -34,8 +34,8 @@
 #      a real P.IVA. Replace with the actual Padosoft VAT number on
 #      the operator's machine (do NOT commit the real value back into
 #      the repo — keep this file checked in with the placeholder).
-#   2. `repositories[*].path` — the `~/Code/<repo-name>` paths assume
-#      the operator clones every Padosoft repo into the `~/Code/`
+#   2. `repositories[*].path` — the `/ABS/PATH/TO/<repo-name>` paths assume
+#      the operator clones every Padosoft repo into the `/ABS/PATH/TO/`
 #      parent directory. Replace with the actual absolute paths on
 #      your machine (e.g. `/home/lorenzo/Code/askmydocs`,
 #      `C:/Users/<you>/Documents/.../askmydocs`, etc.).
@@ -77,32 +77,35 @@ classifier:
   model: claude-sonnet-4-6
 
 repositories:
-  # IMPORTANT: replace each `~/Code/<repo-name>` with the absolute path
-  # of your local checkout. The `~/Code/` prefix matches Lorenzo's
-  # personal layout — your machine WILL differ.
+  # IMPORTANT: every `path:` MUST be an absolute filesystem path that PHP
+  # can resolve directly — `~` is shell expansion and is NOT expanded by
+  # PHP / Symfony Filesystem calls. Replace each `/ABS/PATH/TO/<repo-name>`
+  # placeholder with your local checkout path (e.g.
+  # `/Users/lorenzo/Code/askmydocs` on macOS, `/home/lorenzo/Code/askmydocs`
+  # on Linux, `C:/Users/lorenzo/Code/askmydocs` on Windows).
 
   # ===== AskMyDocs — primary IP =====
-  - path: ~/Code/askmydocs
+  - path: /ABS/PATH/TO/askmydocs
     role: primary_ip
 
   # ===== Padosoft Apache packages — supporting infrastructure =====
-  - path: ~/Code/laravel-ai-regolo
+  - path: /ABS/PATH/TO/laravel-ai-regolo
     role: support
 
   # laravel-flow v0.1.0 shipped 2026-05-02 (W5 of v4.0).
-  - path: ~/Code/laravel-flow
+  - path: /ABS/PATH/TO/laravel-flow
     role: support
 
   # TODO: pending W6 — eval-harness v0.1 ships in week 6 of v4.0.
-  - path: ~/Code/eval-harness
+  - path: /ABS/PATH/TO/eval-harness
     role: support
 
   # TODO: pending W7 — laravel-pii-redactor v0.1 ships in week 7 of v4.0.
-  - path: ~/Code/laravel-pii-redactor
+  - path: /ABS/PATH/TO/laravel-pii-redactor
     role: support
 
   # ===== Meta — the tracker itself, dogfooded against its own history =====
-  - path: ~/Code/laravel-patent-box-tracker
+  - path: /ABS/PATH/TO/laravel-patent-box-tracker
     role: meta_self
 
 manual_supplement:

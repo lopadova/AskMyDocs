@@ -70,6 +70,6 @@ The v0.1 dossier admits "off-keyboard time is not represented in the v0.1 dossie
 
 ## Next: W5 — `padosoft/laravel-flow` v0.1
 
-Per `project_v40_week_sequence`: a saga / workflow orchestration package for Laravel. Will be **tracked by `laravel-patent-box-tracker` from day 1** for Lorenzo's Patent Box dossier — the `repositories[*]` list under `tools/patent-box/2026.yml` already reserves the `~/Code/laravel-flow` entry with `role: support` so the cross-repo runner picks up the new repo as soon as it materialises.
+Per `project_v40_week_sequence`: a saga / workflow orchestration package for Laravel. Will be **tracked by `laravel-patent-box-tracker` from day 1** for Lorenzo's Patent Box dossier — the `repositories[*]` list under `tools/patent-box/2026.yml` already reserves a `laravel-flow` entry (with the placeholder absolute-path pattern `/ABS/PATH/TO/laravel-flow`, since `~` is shell-only and is not expanded by PHP / Symfony Filesystem calls; operators replace the placeholder with their actual checkout path) and `role: support` so the cross-repo runner picks up the new repo as soon as it materialises.
 
 > **Update (2026-05-02)**: `padosoft/laravel-flow` v0.1.0 shipped to Packagist as part of the W5 push immediately following this W4 closure. The detailed W5 closure narrative (Flow engine core scope, sub-tasks, test counts, lessons) lives under `docs/v4-platform/STATUS-{date}-week5.md`; this W4 doc is unaffected and stays scoped to the patent-box-tracker deliverable.
