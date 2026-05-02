@@ -45,12 +45,13 @@
 #      `PCT/IT2026/...` placeholder with the actual identifier as soon
 #      as it is issued.
 #
-# The four sister Padosoft packages tracked here (laravel-flow,
-# eval-harness, laravel-pii-redactor, plus the meta_self entry
-# laravel-patent-box-tracker) are listed even when implementation is
-# still in flight: the cross-repo runner walks each repo's actual
-# state at run time, so an empty repo simply produces zero qualifying
-# commits — the dossier shape is unchanged.
+# The four sister Padosoft packages tracked here are all on Packagist:
+#   - laravel-patent-box-tracker v0.1.0 (W4) shipped 2026-05-01.
+#   - laravel-flow v0.1.0 (W5) shipped 2026-05-02.
+#   - eval-harness v0.1.0 (W6) shipped 2026-05-02.
+#   - laravel-pii-redactor v0.1.0 (W7) shipped 2026-05-02.
+# The cross-repo runner walks each repo's actual state at run time and
+# harvests every qualifying commit across the FY2026 fiscal year.
 #
 # See the package README for the full schema reference:
 #   https://github.com/padosoft/laravel-patent-box-tracker#cross-repository-dossier-the-canonical-padosoft-use-case
@@ -96,11 +97,11 @@ repositories:
   - path: /ABS/PATH/TO/laravel-flow
     role: support
 
-  # TODO: pending W6 — eval-harness v0.1 ships in week 6 of v4.0.
+  # eval-harness v0.1.0 shipped 2026-05-02 (W6 of v4.0).
   - path: /ABS/PATH/TO/eval-harness
     role: support
 
-  # TODO: pending W7 — laravel-pii-redactor v0.1 ships in week 7 of v4.0.
+  # laravel-pii-redactor v0.1.0 shipped 2026-05-02 (W7 of v4.0).
   - path: /ABS/PATH/TO/laravel-pii-redactor
     role: support
 
