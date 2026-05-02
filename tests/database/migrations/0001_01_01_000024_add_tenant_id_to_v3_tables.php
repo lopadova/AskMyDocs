@@ -22,7 +22,12 @@ return new class extends Migration {
     private const TABLES = [
         'knowledge_documents',
         'knowledge_chunks',
-        'embedding_cache',
+        // 'embedding_cache' is intentionally EXCLUDED — the cache is a
+        // cross-tenant reuse layer keyed by (text_hash, provider, model)
+        // and globally unique on text_hash. EmbeddingCacheService queries
+        // are NOT tenant-scoped on purpose; tenant_id here would create
+        // confusing "first-tenant-wins" ownership semantics. See PR #98
+        // Copilot review (2026-05-02).
         'chat_logs',
         'conversations',
         'messages',

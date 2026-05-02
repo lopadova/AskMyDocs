@@ -44,11 +44,16 @@ return new class extends Migration {
      *  - users / roles / permissions    (cross-tenant identity)
      *  - jobs / failed_jobs              (queue plumbing)
      *  - activity_log                    (Spatie, polymorphic subject)
+     *  - embedding_cache                 (cross-tenant reuse layer keyed
+     *                                     by text_hash; globally unique
+     *                                     by design — see EmbeddingCacheService;
+     *                                     adding tenant_id here would create
+     *                                     "first-tenant-wins" ownership
+     *                                     semantics. PR #98 Copilot review.)
      */
     private const TABLES = [
         'knowledge_documents',
         'knowledge_chunks',
-        'embedding_cache',
         'chat_logs',
         'conversations',
         'messages',

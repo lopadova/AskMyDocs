@@ -36,7 +36,10 @@ final class TenantIdMandatoryTest extends TestCase
     private const TENANT_AWARE_MODELS = [
         \App\Models\KnowledgeDocument::class,
         \App\Models\KnowledgeChunk::class,
-        \App\Models\EmbeddingCache::class,
+        // EmbeddingCache is intentionally NOT tenant-aware — the cache is
+        // a cross-tenant reuse layer keyed by (text_hash, provider, model)
+        // and globally unique on text_hash. EmbeddingCacheService queries
+        // are NOT scoped by tenant_id on purpose. PR #98 Copilot review.
         \App\Models\ChatLog::class,
         \App\Models\Conversation::class,
         \App\Models\Message::class,

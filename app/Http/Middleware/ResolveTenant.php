@@ -15,7 +15,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * Resolution order (first match wins):
  *  1. `X-Tenant-Id` header
- *  2. JWT/Sanctum claim `tenant_id` (if user is authenticated)
+ *  2. Authenticated user's `tenant_id` attribute (Eloquent attribute,
+ *     read via `getAttribute('tenant_id')` so it works regardless of
+ *     whether the user model declares it as a real PHP property)
  *  3. Default to `'default'` (backward-compat with v3 single-tenant)
  *
  * Invalid tenant_id format triggers 400 Bad Request rather than silently
@@ -50,10 +52,17 @@ final class ResolveTenant
             return $header;
         }
 
-        // 2) Authenticated user's tenant_id property (if available on the user model).
+        // 2) Authenticated user's tenant_id attribute (Eloquent attributes
+        //    live in $attributes, NOT as PHP properties — `property_exists`
+        //    returns false even when the column is set. Read via
+        //    `getAttribute()` so we work uniformly with any user model that
+        //    exposes a `tenant_id` column or accessor.
         $user = $request->user();
-        if ($user !== null && property_exists($user, 'tenant_id') && is_string($user->tenant_id) && $user->tenant_id !== '') {
-            return $user->tenant_id;
+        if ($user !== null) {
+            $userTenantId = $user->getAttribute('tenant_id');
+            if (is_string($userTenantId) && $userTenantId !== '') {
+                return $userTenantId;
+            }
         }
 
         // 3) Default — preserves v3 backward compatibility.
