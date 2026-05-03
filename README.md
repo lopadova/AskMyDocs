@@ -38,6 +38,20 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.1.0-rc1 — W4.1 shipped (PII redactor integration closed 2026-05-03)
+
+| Feature | Description |
+|---|---|
+| **Chat-message PII redaction middleware** | New `redact-chat-pii` middleware bound to EXACTLY the two chat-message persistence routes (`POST /conversations/{conversation}/messages` sync + `/messages/stream` SSE). When both `kb.pii_redactor.enabled` AND `kb.pii_redactor.persist_chat_redacted` are true, every inbound `content` field passes through `RedactorEngine::redact()` BEFORE the controller sees it — `chat_logs.question` / `messages.content` ship redacted, the LLM never sees the original PII. Curator / admin / promotion / delete routes are architecturally pinned out of the binding scope (`PiiRedactionMiddlewareScopeTest`) so canonical KB content is never silently corrupted. Default OFF. |
+| **Embedding-cache pre-redact** | `EmbeddingCacheService::generate()` now masks PII out of every input string BEFORE the SHA-256 hash that keys the cache row AND BEFORE the text reaches the embedding provider. Mask strategy (one-way, stable) keeps cache hit-rate intact across re-ingestion. Gates: `kb.pii_redactor.enabled` AND `kb.pii_redactor.redact_before_embeddings`. Default OFF. |
+| **AI-insights snippet sanitiser** | `AiInsightsService::coverageGaps()` masks PII out of every chat sample question BEFORE clustering — short-circuits leakage into BOTH the LLM call AND the snapshot persisted into `admin_insights_snapshots.payload_json`. Gates: `kb.pii_redactor.enabled` AND `kb.pii_redactor.redact_insights_snippets`. Default OFF. |
+| **Operator-driven detokenisation** | New `POST /api/admin/logs/chat/{id}/detokenize` endpoint round-trips a tokenised chat-log row back to the original PII text. 422 when the package's strategy is not `tokenise`; 403 when the caller lacks the Spatie permission named in `kb.pii_redactor.detokenize_permission` (default `pii.detokenize`). Every 200 / 403 writes an `admin_command_audit` row so unmasking is forensically traceable. R30 tenant-scoped on the `chat_logs` lookup. |
+| **`padosoft/laravel-pii-redactor` v1.1 EU country-pack architecture** | The standalone package shipped its v1.0 community-grade core (six checksum-validated detectors + four redaction strategies + custom-rule loader + database token store + dual NER drivers + audit-trail event) on 2026-05-03, plus v1.1's EU country-pack architecture (`PackContract` interface + `DetectorPackRegistry` with R23-style FQCN validation + `supports()` mutex; ItalyPack + GermanyPack + SpainPack as the first three packs covering Italian Codice Fiscale + Partita IVA + +39 phone + Italian address; German Steuer-ID with mod-11 ISO 7064 + USt-IdNr + +49 phone + German address; Spanish DNI with the 23-letter checksum table + NIE + CIF with AEAT 3-bucket classification + +34 phone + Spanish address). Community contributors can add Germany / Spain / France / Netherlands / Portugal / etc. packs via PRs against the package repository. |
+| **Default-off integration invariant** | Every W4.1 knob defaults `false` (`kb.pii_redactor.enabled`, `kb.pii_redactor.persist_chat_redacted`, `kb.pii_redactor.redact_before_embeddings`, `kb.pii_redactor.redact_insights_snippets`) so v3 / v4.0 hosts upgrading to v4.1 see byte-identical output until they explicitly opt in. Architecture test `PiiRedactorIntegrationScopeTest` enumerates the four touch-points + their gates so a regression that drops a gate is caught at architecture-test time. |
+| **R30 cross-tenant isolation on every new query path** | Both new `chat_logs` reads in `coverageGaps()` and `chatDetokenize()` scope explicitly via `->forTenant(app(TenantContext::class)->current())` before `->get()` / `->findOrFail()`. The closure architecture test grep-matches `forTenant(` inside both call-site files so a future regression that drops the scope fails CI. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-03-week4.1.md`
+
 #### v4.0.0 GA — W1..W8 shipped (full cycle closed 2026-05-02)
 
 | Feature | Description |
@@ -1786,6 +1800,14 @@ KB_REJECTED_MIN_SIMILARITY=0.45
 
 # Promotion
 KB_PROMOTION_ENABLED=true
+
+# PII redaction integration (W4.1 — padosoft/laravel-pii-redactor v1.1+)
+# All knobs default to false — v3 hosts upgrading see zero behaviour change.
+KB_PII_REDACTOR_ENABLED=false
+KB_PII_REDACT_PERSIST=false
+KB_EMBEDDINGS_PII_REDACT=false
+KB_INSIGHTS_PII_REDACT=false
+KB_PII_DETOKENIZE_PERMISSION=pii.detokenize
 ```
 
 ### When AskMyDocs Canonical is the right fit
@@ -3250,6 +3272,62 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.1.0-rc1 — 2026-05-03 (W4.1 milestone — `padosoft/laravel-pii-redactor` integration)
+
+First release candidate of the v4.1 cycle. Wires
+`padosoft/laravel-pii-redactor` v1.1+ into AskMyDocs at the four
+observable touch-points where chat-content PII can leak — chat-message
+persistence, embedding-cache key + provider call, AI-insights snippet
+sanitiser, and operator-driven detokenisation. Every knob defaults
+OFF; existing v4.0 hosts upgrading to v4.1.0-rc1 see byte-identical
+behaviour until they explicitly opt in via the `KB_PII_*` env vars.
+
+The companion package shipped its v1.0 community-grade core
+(checksum-validated detectors, four redaction strategies, custom-rule
+loader, database token store, dual NER drivers, audit-trail event)
+plus the v1.1 EU country-pack architecture (Italy + Germany + Spain
+packs, with the `PackContract` interface ready for community PRs that
+add France / Netherlands / Portugal / etc.).
+
+**What's new in AskMyDocs v4.1.0-rc1:**
+
+- **W4.1.A** — composer integration: `padosoft/laravel-pii-redactor:^1.1`
+  moved from `require-dev` (v4.0.x spike) to `require`. New
+  `pii_redactor` block in `config/kb.php` with five default-false
+  knobs. Explicit SP registration in `bootstrap/providers.php` as a
+  Windows / Herd auto-discovery safety net. PR #103.
+- **W4.1.B** — `App\Http\Middleware\RedactChatPii` bound to
+  `POST /conversations/{conversation}/messages` (sync) +
+  `/messages/stream` (SSE) only. Architecture test pins the binding
+  scope so curator / admin / promotion / delete routes are NEVER
+  redacted (would silently corrupt the canonical KB pipeline). 5
+  feature tests + 2 architecture tests. PR #104.
+- **W4.1.C** — `EmbeddingCacheService::generate()` masks PII out of
+  every input BEFORE the SHA-256 cache hash AND BEFORE the embedding
+  provider's HTTP call when both gate knobs are on. Mask strategy
+  preserves cache hit-rate. 3 feature tests. PR #105.
+- **W4.1.D** — `AiInsightsService::coverageGaps()` masks chat sample
+  questions before clustering; new `POST /api/admin/logs/chat/{id}/detokenize`
+  operator endpoint with 422/403/200 contract gated by Spatie
+  permission `kb.pii_redactor.detokenize_permission` (default
+  `pii.detokenize`); every 200/403 writes an `admin_command_audit`
+  row. R30 tenant-scoped on every new `chat_logs` read. 6 feature
+  tests. PR #106.
+- **W4.1.E** — closure status doc + end-to-end architecture test
+  (`PiiRedactorIntegrationScopeTest`) pinning all four touch-points
+  + their gates + their R30 tenant-scoping markers + the audit-row
+  contract on the detokenize endpoint. README "Key Features" + this
+  Changelog entry refreshed.
+
+**Pull requests merged on `feature/v4.1` since v4.0.2:**
+- #103 v4.1/W4.1.A — composer + config + .env scaffold
+- #104 v4.1/W4.1.B — `redact-chat-pii` middleware + chat-route binding
+- #105 v4.1/W4.1.C — embedding-cache pre-redact (mask before hash + provider call)
+- #106 v4.1/W4.1.D — AI-insights snippet redact + LogViewer detokenize action
+- (this PR) v4.1/W4.1.E — closure status doc + end-to-end architecture test + README/Changelog refresh
+
+Closure: `docs/v4-platform/STATUS-2026-05-03-week4.1.md`
 
 ### v4.0.2 — 2026-05-03 (Docs honesty pass — sister packages integration roadmap)
 

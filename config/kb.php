@@ -276,4 +276,86 @@ return [
     */
     'raw_disk' => env('KB_RAW_DISK', 'kb-raw'),
     'canonical_disk' => env('KB_FILESYSTEM_DISK', 'kb'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | PII redaction (W4.1 — padosoft/laravel-pii-redactor v1.1+ integration)
+    |--------------------------------------------------------------------------
+    |
+    | Wires AskMyDocs's chat persistence + embedding cache + insights surface
+    | through the Padosoft PII redactor package. The package config itself
+    | (detectors, packs, NER drivers, token store) is published separately
+    | via `php artisan vendor:publish --tag=pii-redactor-config`. The keys
+    | below control how AskMyDocs INTEGRATES the redactor into its hot paths.
+    |
+    | Default: every integration knob is OFF. Hosts opt in by flipping the
+    | corresponding env var to true. v3 hosts upgrading to v4.1 see zero
+    | behaviour change until they explicitly enable redaction.
+    |
+    | See docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md for the
+    | per-touch-point integration plan.
+    |
+    */
+    'pii_redactor' => [
+        'enabled' => (bool) env('KB_PII_REDACTOR_ENABLED', false),
+
+        /*
+        | Chat persistence — when true, the `redact-chat-pii`
+        | middleware (`App\Http\Middleware\RedactChatPii`, registered
+        | in `bootstrap/app.php` and bound to
+        | `POST /conversations/{conversation}/messages` sync + SSE
+        | by `routes/web.php`) runs `RedactorEngine::redact()` on the
+        | request `content` field BEFORE the controller sees it.
+        | Whatever `MessageController` / `MessageStreamController`
+        | persists into `chat_logs.question` / `messages.content`
+        | is therefore the redacted form — so the LLM and the
+        | persisted columns ship redacted in lock-step. The token
+        | map (when the active strategy is `tokenise`) lives in
+        | `pii_token_maps` for operator-driven detokenisation via
+        | the `chatDetokenize` action below.
+        */
+        'persist_chat_redacted' => (bool) env('KB_PII_REDACT_PERSIST', false),
+
+        /*
+        | Embedding cache — when true, `EmbeddingCacheService::generate()`
+        | runs `RedactorEngine::redact($text, MaskStrategy)` BEFORE the
+        | SHA-256 hash that keys the cache row AND BEFORE the text
+        | reaches the embedding provider's HTTP call. The supported
+        | embedding providers are OpenAI, Gemini, and Regolo (Anthropic
+        | is intentionally NOT an embedding provider —
+        | `AnthropicProvider::generateEmbeddings()` throws by design
+        | and `AiManager::embeddingsProvider()` only accepts
+        | openai/gemini/regolo). Mask strategy (not Tokenise) here
+        | because embeddings are one-way — no detokenisation round-trip
+        | needed, and mask is stable so the cache hit-rate is
+        | preserved across re-ingestion.
+        */
+        'redact_before_embeddings' => (bool) env('KB_EMBEDDINGS_PII_REDACT', false),
+
+        /*
+        | AI insights snippets — when true, `AiInsightsService::coverageGaps()`
+        | applies `RedactorEngine::redact($snippet, MaskStrategy)` to every
+        | chat sample question BEFORE clustering. Short-circuits leakage to
+        | BOTH the LLM call and the snapshot persisted into
+        | `admin_insights_snapshots.payload_json`. Insights snapshots are
+        | read by the admin UI, so any PII leaking into the snapshot
+        | surface would surface in the dashboard.
+        */
+        'redact_insights_snippets' => (bool) env('KB_INSIGHTS_PII_REDACT', false),
+
+        /*
+        | Detokenize permission — Spatie permission name required for the
+        | `LogViewerController::chatDetokenize` action
+        | (`POST /api/admin/logs/chat/{id}/detokenize`) that surfaces the
+        | original PII alongside the redacted record. Operators with this
+        | permission can recover originals; without it the action returns
+        | 403. Every 200 / 403 writes a row to the `admin_command_audit`
+        | table (model `App\Models\AdminCommandAudit`) tagged with
+        | `command = 'pii.detokenize'`, so unmask attempts are forensically
+        | traceable. The 422 strategy-mismatch preflight (when the active
+        | redaction strategy is not `tokenise`) is intentionally not
+        | audited — it's a config-stage error, not an operator action.
+        */
+        'detokenize_permission' => (string) env('KB_PII_DETOKENIZE_PERMISSION', 'pii.detokenize'),
+    ],
 ];

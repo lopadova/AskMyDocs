@@ -5,6 +5,8 @@ namespace App\Services\Kb;
 use App\Ai\AiManager;
 use App\Ai\EmbeddingsResponse;
 use App\Models\EmbeddingCache;
+use Padosoft\PiiRedactor\RedactorEngine;
+use Padosoft\PiiRedactor\Strategies\MaskStrategy;
 
 /**
  * Embedding cache layer that sits in front of AiManager::generateEmbeddings().
@@ -43,6 +45,15 @@ class EmbeddingCacheService
      */
     public function generate(array $texts): EmbeddingsResponse
     {
+        // v4.1/W4.1.C — when both knobs are on, mask PII out of every
+        // input BEFORE we hash it for the cache key (otherwise PII
+        // would leak into `text_hash`) and BEFORE we send the text to
+        // the embedding provider. Mask strategy (not Tokenise) because
+        // embeddings are one-way: we never need to detokenise back.
+        // The substitution is also stable (same input → same masked
+        // output), so cache hit-rate is preserved across re-ingestion.
+        $texts = $this->maskPiiIfEnabled($texts);
+
         if (! config('kb.embedding_cache.enabled', true)) {
             return $this->ai->generateEmbeddings($texts);
         }
@@ -153,6 +164,36 @@ class EmbeddingCacheService
                 ->get()
                 ->toArray(),
         ];
+    }
+
+    /**
+     * Mask any PII out of every input text using the package's
+     * `MaskStrategy` BEFORE hashing or sending to the provider, when
+     * `kb.pii_redactor.enabled` AND `kb.pii_redactor.redact_before_embeddings`
+     * are both true. Default-off — v3 hosts upgrading to v4.1 see zero
+     * behaviour change until they explicitly opt in.
+     *
+     * @param  list<string>  $texts
+     * @return list<string>
+     */
+    private function maskPiiIfEnabled(array $texts): array
+    {
+        if (! (bool) config('kb.pii_redactor.enabled', false)) {
+            return $texts;
+        }
+
+        if (! (bool) config('kb.pii_redactor.redact_before_embeddings', false)) {
+            return $texts;
+        }
+
+        /** @var RedactorEngine $engine */
+        $engine = app(RedactorEngine::class);
+        $maskStrategy = app(MaskStrategy::class);
+
+        return array_map(
+            static fn (string $text): string => $engine->redact($text, $maskStrategy),
+            $texts,
+        );
     }
 
     private function resolveModelName(string $providerName): string

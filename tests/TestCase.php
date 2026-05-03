@@ -20,6 +20,14 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Laravel\Ai\AiServiceProvider::class);
         $app->register(\Padosoft\LaravelAiRegolo\LaravelAiRegoloServiceProvider::class);
 
+        // padosoft/laravel-pii-redactor — registered explicitly because
+        // Testbench skips Laravel's package-discovery cache and the
+        // `extra.laravel.providers` auto-discovery hook only runs in
+        // app boot (bootstrap/cache/packages.php). Without this,
+        // `RedactorEngine` resolution throws BindingResolutionException
+        // in feature tests for the `redact-chat-pii` middleware.
+        $app->register(\Padosoft\PiiRedactor\PiiRedactorServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -92,6 +100,24 @@ abstract class TestCase extends OrchestraTestCase
         $router->aliasMiddleware('role', \Spatie\Permission\Middleware\RoleMiddleware::class);
         $router->aliasMiddleware('permission', \Spatie\Permission\Middleware\PermissionMiddleware::class);
         $router->aliasMiddleware('role_or_permission', \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class);
+        // v4.1/W4.1.B — chat PII redaction middleware alias. Same reason
+        // as the role/permission aliases above: bootstrap/app.php is not
+        // executed under Testbench so we mirror the alias here. Keep in
+        // sync with the bootstrap/app.php aliases.
+        $router->aliasMiddleware('redact-chat-pii', \App\Http\Middleware\RedactChatPii::class);
+        $router->aliasMiddleware('auth.sse', \App\Http\Middleware\AuthenticateForSse::class);
+    }
+
+    /**
+     * Load the project's routes/web.php into Testbench's route stack so
+     * route-listing tests (e.g. PiiRedactionMiddlewareScopeTest) can
+     * inspect the production middleware bindings without booting a full
+     * HTTP request. Mirrors what bootstrap/app.php's `withRouting` does
+     * in production.
+     */
+    protected function defineRoutes($router): void
+    {
+        require __DIR__.'/../routes/web.php';
     }
 
     protected function defineDatabaseMigrations(): void

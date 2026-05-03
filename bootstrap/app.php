@@ -40,6 +40,15 @@ return Application::configure(basePath: dirname(__DIR__))
             // behaviour produces an unparseable HTML response. Used by
             // `POST /conversations/{conversation}/messages/stream`.
             'auth.sse' => \App\Http\Middleware\AuthenticateForSse::class,
+            // v4.1/W4.1.B — chat-PII redaction middleware. Wraps POST
+            // /conversations/{conversation}/messages (sync + /stream
+            // variant) only. Default no-op; redacts the request body's
+            // `content` field via the package's RedactorEngine when
+            // BOTH `kb.pii_redactor.enabled` AND
+            // `kb.pii_redactor.persist_chat_redacted` are true.
+            // Architecture-tested to be bound ONLY to those two routes
+            // (admin / insights / kb ingest+delete routes are excluded).
+            'redact-chat-pii' => \App\Http\Middleware\RedactChatPii::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated

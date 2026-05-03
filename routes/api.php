@@ -237,6 +237,17 @@ Route::middleware([
             Route::get('/chat/{id}', [LogViewerController::class, 'chatShow'])
                 ->whereNumber('id')
                 ->name('api.admin.logs.chat.show');
+            // v4.1/W4.1.D — operator-driven detokenisation of a single
+            // chat-log row. The controller enforces both prerequisites:
+            // (a) `tokenise` strategy is configured (else 422), and
+            // (b) the caller carries the Spatie permission named in
+            // `kb.pii_redactor.detokenize_permission` (else 403).
+            // Every 200 or 403 writes an `admin_command_audit` row;
+            // the 422 strategy-mismatch preflight is a config-stage
+            // error and is intentionally not audited.
+            Route::post('/chat/{id}/detokenize', [LogViewerController::class, 'chatDetokenize'])
+                ->whereNumber('id')
+                ->name('api.admin.logs.chat.detokenize');
             Route::get('/canonical-audit', [LogViewerController::class, 'canonicalAudit'])
                 ->name('api.admin.logs.canonical-audit');
             Route::get('/application', [LogViewerController::class, 'application'])
