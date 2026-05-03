@@ -247,6 +247,69 @@ class EmbeddingCacheServiceTest extends TestCase
         $this->assertSame(3, EmbeddingCache::where('text_hash', $sameText)->count());
     }
 
+    public function test_regolo_provider_round_trips_through_cache(): void
+    {
+        // v4.0.1 — exercises the public service path against the
+        // `regolo` provider. Pre-fix `resolveModelName('regolo')`
+        // returned the `'unknown'` literal, so cache lookups hit
+        // `model='unknown'` while inserts stored the real model
+        // name; the lookup never matched its own writes, polluting
+        // the cache with unreachable rows. The fix wires the
+        // provider's nested config key
+        // (`ai.providers.regolo.models.embeddings.default`) into the
+        // resolver so reads and writes share a key.
+        //
+        // The mock model name MUST match what the resolver returns
+        // for the test environment. `phpunit.xml` sets
+        // `REGOLO_EMBEDDINGS_MODEL=gte-Qwen2`, so both the resolver
+        // and the API mock return that value here — a mismatch
+        // would mean the test passes by accident on the duplicate-
+        // insert path rather than proving the cache hit.
+        config()->set('kb.embedding_cache.enabled', true);
+        $configuredModel = config('ai.providers.regolo.models.embeddings.default');
+        $this->assertSame('gte-Qwen2', $configuredModel, 'Test config drift — expected gte-Qwen2 from phpunit.xml');
+
+        $provider = Mockery::mock(AiProviderInterface::class);
+        $provider->shouldReceive('name')->andReturn('regolo');
+        $provider->shouldReceive('supportsEmbeddings')->andReturn(true);
+
+        $manager = Mockery::mock(AiManager::class);
+        $manager->shouldReceive('embeddingsProvider')->andReturn($provider);
+
+        $apiResponse = new EmbeddingsResponse(
+            // Float-distinct values so JSON round-trip preserves
+            // the float type (Eloquent's array cast JSON-decodes
+            // `7.0` back as integer `7`, would mask a real bug).
+            embeddings: [[7.5, 8.5]],
+            provider: 'regolo',
+            model: $configuredModel,
+        );
+        // `once()` is the load-bearing assertion: a regression that
+        // resurrects `'unknown'` for regolo would make the second
+        // generate() miss the cache and re-invoke the API, tripping
+        // the `once()` constraint at tearDown.
+        $manager->shouldReceive('generateEmbeddings')->once()->andReturn($apiResponse);
+
+        $service = new EmbeddingCacheService($manager);
+
+        // First call inserts.
+        $first = $service->generate(['regolo embedding test']);
+        $this->assertSame([[7.5, 8.5]], $first->embeddings);
+        $this->assertSame(1, EmbeddingCache::count());
+
+        // Second call must HIT the cache via the composite
+        // (text_hash, provider, model) key.
+        $second = $service->generate(['regolo embedding test']);
+        $this->assertSame([[7.5, 8.5]], $second->embeddings);
+
+        // No duplicate row inserted — the lookup found the prior
+        // entry by (text_hash, provider='regolo', model=$configuredModel).
+        $this->assertSame(1, EmbeddingCache::count());
+        $row = EmbeddingCache::first();
+        $this->assertSame('regolo', $row->provider);
+        $this->assertSame($configuredModel, $row->model);
+    }
+
     public function test_stats_reports_counts_and_groups(): void
     {
         EmbeddingCache::create([

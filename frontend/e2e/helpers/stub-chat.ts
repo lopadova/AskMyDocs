@@ -173,9 +173,14 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         // Streaming endpoint → emit SSE protocol in the SDK v6
         // `UIMessageChunk` shape (start / text-start /
         // text-delta(id+delta) / text-end / source-url / data-* /
-        // finish). The stub and the production BE
-        // (`MessageStreamController::store()`) emit byte-identical
-        // frames — the BE was aligned to the SDK shape in PR #90.
+        // finish). PR #90 aligned the BE wire format to the same
+        // SDK v6 shape, so every chunk type / field name matches
+        // the production stream. Minor metadata still differs
+        // intentionally (the stub seeds a `messageId` on `start`
+        // for testid stability and uses `/kb/...` URLs for fixture
+        // citations whereas the production BE emits its own
+        // canonical URLs) — those differences don't affect the
+        // adapters under test.
         //
         // Single-shot fulfill with the whole stream body works
         // because the SDK's parser handles concatenated chunks in
@@ -209,8 +214,14 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
  * `@ai-sdk/react` v6 UI Message Stream Protocol shape (see
  * `node_modules/ai/dist/index.d.mts` `UIMessageChunk`).
  *
- * The stub and the production BE (`MessageStreamController::store()`)
- * emit byte-identical frames after the PR #90 alignment to SDK v6.
+ * The chunk types and field names match what the production BE
+ * (`MessageStreamController::store()`) emits since PR #90 aligned
+ * the wire format to SDK v6 (`UIMessageChunk` discriminator union).
+ * Per-field metadata still differs intentionally — the stub seeds a
+ * `messageId` on the `start` chunk and uses `/kb/{sourceId}` for
+ * fixture citation URLs, whereas the production BE produces its own
+ * canonical URL strings. Those differences are testid-stability
+ * details that don't affect the FE adapters under test.
  *
  * The chunk sequence:
  *   1. `start` — opens the assistant message with messageId

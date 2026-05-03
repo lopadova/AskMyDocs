@@ -151,11 +151,15 @@ function coerceCitationOrigin(value: unknown): CitationOrigin {
  * / `rejected` unchanged, and defaults unknown values to `primary` so
  * the existing `CitationsPopover` always has a valid bucket.
  *
- * **`url`** is nullable — canonical citations without a public URL
- * still emit a `source-url` chunk so the user sees the citation chip.
- * When `url` is null AND `title` is missing, the chip falls back to
- * the source id (with `doc-` prefix retained as a last-resort label)
- * so the UI never renders an empty cell.
+ * **`url`** is typed as nullable to keep this adapter resilient
+ * against future BE shapes; the production BE
+ * (`MessageStreamController::store()`) always synthesises a non-null
+ * fallback URL before calling `StreamChunk::sourceUrl()` (canonical
+ * slug-anchored when the doc has no public URL), so today every
+ * SDK chunk arrives with a string `url`. If `url` ever does arrive
+ * `null` AND `title` is missing, the chip falls back to the source
+ * id (with `doc-` prefix retained as a last-resort label) so the
+ * UI never renders an empty cell.
  *
  * Other citation fields (source_path, source_type, headings,
  * chunks_used) live in the AskMyDocs domain and don't have a place

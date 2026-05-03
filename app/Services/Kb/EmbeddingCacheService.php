@@ -157,9 +157,24 @@ class EmbeddingCacheService
 
     private function resolveModelName(string $providerName): string
     {
+        // Each provider's config key shape differs because the
+        // upstream SDK contracts differ — openai + gemini expose a
+        // single embeddings model (`embeddings_model` scalar), regolo
+        // sits on top of `laravel/ai` which models multi-purpose
+        // model registries per provider (`models.embeddings.default`
+        // nested key, see `config/ai.php` lines 117-119).
+        //
+        // Returning the literal real model name is required for the
+        // (text_hash, provider, model) composite UNIQUE: the lookup
+        // key on read MUST match what the insert path actually stores
+        // (the `$apiResponse->model` returned by the provider). A
+        // mismatch (e.g. lookup with 'unknown', insert with the real
+        // model) would make every lookup miss while inserts still
+        // succeed, polluting the cache with unreachable rows.
         return match ($providerName) {
             'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
             'gemini' => config('ai.providers.gemini.embeddings_model', 'text-embedding-004'),
+            'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),
             default => 'unknown',
         };
     }
