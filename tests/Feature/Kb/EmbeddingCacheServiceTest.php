@@ -310,6 +310,131 @@ class EmbeddingCacheServiceTest extends TestCase
         $this->assertSame($configuredModel, $row->model);
     }
 
+    public function test_pii_pre_redact_off_by_default_does_not_alter_text(): void
+    {
+        // v4.1/W4.1.C — fail-safe contract: when the integration knobs
+        // are at their defaults (false / false) the service must hash
+        // and embed the ORIGINAL text. A regression that always
+        // redacts would silently flip cache hit-rate for v3 hosts
+        // upgrading to v4.1.
+        config()->set('kb.pii_redactor.enabled', false);
+        config()->set('kb.pii_redactor.redact_before_embeddings', false);
+        config()->set('kb.embedding_cache.enabled', true);
+        config()->set('ai.providers.openai.embeddings_model', 'text-embedding-3-small');
+
+        $service = $this->makeService(
+            apiResponse: new EmbeddingsResponse(
+                embeddings: [[1.0, 2.0]],
+                provider: 'openai',
+                model: 'text-embedding-3-small',
+            ),
+        );
+
+        $service->generate(['Email mario@example.com please']);
+
+        // Cache row must be keyed on the ORIGINAL bytes — not the
+        // masked variant — proving redaction was a no-op.
+        $row = EmbeddingCache::first();
+        $this->assertNotNull($row);
+        $this->assertSame(
+            hash('sha256', 'Email mario@example.com please'),
+            $row->text_hash,
+            'PII pre-redact must be a no-op when both knobs are false.',
+        );
+    }
+
+    public function test_pii_pre_redact_off_when_master_switch_off_even_if_embeddings_knob_on(): void
+    {
+        // Master switch beats the per-touch-point knob. Same
+        // observable behaviour as the all-off case: the cache key is
+        // the SHA-256 of the original input.
+        config()->set('kb.pii_redactor.enabled', false);
+        config()->set('kb.pii_redactor.redact_before_embeddings', true);
+        config()->set('kb.embedding_cache.enabled', true);
+        config()->set('ai.providers.openai.embeddings_model', 'text-embedding-3-small');
+
+        $service = $this->makeService(
+            apiResponse: new EmbeddingsResponse(
+                embeddings: [[1.0, 2.0]],
+                provider: 'openai',
+                model: 'text-embedding-3-small',
+            ),
+        );
+
+        $service->generate(['contact: mario@example.com']);
+
+        $row = EmbeddingCache::first();
+        $this->assertNotNull($row);
+        $this->assertSame(
+            hash('sha256', 'contact: mario@example.com'),
+            $row->text_hash,
+            'Master switch off must short-circuit the embeddings knob.',
+        );
+    }
+
+    public function test_pii_pre_redact_masks_text_before_hashing_and_provider_call(): void
+    {
+        // v4.1/W4.1.C — when both knobs are on, the PII must be
+        // masked OUT of the text before (a) the cache hash is
+        // computed and (b) the text is sent to the provider. We
+        // assert (a) by inspecting the persisted `text_hash` and
+        // (b) by reading the args the AiManager mock received.
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_before_embeddings', true);
+        config()->set('kb.embedding_cache.enabled', true);
+        config()->set('ai.providers.openai.embeddings_model', 'text-embedding-3-small');
+
+        $provider = Mockery::mock(AiProviderInterface::class);
+        $provider->shouldReceive('name')->andReturn('openai');
+        $provider->shouldReceive('supportsEmbeddings')->andReturn(true);
+
+        $manager = Mockery::mock(AiManager::class);
+        $manager->shouldReceive('embeddingsProvider')->andReturn($provider);
+
+        $captured = [];
+        $manager->shouldReceive('generateEmbeddings')
+            ->once()
+            ->andReturnUsing(function (array $texts) use (&$captured) {
+                $captured = $texts;
+
+                return new EmbeddingsResponse(
+                    embeddings: array_map(static fn () => [0.1, 0.2], $texts),
+                    provider: 'openai',
+                    model: 'text-embedding-3-small',
+                );
+            });
+
+        $service = new EmbeddingCacheService($manager);
+        $service->generate(['Email mario@example.com please']);
+
+        // (a) The text reaching the provider must NOT contain the
+        // raw email — MaskStrategy replaces the matched span with a
+        // sentinel like `[REDACTED:email]`.
+        $this->assertCount(1, $captured);
+        $this->assertStringNotContainsString(
+            'mario@example.com',
+            $captured[0],
+            'Provider must NOT see the original PII when redact_before_embeddings is on.',
+        );
+
+        // (b) The cache row's text_hash matches the SHA-256 of the
+        // MASKED string (NOT the original) — proving redaction
+        // happened before the hash, so PII never lands in the cache
+        // key column.
+        $row = EmbeddingCache::first();
+        $this->assertNotNull($row);
+        $this->assertSame(
+            hash('sha256', $captured[0]),
+            $row->text_hash,
+            'Cache key must be the SHA-256 of the masked text, not the original.',
+        );
+        $this->assertNotSame(
+            hash('sha256', 'Email mario@example.com please'),
+            $row->text_hash,
+            'Cache key must NOT be the SHA-256 of the original text.',
+        );
+    }
+
     public function test_stats_reports_counts_and_groups(): void
     {
         EmbeddingCache::create([
