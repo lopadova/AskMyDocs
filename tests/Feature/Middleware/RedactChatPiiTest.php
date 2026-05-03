@@ -120,10 +120,22 @@ final class RedactChatPiiTest extends TestCase
             return response('ok');
         });
 
-        // Sanity: the package facade detokenises back to the original.
+        // Sanity: the tokenise strategy detokenises back to the original
+        // (round-trip), and re-running redact yields the same token
+        // (idempotent — keeps embedding-cache hit-rate intact under
+        // W4.1.C and audits stable across re-deliveries).
         $strategy = app(\Padosoft\PiiRedactor\Strategies\RedactionStrategy::class);
         $this->assertInstanceOf(\Padosoft\PiiRedactor\Strategies\TokeniseStrategy::class, $strategy);
-        // Re-running redact gives the same token (idempotent).
+
+        $redacted = Pii::redact('Email mario@example.com please');
+        $this->assertStringNotContainsString('mario@example.com', $redacted);
+        $this->assertSame(
+            'Email mario@example.com please',
+            $strategy->detokeniseString($redacted),
+            'Tokenise strategy must detokenise back to the original input.',
+        );
+
+        // Re-running redact on the same input yields the same token.
         $first = Pii::redact('mario@example.com');
         $second = Pii::redact('mario@example.com');
         $this->assertSame($first, $second);
