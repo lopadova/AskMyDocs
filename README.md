@@ -38,7 +38,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
-#### v4.0 platform additions (release candidate — W1..W7 shipped)
+#### v4.0.0 GA — W1..W8 shipped (full cycle closed 2026-05-02)
 
 | Feature | Description |
 |---|---|
@@ -142,7 +142,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database`, `redis` queues (Horizon-ready) |
 | **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action (`v2`, canonical-folder aware) so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
 | **MCP Server** | **10 tools** (5 retrieval + 5 canonical/promotion) that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
-| **29 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4 — #33 (R1–R22) plus 7 new rules from the v3.0 enterprise-platform cohort (R23 pluggable-pipeline-registry, R24 per-reason i18n, R25 optimistic-mutation-dedupe, R26 external-call-shouldNotReceive, R27 additive-only response shapes, R28 per-project unique slugs + pivot cascade, R29 testid hierarchy) |
+| **35 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4–#33 (R1–R22), 7 rules from the v3.0 enterprise-platform cohort (R23 pluggable-pipeline-registry, R24 per-reason i18n, R25 optimistic-mutation-dedupe, R26 external-call-shouldNotReceive, R27 additive-only response shapes, R28 per-project unique slugs + pivot cascade, R29 testid hierarchy), and 6 rules from the v4.0 cycle (R30 cross-tenant isolation, R31 tenant_id mandatory, R36 Copilot review + CI green loop, R37 `feature/vX.Y` once-per-major branching, R38 heavy work in CLI workflow steps, R39 `vX.Y.0-rcN` tag at every Wn closure) |
 | **Playwright E2E suite** | Real Postgres + pgvector in CI, deterministic via `data-state` + `data-testid` contract (R11), happy-path + failure-injection per feature (R12), real data only — `page.route()` reserved for external boundaries (R13); v3.0 added 28 spec scenarios across `chat-filters`, `chat-mention`, `chat-refusal`, `admin-tags` |
 
 ---
@@ -159,6 +159,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [Storage (Laravel disks)](#storage-laravel-disks)
   - [Chat Logging](#chat-logging)
   - [Knowledge Base](#knowledge-base)
+  - [Multi-tenant deployment (v4.0)](#multi-tenant-deployment-v40)
 - [Screenshoots](#screenshoots)
 - [Scheduler](#scheduler)
 - [Authentication](#authentication)
@@ -169,6 +170,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 - [Chat Interface](#chat-interface)
   - [Chat History](#chat-history)
   - [Speech-to-Text](#speech-to-text)
+- [Streaming chat (v4.0 Vercel AI SDK)](#streaming-chat-v40-vercel-ai-sdk)
 - [Smart Visualizations & Artifacts](#smart-visualizations--artifacts)
 - [Feedback & Auto-Learning](#feedback--auto-learning)
 - [Reranking](#reranking)
@@ -190,6 +192,8 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [DELETE API endpoint](#delete-api-endpoint)
   - [GitHub Action integration](#github-action-integration)
   - [Scheduled retention sweep](#scheduled-retention-sweep)
+- [Sister packages on Packagist (v4.0)](#sister-packages-on-packagist-v40)
+- [Patent Box dossier (v4.0 dogfood)](#patent-box-dossier-v40-dogfood)
 - [Extending](#extending)
 - [Testing](#testing)
 - [Continuous Integration](#continuous-integration)
@@ -202,50 +206,137 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ## Architecture
 
+The v4.0 platform routes every request through a **`ResolveTenant`** middleware that
+populates the `TenantContext` singleton, so every Eloquent query that follows is
+tenant-scoped (R30/R31). The chat surface ships **two interchangeable transports** —
+the v3 synchronous JSON path on `KbChatController` (kept as a backward-compat
+fallback) and the v4 SSE streaming path on `MessageStreamController` (default for
+the React SPA, emits SDK v6 `UIMessageChunk` frames). Both converge on the same
+hybrid retrieval pipeline (vector + FTS + reranker + canonical graph expansion +
+rejected-approach injection) and the same provider abstraction over `laravel/ai`.
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client                                │
-│                  POST /api/kb/chat                           │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│  KbChatController (orchestrator)                             │
-│                                                              │
-│  1. Validate input                                           │
-│  2. KbSearchService → embed query → pgvector                 │
-│  3. Compose system prompt with RAG chunks                    │
-│  4. AiManager::chat() → configured provider                  │
-│  5. ChatLogManager::log() → persist the interaction          │
-│  6. Respond to client                                        │
-└──────────────────────────────────────────────────────────────┘
-                       │
-          ┌────────────┼────────────────┐
-          ▼            ▼                ▼
-   ┌────────────┐ ┌──────────┐ ┌──────────────┐
-   │ AI Provider│ │ pgvector │ │  Chat Log    │
-   │ (OpenAI,   │ │ search   │ │  (DB, BQ,    │
-   │  Anthropic,│ │          │ │   CloudWatch)│
-   │  Gemini,   │ │          │ │              │
-   │  OpenRouter│ │          │ │              │
-   │  Regolo)   │ │          │ │              │
-   └────────────┘ └──────────┘ └──────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Client (React SPA / API / MCP / GitHub Action)       │
+│                                                                             │
+│   v4 streaming           v3 JSON              ingest                        │
+│   POST /conversations/   POST /api/kb/chat    POST /api/kb/ingest           │
+│        {id}/messages/    (legacy fallback)    (Sanctum, batch ≤ 100)        │
+│        stream (SSE)                                                         │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  ResolveTenant middleware → TenantContext singleton                          │
+│  AuthenticateForSse middleware (returns JSON 401 on streaming endpoints)     │
+│  Sanctum stateful SPA cookies + Bearer tokens                                │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  Chat orchestrators                                                          │
+│                                                                              │
+│  ┌──────────────────────────────┐   ┌──────────────────────────────────┐     │
+│  │ KbChatController (v3 sync)   │   │ MessageStreamController (v4 SSE) │     │
+│  │ • Validate / refusal short-  │   │ • Validate / shouldNotReceive    │     │
+│  │   circuit (R26)              │   │   short-circuit (R26)            │     │
+│  │ • KbSearchService            │   │ • KbSearchService                │     │
+│  │ • AiManager::chat()          │   │ • AiManager::chatStream()        │     │
+│  │ • Single JSON response       │   │ • Streams UIMessageChunk frames  │     │
+│  │   { answer, citations,       │   │   (start / text-delta /          │     │
+│  │     refusal_reason,          │   │   source-url / data-confidence / │     │
+│  │     confidence, meta }       │   │   data-refusal / finish)         │     │
+│  └──────────────────────────────┘   └──────────────────────────────────┘     │
+│           │                                   │                              │
+│           └─────────────────┬─────────────────┘                              │
+│                             ▼                                                │
+│  ChatLogManager::log() — try/catch; never propagates failures (R26)          │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │
+        ┌──────────────────────┼──────────────────────────┐
+        ▼                      ▼                          ▼
+┌───────────────────┐  ┌───────────────────┐  ┌──────────────────────────────┐
+│ KbSearchService   │  │ AI Provider       │  │ Persistence (Postgres)       │
+│ • Embed query     │  │ federation via    │  │                              │
+│ • pgvector top-K  │  │ laravel/ai SDK    │  │ • knowledge_documents +      │
+│ • FTS GIN top-K   │  │                   │  │   knowledge_chunks (FK       │
+│ • Reranker fusion │  │ • OpenAI          │  │   CASCADE; UNIQUE on         │
+│   0.6·v + 0.3·k + │  │ • Anthropic       │  │   doc_hash + chunk_hash)     │
+│   0.1·h           │  │ • Gemini          │  │ • embedding_cache (cross-    │
+│ • Canonical boost │  │ • OpenRouter      │  │   tenant on text_hash;       │
+│ • Status penalty  │  │ • Regolo (via     │  │   intentionally NOT          │
+│ • GraphExpander   │  │   laravel-ai-     │  │   tenant-scoped)             │
+│   1-hop kb_edges  │  │   regolo)         │  │ • kb_nodes / kb_edges /      │
+│ • RejectedApproach│  │                   │  │   kb_canonical_audit         │
+│   Injector        │  │                   │  │ • chat_logs / conversations  │
+│                   │  │                   │  │   / messages                 │
+│ → SearchResult {  │  │                   │  │ • admin_command_audits /     │
+│     primary,      │  │                   │  │   admin_command_nonces /     │
+│     expanded,     │  │                   │  │   admin_insights_snapshots   │
+│     rejected,     │  │                   │  │                              │
+│     meta }        │  │                   │  │ Every domain table carries   │
+│                   │  │                   │  │ tenant_id (default           │
+│                   │  │                   │  │ 'default'); BelongsToTenant  │
+│                   │  │                   │  │ trait auto-fills on create.  │
+└───────────────────┘  └───────────────────┘  └──────────────────────────────┘
 ```
+
+**Ingestion** has two entrypoints (CLI `kb:ingest-folder` and HTTP `POST
+/api/kb/ingest`) that converge on a single execution path:
+`IngestDocumentJob` → `DocumentIngestor::ingest(SourceDocument)` →
+`PipelineRegistry`-resolved `Converter` + `Chunker` + `Enricher` chain
+(R23 — FQCN validated at boot, `supports()` mutex-checked) → idempotent
+SHA-256 upsert on `(project_key, source_path, version_hash)`. When a
+canonical YAML frontmatter is detected, `CanonicalParser` validates it
+and `CanonicalIndexerJob` populates `kb_nodes` + `kb_edges` after
+commit.
+
+**Promotion** (ADR 0003) is human-gated: `/suggest` extracts candidates
+from a transcript, `/candidates` validates a draft, `/promote` writes the
+markdown to disk and dispatches `IngestDocumentJob`. Only humans (git push
+→ GH action) and operators (`kb:promote` CLI) commit canonical storage —
+never the LLM.
 
 ### Main components
 
 | Component | Path | Description |
 |---|---|---|
-| **AiManager** | `app/Ai/AiManager.php` | Multi-provider AI manager (chat + embeddings) |
-| **Providers** | `app/Ai/Providers/*.php` | OpenAI, Anthropic, Gemini, OpenRouter, Regolo |
-| **KbSearchService** | `app/Services/Kb/KbSearchService.php` | Semantic search via pgvector |
-| **DocumentIngestor** | `app/Services/Kb/DocumentIngestor.php` | Document ingestion pipeline |
-| **IngestDocumentJob** | `app/Jobs/IngestDocumentJob.php` | Queued job — reads from disk, delegates to `DocumentIngestor`, retries on failure |
-| **KbIngestController** | `app/Http/Controllers/Api/KbIngestController.php` | `POST /api/kb/ingest` — persists payload to disk and dispatches one job per document |
-| **ChatLogManager** | `app/Services/ChatLog/ChatLogManager.php` | Structured conversation logging |
-| **Console commands** | `app/Console/Commands/*.php` | `kb:ingest`, `kb:ingest-folder`, `kb:prune-embedding-cache`, `chat-log:prune` |
-| **GitHub Action** | `.github/actions/ingest-to-askmydocs/action.yml` | Reusable composite action to push markdown from any repo on every commit |
-| **MCP Server** | `app/Mcp/Servers/KnowledgeBaseServer.php` | Read-only MCP server for Claude and other AI agents |
+| **TenantContext** | `app/Support/TenantContext.php` | Request-scoped singleton holding the active `tenant_id`; populated by `ResolveTenant` middleware (HTTP) or `--tenant=X` (CLI) |
+| **ResolveTenant middleware** | `app/Http/Middleware/ResolveTenant.php` | Resolves the active tenant from auth user / domain header / config default; sets the `TenantContext` singleton for the request |
+| **AuthenticateForSse middleware** | `app/Http/Middleware/AuthenticateForSse.php` | SSE-friendly Sanctum auth that emits JSON 401 (never an HTML redirect) so the React `useChatStream()` hook surfaces auth failures cleanly |
+| **BelongsToTenant trait** | `app/Models/Concerns/BelongsToTenant.php` | Auto-fills `tenant_id` on `creating` from the active `TenantContext`; provides `forTenant($id)` scope for explicit queries |
+| **AiManager** | `app/Ai/AiManager.php` | Multi-provider AI manager (`chat()`, `chatStream()`, `embeddings()`); v4 federates over `laravel/ai` SDK |
+| **AI providers** | `app/Ai/Providers/*.php` | `OpenAiProvider`, `AnthropicProvider`, `GeminiProvider`, `OpenRouterProvider`, `RegoloProvider` (delegates to `padosoft/laravel-ai-regolo`); `FallbackStreaming` trait synthesises `chatStream()` from a single-chunk fallback for providers without native streaming |
+| **MessageStreamController** | `app/Http/Controllers/MessageStreamController.php` | `POST /conversations/{id}/messages/stream` SSE endpoint — emits SDK v6 `UIMessageChunk` frames (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` under `data:{}`; `finish` constrained via `normalizeFinishReason()`) |
+| **KbChatController** | `app/Http/Controllers/Api/KbChatController.php` | v3 synchronous JSON chat endpoint — kept as backward-compat fallback; same retrieval + refusal + confidence pipeline as the streaming path |
+| **KbSearchService** | `app/Services/Kb/KbSearchService.php` | Hybrid retrieval orchestrator — embeds query → pgvector + FTS top-K → `Reranker` fusion (`0.6·vec + 0.3·kw + 0.1·head`) + canonical boost + status penalty → `GraphExpander` (1-hop graph expansion on canonical seeds) → `RejectedApproachInjector` (vector-correlated `rejected-approach` docs) |
+| **Reranker / Retrieval helpers** | `app/Services/Kb/Reranker.php`, `Retrieval/GraphExpander.php`, `Retrieval/RejectedApproachInjector.php`, `Retrieval/CosineCalculator.php`, `Retrieval/SearchResult.php` | Reranker fusion + graph-aware retrieval + rejected-approach injection (config-gated; degrades to no-op when no canonical docs exist) |
+| **DocumentIngestor** | `app/Services/Kb/DocumentIngestor.php` | Idempotent SHA-256 upsert on `(project_key, source_path, version_hash)`; vacates prior canonical identifiers before insert; dispatches `CanonicalIndexerJob` after commit when frontmatter is canonical |
+| **IngestDocumentJob** | `app/Jobs/IngestDocumentJob.php` | Queued job — reads from disk, delegates to `DocumentIngestor`, retries 3× with backoff `[10, 30, 60]` |
+| **KbIngestController** | `app/Http/Controllers/Api/KbIngestController.php` | `POST /api/kb/ingest` — persists payload to KB disk and dispatches one job per document |
+| **DocumentDeleter** | `app/Services/Kb/DocumentDeleter.php` | Single deletion service for soft / hard / orphan / file-on-disk cleanup; cascades canonical graph (`kb_nodes` + `kb_edges` via composite tenant-scoped FK) on hard delete; writes `kb_canonical_audit` rows |
+| **PipelineRegistry** | `app/Services/Kb/Pipeline/PipelineRegistry.php` | Pluggable converter / chunker / enricher registry — FQCN validated at boot, `supports()` predicates mutex-checked (R23) |
+| **CanonicalParser + CanonicalWriter** | `app/Services/Kb/Canonical/*.php` | YAML-frontmatter parser (validates against 9 canonical types + 6 statuses + slug-list `_derived` map); `CanonicalWriter` is the only path that writes markdown to the canonical disk; `CanonicalIndexerJob` populates `kb_nodes` + `kb_edges` |
+| **PromotionSuggestService** | `app/Services/Kb/Canonical/PromotionSuggestService.php` | LLM-driven candidate extraction for the `/suggest` endpoint; never writes — drafts only |
+| **ChatLogManager** | `app/Services/ChatLog/ChatLogManager.php` | Structured conversation logging; pluggable driver registry (`db` shipped, BigQuery / CloudWatch are extension points); wrapped in try/catch — never propagates failures into the chat hot path |
+| **Admin services** | `app/Services/Admin/*.php` | `AdminMetricsService` (KPI cache 30s), `HealthCheckService` (DB / pgvector / queue / disk / embeddings / chat), `KbTreeService` (memory-safe `chunkById(100)` walker), `LogTailService` (reverse-seek `SplFileObject` tailer), `CommandRunnerService` (whitelisted Artisan runner with 6 independent gates), `AiInsightsService` (`admin_insights_snapshots` reader) |
+| **SpaController + React SPA** | `app/Http/Controllers/SpaController.php` + `frontend/src/` | React 18 + TypeScript + Vite + TanStack Router/Query + shadcn/ui; chat surface uses Vercel AI SDK `useChatStream()` (W3); admin under `/app/admin/*` |
+| **Console commands** | `app/Console/Commands/*.php` | `kb:ingest`, `kb:ingest-folder`, `kb:delete`, `kb:prune-embedding-cache`, `kb:prune-deleted`, `kb:rebuild-graph`, `kb:promote`, `chat-log:prune`, `insights:compute` |
+| **Scheduler** | `bootstrap/app.php` | Daily jobs at 03:10–05:00 UTC (`onOneServer()` + `withoutOverlapping()`): prune embedding cache → prune chat logs → prune deleted docs → rebuild graph → compute insights |
+| **GitHub Action** | `.github/actions/ingest-to-askmydocs/action.yml` | Reusable composite action (`v2`, canonical-folder aware) to push markdown from any consumer repo on every commit to `main` |
+| **MCP Server** | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` | `enterprise-kb` MCP server exposing **10 tools** (5 retrieval + 5 canonical/promotion) to Claude Desktop, Claude Code, and other MCP-compatible agents |
+
+**Sister `padosoft/*` packages on Packagist (v4 release train)**
+
+| Package | Role | Path repo / docs |
+|---|---|---|
+| `padosoft/laravel-ai-regolo` | Standalone Regolo provider for `laravel/ai` (W2) | https://github.com/padosoft/laravel-ai-regolo |
+| `padosoft/laravel-flow` | In-process saga / compensation engine (W5) | https://github.com/padosoft/laravel-flow |
+| `padosoft/eval-harness` | RAG / LLM evaluation framework (W6) | https://github.com/padosoft/eval-harness |
+| `padosoft/laravel-pii-redactor` | PII detection + redaction with Italian fiscal identifiers (W7) | https://github.com/padosoft/laravel-pii-redactor |
+| `padosoft/laravel-patent-box-tracker` | Italian Patent Box dossier auto-generator (W4) | https://github.com/padosoft/laravel-patent-box-tracker |
+
+All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run. AskMyDocs USES the packages (via `require-dev` for the dogfood tooling and `suggest` for optional integrations); the packages never depend on AskMyDocs.
 
 ---
 
@@ -635,6 +726,56 @@ The chunker registry is order-significant — `PdfPageChunker` is listed FIRST i
 
 The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
 
+### Multi-tenant deployment (v4.0)
+
+The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Existing v3.x deployments are backward-compatible — every row gets `tenant_id = 'default'` and the resolver returns `'default'` unless explicitly configured otherwise.
+
+**The plumbing**
+
+| Piece | Path | Responsibility |
+|---|---|---|
+| `TenantContext` | `app/Support/TenantContext.php` | Request-scoped singleton; holds the active `tenant_id` for the duration of one HTTP request or one CLI command |
+| `ResolveTenant` middleware | `app/Http/Middleware/ResolveTenant.php` | Reads the tenant from the configured resolver and sets `TenantContext`; runs at the top of the global middleware stack so every controller / job dispatched from the request inherits the context |
+| `BelongsToTenant` trait | `app/Models/Concerns/BelongsToTenant.php` | Auto-fills `tenant_id` on `creating` events from `TenantContext::current()`; provides `forTenant($id)` query scope |
+| `--tenant=X` CLI option | every domain Artisan command | CLI commands (`kb:ingest-folder`, `kb:rebuild-graph`, `kb:promote`, `insights:compute`) accept the option and set the context before running |
+
+**Configuration (`.env`)**
+
+```bash
+# Single-tenant deployment (v3.x backward compatible — DEFAULT)
+TENANT_DEFAULT=default
+TENANT_RESOLVER=default          # always returns 'default'
+
+# Multi-tenant by HTTP header (suitable for B2B SaaS with API gateway routing)
+TENANT_RESOLVER=header
+TENANT_HEADER_NAME=X-Tenant-ID
+
+# Multi-tenant by domain (suitable for subdomain-per-customer deployments)
+TENANT_RESOLVER=domain
+TENANT_DOMAIN_PATTERN='([^.]+)\\.example\\.com'   # captures tenant slug
+
+# Multi-tenant by authenticated user (suitable for shared-host SaaS)
+TENANT_RESOLVER=auth
+TENANT_USER_COLUMN=tenant_id     # column on the User model that holds the tenant
+```
+
+**What's tenant-scoped (and what isn't)**
+
+The 17 tenant-aware tables (knowledge_documents, knowledge_chunks, chat_logs, conversations, messages, kb_nodes, kb_edges, kb_canonical_audit, project_memberships, kb_tags, knowledge_document_tags, knowledge_document_acl, admin_command_audit, admin_command_nonces, admin_insights_snapshots, chat_filter_presets, plus `ChatFilterPreset`) all carry `tenant_id` and use the `BelongsToTenant` trait. Composite tenant-scoped FKs on `kb_edges` make cross-tenant edges **structurally impossible** at the database level.
+
+`embedding_cache` is **intentionally NOT tenant-scoped** — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE alone (provider + model are retrieval-time filters). Sharing embeddings across tenants is a deliberate cost optimisation; eviction goes through `EmbeddingCacheService::flush($provider)` whenever the embedding model changes.
+
+**The 6 v4 cycle rules guard the boundary**
+
+| Rule | What it enforces |
+|---|---|
+| **R30** | Every Eloquent query against a tenant-aware table MUST be scoped to the active tenant via `forTenant()` or explicit `where('tenant_id', $ctx->current())` — cross-tenant leak is a GDPR catastrophe |
+| **R31** | Every tenant-aware model MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`; `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list and gates new entries on every CI run |
+| **R36** | Mandatory Copilot review + CI green loop on every PR — caught the v4 PR #98 regression where `embedding_cache` was wrongly tagged tenant-scoped |
+| **R37** | `feature/vX.Y` integration branch + once-per-major merge to main — preserves stable consumers from in-flight major work |
+| **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
+| **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
+
 ---
 
 ## Screenshoots
@@ -938,6 +1079,101 @@ The mic uses the browser-native **Web Speech API** — no external service, no c
 **Language**: defaults to Italian (`it-IT`). Change `this.recognition.lang` in `chat.blade.php` to switch.
 
 If the browser has no Web Speech API, the mic button is disabled.
+
+---
+
+## Streaming chat (v4.0 Vercel AI SDK)
+
+W3 of the v4.0 cycle migrated the chat surface onto the Vercel AI SDK — incremental token streaming end-to-end, with the SDK v6 `UIMessageChunk` shape on the wire and the `useChatStream()` hook on the React side. First-token latency dropped from **~2.8 s** (synchronous JSON wait) to **~400 ms** (first SSE chunk) on the Lighthouse baseline.
+
+### The endpoint
+
+```http
+POST /conversations/{conversation}/messages/stream
+Content-Type: application/json
+Accept: text/event-stream
+X-XSRF-TOKEN: <csrf>
+Cookie: laravel_session=<sanctum-stateful-cookie>
+
+{
+  "content": "What's the canonical decision on cache invalidation?"
+}
+```
+
+The streaming endpoint runs through the `auth.sse` middleware (`AuthenticateForSse`) which returns a JSON 401 instead of an HTML redirect when the session is expired — the React `useChatStream()` hook surfaces that error cleanly instead of treating the redirect HTML as a streaming chunk.
+
+### The wire format
+
+The server emits SDK v6 `UIMessageChunk` frames over `text/event-stream`:
+
+```
+data: {"type":"start"}
+data: {"type":"text-start","id":"msg_1"}
+data: {"type":"text-delta","id":"msg_1","delta":"The canonical "}
+data: {"type":"text-delta","id":"msg_1","delta":"decision is "}
+data: {"type":"text-delta","id":"msg_1","delta":"to invalidate via..."}
+data: {"type":"text-end","id":"msg_1"}
+data: {"type":"source-url","sourceId":"src_1","url":"/admin/kb/dec-cache-v2","title":"Cache Invalidation Decision"}
+data: {"type":"data","data":{"data-confidence":87,"data-refusal":null}}
+data: {"type":"finish","finishReason":"stop"}
+```
+
+Frame mapping:
+
+| Frame | Carries | Notes |
+|---|---|---|
+| `start` | Stream open | Always first — confirms the SSE handshake succeeded and routing reached the controller |
+| `text-start` / `text-delta` / `text-end` | Incremental answer text | One `id` per assistant message; deltas concatenate to the final answer; closes with `text-end` |
+| `source-url` | Citation entry | Emits AS the retrieval result is composed, not at the end — the FE can render citation chips before the answer text completes |
+| `data` | `data-confidence` (0..100) + `data-refusal` (`null` / `'no_relevant_context'` / `'llm_self_refusal'`) | Anti-hallucination signals — the FE renders `ConfidenceBadge` + `RefusalNotice` from these |
+| `finish` | `finishReason` (`'stop' \| 'length' \| 'content-filter' \| 'tool-calls' \| 'error' \| 'unknown'`) | Constrained to the SDK union via `normalizeFinishReason()`; transport-agnostic |
+
+### Frontend consumer
+
+```tsx
+import { useChatStream } from '@/features/chat/use-chat-stream';
+
+export function ChatView({ conversationId }: { conversationId: number }) {
+  const { messages, status, send, stop } = useChatStream({
+    conversationId,
+    api: `/conversations/${conversationId}/messages/stream`,
+  });
+
+  // status: 'idle' | 'submitted' | 'streaming' | 'ready' | 'error'
+  // messages: UIMessage[] — already adapted via mapStatusToDataState()
+  //                       so the DOM exposes data-state="…"
+  //                       for Playwright deterministic waits
+
+  return (
+    <>
+      <MessageThread messages={messages} status={status} />
+      <Composer
+        onSend={send}
+        onStop={stop}
+        disabled={status === 'streaming' || status === 'submitted'}
+      />
+    </>
+  );
+}
+```
+
+The `mapStatusToDataState()` helper is unit-tested in `frontend/src/features/chat/map-status-to-data-state.test.ts` and gives Playwright a deterministic `data-state="ready"` / `"streaming"` / `"error"` to wait on.
+
+### Failover to the synchronous path
+
+The legacy `POST /api/kb/chat` synchronous endpoint stays in the codebase as a backward-compat fallback covered by `MessageControllerTest` and `KbChatControllerTest`. The same hybrid retrieval pipeline + refusal short-circuit (R26) + composite confidence score serve both paths — the only difference is the transport. Existing API consumers / MCP tools / GitHub Actions calling `/api/kb/chat` keep working unchanged.
+
+### Provider streaming compatibility
+
+| Provider | Native streaming | Notes |
+|---|---|---|
+| OpenAI | ✅ native | `chat.completions` with `stream: true` |
+| Anthropic | ✅ native | `messages` with `stream: true` |
+| Gemini | ✅ native | `generateContent` SSE |
+| OpenRouter | ✅ native | OpenAI-compatible streaming |
+| Regolo | ✅ via `padosoft/laravel-ai-regolo` | Delegates through `laravel/ai` SDK |
+
+Providers without native streaming get a `FallbackStreaming` trait that synthesises a single-chunk SSE response from the synchronous answer — slightly worse first-token latency but identical wire format, so the FE doesn't branch.
 
 ---
 
@@ -2788,6 +3024,145 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 
 ---
 
+## Sister packages on Packagist (v4.0)
+
+Five `padosoft/*` Composer packages ship alongside the v4.0 train. AskMyDocs **uses** them (via `require-dev` for the dogfood tooling and `suggest` for optional integrations); they never depend on AskMyDocs. Architecture tests on each package enforce **standalone-agnostic invariants** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require <package>` on a fresh empty Laravel app produces a working in-process feature.
+
+### `padosoft/laravel-ai-regolo` (W2)
+
+Standalone Apache-2.0 Regolo provider for `laravel/ai`. The Regolo backend (Anthropic-style `/messages` API) is exposed through the standard `laravel/ai` agent + tool abstractions. Drop-in for any consumer that already uses `laravel/ai`.
+
+```bash
+composer require padosoft/laravel-ai-regolo:^0.2
+```
+
+```php
+// config/ai.php
+'providers' => [
+    'regolo' => [
+        'driver' => \Padosoft\LaravelAiRegolo\RegoloDriver::class,
+        'api_key' => env('REGOLO_API_KEY'),
+        'base_url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
+    ],
+],
+```
+
+### `padosoft/laravel-flow` (W5)
+
+Standalone Apache-2.0 in-process saga / compensation engine. Fluent definition API; reverse-order compensation chain (best-effort with aggregated `FlowCompensationException`); native dry-run; four Laravel events. Fills a real Packagist gap — Spatie's workflow lib is dormant; Symfony Workflow is state-machine-only with no compensation primitive.
+
+```bash
+composer require padosoft/laravel-flow:^0.1
+```
+
+```php
+use Padosoft\LaravelFlow\Facades\Flow;
+
+Flow::define('order.checkout')
+    ->step('reserve_stock')->compensateWith('release_stock')
+    ->step('charge_payment')->compensateWith('refund_payment')
+    ->step('issue_receipt')
+    ->register();
+
+$run = Flow::execute('order.checkout', ['order_id' => 42]);
+// $run->status: 'completed' | 'compensated' | 'failed'
+```
+
+### `padosoft/eval-harness` (W6)
+
+Standalone Apache-2.0 RAG / LLM evaluation framework. Pluggable golden-dataset YAML loader; R23 metric registry with FQCN validation at boot; three first-party metrics (ExactMatch, CosineEmbedding, LlmAsJudge); two report renderers (Markdown + canonical JSON additive-only per R27); `eval-harness:run` Artisan command.
+
+```bash
+composer require padosoft/eval-harness:^0.1
+```
+
+```yaml
+# tests/datasets/rag-golden.yaml
+samples:
+  - id: cache_invalidation
+    input: "How do we invalidate the cache?"
+    expected: "Via the cache:invalidate Artisan command."
+    metrics: [ExactMatch, CosineEmbedding]
+```
+
+```bash
+php artisan eval-harness:run tests/datasets/rag-golden.yaml --json --out=reports/rag.json
+```
+
+### `padosoft/laravel-pii-redactor` (W7)
+
+Standalone Apache-2.0 PII detection + redaction. Six checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, **Codice Fiscale** with the DM 23/12/1976 CIN checksum, **Partita IVA** with Luhn-IT + zero-payload sentinel). Four redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible with `detokenise()`, Drop). **Zero LLM dependency** — regex + checksum based.
+
+```bash
+composer require padosoft/laravel-pii-redactor:^0.1
+```
+
+```php
+use Padosoft\LaravelPiiRedactor\Facades\Pii;
+
+$redacted = Pii::redact($input, strategy: 'tokenise', namespace: 'support-ticket-42');
+// 'My CF is RSSMRA85T10A562S' → 'My CF is <CF:abc123>'
+
+$original = Pii::detokenise($redacted, namespace: 'support-ticket-42');
+// → 'My CF is RSSMRA85T10A562S'
+```
+
+The first PHP package to ship native Codice Fiscale + Partita IVA checksum validation alongside reversible pseudonymisation and offline-only operation. Disqualifies the cloud alternatives (AWS Comprehend PII, Google Cloud DLP, Microsoft Presidio) for any pipeline operating under GDPR-strict on-prem constraints.
+
+### `padosoft/laravel-patent-box-tracker` (W4)
+
+Standalone Apache-2.0 cross-repository R&D activity classifier emitting audit-grade PDF + JSON dossiers for the **Italian Patent Box** (110% R&D super-deduction, regime `documentazione_idonea`). 8-section architecture: evidence collectors, AI classifier with deterministic seed, audit-trail models, dossier renderers (Browsershot + DomPDF fallback), per-commit hash chain, fluent builder API, Italian Blade dossier template. ~5,800 LOC, 163 PHPUnit tests / 1079 assertions. **Commercialista-validated** as of 2026-05-02.
+
+```bash
+composer require padosoft/laravel-patent-box-tracker:^0.1
+php artisan patent-box:cross-repo /path/to/dossier-config.yml
+```
+
+See [Patent Box dossier](#patent-box-dossier-v40-dogfood) below for the AskMyDocs-specific dogfood configuration.
+
+---
+
+## Patent Box dossier (v4.0 dogfood)
+
+AskMyDocs ships `tools/patent-box/2026.yml` — the template configuration for **Lorenzo's FY2026 Italian Patent Box dossier** (Padosoft di Lorenzo Padovani, regime `documentazione_idonea`). The YAML lists every Padosoft repository in scope (AskMyDocs primary + four sister packages + the tracker itself for self-dogfood) and is consumed by the standalone `padosoft/laravel-patent-box-tracker` package via `php artisan patent-box:cross-repo path/to/2026.yml`.
+
+**AskMyDocs is intentionally decoupled from the tracker** (per the standalone-agnostic architecture rule — every `padosoft/*` package is 100% standalone, AskMyDocs USES the packages, never the reverse). AskMyDocs's own `composer.json` does NOT require the tracker, so `php artisan patent-box:cross-repo` is **not runnable from an AskMyDocs checkout**.
+
+### Running the dossier generator
+
+Run the artisan command from a separate Laravel project where the tracker is composer-installed:
+
+```bash
+# In a separate Laravel project (NOT AskMyDocs)
+composer require padosoft/laravel-patent-box-tracker:^0.1
+php artisan patent-box:cross-repo /abs/path/to/AskMyDocs/tools/patent-box/2026.yml
+```
+
+The cross-repo runner walks each repository's actual git history at run time and harvests every qualifying commit across the FY window. Output is an audit-grade PDF + canonical JSON dossier suitable for filing under `documentazione idonea`.
+
+### Adapting the template
+
+Before running, replace the placeholder values in `tools/patent-box/2026.yml`:
+
+| Placeholder | What to replace it with |
+|---|---|
+| `tax_identity.p_iva: IT00000000000` | Your actual P.IVA — **never commit the real value back into the public repo**, keep this file checked in with the placeholder |
+| `repositories[*].path: /ABS/PATH/TO/<repo-name>` | The actual absolute paths on your machine (e.g. `/home/lorenzo/Code/askmydocs`, `C:/Users/<you>/Documents/.../askmydocs`) |
+| `ip_outputs[*].registration_id: SIAE-2026-...` | The actual SIAE software registration IDs (filed during FY2026) |
+| `ip_outputs[*].application_id: PCT/IT2026/...` | The actual UIBM patent application IDs (filed during FY2026) |
+
+Lorenzo's local layout has every Padosoft repo cloned under a single parent directory (`/ABS/PATH/TO/<repo-name>`); operators with a different layout MUST adjust the absolute paths.
+
+The four sister Padosoft packages tracked alongside AskMyDocs are all on Packagist:
+- `padosoft/laravel-patent-box-tracker` v0.1.0 (W4)
+- `padosoft/laravel-flow` v0.1.0 (W5)
+- `padosoft/eval-harness` v0.1.0 (W6)
+- `padosoft/laravel-pii-redactor` v0.1.0 (W7)
+
+See the [tracker's README](https://github.com/padosoft/laravel-patent-box-tracker#cross-repository-dossier-the-canonical-padosoft-use-case) for the full schema reference.
+
+---
+
 ## License
 
 This project is open-source under the [MIT License](LICENSE).
@@ -2870,6 +3245,48 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.0.0 — 2026-05-02 (GA — full v4.0 cycle closed)
+
+The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `main` once per R37 with all W1..W8 work landing as a single squashed integration commit (PR #98). Stable consumers can now pin to `^4.0`; the release-candidate channel (`^4.0.0-rc1` … `^4.0.0-rc4`) stays available as preserved Git tags but is no longer the recommended consumer constraint.
+
+**Deliverables shipped across the v4.0 cycle**
+- **W1** — Multi-tenant foundation: `BelongsToTenant` trait + `TenantContext` singleton + `ResolveTenant` HTTP middleware + `--tenant=X` CLI option; 17 tenant-aware tables carry `tenant_id` (default `'default'` preserves v3.x backward compatibility); R30/R31 architecture tests gate every new tenant-aware model. `embedding_cache` is intentionally **NOT** tenant-scoped — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE.
+- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist; AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
+- **W3** — Vercel AI SDK chat migration (design fidelity 1:1): new `POST /conversations/{conversation}/messages/stream` SSE endpoint with `auth.sse` middleware (returns JSON 401, never HTML); `useChatStream()` hook + transport + message-shape adapters; legacy `use-chat-mutation` deleted in a single atomic commit (PR #89); 60+ stable testids preserved across the swap; 22 pixel-level `toHaveScreenshot({ maxDiffPixels: 0 })` assertions in `chat-visual.spec.ts` (15 core states + 7 supplementary); wire format aligned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained via `normalizeFinishReason()`). First-token latency dropped from ~2.8 s (synchronous JSON wait) to ~400 ms (first SSE chunk) on Lighthouse baseline.
+- **W4** — `padosoft/laravel-patent-box-tracker` v0.1.0 on Packagist + `tools/patent-box/2026.yml` dogfood template; **commercialista-validated** dossier output for the Italian Patent Box (110% R&D super-deduction, regime `documentazione_idonea`); tagged `v4.0.0-rc1`.
+- **W5** — `padosoft/laravel-flow` v0.1.0 on Packagist (saga / compensation engine; 32 Unit + 2 Architecture tests on Laravel 13); tagged `v4.0.0-rc2`.
+- **W6** — `padosoft/eval-harness` v0.1.0 on Packagist (RAG / LLM evaluation framework; 87 Unit + 3 Architecture tests; deterministic-by-default execution); tagged `v4.0.0-rc3`.
+- **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
+- **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
+
+**Sister packages on Packagist (v4 release train)**
+```json
+"require-dev": {
+    "padosoft/laravel-ai-regolo":          "^0.2",
+    "padosoft/laravel-flow":               "^0.1.0",
+    "padosoft/eval-harness":               "^0.1.0",
+    "padosoft/laravel-pii-redactor":       "^0.1.0",
+    "padosoft/laravel-patent-box-tracker": "^0.1.0"
+}
+```
+All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
+
+**Pull requests merged on `feature/v4.0` since v3.0.0** (W5..W8 additions on top of the rc1 list below)
+- #96 W7.G — RC2/RC3/RC4 cuts + W5+W6+W7 closure docs + README + dogfood YAML refresh
+- #97 W8.A — RC acceptance gates audit + closure status doc
+- #98 W8.B — `feature/v4.0` → `main` integration merge + `v4.0.0` GA tag (this release)
+- #99 W8.B pre-GA — Copilot must-fix on PR #98 (composer GA pin + `embedding_cache` cross-tenant correction + 5 minor)
+
+**Known follow-ups parked for v4.0.x / v4.1**
+- `embedding_cache` schema follow-up — surfaced during the PR #99 audit. The schema enforces `UNIQUE(text_hash)` alone, but `EmbeddingCacheService` queries by `text_hash + provider + model`. Switching the embedding model without first calling `EmbeddingCacheService::flush($provider)` triggers a duplicate-key error on `text_hash`. A v4.0.x patch will add a composite UNIQUE on `(text_hash, provider, model)` plus a data migration.
+- Optional W3.4 cleanup — drop the dual `'source'` / `'source-url'` discriminator from `frontend/src/features/chat/message-shape-adapters.ts::getCitations` (the BE now emits `source-url` exclusively after PR #90); drop the `NOTE: stub vs BE shape divergence` block from `frontend/e2e/helpers/stub-chat.ts`. Zero-functional-change diff, kept parked indefinitely if not requested.
+
+**Cycle metadata**
+- Length: 8 weeks (2026-04-26 → 2026-05-02 — W4/W5/W6/W7 closed inside a 24-hour window).
+- R36 cycles consumed across the cycle: ~70 across all PRs (W3 PR #89 set the high-water mark at 13 cycles for a single PR).
+- Auto-merge convention applied throughout (`feedback_auto_merge_when_ready`).
+- 4 prerelease tags (rc1..rc4) pinned to exact closure SHAs preceded this GA per R39.
 
 ### v4.0.0-rc4 — 2026-05-02 (W7 milestone)
 
@@ -2994,7 +3411,7 @@ Stable consumers stay on v3.x; opt into the rc with
 - ~~**W5** — `padosoft/laravel-flow` v0.1 (saga / workflow orchestration)~~ — shipped 2026-05-02 (`v4.0.0-rc2`); closure under `STATUS-2026-05-02-week5.md`
 - ~~**W6** — `padosoft/eval-harness` v0.1 (LLM evaluation harness)~~ — shipped 2026-05-02 (`v4.0.0-rc3`); closure under `STATUS-2026-05-02-week6.md`
 - ~~**W7** — `padosoft/laravel-pii-redactor` v0.1 (PII redaction layer) + `padosoft/askmydocs-pro` foundation~~ — shipped 2026-05-02 (`v4.0.0-rc4`); closure under `STATUS-2026-05-02-week7.md`
-- **W8** — final v4.0.0 GA + merge `feature/v4.0` → `main` per R37
+- ~~**W8** — final v4.0.0 GA + merge `feature/v4.0` → `main` per R37~~ — shipped 2026-05-02 (`v4.0.0` GA via PR #98); closure under `STATUS-2026-05-02-week8-rc-acceptance.md`
 
 ### v3.0.0 (2026-04-27) — Enterprise platform: pluggable pipeline + filters + anti-hallucination
 
