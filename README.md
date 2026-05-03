@@ -38,7 +38,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
-#### v4.0 platform additions (release candidate — W1..W7 shipped)
+#### v4.0.0 GA — W1..W8 shipped (full cycle closed 2026-05-02)
 
 | Feature | Description |
 |---|---|
@@ -142,7 +142,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **Bulk Background Ingestion** | `php artisan kb:ingest-folder` walks a disk and dispatches one queued job per markdown file — supports `sync`, `database`, `redis` queues (Horizon-ready) |
 | **Remote Ingestion API** | `POST /api/kb/ingest` + reusable GitHub composite action (`v2`, canonical-folder aware) so any consumer repo can push its `docs/` folder to the KB on every commit to `main` |
 | **MCP Server** | **10 tools** (5 retrieval + 5 canonical/promotion) that expose the KB to Claude Desktop, Claude Code, and other MCP-compatible agents |
-| **29 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4 — #33 (R1–R22) plus 7 new rules from the v3.0 enterprise-platform cohort (R23 pluggable-pipeline-registry, R24 per-reason i18n, R25 optimistic-mutation-dedupe, R26 external-call-shouldNotReceive, R27 additive-only response shapes, R28 per-project unique slugs + pivot cascade, R29 testid hierarchy) |
+| **35 review rules** | Codified in `CLAUDE.md` + `.github/copilot-instructions.md` + `.claude/skills/<rule>/` — distilled from ~110 live Copilot findings across PRs #4–#33 (R1–R22), 7 rules from the v3.0 enterprise-platform cohort (R23 pluggable-pipeline-registry, R24 per-reason i18n, R25 optimistic-mutation-dedupe, R26 external-call-shouldNotReceive, R27 additive-only response shapes, R28 per-project unique slugs + pivot cascade, R29 testid hierarchy), and 6 rules from the v4.0 cycle (R30 cross-tenant isolation, R31 tenant_id mandatory, R36 Copilot review + CI green loop, R37 `feature/vX.Y` once-per-major branching, R38 heavy work in CLI workflow steps, R39 `vX.Y.0-rcN` tag at every Wn closure) |
 | **Playwright E2E suite** | Real Postgres + pgvector in CI, deterministic via `data-state` + `data-testid` contract (R11), happy-path + failure-injection per feature (R12), real data only — `page.route()` reserved for external boundaries (R13); v3.0 added 28 spec scenarios across `chat-filters`, `chat-mention`, `chat-refusal`, `admin-tags` |
 
 ---
@@ -2871,6 +2871,48 @@ Use [GitHub Issues](../../issues). Please include:
 
 ## Changelog
 
+### v4.0.0 — 2026-05-02 (GA — full v4.0 cycle closed)
+
+The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `main` once per R37 with all W1..W8 work landing as a single squashed integration commit (PR #98). Stable consumers can now pin to `^4.0`; the release-candidate channel (`^4.0.0-rc1` … `^4.0.0-rc4`) stays available as preserved Git tags but is no longer the recommended consumer constraint.
+
+**Deliverables shipped across the v4.0 cycle**
+- **W1** — Multi-tenant foundation: `BelongsToTenant` trait + `TenantContext` singleton + `ResolveTenant` HTTP middleware + `--tenant=X` CLI option; 17 tenant-aware tables carry `tenant_id` (default `'default'` preserves v3.x backward compatibility); R30/R31 architecture tests gate every new tenant-aware model. `embedding_cache` is intentionally **NOT** tenant-scoped — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE.
+- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist; AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
+- **W3** — Vercel AI SDK chat migration (design fidelity 1:1): new `POST /conversations/{conversation}/messages/stream` SSE endpoint with `auth.sse` middleware (returns JSON 401, never HTML); `useChatStream()` hook + transport + message-shape adapters; legacy `use-chat-mutation` deleted in a single atomic commit (PR #89); 60+ stable testids preserved across the swap; 22 pixel-level `toHaveScreenshot({ maxDiffPixels: 0 })` assertions in `chat-visual.spec.ts` (15 core states + 7 supplementary); wire format aligned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained via `normalizeFinishReason()`). First-token latency dropped from ~2.8 s (synchronous JSON wait) to ~400 ms (first SSE chunk) on Lighthouse baseline.
+- **W4** — `padosoft/laravel-patent-box-tracker` v0.1.0 on Packagist + `tools/patent-box/2026.yml` dogfood template; **commercialista-validated** dossier output for the Italian Patent Box (110% R&D super-deduction, regime `documentazione_idonea`); tagged `v4.0.0-rc1`.
+- **W5** — `padosoft/laravel-flow` v0.1.0 on Packagist (saga / compensation engine; 32 Unit + 2 Architecture tests on Laravel 13); tagged `v4.0.0-rc2`.
+- **W6** — `padosoft/eval-harness` v0.1.0 on Packagist (RAG / LLM evaluation framework; 87 Unit + 3 Architecture tests; deterministic-by-default execution); tagged `v4.0.0-rc3`.
+- **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
+- **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
+
+**Sister packages on Packagist (v4 release train)**
+```json
+"require-dev": {
+    "padosoft/laravel-ai-regolo":          "^0.1.0",
+    "padosoft/laravel-flow":               "^0.1.0",
+    "padosoft/eval-harness":               "^0.1.0",
+    "padosoft/laravel-pii-redactor":       "^0.1.0",
+    "padosoft/laravel-patent-box-tracker": "^0.1.0"
+}
+```
+All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
+
+**Pull requests merged on `feature/v4.0` since v3.0.0** (W5..W8 additions on top of the rc1 list below)
+- #96 W7.G — RC2/RC3/RC4 cuts + W5+W6+W7 closure docs + README + dogfood YAML refresh
+- #97 W8.A — RC acceptance gates audit + closure status doc
+- #98 W8.B — `feature/v4.0` → `main` integration merge + `v4.0.0` GA tag (this release)
+- #99 W8.B pre-GA — Copilot must-fix on PR #98 (composer GA pin + `embedding_cache` cross-tenant correction + 5 minor)
+
+**Known follow-ups parked for v4.0.x / v4.1**
+- `embedding_cache` schema follow-up — surfaced during the PR #99 audit. The schema enforces `UNIQUE(text_hash)` alone, but `EmbeddingCacheService` queries by `text_hash + provider + model`. Switching the embedding model without first calling `EmbeddingCacheService::flush($provider)` triggers a duplicate-key error on `text_hash`. A v4.0.x patch will add a composite UNIQUE on `(text_hash, provider, model)` plus a data migration.
+- Optional W3.4 cleanup — drop the dual `'source'` / `'source-url'` discriminator from `frontend/src/features/chat/message-shape-adapters.ts::getCitations` (the BE now emits `source-url` exclusively after PR #90); drop the `NOTE: stub vs BE shape divergence` block from `frontend/e2e/helpers/stub-chat.ts`. Zero-functional-change diff, kept parked indefinitely if not requested.
+
+**Cycle metadata**
+- Length: 8 weeks (2026-04-26 → 2026-05-02 — W4/W5/W6/W7 closed inside a 24-hour window).
+- R36 cycles consumed across the cycle: ~70 across all PRs (W3 PR #89 set the high-water mark at 13 cycles for a single PR).
+- Auto-merge convention applied throughout (`feedback_auto_merge_when_ready`).
+- 4 prerelease tags (rc1..rc4) pinned to exact closure SHAs preceded this GA per R39.
+
 ### v4.0.0-rc4 — 2026-05-02 (W7 milestone)
 
 - `padosoft/laravel-pii-redactor` v0.1.0 published on Packagist — 6 checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, Codice Fiscale with the DM 23/12/1976 CIN checksum, Partita IVA with Luhn-IT + zero-payload sentinel) + 4 redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible, Drop). Regex + checksum based — zero LLM dependency. PR #3 → `956089b`.
@@ -2994,7 +3036,7 @@ Stable consumers stay on v3.x; opt into the rc with
 - ~~**W5** — `padosoft/laravel-flow` v0.1 (saga / workflow orchestration)~~ — shipped 2026-05-02 (`v4.0.0-rc2`); closure under `STATUS-2026-05-02-week5.md`
 - ~~**W6** — `padosoft/eval-harness` v0.1 (LLM evaluation harness)~~ — shipped 2026-05-02 (`v4.0.0-rc3`); closure under `STATUS-2026-05-02-week6.md`
 - ~~**W7** — `padosoft/laravel-pii-redactor` v0.1 (PII redaction layer) + `padosoft/askmydocs-pro` foundation~~ — shipped 2026-05-02 (`v4.0.0-rc4`); closure under `STATUS-2026-05-02-week7.md`
-- **W8** — final v4.0.0 GA + merge `feature/v4.0` → `main` per R37
+- ~~**W8** — final v4.0.0 GA + merge `feature/v4.0` → `main` per R37~~ — shipped 2026-05-02 (`v4.0.0` GA via PR #98); closure under `STATUS-2026-05-02-week8-rc-acceptance.md`
 
 ### v3.0.0 (2026-04-27) — Enterprise platform: pluggable pipeline + filters + anti-hallucination
 
