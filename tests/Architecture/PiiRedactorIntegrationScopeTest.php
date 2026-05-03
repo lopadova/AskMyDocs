@@ -77,16 +77,24 @@ final class PiiRedactorIntegrationScopeTest extends TestCase
     {
         $body = $this->fileAt(self::EMBEDDING_CACHE_SERVICE);
 
-        $this->assertStringContainsString(
-            "config('kb.pii_redactor.enabled'",
-            $body,
+        // Accept either form: explicit-key `config('kb.pii_redactor.enabled')`
+        // OR whole-block `config('kb.pii_redactor')` followed by array access.
+        // Same lenience as the middleware-test: the runtime contract is
+        // identical, only the call shape differs.
+        $masterSwitchPresent = str_contains($body, "config('kb.pii_redactor.enabled'")
+            || str_contains($body, "config('kb.pii_redactor')");
+        $this->assertTrue(
+            $masterSwitchPresent,
             'EmbeddingCacheService MUST read the master switch before pre-redact.',
         );
-        $this->assertStringContainsString(
-            "config('kb.pii_redactor.redact_before_embeddings'",
-            $body,
-            'EmbeddingCacheService MUST read the redact_before_embeddings knob.',
+
+        $embeddingsKnobPresent = str_contains($body, "config('kb.pii_redactor.redact_before_embeddings'")
+            || str_contains($body, "'redact_before_embeddings'");
+        $this->assertTrue(
+            $embeddingsKnobPresent,
+            'EmbeddingCacheService MUST consume the redact_before_embeddings knob.',
         );
+
         $this->assertStringContainsString(
             'MaskStrategy',
             $body,
@@ -99,15 +107,18 @@ final class PiiRedactorIntegrationScopeTest extends TestCase
     {
         $body = $this->fileAt(self::AI_INSIGHTS_SERVICE);
 
-        $this->assertStringContainsString(
-            "config('kb.pii_redactor.enabled'",
-            $body,
+        $masterSwitchPresent = str_contains($body, "config('kb.pii_redactor.enabled'")
+            || str_contains($body, "config('kb.pii_redactor')");
+        $this->assertTrue(
+            $masterSwitchPresent,
             'AiInsightsService MUST read the master switch.',
         );
-        $this->assertStringContainsString(
-            "config('kb.pii_redactor.redact_insights_snippets'",
-            $body,
-            'AiInsightsService MUST read the redact_insights_snippets knob.',
+
+        $insightsKnobPresent = str_contains($body, "config('kb.pii_redactor.redact_insights_snippets'")
+            || str_contains($body, "'redact_insights_snippets'");
+        $this->assertTrue(
+            $insightsKnobPresent,
+            'AiInsightsService MUST consume the redact_insights_snippets knob.',
         );
     }
 
@@ -132,44 +143,105 @@ final class PiiRedactorIntegrationScopeTest extends TestCase
     public function test_chat_log_reads_at_redactor_call_sites_are_tenant_scoped(): void
     {
         // R30 — chat_logs is tenant-aware (BelongsToTenant). Both
-        // call sites that read from it inside the W4.1 surface MUST
-        // scope explicitly via `forTenant(...)`. The string match is
-        // deliberately textual: a regression that drops the call
-        // would compile fine but leak across tenants — this test
-        // is the architectural guard.
+        // call sites MUST scope explicitly via `forTenant(...)`. To
+        // catch a regression that drops the scope from THESE specific
+        // methods (while leaving an unrelated `forTenant()` call
+        // somewhere else in the file), we extract each method's body
+        // and assert on the slice — not the whole file.
         $insights = $this->fileAt(self::AI_INSIGHTS_SERVICE);
+        $coverageGapsBody = $this->methodBody($insights, 'coverageGaps');
         $this->assertStringContainsString(
             'forTenant(',
-            $insights,
+            $coverageGapsBody,
             'AiInsightsService::coverageGaps() MUST scope its ChatLog read to '
-            .'the active tenant — R30.',
+            .'the active tenant — R30. The `forTenant(` call must live INSIDE '
+            .'this method body, not anywhere else in the file.',
         );
 
         $logViewer = $this->fileAt(self::LOG_VIEWER_CONTROLLER);
+        $detokenizeBody = $this->methodBody($logViewer, 'chatDetokenize');
         $this->assertStringContainsString(
             'forTenant(',
-            $logViewer,
-            'LogViewerController::chatDetokenize() MUST scope its ChatLog read '
-            .'to the active tenant — R30.',
+            $detokenizeBody,
+            'LogViewerController::chatDetokenize() MUST scope its ChatLog '
+            .'lookup to the active tenant — R30. The `forTenant(` call must '
+            .'live INSIDE this method body, not anywhere else in the file.',
         );
     }
 
     public function test_detokenize_endpoint_is_audited_via_admin_command_audit(): void
     {
         $body = $this->fileAt(self::LOG_VIEWER_CONTROLLER);
+        $detokenizeBody = $this->methodBody($body, 'chatDetokenize');
 
-        $this->assertStringContainsString(
-            'AdminCommandAudit',
-            $body,
-            'chatDetokenize() MUST write to admin_command_audit so unmask '
-            .'attempts are forensically traceable.',
+        // Pin the actual create() invocation, not just the import.
+        // A regression that removes the `AdminCommandAudit::query()
+        // ->create([...])` lines but leaves the `use` statement +
+        // the `'pii.detokenize'` config fallback in place would NOT
+        // change the import surface — but it would silently disable
+        // the forensic trail, which is the load-bearing invariant.
+        $this->assertMatchesRegularExpression(
+            '/AdminCommandAudit::query\(\)\s*->create\(/',
+            $detokenizeBody,
+            'chatDetokenize() MUST call AdminCommandAudit::query()->create([...]) '
+            .'so unmask attempts (200 + 403) are forensically traceable. '
+            .'A bare `use` statement is not enough — the literal create() '
+            .'call must live inside the method body.',
         );
-        $this->assertStringContainsString(
-            "'pii.detokenize'",
-            $body,
-            'admin_command_audit row MUST tag `command = pii.detokenize` for '
-            .'filtering / dashboards.',
+
+        // Double-check: the `command` tag stamped on the audit row
+        // must be exactly `pii.detokenize` so dashboards filtering
+        // on that string keep working.
+        $this->assertMatchesRegularExpression(
+            "/'command'\s*=>\s*'pii\.detokenize'/",
+            $detokenizeBody,
+            'chatDetokenize() MUST stamp the audit row with '
+            ."`'command' => 'pii.detokenize'` so admin dashboards filtering "
+            .'by command name keep matching.',
         );
+    }
+
+    /**
+     * Extract the body of a named method from a PHP source file. Used
+     * to scope architecture-test assertions to a specific method
+     * rather than the whole file — so a regression that drops a
+     * `forTenant()` from `coverageGaps()` (but leaves one elsewhere
+     * in the file) still fails the test.
+     *
+     * The slice runs from the `function <name>(` line through to the
+     * matching closing brace, found by depth counting. Returns an
+     * empty string if the method isn't present (the caller's
+     * `assertStringContainsString` then surfaces a clean failure).
+     */
+    private function methodBody(string $source, string $methodName): string
+    {
+        // Match `function <name>(` then capture until the closing `}`
+        // that pairs with the method's opening `{`.
+        $pattern = '/function\s+'.preg_quote($methodName, '/').'\s*\(/';
+        if (preg_match($pattern, $source, $m, PREG_OFFSET_CAPTURE) !== 1) {
+            return '';
+        }
+
+        $offset = (int) $m[0][1];
+        $openBrace = strpos($source, '{', $offset);
+        if ($openBrace === false) {
+            return '';
+        }
+
+        $depth = 1;
+        $i = $openBrace + 1;
+        $len = strlen($source);
+        while ($i < $len && $depth > 0) {
+            $ch = $source[$i];
+            if ($ch === '{') {
+                $depth++;
+            } elseif ($ch === '}') {
+                $depth--;
+            }
+            $i++;
+        }
+
+        return substr($source, $offset, $i - $offset);
     }
 
     private function fileAt(string $relative): string
