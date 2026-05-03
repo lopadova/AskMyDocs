@@ -193,6 +193,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
   - [GitHub Action integration](#github-action-integration)
   - [Scheduled retention sweep](#scheduled-retention-sweep)
 - [Sister packages on Packagist (v4.0)](#sister-packages-on-packagist-v40)
+  - [Integration roadmap (v4.0 → v4.1)](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md)
 - [Patent Box dossier (v4.0 dogfood)](#patent-box-dossier-v40-dogfood)
 - [Extending](#extending)
 - [Testing](#testing)
@@ -328,15 +329,17 @@ never the LLM.
 
 **Sister `padosoft/*` packages on Packagist (v4 release train)**
 
-| Package | Role | Path repo / docs |
-|---|---|---|
-| `padosoft/laravel-ai-regolo` | Standalone Regolo provider for `laravel/ai` (W2) | https://github.com/padosoft/laravel-ai-regolo |
-| `padosoft/laravel-flow` | In-process saga / compensation engine (W5) | https://github.com/padosoft/laravel-flow |
-| `padosoft/eval-harness` | RAG / LLM evaluation framework (W6) | https://github.com/padosoft/eval-harness |
-| `padosoft/laravel-pii-redactor` | PII detection + redaction with Italian fiscal identifiers (W7) | https://github.com/padosoft/laravel-pii-redactor |
-| `padosoft/laravel-patent-box-tracker` | Italian Patent Box dossier auto-generator (W4) | https://github.com/padosoft/laravel-patent-box-tracker |
+| Package | Role | Integration status in AskMyDocs `app/` | Repo |
+|---|---|---|---|
+| `padosoft/laravel-ai-regolo` (W2) | Regolo provider for `laravel/ai` | **Integrated** — `RegoloProvider` delegates to the SDK | https://github.com/padosoft/laravel-ai-regolo |
+| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for v4.1 — see [Sister packages integration roadmap](#sister-packages-integration-roadmap-v40--v41) | https://github.com/padosoft/laravel-flow |
+| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; not yet wired into `tests/Eval/` or CI. Integration scoped for v4.1 | https://github.com/padosoft/eval-harness |
+| `padosoft/laravel-pii-redactor` (W7) | PII detection + redaction with Italian fiscal identifiers | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; no chat-endpoint middleware wiring yet. Integration scoped for v4.1 | https://github.com/padosoft/laravel-pii-redactor |
+| `padosoft/laravel-patent-box-tracker` (W4) | Italian Patent Box dossier auto-generator | **External runner by design** — never declared in AskMyDocs's own `composer.json`; `tools/patent-box/2026.yml` is consumed by a separate Laravel project (R37 standalone-agnostic) | https://github.com/padosoft/laravel-patent-box-tracker |
 
-All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run. AskMyDocs USES the packages (via `require-dev` for the dogfood tooling and `suggest` for optional integrations); the packages never depend on AskMyDocs.
+All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
+
+**Honest status as of v4.0.2** — only `laravel-ai-regolo` reaches the `app/` runtime today. The other three sit in `composer.json` so consumers installing AskMyDocs already pull the dependency train, but the `app/` integration code hasn't been written yet. `padosoft/laravel-patent-box-tracker` is a deliberate external dependency (operators install it in their own Laravel project, not in AskMyDocs). See the [integration roadmap](#sister-packages-integration-roadmap-v40--v41) below for the v4.1 plan that wires the remaining three into `app/`.
 
 ---
 
@@ -3026,7 +3029,9 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 
 ## Sister packages on Packagist (v4.0)
 
-Five `padosoft/*` Composer packages ship alongside the v4.0 train. AskMyDocs **uses** them (via `require-dev` for the dogfood tooling and `suggest` for optional integrations); they never depend on AskMyDocs. Architecture tests on each package enforce **standalone-agnostic invariants** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require <package>` on a fresh empty Laravel app produces a working in-process feature.
+Five `padosoft/*` Composer packages ship alongside the v4.0 train. Architecture tests on each package enforce **standalone-agnostic invariants** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require <package>` on a fresh empty Laravel app produces a working in-process feature.
+
+> **Honest integration status (v4.0.2 disclaimer)** — only `padosoft/laravel-ai-regolo` is wired into AskMyDocs's `app/` runtime today (`RegoloProvider` delegates to the SDK). `laravel-flow`, `eval-harness`, and `laravel-pii-redactor` sit in `composer.json` `require-dev` so the dependency train is available, but the `app/` integration code lands in v4.1 — see [Sister packages integration roadmap](#sister-packages-integration-roadmap-v40--v41) below for the per-package plan. Their package repos themselves are v0.1.0 scaffolds (interfaces + ServiceProvider + foundational tests); production-grade implementations land alongside the AskMyDocs integration. `padosoft/laravel-patent-box-tracker` is the only sister package not in AskMyDocs's `composer.json` at all — by design, operators install it in their own Laravel project (R37 standalone-agnostic; see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 
 ### `padosoft/laravel-ai-regolo` (W2)
 
@@ -3246,7 +3251,34 @@ Use [GitHub Issues](../../issues). Please include:
 
 ## Changelog
 
+### v4.0.2 — 2026-05-03 (Docs honesty pass — sister packages integration roadmap)
+
+Docs-only patch correcting an accuracy gap in the v4.0.0 GA / W5–W7 closure narratives. The original release notes described `padosoft/laravel-flow`, `padosoft/eval-harness`, and `padosoft/laravel-pii-redactor` as "shipped engines" when in reality they ship as **v0.1.0 scaffold packages on Packagist** and AskMyDocs's `composer.json` declares them in `require-dev` without any `use Padosoft\…` import in `app/`. Only `padosoft/laravel-ai-regolo` (W2) reaches the runtime today via `RegoloProvider`.
+
+**What this patch changes:**
+- Sister packages tables in the README's Main components section + the dedicated v4.0 section now carry an explicit **Integration status** column distinguishing **integrated** vs **scaffold on Packagist** vs **external runner by design**.
+- New top-level integration roadmap doc at [`docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md`](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) — per-package timelines aligned with each upstream package's enterprise plan (`docs/ENTERPRISE_PLAN.md` for laravel-flow, `docs/ROADMAP_IMPLEMENTATION_PLAN.md` for eval-harness), with concrete `app/` touch points for each integration.
+- Roadmap ordering for v4.1: **(1) pii-redactor first** (largest production risk surface — GDPR exposure on chat retention), **(2) laravel-flow second** (saga conversion of `IngestDocumentJob` + canonical promotion + bulk delete), **(3) eval-harness third** (RAG regression CI gate). Each integration is gated on the upstream package shipping its v0.2.
+- v4.0.0 / v4.0.1 historical changelog entries are preserved verbatim — this patch documents reality without rewriting history.
+
+**Pull requests merged on `main` since v4.0.1:**
+- #102 v4.0.2 — sister packages integration roadmap + README honesty pass
+
+### v4.0.1 — 2026-05-03 (Patch release — embedding_cache + W3.4 cleanup)
+
+First v4.0.x patch closing the two follow-ups parked in the v4.0.0 GA release notes. Drop-in replacement for v4.0.0 — no breaking changes, no migration data dedupe, no consumer code change required.
+
+**What landed:**
+- `embedding_cache` schema fix — composite UNIQUE on `(text_hash, provider, model)` (migration `2026_05_03_000001_change_embedding_cache_unique_to_composite.php`). Switching embedding model no longer requires a pre-flush; multi-model deployments can coexist.
+- `EmbeddingCacheService::resolveModelName()` regolo bug fix (surfaced during Copilot's review on the v4.0.1 PR) — pre-fix, the resolver returned `'unknown'` for the `regolo` provider while inserts stored the real model name; cache lookups never matched their own writes for regolo. v4.0.1 ships both fixes together.
+- W3.4 cleanup — drops the dual `'source'` / `'source-url'` discriminator from the FE adapter (BE emits `source-url` exclusively post-PR #90); 16 test fixtures renamed; stale "differs from W3.1 BE wire format" notes corrected in `stub-chat.ts`.
+
+**Pull requests merged on `main` since v4.0.0:**
+- #101 v4.0.1 — `embedding_cache` composite UNIQUE + regolo resolver fix + W3.4 source-url cleanup
+
 ### v4.0.0 — 2026-05-02 (GA — full v4.0 cycle closed)
+
+> **v4.0.2 honesty correction** — the per-week deliverable narrative below describes the W5/W6/W7 sister packages (`laravel-flow`, `eval-harness`, `laravel-pii-redactor`) as "shipped" features, which is accurate at the **Packagist scaffold** level (the v0.1.0 tags exist with interfaces + ServiceProviders + foundational tests) but overstates the **AskMyDocs `app/` runtime integration**, which doesn't exist yet for those three. Only `padosoft/laravel-ai-regolo` (W2) is wired into the runtime. v4.0.1 / v4.0.2 patches preserve the historical narrative below verbatim and add a [sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) documenting the v4.1+ plan honestly.
 
 The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `main` once per R37 with all W1..W8 work landing as a single squashed integration commit (PR #98). Stable consumers can now pin to `^4.0`; the release-candidate channel (`^4.0.0-rc1` … `^4.0.0-rc4`) stays available as preserved Git tags but is no longer the recommended consumer constraint.
 
