@@ -9,19 +9,25 @@ use App\Models\EmbeddingCache;
 /**
  * Embedding cache layer that sits in front of AiManager::generateEmbeddings().
  *
- * Cache key: `text_hash` (SHA-256 of the input text) — the only UNIQUE
- * constraint on the table. `provider` + `model` are informational columns
- * used as retrieval-time filters so callers only reuse vectors produced by
- * the same model; identical text under a different provider/model causes a
- * deliberate cache miss. When the embedding model changes, flush stale
- * entries via `flush($provider)` BEFORE the first ingest/search; otherwise
- * the first miss-and-insert on an already-cached text_hash will throw a
- * duplicate-key exception (intentional — it surfaces the missed flush).
+ * Cache key: the composite `(text_hash, provider, model)` (UNIQUE
+ * constraint — see migration
+ * `2026_05_03_000001_change_embedding_cache_unique_to_composite.php`,
+ * which supersedes the original single-column `text_hash` UNIQUE
+ * shipped by v4.0). The composite UNIQUE matches what this service
+ * queries on read AND insert, so identical text under a different
+ * provider/model produces a deliberate cache miss without raising a
+ * duplicate-key error. Multiple embedding models can coexist for the
+ * same text — useful when one database backs deployments running
+ * different models concurrently.
  *
- * Only texts with a cache miss are sent to the AI API. Results are stored
- * for future cross-tenant reuse. This eliminates redundant API calls when
- * re-ingesting unchanged documents or when the same query is searched
- * multiple times.
+ * `flush($provider)` remains available for housekeeping (LRU eviction,
+ * removing an obsolete model's vectors when retiring it) but is no
+ * longer a required pre-condition for switching embedding models.
+ *
+ * Only texts with a cache miss are sent to the AI API. Results are
+ * stored for future cross-tenant reuse. This eliminates redundant API
+ * calls when re-ingesting unchanged documents or when the same query
+ * is searched multiple times.
  */
 class EmbeddingCacheService
 {
@@ -151,9 +157,24 @@ class EmbeddingCacheService
 
     private function resolveModelName(string $providerName): string
     {
+        // Each provider's config key shape differs because the
+        // upstream SDK contracts differ — openai + gemini expose a
+        // single embeddings model (`embeddings_model` scalar), regolo
+        // sits on top of `laravel/ai` which models multi-purpose
+        // model registries per provider (`models.embeddings.default`
+        // nested key, see `config/ai.php` lines 117-119).
+        //
+        // Returning the literal real model name is required for the
+        // (text_hash, provider, model) composite UNIQUE: the lookup
+        // key on read MUST match what the insert path actually stores
+        // (the `$apiResponse->model` returned by the provider). A
+        // mismatch (e.g. lookup with 'unknown', insert with the real
+        // model) would make every lookup miss while inserts still
+        // succeed, polluting the cache with unreachable rows.
         return match ($providerName) {
             'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
             'gemini' => config('ai.providers.gemini.embeddings_model', 'text-embedding-004'),
+            'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),
             default => 'unknown',
         };
     }

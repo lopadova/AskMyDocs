@@ -173,14 +173,14 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
         // Streaming endpoint → emit SSE protocol in the SDK v6
         // `UIMessageChunk` shape (start / text-start /
         // text-delta(id+delta) / text-end / source-url / data-* /
-        // finish). NOTE: this differs from the W3.1 BE wire format
-        // (`MessageStreamController::store()`) which still emits
-        // the legacy `text-delta` with `textDelta` field + `source`
-        // discriminator + no envelope. Aligning the BE to the SDK
-        // shape is a follow-up PR (see PR #89's "Out of scope"
-        // section). The stub emits the SDK-canonical shape so the
-        // FE swap is testable end-to-end without waiting on the BE
-        // catch-up.
+        // finish). PR #90 aligned the BE wire format to the same
+        // SDK v6 shape, so every chunk type / field name matches
+        // the production stream. Minor metadata still differs
+        // intentionally (the stub seeds a `messageId` on `start`
+        // for testid stability and uses `/kb/...` URLs for fixture
+        // citations whereas the production BE emits its own
+        // canonical URLs) — those differences don't affect the
+        // adapters under test.
         //
         // Single-shot fulfill with the whole stream body works
         // because the SDK's parser handles concatenated chunks in
@@ -214,14 +214,14 @@ export async function stubChatAssistantReply(page: Page, options: StubChatOption
  * `@ai-sdk/react` v6 UI Message Stream Protocol shape (see
  * `node_modules/ai/dist/index.d.mts` `UIMessageChunk`).
  *
- * IMPORTANT: this differs from the BE's W3.1 wire format in two
- * places — the BE's `MessageStreamController` emits `text-delta`
- * with a `textDelta` field (legacy SDK v3 spelling) and `source`
- * type (instead of `source-url`). PR #87 verified the BE's emit
- * shape but never round-tripped through the SDK parser. Closing
- * the gap on the production BE is a follow-up PR; the stub
- * deliberately emits the SDK-correct shape so the chat*.spec.ts
- * suite can validate the FE swap end-to-end.
+ * The chunk types and field names match what the production BE
+ * (`MessageStreamController::store()`) emits since PR #90 aligned
+ * the wire format to SDK v6 (`UIMessageChunk` discriminator union).
+ * Per-field metadata still differs intentionally — the stub seeds a
+ * `messageId` on the `start` chunk and uses `/kb/{sourceId}` for
+ * fixture citation URLs, whereas the production BE produces its own
+ * canonical URL strings. Those differences are testid-stability
+ * details that don't affect the FE adapters under test.
  *
  * The chunk sequence:
  *   1. `start` — opens the assistant message with messageId

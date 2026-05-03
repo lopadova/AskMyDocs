@@ -7,18 +7,20 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * EmbeddingCache — cross-tenant reuse layer for embedding vectors.
  *
- * Intentionally NOT tenant-scoped. The cache key is `text_hash` alone
- * (UNIQUE constraint declared in
- * database/migrations/2026_01_01_000006_create_embedding_cache_table.php).
- * `provider` + `model` are informational columns: EmbeddingCacheService
- * filters by them on retrieval to ensure callers only reuse vectors
- * produced by the same model, so identical text under a different
- * provider/model produces a cache miss. The supported way to evict
- * stale entries when the embedding model changes is
- * `EmbeddingCacheService::flush($provider)` — switching the embedding
- * model without flushing first can therefore trigger a duplicate-key
- * insert on text_hash, which is intentional: it surfaces the missed
- * flush rather than silently overwriting a known-good vector.
+ * Intentionally NOT tenant-scoped. The cache key is the composite
+ * `(text_hash, provider, model)` (UNIQUE constraint declared in
+ * database/migrations/2026_05_03_000001_change_embedding_cache_unique_to_composite.php
+ * — supersedes the original single-column `text_hash` UNIQUE shipped
+ * by the v4.0 baseline create migration). The composite key matches
+ * what `EmbeddingCacheService` queries: identical text under a
+ * different provider/model produces a deliberate cache miss without
+ * raising a duplicate-key error, so multiple models can coexist for
+ * the same text — useful when one database backs both a development
+ * and a production deployment running different embedding models.
+ * `EmbeddingCacheService::flush($provider)` remains available for
+ * housekeeping (LRU eviction or cleaning up an obsolete model's
+ * vectors) but is no longer a required pre-condition for switching
+ * embedding models.
  *
  * Identical input text produces identical embeddings regardless of
  * which tenant triggered the API call, so reusing the vector across
