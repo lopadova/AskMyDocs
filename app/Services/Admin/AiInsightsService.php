@@ -10,9 +10,12 @@ use App\Models\KbEdge;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\Message;
+use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Padosoft\PiiRedactor\RedactorEngine;
+use Padosoft\PiiRedactor\Strategies\MaskStrategy;
 use RuntimeException;
 use Throwable;
 
@@ -492,7 +495,13 @@ PROMPT;
         $since = Carbon::now()->subDays(self::PROMOTION_LOOKBACK_DAYS);
 
         // Pull low-confidence turns: zero citations OR chunks_count < 2.
+        // R30 — `chat_logs` is tenant-aware (BelongsToTenant); scope
+        // explicitly to the active tenant so a multi-tenant deployment
+        // never folds another tenant's questions into the snapshot
+        // surfaced to this tenant's admin dashboard.
+        $tenantId = app(TenantContext::class)->current();
         $lowConf = ChatLog::query()
+            ->forTenant($tenantId)
             ->where('created_at', '>=', $since)
             ->where(function ($q): void {
                 $q->where('chunks_count', '<', 2)
@@ -527,7 +536,47 @@ PROMPT;
             return [];
         }
 
+        // v4.1/W4.1.D — when both knobs are on, mask PII out of every
+        // sample question BEFORE we (a) send the cluster to the LLM
+        // and (b) persist the resulting `sample_questions` into
+        // `admin_insights_snapshots.payload_json`. Default-off — v3
+        // hosts upgrading to v4.1 see zero behaviour change until they
+        // explicitly opt in via KB_INSIGHTS_PII_REDACT=true.
+        $questions = $this->maskInsightSnippetsIfEnabled($questions);
+
         return $this->clusterQuestionsViaLlm($questions, $zeroCount, $lowCount);
+    }
+
+    /**
+     * Mask PII out of insight chat samples when both
+     * `kb.pii_redactor.enabled` AND `kb.pii_redactor.redact_insights_snippets`
+     * are true. Mask strategy (not Tokenise) because insight snapshots
+     * are READ-ONLY surfaces — operators consume the dashboard, no
+     * detokenise round-trip is needed at the snapshot boundary. (The
+     * LogViewerController detokenize action is the operator-driven
+     * round-trip, gated by the `pii.detokenize` Spatie permission.)
+     *
+     * @param  list<string>  $snippets
+     * @return list<string>
+     */
+    private function maskInsightSnippetsIfEnabled(array $snippets): array
+    {
+        if (! (bool) config('kb.pii_redactor.enabled', false)) {
+            return $snippets;
+        }
+
+        if (! (bool) config('kb.pii_redactor.redact_insights_snippets', false)) {
+            return $snippets;
+        }
+
+        /** @var RedactorEngine $engine */
+        $engine = app(RedactorEngine::class);
+        $maskStrategy = app(MaskStrategy::class);
+
+        return array_map(
+            static fn (string $snippet): string => $engine->redact($snippet, $maskStrategy),
+            $snippets,
+        );
     }
 
     /**

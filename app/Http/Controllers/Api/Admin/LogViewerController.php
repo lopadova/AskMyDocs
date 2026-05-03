@@ -8,9 +8,13 @@ use App\Http\Resources\Admin\Logs\ActivityLogResource;
 use App\Http\Resources\Admin\Logs\AuditLogResource;
 use App\Http\Resources\Admin\Logs\ChatLogResource;
 use App\Http\Resources\Admin\Logs\FailedJobResource;
+use App\Models\AdminCommandAudit;
 use App\Models\ChatLog;
 use App\Models\KbCanonicalAudit;
+use App\Services\Admin\Exceptions\LogFileNotFoundException;
+use App\Services\Admin\Exceptions\LogFileUnreadableException;
 use App\Services\Admin\LogTailService;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -18,9 +22,9 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use App\Services\Admin\Exceptions\LogFileNotFoundException;
-use App\Services\Admin\Exceptions\LogFileUnreadableException;
 use InvalidArgumentException;
+use Padosoft\PiiRedactor\Strategies\RedactionStrategy;
+use Padosoft\PiiRedactor\Strategies\TokeniseStrategy;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -265,6 +269,96 @@ class LogViewerController extends Controller
         }
 
         return FailedJobResource::collection($paginator);
+    }
+
+    /**
+     * POST /api/admin/logs/chat/{id}/detokenize
+     *
+     * v4.1/W4.1.D — operator-driven round-trip from a tokenised
+     * `chat_logs.question` / `chat_logs.answer` back to the original
+     * PII text. Surfaces ONLY when:
+     *
+     *   1. The package's `tokenise` strategy is configured (otherwise
+     *      there's no `pii_token_maps` content to reverse) — 422.
+     *   2. The caller carries the Spatie permission named in
+     *      `kb.pii_redactor.detokenize_permission` (default
+     *      `pii.detokenize`) — 403 otherwise.
+     *
+     * Audit shape: every 200 (success) or 403 (rejected by permission
+     * gate) writes an `admin_command_audit` row. The 422 strategy-
+     * mismatch preflight is a config-stage error (no row matched, no
+     * action taken), and is intentionally NOT audited — the SPA
+     * surfaces it as a static "this deploy does not retain originals"
+     * note rather than a per-request operator action.
+     *
+     * R30 — `chat_logs` is tenant-aware; the row lookup is scoped to
+     * the active tenant so an admin in tenant A cannot detokenise a
+     * chat row owned by tenant B by guessing its id.
+     *
+     * Response shape (200): `{ id, question, answer }` — same scalar
+     * fields as the chat-show drawer, but with the `[tok:*:*]` literals
+     * substituted by their plaintext originals from `pii_token_maps`.
+     */
+    public function chatDetokenize(Request $request, int $id): JsonResponse
+    {
+        $strategy = app(RedactionStrategy::class);
+        if (! $strategy instanceof TokeniseStrategy) {
+            // Mask / Hash / Drop are one-way — there's nothing to
+            // reverse. Surface a 422 so the SPA can show "this deploy
+            // does not retain originals" instead of pretending success.
+            return response()->json([
+                'message' => 'PII detokenisation requires the `tokenise` strategy.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $permission = (string) config('kb.pii_redactor.detokenize_permission', 'pii.detokenize');
+        $user = $request->user();
+        $hasPermission = $user !== null
+            && method_exists($user, 'can')
+            && $user->can($permission);
+
+        $tenantId = app(TenantContext::class)->current();
+        $log = ChatLog::query()->forTenant($tenantId)->findOrFail($id);
+
+        if (! $hasPermission) {
+            // Audit the rejection too — abuse attempts are visible
+            // in the same trail as successful unmasks.
+            AdminCommandAudit::query()->create([
+                'user_id' => $user?->id,
+                'command' => 'pii.detokenize',
+                'args_json' => ['chat_log_id' => $id],
+                'status' => AdminCommandAudit::STATUS_REJECTED,
+                'error_message' => "Missing permission: {$permission}",
+                'started_at' => now(),
+                'completed_at' => now(),
+                'client_ip' => $request->ip(),
+                'user_agent' => substr((string) $request->userAgent(), 0, 255),
+            ]);
+
+            return response()->json([
+                'message' => "Forbidden: missing {$permission} permission.",
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $question = is_string($log->question) ? $strategy->detokeniseString($log->question) : null;
+        $answer = is_string($log->answer) ? $strategy->detokeniseString($log->answer) : null;
+
+        AdminCommandAudit::query()->create([
+            'user_id' => $user?->id,
+            'command' => 'pii.detokenize',
+            'args_json' => ['chat_log_id' => $id],
+            'status' => AdminCommandAudit::STATUS_COMPLETED,
+            'started_at' => now(),
+            'completed_at' => now(),
+            'client_ip' => $request->ip(),
+            'user_agent' => substr((string) $request->userAgent(), 0, 255),
+        ]);
+
+        return response()->json([
+            'id' => $log->id,
+            'question' => $question,
+            'answer' => $answer,
+        ]);
     }
 
     /**
