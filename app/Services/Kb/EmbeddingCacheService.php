@@ -9,19 +9,25 @@ use App\Models\EmbeddingCache;
 /**
  * Embedding cache layer that sits in front of AiManager::generateEmbeddings().
  *
- * Cache key: `text_hash` (SHA-256 of the input text) — the only UNIQUE
- * constraint on the table. `provider` + `model` are informational columns
- * used as retrieval-time filters so callers only reuse vectors produced by
- * the same model; identical text under a different provider/model causes a
- * deliberate cache miss. When the embedding model changes, flush stale
- * entries via `flush($provider)` BEFORE the first ingest/search; otherwise
- * the first miss-and-insert on an already-cached text_hash will throw a
- * duplicate-key exception (intentional — it surfaces the missed flush).
+ * Cache key: the composite `(text_hash, provider, model)` (UNIQUE
+ * constraint — see migration
+ * `2026_05_03_000001_change_embedding_cache_unique_to_composite.php`,
+ * which supersedes the original single-column `text_hash` UNIQUE
+ * shipped by v4.0). The composite UNIQUE matches what this service
+ * queries on read AND insert, so identical text under a different
+ * provider/model produces a deliberate cache miss without raising a
+ * duplicate-key error. Multiple embedding models can coexist for the
+ * same text — useful when one database backs deployments running
+ * different models concurrently.
  *
- * Only texts with a cache miss are sent to the AI API. Results are stored
- * for future cross-tenant reuse. This eliminates redundant API calls when
- * re-ingesting unchanged documents or when the same query is searched
- * multiple times.
+ * `flush($provider)` remains available for housekeeping (LRU eviction,
+ * removing an obsolete model's vectors when retiring it) but is no
+ * longer a required pre-condition for switching embedding models.
+ *
+ * Only texts with a cache miss are sent to the AI API. Results are
+ * stored for future cross-tenant reuse. This eliminates redundant API
+ * calls when re-ingesting unchanged documents or when the same query
+ * is searched multiple times.
  */
 class EmbeddingCacheService
 {

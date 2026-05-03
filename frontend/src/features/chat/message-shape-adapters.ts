@@ -133,39 +133,34 @@ function coerceCitationOrigin(value: unknown): CitationOrigin {
 }
 
 /**
- * Convert a SDK `source` part (BE wire-format `type: 'source'` per
- * `StreamChunk::TYPE_SOURCE` — NOT the SDK's generic `source-url`
- * variant) to the AskMyDocs `MessageCitation` shape.
+ * Convert a SDK `source-url` part (the SDK v6 canonical citation
+ * shape, emitted by `MessageStreamController::store()` post-PR #90)
+ * to the AskMyDocs `MessageCitation` shape.
  *
- * **`sourceId` shape**: the W3.1 streaming controller emits
- * `'doc-' . $document->id` (see `MessageStreamController::store()`
- * `StreamChunk::source(sourceId: 'doc-' . ...)`). The adapter strips
- * the `doc-` prefix before parsing the numeric tail so the
- * `WikilinkHover` numeric-id resolution path fires for the happy
- * path. Non-prefixed payloads (a future BE patch, or canonical
- * slug-only citations) pass through verbatim, and any sourceId
- * whose tail isn't a positive integer yields `document_id: null` —
+ * **`sourceId` shape**: the streaming controller emits
+ * `'doc-' . $document->id` (see `MessageStreamController::store()`).
+ * The adapter strips the `doc-` prefix before parsing the numeric
+ * tail so the `WikilinkHover` numeric-id resolution path fires for
+ * the happy path. Non-prefixed payloads (canonical slug-only
+ * citations) pass through verbatim, and any sourceId whose tail
+ * isn't a positive integer yields `document_id: null` —
  * `WikilinkHover` then falls back to title-based resolution.
  *
- * **`origin` mapping**: NOTE that W3.1 today hard-codes
- * `origin: 'primary'` for every citation chunk regardless of the
- * `KbSearchService::SearchResult` group it came from
- * (`MessageStreamController::store()` line 372). The adapter is
- * forward-compatible with a BE patch that threads the real group
- * label (`primary` | `expanded` | `rejected`) — `coerceCitationOrigin()`
- * maps `expanded` → `related` for FE legacy compatibility.
+ * **`origin` mapping**: `coerceCitationOrigin()` maps `expanded` →
+ * `related` for FE legacy compatibility, leaves `primary` / `related`
+ * / `rejected` unchanged, and defaults unknown values to `primary` so
+ * the existing `CitationsPopover` always has a valid bucket.
  *
- * **`url`** is nullable per `StreamChunk::source(?string $url, ...)`
- * — canonical citations without a public URL still emit a `source`
- * chunk so the user sees the citation chip. When `url` is null AND
- * `title` is missing, the chip falls back to the source id (with
- * `doc-` prefix retained as a last-resort label) so the UI never
- * renders an empty cell.
+ * **`url`** is nullable — canonical citations without a public URL
+ * still emit a `source-url` chunk so the user sees the citation chip.
+ * When `url` is null AND `title` is missing, the chip falls back to
+ * the source id (with `doc-` prefix retained as a last-resort label)
+ * so the UI never renders an empty cell.
  *
  * Other citation fields (source_path, source_type, headings,
  * chunks_used) live in the AskMyDocs domain and don't have a place
- * in the SDK's source part — they land as `null` / sensible
- * defaults so the existing `CitationsPopover` still renders.
+ * in the SDK's source part — they land as `null` / sensible defaults
+ * so the existing `CitationsPopover` still renders.
  */
 function sourcePartToCitation(part: {
     sourceId: string;
@@ -206,23 +201,7 @@ export function getCitations(m: RenderableMessage): MessageCitation[] {
     }
     const citations: MessageCitation[] = [];
     for (const part of m.parts) {
-        // We accept BOTH discriminators:
-        //   - `source-url` is the SDK v6 native shape per
-        //     `UIMessageChunk` in `node_modules/ai/dist/index.d.mts`
-        //     — what the SDK's stream parser produces when the wire
-        //     format declares the SDK-canonical type.
-        //   - `source` was PLAN-W3 §5.5's original intent and is what
-        //     the W3.1 BE currently emits via `StreamChunk::TYPE_SOURCE`.
-        //     The W3.1 BE wire format predates the FE swap; aligning
-        //     the BE to the SDK shape is a follow-up PR. Until then,
-        //     the adapter handles both so the FE renders citations
-        //     regardless of which side is ahead.
-        // The TypeScript cast is necessary because `'source'` is not
-        // in the SDK's structural UIPart.type union (the SDK passes
-        // unknown chunk types through verbatim when the BE emits a
-        // custom shape).
-        const partType = (part as { type: string }).type;
-        if (partType !== 'source' && partType !== 'source-url') {
+        if (part.type !== 'source-url') {
             continue;
         }
         citations.push(sourcePartToCitation(part as unknown as {

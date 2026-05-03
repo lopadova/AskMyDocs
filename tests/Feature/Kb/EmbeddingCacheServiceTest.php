@@ -207,6 +207,46 @@ class EmbeddingCacheServiceTest extends TestCase
         $this->assertSame(hash('sha256', 'new'), EmbeddingCache::first()->text_hash);
     }
 
+    public function test_same_text_can_coexist_under_different_provider_or_model(): void
+    {
+        // v4.0.1 — the schema's composite UNIQUE on
+        // (text_hash, provider, model) lets identical text be cached
+        // under two distinct (provider, model) tuples simultaneously.
+        // The original v4.0 schema (UNIQUE on text_hash alone) raised
+        // a duplicate-key error on the second insert; the migration
+        // 2026_05_03_000001 relaxes that constraint so multi-model
+        // deployments share a database without bespoke shadowing.
+        $sameText = hash('sha256', 'shared input string');
+
+        EmbeddingCache::create([
+            'text_hash' => $sameText,
+            'provider' => 'openai',
+            'model' => 'text-embedding-3-small',
+            'embedding' => [1.0, 2.0],
+            'last_used_at' => now(),
+        ]);
+
+        // Same text, different model under the same provider.
+        EmbeddingCache::create([
+            'text_hash' => $sameText,
+            'provider' => 'openai',
+            'model' => 'text-embedding-3-large',
+            'embedding' => [3.0, 4.0],
+            'last_used_at' => now(),
+        ]);
+
+        // Same text, different provider entirely.
+        EmbeddingCache::create([
+            'text_hash' => $sameText,
+            'provider' => 'gemini',
+            'model' => 'text-embedding-004',
+            'embedding' => [5.0, 6.0],
+            'last_used_at' => now(),
+        ]);
+
+        $this->assertSame(3, EmbeddingCache::where('text_hash', $sameText)->count());
+    }
+
     public function test_stats_reports_counts_and_groups(): void
     {
         EmbeddingCache::create([
