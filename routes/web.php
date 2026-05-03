@@ -52,7 +52,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/{conversation}', [ConversationController::class, 'update']);
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
-        Route::post('/{conversation}/messages', [MessageController::class, 'store']);
+        Route::post('/{conversation}/messages', [MessageController::class, 'store'])->middleware('redact-chat-pii');
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
     });
@@ -73,7 +73,7 @@ Route::middleware('auth')->group(function () {
 // `auth.sse` (see bootstrap/app.php) returns JSON 401 instead so the
 // SPA's auth bootstrap can re-establish the session and retry.
 Route::post('/conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store'])
-    ->middleware('auth.sse');
+    ->middleware(['auth.sse', 'redact-chat-pii']);
 
 /*
 |--------------------------------------------------------------------------
