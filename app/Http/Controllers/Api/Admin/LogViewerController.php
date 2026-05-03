@@ -14,6 +14,7 @@ use App\Models\KbCanonicalAudit;
 use App\Services\Admin\Exceptions\LogFileNotFoundException;
 use App\Services\Admin\Exceptions\LogFileUnreadableException;
 use App\Services\Admin\LogTailService;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -283,10 +284,16 @@ class LogViewerController extends Controller
      *      `kb.pii_redactor.detokenize_permission` (default
      *      `pii.detokenize`) — 403 otherwise.
      *
-     * Every successful call writes an `admin_command_audit` row so the
-     * unmasking is forensically traceable. Failure / rejected calls
-     * are also audited (status `failed` / `rejected`) — `R30`-style
-     * compliance evidence.
+     * Audit shape: every 200 (success) or 403 (rejected by permission
+     * gate) writes an `admin_command_audit` row. The 422 strategy-
+     * mismatch preflight is a config-stage error (no row matched, no
+     * action taken), and is intentionally NOT audited — the SPA
+     * surfaces it as a static "this deploy does not retain originals"
+     * note rather than a per-request operator action.
+     *
+     * R30 — `chat_logs` is tenant-aware; the row lookup is scoped to
+     * the active tenant so an admin in tenant A cannot detokenise a
+     * chat row owned by tenant B by guessing its id.
      *
      * Response shape (200): `{ id, question, answer }` — same scalar
      * fields as the chat-show drawer, but with the `[tok:*:*]` literals
@@ -310,7 +317,8 @@ class LogViewerController extends Controller
             && method_exists($user, 'can')
             && $user->can($permission);
 
-        $log = ChatLog::query()->findOrFail($id);
+        $tenantId = app(TenantContext::class)->current();
+        $log = ChatLog::query()->forTenant($tenantId)->findOrFail($id);
 
         if (! $hasPermission) {
             // Audit the rejection too — abuse attempts are visible
@@ -328,7 +336,7 @@ class LogViewerController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Forbidden: missing pii.detokenize permission.',
+                'message' => "Forbidden: missing {$permission} permission.",
             ], Response::HTTP_FORBIDDEN);
         }
 

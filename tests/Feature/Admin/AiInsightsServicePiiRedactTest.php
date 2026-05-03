@@ -108,7 +108,11 @@ final class AiInsightsServicePiiRedactTest extends TestCase
         $this->makeChatLog([], 'Email me at mario@example.com please', 0);
         $this->makeChatLog([], 'My phone is +393331234567', 0);
 
-        $this->fakeLlm();
+        // Make the LLM stub ECHO the questions it was asked to cluster
+        // back into `sample_questions` — that way the snapshot's
+        // `sample_questions` array reflects exactly what the service
+        // sent the provider, and the loop below isn't a vacuous no-op.
+        $this->fakeLlmEchoingPromptQuestions();
         $out = $this->svc()->coverageGaps();
 
         $this->assertNotEmpty($out);
@@ -128,15 +132,22 @@ final class AiInsightsServicePiiRedactTest extends TestCase
         );
 
         // (b) Snapshot payload's `sample_questions` must NOT contain
-        // the original PII either — the LLM stub echoes the masked
-        // string back, but the assertion holds on whatever shape the
-        // package's MaskStrategy emits.
+        // the original PII either. The fake echoes the (masked)
+        // questions back, so the assertion is non-vacuous: it would
+        // fail if the service ever stopped masking before clustering.
+        $totalSamples = 0;
         foreach ($out as $cluster) {
             foreach ($cluster['sample_questions'] as $q) {
+                $totalSamples++;
                 $this->assertStringNotContainsString('mario@example.com', $q);
                 $this->assertStringNotContainsString('+393331234567', $q);
             }
         }
+        $this->assertGreaterThan(
+            0,
+            $totalSamples,
+            'Stub must echo at least one masked question back so the assertion is meaningful.',
+        );
     }
 
     /**
@@ -167,6 +178,43 @@ final class AiInsightsServicePiiRedactTest extends TestCase
                 'model' => 'gpt-4o-mini',
                 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
             ], 200),
+        ]);
+    }
+
+    /**
+     * Echo the questions the service sent (the numbered list inside
+     * the user-message block) back as `sample_questions` of a single
+     * "Contact" cluster. With this stub, the snapshot's
+     * `sample_questions` is exactly what the service sent the
+     * provider — so any PII still present after the pre-redact step
+     * surfaces in BOTH the captured-body assertion AND the
+     * snapshot-content assertion. The test is non-vacuous on the
+     * "snapshot does not contain PII" check.
+     */
+    private function fakeLlmEchoingPromptQuestions(): void
+    {
+        Http::fake([
+            '*' => function ($request) {
+                $body = (string) $request->body();
+                $decoded = json_decode($body, true);
+                $userBlock = is_array($decoded)
+                    ? ($decoded['messages'][1]['content'] ?? '')
+                    : '';
+                preg_match_all('/^\d+\.\s*(.+)$/m', (string) $userBlock, $matches);
+                $samples = array_slice($matches[1] ?? [], 0, 5);
+                $jsonSamples = json_encode(array_values($samples), JSON_UNESCAPED_SLASHES);
+
+                return Http::response([
+                    'choices' => [[
+                        'message' => [
+                            'content' => '[{"topic":"Contact","sample_questions":'.$jsonSamples.'}]',
+                        ],
+                        'finish_reason' => 'stop',
+                    ]],
+                    'model' => 'gpt-4o-mini',
+                    'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
+                ], 200);
+            },
         ]);
     }
 

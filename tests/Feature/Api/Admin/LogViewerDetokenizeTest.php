@@ -90,6 +90,9 @@ final class LogViewerDetokenizeTest extends TestCase
         $this->actingAs($user)
             ->postJson("/api/admin/logs/chat/{$log->id}/detokenize")
             ->assertStatus(403)
+            // Message is built from the resolved permission name so a
+            // host that overrides `kb.pii_redactor.detokenize_permission`
+            // sees the actual permission they configured.
             ->assertJsonPath('message', 'Forbidden: missing pii.detokenize permission.');
 
         // Audit trail captures the rejection so abuse attempts are

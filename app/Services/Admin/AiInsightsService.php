@@ -10,6 +10,7 @@ use App\Models\KbEdge;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\Message;
+use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -494,7 +495,13 @@ PROMPT;
         $since = Carbon::now()->subDays(self::PROMOTION_LOOKBACK_DAYS);
 
         // Pull low-confidence turns: zero citations OR chunks_count < 2.
+        // R30 — `chat_logs` is tenant-aware (BelongsToTenant); scope
+        // explicitly to the active tenant so a multi-tenant deployment
+        // never folds another tenant's questions into the snapshot
+        // surfaced to this tenant's admin dashboard.
+        $tenantId = app(TenantContext::class)->current();
         $lowConf = ChatLog::query()
+            ->forTenant($tenantId)
             ->where('created_at', '>=', $since)
             ->where(function ($q): void {
                 $q->where('chunks_count', '<', 2)
