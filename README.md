@@ -3263,7 +3263,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 **Sister packages on Packagist (v4 release train)**
 ```json
 "require-dev": {
-    "padosoft/laravel-ai-regolo":          "^0.1.0",
+    "padosoft/laravel-ai-regolo":          "^0.2",
     "padosoft/laravel-flow":               "^0.1.0",
     "padosoft/eval-harness":               "^0.1.0",
     "padosoft/laravel-pii-redactor":       "^0.1.0",

@@ -431,6 +431,64 @@ baseline; artefact reading costs 5 min. PR #33 caught the DemoSeeder
 frontmatter regression (slug missing + invalid `type: policy`) this way.
 See `.claude/skills/ci-failure-investigation/`.
 
+### R30 — Cross-tenant isolation on every tenant-aware query
+Every Eloquent query against a tenant-aware table MUST be scoped to the
+active tenant via `forTenant($ctx->current())` (provided by the
+`BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
+customers can share the same `project_key` — tenant boundary is the only
+safe scope. Tenant-aware tables include: `knowledge_documents`,
+`knowledge_chunks`, `chat_logs`, `conversations`, `messages`, `kb_nodes`,
+`kb_edges`, `kb_canonical_audit`, `project_memberships`, `kb_tags`,
+`knowledge_document_tags`, `knowledge_document_acl`, `admin_command_audits`,
+`admin_command_nonces`, `admin_insights_snapshots`, `chat_filter_presets`.
+`embedding_cache` is cross-tenant by design (global `UNIQUE(text_hash)`).
+See `.claude/skills/cross-tenant-isolation/`.
+
+### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
+Every Eloquent model under `app/Models/` representing a tenant-scoped domain
+entity MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`
+(or `$guarded = ['id']`). Every new migration creating a tenant-aware table
+MUST add `string('tenant_id', 50)->default('default')->index()` and start
+composite uniques with `tenant_id`. Architecture test
+`tests/Architecture/TenantIdMandatoryTest.php` gates new entries.
+See `.claude/skills/tenant-id-mandatory/`.
+
+### R36 — Copilot review + CI green loop is MANDATORY after EVERY push
+After every commit-push-PR cycle: request Copilot review with
+`--reviewer copilot-pull-request-reviewer` on PR creation; wait for CI
+green; wait for Copilot review comments; fix any must-fix findings; repeat.
+Merge only when BOTH `reviewDecision = APPROVED` (or zero outstanding
+must-fix) AND all CI checks `COMPLETED + SUCCESS`. Green CI alone is not
+enough. Applies to all repos under `lopadova/*` and `padosoft/*`.
+See `.claude/skills/copilot-pr-review-loop/`.
+
+### R37 — Branching: `feature/vX.Y` integration branches → `main` once per release
+For AskMyDocs: `main` = stable production. Each major release works in its
+own `feature/vX.Y` branch. Sub-task branches target `feature/vX.Y`, not
+`main`. Merge to `main` happens ONCE per major release when all sub-branches
+are merged, all tests + CI are green, and RC acceptance gates pass — then
+`feature/vX.Y → main → tag vX.Y.0`. For new standalone `padosoft/*` repos,
+PRs target `main` directly. See `.claude/skills/branching-strategy-feature-vx/`.
+
+### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
+PHP's built-in dev server has a single-threaded accept loop; any
+multi-second blocking task (e.g. `migrate:fresh`, large seeders) stalls the
+loop and causes ECONNREFUSED on subsequent requests. Move one-time heavy
+work to a dedicated CLI step BEFORE Playwright starts. Reserve `/testing/reset`
+and `/testing/seed` for per-test lightweight seeding (not full migrations).
+See `.claude/skills/ci-failure-investigation/` (R22/R38 worked example:
+PR #85 vs PR #83 anti-pattern).
+
+### R39 — Tag `vX.Y.0-rcN` at the end of every Wn milestone
+After each Wn closure on `feature/vX.Y` (all sub-task PRs merged + CI green
++ closure status doc shipped): (1) open a docs PR refreshing `README.md`
+`### Key Features` and `## Changelog`; (2) capture the closure-commit SHA
+before the docs PR merges; (3) tag at that exact SHA with
+`gh release create vX.Y.0-rcN --target "$CLOSURE_SHA" --prerelease`.
+Increment N once per Wn. Final `vX.Y.0` GA fires only when the last Wn
+closes and `feature/vX.Y` merges into `main` (R37).
+See `.claude/skills/rc-tag-per-week-milestone/`.
+
 ---
 
 ## 7. Testing & CI
@@ -505,4 +563,16 @@ Before approving a PR, quickly verify:
 - [ ] R21: `lockForUpdate()` + `update()` live in the SAME
       `DB::transaction`; single-use resources have DB-level unique
       backing; concurrency-sensitive services have a concurrent test.
+- [ ] R30: every query on a tenant-aware table uses `forTenant()` or
+      explicit `where('tenant_id', ...)`.
+- [ ] R31: every new tenant-scoped Model uses `BelongsToTenant` and lists
+      `tenant_id` in `$fillable`; new migration adds `tenant_id` column.
+- [ ] R36: PR was opened with `--reviewer copilot-pull-request-reviewer`;
+      merge blocked until CI green AND Copilot review resolved.
+- [ ] R37: sub-task PRs target `feature/vX.Y`, not `main`; `main` merge
+      happens once per major release only.
+- [ ] R38: one-time heavy CLI work (migrate:fresh, large seeders) runs in
+      a dedicated workflow step, not behind `php artisan serve`.
+- [ ] R39: Wn closure tagged `vX.Y.0-rcN` at the exact closure-commit SHA
+      with a refreshed README + CHANGELOG entry.
 - [ ] Tests: feature test added when the RAG hot path changed.
