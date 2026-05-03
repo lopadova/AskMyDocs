@@ -1,5 +1,8 @@
 /vendor/
 /node_modules/
+# Claude Code agent worktrees + session state (created at runtime, not source-of-truth)
+/.claude/worktrees/
+/.claude/scheduled_tasks.lock
 /public/build/
 /public/hot
 /tailwind.config.d.ts
