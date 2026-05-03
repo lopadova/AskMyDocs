@@ -68,7 +68,7 @@
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/laravel-pii-redactor",
-            "comment": "Pending Packagist submission — resolved via Git tag v0.1.0 (immutable, reproducible)."
+            "comment": "Pending Packagist submission — resolved via Git tags v1.x (v1.1.0 GA shipped 2026-05-03; load-bearing for chat / embedding-cache / insights redaction per W4.1)."
         }
     ]
 }

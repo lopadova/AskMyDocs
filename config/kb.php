@@ -311,9 +311,13 @@ return [
         /*
         | Embedding cache — when true, EmbeddingCacheService::generate()
         | runs `Pii::redact($text, 'mask')` BEFORE handing the text to the
-        | external embedding provider (OpenAI, Anthropic, Gemini, Regolo).
-        | Mask strategy (not Tokenise) here because embeddings are one-way —
-        | no detokenisation round-trip needed.
+        | external embedding provider. The supported embedding providers are
+        | OpenAI, Gemini, and Regolo (Anthropic is intentionally NOT an
+        | embedding provider — `AnthropicProvider::generateEmbeddings()`
+        | throws by design and `AiManager::embeddingsProvider()` only
+        | accepts openai/gemini/regolo). Mask strategy (not Tokenise) here
+        | because embeddings are one-way — no detokenisation round-trip
+        | needed.
         */
         'redact_before_embeddings' => (bool) env('KB_EMBEDDINGS_PII_REDACT', false),
 
