@@ -332,14 +332,14 @@ never the LLM.
 | Package | Role | Integration status in AskMyDocs `app/` | Repo |
 |---|---|---|---|
 | `padosoft/laravel-ai-regolo` (W2) | Regolo provider for `laravel/ai` | **Integrated** — `RegoloProvider` delegates to the SDK | https://github.com/padosoft/laravel-ai-regolo |
-| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for v4.1 — see [Sister packages integration roadmap](#sister-packages-integration-roadmap-v40--v41) | https://github.com/padosoft/laravel-flow |
-| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; not yet wired into `tests/Eval/` or CI. Integration scoped for v4.1 | https://github.com/padosoft/eval-harness |
-| `padosoft/laravel-pii-redactor` (W7) | PII detection + redaction with Italian fiscal identifiers | **Scaffold on Packagist** — declared in `composer.json` `require-dev`; no chat-endpoint middleware wiring yet. Integration scoped for v4.1 | https://github.com/padosoft/laravel-pii-redactor |
+| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for v4.1 — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | https://github.com/padosoft/laravel-flow |
+| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; not yet wired into `tests/Eval/` or CI. Integration scoped for v4.1 | https://github.com/padosoft/eval-harness |
+| `padosoft/laravel-pii-redactor` (W7) | PII detection + redaction with Italian fiscal identifiers | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no chat-endpoint middleware wiring yet. Integration scoped for v4.1 | https://github.com/padosoft/laravel-pii-redactor |
 | `padosoft/laravel-patent-box-tracker` (W4) | Italian Patent Box dossier auto-generator | **External runner by design** — never declared in AskMyDocs's own `composer.json`; `tools/patent-box/2026.yml` is consumed by a separate Laravel project (R37 standalone-agnostic) | https://github.com/padosoft/laravel-patent-box-tracker |
 
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
 
-**Honest status as of v4.0.2** — only `laravel-ai-regolo` reaches the `app/` runtime today. The other three sit in `composer.json` so consumers installing AskMyDocs already pull the dependency train, but the `app/` integration code hasn't been written yet. `padosoft/laravel-patent-box-tracker` is a deliberate external dependency (operators install it in their own Laravel project, not in AskMyDocs). See the [integration roadmap](#sister-packages-integration-roadmap-v40--v41) below for the v4.1 plan that wires the remaining three into `app/`.
+**Honest status as of v4.0.2** — only `laravel-ai-regolo` reaches the `app/` runtime today. The other three sit in `composer.json` so consumers installing AskMyDocs already pull the dependency train, but the `app/` integration code hasn't been written yet. `padosoft/laravel-patent-box-tracker` is a deliberate external dependency (operators install it in their own Laravel project, not in AskMyDocs). See the [integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the v4.1 plan that wires the remaining three into `app/`.
 
 ---
 
@@ -3031,7 +3031,7 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 
 Five `padosoft/*` Composer packages ship alongside the v4.0 train. Architecture tests on each package enforce **standalone-agnostic invariants** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require <package>` on a fresh empty Laravel app produces a working in-process feature.
 
-> **Honest integration status (v4.0.2 disclaimer)** — only `padosoft/laravel-ai-regolo` is wired into AskMyDocs's `app/` runtime today (`RegoloProvider` delegates to the SDK). `laravel-flow`, `eval-harness`, and `laravel-pii-redactor` sit in `composer.json` `require-dev` so the dependency train is available, but the `app/` integration code lands in v4.1 — see [Sister packages integration roadmap](#sister-packages-integration-roadmap-v40--v41) below for the per-package plan. Their package repos themselves are v0.1.0 scaffolds (interfaces + ServiceProvider + foundational tests); production-grade implementations land alongside the AskMyDocs integration. `padosoft/laravel-patent-box-tracker` is the only sister package not in AskMyDocs's `composer.json` at all — by design, operators install it in their own Laravel project (R37 standalone-agnostic; see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
+> **Honest integration status (v4.0.2 disclaimer)** — only `padosoft/laravel-ai-regolo` is wired into AskMyDocs's `app/` runtime today (`RegoloProvider` delegates to the SDK). `laravel-flow`, `eval-harness`, and `laravel-pii-redactor` sit in `composer.json` `require-dev` so the dependency train is available (resolved via VCS `repositories` entries pending Packagist submission), but the `app/` integration code lands in v4.1 — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the per-package plan. Their package repos themselves are v0.1.0 scaffolds (interfaces + ServiceProvider + foundational tests); production-grade implementations land alongside the AskMyDocs integration. `padosoft/laravel-patent-box-tracker` is the only sister package not in AskMyDocs's `composer.json` at all — by design, operators install it in their own Laravel project (R37 standalone-agnostic; see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 
 ### `padosoft/laravel-ai-regolo` (W2)
 
@@ -3253,7 +3253,7 @@ Use [GitHub Issues](../../issues). Please include:
 
 ### v4.0.2 — 2026-05-03 (Docs honesty pass — sister packages integration roadmap)
 
-Docs-only patch correcting an accuracy gap in the v4.0.0 GA / W5–W7 closure narratives. The original release notes described `padosoft/laravel-flow`, `padosoft/eval-harness`, and `padosoft/laravel-pii-redactor` as "shipped engines" when in reality they ship as **v0.1.0 scaffold packages on Packagist** and AskMyDocs's `composer.json` declares them in `require-dev` without any `use Padosoft\…` import in `app/`. Only `padosoft/laravel-ai-regolo` (W2) reaches the runtime today via `RegoloProvider`.
+Docs-only patch correcting an accuracy gap in the v4.0.0 GA / W5–W7 closure narratives. The original release notes described `padosoft/laravel-flow`, `padosoft/eval-harness`, and `padosoft/laravel-pii-redactor` as "shipped engines" when in reality they ship as **v0.1.0 scaffold packages published as Git tags (pending Packagist submission, resolved via VCS `repositories` entries in `composer.json`)** and AskMyDocs's `composer.json` declares them in `require-dev` without any `use Padosoft\…` import in `app/`. Only `padosoft/laravel-ai-regolo` (W2) reaches the runtime today via `RegoloProvider`.
 
 **What this patch changes:**
 - Sister packages tables in the README's Main components section + the dedicated v4.0 section now carry an explicit **Integration status** column distinguishing **integrated** vs **scaffold on Packagist** vs **external runner by design**.
@@ -3292,14 +3292,15 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 - **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
 - **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
 
-**Sister packages on Packagist (v4 release train)**
+**Sister packages composer constraints (v4 release train)** — note `padosoft/laravel-ai-regolo` is in `require` (load-bearing for the chat path), the other three are in `require-dev` (scoped for v4.1 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
+"require": {
+    "padosoft/laravel-ai-regolo":          "^0.2"
+},
 "require-dev": {
-    "padosoft/laravel-ai-regolo":          "^0.2",
     "padosoft/laravel-flow":               "^0.1.0",
     "padosoft/eval-harness":               "^0.1.0",
-    "padosoft/laravel-pii-redactor":       "^0.1.0",
-    "padosoft/laravel-patent-box-tracker": "^0.1.0"
+    "padosoft/laravel-pii-redactor":       "^0.1.0"
 }
 ```
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.

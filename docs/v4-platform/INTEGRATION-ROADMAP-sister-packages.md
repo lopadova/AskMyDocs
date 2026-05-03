@@ -43,7 +43,7 @@ across the board.
 
 ---
 
-### `padosoft/laravel-pii-redactor` (W7) — STATUS: 🔴 Scaffold on Packagist; v4.1 integration target
+### `padosoft/laravel-pii-redactor` (W7) — STATUS: 🔴 Scaffold available (v0.1.0 tag, pending Packagist); v4.1 integration target
 
 **Why this lands first** — GDPR exposure on chat persistence is the most
 visible production risk among the three pending integrations. AskMyDocs's
@@ -91,10 +91,11 @@ audit trails.
    tokenise), `pii_redactor.detectors` (allowlist subset of the six;
    default all six on for IT-compliant deployments).
 
-6. **`app/Http/Controllers/Api/Admin/ChatLogController.php`** — new
-   detokenize action gated behind `pii.detokenize` Spatie permission;
-   operators with the role can view the original PII alongside the
-   redacted record (audit trail in `admin_command_audits`).
+6. **`app/Http/Controllers/Api/Admin/LogViewerController.php`** — extend
+   the existing `chat()` / `chatShow()` surface with a new detokenize
+   action gated behind `pii.detokenize` Spatie permission; operators
+   with the role can view the original PII alongside the redacted
+   record (audit trail in `admin_command_audits`).
 
 **Tests required:**
 
@@ -112,22 +113,22 @@ audit trails.
 **Upstream readiness gates:**
 
 - Pii redactor v0.2 must ship the production-grade detectors (current
-  v0.1 is scaffold). AskMyDocs integration starts when v0.2 lands on
-  Packagist.
+  v0.1 is scaffold). AskMyDocs integration starts when v0.2 ships
+  (Git tag minimum; Packagist preferred for `composer require` ergonomics).
 
 **Estimated v4.1 effort:** ~2 sub-tasks. Total ~12-16 R36 cycles of work
 across the package + AskMyDocs.
 
 ---
 
-### `padosoft/laravel-flow` (W5) — STATUS: 🔴 Scaffold on Packagist; v4.1 integration target
+### `padosoft/laravel-flow` (W5) — STATUS: 🔴 Scaffold available (v0.1.0 tag, pending Packagist); v4.1 integration target
 
 **Why this lands second** — AskMyDocs's ingestion, deletion, and
 promotion pipelines are multi-step flows where partial failures
 currently leak. `IngestDocumentJob` retries the whole chain on failure
-(R$tries=3); a real saga with reverse-order compensation gives proper
-rollback semantics for partial writes (file-on-disk + DB rows + graph
-nodes + embedding cache entries).
+(`$tries = 3` with backoff `[10, 30, 60]`); a real saga with
+reverse-order compensation gives proper rollback semantics for partial
+writes (file-on-disk + DB rows + graph nodes + embedding cache entries).
 
 #### v4.1 integration scope (uses laravel-flow v0.2 features)
 
@@ -201,7 +202,7 @@ config + migration). Total ~20-25 R36 cycles.
 
 ---
 
-### `padosoft/eval-harness` (W6) — STATUS: 🔴 Scaffold on Packagist; v4.1 integration target
+### `padosoft/eval-harness` (W6) — STATUS: 🔴 Scaffold available (v0.1.0 tag, pending Packagist); v4.1 integration target
 
 **Why this lands third** — AskMyDocs has zero RAG retrieval
 regression coverage today. Any prompt change, reranker tweak, or
@@ -261,7 +262,7 @@ RAG-specific evaluation infrastructure.
 
 - eval-harness v0.2 ships parallel batch queues + Horizon-ready
   execution (Macro Task 3 in the package's roadmap). AskMyDocs
-  integration starts when v0.2 lands.
+  integration starts when v0.2 ships (Git tag minimum).
 - v0.3 adversarial harness (prompt injection, jailbreak, PII leak
   red-teaming) is a v4.2 candidate — at that point AskMyDocs adds
   `eval:adversarial` to the CI matrix as a separate non-blocking
@@ -275,11 +276,10 @@ metric + Artisan command + CI workflow). Total ~10-15 R36 cycles.
 ### `padosoft/laravel-patent-box-tracker` (W4) — STATUS: ✅ External runner by design
 
 **No AskMyDocs `app/` integration is planned, ever.** The standalone-agnostic
-architecture rule (R37, `feedback_packages_standalone_agnostic` in
-agent memory) requires that AskMyDocs USES the packages but never
-hard-depends on the tracker — installing AskMyDocs should not pull
-in a Patent Box dossier generator that's only relevant to Italian
-operators in the `documentazione_idonea` regime.
+architecture rule (R37 in `CLAUDE.md`) requires that AskMyDocs USES the
+packages but never hard-depends on the tracker — installing AskMyDocs
+should not pull in a Patent Box dossier generator that's only relevant
+to Italian operators in the `documentazione_idonea` regime.
 
 The dogfood pattern stays exactly as today:
 
