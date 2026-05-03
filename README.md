@@ -249,6 +249,17 @@ rejected-approach injection) and the same provider abstraction over `laravel/ai`
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
+│  RedactChatPii middleware (v4.1 W4.1) — bound to POST /conversations/{id}/   │
+│  messages (sync + SSE) ONLY. Default no-op. When                             │
+│  kb.pii_redactor.enabled AND kb.pii_redactor.persist_chat_redacted are ON,   │
+│  runs RedactorEngine::redact() on `request.content` before the controller    │
+│  sees it — what gets persisted into chat_logs.question / messages.content    │
+│  AND what the LLM sees are both the redacted form. Architecture-pinned to    │
+│  these two routes only (curator/admin/promotion routes are excluded).        │
+└──────────────────────────────┬──────────────────────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
 │  Chat orchestrators                                                          │
 │                                                                              │
 │  ┌──────────────────────────────┐   ┌──────────────────────────────────┐     │
@@ -285,15 +296,43 @@ rejected-approach injection) and the same provider abstraction over `laravel/ai`
 │ • RejectedApproach│  │                   │  │   kb_canonical_audit         │
 │   Injector        │  │                   │  │ • chat_logs / conversations  │
 │                   │  │                   │  │   / messages                 │
-│ → SearchResult {  │  │                   │  │ • admin_command_audits /     │
+│ → SearchResult {  │  │                   │  │ • admin_command_audit /      │
 │     primary,      │  │                   │  │   admin_command_nonces /     │
 │     expanded,     │  │                   │  │   admin_insights_snapshots   │
-│     rejected,     │  │                   │  │                              │
-│     meta }        │  │                   │  │ Every domain table carries   │
-│                   │  │                   │  │ tenant_id (default           │
-│                   │  │                   │  │ 'default'); BelongsToTenant  │
-│                   │  │                   │  │ trait auto-fills on create.  │
+│     rejected,     │  │                   │  │ • pii_token_maps (v4.1 —     │
+│     meta }        │  │                   │  │   reverse map for tokenise   │
+│                   │  │                   │  │   strategy; auto-loaded by   │
+│                   │  │                   │  │   the package SP)            │
+│ EmbeddingCache    │  │                   │  │                              │
+│ Service::generate │  │                   │  │ Every domain table carries   │
+│   pre-redacts via │  │                   │  │ tenant_id (default           │
+│   MaskStrategy    │  │                   │  │ 'default'); BelongsToTenant  │
+│   when            │  │                   │  │ trait auto-fills on create.  │
+│   redact_before_  │  │                   │  │                              │
+│   embeddings ON   │  │                   │  │                              │
+│   (v4.1 W4.1.C)   │  │                   │  │                              │
 └───────────────────┘  └───────────────────┘  └──────────────────────────────┘
+```
+
+**Admin surface PII gates (v4.1 W4.1):**
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  AiInsightsService::coverageGaps()                                           │
+│    when kb.pii_redactor.redact_insights_snippets ON →                        │
+│    masks chat sample questions BEFORE clustering — short-circuits leakage    │
+│    to BOTH the LLM call AND admin_insights_snapshots.payload_json            │
+│    (R30 tenant-scoped on chat_logs reads)                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│  POST /api/admin/logs/chat/{id}/detokenize  (LogViewerController)            │
+│    422 if active strategy ≠ tokenise  •  403 if caller lacks the Spatie      │
+│    permission named in kb.pii_redactor.detokenize_permission (default        │
+│    'pii.detokenize')  •  200 returns originals via TokeniseStrategy::        │
+│    detokeniseString()  •  every 200/403 writes admin_command_audit row       │
+│    (R30 tenant-scoped on chat_logs lookup)                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Ingestion** has two entrypoints (CLI `kb:ingest-folder` and HTTP `POST
@@ -348,12 +387,12 @@ never the LLM.
 | `padosoft/laravel-ai-regolo` (W2) | Regolo provider for `laravel/ai` | **Integrated** — `RegoloProvider` delegates to the SDK | https://github.com/padosoft/laravel-ai-regolo |
 | `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for v4.1 — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | https://github.com/padosoft/laravel-flow |
 | `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; not yet wired into `tests/Eval/` or CI. Integration scoped for v4.1 | https://github.com/padosoft/eval-harness |
-| `padosoft/laravel-pii-redactor` (W7) | PII detection + redaction with Italian fiscal identifiers | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no chat-endpoint middleware wiring yet. Integration scoped for v4.1 | https://github.com/padosoft/laravel-pii-redactor |
+| `padosoft/laravel-pii-redactor` (W7 + v4.1 W4.1) | PII detection + redaction with EU country packs (Italy + Germany + Spain on v1.1) | **Integrated (v4.1.0 GA)** — `composer require ^1.1`; wired at four touch-points (chat-message middleware on `POST /conversations/{id}/messages` sync + SSE; embedding-cache pre-redact; AI-insights snippet sanitiser; operator detokenize endpoint with Spatie permission gate). Every knob default-off | https://github.com/padosoft/laravel-pii-redactor |
 | `padosoft/laravel-patent-box-tracker` (W4) | Italian Patent Box dossier auto-generator | **External runner by design** — never declared in AskMyDocs's own `composer.json`; `tools/patent-box/2026.yml` is consumed by a separate Laravel project (R37 standalone-agnostic) | https://github.com/padosoft/laravel-patent-box-tracker |
 
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
 
-**Honest status as of v4.0.2** — only `laravel-ai-regolo` reaches the `app/` runtime today. The other three sit in `composer.json` so consumers installing AskMyDocs already pull the dependency train, but the `app/` integration code hasn't been written yet. `padosoft/laravel-patent-box-tracker` is a deliberate external dependency (operators install it in their own Laravel project, not in AskMyDocs). See the [integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the v4.1 plan that wires the remaining three into `app/`.
+**Honest status as of v4.1.0 GA** — `laravel-ai-regolo` (since v4.0 W2) and `laravel-pii-redactor` (since v4.1 W4.1) both reach the `app/` runtime today. `laravel-flow` and `eval-harness` sit in `composer.json` so consumers installing AskMyDocs already pull the dependency train, but their `app/` integration code is scoped for v4.2 / v4.3 respectively. `padosoft/laravel-patent-box-tracker` is a deliberate external dependency (operators install it in their own Laravel project, not in AskMyDocs). See the [integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the per-package timeline.
 
 ---
 
