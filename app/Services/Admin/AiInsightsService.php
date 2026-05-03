@@ -13,6 +13,8 @@ use App\Models\Message;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Padosoft\PiiRedactor\RedactorEngine;
+use Padosoft\PiiRedactor\Strategies\MaskStrategy;
 use RuntimeException;
 use Throwable;
 
@@ -527,7 +529,47 @@ PROMPT;
             return [];
         }
 
+        // v4.1/W4.1.D — when both knobs are on, mask PII out of every
+        // sample question BEFORE we (a) send the cluster to the LLM
+        // and (b) persist the resulting `sample_questions` into
+        // `admin_insights_snapshots.payload_json`. Default-off — v3
+        // hosts upgrading to v4.1 see zero behaviour change until they
+        // explicitly opt in via KB_INSIGHTS_PII_REDACT=true.
+        $questions = $this->maskInsightSnippetsIfEnabled($questions);
+
         return $this->clusterQuestionsViaLlm($questions, $zeroCount, $lowCount);
+    }
+
+    /**
+     * Mask PII out of insight chat samples when both
+     * `kb.pii_redactor.enabled` AND `kb.pii_redactor.redact_insights_snippets`
+     * are true. Mask strategy (not Tokenise) because insight snapshots
+     * are READ-ONLY surfaces — operators consume the dashboard, no
+     * detokenise round-trip is needed at the snapshot boundary. (The
+     * LogViewerController detokenize action is the operator-driven
+     * round-trip, gated by the `pii.detokenize` Spatie permission.)
+     *
+     * @param  list<string>  $snippets
+     * @return list<string>
+     */
+    private function maskInsightSnippetsIfEnabled(array $snippets): array
+    {
+        if (! (bool) config('kb.pii_redactor.enabled', false)) {
+            return $snippets;
+        }
+
+        if (! (bool) config('kb.pii_redactor.redact_insights_snippets', false)) {
+            return $snippets;
+        }
+
+        /** @var RedactorEngine $engine */
+        $engine = app(RedactorEngine::class);
+        $maskStrategy = app(MaskStrategy::class);
+
+        return array_map(
+            static fn (string $snippet): string => $engine->redact($snippet, $maskStrategy),
+            $snippets,
+        );
     }
 
     /**
