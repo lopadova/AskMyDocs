@@ -1786,6 +1786,14 @@ KB_REJECTED_MIN_SIMILARITY=0.45
 
 # Promotion
 KB_PROMOTION_ENABLED=true
+
+# PII redaction integration (W4.1 — padosoft/laravel-pii-redactor v1.1+)
+# All knobs default to false — v3 hosts upgrading see zero behaviour change.
+KB_PII_REDACTOR_ENABLED=false
+KB_PII_REDACT_PERSIST=false
+KB_EMBEDDINGS_PII_REDACT=false
+KB_INSIGHTS_PII_REDACT=false
+KB_PII_DETOKENIZE_PERMISSION=pii.detokenize
 ```
 
 ### When AskMyDocs Canonical is the right fit

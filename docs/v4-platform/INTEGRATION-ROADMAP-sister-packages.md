@@ -1,16 +1,19 @@
 # Sister packages integration roadmap
 
-> **Honest status as of v4.0.2 (2026-05-03)**
+> **Honest status as of v4.1 W4.1.A (2026-05-03)**
 >
 > Of the five `padosoft/*` sister packages shipped during the v4.0
 > cycle, **only `padosoft/laravel-ai-regolo` is wired into AskMyDocs's
-> `app/` runtime** today. The other three (`laravel-flow`,
-> `eval-harness`, `laravel-pii-redactor`) sit in `composer.json`
-> `require-dev` so the dependency train is available, but no
-> `use Padosoft\…` import exists in `app/`. Their package repos are v0.1.0
-> scaffolds (interfaces, ServiceProviders, foundational tests, partial
-> engine code) — production-grade implementations land alongside the
-> AskMyDocs integration per the per-package timelines below.
+> `app/` runtime** today. `padosoft/laravel-pii-redactor` was upgraded
+> to **`require ^1.1`** in W4.1.A (moved from `require-dev ^0.1.0`) —
+> the v1.1 release ships the production-grade ItalyPack + GermanyPack +
+> SpainPack detectors; the integration scaffold (5 config knobs in
+> `config/kb.php`, all OFF by default) is live but no `app/` code uses
+> the package yet. The remaining two (`laravel-flow`, `eval-harness`)
+> stay in `require-dev` (separate v4.2/v4.3 integration cycles).
+> Their package repos are v0.1.0 scaffolds — production-grade
+> implementations land alongside the AskMyDocs integration per the
+> per-package timelines below.
 > `padosoft/laravel-patent-box-tracker` is the only sister package not
 > declared in AskMyDocs's `composer.json` at all — by design, operators
 > install it in their own Laravel project (R37 standalone-agnostic; see
@@ -43,7 +46,7 @@ across the board.
 
 ---
 
-### `padosoft/laravel-pii-redactor` (W7) — STATUS: 🔴 Scaffold available (v0.1.0 tag, pending Packagist); v4.1 integration target
+### `padosoft/laravel-pii-redactor` (W4.1) — STATUS: 🟡 v1.1 in `require`, integration scaffold live (W4.1.A ✅); middleware + hooks in progress
 
 **Why this lands first** — GDPR exposure on chat persistence is the most
 visible production risk among the three pending integrations. AskMyDocs's
@@ -56,6 +59,16 @@ content for log retention while preserving operator detokenization for
 audit trails.
 
 #### v4.1 integration scope
+
+**Sub-task progress:**
+
+| Sub-task | Scope | Status |
+|---|---|---|
+| W4.1.A | `composer require ^1.1` + `config/kb.php` scaffold + `.env.example` | ✅ merged |
+| W4.1.B | `RedactChatPii` middleware + chat route binding | ⏳ |
+| W4.1.C | `EmbeddingCacheService` pre-redact + `ChatLog`/`Message` booted hooks + `pii_token_maps` migration | ⏳ |
+| W4.1.D | `AiInsightsService` snippet redact + `LogViewerController` detokenize action | ⏳ |
+| W4.1.E | Tests + closure status doc | ⏳ |
 
 **Touch points in `app/`:**
 
@@ -86,10 +99,17 @@ audit trails.
    the per-row token map as a sibling row under `pii_token_maps`
    (FK ON DELETE CASCADE so retention sweeps stay consistent).
 
-5. **`config/kb.php`** — three new keys: `pii_redactor.enabled`,
-   `pii_redactor.strategy` (mask/hash/tokenise/drop default
-   tokenise), `pii_redactor.detectors` (allowlist subset of the six;
-   default all six on for IT-compliant deployments).
+5. **`config/kb.php`** (`pii_redactor` block, all default `false`) — five
+   integration-layer knobs wired up across W4.1.B–W4.1.D:
+   - `pii_redactor.enabled` → `KB_PII_REDACTOR_ENABLED` (master switch)
+   - `pii_redactor.persist_chat_redacted` → `KB_PII_REDACT_PERSIST` (ChatLog/Message booted hook)
+   - `pii_redactor.redact_before_embeddings` → `KB_EMBEDDINGS_PII_REDACT` (EmbeddingCacheService pre-redact)
+   - `pii_redactor.redact_insights_snippets` → `KB_INSIGHTS_PII_REDACT` (AiInsightsService snippet redact)
+   - `pii_redactor.detokenize_permission` → `KB_PII_DETOKENIZE_PERMISSION` (default `pii.detokenize`)
+
+   The package's own config (detectors, packs, NER drivers, token store)
+   is published separately via `vendor:publish --tag=pii-redactor-config`
+   using `PII_REDACTOR_*` env vars — not mixed into the `KB_*` layer.
 
 6. **`app/Http/Controllers/Api/Admin/LogViewerController.php`** — extend
    the existing `chat()` / `chatShow()` surface with a new detokenize
@@ -112,12 +132,12 @@ audit trails.
 
 **Upstream readiness gates:**
 
-- Pii redactor v0.2 must ship the production-grade detectors (current
-  v0.1 is scaffold). AskMyDocs integration starts when v0.2 ships
-  (Git tag minimum; Packagist preferred for `composer require` ergonomics).
+- ✅ pii-redactor v1.1.0 shipped (2026-05-03): ItalyPack + GermanyPack +
+  SpainPack production-grade detectors, full Tokenise/Mask/Hash strategies,
+  DatabaseTokenStore, AuditTrail v2. `composer require` in AskMyDocs landed
+  in W4.1.A.
 
-**Estimated v4.1 effort:** ~2 sub-tasks. Total ~12-16 R36 cycles of work
-across the package + AskMyDocs.
+**Estimated v4.1 effort:** 5 sub-tasks (W4.1.A–E). Total ~12-16 R36 cycles of work.
 
 ---
 

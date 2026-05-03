@@ -1,5 +1,8 @@
 /vendor/
 /node_modules/
+# Claude Code agent worktrees + session state (created at runtime, not source-of-truth)
+/.claude/worktrees/
+/.claude/scheduled_tasks.lock
 /public/build/
 /public/hot
 /tailwind.config.d.ts
@@ -29,6 +32,8 @@ composer.lock
 /playwright.config.d.ts
 
 /.claude/settings.local.json
+/.claude/scheduled_tasks.lock
+/.claude/worktrees/
 
 # Local SQLite dev artefacts (tests use in-memory; prod is pgsql)
 /database/*.sqlite
