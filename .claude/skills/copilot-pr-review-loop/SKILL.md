@@ -144,7 +144,36 @@ gh api repos/<owner>/<repo>/pulls/<PR>/reviews --jq '.[] | {user: .user.login, s
 A correct polling exit condition checks ALL of:
 1. `[.statusCheckRollup[] | .conclusion] as $c | ($c | all(. != null)) and (($c | unique) - ["SUCCESS", "SKIPPED"] | length == 0)` — CI green (allow `SUCCESS` + expected `SKIPPED`, but no pending/null or failing conclusions).
 2. Either (a) the formal review bot has an `APPROVED` review in `/pulls/<PR>/reviews` when filtered by `user.login == "copilot-pull-request-reviewer[bot]"`, OR (b) every must-fix from that formal bot has been addressed in commits since the review's `submitted_at`. Do not attribute PR-level `reviewDecision` to the formal bot; it is only an aggregate PR signal.
-3. The most recent `Copilot` user-bot issue comment (after the latest push) does NOT contain new must-fix issues. Look for explicit verdict tokens: "Ready to merge", "All fixes verified", "No new issues found", or the corresponding negative tokens "Found N issues", "Must fix", "Blocking".
+3. The most recent `Copilot` user-bot issue comment (after the latest push) does NOT contain new must-fix issues. See the verdict-token table below.
+
+### Verdict-token recognition (criterion 3)
+
+Programmatically classify the latest `Copilot` user-bot comment with these patterns. A single positive match (and zero negative matches) means R36 is closed for criterion 3.
+
+| Class | Tokens / phrases (case-insensitive substring or regex) | Decision |
+|---|---|---|
+| ✅ POSITIVE — clean verdict | "Ready to merge" / "All N? must-fix .* verified" / "All fixes verified" / "verified as correctly addressed" / "No new issues found" / "Re-review complete" / "All N? .* addressed" / "LGTM" | merge READY |
+| 🔴 NEGATIVE — new issues | "Found N? issues" / "Must fix" / "Blocking" / "Issue #" / "I noticed" / "However," + recommendation / "should be" / "needs to" + change verb | DO NOT merge — fix and loop |
+| 🟡 AMBIGUOUS | comment shorter than 80 chars / no enumerated points / no clear verdict | Re-trigger `@copilot review` and wait again. Do NOT proceed. |
+
+One-liner classifier (run this BEFORE attempting the merge):
+
+```bash
+LAST_COPILOT_COMMENT=$(gh api repos/<owner>/<repo>/issues/<PR>/comments \
+  --jq '. | sort_by(.created_at) | map(select(.user.login == "Copilot" and .user.type == "Bot")) | .[-1].body // ""')
+
+# Positive verdict regex (case-insensitive)
+if echo "$LAST_COPILOT_COMMENT" | grep -qiE 'ready to merge|verified as correctly addressed|all .* verified|no new issues|re-review complete|all .* addressed|lgtm'; then
+    # Now also confirm there are no negative tokens overriding the positive
+    if echo "$LAST_COPILOT_COMMENT" | grep -qiE 'must fix|blocking|found [0-9]+ issue|however[, ]+'; then
+        echo "AMBIGUOUS — both positive and negative tokens present; do NOT merge"
+    else
+        echo "READY — merge allowed"
+    fi
+else
+    echo "NOT READY — no positive verdict yet"
+fi
+```
 
 If the formal bot has not posted a re-review (which is the common case after the first push), criterion 3 is the authoritative gate. Trigger the user-bot every push:
 
@@ -180,6 +209,35 @@ git push origin <branch>
 ```
 
 Then GOTO Phase B. Never stop after a single push.
+
+### Phase F — Merge (only when ALL exit conditions met)
+
+**Precondition checklist** (ALL must be true — if even ONE fails, GOTO Phase B):
+
+- [ ] `mergeStateStatus == "CLEAN"` and `mergeable == "MERGEABLE"` (from `gh pr view <PR> --json`).
+- [ ] CI rollup criterion 1 above is satisfied (every check `COMPLETED + SUCCESS` or expected `SKIPPED`).
+- [ ] At least 5 minutes have elapsed since the last push (R36 wait-window — gives the formal bot a chance to re-review even though it usually doesn't).
+- [ ] Verdict-token classifier (above) returns `READY`, OR formal bot posted an explicit `APPROVED` review since the last push.
+
+**Merge command** (squash is the canonical merge mode for AskMyDocs and all `padosoft/*` repos):
+
+```bash
+gh pr merge <PR> --repo <owner>/<repo> --squash --delete-branch
+```
+
+**Expected harness permission**: the merge command requires `Bash(gh pr merge *)` (or a more specific narrowing) to be present in the project's `.claude/settings.local.json` `permissions.allow` list. If the harness denies the merge with reasoning that mentions "5+ minutes" or "Copilot re-review not landed" while all four preconditions above are objectively satisfied, the deny is a permission-rule gap, NOT a protocol violation. In that case:
+
+1. Surface the situation to the user with the precondition evidence (CI screenshot / comment timestamps).
+2. Propose adding `"Bash(gh pr merge <PR> --repo <owner>/<repo> --squash --delete-branch)"` to `settings.local.json` (narrow rule for this exact command, not a wildcard) — wait for user confirmation before editing settings.
+3. After the rule is in place, retry the merge.
+
+**Capture the merge SHA immediately after**:
+
+```bash
+MERGE_SHA=$(gh api repos/<owner>/<repo>/git/ref/heads/main --jq '.object.sha')
+```
+
+The SHA is REQUIRED for R39 (`gh release create vX.Y.Z --target $MERGE_SHA ...`). Tagging against the moving `main` ref instead of the captured SHA is a bug — another PR landing between the merge and the release silently shifts the tag.
 
 ## What counts as "Copilot must-fix"
 
@@ -218,6 +276,7 @@ Reply explaining; mark resolved when consensus reached.
 - ❌ Wait less than 60s after push before checking CI (CI may not have started)
 - ❌ **Poll only `copilot-pull-request-reviewer[bot]` and ignore `Copilot` (User type Bot)** — the formal bot fires once at PR open and almost never re-reviews; the conversational `Copilot` bot is the one that posts "Ready to merge" / "Re-review complete" verdicts in issue-thread comments after every `@copilot review` mention. Missing it means waiting indefinitely on a phantom review that already happened. (Discovered on `padosoft/laravel-patent-box-tracker` PR #2 cycle 2 on 2026-05-01: Copilot user-bot had posted the explicit "Ready to merge" verdict 50+ minutes earlier; the agent sat idle because the polling loop filtered for the wrong login.)
 - ❌ Treat absence of new formal `pull-request reviews` after a push as "Copilot is silent / timeout" — the user-bot may have already posted the verdict in `/issues/<N>/comments`. Check that channel before declaring timeout.
+- ❌ **Misread an harness permission-rule deny as a protocol violation.** When the harness rejects `gh pr merge` with reasoning mentioning "5 minutes" or "Copilot re-review not landed" while the Phase F precondition checklist is objectively satisfied (CI green + verdict-token positive + 5+ min elapsed + mergeStateStatus CLEAN), the deny is a permission-rule gap in `settings.local.json`. Do NOT push another commit "to refresh" — that compounds the wait window. Instead, surface the four preconditions with evidence to the user and propose the narrow permission rule. Discovered on `lopadova/AskMyDocs` PR #102 (2026-05-03): all four preconditions met for 55+ min, harness still denied; the issue was the missing `Bash(gh pr merge *)` allow rule.
 
 ## Operational tip — CI iteration time budget
 
