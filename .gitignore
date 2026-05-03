@@ -32,6 +32,8 @@ composer.lock
 /playwright.config.d.ts
 
 /.claude/settings.local.json
+/.claude/scheduled_tasks.lock
+/.claude/worktrees/
 
 # Local SQLite dev artefacts (tests use in-memory; prod is pgsql)
 /database/*.sqlite
