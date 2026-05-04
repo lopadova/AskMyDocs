@@ -3098,7 +3098,7 @@ No secrets are required — all provider HTTP calls are faked at the unit level.
 
 Five `padosoft/*` Composer packages ship alongside the v4.0 train. Architecture tests on each package enforce **standalone-agnostic invariants** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require <package>` on a fresh empty Laravel app produces a working in-process feature.
 
-> **Honest integration status (v4.0.2 disclaimer)** — only `padosoft/laravel-ai-regolo` is wired into AskMyDocs's `app/` runtime today (`RegoloProvider` delegates to the SDK). `laravel-flow`, `eval-harness`, and `laravel-pii-redactor` sit in `composer.json` `require-dev` so the dependency train is available (resolved via VCS `repositories` entries pending Packagist submission), but the `app/` integration code lands in v4.1 — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the per-package plan. Their package repos themselves are v0.1.0 scaffolds (interfaces + ServiceProvider + foundational tests); production-grade implementations land alongside the AskMyDocs integration. `padosoft/laravel-patent-box-tracker` is the only sister package not in AskMyDocs's `composer.json` at all — by design, operators install it in their own Laravel project (R37 standalone-agnostic; see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
+> **Honest integration status (as of v4.1.0 GA)** — `padosoft/laravel-ai-regolo` (since v4.0 W2, `RegoloProvider` delegates to the SDK) and `padosoft/laravel-pii-redactor` (since v4.1 W4.1, four touch-points wired across chat middleware, embedding pre-redact, AI-insights snippet sanitiser, operator detokenize endpoint — every knob default-OFF) BOTH reach AskMyDocs's `app/` runtime today. `laravel-flow` and `eval-harness` sit in `composer.json` `require-dev` so the dependency train is available, but their `app/` integration code is scoped for v4.2 / v4.3 respectively — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) for the per-package plan. `padosoft/laravel-patent-box-tracker` is the only sister package not in AskMyDocs's `composer.json` at all — by design, operators install it in their own Laravel project (R37 standalone-agnostic; see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 
 ### `padosoft/laravel-ai-regolo` (W2)
 
@@ -3196,9 +3196,31 @@ See [Patent Box dossier](#patent-box-dossier-v40-dogfood) below for the AskMyDoc
 
 ## Patent Box dossier (v4.0 dogfood)
 
+> **Should you read this section?** Only if you operate AskMyDocs (or
+> any other R&D-heavy codebase) under the **Italian Patent Box**
+> regime — a niche tax mechanism that grants a 110% super-deduction
+> on R&D spend tied to qualifying intellectual property. The Patent
+> Box tooling is **completely opt-in**: it is **NOT in AskMyDocs's
+> runtime path**, **NOT required** by `composer install`, **NOT
+> imported** by any `app/` code, and the daily AskMyDocs experience
+> is byte-identical with or without it. If you don't have an Italian
+> Patent Box dossier to file, ignore the `tools/patent-box/` folder
+> entirely — it does nothing on its own. The rest of this section is
+> for the small subset of users (e.g. Italian software companies
+> filing under `documentazione_idonea`) who want to use AskMyDocs's
+> commit history as evidence input for their own dossier.
+
 AskMyDocs ships `tools/patent-box/2026.yml` — the template configuration for **Lorenzo's FY2026 Italian Patent Box dossier** (Padosoft di Lorenzo Padovani, regime `documentazione_idonea`). The YAML lists every Padosoft repository in scope (AskMyDocs primary + four sister packages + the tracker itself for self-dogfood) and is consumed by the standalone `padosoft/laravel-patent-box-tracker` package via `php artisan patent-box:cross-repo path/to/2026.yml`.
 
-**AskMyDocs is intentionally decoupled from the tracker** (per the standalone-agnostic architecture rule — every `padosoft/*` package is 100% standalone, AskMyDocs USES the packages, never the reverse). AskMyDocs's own `composer.json` does NOT require the tracker, so `php artisan patent-box:cross-repo` is **not runnable from an AskMyDocs checkout**.
+**AskMyDocs is intentionally decoupled from the tracker** (per the standalone-agnostic architecture rule — every `padosoft/*` package is 100% standalone, AskMyDocs USES the packages, never the reverse). AskMyDocs's own `composer.json` does NOT require the tracker, so `php artisan patent-box:cross-repo` is **not runnable from an AskMyDocs checkout** — and that's the whole point: a user who doesn't need a Patent Box dossier never even sees the package's dependency tree.
+
+**Why patent-box is NOT in the architecture diagram above:** the
+tracker walks the AskMyDocs git history from a separate Laravel
+project's CLI at run time. It does NOT participate in any
+HTTP / SSE / queue / scheduler path of AskMyDocs itself. It is
+external offline tooling that *reads* AskMyDocs's repo (and any
+sister Padosoft repo listed in the YAML), so it sits outside the
+runtime architecture by design.
 
 ### Running the dossier generator
 
@@ -3229,7 +3251,7 @@ The four sister Padosoft packages tracked alongside AskMyDocs are all on Packagi
 - `padosoft/laravel-patent-box-tracker` v0.1.0 (W4)
 - `padosoft/laravel-flow` v0.1.0 (W5)
 - `padosoft/eval-harness` v0.1.0 (W6)
-- `padosoft/laravel-pii-redactor` v0.1.0 (W7)
+- `padosoft/laravel-pii-redactor` v1.1+ (W7 → fully integrated in v4.1 GA)
 
 See the [tracker's README](https://github.com/padosoft/laravel-patent-box-tracker#cross-repository-dossier-the-canonical-padosoft-use-case) for the full schema reference.
 
@@ -3415,7 +3437,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 - **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
 - **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
 
-**Sister packages composer constraints (v4 release train)** — note `padosoft/laravel-ai-regolo` is in `require` (load-bearing for the chat path), the other three are in `require-dev` (scoped for v4.1 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
+**Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo` and `padosoft/laravel-pii-redactor:^1.1` are both in `require` (load-bearing for the chat path and for the v4.1 PII redactor integration respectively); `padosoft/laravel-flow` and `padosoft/eval-harness` are in `require-dev` (scoped for v4.2 / v4.3 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
 "require": {
     "padosoft/laravel-ai-regolo":          "^0.2"
