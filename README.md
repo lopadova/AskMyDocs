@@ -143,7 +143,7 @@ Closure: `docs/v4-platform/STATUS-2026-05-03-week4.1.md`
 | **Users & Roles** (`/admin/users` + `/admin/roles`) | Filterable users table with soft-delete + restore, 3-tab edit drawer (Details / Roles / Memberships with `scope_allowlist` JSON editor), Spatie-backed role CRUD with grouped permission matrix |
 | **KB Explorer** (`/admin/kb`) | Memory-safe `chunkById(100)` tree walker with canonical-aware modes (`canonical \| raw \| all`); right-panel tabs: Preview (markdown + frontmatter pills) / Meta (canonical grid + AI tags) / **Source** (CodeMirror 6 editor with PATCH `/raw` → validate → write → audit → re-ingest) / **Graph** (1-hop tenant-scoped subgraph, SVG radial layout) / **History** (paginated `kb_canonical_audit`) / **PDF export** (Browsershot, A4 print-optimised) |
 | **Logs** (`/admin/logs`) | Five deep-linkable tabs (`?tab=chat \| audit \| app \| activity \| failed`) — chat logs with model/project/rating filters, canonical audit trail, reverse-seek `SplFileObject`-powered application log tailer (whitelist regex, 2000-line cap, optional live polling), Spatie activity log, failed-jobs read-only |
-| **Maintenance** (`/admin/maintenance`) | Whitelisted Artisan runner via `CommandRunnerService` with **6 independent gates**: (1) whitelist lookup, (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie permission gate (`commands.run` / `commands.destructive`), (5) audit-before-execute (`admin_command_audits`), (6) per-user `throttle:10,1` rate limit. Three-step React wizard: Preview → Confirm (type-in for destructive) → Run → Result |
+| **Maintenance** (`/admin/maintenance`) | Whitelisted Artisan runner via `CommandRunnerService` with **6 independent gates**: (1) whitelist lookup, (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie permission gate (`commands.run` / `commands.destructive`), (5) audit-before-execute (`admin_command_audit`), (6) per-user `throttle:10,1` rate limit. Three-step React wizard: Preview → Confirm (type-in for destructive) → Run → Result |
 | **AI Insights** (`/admin/insights`) | Daily `insights:compute` (05:00 UTC) writes one row into `admin_insights_snapshots`; six widget cards: Promotion Suggestions, Orphan Docs, Suggested Tags, Coverage Gaps, Stale Docs, Quality Report — O(1) DB read, zero LLM calls per page load |
 
 #### Operations & quality
@@ -249,13 +249,15 @@ rejected-approach injection) and the same provider abstraction over `laravel/ai`
                                │
                                ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  RedactChatPii middleware (v4.1 W4.1) — bound to POST /conversations/{id}/   │
-│  messages (sync + SSE) ONLY. Default no-op. When                             │
-│  kb.pii_redactor.enabled AND kb.pii_redactor.persist_chat_redacted are ON,   │
-│  runs RedactorEngine::redact() on `request.content` before the controller    │
-│  sees it — what gets persisted into chat_logs.question / messages.content    │
-│  AND what the LLM sees are both the redacted form. Architecture-pinned to    │
-│  these two routes only (curator/admin/promotion routes are excluded).        │
+│  RedactChatPii middleware (v4.1 W4.1) — bound to TWO chat-message routes:    │
+│    POST /conversations/{conversation}/messages         (sync)                │
+│    POST /conversations/{conversation}/messages/stream  (SSE)                 │
+│  Default no-op. When kb.pii_redactor.enabled AND                             │
+│  kb.pii_redactor.persist_chat_redacted are ON, runs                          │
+│  RedactorEngine::redact() on `request.content` before the controller sees    │
+│  it — what gets persisted into chat_logs.question / messages.content AND     │
+│  what the LLM sees are both the redacted form. Architecture-pinned to        │
+│  exactly these two routes (curator/admin/promotion routes are excluded).     │
 └──────────────────────────────┬──────────────────────────────────────────────┘
                                │
                                ▼
@@ -304,12 +306,15 @@ rejected-approach injection) and the same provider abstraction over `laravel/ai`
 │                   │  │                   │  │   strategy; auto-loaded by   │
 │                   │  │                   │  │   the package SP)            │
 │ EmbeddingCache    │  │                   │  │                              │
-│ Service::generate │  │                   │  │ Every domain table carries   │
-│   pre-redacts via │  │                   │  │ tenant_id (default           │
-│   MaskStrategy    │  │                   │  │ 'default'); BelongsToTenant  │
-│   when            │  │                   │  │ trait auto-fills on create.  │
-│   redact_before_  │  │                   │  │                              │
-│   embeddings ON   │  │                   │  │                              │
+│ Service::generate │  │                   │  │ Every tenant-aware domain    │
+│   pre-redacts via │  │                   │  │ table carries tenant_id      │
+│   MaskStrategy    │  │                   │  │ (default 'default');         │
+│   when both       │  │                   │  │ BelongsToTenant trait        │
+│   pii_redactor.   │  │                   │  │ auto-fills on create.        │
+│   enabled AND     │  │                   │  │ (Exception: embedding_cache  │
+│   redact_before_  │  │                   │  │ is intentionally NOT         │
+│   embeddings      │  │                   │  │ tenant-scoped — see          │
+│   are ON          │  │                   │  │ note above.)                 │
 │   (v4.1 W4.1.C)   │  │                   │  │                              │
 └───────────────────┘  └───────────────────┘  └──────────────────────────────┘
 ```
@@ -319,7 +324,8 @@ rejected-approach injection) and the same provider abstraction over `laravel/ai`
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │  AiInsightsService::coverageGaps()                                           │
-│    when kb.pii_redactor.redact_insights_snippets ON →                        │
+│    when both kb.pii_redactor.enabled AND                                     │
+│    kb.pii_redactor.redact_insights_snippets are ON →                         │
 │    masks chat sample questions BEFORE clustering — short-circuits leakage    │
 │    to BOTH the LLM call AND admin_insights_snapshots.payload_json            │
 │    (R30 tenant-scoped on chat_logs reads)                                    │
@@ -385,9 +391,9 @@ never the LLM.
 | Package | Role | Integration status in AskMyDocs `app/` | Repo |
 |---|---|---|---|
 | `padosoft/laravel-ai-regolo` (W2) | Regolo provider for `laravel/ai` | **Integrated** — `RegoloProvider` delegates to the SDK | https://github.com/padosoft/laravel-ai-regolo |
-| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for v4.1 — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | https://github.com/padosoft/laravel-flow |
-| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; not yet wired into `tests/Eval/` or CI. Integration scoped for v4.1 | https://github.com/padosoft/eval-harness |
-| `padosoft/laravel-pii-redactor` (W7 + v4.1 W4.1) | PII detection + redaction with EU country packs (Italy + Germany + Spain on v1.1) | **Integrated (v4.1.0 GA)** — `composer require ^1.1`; wired at four touch-points (chat-message middleware on `POST /conversations/{id}/messages` sync + SSE; embedding-cache pre-redact; AI-insights snippet sanitiser; operator detokenize endpoint with Spatie permission gate). Every knob default-off | https://github.com/padosoft/laravel-pii-redactor |
+| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for **v4.2** — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | https://github.com/padosoft/laravel-flow |
+| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; not yet wired into `tests/Eval/` or CI. Integration scoped for **v4.3** | https://github.com/padosoft/eval-harness |
+| `padosoft/laravel-pii-redactor` (W7 + v4.1 W4.1) | PII detection + redaction with EU country packs (Italy + Germany + Spain on v1.1) | **Integrated (v4.1.0 GA)** — `composer require padosoft/laravel-pii-redactor:^1.1`; wired at four touch-points: chat-message middleware on `POST /conversations/{conversation}/messages` (sync) AND `POST /conversations/{conversation}/messages/stream` (SSE); embedding-cache pre-redact; AI-insights snippet sanitiser; operator detokenize endpoint with Spatie permission gate. Every knob default-off | https://github.com/padosoft/laravel-pii-redactor |
 | `padosoft/laravel-patent-box-tracker` (W4) | Italian Patent Box dossier auto-generator | **External runner by design** — never declared in AskMyDocs's own `composer.json`; `tools/patent-box/2026.yml` is consumed by a separate Laravel project (R37 standalone-agnostic) | https://github.com/padosoft/laravel-patent-box-tracker |
 
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
@@ -1036,7 +1042,7 @@ independent gates: (1) whitelist lookup in
 (3) signed `confirm_token` + DB-backed single-use nonce, (4) Spatie
 permission gate (`commands.run` for admin, `commands.destructive`
 for super-admin only), (5) audit-before-execute
-(`admin_command_audits` row flips `started → completed\|failed`
+(`admin_command_audit` row flips `started → completed\|failed`
 around the `Artisan::call()`), (6) per-user rate limit
 (`throttle:10,1`). Three-step React wizard: Preview →
 [Confirm type-in for destructive] → Run → Result. Scheduler widget
@@ -3753,7 +3759,7 @@ memory + 9-type document taxonomy) and the **enterprise admin surface**
   (2) args_schema validation, (3) signed `confirm_token` + DB-backed single-use
   nonce, (4) Spatie permission gate (`commands.run` for admin,
   `commands.destructive` for super-admin only), (5) audit-before-execute
-  (`admin_command_audits` row flips around the `Artisan::call()`), (6) per-user
+  (`admin_command_audit` row flips around the `Artisan::call()`), (6) per-user
   `throttle:10,1` rate limit
 - Three-step React wizard: Preview → [Confirm type-in for destructive] → Run → Result
 
