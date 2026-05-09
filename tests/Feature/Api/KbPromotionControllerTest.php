@@ -6,14 +6,18 @@ use App\Ai\AiManager;
 use App\Ai\AiResponse;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Jobs\IngestDocumentJob;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Mockery;
 use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowRun;
+use Padosoft\LaravelFlow\FlowStepResult;
 use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 use Tests\TestCase;
 
@@ -367,6 +371,144 @@ class KbPromotionControllerTest extends TestCase
         ]);
 
         $reject->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_403_when_approval_belongs_to_another_tenant(): void
+    {
+        // Iteration 4 (PR #116) — R30 cross-tenant defence. An approval
+        // row created under tenant-b MUST NOT be addressable by an
+        // approve call running under tenant-a, even if the attacker
+        // somehow obtained the plain-text token + approval id.
+        Queue::fake();
+
+        // Create the approval row directly under tenant-b. The
+        // controller binds against TenantContext::current() which the
+        // test boots as 'default'. We assert the lookup is filtered by
+        // tenant_id (= 'default' in this test) and so the tenant-b row
+        // is invisible regardless of token correctness.
+        $rawToken = bin2hex(random_bytes(16));
+        $approvalId = (string) Str::uuid();
+        $runId = (string) Str::uuid();
+        // Seed the parent flow_runs row first (FK).
+        DB::table('flow_runs')->insert([
+            'id' => $runId,
+            'tenant_id' => 'tenant-b',
+            'definition_name' => \App\Flow\Definitions\PromotionFlow::NAME,
+            'status' => 'paused',
+            'dry_run' => false,
+            'started_at' => Carbon::now(),
+            'created_at' => Carbon::now(),
+            'updated_at' => Carbon::now(),
+        ]);
+        FlowApprovalRecord::query()->create([
+            'id' => $approvalId,
+            'tenant_id' => 'tenant-b',
+            'run_id' => $runId,
+            'step_name' => \App\Flow\Definitions\PromotionFlow::APPROVAL_STEP,
+            'status' => FlowApprovalRecord::STATUS_PENDING,
+            'token_hash' => \Padosoft\LaravelFlow\ApprovalTokenManager::hashToken($rawToken),
+            'expires_at' => Carbon::now()->addHour(),
+        ]);
+
+        // Active tenant is 'default' (TenantContext defaults). Try to
+        // approve the tenant-b row from this scope.
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $rawToken,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+
+        // Token must remain unconsumed — nothing happened.
+        $row = FlowApprovalRecord::query()->where('id', $approvalId)->first();
+        $this->assertNotNull($row);
+        $this->assertNull($row->consumed_at);
+        $this->assertSame(FlowApprovalRecord::STATUS_PENDING, (string) $row->status);
+    }
+
+    public function test_approve_returns_403_when_step_name_does_not_match(): void
+    {
+        // Iteration 4 (PR #116) — defence-in-depth pinning to
+        // PromotionFlow::APPROVAL_STEP. A token from a DIFFERENT flow's
+        // approval step (e.g. a future approval gate on a different
+        // flow definition) must not be replayable on the kb.promote
+        // endpoints.
+        Queue::fake();
+
+        $rawToken = bin2hex(random_bytes(16));
+        $approvalId = (string) Str::uuid();
+        $runId = (string) Str::uuid();
+        $tenantId = app(TenantContext::class)->current();
+        DB::table('flow_runs')->insert([
+            'id' => $runId,
+            'tenant_id' => $tenantId,
+            'definition_name' => 'some.other.flow',
+            'status' => 'paused',
+            'dry_run' => false,
+            'started_at' => Carbon::now(),
+            'created_at' => Carbon::now(),
+            'updated_at' => Carbon::now(),
+        ]);
+        FlowApprovalRecord::query()->create([
+            'id' => $approvalId,
+            'tenant_id' => $tenantId,
+            'run_id' => $runId,
+            'step_name' => 'some-other-flow-approval-step', // NOT promotion's step
+            'status' => FlowApprovalRecord::STATUS_PENDING,
+            'token_hash' => \Padosoft\LaravelFlow\ApprovalTokenManager::hashToken($rawToken),
+            'expires_at' => Carbon::now()->addHour(),
+        ]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $rawToken,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_500_when_write_step_output_missing_relative_path(): void
+    {
+        // Iteration 4 (PR #116) — B.1 + R14. The saga reports SUCCEEDED
+        // but write-markdown's output bag is missing relative_path.
+        // Returning 200 with `path: null` would silently hand the
+        // operator a useless success envelope; surface a 500 with a
+        // correlation_id instead.
+        Queue::fake();
+
+        // First, run a real promote to get a valid pending approval +
+        // token shape we can wire into the mocked Flow::resume() reply.
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        // Mock Flow::resume() to return a SUCCEEDED FlowRun whose
+        // write-markdown step output has no `relative_path`.
+        $fakeRun = new FlowRun(
+            id: 'run-fake-1',
+            definitionName: \App\Flow\Definitions\PromotionFlow::NAME,
+            dryRun: false,
+            startedAt: new \DateTimeImmutable(),
+        );
+        $fakeRun->markSucceeded(new \DateTimeImmutable());
+        $fakeRun->recordStepResult(
+            'write-markdown',
+            FlowStepResult::success([
+                // INTENTIONALLY missing `relative_path` — defensive contract test.
+                'doc_id' => 'DEC-2026-0001',
+            ]),
+        );
+
+        Flow::shouldReceive('resume')->once()->andReturn($fakeRun);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(500)
+            ->assertJsonPath('error', 'incomplete_promotion')
+            ->assertJsonStructure(['correlation_id']);
     }
 
     public function test_promote_rejects_invalid_frontmatter_with_422(): void

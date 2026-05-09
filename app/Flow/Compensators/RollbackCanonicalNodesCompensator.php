@@ -52,10 +52,20 @@ final class RollbackCanonicalNodesCompensator implements FlowCompensator
             return;
         }
 
+        // R30/R31 — scope the delete to the active tenant. A tainted /
+        // serialized `created_node_ids` payload could otherwise contain
+        // node ids that belong to ANOTHER tenant; without `forTenant()`
+        // the bare `whereIn('id', ...)` would happily delete them.
+        // Iteration 4 (PR #116) — Copilot flagged this hole.
+        $tenantId = (string) ($context->input['tenant_id'] ?? '');
+
         // R3 — chunk the IN list to keep individual queries bounded even
         // when a single doc creates a huge dangling-target set.
         foreach (array_chunk($createdNodeIds, 1000) as $chunk) {
-            KbNode::whereIn('id', $chunk)->delete();
+            KbNode::query()
+                ->forTenant($tenantId)
+                ->whereIn('id', $chunk)
+                ->delete();
         }
     }
 }

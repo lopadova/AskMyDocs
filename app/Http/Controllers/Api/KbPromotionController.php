@@ -274,6 +274,26 @@ class KbPromotionController extends Controller
         $writeOutput = $run->stepResults['write-markdown'] ?? null;
         $relativePath = $writeOutput?->output['relative_path'] ?? null;
 
+        // Iteration 4 (PR #116) — R14: a 200 response with `path: null`
+        // is the same defect class as a 200 response with an empty body.
+        // The saga reports SUCCEEDED but the write-markdown step's
+        // contract was not honoured — surface that loudly with a
+        // correlation_id rather than handing the operator a useless
+        // success envelope.
+        if (! is_string($relativePath) || $relativePath === '') {
+            $correlationId = bin2hex(random_bytes(8));
+            Log::error('KbPromotion: approve completed but write-markdown output missing relative_path', [
+                'correlation_id' => $correlationId,
+                'approval_id' => $approvalId,
+                'flow_run_id' => $run->id,
+            ]);
+            return response()->json([
+                'error' => 'incomplete_promotion',
+                'message' => 'Promotion completed but the canonical path could not be determined.',
+                'correlation_id' => $correlationId,
+            ], 500);
+        }
+
         return response()->json([
             'status' => 'accepted',
             'flow_run_id' => $run->id,
@@ -355,10 +375,23 @@ class KbPromotionController extends Controller
      * verified the hash. A replayed token could pass this gate, then
      * Flow::resume() / Flow::reject() may either succeed (replay) or
      * fail with a revealing error message.
+     *
+     * Iteration 4 (PR #116) — R30 + step-name pinning. The lookup is now
+     * scoped to the active tenant via `where('tenant_id', $current)` AND
+     * to {@see PromotionFlow::APPROVAL_STEP}. Without these guards a
+     * leaked approval id from another tenant or another flow's approval
+     * step (e.g. a future promote-elsewhere flow) could be replayed
+     * here. The vendor `flow_approvals` table carries `tenant_id` from
+     * our supplementary migration `2026_05_09_146000_add_tenant_id_to_flow_tables`.
      */
     private function approvalIdMatchesToken(string $approvalId, string $plainToken): bool
     {
-        $row = FlowApprovalRecord::query()->find($approvalId);
+        $tenantId = app(TenantContext::class)->current();
+        $row = FlowApprovalRecord::query()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $approvalId)
+            ->where('step_name', PromotionFlow::APPROVAL_STEP)
+            ->first();
         if ($row === null) {
             return false;
         }

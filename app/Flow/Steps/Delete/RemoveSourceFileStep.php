@@ -63,9 +63,23 @@ final class RemoveSourceFileStep implements FlowStepHandler
         $documentId = (int) ($hardDeleteOutput['document_id'] ?? 0);
         $sourcePath = (string) ($hardDeleteOutput['source_path'] ?? '');
 
-        if ($disk === '' || $fullPath === '') {
+        if ($disk === '') {
             throw new RuntimeException(
-                'RemoveSourceFileStep: hard-delete-rows step did not provide disk + full_path.'
+                'RemoveSourceFileStep: hard-delete-rows step did not provide disk.'
+            );
+        }
+
+        // Iteration 4 (PR #116) — DocumentDeleter::resolveFullPath now
+        // emits an empty `full_path` when the source path is tainted
+        // (traversal segment, empty input). The DB delete has already
+        // committed in `hard-delete-rows`; failing here would trigger
+        // compensation that rolls back a CORRECTLY-deleted row. Treat
+        // empty full_path as "no file to delete" — the warning is
+        // already logged by the deleter.
+        if ($fullPath === '') {
+            return FlowStepResult::success(
+                output: ['skipped' => true, 'reason' => 'unresolvable_path'],
+                businessImpact: ['file_deleted' => false],
             );
         }
 

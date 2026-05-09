@@ -191,8 +191,11 @@ class DocumentDeleter
         // R1 — every KB source path goes through KbPath::normalize() so
         // the resulting key is byte-identical to what the ingest pipeline
         // wrote (collapses `//`, normalizes `\\`, rejects `..` traversal).
-        // Mirrors CanonicalWriter::applyPathPrefix(). Iteration 3 (PR #116)
-        // — Copilot flagged the previous trim/ltrim chain as a R1 gap.
+        // Mirrors CanonicalWriter::applyPathPrefix(). Iteration 4 (PR #116)
+        // — resolveFullPath now returns null on un-normalisable input;
+        // expose the bad path on the response so DeleteDocumentFlow's
+        // file-removal step can report file_deleted=false uniformly
+        // without ever attempting a disk write on a tainted key.
         $fullPath = $this->resolveFullPath($prefix, $sourcePath);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
@@ -212,7 +215,7 @@ class DocumentDeleter
             'file_deleted' => false,
             'canonical' => $canonicalSnapshot,
             'disk' => $disk,
-            'full_path' => $fullPath,
+            'full_path' => (string) ($fullPath ?? ''),
         ];
     }
 
@@ -287,6 +290,10 @@ class DocumentDeleter
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
         // R1 — same KbPath::normalize() guard as deleteRowsOnly().
+        // Iteration 4 (PR #116) — resolveFullPath returns null when the
+        // path is un-normalisable (traversal, empty); skip the disk
+        // delete entirely in that case rather than handing
+        // Storage::delete() an attacker-controlled key.
         $fullPath = $this->resolveFullPath($prefix, $sourcePath);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
@@ -300,7 +307,9 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
-        $fileDeleted = $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+        $fileDeleted = $fullPath === null
+            ? false
+            : $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
 
         return [
             'mode' => 'hard',
@@ -395,12 +404,15 @@ class DocumentDeleter
      * the ingest path wrote (no double slashes, no `.`/`..` traversal,
      * `\\` → `/`). Mirrors {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}.
      *
-     * Falls back to the bare $sourcePath when normalisation throws
-     * (empty input or traversal segment) — the disk delete will then
-     * find no row and the operation reports `file_deleted=false`,
-     * which is the desired no-op for already-broken metadata.
+     * Iteration 4 (PR #116) — R1 + R4 + R14. Returns `null` when the input
+     * cannot be normalised (empty path, `.`, `..` traversal segment).
+     * Callers MUST treat null as "do not touch the disk" — the previous
+     * fallback to a hand-built `ltrim()` chain DEFEATED KbPath's
+     * traversal guard by handing the un-normalised path back to
+     * {@see Storage::delete()}, blowing the radius open to attacker-
+     * controlled writes. Better silent no-op than blast-radius write.
      */
-    private function resolveFullPath(string $prefix, string $sourcePath): string
+    private function resolveFullPath(string $prefix, string $sourcePath): ?string
     {
         try {
             if ($prefix === '') {
@@ -408,7 +420,15 @@ class DocumentDeleter
             }
             return KbPath::normalize($prefix.'/'.$sourcePath);
         } catch (\InvalidArgumentException $e) {
-            return ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+            // Caught traversal/empty path; refuse to delete with the
+            // un-normalized path. R4: surface the refusal in the log so
+            // operators can investigate the bad metadata.
+            Log::warning('DocumentDeleter: refusing file delete on un-normalizable path', [
+                'source_path' => $sourcePath,
+                'prefix' => $prefix,
+                'reason' => $e->getMessage(),
+            ]);
+            return null;
         }
     }
 

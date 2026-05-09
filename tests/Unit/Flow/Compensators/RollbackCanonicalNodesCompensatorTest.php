@@ -82,12 +82,62 @@ final class RollbackCanonicalNodesCompensatorTest extends TestCase
         $this->assertSame(0, KbNode::count());
     }
 
+    /**
+     * Iteration 4 (PR #116) — R30 cross-tenant defence. A tainted /
+     * serialized created_node_ids list could otherwise contain node ids
+     * that belong to ANOTHER tenant; the compensator MUST NOT delete
+     * them when running under tenant A.
+     */
+    public function test_does_not_delete_nodes_belonging_to_another_tenant(): void
+    {
+        // Tenant A's created node — must be deleted.
+        $tenantANode = KbNode::create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'acme',
+            'node_uid' => 'a-created-1',
+            'node_type' => 'unknown',
+            'label' => 'A1',
+            'payload_json' => ['dangling' => true],
+        ]);
+
+        // Tenant B's node — leaked into the payload (e.g. attacker-
+        // crafted serialised input). Must survive.
+        $tenantBNode = KbNode::create([
+            'tenant_id' => 'tenant-b',
+            'project_key' => 'acme',
+            'node_uid' => 'b-survivor',
+            'node_type' => 'module',
+            'label' => 'B-Survivor',
+            'payload_json' => ['dangling' => false],
+        ]);
+
+        $compensator = $this->app->make(RollbackCanonicalNodesCompensator::class);
+        $compensator->compensate(
+            $this->contextForTenant('tenant-a'),
+            FlowStepResult::success([
+                // Tainted bag: includes both tenant A's id and tenant B's id.
+                'created_node_ids' => [$tenantANode->id, $tenantBNode->id],
+            ]),
+        );
+
+        $this->assertNull(KbNode::find($tenantANode->id), 'tenant-a node must be deleted');
+        $this->assertNotNull(
+            KbNode::find($tenantBNode->id),
+            'tenant-b node MUST survive a tenant-a compensator run',
+        );
+    }
+
     private function context(): FlowContext
+    {
+        return $this->contextForTenant('default');
+    }
+
+    private function contextForTenant(string $tenantId): FlowContext
     {
         return new FlowContext(
             flowRunId: 'rb-test',
             definitionName: 'kb.canonical-index',
-            input: ['tenant_id' => 'default'],
+            input: ['tenant_id' => $tenantId],
             stepOutputs: [],
             dryRun: false,
         );

@@ -48,20 +48,27 @@ final class FlowServiceProvider extends ServiceProvider
      * Bridge selected `flow_audit` events into the
      * `kb_canonical_audit` editorial trail.
      *
-     * Mapping (per FEATURE-CATALOG-laravel-flow.md "audit hooks"):
+     * Active mapping (post iteration 4 / PR #116):
      *
-     *   - `kb.promote` write-markdown FlowStepCompleted   → 'promoted'
-     *   - `kb.promote` approval-gate FlowStepFailed       → 'rejected_promotion'
-     *   - `kb.delete` hard-delete-rows FlowStepCompleted  → 'deprecated'
-     *   - `kb.canonical-index` populate-edges Completed   → 'graph_rebuild'
+     *   - `kb.promote` approval-gate FlowStepFailed → 'rejected_promotion'
+     *
+     * The bridge intentionally only handles `rejected_promotion` because
+     * it is the ONLY canonical audit event with no in-step writer:
+     * rejection halts the flow BEFORE write-markdown ever runs, so the
+     * step's promote/reject audit code path never executes. Every other
+     * canonical event is written by the step ITSELF inside the same
+     * transaction that mutates the underlying domain rows:
+     *
+     *   - `promoted`       — written by WriteCanonicalMarkdownStep
+     *   - `graph_rebuild`  — written by PopulateEdgesStep (kb.canonical-index)
+     *   - `deprecated`     — written by DocumentDeleter::deleteRowsOnly()
+     *
+     * Adding mappings here for those events would duplicate audit rows.
+     * See {@see self::mapToCanonicalEvent()} for the explicit decision.
      *
      * The mapping fires on FlowAuditRecord::created (post-insert) so we
      * never block the engine's transaction; if the bridge throws the
-     * surrounding flow run is unaffected. Steps already write their
-     * primary audit rows directly (so the trail remains correct even
-     * with this listener disabled) — this hook contributes additional
-     * cross-flow coverage (e.g. the rejected_promotion event has no
-     * dedicated step writer, since rejection skips the write step).
+     * surrounding flow run is unaffected.
      *
      * R30 — `flow_audit.tenant_id` was already stamped by the prior
      * `creating` hook; we propagate it onto the kb_canonical_audit

@@ -258,4 +258,40 @@ class DocumentDeleterTest extends TestCase
         $this->assertNotNull(KnowledgeDocument::withTrashed()->find($recent->id));
         Storage::disk('kb')->assertExists('docs/recent.md');
     }
+
+    public function test_hard_delete_refuses_storage_call_for_traversal_path(): void
+    {
+        // Iteration 4 (PR #116) — R1 + R4 + R14. KbPath::normalize()
+        // throws on traversal segments. Previously, the catch block in
+        // resolveFullPath() returned the raw `prefix/source_path`
+        // string — DEFEATING the traversal guard because Storage::delete()
+        // was then handed an attacker-controlled key. The fix routes
+        // un-normalisable paths to a no-op file delete (DB rows still
+        // hard-deleted; the warning surfaces in the log).
+        config()->set('kb.deletion.soft_delete', false);
+
+        // Place a sentinel "real" file that an attacker would hope to
+        // pivot the disk-delete onto via a traversal segment. The
+        // bypass is impossible if resolveFullPath returns null and the
+        // caller skips Storage::delete() entirely.
+        Storage::disk('kb')->put('etc/passwd', 'sentinel');
+
+        $document = $this->makeDocument([
+            'source_path' => '../../etc/passwd',
+            'version_hash' => 'traversal-attempt',
+        ]);
+
+        $result = (new DocumentDeleter)->delete($document);
+
+        $this->assertSame('hard', $result['mode']);
+        // No file should have been deleted (traversal guard kept the
+        // pivot file intact). The sentinel file MUST still exist.
+        $this->assertFalse($result['file_deleted']);
+        Storage::disk('kb')->assertExists('etc/passwd');
+
+        // The DB row + chunks still got hard-deleted (the rows are
+        // ours; only the file path was un-normalisable).
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
+        $this->assertSame(0, KnowledgeChunk::where('knowledge_document_id', $document->id)->count());
+    }
 }
