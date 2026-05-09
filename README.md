@@ -3349,7 +3349,7 @@ all nine sister packages graduated to v1.0+ on GitHub; AskMyDocs was
 on the v0.2 / v1.1 era. v4.2 follows R37 (dedicated
 `feature/v4.2` integration branch, sub-branches per package) and R39
 (per-Wn weekly RC tag at the immutable closure SHA). Patent Box
-tracker stays external per the v4.1.0 GA ADR (PR #110); the cycle
+tracker stays external per the v4.1.0 GA decision documented in PR #110; the cycle
 covers seven packages (regolo, pii-redactor + admin, flow + admin,
 eval-harness + admin).
 
@@ -3497,13 +3497,15 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 
 **Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo` and `padosoft/laravel-pii-redactor:^1.2` are both in `require` (load-bearing for the chat path and for the v4.1 PII redactor integration respectively; v1.2 ships 6 admin-readiness inspectors that the v4.2 admin SPA wires); `padosoft/laravel-flow` and `padosoft/eval-harness` are in `require-dev` (scoped for v4.2 / v4.3 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
-"require": {
-    "padosoft/laravel-ai-regolo":          "^1.0",
-    "padosoft/laravel-pii-redactor":       "^1.2"
-},
-"require-dev": {
-    "padosoft/laravel-flow":               "^0.1.0",
-    "padosoft/eval-harness":               "^0.1.0"
+{
+    "require": {
+        "padosoft/laravel-ai-regolo":          "^1.0",
+        "padosoft/laravel-pii-redactor":       "^1.2"
+    },
+    "require-dev": {
+        "padosoft/laravel-flow":               "^0.1.0",
+        "padosoft/eval-harness":               "^0.1.0"
+    }
 }
 ```
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
