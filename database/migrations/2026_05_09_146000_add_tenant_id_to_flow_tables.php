@@ -7,7 +7,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Adds tenant_id to every Flow persistence table.
+ * Adds tenant_id to every Flow persistence table AND replaces the
+ * package-published global UNIQUE on flow_runs.idempotency_key with a
+ * tenant-scoped composite UNIQUE (tenant_id, idempotency_key).
  *
  * The padosoft/laravel-flow v1.0 package is tenant-agnostic by design
  * (vendor CLAUDE.md: "Companion dashboard is a separate repo; package
@@ -22,23 +24,24 @@ use Illuminate\Support\Facades\Schema;
  * - approval / webhook outbox rows leak tenant context
  *
  * This supplementary migration runs AFTER the package-published Flow
- * migrations so we don't fork upstream code. The composite uniques
- * needed to enforce tenant-scoped idempotency live in app/Flow/* code
- * (sub-PRs 3b/3c/3d) — this migration only adds the column + index.
+ * migrations so we don't fork upstream code. The package's
+ * idempotency_key UNIQUE is GLOBAL by design (single-tenant default);
+ * we replace it here with the tenant-scoped composite required for
+ * AskMyDocs's multi-tenant correctness.
  */
 return new class extends Migration
 {
+    private const TENANT_AWARE_TABLES = [
+        'flow_runs',
+        'flow_steps',
+        'flow_audit',
+        'flow_approvals',
+        'flow_webhook_outbox',
+    ];
+
     public function up(): void
     {
-        $tenantAwareTables = [
-            'flow_runs',
-            'flow_steps',
-            'flow_audit',
-            'flow_approvals',
-            'flow_webhook_outbox',
-        ];
-
-        foreach ($tenantAwareTables as $tableName) {
+        foreach (self::TENANT_AWARE_TABLES as $tableName) {
             if (! Schema::hasTable($tableName)) {
                 continue;
             }
@@ -51,19 +54,36 @@ return new class extends Migration
                 $table->string('tenant_id', 50)->default('default')->index();
             });
         }
+
+        // Replace the package's global UNIQUE on flow_runs.idempotency_key
+        // with a tenant-scoped composite. Two tenants choosing the same
+        // idempotency key (e.g. "default:docs/intro.md:abc123") would
+        // otherwise collide at the DB level the moment a second tenant
+        // exists.
+        if (Schema::hasTable('flow_runs') && Schema::hasColumn('flow_runs', 'tenant_id')) {
+            Schema::table('flow_runs', function (Blueprint $table): void {
+                $table->dropUnique(['idempotency_key']);
+                $table->unique(
+                    ['tenant_id', 'idempotency_key'],
+                    'flow_runs_tenant_idempotency_unique',
+                );
+            });
+        }
     }
 
     public function down(): void
     {
-        $tenantAwareTables = [
-            'flow_runs',
-            'flow_steps',
-            'flow_audit',
-            'flow_approvals',
-            'flow_webhook_outbox',
-        ];
+        // Restore the package-canonical global UNIQUE before dropping
+        // tenant_id so the column drop doesn't leave a dangling
+        // composite index.
+        if (Schema::hasTable('flow_runs') && Schema::hasColumn('flow_runs', 'tenant_id')) {
+            Schema::table('flow_runs', function (Blueprint $table): void {
+                $table->dropUnique('flow_runs_tenant_idempotency_unique');
+                $table->unique('idempotency_key');
+            });
+        }
 
-        foreach ($tenantAwareTables as $tableName) {
+        foreach (self::TENANT_AWARE_TABLES as $tableName) {
             if (! Schema::hasTable($tableName)) {
                 continue;
             }
@@ -73,7 +93,7 @@ return new class extends Migration
             }
 
             Schema::table($tableName, function (Blueprint $table): void {
-                $table->dropIndex([$table->getTable() . '_tenant_id_index']);
+                $table->dropIndex(['tenant_id']);
                 $table->dropColumn('tenant_id');
             });
         }
