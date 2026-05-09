@@ -63,39 +63,53 @@ class CanonicalIndexerJob implements ShouldQueue
 
     public function handle(): void
     {
-        // PR #115 review iteration 1 — re-bind TenantContext FIRST so the
-        // soft-delete scope, BelongsToTenant trait, and any other tenant-
-        // scoped query inside this handler operate against the right
-        // tenant. The queue worker boots with the default tenant; without
-        // this re-bind a non-default-tenant doc would be invisible to
-        // KnowledgeDocument::find() here once R30 hardens the read scope.
-        app(TenantContext::class)->set($this->tenantId);
+        // PR #115 review iteration 2 (R30) — capture the previous tenant
+        // BEFORE we mutate the singleton and ALWAYS restore in `finally`.
+        // Long-lived queue workers drain many jobs per PHP boot; without
+        // restore-on-exit, this job's tenant bleeds into the next job's
+        // worker context and BelongsToTenant's `creating` auto-fill writes
+        // rows under the wrong tenant.
+        $tenantContext = app(TenantContext::class);
+        $previousTenant = $tenantContext->current();
+        try {
+            // PR #115 review iteration 1 — re-bind TenantContext FIRST so the
+            // soft-delete scope, BelongsToTenant trait, and any other tenant-
+            // scoped query inside this handler operate against the right
+            // tenant. The queue worker boots with the default tenant; without
+            // this re-bind a non-default-tenant doc would be invisible to
+            // KnowledgeDocument::find() here once R30 hardens the read scope.
+            $tenantContext->set($this->tenantId);
 
-        $doc = KnowledgeDocument::find($this->documentId);
-        if ($doc === null) {
-            return;
-        }
-        if (! $doc->is_canonical) {
-            return;
-        }
-        if ($doc->slug === null || $doc->canonical_type === null) {
-            return;
-        }
-        // Do not index a doc that has already been archived — the ingest
-        // pipeline marks prior versions as `archived` when a newer version
-        // takes over, and retrieval filters them out. Indexing the archived
-        // row would rebuild the graph from stale content.
-        if ($doc->status === 'archived') {
-            return;
-        }
+            $doc = KnowledgeDocument::find($this->documentId);
+            if ($doc === null) {
+                return;
+            }
+            if (! $doc->is_canonical) {
+                return;
+            }
+            if ($doc->slug === null || $doc->canonical_type === null) {
+                return;
+            }
+            // Do not index a doc that has already been archived — the ingest
+            // pipeline marks prior versions as `archived` when a newer version
+            // takes over, and retrieval filters them out. Indexing the archived
+            // row would rebuild the graph from stale content.
+            if ($doc->status === 'archived') {
+                return;
+            }
 
-        DB::transaction(function () use ($doc) {
-            $this->replaceEdgesFor($doc);
-            $this->upsertSelfNode($doc);
-            $this->createEdgesFromFrontmatter($doc);
-            $this->createEdgesFromChunks($doc);
-            $this->writeAuditRow($doc);
-        });
+            DB::transaction(function () use ($doc) {
+                $this->replaceEdgesFor($doc);
+                $this->upsertSelfNode($doc);
+                $this->createEdgesFromFrontmatter($doc);
+                $this->createEdgesFromChunks($doc);
+                $this->writeAuditRow($doc);
+            });
+        } finally {
+            // Restore even on exception/throw so a failing job never leaves
+            // the singleton stuck on this job's tenant for the next one.
+            $tenantContext->set($previousTenant);
+        }
     }
 
     // -----------------------------------------------------------------

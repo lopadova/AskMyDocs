@@ -100,70 +100,84 @@ class IngestDocumentJob implements ShouldQueue
 
     public function handle(TenantContext $tenantContext): void
     {
-        // PR #115 review iteration 1 — re-bind TenantContext FIRST in the
-        // worker process from the property captured at dispatch time. All
-        // downstream code in the saga (Flow steps, DocumentIngestor,
-        // BelongsToTenant trait) reads the active tenant via
-        // TenantContext::current(); without this re-bind every tenant-
-        // aware insert would silently land under 'default'.
-        $tenantContext->set($this->tenantId);
+        // PR #115 review iteration 2 (R30) — capture the previous tenant
+        // BEFORE we mutate the singleton and ALWAYS restore it in `finally`.
+        // Queue workers (Horizon + plain Laravel queue) are long-lived: a
+        // single PHP process drains many jobs in sequence. TenantContext is
+        // a container singleton, so without restore-on-exit, job A's tenant
+        // bleeds into job B's worker boot — a cross-tenant write hazard via
+        // BelongsToTenant's `creating` auto-fill.
+        $previousTenant = $tenantContext->current();
+        try {
+            // PR #115 review iteration 1 — re-bind TenantContext FIRST in the
+            // worker process from the property captured at dispatch time. All
+            // downstream code in the saga (Flow steps, DocumentIngestor,
+            // BelongsToTenant trait) reads the active tenant via
+            // TenantContext::current(); without this re-bind every tenant-
+            // aware insert would silently land under 'default'.
+            $tenantContext->set($this->tenantId);
 
-        $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
-        $mimeType = $this->mimeType ?? 'text/markdown';
+            $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
+            $mimeType = $this->mimeType ?? 'text/markdown';
 
-        $run = Flow::execute(
-            IngestDocumentFlow::NAME,
-            [
-                // R30/R31 — the tenant_id rides along the input bag so each
-                // step can re-bind it on the request-scoped TenantContext
-                // before any tenant-aware Eloquent query runs. We use the
-                // PROPERTY rather than TenantContext::current() so the
-                // value matches the captured-at-dispatch tenant, even if
-                // some other code mutated the context after handle() ran
-                // its set() above.
-                'tenant_id' => $this->tenantId,
+            $run = Flow::execute(
+                IngestDocumentFlow::NAME,
+                [
+                    // R30/R31 — the tenant_id rides along the input bag so each
+                    // step can re-bind it on the request-scoped TenantContext
+                    // before any tenant-aware Eloquent query runs. We use the
+                    // PROPERTY rather than TenantContext::current() so the
+                    // value matches the captured-at-dispatch tenant, even if
+                    // some other code mutated the context after handle() ran
+                    // its set() above.
+                    'tenant_id' => $this->tenantId,
+                    'project_key' => $this->projectKey,
+                    'source_path' => $this->relativePath,
+                    'disk' => $this->disk,
+                    'title' => $title,
+                    'metadata' => $this->metadata,
+                    'mime_type' => $mimeType,
+                ],
+                FlowExecutionOptions::make(
+                    // Tenant-scoped idempotency. version_hash isn't available
+                    // pre-read; the inner DocumentIngestor::findExistingVersion()
+                    // handles content-level dedup, so re-dispatching the same
+                    // path under the same tenant short-circuits at the engine
+                    // level (existing FlowRun returned).
+                    idempotencyKey: $this->buildIdempotencyKey($this->tenantId),
+                    correlationId: $this->tenantId,
+                ),
+            );
+
+            // Engine status taxonomy: succeeded | failed | compensated |
+            // aborted | paused. Anything other than `succeeded` means the
+            // saga did not complete, so we re-throw to drive Laravel's
+            // $tries / backoff retry semantics.
+            if ($run->status !== \Padosoft\LaravelFlow\FlowRun::STATUS_SUCCEEDED) {
+                $failedStep = $run->failedStep ?? '(unknown)';
+                throw new \RuntimeException(
+                    "IngestDocumentFlow [{$run->status}] at step [{$failedStep}] for {$this->disk}:{$this->relativePath}"
+                );
+            }
+
+            $persistResult = $run->stepResults['persist-chunks'] ?? null;
+            $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
+                ? ($persistResult->output['knowledge_document_id'] ?? null)
+                : null;
+
+            Log::info('IngestDocumentJob completed', [
+                'document_id' => $documentId,
+                'flow_run_id' => $run->id,
                 'project_key' => $this->projectKey,
                 'source_path' => $this->relativePath,
+                'source_type' => SourceType::fromMime($mimeType)->value,
                 'disk' => $this->disk,
-                'title' => $title,
-                'metadata' => $this->metadata,
-                'mime_type' => $mimeType,
-            ],
-            FlowExecutionOptions::make(
-                // Tenant-scoped idempotency. version_hash isn't available
-                // pre-read; the inner DocumentIngestor::findExistingVersion()
-                // handles content-level dedup, so re-dispatching the same
-                // path under the same tenant short-circuits at the engine
-                // level (existing FlowRun returned).
-                idempotencyKey: $this->buildIdempotencyKey($this->tenantId),
-                correlationId: $this->tenantId,
-            ),
-        );
-
-        // Engine status taxonomy: succeeded | failed | compensated |
-        // aborted | paused. Anything other than `succeeded` means the
-        // saga did not complete, so we re-throw to drive Laravel's
-        // $tries / backoff retry semantics.
-        if ($run->status !== \Padosoft\LaravelFlow\FlowRun::STATUS_SUCCEEDED) {
-            $failedStep = $run->failedStep ?? '(unknown)';
-            throw new \RuntimeException(
-                "IngestDocumentFlow [{$run->status}] at step [{$failedStep}] for {$this->disk}:{$this->relativePath}"
-            );
+            ]);
+        } finally {
+            // Restore even on exception/throw so a failing job never leaves
+            // the singleton stuck on this job's tenant for the next one.
+            $tenantContext->set($previousTenant);
         }
-
-        $persistResult = $run->stepResults['persist-chunks'] ?? null;
-        $documentId = $persistResult instanceof \Padosoft\LaravelFlow\FlowStepResult
-            ? ($persistResult->output['knowledge_document_id'] ?? null)
-            : null;
-
-        Log::info('IngestDocumentJob completed', [
-            'document_id' => $documentId,
-            'flow_run_id' => $run->id,
-            'project_key' => $this->projectKey,
-            'source_path' => $this->relativePath,
-            'source_type' => SourceType::fromMime($mimeType)->value,
-            'disk' => $this->disk,
-        ]);
     }
 
     public function failed(\Throwable $exception): void

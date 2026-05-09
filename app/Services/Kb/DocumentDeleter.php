@@ -263,14 +263,25 @@ class DocumentDeleter
      */
     private function cascadeGraphFor(KnowledgeDocument $document): void
     {
+        // R30/R31 — slug + doc_id are tenant-scoped per CLAUDE.md R10. Two
+        // tenants may legitimately share the same `(project_key, doc_id)` /
+        // `(project_key, slug)` combination; deleting tenant A's document
+        // must NOT cascade-delete tenant B's graph nodes. The composite FK
+        // on `kb_edges.(project_key, from/to_node_uid)` cascades the edges
+        // for whichever node is removed — bounding the node delete by
+        // tenant is sufficient.
+        $tenantId = (string) $document->tenant_id;
+
         if ($document->doc_id !== null) {
-            KbNode::where('project_key', $document->project_key)
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $document->project_key)
                 ->where('source_doc_id', $document->doc_id)
                 ->delete();
             return;
         }
         if ($document->slug !== null) {
-            KbNode::where('project_key', $document->project_key)
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $document->project_key)
                 ->where('node_uid', $document->slug)
                 ->delete();
             return;

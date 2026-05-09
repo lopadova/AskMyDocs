@@ -160,9 +160,18 @@ class DocumentIngestor
     // lookup
     // -----------------------------------------------------------------
 
+    /**
+     * R30/R31 — tenant-scoped lookup. Two tenants may legitimately ingest the
+     * same `(project_key, source_path)` with the same content (and therefore
+     * the same SHA-256 `version_hash`); without the tenant filter the second
+     * tenant's ingest would find tenant A's row, treat it as an idempotent
+     * no-op, and bump tenant A's `indexed_at` instead of creating tenant B's
+     * row. Closes the cross-tenant leak Copilot flagged on PR #115 iteration 2.
+     */
     private function findExistingVersion(string $projectKey, string $sourcePath, string $versionHash): ?KnowledgeDocument
     {
-        return KnowledgeDocument::where('project_key', $projectKey)
+        return KnowledgeDocument::forTenant(app(TenantContext::class)->current())
+            ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->where('version_hash', $versionHash)
             ->first();
@@ -336,6 +345,8 @@ class DocumentIngestor
             $this->vacateCanonicalIdentifiersOnPreviousVersions($projectKey, $sourcePath, $versionHash);
         }
 
+        $tenantId = app(TenantContext::class)->current();
+
         $attributes = $this->buildDocumentAttributes(
             $title,
             $mimeType,
@@ -344,8 +355,15 @@ class DocumentIngestor
             $documentHash,
             $canonical,
         );
+        // R30/R31 — tenant_id is part of the lookup keys so two tenants
+        // ingesting the same `(project_key, source_path, version_hash)`
+        // tuple produce two distinct rows instead of one tenant clobbering
+        // the other. The BelongsToTenant trait would auto-fill tenant_id on
+        // a fresh insert, but updateOrCreate's lookup phase ignores it
+        // unless we pass it explicitly.
         $document = KnowledgeDocument::updateOrCreate(
             [
+                'tenant_id' => $tenantId,
                 'project_key' => $projectKey,
                 'source_path' => $sourcePath,
                 'version_hash' => $versionHash,
@@ -375,7 +393,11 @@ class DocumentIngestor
         string $sourcePath,
         string $newVersionHash,
     ): void {
-        KnowledgeDocument::where('project_key', $projectKey)
+        // R30/R31 — scope by tenant_id so vacating a re-ingest's prior
+        // versions never accidentally nulls another tenant's canonical
+        // identifiers (slug + doc_id are tenant-scoped per CLAUDE.md R10).
+        KnowledgeDocument::forTenant(app(TenantContext::class)->current())
+            ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->where('version_hash', '!=', $newVersionHash)
             ->update([
@@ -467,7 +489,11 @@ class DocumentIngestor
 
     private function archivePreviousVersions(string $projectKey, string $sourcePath, int $currentDocumentId): void
     {
+        // R30/R31 — scope by tenant_id so a re-ingest under tenant A never
+        // archives the same `(project_key, source_path)` row owned by
+        // tenant B. project_key + source_path are NOT globally unique.
         KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->where('source_path', $sourcePath)
             ->where('id', '!=', $currentDocumentId)
