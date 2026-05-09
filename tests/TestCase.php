@@ -86,6 +86,21 @@ abstract class TestCase extends OrchestraTestCase
         // persistence.enabled knob; the package SP merges the rest.
         $app['config']->set('laravel-flow', require __DIR__.'/../config/laravel-flow.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
+        // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
+        // cache lock store (FlowEngine rejects ArrayStore as process-local).
+        // Wire up a per-test-process file cache store + point laravel-flow's
+        // queue.lock_store at it. The directory lives under the system temp
+        // and is unique per PHPUnit run so parallel processes do not collide.
+        $flowLockPath = sys_get_temp_dir().'/askmydocs-flow-locks-'.getmypid();
+        // R7 — no @-silenced mkdir; race-tolerant + check return.
+        if (! is_dir($flowLockPath) && ! mkdir($flowLockPath, 0o755, true) && ! is_dir($flowLockPath)) {
+            throw new \RuntimeException("TestCase: failed to create flow lock directory: {$flowLockPath}");
+        }
+        $app['config']->set('cache.stores.flow_lock', [
+            'driver' => 'file',
+            'path' => $flowLockPath,
+        ]);
+        $app['config']->set('laravel-flow.queue.lock_store', 'flow_lock');
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)

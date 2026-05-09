@@ -5,6 +5,7 @@ namespace App\Services\Kb;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
+use App\Support\KbPath;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -166,6 +167,70 @@ class DocumentDeleter
     }
 
     /**
+     * DB+graph hard delete: chunks cascade + canonical graph cascade +
+     * deprecation audit, but PRESERVES the physical file on disk.
+     *
+     * Used by {@see \App\Flow\Definitions\DeleteDocumentFlow}'s
+     * `hard-delete-rows` step so the file removal step can run as a
+     * separate Flow step (with its own observability + dry-run handling)
+     * AFTER the DB rows are gone.
+     *
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null, disk: string, full_path: string}
+     */
+    public function deleteRowsOnly(KnowledgeDocument $document): array
+    {
+        $documentId = (int) $document->id;
+        $projectKey = (string) $document->project_key;
+        $sourcePath = (string) $document->source_path;
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        // R1 — every KB source path goes through KbPath::normalize() so
+        // the resulting key is byte-identical to what the ingest pipeline
+        // wrote (collapses `//`, normalizes `\\`, rejects `..` traversal).
+        // Mirrors CanonicalWriter::applyPathPrefix(). Iteration 4 (PR #116)
+        // — resolveFullPath now returns null on un-normalisable input;
+        // expose the bad path on the response so DeleteDocumentFlow's
+        // file-removal step can report file_deleted=false uniformly
+        // without ever attempting a disk write on a tainted key.
+        $fullPath = $this->resolveFullPath($prefix, $sourcePath);
+
+        $canonicalSnapshot = $this->canonicalSnapshot($document);
+
+        DB::transaction(function () use ($document) {
+            $document->chunks()->delete();
+            $this->cascadeGraphFor($document);
+            $document->forceDelete();
+            $this->writeDeprecationAudit($document);
+        });
+
+        return [
+            'mode' => 'hard_rows_only',
+            'document_id' => $documentId,
+            'project_key' => $projectKey,
+            'source_path' => $sourcePath,
+            'file_deleted' => false,
+            'canonical' => $canonicalSnapshot,
+            'disk' => $disk,
+            'full_path' => (string) ($fullPath ?? ''),
+        ];
+    }
+
+    /**
+     * Remove a previously-recorded file from a disk. Public wrapper around
+     * the private {@see removeFile()} helper used by the legacy
+     * `forceDelete()` path so {@see \App\Flow\Definitions\DeleteDocumentFlow}
+     * can express the file removal as its own Flow step.
+     */
+    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
+    {
+        return $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+    }
+
+    /**
      * Hard-delete every document whose deleted_at is older than $before.
      * Returns the number of documents purged.
      */
@@ -224,7 +289,12 @@ class DocumentDeleter
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
-        $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+        // R1 — same KbPath::normalize() guard as deleteRowsOnly().
+        // Iteration 4 (PR #116) — resolveFullPath returns null when the
+        // path is un-normalisable (traversal, empty); skip the disk
+        // delete entirely in that case rather than handing
+        // Storage::delete() an attacker-controlled key.
+        $fullPath = $this->resolveFullPath($prefix, $sourcePath);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
 
@@ -237,7 +307,9 @@ class DocumentDeleter
             $this->writeDeprecationAudit($document);
         });
 
-        $fileDeleted = $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+        $fileDeleted = $fullPath === null
+            ? false
+            : $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
 
         return [
             'mode' => 'hard',
@@ -324,6 +396,40 @@ class DocumentDeleter
             'after_json' => null,
             'metadata_json' => ['source_path' => $document->source_path],
         ]);
+    }
+
+    /**
+     * R1 — apply the canonical KB path-normalisation rules so the disk
+     * key we hand to {@see Storage::delete()} is byte-identical to what
+     * the ingest path wrote (no double slashes, no `.`/`..` traversal,
+     * `\\` → `/`). Mirrors {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}.
+     *
+     * Iteration 4 (PR #116) — R1 + R4 + R14. Returns `null` when the input
+     * cannot be normalised (empty path, `.`, `..` traversal segment).
+     * Callers MUST treat null as "do not touch the disk" — the previous
+     * fallback to a hand-built `ltrim()` chain DEFEATED KbPath's
+     * traversal guard by handing the un-normalised path back to
+     * {@see Storage::delete()}, blowing the radius open to attacker-
+     * controlled writes. Better silent no-op than blast-radius write.
+     */
+    private function resolveFullPath(string $prefix, string $sourcePath): ?string
+    {
+        try {
+            if ($prefix === '') {
+                return KbPath::normalize($sourcePath);
+            }
+            return KbPath::normalize($prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException $e) {
+            // Caught traversal/empty path; refuse to delete with the
+            // un-normalized path. R4: surface the refusal in the log so
+            // operators can investigate the bad metadata.
+            Log::warning('DocumentDeleter: refusing file delete on un-normalizable path', [
+                'source_path' => $sourcePath,
+                'prefix' => $prefix,
+                'reason' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
