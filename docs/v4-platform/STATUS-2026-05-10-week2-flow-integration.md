@@ -3,7 +3,7 @@
 W2 of the v4.2 cycle migrates AskMyDocs's multi-step background pipelines
 onto `padosoft/laravel-flow` v1.0 (saga / compensation engine), graduating
 the package from `require-dev` v0.1 (vendored, zero call sites in v4.0)
-to `require` v^1.0 with **8 Flow definitions** orchestrating the entire
+to `require` v^1.0 with **9 Flow definitions** orchestrating the entire
 ingest, canonical-graph, promotion, delete, and scheduled-maintenance
 surface area.
 
@@ -21,14 +21,23 @@ milestone). Closure SHA pinned in §RC tag below.
 
 **Cycle-wide test count delta on `feature/v4.2` HEAD:** 1198 (start of W2) → 1306 (end of W2) — **+108 new tests**, all green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E.
 
-## Flow definitions registered (8 total at end of W2)
+## Flow definitions registered (9 total at end of W2)
+
+The table reflects what `App\Providers\FlowServiceProvider::registerDefinitions()`
+actually registers and what the corresponding callers actually pass to
+`FlowExecutionOptions::make()`. Where the column reads "—" for the
+idempotency key, the caller intentionally passes only `correlationId`
+(typically the tenant id) so re-runs always re-execute — for `kb.promote`
+because each promotion is a deliberate operator action, and for `kb.delete`
+because the underlying state mutation is itself idempotent (soft-delete +
+forceDelete).
 
 | Definition | Steps | Approval gate | Compensator(s) | Idempotency-key shape |
 |---|---|---|---|---|
-| `kb.ingest` | 5 | — | `RollbackChunksCompensator` | `{tenant}:{project}:{source_path}:{version_hash}` |
-| `kb.canonical-index` | 3 | — | `RollbackCanonicalNodesCompensator` | `canonical-index:{tenant}:{doc_id}:{version_hash}` (or `+nonce` when `forceReindex=true`) |
-| `kb.promote` | 4 | `approval-gate` (always) | `DeleteCanonicalMarkdownCompensator` | `promote:{tenant}:{slug}:{hash(markdown)}` |
-| `kb.delete` | 4 | — | `RestoreSoftDeletedCompensator` | `delete:{tenant}:{doc_id}` |
+| `kb.ingest` | 5 | — | `RollbackChunksCompensator` | `{tenant}:{project}:{relative_path}` (SHA-256-hashed tail when raw key > 200 chars; `version_hash` is intentionally excluded — saga must dedupe before parse-step reads bytes) |
+| `kb.canonical-index` | 3 | — | `RollbackCanonicalNodesCompensator` | `canonical-index:{tenant}:{doc_id}:{version_hash}` (or `+hrtime nonce` when `forceReindex=true`, used by `kb:rebuild-graph`) |
+| `kb.promote` | 4 | `approval-gate` (always) | `DeleteCanonicalMarkdownCompensator` | — (only `correlationId={tenant}`; promotions are deliberate operator actions, never auto-replayed) |
+| `kb.delete` | 4 | — | `RestoreSoftDeletedCompensator` | — (only `correlationId={tenant}`; soft-delete + forceDelete are idempotent at the data layer) |
 | `kb.prune-deleted` | 2 | — | none (irreversible by design) | `prune-deleted:{tenant}:{cutoff_iso}` |
 | `kb.prune-embedding-cache` | 3 | conditional via `paused()` | none (cache rebuilds on miss) | `prune-embedding-cache:{tenant}:{cutoff_iso}` |
 | `kb.prune-chat-logs` | 2 | — | none (operational telemetry) | `prune-chat-logs:{tenant}:{cutoff_iso}` |
