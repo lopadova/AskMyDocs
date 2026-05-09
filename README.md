@@ -3340,6 +3340,64 @@ Use [GitHub Issues](../../issues). Please include:
 
 ## Changelog
 
+### v4.2.0-rc1 — 2026-05-09 (W1 milestone — sister-package alignment kickoff)
+
+First release candidate of the **v4.2 cycle** — a focused alignment
+window that brings every `padosoft/*` sister package onto its
+freshly-shipped stable v1.0+ line. Between 2026-05-05 and 2026-05-09,
+all nine sister packages graduated to v1.0+ on GitHub; AskMyDocs was
+on the v0.2 / v1.1 era. v4.2 follows R37 (dedicated
+`feature/v4.2` integration branch, sub-branches per package) and R39
+(per-Wn weekly RC tag at the immutable closure SHA). Patent Box
+tracker stays external per the v4.1.0 GA decision documented in PR #110; the cycle
+covers seven packages (regolo, pii-redactor + admin, flow + admin,
+eval-harness + admin).
+
+**What's new in AskMyDocs v4.2.0-rc1 (W1 — version bumps for
+already-wired packages):**
+
+- **W1 / sub-PR 1** — `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`.
+  Pure stability promotion: regolo v1.0.0 ships the **same commit
+  SHA** as v0.2.3 (zero file diff,
+  `gh api repos/padosoft/laravel-ai-regolo/compare/v0.2.3...1.0.0`
+  returns `total_commits: 0`). v0.2.3 release notes confirm "public
+  API surface unchanged from v0.2.2". `RegoloProvider`,
+  `RegoloAnonymousAgent`, `AiManager`'s regolo `match` arm all
+  unchanged. Full PHPUnit suite (1082 tests / 3343 assertions) green.
+  PR #111.
+- **W1 / sub-PR 2** — `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`.
+  Drop-in upgrade per upstream CHANGELOG (zero breaking changes, no
+  new config knobs, no new middleware, no new artisan commands). v1.2
+  only **adds** 6 admin-readiness inspector classes that the upcoming
+  W4 sub-PR 5 (`laravel-pii-redactor-admin` SPA wiring) will consume:
+  `RedactorAdminInspector`, `RedactionStrategyFactory`,
+  `DetectionReportFormatter`, `TokenResolutionService` +
+  `DetokeniseResult`, `CustomRulePackInspector`. Existing four
+  touch-points (chat middleware, embedding pre-redact, AI-insights
+  snippet sanitiser, operator detokenize endpoint) keep working
+  unchanged. PR #112.
+- **(this PR)** v4.2/W1 closure docs — adds this Changelog entry,
+  cleans up the v4.0-era stale `Sister packages composer constraints`
+  JSON snippet so it matches the actual current `composer.json`
+  (pii-redactor moved from `require-dev` `^0.1.0` to `require` `^1.2`
+  during the v4.1 cycle; regolo bumped to `^1.0` in W1).
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc1:**
+- #111 v4.2/W1 — bump `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`
+- #112 v4.2/W1 — bump `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`
+- (this PR) v4.2/W1 closure — Changelog entry + composer-snippet
+  doc-rot fix
+
+**v4.2 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | regolo v1.0 + pii-redactor v1.2 | `v4.2.0-rc1` |
+| W2 | `padosoft/laravel-flow` v1.0 + `IngestDocumentJob` refactor onto Flow definition (saga / compensation) | `v4.2.0-rc2` |
+| W3 | `padosoft/eval-harness` v1.2 + RAG regression CI gate | `v4.2.0-rc3` |
+| W4 | Three admin SPAs (`laravel-pii-redactor-admin`, `laravel-flow-admin`, `eval-harness-admin`) | `v4.2.0-rc4` |
+| W5 | RC acceptance + `feature/v4.2` → `main` GA merge | **`v4.2.0` GA** |
+
 ### v4.1.0-rc1 — 2026-05-03 (W4.1 milestone — `padosoft/laravel-pii-redactor` integration)
 
 First release candidate of the v4.1 cycle. Wires
@@ -3439,13 +3497,15 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 
 **Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo` and `padosoft/laravel-pii-redactor:^1.2` are both in `require` (load-bearing for the chat path and for the v4.1 PII redactor integration respectively; v1.2 ships 6 admin-readiness inspectors that the v4.2 admin SPA wires); `padosoft/laravel-flow` and `padosoft/eval-harness` are in `require-dev` (scoped for v4.2 / v4.3 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
-"require": {
-    "padosoft/laravel-ai-regolo":          "^1.0"
-},
-"require-dev": {
-    "padosoft/laravel-flow":               "^0.1.0",
-    "padosoft/eval-harness":               "^0.1.0",
-    "padosoft/laravel-pii-redactor":       "^0.1.0"
+{
+    "require": {
+        "padosoft/laravel-ai-regolo":          "^1.0",
+        "padosoft/laravel-pii-redactor":       "^1.2"
+    },
+    "require-dev": {
+        "padosoft/laravel-flow":               "^0.1.0",
+        "padosoft/eval-harness":               "^0.1.0"
+    }
 }
 ```
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
