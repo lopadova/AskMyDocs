@@ -124,6 +124,48 @@ class DocumentDeleter
     }
 
     /**
+     * DB-only hard delete: removes the document row + chunks (FK cascade)
+     * + canonical graph nodes/edges (cascadeGraphFor) + writes the
+     * deprecation audit row, but PRESERVES the physical file on disk.
+     *
+     * Use this from saga compensators where the source file was NOT
+     * created by the failing flow — destroying the source-of-truth on
+     * disk because of a transient downstream failure (e.g. canonical
+     * indexer dispatch failure) is data loss.
+     *
+     * Per Copilot PR #115 review iteration 1 (R4 + R14 — never silently
+     * destroy operator-supplied data on a recoverable failure).
+     *
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null}
+     */
+    public function deleteDbOnly(KnowledgeDocument $document): array
+    {
+        $documentId = (int) $document->id;
+        $projectKey = (string) $document->project_key;
+        $sourcePath = (string) $document->source_path;
+
+        $canonicalSnapshot = $this->canonicalSnapshot($document);
+
+        DB::transaction(function () use ($document) {
+            // Explicit chunk delete keeps the intent clear even though the FK
+            // cascade would do the same thing.
+            $document->chunks()->delete();
+            $this->cascadeGraphFor($document);
+            $document->forceDelete();
+            $this->writeDeprecationAudit($document);
+        });
+
+        return [
+            'mode' => 'hard_db_only',
+            'document_id' => $documentId,
+            'project_key' => $projectKey,
+            'source_path' => $sourcePath,
+            'file_deleted' => false,
+            'canonical' => $canonicalSnapshot,
+        ];
+    }
+
+    /**
      * Hard-delete every document whose deleted_at is older than $before.
      * Returns the number of documents purged.
      */
@@ -221,14 +263,25 @@ class DocumentDeleter
      */
     private function cascadeGraphFor(KnowledgeDocument $document): void
     {
+        // R30/R31 — slug + doc_id are tenant-scoped per CLAUDE.md R10. Two
+        // tenants may legitimately share the same `(project_key, doc_id)` /
+        // `(project_key, slug)` combination; deleting tenant A's document
+        // must NOT cascade-delete tenant B's graph nodes. The composite FK
+        // on `kb_edges.(project_key, from/to_node_uid)` cascades the edges
+        // for whichever node is removed — bounding the node delete by
+        // tenant is sufficient.
+        $tenantId = (string) $document->tenant_id;
+
         if ($document->doc_id !== null) {
-            KbNode::where('project_key', $document->project_key)
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $document->project_key)
                 ->where('source_doc_id', $document->doc_id)
                 ->delete();
             return;
         }
         if ($document->slug !== null) {
-            KbNode::where('project_key', $document->project_key)
+            KbNode::where('tenant_id', $tenantId)
+                ->where('project_key', $document->project_key)
                 ->where('node_uid', $document->slug)
                 ->delete();
             return;

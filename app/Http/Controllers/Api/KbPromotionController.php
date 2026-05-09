@@ -137,7 +137,9 @@ class KbPromotionController extends Controller
         }
 
         $title = $validated['title'] ?? ($this->firstHeading($parsed->body) ?? ((string) $parsed->slug));
-        IngestDocumentJob::dispatch(
+        // PR #115 review iteration 1 — capture TenantContext at
+        // dispatch time (R30/R31).
+        IngestDocumentJob::dispatchForCurrentTenant(
             projectKey: $validated['project_key'],
             relativePath: $relativePath,
             disk: (string) config('kb.sources.disk', 'kb'),

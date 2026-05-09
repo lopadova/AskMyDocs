@@ -28,9 +28,18 @@ abstract class TestCase extends OrchestraTestCase
         // in feature tests for the `redact-chat-pii` middleware.
         $app->register(\Padosoft\PiiRedactor\PiiRedactorServiceProvider::class);
 
+        // v4.2/W2 — laravel-flow saga engine. Registered before
+        // App\Providers\FlowServiceProvider so the FlowEngine singleton
+        // is available when the in-app definition registry boots.
+        $app->register(\Padosoft\LaravelFlow\LaravelFlowServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // v4.2/W2 — IngestDocumentFlow definition + FlowRunRecord
+        // tenant_id stamping hook. Registered after AppServiceProvider
+        // because it depends on the TenantContext singleton it binds.
+        $app->register(\App\Providers\FlowServiceProvider::class);
         // Sanctum powers the JSON auth endpoints exercised by
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.
@@ -71,6 +80,12 @@ abstract class TestCase extends OrchestraTestCase
         // reads at every preview/run call. Without this set, tests get a
         // null config array and every command looks unknown (404).
         $app['config']->set('admin', require __DIR__.'/../config/admin.php');
+        // v4.2/W2 — laravel-flow needs persistence enabled for the
+        // kb.ingest end-to-end tests (idempotency lookup, flow_runs +
+        // flow_steps + flow_audit row assertions). Override only the
+        // persistence.enabled knob; the package SP merges the rest.
+        $app['config']->set('laravel-flow', require __DIR__.'/../config/laravel-flow.php');
+        $app['config']->set('laravel-flow.persistence.enabled', true);
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)

@@ -68,10 +68,16 @@ class KbRebuildGraphCommand extends Command
         $dispatched = 0;
         $query->orderBy('id')->chunkById(100, function ($docs) use (&$dispatched, $sync) {
             foreach ($docs as $doc) {
+                // PR #115 review iteration 1 — propagate tenant_id from
+                // the doc itself so the indexer worker re-binds the
+                // correct tenant context (R30/R31). The CLI may run with
+                // 'default' tenant while iterating across all tenants'
+                // canonical docs.
+                $tenantId = (string) ($doc->tenant_id ?? 'default');
                 if ($sync) {
-                    (new CanonicalIndexerJob($doc->id))->handle();
+                    (new CanonicalIndexerJob($doc->id, $tenantId))->handle();
                 } else {
-                    CanonicalIndexerJob::dispatch($doc->id);
+                    CanonicalIndexerJob::dispatch($doc->id, $tenantId);
                 }
                 $dispatched++;
             }
