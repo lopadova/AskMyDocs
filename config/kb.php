@@ -24,6 +24,17 @@ return [
         | Entries whose `last_used_at` is older than this are deleted.
         */
         'retention_days' => (int) env('KB_EMBEDDING_CACHE_RETENTION_DAYS', 30),
+
+        /*
+        | v4.2/sub-PR 3d — kb.prune-embedding-cache Flow inserts a
+        | conditional approval gate when the projected eviction count
+        | exceeds this threshold. Keeps small daily evictions flowing
+        | without operator intervention while surfacing large
+        | accidental sweeps (e.g. a misconfigured retention_days) for
+        | review. Set to 0 (or any negative) to disable the gate
+        | entirely (every prune runs without approval).
+        */
+        'approval_threshold' => (int) env('KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD', 5000),
     ],
 
     /*
