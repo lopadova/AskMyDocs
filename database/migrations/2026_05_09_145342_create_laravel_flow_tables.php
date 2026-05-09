@@ -10,6 +10,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('flow_runs')) {
+            return;
+        }
+
         Schema::create('flow_runs', function (Blueprint $table): void {
             $table->string('id', 36)->primary();
             $table->string('definition_name')->index();
@@ -31,7 +35,8 @@ return new class extends Migration
             $table->index(['finished_at', 'id']);
         });
 
-        Schema::create('flow_steps', function (Blueprint $table): void {
+        if (! Schema::hasTable('flow_steps')) {
+            Schema::create('flow_steps', function (Blueprint $table): void {
             $table->id();
             $table->string('run_id', 36);
             $table->unsignedInteger('sequence');
@@ -52,9 +57,11 @@ return new class extends Migration
             $table->unique(['run_id', 'step_name']);
             $table->index(['run_id', 'status']);
             $table->foreign('run_id')->references('id')->on('flow_runs')->cascadeOnDelete();
-        });
+            });
+        }
 
-        Schema::create('flow_audit', function (Blueprint $table): void {
+        if (! Schema::hasTable('flow_audit')) {
+            Schema::create('flow_audit', function (Blueprint $table): void {
             $table->id();
             $table->string('run_id', 36)->index();
             $table->string('step_name')->nullable()->index();
@@ -65,7 +72,8 @@ return new class extends Migration
             $table->timestampTz('created_at')->nullable();
 
             $table->foreign('run_id')->references('id')->on('flow_runs')->cascadeOnDelete();
-        });
+            });
+        }
     }
 
     public function down(): void
