@@ -170,6 +170,118 @@ final class CanonicalIndexFlowTest extends TestCase
         $this->assertSame(1, KbCanonicalAudit::where('tenant_id', 'tenant-b')->count());
     }
 
+    public function test_r30_cross_tenant_edge_updateorcreate_does_not_silently_overwrite(): void
+    {
+        // Iteration 3 — Copilot flagged that PopulateCanonicalEdgesStep::createEdge()
+        // called KbEdge::updateOrCreate() without a tenant scope. The
+        // bare updateOrCreate would MATCH another tenant's row by
+        // (project_key, edge_uid) and silently UPDATE its from/to/source/
+        // tenant_id columns — clean cross-tenant data corruption.
+        //
+        // The fix scopes the lookup via forTenant() AND mirrors tenant_id
+        // in the values array. This test asserts the lookup phase: with
+        // forTenant() applied, an edge owned by tenant-a is INVISIBLE to
+        // a tenant-b query, so the updateOrCreate falls through to INSERT.
+        //
+        // The DB-level UNIQUE on (project_key, edge_uid) is currently
+        // global (not tenant-scoped) so the INSERT then surfaces a
+        // unique-constraint violation — which is the CORRECT, LOUD
+        // outcome (vs. silent overwrite). Surfacing the conflict lets
+        // operators investigate whether the cross-tenant collision is
+        // intentional. The previous behaviour (silent overwrite) was
+        // strictly worse: tenant-a's edge would simply vanish into
+        // tenant-b without any signal.
+        //
+        // We assert tenant-a's row is structurally untouched after the
+        // failed tenant-b write attempt.
+        $tenants = $this->app->make(TenantContext::class);
+
+        // Seed the FK-required nodes (kb_edges has composite FK on
+        // (project_key, from/to_node_uid) → kb_nodes(project_key, node_uid)).
+        // The unique on (project_key, node_uid) is global in the test
+        // schema so only one tenant can hold each node — that's fine for
+        // this test, we don't seed nodes for tenant-b.
+        KbNode::create([
+            'tenant_id' => 'tenant-a',
+            'node_uid' => 'dec-tenant-a',
+            'node_type' => 'decision',
+            'label' => 'dec-tenant-a',
+            'project_key' => 'shared-project',
+            'source_doc_id' => null,
+            'payload_json' => null,
+        ]);
+        KbNode::create([
+            'tenant_id' => 'tenant-a',
+            'node_uid' => 'mod-target-a',
+            'node_type' => 'module',
+            'label' => 'mod-target-a',
+            'project_key' => 'shared-project',
+            'source_doc_id' => null,
+            'payload_json' => null,
+        ]);
+
+        // Seed tenant-a's edge — passes the FK because both nodes exist.
+        KbEdge::create([
+            'tenant_id' => 'tenant-a',
+            'edge_uid' => 'dec-tenant-a->mod-target-a:related_to',
+            'project_key' => 'shared-project',
+            'from_node_uid' => 'dec-tenant-a',
+            'to_node_uid' => 'mod-target-a',
+            'edge_type' => 'related_to',
+            'source_doc_id' => null,
+            'weight' => 1.0,
+            'provenance' => 'manual-seed-tenant-a',
+            'payload_json' => null,
+        ]);
+
+        // Run the same updateOrCreate the step uses, scoped to tenant-b.
+        // With forTenant() applied, no row matches → INSERT, which then
+        // throws on the global (project_key, edge_uid) unique.
+        // Without the fix, the call would silently UPDATE tenant-a's row.
+        $tenants->set('tenant-b');
+        $exceptionThrown = false;
+        try {
+            KbEdge::query()
+                ->forTenant('tenant-b')
+                ->updateOrCreate(
+                    [
+                        'project_key' => 'shared-project',
+                        'edge_uid' => 'dec-tenant-a->mod-target-a:related_to',
+                    ],
+                    [
+                        'tenant_id' => 'tenant-b',
+                        'from_node_uid' => 'dec-tenant-a',
+                        'to_node_uid' => 'mod-target-a',
+                        'edge_type' => 'related_to',
+                        'source_doc_id' => null,
+                        'weight' => 1.0,
+                        'provenance' => 'frontmatter_related',
+                        'payload_json' => null,
+                    ]
+                );
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Either UNIQUE on (project_key, edge_uid) or FK on
+            // (project_key, from/to_node_uid) — both prove the lookup
+            // was scoped to tenant-b (not silently UPDATE-ing tenant-a's
+            // row).
+            $exceptionThrown = true;
+        }
+        $this->assertTrue(
+            $exceptionThrown,
+            'forTenant() must hide tenant-a row → INSERT attempt → constraint violation (loud, not silent overwrite)'
+        );
+
+        // Tenant-a's edge is structurally untouched — provenance still
+        // 'manual-seed-tenant-a' and tenant_id still 'tenant-a'.
+        $aEdge = KbEdge::where('tenant_id', 'tenant-a')
+            ->where('project_key', 'shared-project')
+            ->where('edge_uid', 'dec-tenant-a->mod-target-a:related_to')
+            ->first();
+        $this->assertNotNull($aEdge, 'tenant-a edge must survive');
+        $this->assertSame('manual-seed-tenant-a', (string) $aEdge->provenance);
+        $this->assertSame('tenant-a', (string) $aEdge->tenant_id);
+    }
+
     /**
      * @param  array<string, list<string>>  $derived
      */

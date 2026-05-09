@@ -333,16 +333,45 @@ class KbPromotionController extends Controller
     /**
      * B.1 — return true only when the `approvalId` from the URL maps to
      * an approval row whose stored `token_hash` matches the SHA-256 of
-     * the plain `token` from the body. Uniform false (caller maps to
-     * 403 with no internal detail) for any of: id-not-found, token
-     * mismatch, expired/already-consumed approval. {@see hash_equals}
-     * is constant-time so we don't leak the exact mismatch surface via
-     * timing.
+     * the plain `token` from the body AND the row is still
+     * actionable. Uniform false (caller maps to 403 with no internal
+     * detail) for any of:
+     *
+     *   - id-not-found
+     *   - token mismatch
+     *   - status != 'pending' (already approved/rejected/expired)
+     *   - consumed_at IS NOT NULL (token already consumed)
+     *   - decided_at IS NOT NULL (decision already recorded)
+     *   - expires_at IS NOT NULL AND expires_at <= now() (expired)
+     *
+     * {@see hash_equals} is constant-time so we don't leak the exact
+     * mismatch surface via timing. The order of checks is deliberately
+     * uniform — every path returns the same `false` so the caller
+     * cannot infer which condition failed (mitigates token-fishing /
+     * replay-attack reconnaissance).
+     *
+     * Iteration 3 (PR #116) — Copilot flagged that the docblock promised
+     * uniform false for expired/already-consumed but the code only
+     * verified the hash. A replayed token could pass this gate, then
+     * Flow::resume() / Flow::reject() may either succeed (replay) or
+     * fail with a revealing error message.
      */
     private function approvalIdMatchesToken(string $approvalId, string $plainToken): bool
     {
         $row = FlowApprovalRecord::query()->find($approvalId);
         if ($row === null) {
+            return false;
+        }
+        if ((string) $row->status !== FlowApprovalRecord::STATUS_PENDING) {
+            return false;
+        }
+        if ($row->consumed_at !== null) {
+            return false;
+        }
+        if ($row->decided_at !== null) {
+            return false;
+        }
+        if ($row->expires_at !== null && $row->expires_at->getTimestamp() <= time()) {
             return false;
         }
         $expectedHash = (string) $row->token_hash;

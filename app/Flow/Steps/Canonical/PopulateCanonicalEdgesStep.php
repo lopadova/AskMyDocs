@@ -74,7 +74,7 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
 
         DB::transaction(function () use ($document, $tenantId, &$createdEdgeIds): void {
             $this->replaceEdgesFor($document, $tenantId);
-            $this->createEdgesFromFrontmatter($document, $createdEdgeIds);
+            $this->createEdgesFromFrontmatter($document, $tenantId, $createdEdgeIds);
             $this->createEdgesFromChunks($document, $tenantId, $createdEdgeIds);
         });
 
@@ -123,18 +123,18 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
     /**
      * @param  list<int>  $createdEdgeIds
      */
-    private function createEdgesFromFrontmatter(KnowledgeDocument $doc, array &$createdEdgeIds): void
+    private function createEdgesFromFrontmatter(KnowledgeDocument $doc, string $tenantId, array &$createdEdgeIds): void
     {
         $derived = $this->derivedSlugLists($doc);
 
         foreach ($derived['related_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::RelatedTo, 'frontmatter_related', $createdEdgeIds);
+            $this->createEdge($doc, $tenantId, $target, EdgeType::RelatedTo, 'frontmatter_related', $createdEdgeIds);
         }
         foreach ($derived['supersedes_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::Supersedes, 'frontmatter_supersedes', $createdEdgeIds);
+            $this->createEdge($doc, $tenantId, $target, EdgeType::Supersedes, 'frontmatter_supersedes', $createdEdgeIds);
         }
         foreach ($derived['superseded_by_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::InvalidatedBy, 'frontmatter_superseded_by', $createdEdgeIds);
+            $this->createEdge($doc, $tenantId, $target, EdgeType::InvalidatedBy, 'frontmatter_superseded_by', $createdEdgeIds);
         }
     }
 
@@ -148,14 +148,14 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
         // the chunk iterator.
         KnowledgeChunk::query()->forTenant($tenantId)
             ->where('knowledge_document_id', $doc->id)
-            ->chunkById(200, function ($chunks) use ($doc, &$seen, &$createdEdgeIds) {
+            ->chunkById(200, function ($chunks) use ($doc, $tenantId, &$seen, &$createdEdgeIds) {
                 foreach ($chunks as $chunk) {
                     foreach ($this->extractWikilinks($chunk->metadata) as $target) {
                         if (isset($seen[$target])) {
                             continue;
                         }
                         $seen[$target] = true;
-                        $this->createEdge($doc, $target, EdgeType::RelatedTo, 'wikilink', $createdEdgeIds);
+                        $this->createEdge($doc, $tenantId, $target, EdgeType::RelatedTo, 'wikilink', $createdEdgeIds);
                     }
                 }
             });
@@ -166,6 +166,7 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
      */
     private function createEdge(
         KnowledgeDocument $doc,
+        string $tenantId,
         string $targetSlug,
         EdgeType $edgeType,
         string $provenance,
@@ -175,26 +176,36 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
             return;
         }
 
-        // Existence check + insert — updateOrCreate would silently bump an
-        // existing row's columns, but the prior replaceEdgesFor() call
-        // already wiped the outgoing set so a found row here would mean
-        // a concurrent indexer raced us; in that case let the unique
-        // constraint resolve the winner.
-        $edge = KbEdge::updateOrCreate(
-            [
-                'project_key' => (string) $doc->project_key,
-                'edge_uid' => "{$doc->slug}->{$targetSlug}:{$edgeType->value}",
-            ],
-            [
-                'from_node_uid' => (string) $doc->slug,
-                'to_node_uid' => $targetSlug,
-                'edge_type' => $edgeType->value,
-                'source_doc_id' => $doc->doc_id,
-                'weight' => $edgeType->defaultWeight(),
-                'provenance' => $provenance,
-                'payload_json' => null,
-            ]
-        );
+        // R30 — BelongsToTenant does NOT add a global read scope, so a
+        // bare updateOrCreate by (project_key, edge_uid) could match /
+        // update another tenant's edge if the same project_key is shared
+        // (per CLAUDE.md R10: project_key is NOT globally unique across
+        // tenants). Scope the lookup explicitly via forTenant() AND mirror
+        // tenant_id in the create payload as defence-in-depth so the
+        // explicit value wins even if forTenant() were ever scoped to
+        // reads only.
+        //
+        // Iteration 3 (PR #116) — Copilot flagged this as a missed
+        // R30 sweep site. Pairs with the existing replaceEdgesFor()
+        // tenant-scoped delete above.
+        $edge = KbEdge::query()
+            ->forTenant($tenantId)
+            ->updateOrCreate(
+                [
+                    'project_key' => (string) $doc->project_key,
+                    'edge_uid' => "{$doc->slug}->{$targetSlug}:{$edgeType->value}",
+                ],
+                [
+                    'tenant_id' => $tenantId,
+                    'from_node_uid' => (string) $doc->slug,
+                    'to_node_uid' => $targetSlug,
+                    'edge_type' => $edgeType->value,
+                    'source_doc_id' => $doc->doc_id,
+                    'weight' => $edgeType->defaultWeight(),
+                    'provenance' => $provenance,
+                    'payload_json' => null,
+                ]
+            );
 
         if ($edge->wasRecentlyCreated) {
             $createdEdgeIds[] = (int) $edge->id;

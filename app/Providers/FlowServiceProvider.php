@@ -130,7 +130,29 @@ final class FlowServiceProvider extends ServiceProvider
             return;
         }
 
+        // R30/R31 — explicitly stamp tenant_id from the audit row's own
+        // tenant_id (which the FlowServiceProvider stamps via the
+        // `creating` hook on FlowAuditRecord). The HTTP middleware sets
+        // TenantContext for synchronous flows so BelongsToTenant's
+        // auto-fill would normally cover us, BUT:
+        //
+        //   - Queued event listeners may run on a worker without the
+        //     HTTP middleware ever firing — TenantContext returns the
+        //     'default' fallback and the audit row would be misattributed.
+        //   - `Flow::reject()` is called from the rejecter's HTTP request
+        //     scope, but we should never depend on the implicit binding
+        //     when the audit row already carries the authoritative tenant.
+        //
+        // Iteration 3 (PR #116) — Copilot flagged this as a defence-in-depth
+        // gap: explicit > implicit when the source-of-truth is one column
+        // away. Falls back to TenantContext when the audit row has no
+        // tenant_id (legacy rows from before the `creating` hook landed).
+        $auditTenantId = is_string($audit->tenant_id ?? null) && $audit->tenant_id !== ''
+            ? (string) $audit->tenant_id
+            : app(TenantContext::class)->current();
+
         KbCanonicalAudit::create([
+            'tenant_id' => $auditTenantId,
             'project_key' => $projectKey,
             'doc_id' => $docId,
             'slug' => $slug,

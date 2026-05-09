@@ -7,11 +7,14 @@ use App\Ai\AiResponse;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Jobs\IngestDocumentJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
 use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 use Tests\TestCase;
 
 class KbPromotionControllerTest extends TestCase
@@ -238,6 +241,129 @@ class KbPromotionControllerTest extends TestCase
         $reject = $this->postJson("/api/kb/promotion/{$approvalId}/reject", [
             'token' => 'completely-bogus-token-that-does-not-match',
             'reason' => 'phishing attempt',
+        ]);
+
+        $reject->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_403_when_approval_already_consumed(): void
+    {
+        // Iteration 3 — strengthened approvalIdMatchesToken() must reject
+        // a row whose `consumed_at` is non-null (the token was already
+        // spent). Replay attacks must NOT pass the gate.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        // Mark the approval as already-consumed (simulates a successful
+        // first approve() landing — the second call should 403).
+        FlowApprovalRecord::query()->where('id', $approvalId)
+            ->update(['consumed_at' => Carbon::now()]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_403_when_approval_already_decided(): void
+    {
+        // Iteration 3 — `decided_at` is set after Flow::resume()/reject()
+        // records the decision. A token presented after the decision was
+        // recorded must 403.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        FlowApprovalRecord::query()->where('id', $approvalId)
+            ->update(['decided_at' => Carbon::now()]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_403_when_approval_expired(): void
+    {
+        // Iteration 3 — `expires_at` in the past must 403 even if the
+        // status column still says 'pending'.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        FlowApprovalRecord::query()->where('id', $approvalId)
+            ->update(['expires_at' => Carbon::now()->subMinute()]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_approve_returns_403_when_status_not_pending(): void
+    {
+        // Iteration 3 — status != 'pending' must 403.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        FlowApprovalRecord::query()->where('id', $approvalId)
+            ->update(['status' => FlowApprovalRecord::STATUS_REJECTED]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_reject_returns_403_when_approval_already_consumed(): void
+    {
+        // Iteration 3 — same gate applies symmetrically to the reject
+        // endpoint (rejection of an already-consumed token must 403).
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        FlowApprovalRecord::query()->where('id', $approvalId)
+            ->update(['consumed_at' => Carbon::now()]);
+
+        $reject = $this->postJson("/api/kb/promotion/{$approvalId}/reject", [
+            'token' => $token,
         ]);
 
         $reject->assertStatus(403)->assertJsonPath('error', 'forbidden');

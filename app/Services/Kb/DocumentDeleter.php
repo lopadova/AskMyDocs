@@ -5,6 +5,7 @@ namespace App\Services\Kb;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
+use App\Support\KbPath;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -187,7 +188,12 @@ class DocumentDeleter
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
-        $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+        // R1 — every KB source path goes through KbPath::normalize() so
+        // the resulting key is byte-identical to what the ingest pipeline
+        // wrote (collapses `//`, normalizes `\\`, rejects `..` traversal).
+        // Mirrors CanonicalWriter::applyPathPrefix(). Iteration 3 (PR #116)
+        // — Copilot flagged the previous trim/ltrim chain as a R1 gap.
+        $fullPath = $this->resolveFullPath($prefix, $sourcePath);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
 
@@ -280,7 +286,8 @@ class DocumentDeleter
         $prefix = array_key_exists('prefix', $metadata)
             ? (string) $metadata['prefix']
             : (string) config('kb.sources.path_prefix', '');
-        $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+        // R1 — same KbPath::normalize() guard as deleteRowsOnly().
+        $fullPath = $this->resolveFullPath($prefix, $sourcePath);
 
         $canonicalSnapshot = $this->canonicalSnapshot($document);
 
@@ -380,6 +387,29 @@ class DocumentDeleter
             'after_json' => null,
             'metadata_json' => ['source_path' => $document->source_path],
         ]);
+    }
+
+    /**
+     * R1 — apply the canonical KB path-normalisation rules so the disk
+     * key we hand to {@see Storage::delete()} is byte-identical to what
+     * the ingest path wrote (no double slashes, no `.`/`..` traversal,
+     * `\\` → `/`). Mirrors {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}.
+     *
+     * Falls back to the bare $sourcePath when normalisation throws
+     * (empty input or traversal segment) — the disk delete will then
+     * find no row and the operation reports `file_deleted=false`,
+     * which is the desired no-op for already-broken metadata.
+     */
+    private function resolveFullPath(string $prefix, string $sourcePath): string
+    {
+        try {
+            if ($prefix === '') {
+                return KbPath::normalize($sourcePath);
+            }
+            return KbPath::normalize($prefix.'/'.$sourcePath);
+        } catch (\InvalidArgumentException $e) {
+            return ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+        }
     }
 
     private function removeFile(string $disk, string $fullPath, int $documentId, string $sourcePath): bool

@@ -44,7 +44,18 @@ final class RestoreSoftDeletedCompensator implements FlowCompensator
             return;
         }
 
-        $document = KnowledgeDocument::onlyTrashed()->find($documentId);
+        // R30 — explicitly scope the trashed lookup to the flow's
+        // tenant. Two tenants can legitimately share the same numeric
+        // document_id only in pathological cases, but BelongsToTenant
+        // does NOT add a global read scope; without forTenant() a
+        // compensator running for tenant-A could resurrect tenant-B's
+        // soft-deleted row on id collision. Iteration 3 (PR #116) —
+        // Copilot flagged this as a missed R30 sweep site.
+        $tenantId = (string) ($context->input['tenant_id'] ?? '');
+        $document = KnowledgeDocument::query()
+            ->when($tenantId !== '', fn ($q) => $q->forTenant($tenantId))
+            ->onlyTrashed()
+            ->find($documentId);
         if ($document === null) {
             // Already restored (idempotent) or hard-deleted by another path.
             return;

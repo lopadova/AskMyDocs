@@ -136,6 +136,44 @@ final class PromotionFlowTest extends TestCase
         ]);
     }
 
+    public function test_rejection_audit_carries_correct_tenant_id_when_run_under_non_default_tenant(): void
+    {
+        // Iteration 3 — Copilot flagged that the FlowServiceProvider
+        // bridge for `rejected_promotion` must explicitly stamp
+        // tenant_id on the kb_canonical_audit row from the audit's own
+        // tenant_id (defence-in-depth vs. lost TenantContext binding
+        // when the listener fires off the request thread).
+        Queue::fake();
+
+        $tenants = $this->app->make(TenantContext::class);
+        $tenants->set('tenant-x');
+
+        $run = Flow::execute(
+            PromotionFlow::NAME,
+            [
+                'tenant_id' => 'tenant-x',
+                'project_key' => 'acme',
+                'markdown' => $this->validDecision('dec-rej'),
+            ],
+            FlowExecutionOptions::make(correlationId: 'tenant-x'),
+        );
+
+        $approvals = $this->app->make(ApprovalTokenManager::class);
+        $issued = $approvals->reissuePendingForStep($run->id, PromotionFlow::APPROVAL_STEP);
+        $this->assertNotNull($issued);
+
+        Flow::reject($issued->plainTextToken, payload: ['reason' => 'no-go'], actor: ['name' => 'qa']);
+
+        // Drop the TenantContext binding so any auto-fill fallback would
+        // surface as a wrong tenant_id on the audit row.
+        $tenants->reset();
+
+        $auditRow = KbCanonicalAudit::where('event_type', 'rejected_promotion')->first();
+        $this->assertNotNull($auditRow);
+        $this->assertSame('tenant-x', (string) $auditRow->tenant_id);
+        $this->assertSame('acme', (string) $auditRow->project_key);
+    }
+
     public function test_persisted_flow_rows_carry_tenant_id(): void
     {
         Queue::fake();
