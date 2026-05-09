@@ -1,4 +1,7 @@
-# Feature Catalog: padosoft/eval-harness v1.2.0
+# Feature Catalog: padosoft/eval-harness — target v1.2.0
+
+**Current AskMyDocs pin:** `^0.1.0` in `composer.json` `require-dev` (resolved via VCS `repositories` entry pending Packagist submission).
+**Target version (this catalog):** `v1.2.0` — upgraded as part of v4.2/W3 sub-PR 4 (eval-harness CI gate). Until that sub-PR ships, the features below describe the **target** integration surface, not the currently-installed engine.
 
 **Purpose:** Laravel-native evaluation framework for RAG/LLM regression testing. Golden datasets in YAML, nine built-in metrics, standalone output assertions, Markdown/JSON reports, and Artisan CI gates.
 

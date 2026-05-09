@@ -10,30 +10,28 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('flow_runs')) {
-            return;
+        if (! Schema::hasTable('flow_runs')) {
+            Schema::create('flow_runs', function (Blueprint $table): void {
+                $table->string('id', 36)->primary();
+                $table->string('definition_name')->index();
+                $table->string('status', 32)->index();
+                $table->boolean('dry_run')->default(false);
+                $table->json('input')->nullable();
+                $table->json('output')->nullable();
+                $table->json('business_impact')->nullable();
+                $table->string('failed_step')->nullable();
+                $table->boolean('compensated')->default(false);
+                $table->string('compensation_status', 32)->nullable()->index();
+                $table->string('correlation_id')->nullable()->index();
+                $table->string('idempotency_key')->nullable()->unique();
+                $table->timestampTz('started_at')->nullable();
+                $table->timestampTz('finished_at')->nullable();
+                $table->unsignedInteger('duration_ms')->nullable();
+                $table->timestampsTz();
+
+                $table->index(['finished_at', 'id']);
+            });
         }
-
-        Schema::create('flow_runs', function (Blueprint $table): void {
-            $table->string('id', 36)->primary();
-            $table->string('definition_name')->index();
-            $table->string('status', 32)->index();
-            $table->boolean('dry_run')->default(false);
-            $table->json('input')->nullable();
-            $table->json('output')->nullable();
-            $table->json('business_impact')->nullable();
-            $table->string('failed_step')->nullable();
-            $table->boolean('compensated')->default(false);
-            $table->string('compensation_status', 32)->nullable()->index();
-            $table->string('correlation_id')->nullable()->index();
-            $table->string('idempotency_key')->nullable()->unique();
-            $table->timestampTz('started_at')->nullable();
-            $table->timestampTz('finished_at')->nullable();
-            $table->unsignedInteger('duration_ms')->nullable();
-            $table->timestampsTz();
-
-            $table->index(['finished_at', 'id']);
-        });
 
         if (! Schema::hasTable('flow_steps')) {
             Schema::create('flow_steps', function (Blueprint $table): void {

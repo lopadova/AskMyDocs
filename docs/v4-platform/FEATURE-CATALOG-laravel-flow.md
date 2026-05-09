@@ -1,4 +1,4 @@
-﻿# Laravel Flow v1.0.0 Feature Catalog for AskMyDocs v4.2 Integration
+# Laravel Flow v1.0.0 Feature Catalog for AskMyDocs v4.2 Integration
 
 **Prepared:** 2026-05-09
 **Package Version:** v1.0.0
@@ -89,11 +89,11 @@ All features are verified against the stable @api public surface. No undocumente
 | Config Key | Default | AskMyDocs Use Case | Priority |
 |------------|---------|-------------------|----------|
 | persistence.enabled | false | Production: true; enables operation history | MUST |
-| queue.enabled | true | Always enabled; prevents blocking on long KB operations | MUST |
-| queue.lock_store | 'default' | Use Redis lock to prevent double-ingest | MUST |
-| pproval.token_ttl_minutes | 1440 | 24h window for operators to approve destructive operations | SHOULD |
-| webhook.secret | null | Random 32-byte secret; MUST be set for production | MUST |
-| udit_trail_enabled | true | Always enabled; required for compliance | MUST |
+| queue.lock_store | null (host default) | Set to redis to prevent double-ingest under multi-worker | MUST |
+| approval.token_ttl_minutes | 1440 | 24h window for operators to approve destructive operations | SHOULD |
+| webhook.enabled | false | Set true + configure URL/secret for downstream lifecycle delivery | MUST |
+| webhook.secret | null | HMAC signing secret; MUST be set when webhook.enabled=true | MUST |
+| audit_trail_enabled | true | Always enabled; required for compliance | MUST |
 | dry_run_default | false | Always false; require explicit --dry-run flag | MUST |
 
 ---
