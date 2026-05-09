@@ -55,6 +55,41 @@ final class AssessEmbeddingEvictionRiskStepTest extends TestCase
         $this->assertFalse($result->output['approval_required']);
     }
 
+    public function test_threshold_zero_disables_gate_even_for_huge_planned_count(): void
+    {
+        // Copilot iter 1 finding (PR #117). config docs say
+        // "set to 0 (or negative) to disable the gate", but the previous
+        // implementation paused whenever `planned > threshold` — so
+        // threshold=0 with any non-zero planned count would always pause,
+        // turning the disable knob into an always-on knob. Guard the
+        // short-circuit at the top of the step.
+        config()->set('kb.embedding_cache.approval_threshold', 0);
+        $step = $this->app->make(AssessEmbeddingEvictionRiskStep::class);
+
+        $result = $step->execute($this->context('default', planned: 10000));
+
+        $this->assertTrue($result->success);
+        $this->assertFalse($result->paused);
+        $this->assertFalse($result->output['approval_required']);
+        $this->assertTrue($result->output['gate_disabled']);
+        $this->assertSame(10000, $result->output['planned_count']);
+        $this->assertSame(0, $result->output['threshold']);
+    }
+
+    public function test_negative_threshold_also_disables_gate(): void
+    {
+        // Same fix — defensive against negative envs.
+        config()->set('kb.embedding_cache.approval_threshold', -1);
+        $step = $this->app->make(AssessEmbeddingEvictionRiskStep::class);
+
+        $result = $step->execute($this->context('default', planned: 10000));
+
+        $this->assertTrue($result->success);
+        $this->assertFalse($result->paused);
+        $this->assertFalse($result->output['approval_required']);
+        $this->assertTrue($result->output['gate_disabled']);
+    }
+
     public function test_throws_on_missing_tenant_id(): void
     {
         $step = $this->app->make(AssessEmbeddingEvictionRiskStep::class);

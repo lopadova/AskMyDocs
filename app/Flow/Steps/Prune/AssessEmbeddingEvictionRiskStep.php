@@ -16,6 +16,11 @@ use Padosoft\LaravelFlow\FlowStepResult;
  * Reads the planned eviction count from step 1's output and compares it
  * against `config('kb.embedding_cache.approval_threshold')`. Behaviour:
  *
+ *   - threshold ≤ 0 → gate DISABLED — returns `success()` with
+ *     `approval_required=false` regardless of planned_count. Set the
+ *     env knob to 0 (or negative) on deployments that never want the
+ *     pause behaviour (e.g. single-tenant boxes with predictable nightly
+ *     evictions).
  *   - planned ≤ threshold → returns `success()` with `approval_required=false`.
  *     The downstream eviction step runs immediately.
  *   - planned > threshold → returns `paused()` with `approval_required=true`.
@@ -31,9 +36,14 @@ use Padosoft\LaravelFlow\FlowStepResult;
  * a circuit-breaker on accidental mass eviction (e.g. retention_days
  * misconfiguration).
  *
- * Read-only — no mutation in either branch. Dry-run is treated like a
- * normal evaluation; the engine still records the would-be pause but
- * does not actually issue an approval token in dry-run mode.
+ * Read-only — no mutation in either branch.
+ *
+ * Dry-run mode: ALWAYS returns `success()` with `approval_required=false`
+ * — dry-runs MUST NOT create pending approval tokens, since they're plan
+ * previews not committed actions. The actual production run will
+ * re-evaluate and pause if still over threshold. This is intentional:
+ * Flow::dryRun() is for planning + rehearsal; sitting on an approval
+ * token from a rehearsal would create operational noise.
  */
 final class AssessEmbeddingEvictionRiskStep implements FlowStepHandler
 {
@@ -44,6 +54,28 @@ final class AssessEmbeddingEvictionRiskStep implements FlowStepHandler
         $countOutput = $context->stepOutputs['count-stale-embeddings'] ?? [];
         $planned = (int) ($countOutput['planned_count'] ?? 0);
         $threshold = (int) config('kb.embedding_cache.approval_threshold', 5000);
+
+        // Gate disabled by config: short-circuit BEFORE any comparison
+        // so planned_count is irrelevant. Documented as "set to 0 (or
+        // negative) to disable" in config/kb.php and .env.example.
+        // Without this guard, threshold=0 would pause every non-zero
+        // eviction (since planned > 0 is true), turning the disable
+        // knob into an always-on knob. Copilot iter 1 finding (PR #117).
+        if ($threshold <= 0) {
+            return FlowStepResult::success(
+                output: [
+                    'approval_required' => false,
+                    'planned_count' => $planned,
+                    'threshold' => $threshold,
+                    'gate_disabled' => true,
+                ],
+                businessImpact: [
+                    'approval_required' => false,
+                    'planned_count' => $planned,
+                    'gate_disabled' => true,
+                ],
+            );
+        }
 
         $approvalRequired = $planned > $threshold;
 

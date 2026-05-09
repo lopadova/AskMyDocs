@@ -80,6 +80,43 @@ final class PruneOrphansStepTest extends TestCase
         $step->execute($context);
     }
 
+    public function test_orphan_sweep_does_not_touch_other_tenants_rows(): void
+    {
+        // R30 + Copilot iter 1 finding (PR #117). Two tenants share
+        // project_key='p'; tenant A's prune Flow must NOT cascade-delete
+        // tenant B's row even though B's source_path is missing from
+        // A's existing-file list.
+        $docA = $this->seedDoc('tenant-a', 'p', 'docs/tenant-a.md');
+        $docB = $this->seedDoc('tenant-b', 'p', 'docs/tenant-b.md');
+
+        $step = $this->app->make(PruneOrphansStep::class);
+        $context = new FlowContext(
+            flowRunId: 'r',
+            definitionName: 'kb.ingest-folder',
+            input: [
+                'tenant_id' => 'tenant-a',
+                'project_key' => 'p',
+                'prune_orphans' => true,
+                'force_delete' => null,
+                'relative_base_path' => 'docs',
+                'prefix' => '',
+            ],
+            stepOutputs: [
+                'list-files' => ['matched_files' => []],
+            ],
+        );
+
+        $result = $step->execute($context);
+
+        // tenant A had 1 orphan; tenant B's row must NOT count.
+        $this->assertSame(1, $result->output['orphans_deleted_count']);
+        $this->assertNull(KnowledgeDocument::find($docA->id), 'tenant-a row soft-deleted.');
+        $this->assertNotNull(
+            KnowledgeDocument::find($docB->id),
+            "tenant-b row MUST survive tenant-a's orphan sweep (R30).",
+        );
+    }
+
     public function test_throws_on_missing_project_key_when_pruning(): void
     {
         $step = $this->app->make(PruneOrphansStep::class);

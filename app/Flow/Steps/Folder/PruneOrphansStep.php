@@ -23,15 +23,14 @@ use RuntimeException;
  * detection lines up exactly with what was just dispatched for ingest.
  *
  * R30 — DocumentDeleter::deleteOrphans() runs SQL-side filtering AND
- * forceDelete inside chunkById(100). The query uses `where('project_key',
- * $projectKey)` and `where('source_path', 'like', $base.'/%')` — the
- * implicit Eloquent global tenant scope is missing on KnowledgeDocument
- * (BelongsToTenant trait only auto-fills on CREATE), so the inner
- * deleter MUST be called only after StepTenantBinder has bound the
- * caller's tenant on TenantContext. The deleter's helpers
- * (cascadeGraphFor, writeDeprecationAudit) read the document's own
- * tenant_id, so this is safe — but we still rely on the caller to
- * have funneled the invocation per-tenant.
+ * forceDelete inside chunkById(100). Two tenants may legitimately share
+ * the same `project_key`, so we MUST pass the caller's tenant_id
+ * through to the deleter so its query is scoped via `->forTenant($id)`
+ * and never cascades into another tenant's rows. StepTenantBinder
+ * binds the TenantContext singleton, but the deleter's query string
+ * does NOT auto-filter on tenant_id — `BelongsToTenant` only
+ * auto-fills on CREATE — so passing tenant_id explicitly is the
+ * load-bearing isolation guarantee. Copilot iter 1 finding (PR #117).
  *
  * Dry-run skipped — DB+disk mutation is the only artefact.
  */
@@ -76,10 +75,20 @@ final class PruneOrphansStep implements FlowStepHandler
         if ($force !== null) {
             $force = (bool) $force;
         }
+        $tenantId = (string) ($context->input['tenant_id'] ?? '');
 
         if ($projectKey === '') {
             throw new RuntimeException(
                 'PruneOrphansStep: input["project_key"] must be a non-empty string.'
+            );
+        }
+        if ($tenantId === '') {
+            // R30 — the deleter falls back to an unscoped sweep when
+            // tenant_id is missing; reject the run rather than risk
+            // cross-tenant deletes from a Flow that exists exactly to
+            // run per-tenant.
+            throw new RuntimeException(
+                'PruneOrphansStep: input["tenant_id"] must be a non-empty string for R30 isolation.'
             );
         }
 
@@ -93,6 +102,7 @@ final class PruneOrphansStep implements FlowStepHandler
             basePath: trim($basePath, '/'),
             existingRelativePaths: $existing,
             force: $force,
+            tenantId: $tenantId,
         );
 
         return FlowStepResult::success(
