@@ -119,7 +119,10 @@ class KbIngestController extends Controller
                 ], 500);
             }
 
-            IngestDocumentJob::dispatch(
+            // PR #115 review iteration 1 — capture TenantContext at
+            // dispatch time so the queue worker re-binds the right
+            // tenant before any tenant-aware Eloquent query runs (R30/R31).
+            IngestDocumentJob::dispatchForCurrentTenant(
                 projectKey: $projectKey,
                 relativePath: $sourcePath,
                 disk: $disk,

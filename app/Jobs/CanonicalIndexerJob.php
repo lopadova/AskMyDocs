@@ -11,6 +11,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Canonical\EdgeType;
+use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -46,13 +47,30 @@ class CanonicalIndexerJob implements ShouldQueue
     public int $tries = 3;
     public int $timeout = 120;
 
-    public function __construct(public readonly int $documentId)
-    {
+    /**
+     * @param  string  $tenantId  Captured at dispatch time so the queue
+     *                            worker can re-bind TenantContext before
+     *                            any tenant-aware Eloquent query runs.
+     *                            Defaults to 'default' for BC with legacy
+     *                            tests + pre-PR-#115 dispatch sites.
+     */
+    public function __construct(
+        public readonly int $documentId,
+        public readonly string $tenantId = 'default',
+    ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
 
     public function handle(): void
     {
+        // PR #115 review iteration 1 — re-bind TenantContext FIRST so the
+        // soft-delete scope, BelongsToTenant trait, and any other tenant-
+        // scoped query inside this handler operate against the right
+        // tenant. The queue worker boots with the default tenant; without
+        // this re-bind a non-default-tenant doc would be invisible to
+        // KnowledgeDocument::find() here once R30 hardens the read scope.
+        app(TenantContext::class)->set($this->tenantId);
+
         $doc = KnowledgeDocument::find($this->documentId);
         if ($doc === null) {
             return;

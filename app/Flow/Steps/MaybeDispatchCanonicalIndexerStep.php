@@ -64,7 +64,11 @@ final class MaybeDispatchCanonicalIndexerStep implements FlowStepHandler
             );
         }
 
-        CanonicalIndexerJob::dispatch($documentId);
+        // PR #115 review iteration 1 — propagate tenant_id to the queue
+        // worker. Without this the indexer worker would re-boot with
+        // default tenant context and miss tenant-scoped reads.
+        $tenantId = (string) ($context->input['tenant_id'] ?? 'default');
+        CanonicalIndexerJob::dispatch($documentId, $tenantId);
 
         return FlowStepResult::success(
             output: [

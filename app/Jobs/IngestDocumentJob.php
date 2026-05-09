@@ -56,13 +56,58 @@ class IngestDocumentJob implements ShouldQueue
         // T1.8 — optional MIME override. When omitted, defaults to
         // `text/markdown` (legacy back-compat for jobs queued before T1.8).
         public readonly ?string $mimeType = null,
+        // PR #115 review iteration 1 — tenant_id is captured at DISPATCH
+        // time (in the dispatcher's request/CLI process) and serialised
+        // onto the queued payload. Reading TenantContext inside handle()
+        // is wrong: queue workers boot a fresh container with the
+        // default tenant, so any non-default tenant would silently
+        // ingest into 'default'. Defaults to 'default' so callers that
+        // never set a tenant — and existing tests — keep working.
+        public readonly string $tenantId = 'default',
     ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
 
+    /**
+     * Factory that captures the active TenantContext at dispatch time and
+     * forwards it to the constructor. Use this from every HTTP / CLI / job
+     * call site so the queue worker re-binds the right tenant inside
+     * handle(). The plain `dispatch()` path stays BC for tests that
+     * explicitly drive tenant context themselves.
+     *
+     * @param  array<string,mixed>  $metadata
+     */
+    public static function dispatchForCurrentTenant(
+        string $projectKey,
+        string $relativePath,
+        string $disk,
+        ?string $title = null,
+        array $metadata = [],
+        ?string $mimeType = null,
+    ): \Illuminate\Foundation\Bus\PendingDispatch {
+        $tenantId = app(TenantContext::class)->current();
+
+        return self::dispatch(
+            projectKey: $projectKey,
+            relativePath: $relativePath,
+            disk: $disk,
+            title: $title,
+            metadata: $metadata,
+            mimeType: $mimeType,
+            tenantId: $tenantId,
+        );
+    }
+
     public function handle(TenantContext $tenantContext): void
     {
-        $tenantId = $tenantContext->current();
+        // PR #115 review iteration 1 — re-bind TenantContext FIRST in the
+        // worker process from the property captured at dispatch time. All
+        // downstream code in the saga (Flow steps, DocumentIngestor,
+        // BelongsToTenant trait) reads the active tenant via
+        // TenantContext::current(); without this re-bind every tenant-
+        // aware insert would silently land under 'default'.
+        $tenantContext->set($this->tenantId);
+
         $title = $this->title ?: pathinfo($this->relativePath, PATHINFO_FILENAME);
         $mimeType = $this->mimeType ?? 'text/markdown';
 
@@ -71,8 +116,12 @@ class IngestDocumentJob implements ShouldQueue
             [
                 // R30/R31 — the tenant_id rides along the input bag so each
                 // step can re-bind it on the request-scoped TenantContext
-                // before any tenant-aware Eloquent query runs.
-                'tenant_id' => $tenantId,
+                // before any tenant-aware Eloquent query runs. We use the
+                // PROPERTY rather than TenantContext::current() so the
+                // value matches the captured-at-dispatch tenant, even if
+                // some other code mutated the context after handle() ran
+                // its set() above.
+                'tenant_id' => $this->tenantId,
                 'project_key' => $this->projectKey,
                 'source_path' => $this->relativePath,
                 'disk' => $this->disk,
@@ -86,8 +135,8 @@ class IngestDocumentJob implements ShouldQueue
                 // handles content-level dedup, so re-dispatching the same
                 // path under the same tenant short-circuits at the engine
                 // level (existing FlowRun returned).
-                idempotencyKey: $this->buildIdempotencyKey($tenantId),
-                correlationId: $tenantId,
+                idempotencyKey: $this->buildIdempotencyKey($this->tenantId),
+                correlationId: $this->tenantId,
             ),
         );
 

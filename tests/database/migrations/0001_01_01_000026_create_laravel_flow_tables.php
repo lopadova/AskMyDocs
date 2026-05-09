@@ -16,11 +16,18 @@ use Illuminate\Support\Facades\Schema;
  *
  * Combined here so SQLite tests under Orchestra Testbench can boot the
  * laravel-flow persistence layer (flow_runs / flow_steps / flow_audit
- * + tenant_id) without each prod migration's per-driver gymnastics.
+ * / flow_approvals / flow_webhook_outbox + tenant_id) without each prod
+ * migration's per-driver gymnastics. All five flow_* tables are created
+ * below to keep the test schema aligned with production: even though
+ * IngestDocumentFlow only exercises flow_runs / flow_steps / flow_audit,
+ * sub-PR 3c/3d additions and any package-level integration test that
+ * touches approvals or webhook outbox will boot against the same fixture
+ * without a follow-up migration.
  *
- * The flow_approvals / flow_webhook_outbox tables are NOT created here —
- * IngestDocumentFlow does not use approvals or webhooks. When sub-PR 3c/3d
- * adds them, extend this file to mirror those tables too.
+ * Per Copilot PR #115 review iteration 1 — the previous header comment
+ * claimed flow_approvals / flow_webhook_outbox were NOT created, but
+ * they ARE created below. Brought the comment in line with the schema
+ * so future readers don't trust the doc over the code.
  */
 return new class extends Migration {
     public function up(): void

@@ -8,7 +8,6 @@ use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\KbPath;
-use App\Support\TenantContext;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Padosoft\LaravelFlow\FlowContext;

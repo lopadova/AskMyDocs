@@ -245,12 +245,16 @@ class KbDocumentController extends Controller
         // Single ingestion execution path (CLAUDE.md §6). The queued
         // job re-reads from the same disk+prefix combination, chunks,
         // embeds and refreshes graph edges.
-        IngestDocumentJob::dispatch(
-            $document->project_key,
-            $sourcePath,
-            $disk,
-            $document->title,
-            is_array($document->metadata) ? $document->metadata : [],
+        //
+        // PR #115 review iteration 1 — capture TenantContext at dispatch
+        // time so the queue worker re-binds the correct tenant before
+        // any tenant-aware Eloquent query runs (R30/R31).
+        IngestDocumentJob::dispatchForCurrentTenant(
+            projectKey: $document->project_key,
+            relativePath: $sourcePath,
+            disk: $disk,
+            title: $document->title,
+            metadata: is_array($document->metadata) ? $document->metadata : [],
         );
 
         return response()->json([

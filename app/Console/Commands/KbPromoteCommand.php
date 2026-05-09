@@ -97,7 +97,9 @@ class KbPromoteCommand extends Command
             return self::FAILURE;
         }
 
-        IngestDocumentJob::dispatch(
+        // PR #115 review iteration 1 — capture TenantContext at
+        // dispatch time (R30/R31).
+        IngestDocumentJob::dispatchForCurrentTenant(
             projectKey: $projectKey,
             relativePath: $relativePath,
             disk: (string) config('kb.sources.disk', 'kb'),

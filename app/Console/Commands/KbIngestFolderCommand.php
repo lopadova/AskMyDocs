@@ -131,7 +131,11 @@ class KbIngestFolderCommand extends Command
                         title: $title,
                     );
                 } else {
-                    IngestDocumentJob::dispatch(
+                    // PR #115 review iteration 1 — capture TenantContext
+                    // at dispatch time so the queue worker re-binds the
+                    // correct tenant before any tenant-aware Eloquent
+                    // query runs (R30/R31).
+                    IngestDocumentJob::dispatchForCurrentTenant(
                         projectKey: $projectKey,
                         relativePath: $relative,
                         disk: $disk,

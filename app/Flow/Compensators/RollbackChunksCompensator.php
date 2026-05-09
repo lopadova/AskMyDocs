@@ -7,7 +7,6 @@ namespace App\Flow\Compensators;
 use App\Flow\Steps\StepTenantBinder;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\DocumentDeleter;
-use Illuminate\Support\Facades\Log;
 use Padosoft\LaravelFlow\FlowCompensator;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepResult;
@@ -16,20 +15,22 @@ use Padosoft\LaravelFlow\FlowStepResult;
  * Compensator for the `persist-chunks` step of the {@see \App\Flow\Definitions\IngestDocumentFlow}.
  *
  * Triggered when any step AFTER `persist-chunks` fails (currently only
- * `maybe-dispatch-canonical-indexer`). Force-deletes the
- * KnowledgeDocument that was just inserted so the saga unwinds cleanly:
+ * `maybe-dispatch-canonical-indexer`). Removes the KnowledgeDocument row
+ * + dependents from the database so the saga unwinds cleanly:
  *
  *   - `knowledge_chunks` rows cascade via FK ON DELETE CASCADE.
  *   - `kb_nodes` / `kb_edges` cascade via {@see DocumentDeleter::cascadeGraphFor()}.
- *   - The physical KB file is preserved (the original file on disk was
- *     not written by this saga — IngestDocumentJob assumes the bytes
- *     already exist on the configured disk; deleting them would damage
- *     external state). DocumentDeleter::removeFile() is gated on the
- *     metadata stored on the doc, and our forceDelete() invocation goes
- *     through DocumentDeleter::delete($doc, force: true) which DOES
- *     remove the file. We accept that — a failed ingest's partial
- *     rollback semantics include reverting the file so the next ingest
- *     attempt re-uploads it cleanly.
+ *   - The physical KB file on disk is PRESERVED.
+ *
+ * Per Copilot PR #115 review iteration 1: the original implementation
+ * called `DocumentDeleter::delete($doc, force: true)`, which also wiped
+ * the file on disk via {@see DocumentDeleter::removeFile()}. For
+ * `kb:ingest-folder` flows that scan a Git mirror or a network share,
+ * a transient failure in the canonical indexer dispatch would
+ * PERMANENTLY DESTROY the source-of-truth markdown file the operator
+ * never asked to delete. {@see DocumentDeleter::deleteDbOnly()}
+ * (introduced for this fix) explicitly skips the file removal so the
+ * next ingest retry can re-process the same untouched bytes.
  *
  * Idempotent: if the document was already deleted (race with another
  * compensator invocation, or already cleaned up by a sibling rollback),
@@ -60,16 +61,11 @@ final class RollbackChunksCompensator implements FlowCompensator
             return;
         }
 
-        try {
-            $this->deleter->delete($document, force: true);
-        } catch (\Throwable $e) {
-            // Log but do not re-throw — the engine has already marked the
-            // run as failed; throwing here would mask the root cause.
-            Log::warning('RollbackChunksCompensator: force-delete failed', [
-                'flow_run_id' => $context->flowRunId,
-                'document_id' => $documentId,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        // Per Copilot PR #115 review iteration 1 — never silently swallow
+        // compensation failures (R4 + R14). Letting the exception
+        // propagate lets the Flow engine mark compensation as failed,
+        // which surfaces in flow_runs.compensation_status for operators
+        // and dashboard alerting.
+        $this->deleter->deleteDbOnly($document);
     }
 }

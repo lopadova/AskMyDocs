@@ -6,6 +6,7 @@ namespace Tests\Feature\Flow;
 
 use App\Ai\EmbeddingsResponse;
 use App\Flow\Definitions\IngestDocumentFlow;
+use App\Jobs\IngestDocumentJob;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
@@ -235,6 +236,64 @@ MD;
         $runRow = DB::table('flow_runs')->where('id', $run->id)->first();
         $this->assertNotNull($runRow);
         $this->assertSame('maybe-dispatch-canonical-indexer', $runRow->failed_step);
+    }
+
+    /**
+     * Per Copilot PR #115 review iteration 1 (fix #1): when a non-default
+     * tenant dispatches the job, the queued worker must re-bind that
+     * tenant before Flow::execute() runs — not silently fall back to
+     * the worker's default-tenant context. The fix captures TenantContext
+     * at dispatch time and re-applies it inside handle().
+     */
+    public function test_dispatch_for_current_tenant_propagates_tenant_id_into_queued_handle(): void
+    {
+        Storage::fake('kb');
+        Storage::disk('kb')->put('docs/intro.md', "# Hello\n\nTenant-bound body.");
+
+        $tenantContext = $this->app->make(TenantContext::class);
+
+        // Step 1: dispatcher process is on tenant-a.
+        $tenantContext->set('tenant-a');
+        $pending = IngestDocumentJob::dispatchForCurrentTenant(
+            projectKey: 'demo',
+            relativePath: 'docs/intro.md',
+            disk: 'kb',
+            title: 'Hello Doc',
+        );
+
+        // Step 2: simulate the queue-worker boot context — the worker
+        // process always boots with the default tenant. Without the fix
+        // the job would call Flow::execute() with tenant_id='default'
+        // and ingest into the wrong tenant.
+        $tenantContext->reset();
+        $this->assertSame('default', $tenantContext->current());
+
+        // Sync queue (configured by TestCase) executed the job inline
+        // when dispatchForCurrentTenant returned, so the run already
+        // happened above. The reset() above proves we are now back on
+        // 'default' AFTER handle() completed.
+        unset($pending);
+
+        // Assert: the doc landed under 'tenant-a', not 'default'.
+        $this->assertSame(
+            1,
+            KnowledgeDocument::where('tenant_id', 'tenant-a')->count(),
+            'IngestDocumentJob::dispatchForCurrentTenant must propagate the tenant '
+            .'captured at dispatch time so the queued worker ingests under that tenant.',
+        );
+        $this->assertSame(
+            0,
+            KnowledgeDocument::where('tenant_id', 'default')->count(),
+            'Job must NOT fall back to the worker process default tenant.',
+        );
+
+        // Assert: flow_runs row was stamped with the correct tenant too —
+        // both because the FlowExecutionOptions correlationId is now
+        // derived from $this->tenantId and because the FlowRunRecord
+        // tenant_id stamping reads TenantContext::current() inside
+        // handle() AFTER our explicit re-bind.
+        $tenants = DB::table('flow_runs')->pluck('tenant_id')->all();
+        $this->assertSame(['tenant-a'], $tenants);
     }
 
     /**

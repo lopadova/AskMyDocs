@@ -2,6 +2,7 @@
 
 namespace App\Services\Kb;
 
+use App\Ai\EmbeddingsResponse;
 use App\Jobs\CanonicalIndexerJob;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
@@ -11,6 +12,7 @@ use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -221,7 +223,7 @@ class DocumentIngestor
         string $markdown,
         array $chunkDrafts,
         array $metadata,
-        $embeddingResponse,
+        EmbeddingsResponse $embeddingResponse,
         ?CanonicalParsedDocument $canonical,
     ): KnowledgeDocument {
         $documentHash = hash('sha256', $markdown);
@@ -517,6 +519,10 @@ class DocumentIngestor
         if (! $document->is_canonical) {
             return;
         }
-        CanonicalIndexerJob::dispatch($document->id);
+        // PR #115 review iteration 1 — capture the active tenant at
+        // dispatch time so the queue worker re-binds it before any
+        // tenant-aware Eloquent query runs in CanonicalIndexerJob.
+        $tenantId = app(TenantContext::class)->current();
+        CanonicalIndexerJob::dispatch($document->id, $tenantId);
     }
 }
