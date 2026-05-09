@@ -4,34 +4,48 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Jobs\IngestDocumentJob;
+use App\Flow\Definitions\PromotionFlow;
 use App\Services\Kb\Canonical\CanonicalParser;
-use App\Services\Kb\Canonical\CanonicalWriter;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
+use Padosoft\LaravelFlow\ApprovalTokenManager;
+use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowExecutionOptions;
+use Padosoft\LaravelFlow\FlowRun;
 
 /**
  * Operator-side promotion of a local canonical markdown file.
  *
- * Reads the file, validates its frontmatter via {@see CanonicalParser},
- * writes it to the configured KB disk via {@see CanonicalWriter}, and
- * dispatches {@see IngestDocumentJob}. Not used by Claude skills — they
- * stop at the HTTP API's `candidates` endpoint. This CLI exists for
- * operators / scripts that batch-promote files without going through HTTP.
+ * v4.2/W2 PR #116: now dispatches the {@see PromotionFlow} saga. Behaviour
+ * is preserved for operators that confirm interactively or pass
+ * `--auto-approve` for non-interactive scripts; the saga drives the same
+ * validate → write → dispatch-ingest sequence as the legacy CanonicalWriter
+ * + IngestDocumentJob path, with a built-in approval gate adding an
+ * explicit operator confirmation between validation and disk write.
+ *
+ * The CLI signature is unchanged from the legacy command; the
+ * `--auto-approve` flag is new (default: prompt). The `--dry-run` flag
+ * still validates only and writes nothing.
  */
 class KbPromoteCommand extends Command
 {
     protected $signature = 'kb:promote
         {path : Local filesystem path to the canonical markdown file}
         {--project= : Project key for the canonical doc (required)}
-        {--dry-run : Validate + print the resolved target path, write nothing}';
+        {--dry-run : Validate + print the resolved target path, write nothing}
+        {--auto-approve : Skip the interactive approval prompt (for non-interactive scripts)}';
 
-    protected $description = 'Promote a local canonical markdown file to the KB (write + dispatch ingest).';
+    protected $description = 'Promote a local canonical markdown file to the KB (write + dispatch ingest, via PromotionFlow).';
 
-    public function handle(CanonicalParser $parser, CanonicalWriter $writer): int
-    {
+    public function handle(
+        CanonicalParser $parser,
+        ApprovalTokenManager $approvals,
+        TenantContext $tenants,
+    ): int {
         $path = (string) $this->argument('path');
         $projectKey = (string) ($this->option('project') ?? '');
         $dryRun = (bool) $this->option('dry-run');
+        $autoApprove = (bool) $this->option('auto-approve');
 
         if ($projectKey === '') {
             $this->error('--project is required.');
@@ -42,9 +56,6 @@ class KbPromoteCommand extends Command
             return self::FAILURE;
         }
 
-        // `file_get_contents()` returns `false` on a read error (missing
-        // permissions, locked file, OS-level failure). Distinguish that
-        // from a genuinely empty file so operators see the real cause.
         $markdown = @file_get_contents($path);
         if ($markdown === false) {
             $this->error("File is unreadable (permission denied or OS error): {$path}");
@@ -55,12 +66,13 @@ class KbPromoteCommand extends Command
             return self::FAILURE;
         }
 
+        // Pre-validation mirrors the controller's UX so the operator sees
+        // schema errors as a regular CLI error, not as a Flow run failure.
         $parsed = $parser->parse($markdown);
         if ($parsed === null) {
             $this->error('No YAML frontmatter block detected at the top of the document.');
             return self::FAILURE;
         }
-
         $validation = $parser->validate($parsed);
         if (! $validation->valid) {
             $this->error('Canonical validation failed:');
@@ -73,9 +85,6 @@ class KbPromoteCommand extends Command
         }
 
         if ($dryRun) {
-            // Resolve the destination path the same way the real write
-            // would, but without touching disk. Gives operators a
-            // concrete preview of what --no-dry-run would produce.
             $folder = (string) (config('kb.promotion.path_conventions.' . ($parsed->type?->value ?? ''), '?'));
             $destination = $folder === '.' || $folder === ''
                 ? ($parsed->slug . '.md')
@@ -90,27 +99,59 @@ class KbPromoteCommand extends Command
             return self::SUCCESS;
         }
 
-        try {
-            $relativePath = $writer->write($parsed, $markdown);
-        } catch (\RuntimeException $e) {
-            $this->error('Write failed: ' . $e->getMessage());
+        $tenantId = $tenants->current();
+
+        $run = Flow::execute(
+            PromotionFlow::NAME,
+            [
+                'tenant_id' => $tenantId,
+                'project_key' => $projectKey,
+                'markdown' => $markdown,
+                'title' => $parsed->slug ?? basename($path),
+                'promotion_source' => 'cli',
+            ],
+            FlowExecutionOptions::make(
+                correlationId: $tenantId,
+            ),
+        );
+
+        if ($run->status !== FlowRun::STATUS_PAUSED) {
+            $this->error("Promotion flow ended unexpectedly with status [{$run->status}].");
             return self::FAILURE;
         }
 
-        // PR #115 review iteration 1 — capture TenantContext at
-        // dispatch time (R30/R31).
-        IngestDocumentJob::dispatchForCurrentTenant(
-            projectKey: $projectKey,
-            relativePath: $relativePath,
-            disk: (string) config('kb.sources.disk', 'kb'),
-            title: $parsed->slug ?? basename($path),
-            metadata: [
-                'disk' => (string) config('kb.sources.disk', 'kb'),
-                'prefix' => (string) config('kb.sources.path_prefix', ''),
-                'promotion_source' => 'cli',
-            ],
+        // Issue the approval token tied to this paused approval-gate.
+        $issued = $approvals->reissuePendingForStep($run->id, PromotionFlow::APPROVAL_STEP);
+        if ($issued === null) {
+            $this->error('Promotion flow paused but no pending approval token was found.');
+            return self::FAILURE;
+        }
+
+        if (! $autoApprove) {
+            $confirmed = $this->confirm(
+                "About to promote '{$parsed->slug}' to project '{$projectKey}'. Approve and write to disk?",
+                false,
+            );
+            if (! $confirmed) {
+                Flow::reject($issued->plainTextToken, ['source' => 'kb:promote', 'reason' => 'cli_declined']);
+                $this->warn("Rejected. Approval token expired. Nothing was written.");
+                return self::FAILURE;
+            }
+        }
+
+        $resumed = Flow::resume(
+            $issued->plainTextToken,
+            actor: ['source' => 'kb:promote', 'name' => 'cli'],
         );
 
+        if ($resumed->status !== FlowRun::STATUS_SUCCEEDED) {
+            $failedStep = $resumed->failedStep ?? '(unknown)';
+            $this->error("Promotion flow failed at step [{$failedStep}] with status [{$resumed->status}].");
+            return self::FAILURE;
+        }
+
+        $writeOutput = $resumed->stepResults['write-markdown'] ?? null;
+        $relativePath = $writeOutput?->output['relative_path'] ?? '?';
         $this->info("Promoted '{$parsed->slug}' to {$relativePath}");
         return self::SUCCESS;
     }

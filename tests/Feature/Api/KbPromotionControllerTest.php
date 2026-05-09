@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use Padosoft\LaravelFlow\Facades\Flow;
 use Tests\TestCase;
 
 class KbPromotionControllerTest extends TestCase
@@ -25,6 +26,8 @@ class KbPromotionControllerTest extends TestCase
         Route::post('/api/kb/promotion/suggest', [KbPromotionController::class, 'suggest']);
         Route::post('/api/kb/promotion/candidates', [KbPromotionController::class, 'candidates']);
         Route::post('/api/kb/promotion/promote', [KbPromotionController::class, 'promote']);
+        Route::post('/api/kb/promotion/{approvalId}/approve', [KbPromotionController::class, 'approve']);
+        Route::post('/api/kb/promotion/{approvalId}/reject', [KbPromotionController::class, 'reject']);
     }
 
     protected function tearDown(): void
@@ -86,8 +89,13 @@ class KbPromotionControllerTest extends TestCase
     // /promote — writes markdown + dispatches ingest
     // -------------------------------------------------------------
 
-    public function test_promote_writes_file_and_dispatches_ingest(): void
+    public function test_promote_pauses_at_approval_gate_and_returns_token(): void
     {
+        // v4.2/W2 PR #116 — `promote` now starts the PromotionFlow which
+        // pauses at the approval-gate step. The 202 response carries an
+        // `approval` block with the single-use plain-text token + the
+        // approve/reject URLs the operator must POST to. The disk write
+        // happens only AFTER the operator approves.
         Queue::fake();
 
         $response = $this->postJson('/api/kb/promotion/promote', [
@@ -97,14 +105,79 @@ class KbPromotionControllerTest extends TestCase
 
         $response->assertStatus(202)
             ->assertJson([
-                'status' => 'accepted',
-                'path' => 'decisions/dec-cache-v2.md',
-                'slug' => 'dec-cache-v2',
+                'status' => 'paused',
                 'doc_id' => 'DEC-2026-0001',
+                'slug' => 'dec-cache-v2',
+            ])
+            ->assertJsonStructure([
+                'status',
+                'flow_run_id',
+                'doc_id',
+                'slug',
+                'approval' => [
+                    'approval_id',
+                    'token',
+                    'expires_at',
+                    'approve_url',
+                    'reject_url',
+                ],
+            ]);
+
+        // Pre-approval: no disk write, no ingest dispatched.
+        Storage::disk('kb')->assertMissing('decisions/dec-cache-v2.md');
+        Queue::assertNotPushed(IngestDocumentJob::class);
+    }
+
+    public function test_approve_endpoint_writes_file_and_dispatches_ingest(): void
+    {
+        // Drives the full happy-path: dispatch -> token -> approve -> the
+        // engine resumes the saga -> write-markdown + dispatch-ingest run.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $token,
+            'actor' => ['name' => 'qa-bot'],
+        ]);
+
+        $approve->assertStatus(200)
+            ->assertJson([
+                'status' => 'accepted',
+                'approval_id' => $approvalId,
+                'path' => 'decisions/dec-cache-v2.md',
             ]);
 
         Storage::disk('kb')->assertExists('decisions/dec-cache-v2.md');
         Queue::assertPushed(IngestDocumentJob::class, fn ($job) => $job->relativePath === 'decisions/dec-cache-v2.md');
+    }
+
+    public function test_reject_endpoint_halts_flow_without_writing_to_disk(): void
+    {
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+        $token = $promote->json('approval.token');
+
+        $reject = $this->postJson("/api/kb/promotion/{$approvalId}/reject", [
+            'token' => $token,
+            'reason' => 'not now',
+        ]);
+
+        $reject->assertStatus(200);
+        Storage::disk('kb')->assertMissing('decisions/dec-cache-v2.md');
+        Queue::assertNotPushed(IngestDocumentJob::class);
     }
 
     public function test_promote_rejects_invalid_frontmatter_with_422(): void

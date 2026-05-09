@@ -28,6 +28,10 @@ class KbPromotionCommandsTest extends TestCase
 
     public function test_kb_promote_writes_file_and_dispatches_ingest(): void
     {
+        // v4.2/W2 PR #116 — kb:promote now goes through the PromotionFlow
+        // saga which inserts an explicit operator confirmation between
+        // validation and disk write. Pass --auto-approve in scripts (and
+        // tests) to skip the interactive prompt.
         Queue::fake();
         $path = $this->writeTempMarkdown(<<<'MD'
 ---
@@ -40,7 +44,11 @@ status: accepted
 # Decision X
 MD);
 
-        $this->artisan('kb:promote', ['path' => $path, '--project' => 'acme'])
+        $this->artisan('kb:promote', [
+                'path' => $path,
+                '--project' => 'acme',
+                '--auto-approve' => true,
+            ])
             ->assertExitCode(0);
 
         Storage::disk('kb')->assertExists('decisions/dec-x.md');

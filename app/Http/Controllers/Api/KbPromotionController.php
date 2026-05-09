@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
-use App\Jobs\IngestDocumentJob;
+use App\Flow\Definitions\PromotionFlow;
 use App\Services\Kb\Canonical\CanonicalParser;
-use App\Services\Kb\Canonical\CanonicalWriter;
 use App\Services\Kb\Canonical\PromotionSuggestService;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
+use Padosoft\LaravelFlow\ApprovalTokenManager;
+use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowExecutionOptions;
+use Padosoft\LaravelFlow\FlowRun;
 
 /**
  * Promotion pipeline entry points — human-gated (see ADR 0003).
@@ -19,11 +23,19 @@ use Illuminate\Support\Facades\Log;
  *   POST /api/kb/promotion/suggest    → LLM extracts candidates. Writes nothing.
  *   POST /api/kb/promotion/candidates → validate a draft against the schema.
  *                                       Writes nothing. Returns errors.
- *   POST /api/kb/promotion/promote    → writes canonical markdown to the KB
- *                                       disk, dispatches ingest. HTTP 202.
+ *   POST /api/kb/promotion/promote    → kicks off the {@see PromotionFlow}
+ *                                       saga. Returns HTTP 202 with a
+ *                                       single-use approval token + URL the
+ *                                       operator must POST to before the
+ *                                       canonical bytes hit disk.
+ *
+ * v4.2/W2 PR #116: the legacy "validate + write + dispatch ingest" inline
+ * controller logic has moved into the {@see PromotionFlow} saga. The
+ * controller's job is now validation + dispatch + token shaping.
  *
  * Claude skills MUST stop at `candidates` (or `suggest`). Only operators
- * and the explicit `promote` call commit to canonical storage.
+ * (human approval via `flow:approve` CLI or the future flow-admin SPA)
+ * commit to canonical storage by approving the issued token.
  */
 class KbPromotionController extends Controller
 {
@@ -90,7 +102,8 @@ class KbPromotionController extends Controller
     public function promote(
         Request $request,
         CanonicalParser $parser,
-        CanonicalWriter $writer,
+        ApprovalTokenManager $approvals,
+        TenantContext $tenants,
     ): JsonResponse {
         if (! (bool) config('kb.promotion.enabled', true)) {
             return response()->json(['error' => 'promotion_disabled'], 503);
@@ -102,11 +115,15 @@ class KbPromotionController extends Controller
             'title' => ['nullable', 'string', 'max:500'],
         ]);
 
+        // Pre-validate the markdown so we surface frontmatter errors as
+        // HTTP 422 BEFORE issuing an approval token (the saga will run
+        // its own validate-frontmatter step too — we mirror it here so
+        // the controller never minted a token for a draft the engine
+        // would immediately reject).
         $parsed = $parser->parse($validated['markdown']);
         if ($parsed === null) {
             return response()->json(['error' => 'no_frontmatter'], 422);
         }
-
         $validation = $parser->validate($parsed);
         if (! $validation->valid) {
             return response()->json([
@@ -115,48 +132,162 @@ class KbPromotionController extends Controller
             ], 422);
         }
 
+        $tenantId = $tenants->current();
+        $title = $validated['title'] ?? ($this->firstHeading($parsed->body) ?? ((string) $parsed->slug));
+
         try {
-            $relativePath = $writer->write($parsed, $validated['markdown']);
-        } catch (\RuntimeException $e) {
-            // Never leak the disk name / full storage path to API clients —
-            // that would expose internal layout. Log the full exception
-            // server-side and surface a correlation id the client can
-            // report to support without revealing infrastructure details.
+            $run = Flow::execute(
+                PromotionFlow::NAME,
+                [
+                    // R30/R31 — tenant rides the input bag.
+                    'tenant_id' => $tenantId,
+                    'project_key' => $validated['project_key'],
+                    'markdown' => $validated['markdown'],
+                    'title' => $title,
+                    'promotion_source' => 'api',
+                ],
+                FlowExecutionOptions::make(
+                    correlationId: $tenantId,
+                ),
+            );
+        } catch (\Throwable $e) {
             $correlationId = bin2hex(random_bytes(8));
-            Log::error('KbPromotion: write failed', [
+            Log::error('KbPromotion: flow dispatch failed', [
                 'correlation_id' => $correlationId,
                 'project_key' => $validated['project_key'],
                 'slug' => $parsed->slug,
                 'error' => $e->getMessage(),
             ]);
             return response()->json([
-                'error' => 'write_failed',
-                'message' => 'Failed to write promoted document.',
+                'error' => 'promotion_dispatch_failed',
+                'message' => 'Failed to start the promotion flow.',
                 'correlation_id' => $correlationId,
             ], 500);
         }
 
-        $title = $validated['title'] ?? ($this->firstHeading($parsed->body) ?? ((string) $parsed->slug));
-        // PR #115 review iteration 1 — capture TenantContext at
-        // dispatch time (R30/R31).
-        IngestDocumentJob::dispatchForCurrentTenant(
-            projectKey: $validated['project_key'],
-            relativePath: $relativePath,
-            disk: (string) config('kb.sources.disk', 'kb'),
-            title: $title,
-            metadata: [
-                'disk' => (string) config('kb.sources.disk', 'kb'),
-                'prefix' => (string) config('kb.sources.path_prefix', ''),
-                'promotion_source' => 'api',
+        // The saga should be paused at the approval-gate step waiting for
+        // operator approval. If the validate-frontmatter step somehow
+        // succeeded but the engine reports a non-paused outcome, surface
+        // it transparently (the response shape distinguishes by `status`).
+        if ($run->status !== FlowRun::STATUS_PAUSED) {
+            return response()->json([
+                'status' => $run->status,
+                'flow_run_id' => $run->id,
+                'doc_id' => $parsed->docId,
+                'slug' => $parsed->slug,
+            ], 202);
+        }
+
+        // R21 — issue (or re-issue) the single-use token tied to this
+        // run + approval-gate step. The plain token is returned ONCE in
+        // this response; only its SHA-256 hash is persisted.
+        $issued = $approvals->reissuePendingForStep($run->id, PromotionFlow::APPROVAL_STEP);
+        if ($issued === null) {
+            // Defensive: the engine reports paused but the token row is
+            // not pending. Surface enough context for operators to debug.
+            return response()->json([
+                'status' => 'paused',
+                'flow_run_id' => $run->id,
+                'doc_id' => $parsed->docId,
+                'slug' => $parsed->slug,
+                'approval' => null,
+                'message' => 'Flow is paused but no pending approval token was found.',
+            ], 202);
+        }
+
+        return response()->json([
+            'status' => 'paused',
+            'flow_run_id' => $run->id,
+            'doc_id' => $parsed->docId,
+            'slug' => $parsed->slug,
+            'approval' => [
+                'approval_id' => $issued->approvalId,
+                'token' => $issued->plainTextToken,
+                'expires_at' => $issued->expiresAt->format(\DateTimeInterface::ATOM),
+                'approve_url' => url("/api/kb/promotion/{$issued->approvalId}/approve"),
+                'reject_url' => url("/api/kb/promotion/{$issued->approvalId}/reject"),
             ],
-        );
+        ], 202);
+    }
+
+    /**
+     * Approve a paused PromotionFlow run by consuming its single-use
+     * token. Returns the resumed run's status + persisted relative
+     * path on success.
+     *
+     * R21 — token validation + decision are atomic inside
+     * {@see ApprovalTokenManager::approve()} (transactional consume of
+     * the pending row). Tokens are single-use; replay returns null.
+     */
+    public function approve(Request $request, string $approvalId): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => ['required', 'string', 'max:255'],
+            'actor' => ['nullable', 'array'],
+        ]);
+
+        try {
+            $run = Flow::resume(
+                $validated['token'],
+                actor: array_merge(['source' => 'api'], (array) ($validated['actor'] ?? [])),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => 'approval_failed',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        if ($run->status !== FlowRun::STATUS_SUCCEEDED) {
+            return response()->json([
+                'status' => $run->status,
+                'flow_run_id' => $run->id,
+                'failed_step' => $run->failedStep,
+            ], 202);
+        }
+
+        $writeOutput = $run->stepResults['write-markdown'] ?? null;
+        $relativePath = $writeOutput?->output['relative_path'] ?? null;
 
         return response()->json([
             'status' => 'accepted',
+            'flow_run_id' => $run->id,
+            'approval_id' => $approvalId,
             'path' => $relativePath,
-            'doc_id' => $parsed->docId,
-            'slug' => $parsed->slug,
-        ], 202);
+        ], 200);
+    }
+
+    /**
+     * Reject a paused PromotionFlow run. The disk stays untouched (the
+     * write-markdown step never runs) and a `rejected_promotion` audit
+     * row is bridged into kb_canonical_audit by FlowServiceProvider.
+     */
+    public function reject(Request $request, string $approvalId): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => ['required', 'string', 'max:255'],
+            'actor' => ['nullable', 'array'],
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $run = Flow::reject(
+                $validated['token'],
+                payload: ['reason' => $validated['reason'] ?? null],
+                actor: array_merge(['source' => 'api'], (array) ($validated['actor'] ?? [])),
+            );
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => 'rejection_failed',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'status' => $run->status,
+            'flow_run_id' => $run->id,
+            'approval_id' => $approvalId,
+        ], 200);
     }
 
     private function firstHeading(string $body): ?string

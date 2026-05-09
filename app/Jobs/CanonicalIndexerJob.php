@@ -4,38 +4,33 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Models\KbCanonicalAudit;
-use App\Models\KbEdge;
-use App\Models\KbNode;
-use App\Models\KnowledgeChunk;
-use App\Models\KnowledgeDocument;
-use App\Support\Canonical\CanonicalType;
-use App\Support\Canonical\EdgeType;
+use App\Flow\Definitions\CanonicalIndexFlow;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowExecutionOptions;
+use Padosoft\LaravelFlow\FlowRun;
 
 /**
  * Populates {@see \App\Models\KbNode} and {@see \App\Models\KbEdge} from a
- * canonical document's frontmatter + chunk wikilinks. Idempotent: on
- * re-indexing it first removes any previous edges it created for this
- * document, then rebuilds fresh.
+ * canonical document's frontmatter + chunk wikilinks.
  *
- * Inputs consumed on the document:
- *   - `frontmatter_json._derived.related_slugs`        → edge_type=related_to,  provenance=frontmatter_related
- *   - `frontmatter_json._derived.supersedes_slugs`     → edge_type=supersedes,  provenance=frontmatter_supersedes
- *   - `frontmatter_json._derived.superseded_by_slugs`  → edge_type=invalidated_by, provenance=frontmatter_superseded_by
- *   - each chunk's `metadata.wikilinks`                → edge_type=related_to,  provenance=wikilink
+ * v4.2/W2 (PR #116) — `handle()` is a thin wrapper that runs the
+ * {@see CanonicalIndexFlow} saga synchronously via {@see Flow::execute()}.
+ * The Flow definition is the source-of-truth for the load → populate-nodes
+ * → populate-edges pipeline; a compensator on `populate-nodes` rolls back
+ * exactly the KbNode rows the failed run inserted (FK cascade also
+ * removes any partially-inserted edges).
  *
- * Tenant scope is enforced structurally via the composite FK on
- * `kb_edges.(project_key, from/to_node_uid)` → `kb_nodes.(project_key,
- * node_uid)`. Cross-project edges are impossible; this job only needs to
- * ensure target nodes exist in the same project (created as "dangling"
- * when not yet canonicalized).
+ * Idempotency: the inner steps still rely on the outgoing-edges replace
+ * pattern + KbNode unique constraint to converge under concurrent re-runs.
+ * Re-dispatching the same document_id under the same tenant returns the
+ * existing FlowRun via the engine's idempotency key.
  */
 class CanonicalIndexerJob implements ShouldQueue
 {
@@ -61,270 +56,72 @@ class CanonicalIndexerJob implements ShouldQueue
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
 
-    public function handle(): void
+    public function handle(?TenantContext $tenantContext = null): void
     {
+        // Resolve from the container when invoked outside the queue worker
+        // (e.g. legacy unit tests that instantiate the job and call handle()
+        // directly). Inside the worker Laravel injects the container-bound
+        // singleton automatically.
+        $tenantContext ??= app(TenantContext::class);
+
         // PR #115 review iteration 2 (R30) — capture the previous tenant
         // BEFORE we mutate the singleton and ALWAYS restore in `finally`.
         // Long-lived queue workers drain many jobs per PHP boot; without
         // restore-on-exit, this job's tenant bleeds into the next job's
-        // worker context and BelongsToTenant's `creating` auto-fill writes
-        // rows under the wrong tenant.
-        $tenantContext = app(TenantContext::class);
+        // worker context.
         $previousTenant = $tenantContext->current();
         try {
-            // PR #115 review iteration 1 — re-bind TenantContext FIRST so the
-            // soft-delete scope, BelongsToTenant trait, and any other tenant-
-            // scoped query inside this handler operate against the right
-            // tenant. The queue worker boots with the default tenant; without
-            // this re-bind a non-default-tenant doc would be invisible to
-            // KnowledgeDocument::find() here once R30 hardens the read scope.
             $tenantContext->set($this->tenantId);
 
-            $doc = KnowledgeDocument::find($this->documentId);
-            if ($doc === null) {
-                return;
-            }
-            if (! $doc->is_canonical) {
-                return;
-            }
-            if ($doc->slug === null || $doc->canonical_type === null) {
-                return;
-            }
-            // Do not index a doc that has already been archived — the ingest
-            // pipeline marks prior versions as `archived` when a newer version
-            // takes over, and retrieval filters them out. Indexing the archived
-            // row would rebuild the graph from stale content.
-            if ($doc->status === 'archived') {
-                return;
+            $run = Flow::execute(
+                CanonicalIndexFlow::NAME,
+                [
+                    'tenant_id' => $this->tenantId,
+                    'document_id' => $this->documentId,
+                ],
+                FlowExecutionOptions::make(
+                    // Intentionally NO idempotencyKey: the canonical
+                    // indexer must re-execute every time it's dispatched
+                    // (frontmatter changes, doc content changes, manual
+                    // rebuild). The inner steps are idempotent at the
+                    // DB layer (replaceEdgesFor wipes the outgoing set,
+                    // KbNode::firstOrCreate dedupes targets) so re-runs
+                    // converge correctly even under concurrent dispatches.
+                    correlationId: $this->tenantId,
+                ),
+            );
+
+            // Engine status taxonomy: succeeded | failed | compensated |
+            // aborted | paused. Anything other than `succeeded` means the
+            // saga did not complete — re-throw to drive Laravel's retry
+            // semantics ($tries=3).
+            if ($run->status !== FlowRun::STATUS_SUCCEEDED) {
+                $failedStep = $run->failedStep ?? '(unknown)';
+                throw new \RuntimeException(
+                    "CanonicalIndexFlow [{$run->status}] at step [{$failedStep}] for document [{$this->documentId}]"
+                );
             }
 
-            DB::transaction(function () use ($doc) {
-                $this->replaceEdgesFor($doc);
-                $this->upsertSelfNode($doc);
-                $this->createEdgesFromFrontmatter($doc);
-                $this->createEdgesFromChunks($doc);
-                $this->writeAuditRow($doc);
-            });
+            Log::info('CanonicalIndexerJob completed', [
+                'document_id' => $this->documentId,
+                'flow_run_id' => $run->id,
+                'tenant_id' => $this->tenantId,
+            ]);
         } finally {
-            // Restore even on exception/throw so a failing job never leaves
-            // the singleton stuck on this job's tenant for the next one.
+            // Restore even on exception/throw.
             $tenantContext->set($previousTenant);
         }
     }
 
-    // -----------------------------------------------------------------
-    // idempotent cleanup
-    // -----------------------------------------------------------------
-
-    private function replaceEdgesFor(KnowledgeDocument $doc): void
-    {
-        KbEdge::where('project_key', $doc->project_key)
-            ->where('from_node_uid', $doc->slug)
-            ->delete();
-    }
-
-    // -----------------------------------------------------------------
-    // self node (upsert without overwriting a pre-existing dangling marker
-    // of a different doc — but this doc IS the source, so it's always
-    // non-dangling after this call)
-    // -----------------------------------------------------------------
-
-    private function upsertSelfNode(KnowledgeDocument $doc): void
-    {
-        $type = CanonicalType::tryFrom((string) $doc->canonical_type);
-        $nodeType = $type !== null ? $type->nodeType() : (string) $doc->canonical_type;
-
-        KbNode::updateOrCreate(
-            [
-                'project_key' => $doc->project_key,
-                'node_uid' => $doc->slug,
-            ],
-            [
-                'node_type' => $nodeType,
-                'label' => $doc->title,
-                'source_doc_id' => $doc->doc_id,
-                'payload_json' => [
-                    'dangling' => false,
-                    'canonical_status' => $doc->canonical_status,
-                ],
-            ]
-        );
-    }
-
-    // -----------------------------------------------------------------
-    // frontmatter-driven edges
-    // -----------------------------------------------------------------
-
-    private function createEdgesFromFrontmatter(KnowledgeDocument $doc): void
-    {
-        $derived = $this->derivedSlugLists($doc);
-
-        foreach ($derived['related_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::RelatedTo, 'frontmatter_related');
-        }
-        foreach ($derived['supersedes_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::Supersedes, 'frontmatter_supersedes');
-        }
-        foreach ($derived['superseded_by_slugs'] as $target) {
-            $this->createEdge($doc, $target, EdgeType::InvalidatedBy, 'frontmatter_superseded_by');
-        }
-    }
-
     /**
-     * @return array{related_slugs: list<string>, supersedes_slugs: list<string>, superseded_by_slugs: list<string>}
+     * Factory mirroring IngestDocumentJob::dispatchForCurrentTenant() —
+     * captures the active TenantContext at dispatch time. Use this from
+     * every HTTP / CLI / saga call site; the plain `dispatch()` path stays
+     * BC for tests that drive tenant context themselves.
      */
-    private function derivedSlugLists(KnowledgeDocument $doc): array
+    public static function dispatchForCurrentTenant(int $documentId): \Illuminate\Foundation\Bus\PendingDispatch
     {
-        $empty = ['related_slugs' => [], 'supersedes_slugs' => [], 'superseded_by_slugs' => []];
-        $fm = $doc->frontmatter_json;
-        if (! is_array($fm)) {
-            return $empty;
-        }
-        $derived = $fm['_derived'] ?? null;
-        if (! is_array($derived)) {
-            return $empty;
-        }
-        return [
-            'related_slugs' => $this->asSlugList($derived['related_slugs'] ?? []),
-            'supersedes_slugs' => $this->asSlugList($derived['supersedes_slugs'] ?? []),
-            'superseded_by_slugs' => $this->asSlugList($derived['superseded_by_slugs'] ?? []),
-        ];
-    }
-
-    /**
-     * @param  mixed  $input
-     * @return list<string>
-     */
-    private function asSlugList(mixed $input): array
-    {
-        if (! is_array($input)) {
-            return [];
-        }
-        return array_values(array_filter($input, static fn ($v) => is_string($v) && $v !== ''));
-    }
-
-    // -----------------------------------------------------------------
-    // chunk-wikilink-driven edges
-    // -----------------------------------------------------------------
-
-    private function createEdgesFromChunks(KnowledgeDocument $doc): void
-    {
-        $seen = [];
-        KnowledgeChunk::where('knowledge_document_id', $doc->id)
-            ->chunkById(200, function ($chunks) use ($doc, &$seen) {
-                foreach ($chunks as $chunk) {
-                    $this->collectWikilinksFromChunk($chunk, $doc, $seen);
-                }
-            });
-    }
-
-    /**
-     * @param  array<string, true>  $seen
-     */
-    private function collectWikilinksFromChunk(KnowledgeChunk $chunk, KnowledgeDocument $doc, array &$seen): void
-    {
-        $wikilinks = $this->extractWikilinks($chunk->metadata);
-        foreach ($wikilinks as $target) {
-            if (isset($seen[$target])) {
-                continue;
-            }
-            $seen[$target] = true;
-            $this->createEdge($doc, $target, EdgeType::RelatedTo, 'wikilink');
-        }
-    }
-
-    /**
-     * @param  mixed  $metadata
-     * @return list<string>
-     */
-    private function extractWikilinks(mixed $metadata): array
-    {
-        if (! is_array($metadata)) {
-            return [];
-        }
-        $links = $metadata['wikilinks'] ?? [];
-        return $this->asSlugList($links);
-    }
-
-    // -----------------------------------------------------------------
-    // edge creation (with target-node upsert)
-    // -----------------------------------------------------------------
-
-    private function createEdge(
-        KnowledgeDocument $doc,
-        string $targetSlug,
-        EdgeType $edgeType,
-        string $provenance,
-    ): void {
-        if ($targetSlug === $doc->slug) {
-            return;
-        }
-
-        $this->ensureTargetNode($doc->project_key, $targetSlug);
-
-        KbEdge::updateOrCreate(
-            [
-                'project_key' => $doc->project_key,
-                'edge_uid' => "{$doc->slug}->{$targetSlug}:{$edgeType->value}",
-            ],
-            [
-                'from_node_uid' => $doc->slug,
-                'to_node_uid' => $targetSlug,
-                'edge_type' => $edgeType->value,
-                'source_doc_id' => $doc->doc_id,
-                'weight' => $edgeType->defaultWeight(),
-                'provenance' => $provenance,
-                'payload_json' => null,
-            ]
-        );
-    }
-
-    /**
-     * Create a target node as "dangling" if it doesn't exist yet. Atomic
-     * under concurrent indexer runs — `firstOrCreate` uses the composite
-     * unique `uq_kb_nodes_project_uid(project_key, node_uid)` as the
-     * existence check, so two workers trying to insert the same target
-     * converge safely (one wins, the other gets the existing row). Never
-     * overwrites an already-canonicalized node.
-     */
-    private function ensureTargetNode(string $projectKey, string $slug): void
-    {
-        KbNode::firstOrCreate(
-            [
-                'project_key' => $projectKey,
-                'node_uid' => $slug,
-            ],
-            [
-                'node_type' => 'unknown',
-                'label' => $slug,
-                'source_doc_id' => null,
-                'payload_json' => ['dangling' => true],
-            ]
-        );
-    }
-
-    // -----------------------------------------------------------------
-    // audit trail
-    // -----------------------------------------------------------------
-
-    private function writeAuditRow(KnowledgeDocument $doc): void
-    {
-        if (! (bool) config('kb.canonical.audit_enabled', true)) {
-            return;
-        }
-        KbCanonicalAudit::create([
-            'project_key' => $doc->project_key,
-            'doc_id' => $doc->doc_id,
-            'slug' => $doc->slug,
-            'event_type' => 'promoted',
-            'actor' => 'canonical-indexer-job',
-            'before_json' => null,
-            'after_json' => [
-                'canonical_type' => $doc->canonical_type,
-                'canonical_status' => $doc->canonical_status,
-                'retrieval_priority' => $doc->retrieval_priority,
-            ],
-            'metadata_json' => null,
-        ]);
+        $tenantId = app(TenantContext::class)->current();
+        return self::dispatch($documentId, $tenantId);
     }
 }

@@ -148,6 +148,9 @@ class CanonicalIndexerJobTest extends TestCase
 
     public function test_writes_audit_row_on_success(): void
     {
+        // v4.2/W2 PR #116 — the canonical indexer is now Flow-orchestrated
+        // and the authoritative audit event for a (re)indexing pass is
+        // `graph_rebuild` (was the misnamed `promoted` in the legacy job).
         $doc = $this->seedCanonicalDoc('acme', 'dec-x', 'decision', 'X');
         (new CanonicalIndexerJob($doc->id))->handle();
 
@@ -155,7 +158,7 @@ class CanonicalIndexerJobTest extends TestCase
             'project_key' => 'acme',
             'doc_id' => $doc->doc_id,
             'slug' => 'dec-x',
-            'event_type' => 'promoted',
+            'event_type' => 'graph_rebuild',
         ]);
     }
 

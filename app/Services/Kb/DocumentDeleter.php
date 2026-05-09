@@ -166,6 +166,62 @@ class DocumentDeleter
     }
 
     /**
+     * DB+graph hard delete: chunks cascade + canonical graph cascade +
+     * deprecation audit, but PRESERVES the physical file on disk.
+     *
+     * Used by {@see \App\Flow\Definitions\DeleteDocumentFlow}'s
+     * `hard-delete-rows` step so the file removal step can run as a
+     * separate Flow step (with its own observability + dry-run handling)
+     * AFTER the DB rows are gone.
+     *
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null, disk: string, full_path: string}
+     */
+    public function deleteRowsOnly(KnowledgeDocument $document): array
+    {
+        $documentId = (int) $document->id;
+        $projectKey = (string) $document->project_key;
+        $sourcePath = (string) $document->source_path;
+
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+        $disk = (string) ($metadata['disk'] ?? config('kb.sources.disk', 'kb'));
+        $prefix = array_key_exists('prefix', $metadata)
+            ? (string) $metadata['prefix']
+            : (string) config('kb.sources.path_prefix', '');
+        $fullPath = ltrim(trim($prefix, '/').'/'.ltrim($sourcePath, '/'), '/');
+
+        $canonicalSnapshot = $this->canonicalSnapshot($document);
+
+        DB::transaction(function () use ($document) {
+            $document->chunks()->delete();
+            $this->cascadeGraphFor($document);
+            $document->forceDelete();
+            $this->writeDeprecationAudit($document);
+        });
+
+        return [
+            'mode' => 'hard_rows_only',
+            'document_id' => $documentId,
+            'project_key' => $projectKey,
+            'source_path' => $sourcePath,
+            'file_deleted' => false,
+            'canonical' => $canonicalSnapshot,
+            'disk' => $disk,
+            'full_path' => $fullPath,
+        ];
+    }
+
+    /**
+     * Remove a previously-recorded file from a disk. Public wrapper around
+     * the private {@see removeFile()} helper used by the legacy
+     * `forceDelete()` path so {@see \App\Flow\Definitions\DeleteDocumentFlow}
+     * can express the file removal as its own Flow step.
+     */
+    public function removeFileFor(string $disk, string $fullPath, int $documentId, string $sourcePath): bool
+    {
+        return $this->removeFile($disk, $fullPath, $documentId, $sourcePath);
+    }
+
+    /**
      * Hard-delete every document whose deleted_at is older than $before.
      * Returns the number of documents purged.
      */

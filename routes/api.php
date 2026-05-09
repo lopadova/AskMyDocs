@@ -101,6 +101,10 @@ Route::middleware([
     Route::post('/kb/promotion/suggest', [KbPromotionController::class, 'suggest']);
     Route::post('/kb/promotion/candidates', [KbPromotionController::class, 'candidates']);
     Route::post('/kb/promotion/promote', [KbPromotionController::class, 'promote']);
+    // v4.2/W2 PR #116 — operator approval/rejection endpoints for the
+    // PromotionFlow approval gate. Single-use token in the request body.
+    Route::post('/kb/promotion/{approvalId}/approve', [KbPromotionController::class, 'approve']);
+    Route::post('/kb/promotion/{approvalId}/reject', [KbPromotionController::class, 'reject']);
 });
 
 /*
