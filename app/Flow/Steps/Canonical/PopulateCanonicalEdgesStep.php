@@ -60,7 +60,10 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
         }
 
         $documentId = (int) $loadOutput['document_id'];
-        $document = KnowledgeDocument::find($documentId);
+        // R30 — explicit tenant scope on every read; trait only auto-fills
+        // tenant_id on CREATE.
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = KnowledgeDocument::query()->forTenant($tenantId)->find($documentId);
         if ($document === null) {
             throw new RuntimeException(
                 "PopulateCanonicalEdgesStep: KnowledgeDocument [{$documentId}] vanished mid-flow."
@@ -69,19 +72,18 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
 
         $createdEdgeIds = [];
 
-        DB::transaction(function () use ($document, &$createdEdgeIds): void {
-            $this->replaceEdgesFor($document);
+        DB::transaction(function () use ($document, $tenantId, &$createdEdgeIds): void {
+            $this->replaceEdgesFor($document, $tenantId);
             $this->createEdgesFromFrontmatter($document, $createdEdgeIds);
-            $this->createEdgesFromChunks($document, $createdEdgeIds);
+            $this->createEdgesFromChunks($document, $tenantId, $createdEdgeIds);
         });
 
-        // Per-step authoritative audit write: keep the kb_canonical_audit
-        // row owned by the step that actually mutated the graph so the
-        // editorial trail stays correct even when the FlowServiceProvider
-        // bridge listener is disabled. The bridge writes a SECOND row with
-        // a different `actor` (`flow:kb.canonical-index:populate-edges`)
-        // when active; consumers filter by `event_type` and tolerate
-        // both rows.
+        // E.1 — clarify the audit-write ownership. The FlowServiceProvider
+        // bridge listener does NOT write a `graph_rebuild` row for this
+        // step; it only bridges the `kb.promote` approval-gate
+        // FlowStepFailed event into a `rejected_promotion` audit row.
+        // This step is therefore the SOLE writer of the `graph_rebuild`
+        // audit row, gated on the `kb.canonical.audit_enabled` config knob.
         $this->writeGraphRebuildAudit($document);
 
         return FlowStepResult::success(
@@ -102,13 +104,18 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
         );
     }
 
-    private function replaceEdgesFor(KnowledgeDocument $doc): void
+    private function replaceEdgesFor(KnowledgeDocument $doc, string $tenantId): void
     {
-        // R30 — KbEdge BelongsToTenant; the global query scope filters by
-        // tenant. The composite FK enforces the tenant boundary structurally
-        // anyway, but we keep the explicit project_key clause so the EXPLAIN
-        // plan shows the tenant + project filter prominently.
-        KbEdge::where('project_key', $doc->project_key)
+        // R30 — explicit tenant scope on the delete (BelongsToTenant trait
+        // does NOT add a global read scope — only auto-fills tenant_id on
+        // CREATE). The composite FK on
+        // `kb_edges.(project_key, from_node_uid)` → `kb_nodes.(project_key,
+        // node_uid)` enforces the tenant boundary STRUCTURALLY because edges
+        // only resolve within their project_key, but we apply the explicit
+        // tenant filter as defence-in-depth (and so the EXPLAIN plan shows
+        // the tenant + project filter prominently).
+        KbEdge::query()->forTenant($tenantId)
+            ->where('project_key', $doc->project_key)
             ->where('from_node_uid', $doc->slug)
             ->delete();
     }
@@ -134,10 +141,13 @@ final class PopulateCanonicalEdgesStep implements FlowStepHandler
     /**
      * @param  list<int>  $createdEdgeIds
      */
-    private function createEdgesFromChunks(KnowledgeDocument $doc, array &$createdEdgeIds): void
+    private function createEdgesFromChunks(KnowledgeDocument $doc, string $tenantId, array &$createdEdgeIds): void
     {
         $seen = [];
-        KnowledgeChunk::where('knowledge_document_id', $doc->id)
+        // R30 — KnowledgeChunk is tenant-aware; explicit tenant scope on
+        // the chunk iterator.
+        KnowledgeChunk::query()->forTenant($tenantId)
+            ->where('knowledge_document_id', $doc->id)
             ->chunkById(200, function ($chunks) use ($doc, &$seen, &$createdEdgeIds) {
                 foreach ($chunks as $chunk) {
                     foreach ($this->extractWikilinks($chunk->metadata) as $target) {

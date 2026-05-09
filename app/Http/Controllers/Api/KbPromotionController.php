@@ -16,6 +16,7 @@ use Padosoft\LaravelFlow\ApprovalTokenManager;
 use Padosoft\LaravelFlow\Facades\Flow;
 use Padosoft\LaravelFlow\FlowExecutionOptions;
 use Padosoft\LaravelFlow\FlowRun;
+use Padosoft\LaravelFlow\Models\FlowApprovalRecord;
 
 /**
  * Promotion pipeline entry points — human-gated (see ADR 0003).
@@ -215,6 +216,18 @@ class KbPromotionController extends Controller
      * token. Returns the resumed run's status + persisted relative
      * path on success.
      *
+     * B.1 — `approvalId` (route path) must correspond to the supplied
+     * `token` (request body). We hash the plain token via
+     * {@see ApprovalTokenManager::hashToken()} and compare against the
+     * stored {@see FlowApprovalRecord::$token_hash}. A mismatch — whether
+     * the id is unknown OR the token doesn't match the id — returns a
+     * uniform 403 with no internal detail (does not reveal which side
+     * failed; mitigates token-fishing).
+     *
+     * B.2 — the Flow::resume call is wrapped in try/catch so the raw
+     * exception message never leaks to the client; correlation_id is
+     * logged + returned for operator-side debugging.
+     *
      * R21 — token validation + decision are atomic inside
      * {@see ApprovalTokenManager::approve()} (transactional consume of
      * the pending row). Tokens are single-use; replay returns null.
@@ -226,16 +239,28 @@ class KbPromotionController extends Controller
             'actor' => ['nullable', 'array'],
         ]);
 
+        if (! $this->approvalIdMatchesToken($approvalId, $validated['token'])) {
+            return response()->json(['error' => 'forbidden'], 403);
+        }
+
         try {
             $run = Flow::resume(
                 $validated['token'],
                 actor: array_merge(['source' => 'api'], (array) ($validated['actor'] ?? [])),
             );
         } catch (\Throwable $e) {
+            $correlationId = bin2hex(random_bytes(8));
+            Log::error('KbPromotion: approve failed', [
+                'correlation_id' => $correlationId,
+                'approval_id' => $approvalId,
+                'error' => $e::class.': '.$e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
-                'error' => 'approval_failed',
-                'message' => $e->getMessage(),
-            ], 422);
+                'error' => 'approve_failed',
+                'message' => 'Failed to record approval decision.',
+                'correlation_id' => $correlationId,
+            ], 500);
         }
 
         if ($run->status !== FlowRun::STATUS_SUCCEEDED) {
@@ -261,6 +286,9 @@ class KbPromotionController extends Controller
      * Reject a paused PromotionFlow run. The disk stays untouched (the
      * write-markdown step never runs) and a `rejected_promotion` audit
      * row is bridged into kb_canonical_audit by FlowServiceProvider.
+     *
+     * B.1 + B.3 — same validate-id-against-token guard and try/catch
+     * correlation-id wrapping as {@see self::approve()}.
      */
     public function reject(Request $request, string $approvalId): JsonResponse
     {
@@ -270,6 +298,10 @@ class KbPromotionController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
+        if (! $this->approvalIdMatchesToken($approvalId, $validated['token'])) {
+            return response()->json(['error' => 'forbidden'], 403);
+        }
+
         try {
             $run = Flow::reject(
                 $validated['token'],
@@ -277,10 +309,18 @@ class KbPromotionController extends Controller
                 actor: array_merge(['source' => 'api'], (array) ($validated['actor'] ?? [])),
             );
         } catch (\Throwable $e) {
+            $correlationId = bin2hex(random_bytes(8));
+            Log::error('KbPromotion: reject failed', [
+                'correlation_id' => $correlationId,
+                'approval_id' => $approvalId,
+                'error' => $e::class.': '.$e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
-                'error' => 'rejection_failed',
-                'message' => $e->getMessage(),
-            ], 422);
+                'error' => 'reject_failed',
+                'message' => 'Failed to record rejection decision.',
+                'correlation_id' => $correlationId,
+            ], 500);
         }
 
         return response()->json([
@@ -288,6 +328,26 @@ class KbPromotionController extends Controller
             'flow_run_id' => $run->id,
             'approval_id' => $approvalId,
         ], 200);
+    }
+
+    /**
+     * B.1 — return true only when the `approvalId` from the URL maps to
+     * an approval row whose stored `token_hash` matches the SHA-256 of
+     * the plain `token` from the body. Uniform false (caller maps to
+     * 403 with no internal detail) for any of: id-not-found, token
+     * mismatch, expired/already-consumed approval. {@see hash_equals}
+     * is constant-time so we don't leak the exact mismatch surface via
+     * timing.
+     */
+    private function approvalIdMatchesToken(string $approvalId, string $plainToken): bool
+    {
+        $row = FlowApprovalRecord::query()->find($approvalId);
+        if ($row === null) {
+            return false;
+        }
+        $expectedHash = (string) $row->token_hash;
+        $providedHash = ApprovalTokenManager::hashToken($plainToken);
+        return hash_equals($expectedHash, $providedHash);
     }
 
     private function firstHeading(string $body): ?string

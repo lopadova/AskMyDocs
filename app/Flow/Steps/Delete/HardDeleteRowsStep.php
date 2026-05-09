@@ -63,7 +63,15 @@ final class HardDeleteRowsStep implements FlowStepHandler
 
         $documentId = (int) $loadOutput['document_id'];
         // R2 — withTrashed because soft-delete-step preceded us.
-        $document = KnowledgeDocument::withTrashed()->find($documentId);
+        // R30 — explicit tenant scope on the read; trait only auto-fills
+        // tenant_id on CREATE. Without forTenant(), a numeric id collision
+        // with another tenant's row would silently hard-delete the wrong
+        // row (and its chunks via cascade).
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->withTrashed()
+            ->find($documentId);
         if ($document === null) {
             throw new RuntimeException(
                 "HardDeleteRowsStep: KnowledgeDocument [{$documentId}] vanished mid-flow."

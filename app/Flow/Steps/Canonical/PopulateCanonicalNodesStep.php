@@ -54,7 +54,10 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
         $documentId = (int) $loadOutput['document_id'];
         // Re-load inside the step so we have the full Eloquent model with
         // typed casts and access to $document->frontmatter_json.
-        $document = KnowledgeDocument::find($documentId);
+        // R30 — explicit tenant scope on every read; trait only auto-fills
+        // tenant_id on CREATE.
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = KnowledgeDocument::query()->forTenant($tenantId)->find($documentId);
         if ($document === null) {
             // Race: doc was deleted between load-document and now. Treat as
             // a hard failure so compensation can run and the operator sees
@@ -67,9 +70,9 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
         /** @var list<int> $createdNodeIds */
         $createdNodeIds = [];
 
-        $selfNodeId = $this->upsertSelfNode($document, $createdNodeIds);
-        $this->upsertTargetNodesFromFrontmatter($document, $createdNodeIds);
-        $this->upsertTargetNodesFromChunks($document, $createdNodeIds);
+        $selfNodeId = $this->upsertSelfNode($document, $tenantId, $createdNodeIds);
+        $this->upsertTargetNodesFromFrontmatter($document, $tenantId, $createdNodeIds);
+        $this->upsertTargetNodesFromChunks($document, $tenantId, $createdNodeIds);
 
         return FlowStepResult::success(
             output: [
@@ -89,16 +92,17 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
     /**
      * @param  list<int>  $createdNodeIds
      */
-    private function upsertSelfNode(KnowledgeDocument $doc, array &$createdNodeIds): int
+    private function upsertSelfNode(KnowledgeDocument $doc, string $tenantId, array &$createdNodeIds): int
     {
         $type = CanonicalType::tryFrom((string) $doc->canonical_type);
         $nodeType = $type !== null ? $type->nodeType() : (string) $doc->canonical_type;
 
-        // R30 — KbNode uses BelongsToTenant; the trait fills tenant_id on
-        // create automatically. firstOrCreate (rather than updateOrCreate)
+        // R30 — explicit tenant scope on the read; trait only auto-fills
+        // tenant_id on CREATE. firstOrCreate (rather than updateOrCreate)
         // tracks whether the row was actually inserted by THIS step so the
         // compensator only deletes nodes it created.
-        $existing = KbNode::where('project_key', $doc->project_key)
+        $existing = KbNode::query()->forTenant($tenantId)
+            ->where('project_key', $doc->project_key)
             ->where('node_uid', $doc->slug)
             ->first();
 
@@ -135,7 +139,7 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
     /**
      * @param  list<int>  $createdNodeIds
      */
-    private function upsertTargetNodesFromFrontmatter(KnowledgeDocument $doc, array &$createdNodeIds): void
+    private function upsertTargetNodesFromFrontmatter(KnowledgeDocument $doc, string $tenantId, array &$createdNodeIds): void
     {
         $derived = $this->derivedSlugLists($doc);
         $targets = array_unique(array_merge(
@@ -148,25 +152,28 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
             if ($targetSlug === '' || $targetSlug === $doc->slug) {
                 continue;
             }
-            $this->ensureTargetNode((string) $doc->project_key, $targetSlug, $createdNodeIds);
+            $this->ensureTargetNode((string) $doc->project_key, $tenantId, $targetSlug, $createdNodeIds);
         }
     }
 
     /**
      * @param  list<int>  $createdNodeIds
      */
-    private function upsertTargetNodesFromChunks(KnowledgeDocument $doc, array &$createdNodeIds): void
+    private function upsertTargetNodesFromChunks(KnowledgeDocument $doc, string $tenantId, array &$createdNodeIds): void
     {
         $seen = [];
-        KnowledgeChunk::where('knowledge_document_id', $doc->id)
-            ->chunkById(200, function ($chunks) use ($doc, &$seen, &$createdNodeIds) {
+        // R30 — KnowledgeChunk is tenant-aware; explicit tenant scope on
+        // the chunk iterator (the chunkById query is otherwise unscoped).
+        KnowledgeChunk::query()->forTenant($tenantId)
+            ->where('knowledge_document_id', $doc->id)
+            ->chunkById(200, function ($chunks) use ($doc, $tenantId, &$seen, &$createdNodeIds) {
                 foreach ($chunks as $chunk) {
                     foreach ($this->extractWikilinks($chunk->metadata) as $target) {
                         if ($target === '' || $target === $doc->slug || isset($seen[$target])) {
                             continue;
                         }
                         $seen[$target] = true;
-                        $this->ensureTargetNode((string) $doc->project_key, $target, $createdNodeIds);
+                        $this->ensureTargetNode((string) $doc->project_key, $tenantId, $target, $createdNodeIds);
                     }
                 }
             });
@@ -175,24 +182,30 @@ final class PopulateCanonicalNodesStep implements FlowStepHandler
     /**
      * @param  list<int>  $createdNodeIds
      */
-    private function ensureTargetNode(string $projectKey, string $slug, array &$createdNodeIds): void
+    private function ensureTargetNode(string $projectKey, string $tenantId, string $slug, array &$createdNodeIds): void
     {
-        $existing = KbNode::where('project_key', $projectKey)
-            ->where('node_uid', $slug)
-            ->first();
-        if ($existing !== null) {
-            return;
-        }
+        // D.1 — firstOrCreate is implemented atomically by Eloquent (it falls
+        // back to a fresh lookup on UNIQUE-violation insert), so concurrent
+        // canonical-index runs creating the same dangling target node converge
+        // on the existing row instead of throwing on UNIQUE(project_key,
+        // node_uid). The previous read-then-create pattern raced.
+        // R30 — explicit tenant scope on the lookup half.
+        $node = KbNode::query()->forTenant($tenantId)->firstOrCreate(
+            [
+                'project_key' => $projectKey,
+                'node_uid' => $slug,
+            ],
+            [
+                'node_type' => 'unknown',
+                'label' => $slug,
+                'source_doc_id' => null,
+                'payload_json' => ['dangling' => true],
+            ],
+        );
 
-        $node = KbNode::create([
-            'project_key' => $projectKey,
-            'node_uid' => $slug,
-            'node_type' => 'unknown',
-            'label' => $slug,
-            'source_doc_id' => null,
-            'payload_json' => ['dangling' => true],
-        ]);
-        $createdNodeIds[] = (int) $node->id;
+        if ($node->wasRecentlyCreated) {
+            $createdNodeIds[] = (int) $node->id;
+        }
     }
 
     /**

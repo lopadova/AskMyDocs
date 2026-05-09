@@ -90,6 +90,44 @@ final class CanonicalIndexFlowTest extends TestCase
         $this->assertSame(0, KbCanonicalAudit::count());
     }
 
+    public function test_r30_cross_tenant_read_returns_document_not_found_short_circuit(): void
+    {
+        // R30 — every read inside the saga steps applies forTenant() to
+        // the input tenant_id. A doc that physically exists under
+        // tenant-a must NOT resolve when the flow runs with
+        // tenant_id='tenant-b'; the load step short-circuits with
+        // `document_not_found` (NOT a tenant-b row that happens to share
+        // the same numeric id, NOT tenant-a's row leaking through).
+        $tenants = $this->app->make(TenantContext::class);
+
+        $tenants->set('tenant-a');
+        $docA = $this->seedCanonicalDoc('tenant-a', 'project-a', 'dec-only-a', [
+            'related_slugs' => ['mod-a-shared'],
+            'supersedes_slugs' => [],
+            'superseded_by_slugs' => [],
+        ]);
+
+        // Run the flow under tenant-b's identity but pass tenant-a's
+        // numeric document_id. forTenant() must hide the row.
+        $tenants->set('tenant-b');
+        $run = Flow::execute(
+            CanonicalIndexFlow::NAME,
+            ['tenant_id' => 'tenant-b', 'document_id' => $docA->id],
+            FlowExecutionOptions::make(correlationId: 'tenant-b'),
+        );
+
+        $this->assertSame(FlowRun::STATUS_SUCCEEDED, $run->status);
+        $loadOutput = $run->stepResults['load-document']->output ?? [];
+        $this->assertFalse($loadOutput['indexable'] ?? true);
+        $this->assertSame('document_not_found', $loadOutput['reason'] ?? null);
+
+        // Tenant-a's graph must remain untouched (no nodes, no edges,
+        // no audit) — the saga short-circuited before any write.
+        $this->assertSame(0, KbNode::count());
+        $this->assertSame(0, KbEdge::count());
+        $this->assertSame(0, KbCanonicalAudit::count());
+    }
+
     public function test_tenant_isolation_two_tenants_yield_distinct_node_rows(): void
     {
         // Each tenant uses its own slug so the schema-level UNIQUE on

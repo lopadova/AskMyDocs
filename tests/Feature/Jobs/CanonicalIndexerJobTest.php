@@ -118,16 +118,58 @@ class CanonicalIndexerJobTest extends TestCase
         (new CanonicalIndexerJob($doc->id))->handle();
         $this->assertSame(2, KbEdge::where('from_node_uid', 'dec-x')->count());
 
-        // Update: frontmatter_json now references a, c (b removed).
+        // E.2 — the job dispatches with idempotencyKey
+        // `canonical-index:{tenantId}:{documentId}`, so re-dispatching the
+        // SAME doc id under the SAME tenant short-circuits at the engine
+        // level (existing FlowRun returned, no re-execution). This is the
+        // intended dedup behaviour for the production path: each new
+        // version of the canonical doc lands as a new KnowledgeDocument
+        // row (= new id, = new idempotency key) and re-indexes
+        // automatically. Mutating frontmatter_json in place on the same
+        // row, then re-dispatching the same id, would NOT re-execute —
+        // and that's correct.
+        //
+        // To exercise the inner step's edge-replace logic against the
+        // same row, we must therefore drive the CanonicalIndexFlow
+        // directly (the engine bypasses the idempotency check when the
+        // key is null) instead of going through the job wrapper.
         $fresh = KnowledgeDocument::find($doc->id);
         $fresh->frontmatter_json = ['_derived' => ['related_slugs' => ['a', 'c'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []]];
         $fresh->save();
 
-        (new CanonicalIndexerJob($doc->id))->handle();
+        \Padosoft\LaravelFlow\Facades\Flow::execute(
+            \App\Flow\Definitions\CanonicalIndexFlow::NAME,
+            ['tenant_id' => 'default', 'document_id' => $doc->id],
+            \Padosoft\LaravelFlow\FlowExecutionOptions::make(correlationId: 'default'),
+        );
 
         $targets = KbEdge::where('from_node_uid', 'dec-x')->pluck('to_node_uid')->all();
         sort($targets);
         $this->assertSame(['a', 'c'], $targets);
+    }
+
+    public function test_re_dispatching_same_document_id_short_circuits_via_idempotency_key(): void
+    {
+        // E.2 — the job's idempotencyKey is
+        // `canonical-index:{tenantId}:{documentId}`. Re-dispatching the
+        // SAME doc id under the SAME tenant must return the existing
+        // FlowRun row instead of re-executing, mirroring
+        // IngestDocumentJob's pattern. Concurrent re-dispatches are
+        // therefore deduped at the engine level.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-y', 'decision', 'Y', [
+            '_derived' => ['related_slugs' => ['target-1'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
+        ]);
+
+        (new CanonicalIndexerJob($doc->id))->handle();
+        $auditCount1 = KbCanonicalAudit::where('slug', 'dec-y')->count();
+        $this->assertSame(1, $auditCount1);
+
+        // Second dispatch under same (tenant, document_id): engine should
+        // return the existing FlowRun without re-executing the saga; the
+        // graph_rebuild audit row count must stay at 1.
+        (new CanonicalIndexerJob($doc->id))->handle();
+        $auditCount2 = KbCanonicalAudit::where('slug', 'dec-y')->count();
+        $this->assertSame(1, $auditCount2, 'idempotencyKey must dedupe re-dispatches; audit row should not double');
     }
 
     public function test_supersedes_generates_typed_edge(): void

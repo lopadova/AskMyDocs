@@ -27,10 +27,16 @@ use Padosoft\LaravelFlow\FlowRun;
  * exactly the KbNode rows the failed run inserted (FK cascade also
  * removes any partially-inserted edges).
  *
- * Idempotency: the inner steps still rely on the outgoing-edges replace
- * pattern + KbNode unique constraint to converge under concurrent re-runs.
- * Re-dispatching the same document_id under the same tenant returns the
- * existing FlowRun via the engine's idempotency key.
+ * Idempotency: dispatched with an engine-level idempotencyKey of
+ * `canonical-index:{tenantId}:{documentId}`, mirroring
+ * {@see \App\Jobs\IngestDocumentJob}'s pattern. Re-dispatching the same
+ * (tenant, document_id) pair short-circuits at the engine level and returns
+ * the existing FlowRun row instead of re-executing the saga, preventing
+ * concurrent indexer runs against the same document. The inner steps are
+ * still independently idempotent (replaceEdgesFor() wipes the outgoing
+ * set; KbNode::firstOrCreate() dedupes target nodes), so a forced re-run
+ * (e.g. operator-driven `kb:rebuild-graph`) under a fresh idempotency
+ * window converges correctly.
  */
 class CanonicalIndexerJob implements ShouldQueue
 {
@@ -80,13 +86,16 @@ class CanonicalIndexerJob implements ShouldQueue
                     'document_id' => $this->documentId,
                 ],
                 FlowExecutionOptions::make(
-                    // Intentionally NO idempotencyKey: the canonical
-                    // indexer must re-execute every time it's dispatched
-                    // (frontmatter changes, doc content changes, manual
-                    // rebuild). The inner steps are idempotent at the
-                    // DB layer (replaceEdgesFor wipes the outgoing set,
-                    // KbNode::firstOrCreate dedupes targets) so re-runs
-                    // converge correctly even under concurrent dispatches.
+                    // E.2 — tenant-scoped idempotency key. Mirrors
+                    // IngestDocumentJob's pattern: re-dispatching the
+                    // same (tenant, document_id) returns the existing
+                    // FlowRun row instead of re-executing concurrently.
+                    // The inner steps remain idempotent at the DB layer
+                    // (replaceEdgesFor wipes the outgoing set,
+                    // KbNode::firstOrCreate dedupes targets) so a forced
+                    // re-run under a fresh idempotency window also
+                    // converges.
+                    idempotencyKey: "canonical-index:{$this->tenantId}:{$this->documentId}",
                     correlationId: $this->tenantId,
                 ),
             );

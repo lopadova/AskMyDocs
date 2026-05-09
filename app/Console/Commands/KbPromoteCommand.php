@@ -56,9 +56,16 @@ class KbPromoteCommand extends Command
             return self::FAILURE;
         }
 
-        $markdown = @file_get_contents($path);
+        // R7 — no @-silenced file_get_contents; surface readability check
+        // separately from the actual read so the operator gets a clear
+        // error message in either failure mode.
+        if (! is_readable($path)) {
+            $this->error("File not readable (permission denied): {$path}");
+            return self::FAILURE;
+        }
+        $markdown = file_get_contents($path);
         if ($markdown === false) {
-            $this->error("File is unreadable (permission denied or OS error): {$path}");
+            $this->error("Failed to read file: {$path}");
             return self::FAILURE;
         }
         if (trim($markdown) === '') {

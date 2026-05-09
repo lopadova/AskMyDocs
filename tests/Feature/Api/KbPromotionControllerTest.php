@@ -180,6 +180,69 @@ class KbPromotionControllerTest extends TestCase
         Queue::assertNotPushed(IngestDocumentJob::class);
     }
 
+    public function test_approve_returns_403_when_token_does_not_match_approval_id(): void
+    {
+        // B.1 — approvalId from the URL must match the token from the
+        // body. Mismatch returns a uniform 403 without leaking which
+        // side failed (id vs token).
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => 'completely-bogus-token-that-does-not-match',
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+        Storage::disk('kb')->assertMissing('decisions/dec-cache-v2.md');
+        Queue::assertNotPushed(IngestDocumentJob::class);
+    }
+
+    public function test_approve_returns_403_when_approval_id_unknown(): void
+    {
+        // B.1 — unknown approval_id returns the same uniform 403 as a
+        // token mismatch (no internal-state distinction leaked).
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $token = $promote->json('approval.token');
+
+        $approve = $this->postJson('/api/kb/promotion/00000000-0000-0000-0000-000000000000/approve', [
+            'token' => $token,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_reject_returns_403_when_token_does_not_match_approval_id(): void
+    {
+        // B.1 — same guard as approve.
+        Queue::fake();
+
+        $promote = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ])->assertStatus(202);
+
+        $approvalId = $promote->json('approval.approval_id');
+
+        $reject = $this->postJson("/api/kb/promotion/{$approvalId}/reject", [
+            'token' => 'completely-bogus-token-that-does-not-match',
+            'reason' => 'phishing attempt',
+        ]);
+
+        $reject->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
     public function test_promote_rejects_invalid_frontmatter_with_422(): void
     {
         Queue::fake();

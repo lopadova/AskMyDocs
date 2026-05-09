@@ -40,7 +40,8 @@ final class LoadDocumentForDeleteStep implements FlowStepHandler
         $projectKey = (string) ($context->input['project_key'] ?? '');
         $sourcePath = (string) ($context->input['source_path'] ?? '');
 
-        $document = $this->resolveDocument($documentId, $projectKey, $sourcePath);
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = $this->resolveDocument($tenantId, $documentId, $projectKey, $sourcePath);
         if ($document === null) {
             // Surface as a typed not-found state rather than throwing;
             // the controller / CLI translate this into a 404 / failure
@@ -74,10 +75,18 @@ final class LoadDocumentForDeleteStep implements FlowStepHandler
         );
     }
 
-    private function resolveDocument(int $documentId, string $projectKey, string $sourcePath): ?KnowledgeDocument
+    private function resolveDocument(string $tenantId, int $documentId, string $projectKey, string $sourcePath): ?KnowledgeDocument
     {
         if ($documentId > 0) {
-            return KnowledgeDocument::withTrashed()->find($documentId);
+            // R30 — explicit tenant scope on the by-id lookup. Without it,
+            // a numeric id collision would silently resolve another
+            // tenant's row. Soft-deleted rows are still visible because the
+            // delete saga must reach already-soft-deleted rows for a
+            // force-delete promotion.
+            return KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->withTrashed()
+                ->find($documentId);
         }
         if ($projectKey === '' || $sourcePath === '') {
             throw new RuntimeException(
@@ -85,7 +94,13 @@ final class LoadDocumentForDeleteStep implements FlowStepHandler
             );
         }
         $normalized = KbPath::normalize($sourcePath);
-        return KnowledgeDocument::withTrashed()
+        // R30 — explicit tenant scope on the path lookup. Two tenants can
+        // legitimately share the same project_key + source_path; without
+        // forTenant() this would resolve the wrong tenant's row when one
+        // tenant deletes a path that another tenant also has.
+        return KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->withTrashed()
             ->where('project_key', $projectKey)
             ->where('source_path', $normalized)
             ->first();

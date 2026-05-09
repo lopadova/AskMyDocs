@@ -92,8 +92,9 @@ abstract class TestCase extends OrchestraTestCase
         // queue.lock_store at it. The directory lives under the system temp
         // and is unique per PHPUnit run so parallel processes do not collide.
         $flowLockPath = sys_get_temp_dir().'/askmydocs-flow-locks-'.getmypid();
-        if (! is_dir($flowLockPath)) {
-            @mkdir($flowLockPath, 0755, true);
+        // R7 — no @-silenced mkdir; race-tolerant + check return.
+        if (! is_dir($flowLockPath) && ! mkdir($flowLockPath, 0o755, true) && ! is_dir($flowLockPath)) {
+            throw new \RuntimeException("TestCase: failed to create flow lock directory: {$flowLockPath}");
         }
         $app['config']->set('cache.stores.flow_lock', [
             'driver' => 'file',

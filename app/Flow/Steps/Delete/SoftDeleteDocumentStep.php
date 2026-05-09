@@ -50,7 +50,13 @@ final class SoftDeleteDocumentStep implements FlowStepHandler
         }
 
         $documentId = (int) $loadOutput['document_id'];
-        $document = KnowledgeDocument::withTrashed()->find($documentId);
+        // R30 — explicit tenant scope on the read; trait only auto-fills
+        // tenant_id on CREATE.
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->withTrashed()
+            ->find($documentId);
         if ($document === null) {
             throw new RuntimeException(
                 "SoftDeleteDocumentStep: KnowledgeDocument [{$documentId}] vanished mid-flow."

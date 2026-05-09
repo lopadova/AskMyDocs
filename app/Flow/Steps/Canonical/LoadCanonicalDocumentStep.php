@@ -39,7 +39,13 @@ final class LoadCanonicalDocumentStep implements FlowStepHandler
             );
         }
 
-        $document = KnowledgeDocument::find($documentId);
+        // R30 — BelongsToTenant trait only fills tenant_id on CREATE; reads
+        // are not auto-scoped. Use the input tenant_id (already validated by
+        // StepTenantBinder above) to scope the lookup explicitly. Without
+        // forTenant(), `find($id)` would return rows belonging to other
+        // tenants if the numeric id collided.
+        $tenantId = (string) $context->input['tenant_id'];
+        $document = KnowledgeDocument::query()->forTenant($tenantId)->find($documentId);
         if ($document === null) {
             return $this->indexableShortCircuit('document_not_found', $documentId);
         }
