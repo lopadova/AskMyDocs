@@ -465,6 +465,141 @@ class KbPromotionControllerTest extends TestCase
         $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
     }
 
+    public function test_approve_returns_403_when_token_belongs_to_another_flow_definition(): void
+    {
+        // Iteration 5 (PR #116) — defence-in-depth FLOW DEFINITION pinning.
+        // Token + step_name + tenant alone are not enough: a future flow
+        // re-using the generic `approval-gate` step name would otherwise
+        // be replayable on kb.promote endpoints. The lookup now ALSO
+        // joins flow_runs.definition_name = PromotionFlow::NAME.
+        Queue::fake();
+
+        $rawToken = bin2hex(random_bytes(16));
+        $approvalId = (string) Str::uuid();
+        $runId = (string) Str::uuid();
+        $tenantId = app(TenantContext::class)->current();
+
+        // SAME step name as PromotionFlow uses, SAME tenant — but the
+        // parent flow_runs row is for a different flow definition.
+        DB::table('flow_runs')->insert([
+            'id' => $runId,
+            'tenant_id' => $tenantId,
+            'definition_name' => 'some.other.flow.with.same.step.name',
+            'status' => 'paused',
+            'dry_run' => false,
+            'started_at' => Carbon::now(),
+            'created_at' => Carbon::now(),
+            'updated_at' => Carbon::now(),
+        ]);
+        FlowApprovalRecord::query()->create([
+            'id' => $approvalId,
+            'tenant_id' => $tenantId,
+            'run_id' => $runId,
+            'step_name' => \App\Flow\Definitions\PromotionFlow::APPROVAL_STEP, // SAME step name
+            'status' => FlowApprovalRecord::STATUS_PENDING,
+            'token_hash' => \Padosoft\LaravelFlow\ApprovalTokenManager::hashToken($rawToken),
+            'expires_at' => Carbon::now()->addHour(),
+        ]);
+
+        $approve = $this->postJson("/api/kb/promotion/{$approvalId}/approve", [
+            'token' => $rawToken,
+        ]);
+
+        $approve->assertStatus(403)->assertJsonPath('error', 'forbidden');
+
+        // Token must remain unconsumed.
+        $row = FlowApprovalRecord::query()->where('id', $approvalId)->first();
+        $this->assertNotNull($row);
+        $this->assertNull($row->consumed_at);
+        $this->assertSame(FlowApprovalRecord::STATUS_PENDING, (string) $row->status);
+    }
+
+    public function test_reject_returns_403_when_token_belongs_to_another_flow_definition(): void
+    {
+        // Iteration 5 (PR #116) — symmetric defence on the reject path.
+        Queue::fake();
+
+        $rawToken = bin2hex(random_bytes(16));
+        $approvalId = (string) Str::uuid();
+        $runId = (string) Str::uuid();
+        $tenantId = app(TenantContext::class)->current();
+
+        DB::table('flow_runs')->insert([
+            'id' => $runId,
+            'tenant_id' => $tenantId,
+            'definition_name' => 'some.other.flow.with.same.step.name',
+            'status' => 'paused',
+            'dry_run' => false,
+            'started_at' => Carbon::now(),
+            'created_at' => Carbon::now(),
+            'updated_at' => Carbon::now(),
+        ]);
+        FlowApprovalRecord::query()->create([
+            'id' => $approvalId,
+            'tenant_id' => $tenantId,
+            'run_id' => $runId,
+            'step_name' => \App\Flow\Definitions\PromotionFlow::APPROVAL_STEP,
+            'status' => FlowApprovalRecord::STATUS_PENDING,
+            'token_hash' => \Padosoft\LaravelFlow\ApprovalTokenManager::hashToken($rawToken),
+            'expires_at' => Carbon::now()->addHour(),
+        ]);
+
+        $reject = $this->postJson("/api/kb/promotion/{$approvalId}/reject", [
+            'token' => $rawToken,
+            'reason' => 'no',
+        ]);
+
+        $reject->assertStatus(403)->assertJsonPath('error', 'forbidden');
+    }
+
+    public function test_promote_response_includes_relative_paths_alongside_absolute_urls(): void
+    {
+        // Iteration 5 (PR #116) — ADDITIVE response-shape extension.
+        // approve_url / reject_url remain absolute (BC); approve_path /
+        // reject_path are added as relative paths so clients behind a
+        // reverse proxy can route without stripping the host. R27:
+        // additive only, never rename or sub-objectify a primitive
+        // existing callers may already read.
+        Queue::fake();
+
+        $response = $this->postJson('/api/kb/promotion/promote', [
+            'project_key' => 'acme',
+            'markdown' => $this->validDecisionMarkdown('dec-cache-v2'),
+        ]);
+
+        $response->assertStatus(202)
+            ->assertJsonStructure([
+                'approval' => [
+                    'approval_id',
+                    'token',
+                    'expires_at',
+                    'approve_url',
+                    'reject_url',
+                    'approve_path',
+                    'reject_path',
+                ],
+            ]);
+
+        $approvalId = $response->json('approval.approval_id');
+        $this->assertSame(
+            "/api/kb/promotion/{$approvalId}/approve",
+            $response->json('approval.approve_path'),
+        );
+        $this->assertSame(
+            "/api/kb/promotion/{$approvalId}/reject",
+            $response->json('approval.reject_path'),
+        );
+        // Backwards-compat: absolute URLs still present and well-formed.
+        $this->assertStringContainsString(
+            "/api/kb/promotion/{$approvalId}/approve",
+            (string) $response->json('approval.approve_url'),
+        );
+        $this->assertStringContainsString(
+            "/api/kb/promotion/{$approvalId}/reject",
+            (string) $response->json('approval.reject_url'),
+        );
+    }
+
     public function test_approve_returns_500_when_write_step_output_missing_relative_path(): void
     {
         // Iteration 4 (PR #116) — B.1 + R14. The saga reports SUCCEEDED

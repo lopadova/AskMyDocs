@@ -262,6 +262,90 @@ class CanonicalIndexerJobTest extends TestCase
         $this->assertSame(0, KbCanonicalAudit::count());
     }
 
+    public function test_idempotency_key_is_same_for_unchanged_content(): void
+    {
+        // Iter5 (PR #116) — same (tenant, document_id, version_hash) MUST
+        // produce the same engine-level idempotency key. This is what
+        // makes the regular ingest path safe under concurrent re-dispatch.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-1', 'decision', 'K1');
+
+        $jobA = new CanonicalIndexerJob($doc->id);
+        $jobB = new CanonicalIndexerJob($doc->id);
+
+        $this->assertSame($jobA->buildIdempotencyKey(), $jobB->buildIdempotencyKey());
+        $this->assertStringContainsString((string) $doc->id, $jobA->buildIdempotencyKey());
+        $this->assertStringContainsString($doc->version_hash, $jobA->buildIdempotencyKey());
+    }
+
+    public function test_idempotency_key_changes_when_version_hash_changes(): void
+    {
+        // Iter5 (PR #116) — Copilot finding: a key based ONLY on
+        // (tenant, document_id) would not change after re-ingest with
+        // new content, breaking re-execution after schema/content
+        // updates. With version_hash in the key, a new version => a new
+        // key => natural re-execution.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-2', 'decision', 'K2');
+        $keyV1 = (new CanonicalIndexerJob($doc->id))->buildIdempotencyKey();
+
+        // Mutate version_hash (simulates content re-ingest landing as a
+        // new version on the same row id).
+        $doc->update(['version_hash' => str_repeat('e', 64)]);
+        $keyV2 = (new CanonicalIndexerJob($doc->id))->buildIdempotencyKey();
+
+        $this->assertNotSame($keyV1, $keyV2, 'Different version_hash MUST yield different idempotency keys');
+    }
+
+    public function test_force_reindex_bypasses_idempotency_with_nonce(): void
+    {
+        // Iter5 (PR #116) — Copilot finding: kb:rebuild-graph after a
+        // graph truncate must be able to FORCE re-execution against
+        // unchanged content. The forceReindex flag salts the key with
+        // a unix-millis nonce so the engine sees a fresh key every
+        // time. Two consecutive forceReindex jobs for the same doc
+        // produce DIFFERENT keys — proving the engine cannot dedup them.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-key-3', 'decision', 'K3');
+
+        $base = (new CanonicalIndexerJob($doc->id, 'default', false))->buildIdempotencyKey();
+        $forced1 = (new CanonicalIndexerJob($doc->id, 'default', true))->buildIdempotencyKey();
+        // hrtime() returns monotonic nanoseconds; even back-to-back calls produce a fresh value.
+        $forced2 = (new CanonicalIndexerJob($doc->id, 'default', true))->buildIdempotencyKey();
+
+        $this->assertNotSame($base, $forced1, 'forceReindex key MUST differ from default key');
+        $this->assertNotSame($forced1, $forced2, 'two forced rebuilds MUST produce distinct keys');
+        $this->assertStringContainsString(':rebuild-', $forced1);
+        $this->assertStringContainsString(':rebuild-', $forced2);
+    }
+
+    public function test_force_reindex_actually_re_executes_after_truncate(): void
+    {
+        // Iter5 (PR #116) — END-TO-END proof. Without forceReindex,
+        // re-running CanonicalIndexerJob after a graph truncate would
+        // hit the engine cache and short-circuit, leaving kb_nodes empty.
+        // With forceReindex, the indexer re-runs against the same row
+        // and re-populates kb_nodes/kb_edges from frontmatter_json.
+        $doc = $this->seedCanonicalDoc('acme', 'dec-rebuild-x', 'decision', 'X', [
+            '_derived' => ['related_slugs' => ['mod-1', 'mod-2'], 'supersedes_slugs' => [], 'superseded_by_slugs' => []],
+        ]);
+
+        // First indexer run populates the graph.
+        (new CanonicalIndexerJob($doc->id))->handle();
+        $this->assertSame(2, KbEdge::where('from_node_uid', 'dec-rebuild-x')->count());
+
+        // Operator-driven truncate (mirrors what kb:rebuild-graph does).
+        KbEdge::query()->delete();
+        KbNode::query()->delete();
+        $this->assertSame(0, KbNode::count());
+
+        // A NON-forced re-dispatch would short-circuit (engine cache
+        // returns the prior FlowRun). The forced re-dispatch MUST
+        // re-execute and re-populate the graph.
+        (new CanonicalIndexerJob($doc->id, 'default', true))->handle();
+
+        $targets = KbEdge::where('from_node_uid', 'dec-rebuild-x')->pluck('to_node_uid')->all();
+        sort($targets);
+        $this->assertSame(['mod-1', 'mod-2'], $targets, 'forceReindex must re-populate kb_edges after truncate');
+    }
+
     public function test_multi_tenant_isolation(): void
     {
         // Same slug in two projects, each with their own target wikilink.

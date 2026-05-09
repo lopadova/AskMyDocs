@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Jobs;
 
 use App\Flow\Definitions\CanonicalIndexFlow;
+use App\Models\KnowledgeDocument;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -28,15 +29,26 @@ use Padosoft\LaravelFlow\FlowRun;
  * removes any partially-inserted edges).
  *
  * Idempotency: dispatched with an engine-level idempotencyKey of
- * `canonical-index:{tenantId}:{documentId}`, mirroring
- * {@see \App\Jobs\IngestDocumentJob}'s pattern. Re-dispatching the same
- * (tenant, document_id) pair short-circuits at the engine level and returns
- * the existing FlowRun row instead of re-executing the saga, preventing
- * concurrent indexer runs against the same document. The inner steps are
- * still independently idempotent (replaceEdgesFor() wipes the outgoing
- * set; KbNode::firstOrCreate() dedupes target nodes), so a forced re-run
- * (e.g. operator-driven `kb:rebuild-graph`) under a fresh idempotency
- * window converges correctly.
+ * `canonical-index:{tenantId}:{documentId}:{versionHash}`, mirroring
+ * {@see \App\Jobs\IngestDocumentJob}'s pattern. Two important properties
+ * fall out of including version_hash in the key:
+ *
+ *   - re-ingest with NEW content lands as a new (or updated) row whose
+ *     version_hash changes => the indexer re-executes naturally;
+ *   - re-dispatching the SAME (tenant, document_id, version_hash) short-
+ *     circuits at the engine level (existing FlowRun returned, no re-run),
+ *     preventing concurrent indexer runs against the same content.
+ *
+ * Iteration 5 (PR #116) — `kb:rebuild-graph` after a graph truncate must
+ * still be able to FORCE re-execution against unchanged content. The
+ * `$forceReindex` ctor flag (and the `dispatchRebuild()` factory) appends
+ * a unix-millis nonce to the idempotency key so the engine sees a fresh
+ * key and re-runs the saga. Default callers (regular ingest path) keep
+ * idempotency.
+ *
+ * The inner steps are still independently idempotent (replaceEdgesFor()
+ * wipes the outgoing set; KbNode::firstOrCreate() dedupes target nodes),
+ * so a forced re-run converges correctly even on a populated graph.
  */
 class CanonicalIndexerJob implements ShouldQueue
 {
@@ -49,15 +61,23 @@ class CanonicalIndexerJob implements ShouldQueue
     public int $timeout = 120;
 
     /**
-     * @param  string  $tenantId  Captured at dispatch time so the queue
-     *                            worker can re-bind TenantContext before
-     *                            any tenant-aware Eloquent query runs.
-     *                            Defaults to 'default' for BC with legacy
-     *                            tests + pre-PR-#115 dispatch sites.
+     * @param  string  $tenantId      Captured at dispatch time so the queue
+     *                                worker can re-bind TenantContext before
+     *                                any tenant-aware Eloquent query runs.
+     *                                Defaults to 'default' for BC with legacy
+     *                                tests + pre-PR-#115 dispatch sites.
+     * @param  bool    $forceReindex  When true, the idempotency key is
+     *                                salted with a unix-millis nonce so the
+     *                                engine bypasses dedup and re-executes
+     *                                the saga even against unchanged
+     *                                content. Used by `kb:rebuild-graph`
+     *                                after a graph truncate. Default false:
+     *                                regular ingest dispatchers keep dedup.
      */
     public function __construct(
         public readonly int $documentId,
         public readonly string $tenantId = 'default',
+        public readonly bool $forceReindex = false,
     ) {
         $this->onQueue(config('kb.ingest.queue', 'kb-ingest'));
     }
@@ -86,16 +106,19 @@ class CanonicalIndexerJob implements ShouldQueue
                     'document_id' => $this->documentId,
                 ],
                 FlowExecutionOptions::make(
-                    // E.2 — tenant-scoped idempotency key. Mirrors
-                    // IngestDocumentJob's pattern: re-dispatching the
-                    // same (tenant, document_id) returns the existing
-                    // FlowRun row instead of re-executing concurrently.
-                    // The inner steps remain idempotent at the DB layer
-                    // (replaceEdgesFor wipes the outgoing set,
+                    // E.2 + iter5 — tenant + version-scoped idempotency
+                    // key. New content lands as a row whose version_hash
+                    // changes => new key => natural re-execution. Same
+                    // content + same id => same key => engine returns
+                    // existing FlowRun (concurrent re-dispatch dedup).
+                    // The forceReindex flag salts the key with a
+                    // unix-millis nonce so `kb:rebuild-graph` can re-run
+                    // the saga against unchanged content after a graph
+                    // truncate. The inner steps remain idempotent at the
+                    // DB layer (replaceEdgesFor wipes the outgoing set,
                     // KbNode::firstOrCreate dedupes targets) so a forced
-                    // re-run under a fresh idempotency window also
-                    // converges.
-                    idempotencyKey: "canonical-index:{$this->tenantId}:{$this->documentId}",
+                    // re-run under a fresh idempotency window converges.
+                    idempotencyKey: $this->buildIdempotencyKey(),
                     correlationId: $this->tenantId,
                 ),
             );
@@ -132,5 +155,45 @@ class CanonicalIndexerJob implements ShouldQueue
     {
         $tenantId = app(TenantContext::class)->current();
         return self::dispatch($documentId, $tenantId);
+    }
+
+    /**
+     * Iter5 (PR #116) — explicit "forced re-execution" entrypoint for
+     * `kb:rebuild-graph`. Sets the forceReindex flag so the engine-level
+     * idempotency key gets a unix-millis nonce and the saga re-runs even
+     * when (tenant, document_id, version_hash) is unchanged.
+     */
+    public static function dispatchRebuild(int $documentId, ?string $tenantId = null): \Illuminate\Foundation\Bus\PendingDispatch
+    {
+        $tenantId ??= app(TenantContext::class)->current();
+        return self::dispatch($documentId, $tenantId, true);
+    }
+
+    /**
+     * Build the engine-level idempotency key. Includes version_hash so
+     * a re-ingest with new content naturally re-runs the saga; the
+     * forceReindex flag appends a unix-millis nonce so operator-driven
+     * rebuilds (after graph truncate) bypass dedup.
+     *
+     * version_hash is read from the row at dispatch time. If the row no
+     * longer exists (rare race: doc hard-deleted between dispatch and
+     * handle), we fall back to a deterministic 'missing' marker — the
+     * inner step then no-ops the doc anyway.
+     */
+    public function buildIdempotencyKey(): string
+    {
+        $versionHash = (string) (KnowledgeDocument::query()
+            ->whereKey($this->documentId)
+            ->value('version_hash') ?? 'missing');
+
+        $base = "canonical-index:{$this->tenantId}:{$this->documentId}:{$versionHash}";
+        if (! $this->forceReindex) {
+            return $base;
+        }
+
+        // Use hrtime() to dodge same-millisecond collisions when two
+        // forced rebuilds for the same doc fan out from the same loop.
+        $nonce = (string) hrtime(true);
+        return "{$base}:rebuild-{$nonce}";
     }
 }

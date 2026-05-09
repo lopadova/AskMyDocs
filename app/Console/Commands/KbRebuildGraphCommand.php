@@ -74,10 +74,17 @@ class KbRebuildGraphCommand extends Command
                 // 'default' tenant while iterating across all tenants'
                 // canonical docs.
                 $tenantId = (string) ($doc->tenant_id ?? 'default');
+                // Iter5 (PR #116) — `kb:rebuild-graph` MUST re-execute the
+                // indexer even when (tenant, doc_id, version_hash) is
+                // unchanged, otherwise re-running after a truncate would
+                // hit the engine-level idempotency cache and short-
+                // circuit (leaving kb_nodes/kb_edges empty). The
+                // forceReindex flag salts the key with a unix-millis
+                // nonce so each rebuild invocation produces a fresh key.
                 if ($sync) {
-                    (new CanonicalIndexerJob($doc->id, $tenantId))->handle();
+                    (new CanonicalIndexerJob($doc->id, $tenantId, true))->handle();
                 } else {
-                    CanonicalIndexerJob::dispatch($doc->id, $tenantId);
+                    CanonicalIndexerJob::dispatchRebuild($doc->id, $tenantId);
                 }
                 $dispatched++;
             }

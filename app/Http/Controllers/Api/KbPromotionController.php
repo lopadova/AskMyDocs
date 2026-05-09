@@ -196,6 +196,15 @@ class KbPromotionController extends Controller
             ], 202);
         }
 
+        // Iter5 (PR #116) — surface both absolute URL and relative path so
+        // clients that route through a reverse-proxy / different base
+        // host don't have to strip the host themselves. The absolute
+        // form is preserved for backwards compatibility with iteration-4
+        // consumers; the *_path keys are the new, canonical, host-free
+        // form recommended for new integrations.
+        $approvePath = "/api/kb/promotion/{$issued->approvalId}/approve";
+        $rejectPath = "/api/kb/promotion/{$issued->approvalId}/reject";
+
         return response()->json([
             'status' => 'paused',
             'flow_run_id' => $run->id,
@@ -205,8 +214,10 @@ class KbPromotionController extends Controller
                 'approval_id' => $issued->approvalId,
                 'token' => $issued->plainTextToken,
                 'expires_at' => $issued->expiresAt->format(\DateTimeInterface::ATOM),
-                'approve_url' => url("/api/kb/promotion/{$issued->approvalId}/approve"),
-                'reject_url' => url("/api/kb/promotion/{$issued->approvalId}/reject"),
+                'approve_url' => url($approvePath),
+                'reject_url' => url($rejectPath),
+                'approve_path' => $approvePath,
+                'reject_path' => $rejectPath,
             ],
         ], 202);
     }
@@ -383,14 +394,29 @@ class KbPromotionController extends Controller
      * step (e.g. a future promote-elsewhere flow) could be replayed
      * here. The vendor `flow_approvals` table carries `tenant_id` from
      * our supplementary migration `2026_05_09_146000_add_tenant_id_to_flow_tables`.
+     *
+     * Iteration 5 (PR #116) — defence-in-depth FLOW DEFINITION pinning.
+     * Step name pinning above protects against unrelated flows that
+     * happen to use a different step name. But every PromotionFlow-style
+     * flow that uses the generic `approval-gate` step name would still
+     * pass that gate. We now ALSO require the parent `flow_runs.definition_name`
+     * to equal {@see PromotionFlow::NAME} so a token issued for some
+     * future flow re-using the `approval-gate` step name CANNOT be
+     * replayed against the kb.promote endpoints. The join is direct
+     * SQL against the stable `flow_runs` table to avoid coupling to
+     * the internal Eloquent model.
      */
     private function approvalIdMatchesToken(string $approvalId, string $plainToken): bool
     {
         $tenantId = app(TenantContext::class)->current();
         $row = FlowApprovalRecord::query()
-            ->where('tenant_id', $tenantId)
-            ->where('id', $approvalId)
-            ->where('step_name', PromotionFlow::APPROVAL_STEP)
+            ->from('flow_approvals as fa')
+            ->join('flow_runs as fr', 'fr.id', '=', 'fa.run_id')
+            ->where('fa.tenant_id', $tenantId)
+            ->where('fa.id', $approvalId)
+            ->where('fa.step_name', PromotionFlow::APPROVAL_STEP)
+            ->where('fr.definition_name', PromotionFlow::NAME)
+            ->select('fa.*')
             ->first();
         if ($row === null) {
             return false;

@@ -10,10 +10,13 @@ use App\Services\Kb\Canonical\CanonicalParsedDocument;
 use App\Services\Kb\Canonical\CanonicalWriter;
 use App\Support\Canonical\CanonicalStatus;
 use App\Support\Canonical\CanonicalType;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Padosoft\LaravelFlow\FlowContext;
 use Padosoft\LaravelFlow\FlowStepHandler;
 use Padosoft\LaravelFlow\FlowStepResult;
 use RuntimeException;
+use Throwable;
 
 /**
  * Step 3 of {@see \App\Flow\Definitions\PromotionFlow} (after the
@@ -63,7 +66,23 @@ final class WriteCanonicalMarkdownStep implements FlowStepHandler
         $relativePath = $this->writer->write($parsed, $markdown);
 
         $projectKey = (string) ($context->input['project_key'] ?? '');
-        $this->writePromotionAudit($projectKey, $parsed, $relativePath, $context);
+        $disk = (string) config('kb.sources.disk', 'kb');
+
+        // Iter5 (PR #116) — atomic file + audit. If the audit insert fails
+        // (DB outage, schema constraint, transient error), the step's own
+        // throw means the engine's compensator chain for THIS step does
+        // NOT run (compensators only fire for DOWNSTREAM step failures).
+        // We'd be left with a promoted file on disk, no audit row, no
+        // ingest dispatched — exactly the orphan failure mode Copilot
+        // flagged. Catch the audit error, delete the just-written file
+        // BEFORE rethrowing, so the operator-visible state is "promotion
+        // failed cleanly" rather than "promotion half-succeeded".
+        try {
+            $this->writePromotionAudit($projectKey, $parsed, $relativePath, $context);
+        } catch (Throwable $auditError) {
+            $this->cleanupOrphanedFile($disk, $relativePath, $auditError, $context);
+            throw $auditError;
+        }
 
         return FlowStepResult::success(
             output: [
@@ -78,6 +97,41 @@ final class WriteCanonicalMarkdownStep implements FlowStepHandler
                 'slug' => $parsed->slug,
             ],
         );
+    }
+
+    /**
+     * Iter5 (PR #116) — Atomicity helper. Removes the just-written
+     * canonical markdown when the audit insert fails, so we don't leave
+     * an orphan file on disk that would later confuse the
+     * `kb:rebuild-graph` walker or the ingest pipeline. Any cleanup
+     * failure is logged loudly with a correlation_id but never masks
+     * the original audit error — the caller rethrows that.
+     */
+    private function cleanupOrphanedFile(
+        string $disk,
+        string $relativePath,
+        Throwable $auditError,
+        FlowContext $context,
+    ): void {
+        try {
+            Storage::disk($disk)->delete($relativePath);
+            Log::warning('WriteCanonicalMarkdownStep: removed orphan file after audit insert failure', [
+                'flow_run_id' => $context->flowRunId,
+                'disk' => $disk,
+                'relative_path' => $relativePath,
+                'audit_error' => $auditError::class.': '.$auditError->getMessage(),
+            ]);
+        } catch (Throwable $cleanupError) {
+            $correlationId = bin2hex(random_bytes(8));
+            Log::error('WriteCanonicalMarkdownStep: orphan-file cleanup failed', [
+                'correlation_id' => $correlationId,
+                'flow_run_id' => $context->flowRunId,
+                'disk' => $disk,
+                'relative_path' => $relativePath,
+                'audit_error' => $auditError::class.': '.$auditError->getMessage(),
+                'cleanup_error' => $cleanupError::class.': '.$cleanupError->getMessage(),
+            ]);
+        }
     }
 
     private function writePromotionAudit(
