@@ -7,7 +7,12 @@ namespace App\Providers;
 use App\Flow\Definitions\CanonicalIndexFlow;
 use App\Flow\Definitions\DeleteDocumentFlow;
 use App\Flow\Definitions\IngestDocumentFlow;
+use App\Flow\Definitions\IngestFolderFlow;
 use App\Flow\Definitions\PromotionFlow;
+use App\Flow\Definitions\PruneChatLogsFlow;
+use App\Flow\Definitions\PruneDeletedFlow;
+use App\Flow\Definitions\PruneEmbeddingCacheFlow;
+use App\Flow\Definitions\RebuildGraphFlow;
 use App\Models\KbCanonicalAudit;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -266,5 +271,11 @@ final class FlowServiceProvider extends ServiceProvider
         CanonicalIndexFlow::register($engine);
         PromotionFlow::register($engine);
         DeleteDocumentFlow::register($engine);
+        // Sub-PR 3d (v4.2/W2) — scheduled commands + folder fan-out.
+        PruneDeletedFlow::register($engine);
+        PruneEmbeddingCacheFlow::register($engine);
+        PruneChatLogsFlow::register($engine);
+        RebuildGraphFlow::register($engine);
+        IngestFolderFlow::register($engine);
     }
 }

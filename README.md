@@ -690,6 +690,10 @@ KB_CHUNK_OVERLAP_TOKENS=64
 # Embedding cache
 KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
+# v4.2 — conditional approval gate threshold for kb:prune-embedding-cache.
+# Planned evictions above this count pause the run for operator approval;
+# 0 (or negative) disables the gate (pre-v4.2 behaviour).
+KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD=5000
 ```
 
 ### `GET /api/kb/documents/search` (v3.0+)
@@ -1441,6 +1445,9 @@ last_used_at    TIMESTAMP             -- for LRU-style pruning
 ```env
 KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
+# v4.2 — conditional approval gate. Planned evictions above this count
+# pause the prune Flow for operator approval; 0 (or negative) disables.
+KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD=5000
 ```
 
 ### Maintenance

@@ -79,6 +79,17 @@ class DocumentDeleter
      * kb:ingest-folder --prune-orphans and by the GitHub Action when it
      * detects a file has been removed from the repository.
      *
+     * R30 — `$tenantId` MUST be passed when more than one tenant uses
+     * the same `project_key`. Two different tenants may legitimately
+     * share `project_key='demo'`; without an explicit tenant filter the
+     * orphan sweep would soft/hard-delete documents owned by OTHER
+     * tenants whose source files happen to live outside the caller's
+     * `$existingRelativePaths` set. New callers (PruneOrphansStep,
+     * KbIngestFolderCommand, action.yml ingest job) ALWAYS pass a
+     * concrete tenant_id; the `null` default is preserved only for
+     * backward compatibility with legacy callers and is logged at
+     * WARNING level so ops can spot unscoped runs in production.
+     *
      * @param  array<int,string>  $existingRelativePaths
      * @return array<int,array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}>
      */
@@ -87,6 +98,7 @@ class DocumentDeleter
         string $basePath,
         array $existingRelativePaths,
         ?bool $force = null,
+        ?string $tenantId = null,
     ): array {
         $base = trim($basePath, '/');
         $existing = array_values(array_unique(array_map(
@@ -96,6 +108,23 @@ class DocumentDeleter
 
         $query = KnowledgeDocument::query()
             ->where('project_key', $projectKey);
+
+        if ($tenantId !== null && $tenantId !== '') {
+            // R30 — restrict the sweep to the caller's tenant so we
+            // never cascade-delete another tenant's documents that
+            // share the same project_key.
+            $query->forTenant($tenantId);
+        } else {
+            // Legacy back-compat path. Surface the unscoped sweep so
+            // operators can spot it during incident review — a single
+            // unscoped invocation in a multi-tenant deployment is
+            // enough to delete cross-tenant rows by accident.
+            Log::warning('DocumentDeleter::deleteOrphans called without tenant_id — cross-tenant orphan delete possible', [
+                'project_key' => $projectKey,
+                'base_path' => $base,
+                'existing_count' => count($existing),
+            ]);
+        }
 
         if ($base !== '') {
             $query->where(function ($q) use ($base) {
