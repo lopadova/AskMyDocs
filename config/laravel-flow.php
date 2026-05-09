@@ -10,6 +10,7 @@ $approvalTokenTtlMinutes = env('LARAVEL_FLOW_APPROVAL_TOKEN_TTL_MINUTES', 1440);
 $webhookTimeoutSeconds = env('LARAVEL_FLOW_WEBHOOK_TIMEOUT_SECONDS', 5);
 $webhookRetryBaseDelaySeconds = env('LARAVEL_FLOW_WEBHOOK_RETRY_BASE_DELAY_SECONDS', 30);
 $webhookMaxAttempts = env('LARAVEL_FLOW_WEBHOOK_MAX_ATTEMPTS', 3);
+$stepTimeoutSeconds = env('LARAVEL_FLOW_STEP_TIMEOUT', 300);
 
 return [
 
@@ -151,7 +152,9 @@ return [
     | will use this as its timeout. Currently informational only.
     |
     */
-    'step_timeout_seconds' => (int) env('LARAVEL_FLOW_STEP_TIMEOUT', 300),
+    'step_timeout_seconds' => is_numeric($stepTimeoutSeconds) && (int) $stepTimeoutSeconds > 0
+        ? (int) $stepTimeoutSeconds
+        : 300,
 
     /*
     |--------------------------------------------------------------------------

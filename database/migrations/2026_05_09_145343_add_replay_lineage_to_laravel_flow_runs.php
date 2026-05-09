@@ -10,7 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('flow_runs') || Schema::hasColumn('flow_runs', 'replayed_from_run_id')) {
+        if (Schema::hasColumn('flow_runs', 'replayed_from_run_id')) {
             return;
         }
 
@@ -21,7 +21,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (! Schema::hasTable('flow_runs') || ! Schema::hasColumn('flow_runs', 'replayed_from_run_id')) {
+        if (! Schema::hasColumn('flow_runs', 'replayed_from_run_id')) {
             return;
         }
 

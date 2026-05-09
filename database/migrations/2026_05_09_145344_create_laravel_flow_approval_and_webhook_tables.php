@@ -10,10 +10,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('flow_runs')) {
-            return;
-        }
-
         if (! Schema::hasTable('flow_approvals')) {
             Schema::create('flow_approvals', function (Blueprint $table): void {
                 $table->string('id', 36)->primary();

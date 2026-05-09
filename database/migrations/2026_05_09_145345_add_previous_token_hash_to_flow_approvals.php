@@ -10,7 +10,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (! Schema::hasTable('flow_approvals') || Schema::hasColumn('flow_approvals', 'previous_token_hash')) {
+        if (Schema::hasColumn('flow_approvals', 'previous_token_hash')) {
             return;
         }
 
@@ -21,7 +21,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (! Schema::hasTable('flow_approvals') || ! Schema::hasColumn('flow_approvals', 'previous_token_hash')) {
+        if (! Schema::hasColumn('flow_approvals', 'previous_token_hash')) {
             return;
         }
 
