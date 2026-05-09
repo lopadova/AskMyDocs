@@ -3429,7 +3429,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 
 **Deliverables shipped across the v4.0 cycle**
 - **W1** — Multi-tenant foundation: `BelongsToTenant` trait + `TenantContext` singleton + `ResolveTenant` HTTP middleware + `--tenant=X` CLI option; 17 tenant-aware tables carry `tenant_id` (default `'default'` preserves v3.x backward compatibility); R30/R31 architecture tests gate every new tenant-aware model. `embedding_cache` is intentionally **NOT** tenant-scoped — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE.
-- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist; AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
+- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist (historical pin — graduated to v1.0.0 in v4.2; see "Sister packages composer constraints" below); AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
 - **W3** — Vercel AI SDK chat migration (design fidelity 1:1): new `POST /conversations/{conversation}/messages/stream` SSE endpoint with `auth.sse` middleware (returns JSON 401, never HTML); `useChatStream()` hook + transport + message-shape adapters; legacy `use-chat-mutation` deleted in a single atomic commit (PR #89); 60+ stable testids preserved across the swap; 22 pixel-level `toHaveScreenshot({ maxDiffPixels: 0 })` assertions in `chat-visual.spec.ts` (15 core states + 7 supplementary); wire format aligned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained via `normalizeFinishReason()`). First-token latency dropped from ~2.8 s (synchronous JSON wait) to ~400 ms (first SSE chunk) on Lighthouse baseline.
 - **W4** — `padosoft/laravel-patent-box-tracker` v0.1.0 on Packagist + `tools/patent-box/2026.yml` dogfood template; **commercialista-validated** dossier output for the Italian Patent Box (110% R&D super-deduction, regime `documentazione_idonea`); tagged `v4.0.0-rc1`.
 - **W5** — `padosoft/laravel-flow` v0.1.0 on Packagist (saga / compensation engine; 32 Unit + 2 Architecture tests on Laravel 13); tagged `v4.0.0-rc2`.
@@ -3515,7 +3515,7 @@ Stable consumers stay on v3.x; opt into the rc with
   packages (PR #78); Padosoft company Claude pack imported under
   `.claude/` (PR #80)
 
-**W2 — `padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK**
+**W2 — `padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK** _(historical milestone — package now at v1.0 since v4.2)_
 - `padosoft/agent-llm` renamed to `padosoft/laravel-ai-regolo` (PR #81);
   the package now ships as a standalone Apache-2.0 Composer package
 - AskMyDocs's `RegoloProvider` delegates to the new package which
