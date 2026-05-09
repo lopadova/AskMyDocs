@@ -34,8 +34,13 @@ use Padosoft\LaravelFlow\FlowEngine;
  *      identifiers, insert KnowledgeDocument + KnowledgeChunk rows.
  *      ▶ Compensator: RollbackChunksCompensator force-deletes the doc.
  *   5. maybe-dispatch-canonical-indexer
- *      If is_canonical=true, dispatches CanonicalIndexerJob. Idempotent;
- *      always succeeds (the queued job has its own retry).
+ *      If is_canonical=true, dispatches CanonicalIndexerJob. The dispatch
+ *      itself can throw on transport errors (sync queue + handler error,
+ *      Redis connection refused, etc.); when it does, the saga falls
+ *      through to RollbackChunksCompensator on the persist step. The
+ *      queued job has its own $tries=3 retry once it lands on a worker —
+ *      that retry covers transient handler failures, NOT dispatch-time
+ *      failures.
  *
  * Idempotency:
  *   IngestDocumentJob passes `idempotencyKey="{tenant}:{project}:{path}"`.

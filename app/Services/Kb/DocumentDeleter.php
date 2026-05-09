@@ -136,7 +136,7 @@ class DocumentDeleter
      * Per Copilot PR #115 review iteration 1 (R4 + R14 — never silently
      * destroy operator-supplied data on a recoverable failure).
      *
-     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}
+     * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool, canonical: array<string, mixed>|null}
      */
     public function deleteDbOnly(KnowledgeDocument $document): array
     {
