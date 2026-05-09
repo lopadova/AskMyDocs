@@ -11,4 +11,15 @@ return [
     // unwritable even when it isn't). Listing it here is a no-op
     // when auto-discovery succeeds and a safety net when it doesn't.
     Padosoft\PiiRedactor\PiiRedactorServiceProvider::class,
+    // v4.2/W2 — laravel-flow saga engine SP. Listed explicitly for the
+    // same reason as PiiRedactor above (auto-discovery is brittle on
+    // Windows + Herd). Required for `Flow::define()` / `Flow::execute()`
+    // on the kb.ingest definition + future canonical / scheduled flows.
+    Padosoft\LaravelFlow\LaravelFlowServiceProvider::class,
+    // v4.2/W2 — registers IngestDocumentFlow definition with FlowEngine
+    // on every boot (synchronous, in-process). Must run AFTER the
+    // package SP above so the FlowEngine singleton is available, and
+    // also wires the FlowRunRecord::creating() hook that stamps
+    // tenant_id from the active TenantContext (R30/R31).
+    App\Providers\FlowServiceProvider::class,
 ];

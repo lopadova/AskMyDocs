@@ -194,6 +194,61 @@ class DocumentIngestor
     }
 
     // -----------------------------------------------------------------
+    // public persistence (v4.2 / W2 — Flow-orchestrated entry point)
+    // -----------------------------------------------------------------
+
+    /**
+     * Public persistence path for the {@see \App\Flow\Definitions\IngestDocumentFlow}
+     * `persist-chunks` step.
+     *
+     * Mirrors the semantics of {@see persistFromDrafts()} (idempotent on
+     * version_hash, transactional, archives prior versions) but accepts
+     * the canonical parse result and the embeddings response from earlier
+     * Flow steps instead of computing them internally. The post-commit
+     * canonical-indexer dispatch is INTENTIONALLY left out — the flow's
+     * `maybe-dispatch-canonical-indexer` step owns it so a compensator
+     * can short-circuit if the indexer is mocked-to-fail in a saga test.
+     *
+     * @param  list<ChunkDraft>     $chunkDrafts
+     * @param  array<string,mixed>  $metadata
+     */
+    public function persistDrafts(
+        string $projectKey,
+        string $sourcePath,
+        string $title,
+        string $mimeType,
+        string $sourceType,
+        string $markdown,
+        array $chunkDrafts,
+        array $metadata,
+        $embeddingResponse,
+        ?CanonicalParsedDocument $canonical,
+    ): KnowledgeDocument {
+        $documentHash = hash('sha256', $markdown);
+        $versionHash = $documentHash;
+
+        $existing = $this->findExistingVersion($projectKey, $sourcePath, $versionHash);
+        if ($existing !== null) {
+            $existing->update(['indexed_at' => now()]);
+            return $existing;
+        }
+
+        return DB::transaction(fn () => $this->persistDocumentAndChunks(
+            $projectKey,
+            $sourcePath,
+            $title,
+            $mimeType,
+            $sourceType,
+            $metadata,
+            $documentHash,
+            $versionHash,
+            $chunkDrafts,
+            $embeddingResponse,
+            $canonical,
+        ));
+    }
+
+    // -----------------------------------------------------------------
     // unified persistence (v3 — accepts ChunkDraft[])
     // -----------------------------------------------------------------
 
