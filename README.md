@@ -3105,7 +3105,7 @@ Five `padosoft/*` Composer packages ship alongside the v4.0 train. Architecture 
 Standalone Apache-2.0 Regolo provider for `laravel/ai`. The Regolo backend (Anthropic-style `/messages` API) is exposed through the standard `laravel/ai` agent + tool abstractions. Drop-in for any consumer that already uses `laravel/ai`.
 
 ```bash
-composer require padosoft/laravel-ai-regolo:^0.2
+composer require padosoft/laravel-ai-regolo:^1.0
 ```
 
 ```php
@@ -3440,7 +3440,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 **Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo` and `padosoft/laravel-pii-redactor:^1.1` are both in `require` (load-bearing for the chat path and for the v4.1 PII redactor integration respectively); `padosoft/laravel-flow` and `padosoft/eval-harness` are in `require-dev` (scoped for v4.2 / v4.3 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
 "require": {
-    "padosoft/laravel-ai-regolo":          "^0.2"
+    "padosoft/laravel-ai-regolo":          "^1.0"
 },
 "require-dev": {
     "padosoft/laravel-flow":               "^0.1.0",
