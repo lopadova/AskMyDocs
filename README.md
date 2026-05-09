@@ -38,6 +38,23 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.2.0-rc2 — W2 shipped (laravel-flow v1.0 saga / compensation engine closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-flow` v1.0 graduation** | The package moves from `require-dev` `^0.1` (vendored, zero call sites in v4.0) to `require` `^1.0`. Auto-discovered via Laravel's package manifest; `FlowServiceProvider` registers 8 AskMyDocs Flow definitions on every boot. Persistence ENABLED in production (`laravel-flow.persistence.enabled=true`); 4 published migrations ship the engine schema (`flow_runs`, `flow_steps`, `flow_audit`, `flow_approvals`, `flow_webhook_outbox`). |
+| **`tenant_id` everywhere on Flow records (R30/R31)** | Supplementary migration adds `tenant_id` to all 5 Flow tables + replaces the engine's global `UNIQUE(idempotency_key)` with composite `UNIQUE(tenant_id, idempotency_key)` named `flow_runs_tenant_idempotency_unique`. Two tenants can legitimately share the same idempotency key without collision. `FlowRunRecord::creating` / `FlowStepRecord::creating` / `FlowAuditRecord::creating` hooks stamp `tenant_id` from the active `TenantContext` so every persisted Flow row carries its tenant. |
+| **`kb.ingest` 5-step saga (sub-PR 3b)** | `IngestDocumentJob` becomes a thin Flow dispatcher with try/finally `TenantContext` restore (queue workers re-bind the original tenant after each job, so long-lived workers can't leak tenant state across jobs). 5 steps: `parse-markdown` (dry-run-safe) → `chunk-document` (dry-run-safe) → `embed-chunks` → `persist-chunks` (compensated by `RollbackChunksCompensator` → uses `DocumentDeleter::deleteDbOnly()` so the source-of-truth file is preserved on transient failures) → `maybe-dispatch-canonical-indexer`. Idempotency-key shape `{tenant}:{project}:{source_path}:{version_hash}`. |
+| **`kb.canonical-index` 3-step Flow (sub-PR 3c)** | `CanonicalIndexerJob` orchestrates `load-canonical-document` → `populate-canonical-nodes` → `populate-canonical-edges` (compensated by `RollbackCanonicalNodesCompensator` — tenant-scoped cleanup of `kb_nodes` + cascade through composite FK on `kb_edges`). `kb:rebuild-graph` opts into `forceReindex=true` which salts the idempotency key with `hrtime()` so re-runs after a graph truncate ALWAYS re-execute. |
+| **`kb.promote` 4-step approval-gated Flow (sub-PR 3c)** | First use of laravel-flow's `approval-gate` primitive in AskMyDocs. Steps: `validate-frontmatter` (dry-run-safe, throws on invalid input BEFORE issuing an approval token) → `approval-gate` (pauses until operator calls `Flow::resume($token)` or `Flow::reject($token)` via the new `KbPromotionController::approve` / `reject` endpoints) → `write-markdown` (writes MD to KB disk; `kb_canonical_audit` `promoted` row written atomically — if audit insert fails the file is deleted before the throw; compensated by `DeleteCanonicalMarkdownCompensator`) → `dispatch-ingest` (dispatches `kb.ingest` sub-flow). Approval-token validation requires status='pending' + `consumed_at` NULL + `decided_at` NULL + `expires_at` not past + tenant_id match + step_name match + `flow_runs.definition_name = PromotionFlow::NAME` (defence-in-depth against cross-flow token replay). Rejection halts before write-markdown; the `flow_audit` → `kb_canonical_audit` bridge writes a `rejected_promotion` row so the editorial trail records the refusal. |
+| **`kb.delete` 4-step Flow (sub-PR 3c)** | `kb:delete` + `DELETE /api/kb/documents/{id}` + `--prune-orphans` all converge on `kb.delete`. Steps: `load-document-for-delete` → `soft-delete-document` (compensated by `RestoreSoftDeletedCompensator` — tenant-scoped `onlyTrashed()->find()` + `restore()`) → `hard-delete-rows` (DB+graph cascade via `DocumentDeleter::deleteRowsOnly()`) → `remove-source-file` (KbPath-normalised path resolution; null path = skip rather than delete-by-attacker-input). |
+| **5 scheduled commands + folder fan-out on Flow (sub-PR 3d)** | `kb:prune-deleted` / `kb:prune-embedding-cache` / `chat-log:prune` / `kb:rebuild-graph` / `kb:ingest-folder` all become thin Flow dispatchers preserving CLI signatures verbatim. Per-tenant fan-out: each command queries DISTINCT `tenant_ids` for eligible rows and dispatches one Flow execute per tenant; `--tenant=X` scopes to one tenant. `kb.prune-embedding-cache` ships a **conditional approval gate** via the assess-step's `paused()` return — pauses ONLY when projected evictions > `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD` (default 5000; set to 0 to disable the gate); under threshold and dry-run paths auto-resolve. |
+| **Cross-tenant orphan isolation (R30 follow-up)** | `DocumentDeleter::deleteOrphans()` extended with `?string $tenantId` parameter (back-compat default null = unscoped + WARNING log). The new `kb.ingest-folder` fan-out always passes the active tenant; legacy CLI path also wired. Prevents soft/hard-delete of tenant B's row when tenant A reuses the same `project_key`. |
+| **8 Flow definitions registered + observable** | `kb.ingest` / `kb.canonical-index` / `kb.promote` / `kb.delete` / `kb.prune-deleted` / `kb.prune-embedding-cache` / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder`. Every step + every compensator persisted to `flow_steps` + `flow_audit` for forensic traceability. The future `padosoft/laravel-flow-admin` v1.0 SPA (W4 sub-PR 6) will surface all of this in a Blade+Alpine cockpit. |
+| **+108 PHPUnit tests across W2** | 1198 → 1306. Per-step unit tests + per-Flow-definition feature tests + per-CLI-command end-to-end tests. R30 violation tests assert `FlowInputException` on missing `tenant_id`; tenant-isolation tests seed BOTH tenants and assert the OTHER tenant's row survives every prune / delete / rebuild path. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md`
+
 #### v4.1.0-rc1 — W4.1 shipped (PII redactor integration closed 2026-05-03)
 
 | Feature | Description |
@@ -3346,6 +3363,77 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.2.0-rc2 — 2026-05-10 (W2 milestone — `padosoft/laravel-flow` v1.0 integration)
+
+Second release candidate of the **v4.2 cycle**. W2 graduates
+`padosoft/laravel-flow` from `require-dev` `^0.1` (vendored, zero call
+sites in v4.0 / v4.1) to `require` `^1.0` and migrates **the entire
+multi-step background pipeline surface** of AskMyDocs onto **8 Flow
+definitions** orchestrated by the engine — saga / compensation,
+approval gates, dry-run mode, idempotency keys, persisted forensic
+audit per step, all under R30/R31 tenant scoping.
+
+**What's new in AskMyDocs v4.2.0-rc2 (W2 — laravel-flow v1.0 integration):**
+
+- **W2 / sub-PR 3a** — `padosoft/laravel-flow` constraint moved from
+  `require-dev` `^0.1` to `require` `^1.0`. Auto-discovered;
+  `FlowServiceProvider` registers definitions on every boot. 4 published
+  migrations + supplementary `tenant_id` migration adding the column to
+  all 5 Flow tables and replacing the engine's global
+  `UNIQUE(idempotency_key)` with composite `UNIQUE(tenant_id,
+  idempotency_key)` on `flow_runs`. `FlowRunRecord` / `FlowStepRecord` /
+  `FlowAuditRecord` `creating` hooks stamp `tenant_id` from
+  `TenantContext`. PR #114.
+- **W2 / sub-PR 3b** — `IngestDocumentJob` becomes a thin Flow
+  dispatcher of `kb.ingest`. 5-step saga (parse-markdown →
+  chunk-document → embed-chunks → persist-chunks →
+  maybe-dispatch-canonical-indexer); `RollbackChunksCompensator` calls
+  `DocumentDeleter::deleteDbOnly()` so the source-of-truth file is
+  preserved on transient failures. Try/finally `TenantContext` restore
+  in the job's `handle()` prevents tenant leak across queue jobs.
+  Idempotency key shape `{tenant}:{project}:{source_path}:{version_hash}`.
+  PR #115.
+- **W2 / sub-PR 3c** — 3 new Flow definitions: `kb.canonical-index`
+  (3 steps + `RollbackCanonicalNodesCompensator`), `kb.promote` (4
+  steps with `approval-gate` primitive — first use of approval token in
+  AskMyDocs; `KbPromotionController::approve` / `reject` endpoints with
+  full token validation: status='pending' + `consumed_at` NULL +
+  `decided_at` NULL + `expires_at` not past + tenant_id match + step_name
+  match + `flow_runs.definition_name = PromotionFlow::NAME` to prevent
+  cross-flow token replay; `WriteCanonicalMarkdownStep` writes file +
+  audit atomically — file deleted on audit insert failure;
+  `DeleteCanonicalMarkdownCompensator` removes the file if
+  dispatch-ingest fails), `kb.delete` (4 steps +
+  `RestoreSoftDeletedCompensator`). `flow_audit` →
+  `kb_canonical_audit` bridge writes `rejected_promotion` rows when an
+  operator rejects a promotion. PR #116.
+- **W2 / sub-PR 3d** — 5 scheduled commands + `kb:ingest-folder`
+  fan-out migrated to Flow definitions: `kb.prune-deleted`,
+  `kb.prune-embedding-cache` (with conditional approval gate via
+  `paused()` return — pauses only when projected evictions >
+  `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD`, default 5000; auto-resolves
+  under threshold; dry-run always bypasses), `kb.prune-chat-logs`,
+  `kb.rebuild-graph` (3-step fan-out using `forceReindex=true` to bypass
+  engine-level idempotency cache after truncate), `kb.ingest-folder`
+  (3-step fan-out with optional orphan prune). Per-tenant fan-out:
+  each command queries DISTINCT `tenant_ids` for eligible rows and
+  dispatches one Flow execute per tenant. `DocumentDeleter::deleteOrphans()`
+  extended with `?string $tenantId` parameter (R30 cross-tenant orphan
+  isolation). All CLI signatures preserved verbatim. PR #117.
+- **(this PR)** v4.2/W2 closure docs — adds this Changelog entry, the
+  Key Features section above, and the closure status doc
+  `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md`.
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc2:**
+- #114 v4.2/W2 — sub-PR 3a — laravel-flow v1.0 install + migrations
+- #115 v4.2/W2 — sub-PR 3b — IngestDocumentJob → IngestDocumentFlow refactor
+- #116 v4.2/W2 — sub-PR 3c — Flow-orchestrate canonical pipelines (CanonicalIndexer + CanonicalWriter promotion + DocumentDeleter)
+- #117 v4.2/W2 — sub-PR 3d — Flow-orchestrate 5 scheduled commands + folder fan-out
+- (this PR) v4.2/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1198 → 1306 (+108 PHPUnit). All green across PHPUnit
+(PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E.
 
 ### v4.2.0-rc1 — 2026-05-09 (W1 milestone — sister-package alignment kickoff)
 
