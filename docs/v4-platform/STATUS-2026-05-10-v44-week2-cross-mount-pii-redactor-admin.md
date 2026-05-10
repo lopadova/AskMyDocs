@@ -56,6 +56,7 @@ PR #138 took **2 effective iterations** plus **1 Copilot SWE auto-push** under t
 ## R39 RC tag
 
 ```bash
+git fetch origin --prune  # ensure origin/feature/v4.4 reflects the post-merge HEAD
 CLOSURE_SHA=$(git rev-parse origin/feature/v4.4)
 gh release create v4.4.0-rc2 \
   --repo lopadova/AskMyDocs \
