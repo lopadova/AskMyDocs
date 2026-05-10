@@ -2,8 +2,15 @@ import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 
 /*
- * v4.2/W4 sub-PR 7 — Admin Eval Harness UI dashboard mount
- * (padosoft/eval-harness-ui v1.0.0).
+ * v4.4/W3 — Admin Eval Harness UI dashboard mount
+ * (padosoft/eval-harness-ui v0.1.0).
+ *
+ * Switched from iframe (v4.2/W4 sub-PR 7) to cross-mount: the
+ * package's React tree renders directly inside the host TanStack
+ * shell (see EvalHarnessView.tsx + ADR 0005). The host wrapper now
+ * carries `data-mount="cross-mount"` instead of an `<iframe>` and
+ * scenarios drive the cross-mounted SPA via page-level testids
+ * rather than `frameLocator(...)`.
  *
  * Two separate `test` instances on purpose (mirrors
  * admin-pii-redactor.spec.ts and admin-flows.spec.ts):
@@ -19,25 +26,17 @@ import { test as seededTest } from './fixtures';
  *     created once by viewer.setup.ts and would be invalidated if a
  *     spec in this file ran resetDb under a viewer body.
  *
- * The package's pre-built dashboard (Dashboard / Reports list /
- * Report detail / Compare / Trend / Adversarial manifests + details /
- * Live batches) is embedded via an iframe (mount strategy: iframe —
- * see EvalHarnessView.tsx for the bundle-isolation rationale). These
- * E2E scenarios cover BOTH the AskMyDocs shell (sidebar entry, route,
- * iframe element) AND the BE three-fence matrix:
- *
- *   - admin role: shell renders, iframe element present, BE gate
- *     allows the iframe URL to load (when env=true) or 404s
- *     (default-off env behaviour kept by AskMyDocs E2E config).
- *   - viewer role: SPA route shows AdminForbidden, BE rejects the
- *     iframe URL with 403/404.
+ * Three fail-closed fences (PRESERVED across the cross-mount):
+ *   - env=false default → package controller 404
+ *   - APP_ENV=production → host non-prod middleware 404
+ *   - viewer / anonymous → Gate 403
  *
  * R13 compliance: real backend, real seeders, real Sanctum cookies.
  * No `page.route` interception — the BE responses ARE the assertion.
  */
 
-seededTest.describe('Admin Eval Harness — admin (mount + nav)', () => {
-    seededTest('happy — sidebar entry navigates to admin/eval-harness and renders the iframe host', async ({
+seededTest.describe('Admin Eval Harness — admin (cross-mount + nav)', () => {
+    seededTest('happy — sidebar entry navigates to admin/eval-harness and renders the cross-mounted shell', async ({
         page,
     }) => {
         await page.goto('/app/chat');
@@ -51,20 +50,23 @@ seededTest.describe('Admin Eval Harness — admin (mount + nav)', () => {
         await navButton.click();
 
         // Route lands on the host component. The host's
-        // data-testid="admin-eval-harness-host" is unconditional —
-        // independent of the iframe load state — so the assertion
-        // doesn't race the iframe network roundtrip.
+        // data-testid="admin-eval-harness-host" wrapper carries
+        // data-mount="cross-mount" so the test deterministically
+        // confirms we're on the cross-mounted shell, not the iframe
+        // predecessor (R16: name promises cross-mount, body asserts
+        // cross-mount).
         await expect(page).toHaveURL(/\/app\/admin\/eval-harness$/);
-        await expect(page.getByTestId('admin-eval-harness-host')).toBeVisible({ timeout: 15_000 });
+        const host = page.getByTestId('admin-eval-harness-host');
+        await expect(host).toBeVisible({ timeout: 15_000 });
+        await expect(host).toHaveAttribute('data-mount', 'cross-mount');
 
-        // The iframe element itself is mounted unconditionally. The
-        // visibility of its CONTENTS depends on EVAL_HARNESS_UI_ENABLED
-        // (default false in CI/dev) AND APP_ENV being non-production —
-        // so we only assert the wrapper element exists, not that the
-        // iframe contents load. (When the operator flips the env var
-        // on, a follow-up smoke test under the trusted-env setup would
-        // assert iframe content too.)
-        await expect(page.getByTestId('admin-eval-harness-iframe')).toBeAttached();
+        // The cross-mounted SPA's `<AppShell />` mounts directly into
+        // the host's React tree (no iframe element to look up). The
+        // sidebar is part of the cross-mount; assert ONE actionable
+        // nav item is reachable so the cross-mount has truly hydrated
+        // beyond the wrapper.
+        await expect(page.getByTestId('admin-eval-harness-app')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('admin-eval-harness-nav-dashboard')).toBeVisible();
     });
 });
 
@@ -75,8 +77,8 @@ baseTest.describe('Admin Eval Harness — viewer (RBAC denied)', () => {
         await page.goto('/app/admin/eval-harness');
 
         // Same RequireRole pattern as the rest of the admin SPA — the
-        // route gate filters before the iframe ever mounts, so the
-        // viewer never even sees the package URL.
+        // route gate filters before the cross-mount ever mounts, so
+        // the viewer never even sees the package SPA.
         await expect(page.getByTestId('admin-forbidden')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-eval-harness-host')).toHaveCount(0);
     });

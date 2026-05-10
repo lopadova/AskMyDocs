@@ -362,18 +362,28 @@ const adminFlowsRoute = createRoute({
     component: AdminFlowsRoute,
 });
 
-// v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same flat-RBAC
-// pattern as AdminFlowsRoute / AdminPiiRedactorRoute: the RequireRole
-// gate lives inside the component so a viewer hitting
+// v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount.
+// v4.4/W3 — switched from iframe to cross-mount of the package's
+// React tree (see EvalHarnessView.tsx + ADR 0005 for the rationale).
+// Same flat-RBAC pattern as AdminFlowsRoute / AdminPiiRedactorRoute:
+// the RequireRole gate lives inside the component so a viewer hitting
 // /app/admin/eval-harness directly sees <AdminForbidden /> instead of
 // a crash. The Spatie role allowlist matches the BE Gate
 // `eval-harness.viewer` (super-admin / admin / dpo / editor); the
-// iframe URL (/admin/eval-harness) is enforced separately by the BE
-// `can:eval-harness.viewer` middleware AND the `eval-harness-ui.non-prod`
-// middleware (404 in production) AND the package controller's own
-// `eval-harness-ui.enabled` check (404 when env=false), so an
-// unprivileged user who somehow reaches the URL gets a 403 / 404 from
-// Laravel.
+// package API routes (/admin/eval-harness/api/*) are enforced
+// separately by the BE `can:eval-harness.viewer` middleware AND the
+// `eval-harness-ui.non-prod` middleware (404 in production) AND the
+// package controller's own `eval-harness-ui.enabled` check (404 when
+// env=false), so an unprivileged user who somehow reaches the URL
+// gets a 403 / 404 from Laravel.
+//
+// The route uses a splat (`$`) because the cross-mounted SPA owns 8
+// internal sub-routes (Dashboard / Reports / ReportDetail / Compare /
+// Trend / Adversarial / AdversarialDetail / LiveBatches) via its own
+// `BrowserRouter basename="/app/admin/eval-harness"`. Without the
+// splat, a direct hit on `/app/admin/eval-harness/reports` would
+// cascade to the TanStack 404 handler before the BrowserRouter ever
+// got a chance to mount.
 function AdminEvalHarnessRoute() {
     return (
         <RequireRole roles={['admin', 'super-admin', 'dpo', 'editor']}>
@@ -382,9 +392,24 @@ function AdminEvalHarnessRoute() {
     );
 }
 
+// Bare-path route: handles the sidebar entry click + direct hits on
+// the dashboard root (/app/admin/eval-harness).
 const adminEvalHarnessRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/eval-harness',
+    component: AdminEvalHarnessRoute,
+});
+
+// Splat sibling route: handles direct hits on every BrowserRouter
+// sub-path (/app/admin/eval-harness/reports, /reports/<id>, /compare,
+// /trend, /adversarial, /adversarial/<name>, /live-batches). Without
+// this, a browser refresh on a sub-page would 404 at the TanStack
+// layer before the cross-mounted BrowserRouter ever ran. Both routes
+// render the same `<EvalHarnessView />` so the component lifecycle
+// stays identical regardless of the entry URL.
+const adminEvalHarnessSplatRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/eval-harness/$',
     component: AdminEvalHarnessRoute,
 });
 
@@ -414,6 +439,7 @@ const routeTree = rootRoute.addChildren([
         adminPiiRedactorRoute,
         adminFlowsRoute,
         adminEvalHarnessRoute,
+        adminEvalHarnessSplatRoute,
     ]),
 ]);
 

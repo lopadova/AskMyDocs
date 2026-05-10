@@ -37,7 +37,7 @@
 > | `padosoft/eval-harness` v1.2 | `require-dev` — RAG regression CI gate (`.github/workflows/rag-regression.yml`) | v4.2/W3 (PR #119). `require-dev` by design — see ADR 0004 D2. |
 > | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (cross-mount, v4.4/W2) | v4.2/W4 (PR #121); iframe → cross-mount in v4.4/W2 |
 > | `padosoft/laravel-flow-admin` v1.0.0 | `require` — mounted under `/admin/flows` (iframe) | v4.2/W4 (PR #122) |
-> | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (iframe) | v4.2/W4 (PR #123) |
+> | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (cross-mount, v4.4/W3) | v4.2/W4 (PR #123); iframe → cross-mount in v4.4/W3 |
 >
 > `padosoft/laravel-patent-box-tracker` and its admin SPA stay
 > **EXTERNAL** to AskMyDocs's `composer.json` per ADR 0004 D1 — operators
