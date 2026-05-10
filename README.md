@@ -38,6 +38,17 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.4.0-rc1 — W1 shipped (Tailwind v4 host migration closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host SPA migrated to Tailwind v4.3** | `tailwindcss` `^3.4.14` → `^4.0.0`; drops `autoprefixer` + `postcss` runtime deps; adds `@tailwindcss/vite` plugin. `tailwind.config.ts` + `postcss.config.js` deleted (Tailwind v4 auto-detects content from imported sources, no PostCSS step). `frontend/src/styles/globals.css` replaces v3 `@tailwind base / components / utilities` with `@import "tailwindcss"` + a single `@theme` block + `@custom-variant dark` rule. Build output 15.12 kB → 30.21 kB CSS (purely additive — Tailwind v4's enriched preflight + `@layer properties` block; zero semantic regression). |
+| **`@custom-variant dark` preserves v3 darkMode contract** | Extended to cover BOTH `[data-theme="dark"]` AND `.dark` class selectors so every existing `dark:*` utility activates identically to the v3 `darkMode: ['class', '[data-theme="dark"]']` contract. Forward-compat for the W2/W3 cross-mount work where sister-package SPAs may set `class="dark"` instead of `data-theme`. |
+| **Hard prerequisite for v4.4/W2 + v4.4/W3 cross-mount per ADR 0005** | The `padosoft/laravel-pii-redactor-admin` and `padosoft/eval-harness-ui` admin SPAs ship Tailwind v4 + React 19 internally. Cross-mounting them on a v3 host would force two CSS engines on the same page (the iframe-mount workaround the v4.2/W4 cycle pays for). W1 unblocks W2/W3 by aligning the host Tailwind major. |
+| **Scope-tight, dependency + build-config only** | Pre-flight grep confirmed zero bare `border` / `ring` / `divide-x|y` utilities (which would have hit v4's default-color change to `currentColor`); zero `@apply` / `@layer` directives; zero deprecated v3 utilities. Project uses Tailwind sparingly per the documented convention — design system lives in `frontend/src/styles/tokens.css` with CSS variables; chat / admin / panels / popovers all use inline `style={{ ... var(--token) }}`. No code changes outside the dependency manifests + globals.css. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v44-week1-tailwind-v4-host-migration.md`
+
 #### v4.3.0 GA — host-side hardening cycle complete (closed 2026-05-10)
 
 The v4.3 cycle adds **three host-side hardening surfaces** on top of v4.2.0 GA's full sister-package integration. No new sister packages, no version bumps — every constraint inherited from v4.2.0 GA's locked stable line. **+37 PHPUnit tests** landed (1371 → 1408) plus React 19 on the host SPA. Default-off invariant preserved across all 9 new env knobs.
@@ -3451,6 +3462,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.4.0-rc1 — 2026-05-10 (W1 milestone — Tailwind v4 host migration)
+
+First release candidate of the **v4.4 cycle**. W1 migrates the AskMyDocs frontend host SPA from Tailwind v3.4 (PostCSS pipeline) to Tailwind v4.3 + `@tailwindcss/vite` plugin. **Hard prerequisite** for v4.4/W2 + v4.4/W3 cross-mount of the sister-package admin SPAs per ADR 0005 (the admin packages ship Tailwind v4 + React 19 internally; cross-mounting on a v3 host would force two CSS engines on the same page).
+
+**What's new in AskMyDocs v4.4.0-rc1 (W1 — Tailwind v4 host migration):**
+
+- **W1 / sub-PR (#136)** — `tailwindcss` `^3.4.14` → `^4.0.0`; drops `autoprefixer` + `postcss` runtime deps; adds `@tailwindcss/vite` plugin. `tailwind.config.ts` + `postcss.config.js` deleted. `globals.css` uses `@import "tailwindcss"` + `@theme` block (font + accent tokens) + `@custom-variant dark` (preserves v3 `darkMode: ['class', '[data-theme="dark"]']` contract — both `[data-theme="dark"]` AND `.dark` class selectors). `frontend/tsconfig.node.json` purged of deleted-file references. `package.json` declares `engines.node >=20` (Tailwind v4's transitive `@tailwindcss/oxide` requirement).
+- **(this PR)** v4.4/W1 closure docs — adds this Changelog entry, the W1 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc1:**
+- #136 v4.4/W1 — Tailwind v4 host migration
+- (this PR) v4.4/W1 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** unchanged from v4.3.0 GA (1408 PHPUnit) — the migration is dependency + build-config only and existing tests cover the React 19 + Tailwind utility surface. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` |
+| W3 | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + `feature/v4.4` → `main` GA merge | **`v4.4.0` GA** |
 
 ### v4.3.0 — 2026-05-10 (GA — host-side hardening cycle complete)
 
