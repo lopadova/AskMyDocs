@@ -38,6 +38,20 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.2.0 GA — full sister-package alignment shipped (closed 2026-05-10)
+
+The v4.2 cycle aligns AskMyDocs with the v1.0+ stable lines of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). +289 PHPUnit tests landed (1082 → 1371) plus a new RAG regression workflow gating every PR. **Patent Box stays external per ADR 0004 D1** — operators install `padosoft/laravel-patent-box-tracker` in a separate Laravel project; AskMyDocs is the subject of the dossier, never the tooling host.
+
+| Surface | What it ships |
+|---|---|
+| **W1 — sister-package version bumps** | `padosoft/laravel-ai-regolo` `^0.2` → `^1.0` (PR #111). `padosoft/laravel-pii-redactor` `^1.1` → `^1.2` (PR #112). v1.2 ships 6 admin-readiness inspector classes consumed by the W4 PII Redactor Admin SPA. |
+| **W2 — `padosoft/laravel-flow` v1.0 saga / compensation engine** | Move from `require-dev` `^0.1` (vendored, zero call sites) to `require` `^1.0`. **9 Flow definitions** registered: `kb.ingest` (5-step saga refactored from IngestDocumentJob), `kb.canonical-index` (3-step CanonicalIndexer), `kb.promote` (4-step approval-gated promotion — first use of approval token in AskMyDocs), `kb.delete` (4-step), `kb.prune-deleted`, `kb.prune-embedding-cache` (conditional approval gate), `kb.prune-chat-logs`, `kb.rebuild-graph`, `kb.ingest-folder` (3-step fan-out). Every step + compensator persisted to `flow_steps` + `flow_audit` (when persistence opted in) for forensic traceability. R30 supplementary migration adds `tenant_id` to all 5 Flow tables + composite `UNIQUE(tenant_id, idempotency_key)`. PRs #114-#117. |
+| **W3 — `padosoft/eval-harness` v1.2 RAG regression CI gate** | `padosoft/eval-harness` bumped `^0.1.0` → `^1.2.0` (`require-dev`). New `App\Eval\EvalRegistrar` registers 4 datasets (1 baseline + 3 adversarial) with per-lane metric stacks (baseline = 4 metrics: `contains` + `cosine-embedding` + `CosineGroundednessMetric` + `CitationGroundednessMetric`; adversarial = 3 metrics: `contains` + `refusal-quality` + `CitationGroundednessMetric`). 42 baseline + 12 adversarial Q&A samples in `tests/Eval/golden/`. New `.github/workflows/rag-regression.yml` gates every PR touching the RAG hot path. Cost guard via `Http::fake()` by default — live mode opt-in via `EVAL_LIVE_AI=1`. Regression-detection self-test (`RegressionDetectionTest`) proves the gate ACTUALLY catches regressions (R16). PR #119. |
+| **W4 — three admin SPAs mounted** | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (3 Spatie-role Gates: `viewPiiRedactorAdmin` / `detokenisePiiRedactor` / `viewPiiRedactorRawSamples`; new `dpo` role added; R30 via supplementary migration + Eloquent observer; PR #121). `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (1 outer-fence Gate `viewFlowAdmin` + 8 row-scoped `ActionAuthorizer` methods in `AskMyDocsFlowAuthorizer`; R30 via the same authorizer; operators visualise the 9 W2 Flow definitions live in the cockpit; PR #122). `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (1 read-only Gate `eval-harness.viewer`; **3 independent fail-closed fences**: env flag + `APP_ENV` + Gate; R30 via `EvalHarnessUiTenantHeader` middleware; `class_exists()` guard in `bootstrap/providers.php` so prod `composer install --no-dev` doesn't crash; PR #123). All three iframe-mounted (each package targets React 19 + Tailwind v4 or Blade + Alpine — incompatible with React 18 host). Three different R30 strategies per ADR 0004 D4. |
+| **Total +289 PHPUnit tests + 3 new Playwright specs across v4.2** | 1082 → 1371. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG regression workflow. R36 review-loop discipline applied to every sub-PR (Copilot review + CI green loop until 0 outstanding must-fix + all CI green). |
+
+Closure artefacts: `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md` (W2) + `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md` (W3) + `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md` (W4) + `docs/v4-platform/STATUS-2026-05-10-week5-rc-acceptance.md` (W5 — RC acceptance + GA merge) + `docs/adr/0004-v42-sister-package-integration.md` (architecture decisions).
+
 #### v4.2.0-rc4 — W4 shipped (three admin SPAs mounted closed 2026-05-10)
 
 | Feature | Description |
@@ -3390,6 +3404,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.2.0 — 2026-05-10 (GA — full v4.2 cycle closed)
+
+GA release of the **v4.2 sister-package alignment cycle**. Brings AskMyDocs onto the v1.0+ stable line of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). Patent Box stays external per ADR 0004 D1.
+
+**Cycle-wide deliverables:**
+
+- **W1** (PRs #111-#113) — `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`. `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`. RC tag `v4.2.0-rc1`.
+- **W2** (PRs #114-#118) — `padosoft/laravel-flow` v1.0 graduated from `require-dev` (vendored, zero call sites) to `require` (9 Flow definitions orchestrating every multi-step background pipeline: `kb.ingest`, `kb.canonical-index`, `kb.promote` (approval-gated), `kb.delete`, 5 scheduled-command flows). Closure: `STATUS-2026-05-10-week2-flow-integration.md`. RC tag `v4.2.0-rc2`.
+- **W3** (PRs #119-#120) — `padosoft/eval-harness` `^0.1.0` → `^1.2.0` (`require-dev`). RAG regression CI gate (`.github/workflows/rag-regression.yml`) gates every PR touching the RAG hot path with 4 datasets × per-lane metric stacks × 4 cohorts × 3 batch profiles. Cost guard via `Http::fake()`. Closure: `STATUS-2026-05-10-week3-eval-harness-ci-gate.md`. RC tag `v4.2.0-rc3`.
+- **W4** (PRs #121-#124) — Three admin SPAs mounted: `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (3 Gates + new `dpo` role + R30 supplementary migration), `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (1 outer Gate + 8 row-scoped `ActionAuthorizer` methods + R30 row-scoped tenant lookup), `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (1 read-only Gate + 3 fail-closed fences + R30 HTTP header injection). All iframe-mounted. Closure: `STATUS-2026-05-10-week4-admin-spas.md`. RC tag `v4.2.0-rc4`.
+- **W5** (this release) — RC acceptance audit + ADR 0004 + INTEGRATION-ROADMAP refresh + once-per-major `feature/v4.2` → `main` merge per R37 + `v4.2.0` GA tag at the merge SHA.
+
+**Architecture decisions** captured in `docs/adr/0004-v42-sister-package-integration.md`:
+- D1 — Patent Box stays EXTERNAL.
+- D2 — eval-harness stays in `require-dev`.
+- D3 — laravel-flow is the canonical multi-step orchestrator.
+- D4 — Three R30 strategies for the three admin SPAs.
+- D5 — Iframe mount across all three admin SPAs.
+- D6 — Strict mixed-import Playwright pattern for admin specs.
+
+**Test count:** 1082 (start of v4.2) → **1371** (GA) — +289 PHPUnit tests across cycle. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG regression workflow.
+
+**v4.3 backlog** (parked, not blockers): sub-PR 4.5 (pii-redactor comprehensive boundary coverage); React 19 host bump (would unlock cross-mount of pii-redactor-admin, deserves its own ADR); flow-admin ⌘K palette polish; eval-harness LLM-as-judge live-mode nightly cron.
 
 ### v4.2.0-rc4 — 2026-05-10 (W4 milestone — three admin SPAs mounted)
 
