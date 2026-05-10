@@ -65,6 +65,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPiiRedactorAdminGates();
         $this->registerPiiRedactorAdminTenantScope();
         $this->registerPiiRedactorAdminTenantStamping();
+        $this->registerEvalHarnessUiGates();
     }
 
     private function registerCommands(): void
@@ -189,6 +190,40 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $event->setAttribute('tenant_id', app(TenantContext::class)->current());
+        });
+    }
+
+    /**
+     * v4.2/W4 sub-PR 7 — wires the single read-only Gate that
+     * `padosoft/eval-harness-ui` v1.0.0 asks for via the
+     * `can:eval-harness.viewer` middleware in
+     * `config/eval-harness-ui.php::route_middleware`.
+     *
+     * The eval dashboard is read-only by design — there are no
+     * mutation endpoints — so a single viewer Gate is enough. Spatie
+     * roles back the check; anonymous denies explicitly.
+     *
+     * Allowlist: super-admin, admin, dpo, editor.
+     * - super-admin / admin keep parity with every other admin SPA
+     *   (PII Redactor, Flow Admin, KB explorer).
+     * - dpo can audit RAG eval reports for compliance / GDPR
+     *   evidence — same audience that needs Flow Admin webhook
+     *   visibility.
+     * - editor can verify their canonical-doc edits did not regress
+     *   factuality / accuracy — eval reports are the closing-of-the-loop
+     *   for the canonical compilation workflow editors own.
+     *
+     * Denylist: viewer (read-only across content but explicitly excluded
+     * from infrastructure dashboards) and anonymous.
+     */
+    private function registerEvalHarnessUiGates(): void
+    {
+        Gate::define('eval-harness.viewer', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin', 'dpo', 'editor']);
         });
     }
 
