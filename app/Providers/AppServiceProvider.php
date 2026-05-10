@@ -63,6 +63,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerRateLimiters();
         $this->registerPolicies();
         $this->registerPiiRedactorAdminGates();
+        $this->registerPiiRedactorAdminTenantScope();
         $this->registerPiiRedactorAdminTenantStamping();
     }
 
@@ -145,6 +146,21 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $user->hasRole('super-admin');
+        });
+    }
+
+    /**
+     * v4.2/W4 sub-PR 5 — enforce tenant isolation on package audit-event
+     * reads (R30). The vendor model does not use BelongsToTenant, so we add
+     * an app-level global scope keyed to the active TenantContext.
+     *
+     * Backfill/admin flows that intentionally scan multiple tenants can opt
+     * out with `withoutGlobalScope('tenant')`.
+     */
+    private function registerPiiRedactorAdminTenantScope(): void
+    {
+        PiiRedactorAdminAuditEvent::addGlobalScope('tenant', function ($query): void {
+            $query->where('tenant_id', app(TenantContext::class)->current());
         });
     }
 

@@ -23,23 +23,54 @@
  * The host page is wrapped in the standard AppShell so the AskMyDocs
  * sidebar + topbar + breadcrumbs stay visible.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const PII_REDACTOR_BASE_URL = '/admin/pii-redactor';
+const PII_REDACTOR_STATUS_URL = '/admin/pii-redactor/api/status';
 
 export function PiiRedactorView() {
     const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
     useEffect(() => {
-        // Belt-and-braces fallback: if the iframe never reports `load`
-        // within 10 s (e.g. the env flag is off and Laravel returns 404),
-        // surface an error state instead of a perpetual spinner. The
-        // happy path resolves in <500 ms; 10 s is a generous ceiling.
+        let active = true;
+        const controller = new AbortController();
+
+        // Belt-and-braces fallback: if the status endpoint doesn't
+        // respond within 10 s, surface an explicit error state.
         const id = window.setTimeout(() => {
-            setLoadState((prev) => (prev === 'loading' ? 'error' : prev));
+            controller.abort();
+            if (active) {
+                setLoadState((prev) => (prev === 'loading' ? 'error' : prev));
+            }
         }, 10_000);
-        return () => window.clearTimeout(id);
+
+        void fetch(PII_REDACTOR_STATUS_URL, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' },
+            signal: controller.signal,
+        })
+            .then((response) => {
+                if (!active) {
+                    return;
+                }
+                setLoadState(response.ok ? 'ready' : 'error');
+            })
+            .catch(() => {
+                if (!active) {
+                    return;
+                }
+                setLoadState('error');
+            })
+            .finally(() => {
+                window.clearTimeout(id);
+            });
+
+        return () => {
+            active = false;
+            controller.abort();
+            window.clearTimeout(id);
+        };
     }, []);
 
     return (
@@ -108,18 +139,15 @@ export function PiiRedactorView() {
                 </div>
             )}
             <iframe
-                ref={iframeRef}
                 src={PII_REDACTOR_BASE_URL}
                 title="PII Redactor Admin"
                 data-testid="admin-pii-redactor-iframe"
-                onLoad={() => setLoadState('ready')}
-                onError={() => setLoadState('error')}
                 style={{
                     flex: 1,
                     width: '100%',
                     border: 0,
                     background: 'var(--bg-0)',
-                    visibility: loadState === 'error' ? 'hidden' : 'visible',
+                    visibility: loadState === 'ready' ? 'visible' : 'hidden',
                 }}
             />
         </div>

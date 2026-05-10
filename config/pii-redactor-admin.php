@@ -14,8 +14,8 @@ declare(strict_types=1);
  *   - Default mount path moved under /admin/pii-redactor so the SPA
  *     console sits next to the rest of the AskMyDocs admin surface
  *     instead of on a sibling top-level path.
- *   - Default middleware stack adds `auth:sanctum` (so SPA cookies are
- *     accepted) and the per-ability `can:` gate so a user who reaches
+ *   - Default middleware stack adds `auth` and the per-ability `can:`
+ *     gate so a user who reaches
  *     the route without the `viewPiiRedactorAdmin` Gate is rejected
  *     at the HTTP layer, not deeper in the controller. ResolveTenant
  *     runs unconditionally (prepended globally in bootstrap/app.php),

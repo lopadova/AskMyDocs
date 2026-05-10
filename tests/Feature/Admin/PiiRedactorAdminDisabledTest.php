@@ -12,7 +12,7 @@ use Tests\TestCase;
  * v4.2/W4 sub-PR 5 — proves the disabled-by-default contract.
  *
  * Sibling to PiiRedactorAdminMountingTest, which flips the SPA on
- * via defineEnvironment(). This class deliberately leaves the
+ * via getEnvironmentSetUp(). This class deliberately leaves the
  * default config (enabled=false from config/pii-redactor-admin.php)
  * so we get evidence that the fail-closed posture is wired
  * correctly: no routes registered, no surface area exposed.

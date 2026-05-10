@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Admin;
 
-use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
 use Padosoft\PiiRedactorAdmin\Models\PiiRedactorAdminAuditEvent;
 use Tests\TestCase;
@@ -131,5 +129,35 @@ class PiiRedactorAdminMountingTest extends TestCase
         $event->save();
 
         $this->assertSame('umbrella-llc', $event->fresh()->getAttribute('tenant_id'));
+    }
+
+    public function test_audit_query_is_tenant_scoped_by_default_and_can_opt_out(): void
+    {
+        app(TenantContext::class)->set('acme-corp');
+
+        $currentTenant = new PiiRedactorAdminAuditEvent;
+        $currentTenant->setAttribute('tenant_id', 'acme-corp');
+        $currentTenant->event_type = 'redact';
+        $currentTenant->status_code = 200;
+        $currentTenant->save();
+
+        $otherTenant = new PiiRedactorAdminAuditEvent;
+        $otherTenant->setAttribute('tenant_id', 'umbrella-llc');
+        $otherTenant->event_type = 'redact';
+        $otherTenant->status_code = 200;
+        $otherTenant->save();
+
+        $scoped = PiiRedactorAdminAuditEvent::query()
+            ->orderBy('tenant_id')
+            ->pluck('tenant_id')
+            ->all();
+        $this->assertSame(['acme-corp'], $scoped);
+
+        $allTenants = PiiRedactorAdminAuditEvent::query()
+            ->withoutGlobalScope('tenant')
+            ->orderBy('tenant_id')
+            ->pluck('tenant_id')
+            ->all();
+        $this->assertSame(['acme-corp', 'umbrella-llc'], $allTenants);
     }
 }
