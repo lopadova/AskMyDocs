@@ -23,16 +23,26 @@
  * `EVAL_HARNESS_UI_PREFIX` will also update this constant in the same
  * change-set.
  *
- * Status probing: we GET the SPA mount URL with `Accept: text/html`.
- * The package controller returns:
- *   - 200 + HTML when both fences are open (env=true AND non-prod)
- *   - 404 when either fence is closed
- *   - 403 when the user lacks the `eval-harness.viewer` Gate
- * The probe distinguishes "ready" (200) from "error" (anything else).
+ * Status probing: we GET a JSON-only API endpoint
+ * (`/admin/eval-harness/api/bootstrap`) with `Accept: application/json`
+ * and `redirect: 'manual'`. The package controller returns:
+ *   - 200 + JSON when both fences are open (env=true AND non-prod)
+ *     AND the user has the `eval-harness.viewer` Gate
+ *   - 401/403 when the auth/Gate fences reject
+ *   - 404 when env=false OR APP_ENV=production
+ *
+ * Why the JSON endpoint + manual redirect: an HTML probe of the SPA
+ * mount URL would falsely mark "ready" if the user's session has
+ * expired — Laravel's `auth` middleware 302→/login, fetch follows
+ * the redirect by default, and the login page returns 200 HTML which
+ * passes `response.ok`. JSON Accept + manual-redirect means an
+ * expired session surfaces as an opaqueredirect (status 0) → treated
+ * as `error`, never `ready`. Same defence as FlowsView (sub-PR 6).
  */
 import { useEffect, useState } from 'react';
 
 const EVAL_HARNESS_BASE_URL = '/admin/eval-harness';
+const EVAL_HARNESS_PROBE_URL = '/admin/eval-harness/api/bootstrap';
 
 export function EvalHarnessView() {
     const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -50,10 +60,11 @@ export function EvalHarnessView() {
             }
         }, 10_000);
 
-        void fetch(EVAL_HARNESS_BASE_URL, {
+        void fetch(EVAL_HARNESS_PROBE_URL, {
             method: 'GET',
             credentials: 'same-origin',
-            headers: { Accept: 'text/html' },
+            headers: { Accept: 'application/json' },
+            redirect: 'manual',
             signal: controller.signal,
         })
             .then((response) => {

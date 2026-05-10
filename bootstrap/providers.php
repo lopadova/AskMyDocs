@@ -1,6 +1,6 @@
 <?php
 
-return [
+$providers = [
     App\Providers\AppServiceProvider::class,
     App\Providers\AiServiceProvider::class,
     App\Providers\ChatLogServiceProvider::class,
@@ -69,6 +69,23 @@ return [
     // middleware alias (R30 — injects X-Eval-Harness-Tenant from
     // TenantContext) and is intentionally separate from the vendor SP
     // so the touchpoint is grep-able in one place.
-    Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class,
-    App\Providers\EvalHarnessUiIntegrationServiceProvider::class,
+    // (Eval Harness UI providers conditionally appended below — see
+    // class_exists() guard for the require-dev resilience reason.)
 ];
+
+// v4.2/W4 sub-PR 7 — Eval Harness UI providers are appended ONLY when
+// the vendor class is loadable. The package lives in `require-dev`,
+// so production deploys with `composer install --no-dev` will not have
+// the autoload entry. Without this guard, Laravel would crash on boot
+// in production with "Class not found" before the FE / Gate / env
+// checks ever fire. The guard also means the integration SP never
+// loads in production (its bind targets are vendor-class type-hinted
+// in dev only). Both fences (env flag + APP_ENV) still apply when the
+// vendor class IS loaded — see the comment block above the appended
+// FQCNs for the full defence-in-depth chain.
+if (class_exists(Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class)) {
+    $providers[] = Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class;
+    $providers[] = App\Providers\EvalHarnessUiIntegrationServiceProvider::class;
+}
+
+return $providers;
