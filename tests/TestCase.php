@@ -28,9 +28,55 @@ abstract class TestCase extends OrchestraTestCase
         // in feature tests for the `redact-chat-pii` middleware.
         $app->register(\Padosoft\PiiRedactor\PiiRedactorServiceProvider::class);
 
+        // v4.2/W4 sub-PR 5 — padosoft/laravel-pii-redactor-admin SP.
+        // Same explicit-registration reason as PiiRedactor above.
+        // Routes are only registered when
+        // `pii-redactor-admin.enabled=true` (default false), so the
+        // bare boot is a safe no-op for tests that don't opt in.
+        $app->register(\Padosoft\PiiRedactorAdmin\PiiRedactorAdminServiceProvider::class);
+
+        // v4.2/W2 — laravel-flow saga engine. Registered before
+        // App\Providers\FlowServiceProvider so the FlowEngine singleton
+        // is available when the in-app definition registry boots.
+        $app->register(\Padosoft\LaravelFlow\LaravelFlowServiceProvider::class);
+
+        // v4.2/W4 sub-PR 6 — padosoft/laravel-flow-admin v1.0.0 + the
+        // host-app integration provider. The package SP unconditionally
+        // registers routes; `flow-admin.enabled=false` (the default) is
+        // enforced by the `flow-admin.enabled` middleware aliased by
+        // FlowAdminIntegrationServiceProvider. The integration SP MUST
+        // be registered AFTER the package SP so the alias is available
+        // before the package's route group is matched on the first
+        // request, and so the AskMyDocsFlowAuthorizer binding overrides
+        // the vendor's DenyAllAuthorizer.
+        $app->register(\Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class);
+        $app->register(\App\Providers\FlowAdminIntegrationServiceProvider::class);
+
+        // v4.2/W3 — padosoft/eval-harness service provider. Manual
+        // registration because Testbench skips package auto-discovery.
+        // Provides EvalEngine, MetricResolver, YamlDatasetLoader, and
+        // the eval-harness:run / eval-harness:adversarial commands.
+        $app->register(\Padosoft\EvalHarness\EvalHarnessServiceProvider::class);
+
+        // v4.2/W4 sub-PR 7 — padosoft/eval-harness-ui v1.0.0 + the
+        // host-app integration provider. The package SP unconditionally
+        // registers routes; the package CONTROLLER aborts 404 when
+        // `eval-harness-ui.enabled=false` (the default), and the
+        // host-app `eval-harness-ui.non-prod` middleware aborts 404
+        // when APP_ENV=production. Either fence alone is enough; both
+        // must be open for the SPA to render. The integration SP MUST
+        // be registered AFTER the package SP so the alias is available
+        // before any request matches the package's route group.
+        $app->register(\Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class);
+        $app->register(\App\Providers\EvalHarnessUiIntegrationServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // v4.2/W2 — IngestDocumentFlow definition + FlowRunRecord
+        // tenant_id stamping hook. Registered after AppServiceProvider
+        // because it depends on the TenantContext singleton it binds.
+        $app->register(\App\Providers\FlowServiceProvider::class);
         // Sanctum powers the JSON auth endpoints exercised by
         // tests/Feature/Api/Auth/*. Registered under the same manual
         // pattern as the other project providers above.
@@ -71,6 +117,48 @@ abstract class TestCase extends OrchestraTestCase
         // reads at every preview/run call. Without this set, tests get a
         // null config array and every command looks unknown (404).
         $app['config']->set('admin', require __DIR__.'/../config/admin.php');
+        // v4.2/W2 — laravel-flow needs persistence enabled for the
+        // kb.ingest end-to-end tests (idempotency lookup, flow_runs +
+        // flow_steps + flow_audit row assertions). Override only the
+        // persistence.enabled knob; the package SP merges the rest.
+        $app['config']->set('laravel-flow', require __DIR__.'/../config/laravel-flow.php');
+        // v4.2/W3 — eval-harness CI gate. Without this, EvalRegistrar
+        // can't read the golden dataset paths under
+        // `eval-harness.askmydocs.golden.*` and the registrar throws.
+        $app['config']->set('eval-harness', require __DIR__.'/../config/eval-harness.php');
+        // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
+        // enabled=false so the SP boot short-circuits before registering
+        // routes; tests that exercise the admin routes flip this on
+        // explicitly via defineEnvironment() (see PiiRedactorAdminMountingTest).
+        $app['config']->set('pii-redactor-admin', require __DIR__.'/../config/pii-redactor-admin.php');
+        // v4.2/W4 sub-PR 6 — published flow-admin config. Default
+        // enabled=false so every request to a flow-admin route returns
+        // 404 via the master-switch middleware. Tests that exercise the
+        // wired routes flip this on via getEnvironmentSetUp() in
+        // FlowAdminMountingTest.
+        $app['config']->set('flow-admin', require __DIR__.'/../config/flow-admin.php');
+        // v4.2/W4 sub-PR 7 — published eval-harness-ui config (host-app
+        // override of the vendor middleware list). Default enabled=false
+        // so every request to the SPA mount returns 404 via the package
+        // controller's own check. Tests that exercise the wired routes
+        // flip this on via config(['eval-harness-ui.enabled' => true]).
+        $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
+        $app['config']->set('laravel-flow.persistence.enabled', true);
+        // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
+        // cache lock store (FlowEngine rejects ArrayStore as process-local).
+        // Wire up a per-test-process file cache store + point laravel-flow's
+        // queue.lock_store at it. The directory lives under the system temp
+        // and is unique per PHPUnit run so parallel processes do not collide.
+        $flowLockPath = sys_get_temp_dir().'/askmydocs-flow-locks-'.getmypid();
+        // R7 — no @-silenced mkdir; race-tolerant + check return.
+        if (! is_dir($flowLockPath) && ! mkdir($flowLockPath, 0o755, true) && ! is_dir($flowLockPath)) {
+            throw new \RuntimeException("TestCase: failed to create flow lock directory: {$flowLockPath}");
+        }
+        $app['config']->set('cache.stores.flow_lock', [
+            'driver' => 'file',
+            'path' => $flowLockPath,
+        ]);
+        $app['config']->set('laravel-flow.queue.lock_store', 'flow_lock');
         $app['config']->set('queue.default', 'sync');
 
         // Make the project's Blade templates (prompts.kb_rag, prompts.promotion_suggest)

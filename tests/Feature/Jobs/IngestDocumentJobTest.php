@@ -54,7 +54,7 @@ class IngestDocumentJobTest extends TestCase
             title: 'Hello Doc',
         );
 
-        $job->handle(app(DocumentIngestor::class));
+        $this->app->call([$job, 'handle']);
 
         $doc = KnowledgeDocument::first();
         $this->assertNotNull($doc);
@@ -76,7 +76,7 @@ class IngestDocumentJobTest extends TestCase
         );
 
         $this->expectException(RuntimeException::class);
-        $job->handle(app(DocumentIngestor::class));
+        $this->app->call([$job, 'handle']);
     }
 
     public function test_handle_respects_configured_path_prefix(): void
@@ -92,7 +92,7 @@ class IngestDocumentJobTest extends TestCase
             disk: 'kb',
         );
 
-        $job->handle(app(DocumentIngestor::class));
+        $this->app->call([$job, 'handle']);
 
         $this->assertSame(1, KnowledgeDocument::count());
     }
@@ -111,7 +111,7 @@ class IngestDocumentJobTest extends TestCase
             metadata: ['language' => 'en', 'author' => 'alice'],
         );
 
-        $job->handle(app(DocumentIngestor::class));
+        $this->app->call([$job, 'handle']);
 
         $doc = KnowledgeDocument::first();
         $this->assertSame('en', $doc->language);

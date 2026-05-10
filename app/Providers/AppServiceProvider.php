@@ -27,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Padosoft\PiiRedactorAdmin\Models\PiiRedactorAdminAuditEvent;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -61,6 +62,10 @@ class AppServiceProvider extends ServiceProvider
         $this->registerCommands();
         $this->registerRateLimiters();
         $this->registerPolicies();
+        $this->registerPiiRedactorAdminGates();
+        $this->registerPiiRedactorAdminTenantScope();
+        $this->registerPiiRedactorAdminTenantStamping();
+        $this->registerEvalHarnessUiGates();
     }
 
     private function registerCommands(): void
@@ -100,6 +105,126 @@ class AppServiceProvider extends ServiceProvider
     private function registerPolicies(): void
     {
         Gate::policy(KnowledgeDocument::class, KnowledgeDocumentPolicy::class);
+    }
+
+    /**
+     * v4.2/W4 sub-PR 5 — wires the 3 Gates that
+     * `padosoft/laravel-pii-redactor-admin` v1.0.2 asks for:
+     *
+     *   - viewPiiRedactorAdmin       → admin / dpo / super-admin can browse
+     *   - detokenisePiiRedactor      → dpo / super-admin can reverse-lookup
+     *   - viewPiiRedactorRawSamples  → super-admin only (raw scan samples
+     *                                  in detector responses)
+     *
+     * Spatie role checks back each Gate so Lorenzo's standing 4-role
+     * matrix (super-admin / admin / editor / viewer) keeps working —
+     * `dpo` is added to the seeder in the same PR. Anonymous requests
+     * (no $user) deny by returning false explicitly; relying on Laravel's
+     * default null-coalesce is also safe but the explicit return keeps
+     * the intent obvious to future readers.
+     */
+    private function registerPiiRedactorAdminGates(): void
+    {
+        Gate::define('viewPiiRedactorAdmin', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo', 'admin']);
+        });
+
+        Gate::define('detokenisePiiRedactor', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo']);
+        });
+
+        Gate::define('viewPiiRedactorRawSamples', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
+        });
+    }
+
+    /**
+     * v4.2/W4 sub-PR 5 — enforce tenant isolation on package audit-event
+     * reads (R30). The vendor model does not use BelongsToTenant, so we add
+     * an app-level global scope keyed to the active TenantContext.
+     *
+     * Backfill/admin flows that intentionally scan multiple tenants can opt
+     * out with `withoutGlobalScope('tenant')`.
+     */
+    private function registerPiiRedactorAdminTenantScope(): void
+    {
+        PiiRedactorAdminAuditEvent::addGlobalScope('tenant', function ($query): void {
+            $query->where('tenant_id', app(TenantContext::class)->current());
+        });
+    }
+
+    /**
+     * v4.2/W4 sub-PR 5 — stamps the active tenant_id on every
+     * PiiRedactorAdminAuditEvent before insert (R31).
+     *
+     * The package model is single-tenant by design (vendor `$fillable`
+     * intentionally excludes `tenant_id`), so we attach a `creating`
+     * Eloquent observer that mutates the column directly — the column
+     * was added by `2026_05_10_021617_add_tenant_id_to_pii_redactor_
+     * admin_audit_events_table.php`.
+     *
+     * Bypassing $fillable is safe here: `tenant_id` is server-derived
+     * from the request-scoped TenantContext singleton, never user input.
+     * If a row arrives with an explicit tenant_id already set (e.g.
+     * from an admin tool inserting a backfill row), we don't overwrite
+     * it — the observer sets only when the field is null/empty.
+     */
+    private function registerPiiRedactorAdminTenantStamping(): void
+    {
+        PiiRedactorAdminAuditEvent::creating(function (PiiRedactorAdminAuditEvent $event): void {
+            $current = $event->getAttribute('tenant_id');
+            if (is_string($current) && $current !== '') {
+                return;
+            }
+
+            $event->setAttribute('tenant_id', app(TenantContext::class)->current());
+        });
+    }
+
+    /**
+     * v4.2/W4 sub-PR 7 — wires the single read-only Gate that
+     * `padosoft/eval-harness-ui` v1.0.0 asks for via the
+     * `can:eval-harness.viewer` middleware in
+     * `config/eval-harness-ui.php::route_middleware`.
+     *
+     * The eval dashboard is read-only by design — there are no
+     * mutation endpoints — so a single viewer Gate is enough. Spatie
+     * roles back the check; anonymous denies explicitly.
+     *
+     * Allowlist: super-admin, admin, dpo, editor.
+     * - super-admin / admin keep parity with every other admin SPA
+     *   (PII Redactor, Flow Admin, KB explorer).
+     * - dpo can audit RAG eval reports for compliance / GDPR
+     *   evidence — same audience that needs Flow Admin webhook
+     *   visibility.
+     * - editor can verify their canonical-doc edits did not regress
+     *   factuality / accuracy — eval reports are the closing-of-the-loop
+     *   for the canonical compilation workflow editors own.
+     *
+     * Denylist: viewer (read-only across content but explicitly excluded
+     * from infrastructure dashboards) and anonymous.
+     */
+    private function registerEvalHarnessUiGates(): void
+    {
+        Gate::define('eval-harness.viewer', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin', 'dpo', 'editor']);
+        });
     }
 
     /**

@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Jobs\CanonicalIndexerJob;
-use App\Models\KbEdge;
-use App\Models\KbNode;
+use App\Flow\Definitions\RebuildGraphFlow;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
+use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowExecutionOptions;
+use Padosoft\LaravelFlow\FlowRun;
 
 /**
  * Rebuild the canonical knowledge graph (kb_nodes + kb_edges) from scratch.
@@ -20,84 +21,119 @@ use Illuminate\Support\Facades\DB;
  *     disabled / backed up;
  *   - as a nightly consistency sweep (scheduled at 03:40 daily).
  *
- * Strategy: truncate kb_edges + kb_nodes for the target scope, then
- * dispatch CanonicalIndexerJob for every canonical document. Memory-safe
- * (R3): documents walked via chunkById(100).
+ * v4.2/sub-PR 3d — refactored onto {@see RebuildGraphFlow}. Iterates
+ * DISTINCT tenant_ids that have at least one canonical doc and
+ * dispatches ONE Flow execute call per tenant (single tenant when
+ * --tenant=X is supplied).
  *
- * Idempotent and safe to run on-demand. A no-op when no canonical docs
- * exist in the tenant.
+ * Idempotent and safe to run on-demand. The Flow's idempotencyKey is
+ * salted with hrtime() so re-runs after a truncate ALWAYS re-execute
+ * (the engine's per-(name, key) dedup would otherwise short-circuit
+ * the second run and leave the graph empty).
  */
 class KbRebuildGraphCommand extends Command
 {
     protected $signature = 'kb:rebuild-graph
         {--project= : Limit to a single project_key (default: all projects)}
+        {--tenant= : Restrict to a single tenant_id (default: every tenant with canonical docs)}
         {--no-truncate : Skip the initial delete of existing nodes/edges (additive rebuild)}
         {--sync : Run indexer jobs synchronously instead of dispatching to the queue}';
 
     protected $description = 'Rebuild canonical kb_nodes + kb_edges from existing canonical documents.';
 
-    public function handle(): int
+    public function handle(TenantContext $context): int
     {
         $projectKey = (string) ($this->option('project') ?? '');
-        // Default: wipe nodes/edges in scope before rebuilding. Operators can
-        // opt into an additive rebuild with --no-truncate when they want to
-        // merge into an existing graph (rare — mostly useful during migrations).
-        $truncateFirst = ! (bool) $this->option('no-truncate');
+        $truncate = ! (bool) $this->option('no-truncate');
         $sync = (bool) $this->option('sync');
 
+        $tenantIds = $this->resolveTenantIds($projectKey);
+        if ($tenantIds === []) {
+            $this->info($projectKey === ''
+                ? 'No canonical documents found across any tenant. Nothing to do.'
+                : "No canonical documents found for project '{$projectKey}' across any tenant. Nothing to do.");
+            return self::SUCCESS;
+        }
+
+        $previousTenant = $context->current();
+        $totalDispatched = 0;
+        $exitCode = self::SUCCESS;
+
+        try {
+            foreach ($tenantIds as $tenantId) {
+                $context->set($tenantId);
+                $run = $this->runFlow($tenantId, $projectKey, $truncate, $sync);
+
+                if ($run->status !== FlowRun::STATUS_SUCCEEDED) {
+                    $failedStep = $run->failedStep ?? '(unknown)';
+                    $this->error("[{$tenantId}] kb.rebuild-graph [{$run->status}] at step [{$failedStep}].");
+                    $exitCode = self::FAILURE;
+                    continue;
+                }
+
+                $count = $this->extractDispatched($run);
+                $totalDispatched += $count;
+                $verb = $sync ? 'Rebuilt' : 'Dispatched';
+                $scope = $projectKey === '' ? 'all projects' : "project '{$projectKey}'";
+                $this->info("[{$tenantId}] {$verb} {$count} indexer job(s) for {$scope}.");
+            }
+        } finally {
+            $context->set($previousTenant);
+        }
+
+        $verb = $sync ? 'Total rebuilt' : 'Total dispatched';
+        $this->info("{$verb}: {$totalDispatched} indexer job(s) across ".count($tenantIds).' tenant(s).');
+        return $exitCode;
+    }
+
+    private function runFlow(string $tenantId, string $projectKey, bool $truncate, bool $sync): FlowRun
+    {
+        // hrtime nonce so re-runs after a truncate ALWAYS re-execute. Without
+        // the nonce the engine's per-(name, key) dedup would short-circuit
+        // the second run and leave kb_nodes/kb_edges empty.
+        $nonce = (string) hrtime(true);
+        $projectScope = $projectKey === '' ? 'all' : $projectKey;
+
+        $options = FlowExecutionOptions::make(
+            correlationId: $tenantId,
+            idempotencyKey: "rebuild-graph:{$tenantId}:{$projectScope}:{$nonce}",
+        );
+        $input = [
+            'tenant_id' => $tenantId,
+            'project_key' => $projectKey,
+            'truncate' => $truncate,
+            'sync' => $sync,
+        ];
+
+        return Flow::execute(RebuildGraphFlow::NAME, $input, $options);
+    }
+
+    private function extractDispatched(FlowRun $run): int
+    {
+        $result = $run->stepResults['dispatch-canonical-indexer'] ?? null;
+        return $result instanceof \Padosoft\LaravelFlow\FlowStepResult
+            ? (int) ($result->output['dispatched_count'] ?? 0)
+            : 0;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveTenantIds(string $projectKey): array
+    {
+        $explicit = (string) ($this->option('tenant') ?? '');
+        if ($explicit !== '') {
+            return [$explicit];
+        }
         $query = KnowledgeDocument::query()->where('is_canonical', true);
         if ($projectKey !== '') {
             $query->where('project_key', $projectKey);
         }
-
-        $totalDocs = (clone $query)->count();
-        if ($totalDocs === 0) {
-            $this->info($projectKey === ''
-                ? 'No canonical documents found across all projects. Nothing to do.'
-                : "No canonical documents found for project '{$projectKey}'. Nothing to do.");
-            return self::SUCCESS;
-        }
-
-        if ($truncateFirst) {
-            $this->truncateGraph($projectKey);
-        }
-
-        $scope = $projectKey === '' ? 'all projects' : "project '{$projectKey}'";
-        $this->info("Rebuilding graph for {$scope}: {$totalDocs} canonical document(s).");
-
-        $dispatched = 0;
-        $query->orderBy('id')->chunkById(100, function ($docs) use (&$dispatched, $sync) {
-            foreach ($docs as $doc) {
-                if ($sync) {
-                    (new CanonicalIndexerJob($doc->id))->handle();
-                } else {
-                    CanonicalIndexerJob::dispatch($doc->id);
-                }
-                $dispatched++;
-            }
-        });
-
-        $this->info($sync
-            ? "Rebuilt graph for {$dispatched} document(s) synchronously."
-            : "Dispatched {$dispatched} indexer job(s) to the queue. Monitor with `php artisan queue:work`.");
-
-        return self::SUCCESS;
-    }
-
-    private function truncateGraph(string $projectKey): void
-    {
-        DB::transaction(function () use ($projectKey) {
-            if ($projectKey === '') {
-                KbEdge::query()->delete();
-                KbNode::query()->delete();
-                $this->line('Truncated kb_edges + kb_nodes (all projects).');
-                return;
-            }
-            // Tenant-scoped truncate. Edges cascade on node delete, but we
-            // delete edges explicitly first so the intent is clear.
-            KbEdge::where('project_key', $projectKey)->delete();
-            KbNode::where('project_key', $projectKey)->delete();
-            $this->line("Truncated kb_edges + kb_nodes for project '{$projectKey}'.");
-        });
+        return $query
+            ->distinct()
+            ->pluck('tenant_id')
+            ->filter(static fn ($v): bool => is_string($v) && $v !== '')
+            ->values()
+            ->all();
     }
 }

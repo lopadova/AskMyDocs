@@ -96,11 +96,33 @@ Route::middleware([
     Route::get('/kb/resolve-wikilink', KbResolveWikilinkController::class)
         ->name('api.kb.resolve-wikilink');
 
-    // Promotion pipeline (Phase 4). suggest + candidates write nothing;
-    // only `promote` writes canonical markdown to the KB disk.
+    // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116
+    // refactored `promote` from inline write+dispatch to the 4-step
+    // PromotionFlow saga with an explicit operator approval gate:
+    //
+    //   POST /api/kb/promotion/suggest             → LLM extracts candidates. Writes nothing.
+    //   POST /api/kb/promotion/candidates          → validates a draft. Writes nothing.
+    //   POST /api/kb/promotion/promote             → starts the PromotionFlow,
+    //                                                pauses at the approval-gate
+    //                                                step, returns 202 with a
+    //                                                single-use approval token
+    //                                                + approve/reject URLs.
+    //                                                NO disk write yet.
+    //   POST /api/kb/promotion/{approvalId}/approve → resumes the flow:
+    //                                                writes canonical markdown
+    //                                                to the KB disk + dispatches
+    //                                                the ingest job.
+    //   POST /api/kb/promotion/{approvalId}/reject  → halts the flow:
+    //                                                disk stays untouched +
+    //                                                rejected_promotion audit
+    //                                                row written via FlowServiceProvider.
+    //
+    // Both approve and reject consume a single-use token (R21).
     Route::post('/kb/promotion/suggest', [KbPromotionController::class, 'suggest']);
     Route::post('/kb/promotion/candidates', [KbPromotionController::class, 'candidates']);
     Route::post('/kb/promotion/promote', [KbPromotionController::class, 'promote']);
+    Route::post('/kb/promotion/{approvalId}/approve', [KbPromotionController::class, 'approve']);
+    Route::post('/kb/promotion/{approvalId}/reject', [KbPromotionController::class, 'reject']);
 });
 
 /*

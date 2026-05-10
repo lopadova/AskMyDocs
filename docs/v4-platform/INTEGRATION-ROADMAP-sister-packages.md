@@ -1,33 +1,35 @@
 # Sister packages integration roadmap
 
-> **Honest status as of v4.1 GA (2026-05-03)**
+> **Honest status as of v4.2 GA (2026-05-10)**
 >
-> Of the five `padosoft/*` sister packages shipped during the v4.0
-> cycle, **two are now wired into AskMyDocs's `app/` runtime**:
-> `padosoft/laravel-ai-regolo` (since v4.0 W2) and
-> `padosoft/laravel-pii-redactor` (since v4.1 W4.1, this release).
-> The pii-redactor integration ships at the **four observable
-> touch-points** documented in the v4.1 section below — chat-message
-> middleware, embedding-cache pre-redact, AI-insights snippet
-> sanitiser, and the operator-driven detokenize endpoint — with every
-> knob default-off so v4.0 hosts upgrading to v4.1 see byte-identical
-> behaviour until they explicitly opt in.
-> The remaining two (`laravel-flow`, `eval-harness`) stay in
-> `require-dev` (separate v4.2/v4.3 integration cycles). Their package
-> repos are v0.1.0 scaffolds — production-grade implementations land
-> alongside the AskMyDocs integration per the per-package timelines
-> below.
-> `padosoft/laravel-patent-box-tracker` is the only sister package not
-> declared in AskMyDocs's `composer.json` at all — by design, operators
-> install it in their own Laravel project (R37 standalone-agnostic; see
-> `tools/patent-box/2026.yml` and the README's Patent Box section).
+> Of the nine `padosoft/*` sister packages currently published on
+> GitHub / Packagist, **seven are integrated into AskMyDocs**:
 >
-> The v4.0.0 GA release notes and W5/W6/W7 closure docs described these
-> packages as "shipped engines"; v4.0.2's docs honesty pass corrected
-> the language to reflect the real shipped state without rewriting the
-> historical changelog entries. v4.1 adds the first production
-> integration of one of those scaffolds (pii-redactor) per the same
-> honest-status convention.
+> | Package | Where | Since |
+> |---|---|---|
+> | `padosoft/laravel-ai-regolo` v1.0 | `require` — `app/Ai/Providers/RegoloProvider.php` | v4.0 W2; bumped v0.2 → v1.0 in v4.2/W1 (PR #111) |
+> | `padosoft/laravel-pii-redactor` v1.2 | `require` — 4 touch-points (chat / embedding / insights / detokenize) | v4.1 W4.1; bumped v1.1 → v1.2 in v4.2/W1 (PR #112) |
+> | `padosoft/laravel-flow` v1.0 | `require` — 9 Flow definitions in `app/Flow/Definitions/` orchestrating every multi-step background pipeline | v4.2/W2 (PRs #114-#117). See ADR 0004 D3. |
+> | `padosoft/eval-harness` v1.2 | `require-dev` — RAG regression CI gate (`.github/workflows/rag-regression.yml`) | v4.2/W3 (PR #119). `require-dev` by design — see ADR 0004 D2. |
+> | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (iframe) | v4.2/W4 (PR #121) |
+> | `padosoft/laravel-flow-admin` v1.0.0 | `require` — mounted under `/admin/flows` (iframe) | v4.2/W4 (PR #122) |
+> | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (iframe) | v4.2/W4 (PR #123) |
+>
+> `padosoft/laravel-patent-box-tracker` and its admin SPA stay
+> **EXTERNAL** to AskMyDocs's `composer.json` per ADR 0004 D1 — operators
+> install them in their own Laravel project and run
+> `php artisan patent-box:cross-repo /path/to/AskMyDocs/tools/patent-box/2026.yml`
+> from there. AskMyDocs is the **subject** of the dossier, never the
+> tooling host.
+>
+> All seven integrated packages run through the **R30/R31 cross-tenant
+> isolation** disciplines documented in CLAUDE.md, with three different
+> tenant-scoping strategies for the three admin SPAs (see ADR 0004 D4):
+> supplementary migration + Eloquent observer (pii-redactor-admin);
+> Authorizer-level filter (flow-admin); HTTP header injection
+> (eval-harness-ui). Every multi-step background pipeline in AskMyDocs
+> runs through a Flow definition (see ADR 0004 D3); this is now
+> load-bearing for every observable AskMyDocs background workflow.
 
 ---
 

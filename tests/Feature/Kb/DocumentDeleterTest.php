@@ -229,6 +229,54 @@ class DocumentDeleterTest extends TestCase
         $this->assertNotNull(KnowledgeDocument::find($docB->id));
     }
 
+    public function test_delete_orphans_respects_tenant_boundary_when_tenant_id_passed(): void
+    {
+        // R30 + Copilot iter 1 finding (PR #117). Two tenants legitimately
+        // share `project_key='demo'`. The orphan sweep, when invoked on
+        // behalf of tenant A, must NOT touch tenant B's rows even though
+        // their source files are also missing from tenant A's existing
+        // file list.
+        config()->set('kb.deletion.soft_delete', true);
+
+        // Both tenants own a doc at the same project_key + same folder.
+        // Different source_path so the global UNIQUE on
+        // (project_key, source_path, version_hash) does not collide.
+        $docA = $this->makeDocument([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'demo',
+            'source_path' => 'docs/tenant-a-file.md',
+            'version_hash' => 'va',
+        ]);
+        $docB = $this->makeDocument([
+            'tenant_id' => 'tenant-b',
+            'project_key' => 'demo',
+            'source_path' => 'docs/tenant-b-file.md',
+            'version_hash' => 'vb',
+        ]);
+
+        // Tenant A reports ZERO existing files — naively, both A's and
+        // B's rows are "orphan" under this base path. The tenant filter
+        // is the load-bearing isolation guarantee.
+        $result = (new DocumentDeleter)->deleteOrphans(
+            projectKey: 'demo',
+            basePath: 'docs',
+            existingRelativePaths: [],
+            tenantId: 'tenant-a',
+        );
+
+        // Only tenant A's row should be soft-deleted.
+        $this->assertCount(1, $result);
+        $this->assertSame('docs/tenant-a-file.md', $result[0]['source_path']);
+
+        $this->assertNull(KnowledgeDocument::find($docA->id), 'tenant-a row soft-deleted');
+        $this->assertNotNull(
+            KnowledgeDocument::find($docB->id),
+            'tenant-b row MUST survive tenant-a orphan sweep (R30).',
+        );
+        // And tenant-b must not even be reachable via withTrashed→deleted.
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($docB->id)?->deleted_at);
+    }
+
     public function test_prune_soft_deleted_hard_deletes_old_rows_and_removes_files(): void
     {
         config()->set('kb.deletion.soft_delete', true);
@@ -257,5 +305,41 @@ class DocumentDeleterTest extends TestCase
         // The recent soft-delete must still be recoverable on disk and in DB.
         $this->assertNotNull(KnowledgeDocument::withTrashed()->find($recent->id));
         Storage::disk('kb')->assertExists('docs/recent.md');
+    }
+
+    public function test_hard_delete_refuses_storage_call_for_traversal_path(): void
+    {
+        // Iteration 4 (PR #116) — R1 + R4 + R14. KbPath::normalize()
+        // throws on traversal segments. Previously, the catch block in
+        // resolveFullPath() returned the raw `prefix/source_path`
+        // string — DEFEATING the traversal guard because Storage::delete()
+        // was then handed an attacker-controlled key. The fix routes
+        // un-normalisable paths to a no-op file delete (DB rows still
+        // hard-deleted; the warning surfaces in the log).
+        config()->set('kb.deletion.soft_delete', false);
+
+        // Place a sentinel "real" file that an attacker would hope to
+        // pivot the disk-delete onto via a traversal segment. The
+        // bypass is impossible if resolveFullPath returns null and the
+        // caller skips Storage::delete() entirely.
+        Storage::disk('kb')->put('etc/passwd', 'sentinel');
+
+        $document = $this->makeDocument([
+            'source_path' => '../../etc/passwd',
+            'version_hash' => 'traversal-attempt',
+        ]);
+
+        $result = (new DocumentDeleter)->delete($document);
+
+        $this->assertSame('hard', $result['mode']);
+        // No file should have been deleted (traversal guard kept the
+        // pivot file intact). The sentinel file MUST still exist.
+        $this->assertFalse($result['file_deleted']);
+        Storage::disk('kb')->assertExists('etc/passwd');
+
+        // The DB row + chunks still got hard-deleted (the rows are
+        // ours; only the file path was un-normalisable).
+        $this->assertNull(KnowledgeDocument::withTrashed()->find($document->id));
+        $this->assertSame(0, KnowledgeChunk::where('knowledge_document_id', $document->id)->count());
     }
 }

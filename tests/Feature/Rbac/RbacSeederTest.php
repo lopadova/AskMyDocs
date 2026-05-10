@@ -16,13 +16,15 @@ class RbacSeederTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_seeder_creates_four_roles_with_expected_permissions(): void
+    public function test_seeder_creates_five_roles_with_expected_permissions(): void
     {
         $this->seed(RbacSeeder::class);
 
         $roleNames = Role::pluck('name')->sort()->values()->all();
+        // v4.2/W4 sub-PR 5 — `dpo` (Data Protection Officer) added to
+        // back the PII Redactor admin Gates with a non-super-admin role.
         $this->assertSame(
-            ['admin', 'editor', 'super-admin', 'viewer'],
+            ['admin', 'dpo', 'editor', 'super-admin', 'viewer'],
             $roleNames,
         );
 
@@ -40,6 +42,10 @@ class RbacSeederTest extends TestCase
             'kb.read.any',
             'logs.view',
             'permissions.view',
+            // v4.2/W4 sub-PR 5 — `pii.detokenize` is the permission
+            // backing the `detokenisePiiRedactor` Gate (super-admin +
+            // dpo). Granted to dpo + super-admin in RbacSeeder.
+            'pii.detokenize',
             'roles.manage',
             'users.manage',
         ];
@@ -56,6 +62,13 @@ class RbacSeederTest extends TestCase
         $this->assertTrue($viewer->hasPermissionTo('kb.read.any'));
         $this->assertTrue($viewer->hasPermissionTo('logs.view'));
         $this->assertFalse($viewer->hasPermissionTo('kb.edit.any'));
+
+        // v4.2/W4 sub-PR 5 — DPO sanity: gets pii.detokenize, NOT kb.edit.any.
+        $dpo = Role::findByName('dpo', 'web');
+        $this->assertTrue($dpo->hasPermissionTo('pii.detokenize'));
+        $this->assertTrue($dpo->hasPermissionTo('admin.access'));
+        $this->assertFalse($dpo->hasPermissionTo('kb.edit.any'));
+        $this->assertFalse($dpo->hasPermissionTo('commands.destructive'));
     }
 
     public function test_seeder_is_idempotent(): void
@@ -63,9 +76,10 @@ class RbacSeederTest extends TestCase
         $this->seed(RbacSeeder::class);
         $this->seed(RbacSeeder::class);
 
-        $this->assertSame(4, Role::count());
-        // 11 pre-H2 + `commands.destructive` = 12.
-        $this->assertSame(12, Permission::count());
+        // v4.2/W4 sub-PR 5 — 4 pre-W4 roles + `dpo` = 5.
+        $this->assertSame(5, Role::count());
+        // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4) = 13.
+        $this->assertSame(13, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void

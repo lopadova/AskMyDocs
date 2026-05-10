@@ -1,0 +1,210 @@
+name: rag-regression
+
+# AskMyDocs v4.2 / W3 / sub-PR 4 — RAG regression CI gate.
+#
+# Drives a 40-sample golden Q&A set through the live RAG pipeline
+# (KbSearchService + GraphExpander + RejectedApproachInjector +
+# AiManager) on every PR. Fails the build on regression and uploads
+# the JSON + Markdown report as a downloadable artifact.
+#
+# Cost guard: defaults to EVAL_LIVE_AI=false — the EvalRegistrar binds
+# Http::fake() so the chat + embedding providers never touch a real
+# provider. Live mode is opt-in via workflow_dispatch.
+
+on:
+  pull_request:
+    paths:
+      - 'app/Services/Kb/**'
+      - 'app/Services/Kb/Retrieval/**'
+      - 'app/Ai/**'
+      - 'app/Eval/**'
+      - 'config/ai.php'
+      - 'config/eval-harness.php'
+      - 'tests/Eval/golden/**'
+      - 'composer.json'
+      - 'composer.lock'
+      - '.github/workflows/rag-regression.yml'
+  push:
+    branches:
+      - main
+      - 'feature/v4.*'
+  workflow_dispatch:
+    inputs:
+      live_ai:
+        description: 'Enable real provider calls (costs tokens; OPENAI_API_KEY required)'
+        required: false
+        default: 'false'
+        type: boolean
+      batch_profile:
+        description: 'Batch profile (smoke / ci / nightly)'
+        required: false
+        default: 'ci'
+        type: choice
+        options:
+          - smoke
+          - ci
+          - nightly
+
+jobs:
+  rag-regression:
+    name: RAG regression gate (${{ github.event.inputs.batch_profile || 'ci' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: askmydocs
+          POSTGRES_PASSWORD: askmydocs
+          POSTGRES_DB: askmydocs_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askmydocs -d askmydocs_eval"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      CACHE_STORE: array
+      SESSION_DRIVER: file
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: askmydocs_eval
+      DB_USERNAME: askmydocs
+      DB_PASSWORD: askmydocs
+      EVAL_LIVE_AI: ${{ github.event.inputs.live_ai || 'false' }}
+      EVAL_HARNESS_BATCH_PROFILE: ${{ github.event.inputs.batch_profile || 'ci' }}
+      EVAL_HARNESS_REPORTS_DISK: local
+      EVAL_HARNESS_REPORTS_PATH: eval-harness/reports
+      # The seeded corpus + the eval registrar must run under the
+      # 'default' tenant — the BelongsToTenant trait reads from
+      # TenantContext (set programmatically by EvalRegistrar).
+      KB_DEFAULT_TENANT: default
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, xml, sqlite, pdo_sqlite, pgsql, pdo_pgsql, intl, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-php8.4-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: ${{ runner.os }}-php8.4-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      # bootstrap dirs must exist BEFORE any artisan command runs —
+      # `key:generate` boots the Laravel app which compiles config /
+      # views and requires storage/framework/{cache,sessions,views}
+      # already on disk; otherwise Compiler.php throws "Please provide
+      # a valid cache path." Original workflow had this step AFTER
+      # Prepare .env which started failing the moment any new SP
+      # (sub-PR 6 LaravelFlowAdminServiceProvider) eagerly resolved a
+      # view-using component during boot.
+      - name: Prepare bootstrap dirs
+        run: |
+          mkdir -p bootstrap/cache storage/framework/cache/data
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
+          mkdir -p storage/app/eval-harness/reports
+          mkdir -p storage/app/eval-harness/adversarial/manifests
+          mkdir -p eval-out
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
+      - name: Migrate + seed evaluation dataset
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=Database\\Seeders\\DemoSeeder --force
+
+      - name: Run RAG regression — baseline (JSON + Markdown)
+        id: baseline
+        run: |
+          php artisan eval-harness:run rag.askmydocs.factuality.fy2026 \
+            --registrar="App\\Eval\\EvalRegistrar" \
+            --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
+            --json --out=eval-out/baseline.json --raw-path
+          php artisan eval-harness:run rag.askmydocs.factuality.fy2026 \
+            --registrar="App\\Eval\\EvalRegistrar" \
+            --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
+            --out=eval-out/baseline.md --raw-path
+        # The exit code from eval-harness:run propagates: non-zero on
+        # any captured metric failure. CI fails here on regression.
+
+      # Adversarial steps below are ADVISORY in CI (continue-on-error).
+      # The baseline step above is the gating step — a baseline regression
+      # fails the build. Adversarial datasets exercise out-of-corpus,
+      # contradicting-claims, and rejected-approach scenarios where the
+      # Http::fake() canned responses cannot perfectly mimic the
+      # production model's refusal behavior; treating them as gating
+      # would surface false positives on every PR. The reports are still
+      # uploaded as artifacts so reviewers can inspect adversarial
+      # telemetry. Live-mode runs (workflow_dispatch with live_ai=true)
+      # treat them advisory too — adversarial-as-warning is the correct
+      # operational shape for this lane; promote to gating only when a
+      # specific regression manifest needs to be enforced.
+      - name: Run RAG regression — adversarial out-of-corpus (advisory)
+        if: always() && steps.baseline.outcome != 'cancelled'
+        continue-on-error: true
+        run: |
+          php artisan eval-harness:run rag.askmydocs.adversarial.out-of-corpus \
+            --registrar="App\\Eval\\EvalRegistrar" \
+            --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
+            --json --out=eval-out/adversarial-out-of-corpus.json --raw-path
+
+      - name: Run RAG regression — adversarial contradicting-claims (advisory)
+        if: always() && steps.baseline.outcome != 'cancelled'
+        continue-on-error: true
+        run: |
+          php artisan eval-harness:run rag.askmydocs.adversarial.contradicting-claims \
+            --registrar="App\\Eval\\EvalRegistrar" \
+            --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
+            --json --out=eval-out/adversarial-contradicting-claims.json --raw-path
+
+      - name: Run RAG regression — adversarial rejected-approach-trigger (advisory)
+        if: always() && steps.baseline.outcome != 'cancelled'
+        continue-on-error: true
+        run: |
+          php artisan eval-harness:run rag.askmydocs.adversarial.rejected-approach-trigger \
+            --registrar="App\\Eval\\EvalRegistrar" \
+            --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
+            --json --out=eval-out/adversarial-rejected-approach.json --raw-path
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-regression-reports
+          path: |
+            eval-out/*.json
+            eval-out/*.md
+          retention-days: 14
+
+      - name: Surface failure summary
+        if: failure()
+        run: |
+          echo "::error::RAG regression detected. Download the rag-regression-reports artifact for details."
+          for f in eval-out/*.json; do
+            [ -f "$f" ] || continue
+            echo "--- $(basename "$f") ---"
+            jq '{ name, total_samples, total_failures, macro_f1: (.macro_f1 // null) }' "$f" || cat "$f" | head -40
+          done

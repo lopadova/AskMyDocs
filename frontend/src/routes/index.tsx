@@ -18,6 +18,9 @@ import { TagsList } from '../features/admin/tags/TagsList';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
+import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
+import { FlowsView } from '../features/admin/flows/FlowsView';
+import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -311,6 +314,78 @@ const adminInsightsRoute = createRoute({
     component: AdminInsightsRoute,
 });
 
+// v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Same flat-RBAC
+// pattern as AdminInsightsRoute / AdminKbRoute: the RequireRole gate
+// lives inside the component so a viewer hitting
+// /app/admin/pii-redactor directly sees <AdminForbidden /> instead of
+// a crash. The Spatie role allowlist matches the BE Gate
+// `viewPiiRedactorAdmin` (super-admin / dpo / admin); the iframe URL
+// (/admin/pii-redactor) is enforced separately by the BE
+// `can:viewPiiRedactorAdmin` middleware so an unprivileged user who
+// somehow reaches the URL still gets a 403 from Laravel.
+function AdminPiiRedactorRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <PiiRedactorView />
+        </RequireRole>
+    );
+}
+
+const adminPiiRedactorRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/pii-redactor',
+    component: AdminPiiRedactorRoute,
+});
+
+// v4.2/W4 sub-PR 6 — Flow Admin SPA mount. Same flat-RBAC pattern as
+// AdminPiiRedactorRoute / AdminInsightsRoute: the RequireRole gate
+// lives inside the component so a viewer hitting /app/admin/flows
+// directly sees <AdminForbidden /> instead of a crash. The Spatie
+// role allowlist matches the BE Gate `viewFlowAdmin` (super-admin /
+// admin / dpo); the iframe URL (/admin/flows) is enforced separately
+// by the BE `can:viewFlowAdmin` middleware AND the
+// `flow-admin.enabled` middleware so an unprivileged user who somehow
+// reaches the URL gets a 403 (or 404 when env=false) from Laravel.
+function AdminFlowsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <FlowsView />
+        </RequireRole>
+    );
+}
+
+const adminFlowsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/flows',
+    component: AdminFlowsRoute,
+});
+
+// v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same flat-RBAC
+// pattern as AdminFlowsRoute / AdminPiiRedactorRoute: the RequireRole
+// gate lives inside the component so a viewer hitting
+// /app/admin/eval-harness directly sees <AdminForbidden /> instead of
+// a crash. The Spatie role allowlist matches the BE Gate
+// `eval-harness.viewer` (super-admin / admin / dpo / editor); the
+// iframe URL (/admin/eval-harness) is enforced separately by the BE
+// `can:eval-harness.viewer` middleware AND the `eval-harness-ui.non-prod`
+// middleware (404 in production) AND the package controller's own
+// `eval-harness-ui.enabled` check (404 when env=false), so an
+// unprivileged user who somehow reaches the URL gets a 403 / 404 from
+// Laravel.
+function AdminEvalHarnessRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo', 'editor']}>
+            <EvalHarnessView />
+        </RequireRole>
+    );
+}
+
+const adminEvalHarnessRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/eval-harness',
+    component: AdminEvalHarnessRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -334,6 +409,9 @@ const routeTree = rootRoute.addChildren([
         adminLogsRoute,
         adminMaintenanceRoute,
         adminInsightsRoute,
+        adminPiiRedactorRoute,
+        adminFlowsRoute,
+        adminEvalHarnessRoute,
     ]),
 ]);
 

@@ -16,6 +16,9 @@ const SECTION_ROUTES: Record<SidebarSection, string> = {
     users: '/app/users',
     logs: '/app/logs',
     maintenance: '/app/maintenance',
+    'pii-redactor': '/app/admin/pii-redactor',
+    flows: '/app/admin/flows',
+    'eval-harness': '/app/admin/eval-harness',
 };
 
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {

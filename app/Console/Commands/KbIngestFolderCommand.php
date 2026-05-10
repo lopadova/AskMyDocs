@@ -1,50 +1,58 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Console\Commands;
 
-use App\Jobs\IngestDocumentJob;
-use App\Services\Kb\DocumentDeleter;
-use App\Services\Kb\DocumentIngestor;
-use App\Services\Kb\Pipeline\SourceDocument;
+use App\Flow\Definitions\IngestFolderFlow;
 use App\Support\Kb\SourceType;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Storage;
+use Padosoft\LaravelFlow\Facades\Flow;
+use Padosoft\LaravelFlow\FlowExecutionOptions;
+use Padosoft\LaravelFlow\FlowRun;
+use Padosoft\LaravelFlow\FlowStepResult;
 
 /**
  * Walks a folder on the configured Laravel disk and dispatches one
- * IngestDocumentJob per markdown file found.
+ * IngestDocumentJob per supported file found.
  *
- * With QUEUE_CONNECTION=sync every dispatch executes inline; with
- * `database` or `redis` jobs are enqueued for a worker to process.
- * The `--sync` option bypasses the queue altogether (useful when you
- * want progress feedback on small batches in dev).
+ * v4.2/sub-PR 3d — refactored onto {@see IngestFolderFlow}. The Flow
+ * orchestrates list-files → dispatch-fan-out → maybe-prune-orphans;
+ * each per-file dispatch is itself a {@see \App\Flow\Definitions\IngestDocumentFlow}
+ * sub-saga (CanonicalIndexerJob handles canonical fan-out from there).
+ *
+ * Back-compat: every existing CLI option keeps its original meaning
+ * (--project, --disk, --pattern, --recursive, --sync, --limit,
+ * --dry-run, --prune-orphans, --force-delete). Added: --tenant for
+ * R30 fan-out across multiple tenants.
  */
 class KbIngestFolderCommand extends Command
 {
     protected $signature = 'kb:ingest-folder
                             {path? : Folder on the KB disk, relative to KB_PATH_PREFIX (defaults to the prefix root)}
                             {--project= : Project key for multi-tenant filtering (defaults to KB_INGEST_DEFAULT_PROJECT)}
+                            {--tenant= : Restrict ingest to a single tenant_id (default: current TenantContext)}
                             {--disk= : Override KB_FILESYSTEM_DISK for this run}
-                            {--pattern= : Comma-separated extension patterns (default: md,markdown,txt,pdf,docx — every supported format)}
+                            {--pattern= : Comma-separated extension patterns (default: every supported format)}
                             {--recursive : Walk sub-directories}
                             {--sync : Run ingestion inline without touching the queue}
                             {--limit=0 : Stop after N files (0 = unlimited)}
                             {--dry-run : Print matches without dispatching}
                             {--prune-orphans : Delete documents under this folder whose source file no longer exists}
-                            {--force-delete : When pruning orphans, hard-delete instead of using the KB_SOFT_DELETE_ENABLED default}';
+                            {--force-delete : When pruning orphans, hard-delete instead of using KB_SOFT_DELETE_ENABLED default}';
 
     protected $description = 'Walk a folder on the KB disk and dispatch a queued ingestion job per supported file (md/markdown/txt/pdf/docx).';
 
-    public function handle(DocumentIngestor $ingestor, DocumentDeleter $deleter): int
+    public function handle(TenantContext $context): int
     {
         $disk = (string) ($this->option('disk') ?: config('kb.sources.disk', 'kb'));
         $projectKey = (string) ($this->option('project') ?: config('kb.ingest.default_project', 'default'));
         $prefix = trim((string) config('kb.sources.path_prefix', ''), '/');
         $pathArg = trim((string) ($this->argument('path') ?? ''), '/');
 
-        // The path argument is always interpreted relative to the configured
-        // prefix so the job (which re-applies the prefix when reading) can
-        // always find the file on disk.
+        // The path argument is relative to KB_PATH_PREFIX so the queued job
+        // (which re-applies the prefix when reading) can find the file.
         $basePath = $prefix === ''
             ? $pathArg
             : ($pathArg === '' ? $prefix : $prefix.'/'.$pathArg);
@@ -53,161 +61,161 @@ class KbIngestFolderCommand extends Command
         $dryRun = (bool) $this->option('dry-run');
         $sync = (bool) $this->option('sync');
         $limit = max(0, (int) $this->option('limit'));
-        // Default pattern includes every supported extension (T1.8 multi-format
-        // ingest). Operators can still pass `--pattern=md,markdown` to scope
-        // a run to a single format.
-        $defaultPattern = implode(',', SourceType::knownExtensions());
-        $patternRaw = (string) ($this->option('pattern') ?: $defaultPattern);
-        $patterns = $this->parsePatterns($patternRaw);
+        $extensions = $this->parsePatterns((string) ($this->option('pattern') ?? ''));
+        $pruneOrphans = (bool) $this->option('prune-orphans');
+        $forceDeleteRaw = $this->option('force-delete');
+        $forceDelete = $forceDeleteRaw ? true : null;
 
-        $storage = Storage::disk($disk);
+        $tenantId = (string) ($this->option('tenant') ?? $context->current());
+        $previousTenant = $context->current();
 
-        $allFiles = $recursive ? $storage->allFiles($basePath) : $storage->files($basePath);
-        $matching = $this->filterByPatterns($allFiles, $patterns);
+        try {
+            $context->set($tenantId);
 
-        if ($limit > 0) {
-            $matching = array_slice($matching, 0, $limit);
+            $input = [
+                'tenant_id' => $tenantId,
+                'project_key' => $projectKey,
+                'disk' => $disk,
+                'base_path' => $basePath,
+                'extensions' => $extensions,
+                'recursive' => $recursive,
+                'sync' => $sync,
+                'limit' => $limit,
+                'prefix' => $prefix,
+                'prune_orphans' => $pruneOrphans,
+                'force_delete' => $forceDelete,
+                'relative_base_path' => $pathArg,
+            ];
+
+            // hrtime nonce so re-runs after manual file edits ALWAYS
+            // re-execute (otherwise the engine's per-(name, key) dedup
+            // would short-circuit and skip newly-added files).
+            $nonce = (string) hrtime(true);
+            $options = FlowExecutionOptions::make(
+                correlationId: $tenantId,
+                idempotencyKey: "ingest-folder:{$tenantId}:{$disk}:{$basePath}:{$nonce}",
+            );
+
+            $run = $dryRun
+                ? Flow::dryRun(IngestFolderFlow::NAME, $input, $options)
+                : Flow::execute(IngestFolderFlow::NAME, $input, $options);
+
+            return $this->reportRun($run, $disk, $basePath, $projectKey, $dryRun, $sync, $pruneOrphans);
+        } finally {
+            $context->set($previousTenant);
+        }
+    }
+
+    private function reportRun(
+        FlowRun $run,
+        string $disk,
+        string $basePath,
+        string $projectKey,
+        bool $dryRun,
+        bool $sync,
+        bool $pruneOrphans,
+    ): int {
+        if ($run->status !== FlowRun::STATUS_SUCCEEDED) {
+            $failedStep = $run->failedStep ?? '(unknown)';
+            $this->error("kb.ingest-folder [{$run->status}] at step [{$failedStep}].");
+            return self::FAILURE;
         }
 
-        $total = count($matching);
+        $listResult = $run->stepResults['list-files'] ?? null;
+        $matched = $listResult instanceof FlowStepResult
+            ? (int) ($listResult->output['matched_count'] ?? 0)
+            : 0;
+        $files = $listResult instanceof FlowStepResult
+            ? (array) ($listResult->output['matched_files'] ?? [])
+            : [];
 
-        if ($total === 0) {
+        if ($matched === 0) {
+            // Legacy phrasing ("No markdown files matched") preserved for
+            // back-compat with operator scripts and existing test
+            // assertions across the v4.2 refactor.
             $this->warn("No markdown files matched under disk [{$disk}] path [{$basePath}].");
-
-            // An empty folder can still have orphans to prune (e.g. every
-            // file was just removed from the repo).
-            if ((bool) $this->option('prune-orphans') && ! $dryRun) {
-                $this->pruneOrphans($deleter, $projectKey, $pathArg, $matching, $prefix);
-            }
-
+            $this->reportOrphanResult($run, $pruneOrphans, $dryRun);
             return self::SUCCESS;
         }
 
         $mode = $dryRun ? 'DRY-RUN' : ($sync ? 'SYNC' : 'QUEUE');
-        $this->info("[{$mode}] Found {$total} file(s) on disk [{$disk}] — project [{$projectKey}].");
-
-        $dispatched = 0;
-        $failed = 0;
-
-        foreach ($matching as $fullPath) {
-            $relative = $this->stripPrefix($fullPath, $prefix);
-            $extension = (string) pathinfo($relative, PATHINFO_EXTENSION);
-            $sourceType = SourceType::fromExtension($extension);
-
-            if ($dryRun) {
-                $this->line("  • {$fullPath} [{$sourceType->value}]");
-                continue;
-            }
-
-            if ($sourceType === SourceType::UNKNOWN) {
-                // Filter already removes unknown extensions, but defence-
-                // in-depth: if a custom --pattern brings in an unknown
-                // extension, refuse it loudly rather than silently routing
-                // through markdown.
-                $failed++;
-                $this->error("  ! unsupported extension: {$relative} [{$extension}]");
-                continue;
-            }
-
-            try {
-                if ($sync) {
-                    if (! $storage->exists($fullPath)) {
-                        throw new \RuntimeException("File vanished before ingestion: {$fullPath}");
-                    }
-                    $bytes = (string) $storage->get($fullPath);
-                    $title = pathinfo($relative, PATHINFO_FILENAME);
-
-                    $ingestor->ingest(
-                        projectKey: $projectKey,
-                        source: new SourceDocument(
-                            sourcePath: $relative,
-                            mimeType: $sourceType->toMime(),
-                            bytes: $bytes,
-                            externalUrl: null,
-                            externalId: null,
-                            connectorType: 'local',
-                            metadata: ['disk' => $disk, 'prefix' => $prefix],
-                        ),
-                        title: $title,
-                    );
-                } else {
-                    IngestDocumentJob::dispatch(
-                        projectKey: $projectKey,
-                        relativePath: $relative,
-                        disk: $disk,
-                        title: null,
-                        metadata: [],
-                        mimeType: $sourceType->toMime(),
-                    );
-                }
-
-                $dispatched++;
-            } catch (\Throwable $e) {
-                $failed++;
-                $this->error("  ! failed: {$relative} — {$e->getMessage()}");
-            }
-        }
+        $this->info("[{$mode}] Found {$matched} file(s) on disk [{$disk}] — project [{$projectKey}].");
 
         if ($dryRun) {
-            $this->info("Would dispatch {$total} job(s). No changes made.");
-
+            foreach ($files as $f) {
+                if (! is_string($f)) {
+                    continue;
+                }
+                $ext = (string) pathinfo($f, PATHINFO_EXTENSION);
+                $sourceType = SourceType::fromExtension($ext);
+                $this->line("  • {$f} [{$sourceType->value}]");
+            }
+            $this->info("Would dispatch {$matched} job(s). No changes made.");
             return self::SUCCESS;
         }
 
-        $verb = $sync ? 'Ingested' : 'Queued';
-        $this->info("{$verb} {$dispatched} document(s)".($failed > 0 ? " — {$failed} failure(s)." : '.'));
+        $dispatchResult = $run->stepResults['dispatch-ingest-fan-out'] ?? null;
+        $dispatched = $dispatchResult instanceof FlowStepResult
+            ? (int) ($dispatchResult->output['dispatched_count'] ?? 0)
+            : 0;
+        $failures = $dispatchResult instanceof FlowStepResult
+            ? (array) ($dispatchResult->output['failures'] ?? [])
+            : [];
+        $failureCount = count($failures);
 
-        if ((bool) $this->option('prune-orphans')) {
-            $this->pruneOrphans($deleter, $projectKey, $pathArg, $matching, $prefix);
+        foreach ($failures as $failure) {
+            if (! is_array($failure)) {
+                continue;
+            }
+            $this->error("  ! failed: {$failure['path']} — {$failure['reason']}");
         }
 
-        return $failed === 0 ? self::SUCCESS : self::FAILURE;
+        $verb = $sync ? 'Ingested' : 'Queued';
+        $tail = $failureCount > 0 ? " — {$failureCount} failure(s)." : '.';
+        $this->info("{$verb} {$dispatched} document(s){$tail}");
+
+        $this->reportOrphanResult($run, $pruneOrphans, $dryRun);
+
+        return $failureCount === 0 ? self::SUCCESS : self::FAILURE;
     }
 
-    /**
-     * @param  array<int,string>  $fullPathsOnDisk
-     */
-    private function pruneOrphans(
-        DocumentDeleter $deleter,
-        string $projectKey,
-        string $pathArg,
-        array $fullPathsOnDisk,
-        string $prefix,
-    ): void {
-        $force = $this->option('force-delete') ? true : null;
-
-        $existing = array_map(
-            fn (string $full) => $this->stripPrefix($full, $prefix),
-            $fullPathsOnDisk,
-        );
-
-        $removed = $deleter->deleteOrphans(
-            projectKey: $projectKey,
-            basePath: trim($pathArg, '/'),
-            existingRelativePaths: $existing,
-            force: $force,
-        );
-
-        if ($removed === []) {
-            $this->info('No orphan documents to prune.');
-
+    private function reportOrphanResult(FlowRun $run, bool $pruneOrphans, bool $dryRun): void
+    {
+        if (! $pruneOrphans || $dryRun) {
             return;
         }
-
-        $mode = ($force === true) ? 'hard' : (config('kb.deletion.soft_delete', true) ? 'soft' : 'hard');
-        $this->info(sprintf('Pruned %d orphan document(s) [%s delete].', count($removed), $mode));
-        foreach ($removed as $row) {
-            $this->line("  - {$row['source_path']}");
+        $orphans = $run->stepResults['prune-orphans'] ?? null;
+        if (! ($orphans instanceof FlowStepResult)) {
+            return;
+        }
+        $count = (int) ($orphans->output['orphans_deleted_count'] ?? 0);
+        if ($count === 0) {
+            $this->info('No orphan documents to prune.');
+            return;
+        }
+        $force = $orphans->output['force'] ?? null;
+        $mode = $force === true ? 'hard' : (config('kb.deletion.soft_delete', true) ? 'soft' : 'hard');
+        $this->info(sprintf('Pruned %d orphan document(s) [%s delete].', $count, $mode));
+        $rows = (array) ($orphans->output['orphans_deleted'] ?? []);
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $sp = (string) ($row['source_path'] ?? '');
+            $this->line("  - {$sp}");
         }
     }
 
     /**
-     * @return array<int,string>
+     * @return list<string>
      */
     private function parsePatterns(string $raw): array
     {
+        if ($raw === '') {
+            // Default to every supported source-type extension.
+            return SourceType::knownExtensions();
+        }
         $parts = array_filter(array_map('trim', explode(',', $raw)));
-
         $extensions = [];
         foreach ($parts as $pattern) {
             $pattern = ltrim($pattern, '*');
@@ -216,40 +224,6 @@ class KbIngestFolderCommand extends Command
                 $extensions[] = strtolower($pattern);
             }
         }
-
         return array_values(array_unique($extensions));
-    }
-
-    /**
-     * @param  array<int,string>  $files
-     * @param  array<int,string>  $extensions
-     * @return array<int,string>
-     */
-    private function filterByPatterns(array $files, array $extensions): array
-    {
-        if ($extensions === []) {
-            return $files;
-        }
-
-        return array_values(array_filter($files, function (string $path) use ($extensions) {
-            $ext = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
-
-            return in_array($ext, $extensions, true);
-        }));
-    }
-
-    private function stripPrefix(string $path, string $prefix): string
-    {
-        $prefix = trim($prefix, '/');
-        if ($prefix === '') {
-            return ltrim($path, '/');
-        }
-
-        $path = ltrim($path, '/');
-        if (str_starts_with($path, $prefix.'/')) {
-            return substr($path, strlen($prefix) + 1);
-        }
-
-        return $path;
     }
 }

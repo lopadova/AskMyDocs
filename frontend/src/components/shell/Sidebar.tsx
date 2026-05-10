@@ -2,7 +2,17 @@ import { Icon, type IconName } from '../Icons';
 import { Avatar } from './Avatar';
 import type { SeedUser } from '../../lib/seed';
 
-export type SidebarSection = 'chat' | 'dashboard' | 'kb' | 'insights' | 'users' | 'logs' | 'maintenance';
+export type SidebarSection =
+    | 'chat'
+    | 'dashboard'
+    | 'kb'
+    | 'insights'
+    | 'users'
+    | 'logs'
+    | 'maintenance'
+    | 'pii-redactor'
+    | 'flows'
+    | 'eval-harness';
 
 export type SidebarProps = {
     active: SidebarSection;
@@ -26,6 +36,29 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'kb', label: 'Knowledge', icon: 'Book', section: 'admin' },
     { id: 'insights', label: 'AI Insights', icon: 'Sparkles', section: 'admin', badge: 5 },
     { id: 'users', label: 'Users & Roles', icon: 'Users', section: 'admin' },
+    // v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Cross-mount
+    // strategy is iframe (the package targets React 19 + Tailwind v4
+    // while the AskMyDocs SPA is React 18 — safer to isolate the two
+    // bundles), but the sidebar entry itself is just another nav item.
+    // The route uses an icon already present in our Icons set (Shield)
+    // — no new SVGs required. Visible to all roles; the route's
+    // RequireRole gate filters down to admin/dpo/super-admin.
+    { id: 'pii-redactor', label: 'PII Redactor', icon: 'Shield', section: 'admin' },
+    // v4.2/W4 sub-PR 6 — Flow Admin cockpit mount. Same iframe strategy
+    // as PII Redactor (the package targets Blade + Alpine, not React, so
+    // bundle isolation is the only viable mount). Visible to all roles
+    // in the sidebar; the route's RequireRole gate filters down to
+    // super-admin / admin / dpo. The Spatie role allowlist in the BE
+    // outer-fence Gate `viewFlowAdmin` mirrors the FE one.
+    { id: 'flows', label: 'Flows', icon: 'Bolt', section: 'ops' },
+    // v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same iframe
+    // strategy as PII Redactor + Flow Admin (the package ships its own
+    // React + Vite bundle that hydrates against a Blade bootstrap; we
+    // isolate the bundle to avoid double-React + bootstrap-pipeline
+    // duplication). Visible to all roles in the sidebar; the route's
+    // RequireRole gate filters down to super-admin / admin / dpo /
+    // editor — same allowlist as the BE Gate `eval-harness.viewer`.
+    { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', section: 'ops' },
     { id: 'logs', label: 'Logs', icon: 'Activity', section: 'ops' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', section: 'ops' },
 ];

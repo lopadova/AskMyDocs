@@ -38,6 +38,64 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.2.0 GA — full sister-package alignment shipped (closed 2026-05-10)
+
+The v4.2 cycle aligns AskMyDocs with the v1.0+ stable lines of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). +289 PHPUnit tests landed (1082 → 1371) plus a new RAG regression workflow gating every PR. **Patent Box stays external per ADR 0004 D1** — operators install `padosoft/laravel-patent-box-tracker` in a separate Laravel project; AskMyDocs is the subject of the dossier, never the tooling host.
+
+| Surface | What it ships |
+|---|---|
+| **W1 — sister-package version bumps** | `padosoft/laravel-ai-regolo` `^0.2` → `^1.0` (PR #111). `padosoft/laravel-pii-redactor` `^1.1` → `^1.2` (PR #112). v1.2 ships 6 admin-readiness inspector classes consumed by the W4 PII Redactor Admin SPA. |
+| **W2 — `padosoft/laravel-flow` v1.0 saga / compensation engine** | Move from `require-dev` `^0.1` (vendored, zero call sites) to `require` `^1.0`. **9 Flow definitions** registered: `kb.ingest` (5-step saga refactored from IngestDocumentJob), `kb.canonical-index` (3-step CanonicalIndexer), `kb.promote` (4-step approval-gated promotion — first use of approval token in AskMyDocs), `kb.delete` (4-step), `kb.prune-deleted`, `kb.prune-embedding-cache` (conditional approval gate), `kb.prune-chat-logs`, `kb.rebuild-graph`, `kb.ingest-folder` (3-step fan-out). Every step + compensator persisted to `flow_steps` + `flow_audit` (when persistence opted in) for forensic traceability. R30 supplementary migration adds `tenant_id` to all 5 Flow tables + composite `UNIQUE(tenant_id, idempotency_key)`. PRs #114-#117. |
+| **W3 — `padosoft/eval-harness` v1.2 RAG regression CI gate** | `padosoft/eval-harness` bumped `^0.1.0` → `^1.2.0` (`require-dev`). New `App\Eval\EvalRegistrar` registers 4 datasets (1 baseline + 3 adversarial) with per-lane metric stacks (baseline = 4 metrics: `contains` + `cosine-embedding` + `CosineGroundednessMetric` + `CitationGroundednessMetric`; adversarial = 3 metrics: `contains` + `refusal-quality` + `CitationGroundednessMetric`). 42 baseline + 12 adversarial Q&A samples in `tests/Eval/golden/`. New `.github/workflows/rag-regression.yml` gates every PR touching the RAG hot path. Cost guard via `Http::fake()` by default — live mode opt-in via `EVAL_LIVE_AI=1`. Regression-detection self-test (`RegressionDetectionTest`) proves the gate ACTUALLY catches regressions (R16). PR #119. |
+| **W4 — three admin SPAs mounted** | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (3 Spatie-role Gates: `viewPiiRedactorAdmin` / `detokenisePiiRedactor` / `viewPiiRedactorRawSamples`; new `dpo` role added; R30 via supplementary migration + Eloquent observer; PR #121). `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (1 outer-fence Gate `viewFlowAdmin` + 8 row-scoped `ActionAuthorizer` methods in `AskMyDocsFlowAuthorizer`; R30 via the same authorizer; operators visualise the 9 W2 Flow definitions live in the cockpit; PR #122). `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (1 read-only Gate `eval-harness.viewer`; **3 independent fail-closed fences**: env flag + `APP_ENV` + Gate; R30 via `EvalHarnessUiTenantHeader` middleware; `class_exists()` guard in `bootstrap/providers.php` so prod `composer install --no-dev` doesn't crash; PR #123). All three iframe-mounted (each package targets React 19 + Tailwind v4 or Blade + Alpine — incompatible with React 18 host). Three different R30 strategies per ADR 0004 D4. |
+| **Total +289 PHPUnit tests + 3 new Playwright specs across v4.2** | 1082 → 1371. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG regression workflow. R36 review-loop discipline applied to every sub-PR (Copilot review + CI green loop until 0 outstanding must-fix + all CI green). |
+
+Closure artefacts: `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md` (W2) + `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md` (W3) + `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md` (W4) + `docs/v4-platform/STATUS-2026-05-10-week5-rc-acceptance.md` (W5 — RC acceptance + GA merge) + `docs/adr/0004-v42-sister-package-integration.md` (architecture decisions).
+
+#### v4.2.0-rc4 — W4 shipped (three admin SPAs mounted closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-pii-redactor-admin` v1.0.2 mounted under `/admin/pii-redactor`** | Sub-PR 5 — pre-built React 19 + Tailwind v4 console iframed inside the AskMyDocs shell. 7 screens (Dashboard / Playground / Token map / Detokenise / Audit logs / Detectors / Custom rules) + 3 Spatie-role-backed Gates: `viewPiiRedactorAdmin` (super-admin / dpo / admin), `detokenisePiiRedactor` (super-admin / dpo only), `viewPiiRedactorRawSamples` (super-admin only). New `dpo` role added to `RbacSeeder` (5 roles total) with `admin.access` + `logs.view` + `pii.detokenize` permissions only — privacy operator, not sysadmin. R30 via supplementary migration adding `tenant_id` to package's audit table + `creating` Eloquent observer that stamps from `TenantContext`. Disabled by default (`PII_REDACTOR_ADMIN_ENABLED=false`). |
+| **`padosoft/laravel-flow-admin` v1.0.0 mounted under `/admin/flows`** | Sub-PR 6 — pre-built Blade + Alpine cockpit iframed inside the AskMyDocs shell. 7 screens (Overview/Dashboard, Runs index/detail, Approvals inbox, Webhook outbox, Flow definitions, Settings, ⌘K palette, Auto-refresh polling). Authorization: 1 outer-fence Spatie-role Gate `viewFlowAdmin` (super-admin / admin / dpo) PLUS 8 row-scoped `ActionAuthorizer` methods implemented in `AskMyDocsFlowAuthorizer` (`canViewKpis` / `canViewRuns` / `canViewRunDetail` / `canReplayRun` / `canCancelRun` / `canApproveByToken` / `canRejectByToken` / `canRetryWebhook`). R30 via the same authorizer — every row-scoped action reads `tenant_id` via `DB::table` lookup and rejects on cross-tenant. `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Operators can now visualise the 9 Flow definitions registered by sub-PRs 3a-3d (kb.ingest / kb.canonical-index / kb.promote / kb.delete / kb.prune-deleted / kb.prune-embedding-cache / kb.prune-chat-logs / kb.rebuild-graph / kb.ingest-folder) live in the cockpit — every step + every compensator + every approval gate visible in the runs timeline + payload diff. |
+| **`padosoft/eval-harness-ui` v1.0.0 mounted under `/admin/eval-harness` (non-prod only)** | Sub-PR 7 — pre-built React + Vite SPA iframed inside the AskMyDocs shell. 7 screens (Dashboard / Reports list / Report detail / Compare / Trend / Adversarial manifests + details / Live batches). Read-only by design (no mutations) + single Gate `eval-harness.viewer` (super-admin + admin + dpo + editor — editor included so canonical editors can verify their canonical edits did not regress factuality). **Three independent fail-closed fences in series**: env flag `EVAL_HARNESS_UI_ENABLED=false` (default) → package controller `abort(404)`; `EvalHarnessUiNonProduction` middleware `abort(404)` when `APP_ENV=production` even with env=true; `can:eval-harness.viewer` middleware → 403 on viewer / anonymous. R30 via `EvalHarnessUiTenantHeader` middleware that injects `X-Eval-Harness-Tenant` from `TenantContext::current()` (configurable header name; preserves operator-set inbound values). `class_exists()` guard in `bootstrap/providers.php` so production deploys with `composer install --no-dev` don't crash on boot (the package lives in `require-dev` per the v4.2 plan). |
+| **3 R30 strategies — different per package shape** | Each admin SPA needed a different tenant-isolation approach: pii-redactor-admin = supplementary migration + Eloquent observer (package owns its own audit table); flow-admin = Authorizer-level filter (package's ReadModel adapter API doesn't expose query wrapping cleanly without forking); eval-harness-ui = HTTP header injection (package is read-only and consumes its own backend API via the configurable `X-Eval-Harness-Tenant` header). All three are tested against seeded multi-tenant fixtures asserting tenant B's data is unreachable from tenant A's session. |
+| **Sidebar surface refresh** | Three new nav entries — "PII Redactor" (Admin section), "Flows" (Operations section), "Eval Harness" (Operations section). All three are rendered unconditionally in the sidebar; visibility is enforced server-side via the per-route fences (RequireRole + middleware-level `can:` Gates + env-flag `abort(404)` on disabled subsystems) so an operator who reaches the URL with insufficient role / disabled env still gets a 4xx — clicking the nav entry under those conditions surfaces the AdminForbidden screen instead of the package console. Every entry uses the testid hierarchy convention (R29) so Playwright selectors stay stable. |
+| **Strict mixed-import Playwright pattern (R12/R13 lesson)** | All three new specs (`admin-pii-redactor.spec.ts`, `admin-flows.spec.ts`, `admin-eval-harness.spec.ts`) use `seededTest` from `'./fixtures'` for the admin block (auto-fixture re-runs DemoSeeder + re-logs admin per test) and `baseTest` from `'@playwright/test'` for the viewer block (uses pre-saved viewer.json storage state, no auto-fixture reset). The pattern is documented inline at the top of each spec file. Hardened during sub-PR 5 iter 1 + sub-PR 6 iter 1 — both bitten by single-import patterns that reset the DB and cascaded failures across all viewer-RBAC specs in the suite. |
+| **+43 PHPUnit tests across W4** | 1328 → 1371. Per-Gate matrix tests (5 admin x 4 roles + 1 viewer x 4 routes), per-mounting tests (200/403/404 paths including the 3-fence semantic for eval-harness), per-tenant-scoping tests (seed 2 tenants + assert other-tenant rows survive). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md`
+
+#### v4.2.0-rc3 — W3 shipped (eval-harness v1.2 RAG regression CI gate closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/eval-harness` v1.2 graduation** | The package moves from `require-dev` `^0.1` (vendored, zero call sites in v4.0/v4.1) to `require-dev` `^1.2`. v1.2's full enterprise feature set is wired: 7 built-in metrics + 4 cohort dimensions + 3 batch profiles + adversarial lane with manifest retention + checkpointing + read-only report API. The Packagist VCS workaround is removed (the package is now on Packagist proper). |
+| **Real RAG regression gate in CI** | New `.github/workflows/rag-regression.yml` triggers on every PR touching the RAG hot path (`app/Services/Kb/**`, `app/Services/Kb/Retrieval/**`, `app/Ai/**`, `app/Eval/**`, `tests/Eval/golden/**`, `composer.lock`, the workflow itself). Drives the golden Q&A set through the LIVE `KbSearchService` + `GraphExpander` + `RejectedApproachInjector` + `AiManager::chat()` pipeline against the seeded `DemoSeeder` corpus. Fails the build on regression and uploads JSON + Markdown reports as 14-day artifacts. |
+| **`App\Eval\EvalRegistrar` + 4 datasets + per-lane metric stacks** | Single registrar registers the baseline (40+ samples, 4 metrics: `contains` + `cosine-embedding` + `CosineGroundednessMetric` + `CitationGroundednessMetric`) and three adversarial lanes (out-of-corpus refusal, contradicting-claims false-premise, rejected-approach-trigger — each runs 3 metrics: `contains` + `refusal-quality` + `CitationGroundednessMetric`, refusal-quality replaces answer-quality scoring on the adversarial lanes). Cohorts: `source_type` × `canonical_type` × `language` × `query_complexity`. Two custom metrics ship in `app/Eval/Metrics/`: `CosineGroundednessMetric` (cosine of answer-vs-cited-chunk-text — catches "fluent answer that doesn't track its own citations") and `CitationGroundednessMetric` (every expected `source_path` must appear; phantom citations fabricated by the model cap the score at 0.5; refusal samples that emit any citation drop to 0). |
+| **Cost guard via Http::fake() (R26)** | `EVAL_LIVE_AI=false` is the default. The registrar binds `Http::fake()` against the embeddings + chat-completions URL patterns so the gate never burns real provider tokens on a PR. The Mockery-grade proof lives in `tests/Feature/Eval/EvalRegistrarTest.php` (`Http::preventStrayRequests()` + post-conditions on both fake patterns). Live mode opts in via `workflow_dispatch` with `live_ai=true` (real OPENAI_API_KEY required). |
+| **R16 regression-gate self-test** | `tests/Feature/Eval/RegressionDetectionTest.php` proves the gate ACTUALLY catches regressions: runs the metric stack against a canonical SUT (assert green report), then against a hallucinating SUT (assert `citation-groundedness-strict` mean drops AND macro_f1 drops). The strictly-monotonic comparison (`baselineMean > regressionMean`) means a future change that silently zeroes the gate would fail this test. |
+| **+22 PHPUnit tests across W3 sub-PR 4** | 1306 → 1328. 7 unit tests on `CitationGroundednessMetric` covering perfect / partial-credit / refusal-clean / refusal-fabricated / phantom-cap / extra-real-doc-not-penalised / unparseable-payload paths. 6 unit tests on `CosineGroundednessMetric` covering aligned-vectors / orthogonal / no-citations / unresolved / unparseable / empty-answer paths. 6 feature tests on the registrar (4-dataset registration + ≥30 sample baseline + 4-metric resolution + adversarial-refusal-quality wiring + Http::fake binding + SUT callable). 3 regression-detection tests. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md`
+
+#### v4.2.0-rc2 — W2 shipped (laravel-flow v1.0 saga / compensation engine closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-flow` v1.0 graduation** | The package moves from `require-dev` `^0.1` (vendored, zero call sites in v4.0) to `require` `^1.0`. Service providers are listed **explicitly** in `bootstrap/providers.php` (auto-discovery is intentionally avoided per the comment in that file) — both `Padosoft\LaravelFlow\LaravelFlowServiceProvider` and `App\Providers\FlowServiceProvider` are declared. The in-app `FlowServiceProvider` registers **9 AskMyDocs Flow definitions** on every boot. Persistence is **opt-in** via `LARAVEL_FLOW_PERSISTENCE_ENABLED` (default false in `config/laravel-flow.php` and `.env.example`) — operators must explicitly opt INTO real persistence; 4 published migrations ship the engine schema (`flow_runs`, `flow_steps`, `flow_audit`, `flow_approvals`, `flow_webhook_outbox`). |
+| **`tenant_id` everywhere on Flow records (R30/R31)** | Supplementary migration adds `tenant_id` to all 5 Flow tables + replaces the engine's global `UNIQUE(idempotency_key)` with composite `UNIQUE(tenant_id, idempotency_key)` named `flow_runs_tenant_idempotency_unique`. Two tenants can legitimately share the same idempotency key without collision. `FlowRunRecord::creating` / `FlowStepRecord::creating` / `FlowAuditRecord::creating` hooks stamp `tenant_id` from the active `TenantContext` so every persisted Flow row carries its tenant. |
+| **`kb.ingest` 5-step saga (sub-PR 3b)** | `IngestDocumentJob` becomes a thin Flow dispatcher with try/finally `TenantContext` restore (queue workers re-bind the original tenant after each job, so long-lived workers can't leak tenant state across jobs). 5 steps: `parse-markdown` (dry-run-safe) → `chunk-document` (dry-run-safe) → `embed-chunks` → `persist-chunks` (compensated by `RollbackChunksCompensator` → uses `DocumentDeleter::deleteDbOnly()` so the source-of-truth file is preserved on transient failures) → `maybe-dispatch-canonical-indexer`. Idempotency-key shape `{tenant}:{project}:{relative_path}` (with SHA-256 hash fallback when the raw key would exceed the engine's 200-char comfort prefix; `version_hash` is intentionally NOT in the key because the saga must dedupe BEFORE the parse step has read the bytes). |
+| **`kb.canonical-index` 3-step Flow (sub-PR 3c)** | `CanonicalIndexerJob` orchestrates `load-canonical-document` → `populate-canonical-nodes` → `populate-canonical-edges` (compensated by `RollbackCanonicalNodesCompensator` — tenant-scoped cleanup of `kb_nodes` + cascade through composite FK on `kb_edges`). `kb:rebuild-graph` opts into `forceReindex=true` which salts the idempotency key with `hrtime()` so re-runs after a graph truncate ALWAYS re-execute. |
+| **`kb.promote` 4-step approval-gated Flow (sub-PR 3c)** | First use of laravel-flow's `approval-gate` primitive in AskMyDocs. Steps: `validate-frontmatter` (dry-run-safe, throws on invalid input BEFORE issuing an approval token) → `approval-gate` (pauses until operator calls `Flow::resume($token)` or `Flow::reject($token)` via the new `KbPromotionController::approve` / `reject` endpoints) → `write-markdown` (writes MD to KB disk; `kb_canonical_audit` `promoted` row written atomically — if audit insert fails the file is deleted before the throw; compensated by `DeleteCanonicalMarkdownCompensator`) → `dispatch-ingest` (dispatches `kb.ingest` sub-flow). Approval-token validation requires status='pending' + `consumed_at` NULL + `decided_at` NULL + `expires_at` not past + tenant_id match + step_name match + `flow_runs.definition_name = PromotionFlow::NAME` (defence-in-depth against cross-flow token replay). Rejection halts before write-markdown; the `flow_audit` → `kb_canonical_audit` bridge writes a `rejected_promotion` row so the editorial trail records the refusal. |
+| **`kb.delete` 4-step Flow (sub-PR 3c)** | `kb:delete` + `DELETE /api/kb/documents/{id}` + `--prune-orphans` all converge on `kb.delete`. Steps: `load-document-for-delete` → `soft-delete-document` (compensated by `RestoreSoftDeletedCompensator` — tenant-scoped `onlyTrashed()->find()` + `restore()`) → `hard-delete-rows` (DB+graph cascade via `DocumentDeleter::deleteRowsOnly()`) → `remove-source-file` (KbPath-normalised path resolution; null path = skip rather than delete-by-attacker-input). |
+| **5 scheduled commands + folder fan-out on Flow (sub-PR 3d)** | `kb:prune-deleted` / `kb:prune-embedding-cache` / `chat-log:prune` / `kb:rebuild-graph` / `kb:ingest-folder` all become thin Flow dispatchers preserving CLI signatures verbatim. Per-tenant fan-out: each command queries DISTINCT `tenant_ids` for eligible rows and dispatches one Flow execute per tenant; `--tenant=X` scopes to one tenant. `kb.prune-embedding-cache` ships a **conditional approval gate** via the assess-step's `paused()` return — pauses ONLY when projected evictions > `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD` (default 5000; set to 0 to disable the gate); under threshold and dry-run paths auto-resolve. |
+| **Cross-tenant orphan isolation (R30 follow-up)** | `DocumentDeleter::deleteOrphans()` extended with `?string $tenantId` parameter (back-compat default null = unscoped + WARNING log). The new `kb.ingest-folder` fan-out always passes the active tenant; legacy CLI path also wired. Prevents soft/hard-delete of tenant B's row when tenant A reuses the same `project_key`. |
+| **9 Flow definitions registered + observable** | `kb.ingest` / `kb.canonical-index` / `kb.promote` / `kb.delete` / `kb.prune-deleted` / `kb.prune-embedding-cache` / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder`. Every step + every compensator is persisted to `flow_steps` + `flow_audit` (when persistence is opted in) for forensic traceability. The future `padosoft/laravel-flow-admin` v1.0 SPA (W4 sub-PR 6) will surface all of this in a Blade+Alpine cockpit. |
+| **+108 PHPUnit tests across W2** | 1198 → 1306. Per-step unit tests + per-Flow-definition feature tests + per-CLI-command end-to-end tests. R30 violation tests assert `FlowInputException` on missing `tenant_id`; tenant-isolation tests seed BOTH tenants and assert the OTHER tenant's row survives every prune / delete / rebuild path. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md`
+
 #### v4.1.0-rc1 — W4.1 shipped (PII redactor integration closed 2026-05-03)
 
 | Feature | Description |
@@ -59,10 +117,10 @@ Closure: `docs/v4-platform/STATUS-2026-05-03-week4.1.md`
 | **Vercel AI SDK chat streaming** | End-to-end token streaming on the chat surface (W3 — PRs #87/#88/#89/#90). The backend SSE endpoint emits SDK v6 `UIMessageChunk` frames; the React composer consumes them via `useChatStream()` for incremental answer rendering with citations |
 | **`padosoft/laravel-ai-regolo` SDK adoption** | The Regolo provider delegates to the standalone `padosoft/laravel-ai-regolo` package backed by `laravel/ai` (W2 — PRs #83/#84). All five chat providers now share the same SDK abstraction; provider swap stays a one-line `.env` change |
 | **`padosoft/laravel-patent-box-tracker` v0.1 dogfood** | W4 ships the standalone `padosoft/laravel-patent-box-tracker` package on Packagist plus the `tools/patent-box/2026.yml` template config. AskMyDocs is intentionally decoupled from the tracker (per `feedback_packages_standalone_agnostic`); operators run `php artisan patent-box:cross-repo /path/to/AskMyDocs/tools/patent-box/2026.yml` from a separate Laravel project that has `padosoft/laravel-patent-box-tracker` installed (`composer require padosoft/laravel-patent-box-tracker`) — Lorenzo's FY2026 Italian Patent Box dossier (Padosoft ditta individuale) is generated this way against AskMyDocs `feature/v4.0` plus the sister Padosoft repositories |
-| **`padosoft/laravel-flow` v0.1 saga / compensation engine** | W5 ships the standalone `padosoft/laravel-flow` package on Packagist (`composer require padosoft/laravel-flow:^0.1`) — fluent definition API + reverse-order compensation chain with aggregated `FlowCompensationException` + native dry-run mode + four Laravel events. Closure: `docs/v4-platform/STATUS-2026-05-02-week5.md` |
+| **`padosoft/laravel-flow` v0.1 saga / compensation engine** | W5 shipped the standalone `padosoft/laravel-flow` package on Packagist (historical `composer require padosoft/laravel-flow:^0.1` — graduated to **v1.0** in v4.2/W2; see Sister Packages section for current install) — fluent definition API + reverse-order compensation chain with aggregated `FlowCompensationException` + native dry-run mode + four Laravel events. Closure: `docs/v4-platform/STATUS-2026-05-02-week5.md` |
 | **`padosoft/eval-harness` v0.1 RAG / LLM evaluation framework** | W6 ships the standalone `padosoft/eval-harness` package on Packagist (`composer require padosoft/eval-harness:^0.1`) — pluggable golden-dataset YAML loader + R23 metric registry (FQCN validation at boot + `supports()` mutex) + three first-party metrics (ExactMatch, CosineEmbedding, LlmAsJudge) + two report renderers (Markdown for review, canonical JSON for machine consumption per R27) + `eval-harness:run` Artisan command. Closure: `docs/v4-platform/STATUS-2026-05-02-week6.md` |
 | **`padosoft/laravel-pii-redactor` v0.1 Italian fiscal identifier coverage** | W7 ships the standalone `padosoft/laravel-pii-redactor` package on Packagist (`composer require padosoft/laravel-pii-redactor:^0.1`) — six checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, Codice Fiscale with the DM 23/12/1976 CIN checksum, Partita IVA with Luhn-IT) + four redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible with `detokenise()`, Drop). Regex + checksum based — zero LLM dependency. Closure: `docs/v4-platform/STATUS-2026-05-02-week7.md` |
-| **`padosoft/askmydocs-pro` foundation seeded** | W7 seeds the private BSL-1.1 commercial sister package — LICENSE with the four canonical BSL parameters (Change Date 4 years from each release, Change License Apache-2.0), composer manifest declaring the v4 sister-package dependency train (`lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`), `.claude/` vibe-coding pack, CI lint loop. Product code lands in v4.1+. Closure: `docs/v4-platform/STATUS-2026-05-02-week7.md` |
+| **`padosoft/askmydocs-pro` foundation seeded** | W7 seeds the private BSL-1.1 commercial sister package — LICENSE with the four canonical BSL parameters (Change Date 4 years from each release, Change License Apache-2.0), composer manifest declaring the v4 sister-package dependency train _(historical W7 snapshot of askmydocs-pro's own composer pins: `lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`; AskMyDocs's own constraints have moved on — see "Sister packages composer constraints" section below)_, `.claude/` vibe-coding pack, CI lint loop. Product code lands in v4.1+. Closure: `docs/v4-platform/STATUS-2026-05-02-week7.md` |
 | **`tenant_id` foundation** | Per-tenant scoping migration + `TenantContext` singleton + R30 cross-tenant isolation rule + R31 mandatory `tenant_id` on every tenant-aware model + architecture suite that gates new entries (W1 — PR #79). Default tenant `'default'` preserves v3.x backward compatibility on every tenant-aware table |
 | **Canonical compilation foundation** | Composer path repositories for the four new `padosoft/*` v4 packages (W1.B — PR #78) + Padosoft company Claude pack imported under `.claude/` (W1.H — PR #80), so AI-driven contribution stays consistent across the package family |
 | **AI vibe-coding `.claude/` pack** | Every `padosoft/*` package ships the same `.claude/` skill + rules pack documented in the README's top section so contributors using Claude Code, Cursor, or Copilot inherit the recurring-review-finding fixes (R1..R39) automatically |
@@ -391,8 +449,8 @@ never the LLM.
 | Package | Role | Integration status in AskMyDocs `app/` | Repo |
 |---|---|---|---|
 | `padosoft/laravel-ai-regolo` (W2) | Regolo provider for `laravel/ai` | **Integrated** — `RegoloProvider` delegates to the SDK | https://github.com/padosoft/laravel-ai-regolo |
-| `padosoft/laravel-flow` (W5) | In-process saga / compensation engine | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; no `use Padosoft\LaravelFlow\…` in `app/` yet. Integration scoped for **v4.2** — see [Sister packages integration roadmap](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | https://github.com/padosoft/laravel-flow |
-| `padosoft/eval-harness` (W6) | RAG / LLM evaluation framework | **Scaffold available (v0.1.0 tag, pending Packagist)** — declared in `composer.json` `require-dev`; resolved via VCS `repositories` entry; not yet wired into `tests/Eval/` or CI. Integration scoped for **v4.3** | https://github.com/padosoft/eval-harness |
+| `padosoft/laravel-flow` (W5 + v4.2/W2) | In-process saga / compensation engine + approval gates + webhook outbox + replay lineage | **Installed (v4.2/W2 sub-PR 3a, PR #114)** — `composer require padosoft/laravel-flow:^1.0`; runtime dependency in `require`; 4 published migrations applied (`flow_runs`, `flow_steps`, `flow_audit`, `flow_approvals`, `flow_webhook_outbox`). Actual orchestration of AskMyDocs pipelines (`IngestDocumentJob` etc.) lands in follow-up sub-PRs 3b/3c/3d within the same W2 milestone. See [Feature catalog](docs/v4-platform/FEATURE-CATALOG-laravel-flow.md) | https://github.com/padosoft/laravel-flow |
+| `padosoft/eval-harness` (W6 + v4.2/W3) | RAG / LLM evaluation framework — golden datasets, 7 built-in metrics, cohorts, adversarial lane, regression gate | **Wired (v4.2/W3 sub-PR 4)** — `composer require-dev padosoft/eval-harness:^1.2` (Packagist); `App\Eval\EvalRegistrar` registers 4 datasets — baseline (4 metrics: `contains` + `cosine-embedding` + `CosineGroundednessMetric` + `CitationGroundednessMetric`) and 3 adversarial lanes (3 metrics: `contains` + `refusal-quality` + `CitationGroundednessMetric`); `.github/workflows/rag-regression.yml` runs on every PR touching `app/Services/Kb/**`, `app/Ai/**`, `app/Eval/**` or `tests/Eval/golden/**`; cost-guard via `Http::fake()` so the gate never burns provider tokens by default | https://github.com/padosoft/eval-harness |
 | `padosoft/laravel-pii-redactor` (W7 + v4.1 W4.1) | PII detection + redaction with EU country packs (Italy + Germany + Spain on v1.1) | **Integrated (v4.1.0 GA)** — `composer require padosoft/laravel-pii-redactor:^1.1`; wired at four touch-points: chat-message middleware on `POST /conversations/{conversation}/messages` (sync) AND `POST /conversations/{conversation}/messages/stream` (SSE); embedding-cache pre-redact; AI-insights snippet sanitiser; operator detokenize endpoint with Spatie permission gate. Every knob default-off | https://github.com/padosoft/laravel-pii-redactor |
 | `padosoft/laravel-patent-box-tracker` (W4) | Italian Patent Box dossier auto-generator | **External runner by design** — never declared in AskMyDocs's own `composer.json`; `tools/patent-box/2026.yml` is consumed by a separate Laravel project (R37 standalone-agnostic) | https://github.com/padosoft/laravel-patent-box-tracker |
 
@@ -690,6 +748,10 @@ KB_CHUNK_OVERLAP_TOKENS=64
 # Embedding cache
 KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
+# v4.2 — conditional approval gate threshold for kb:prune-embedding-cache.
+# Planned evictions above this count pause the run for operator approval;
+# 0 (or negative) disables the gate (pre-v4.2 behaviour).
+KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD=5000
 ```
 
 ### `GET /api/kb/documents/search` (v3.0+)
@@ -1441,6 +1503,9 @@ last_used_at    TIMESTAMP             -- for LRU-style pruning
 ```env
 KB_EMBEDDING_CACHE_ENABLED=true
 KB_EMBEDDING_CACHE_RETENTION_DAYS=30
+# v4.2 — conditional approval gate. Planned evictions above this count
+# pause the prune Flow for operator approval; 0 (or negative) disables.
+KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD=5000
 ```
 
 ### Maintenance
@@ -3105,7 +3170,7 @@ Five `padosoft/*` Composer packages ship alongside the v4.0 train. Architecture 
 Standalone Apache-2.0 Regolo provider for `laravel/ai`. The Regolo backend (Anthropic-style `/messages` API) is exposed through the standard `laravel/ai` agent + tool abstractions. Drop-in for any consumer that already uses `laravel/ai`.
 
 ```bash
-composer require padosoft/laravel-ai-regolo:^0.2
+composer require padosoft/laravel-ai-regolo:^1.0
 ```
 
 ```php
@@ -3340,6 +3405,222 @@ Use [GitHub Issues](../../issues). Please include:
 
 ## Changelog
 
+### v4.2.0 — 2026-05-10 (GA — full v4.2 cycle closed)
+
+GA release of the **v4.2 sister-package alignment cycle**. Brings AskMyDocs onto the v1.0+ stable line of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). Patent Box stays external per ADR 0004 D1.
+
+**Cycle-wide deliverables:**
+
+- **W1** (PRs #111-#113) — `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`. `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`. RC tag `v4.2.0-rc1`.
+- **W2** (PRs #114-#118) — `padosoft/laravel-flow` v1.0 graduated from `require-dev` (vendored, zero call sites) to `require` (9 Flow definitions orchestrating every multi-step background pipeline: `kb.ingest`, `kb.canonical-index`, `kb.promote` (approval-gated), `kb.delete`, 5 scheduled-command flows). Closure: `STATUS-2026-05-10-week2-flow-integration.md`. RC tag `v4.2.0-rc2`.
+- **W3** (PRs #119-#120) — `padosoft/eval-harness` `^0.1.0` → `^1.2.0` (`require-dev`). RAG regression CI gate (`.github/workflows/rag-regression.yml`) gates every PR touching the RAG hot path with 4 datasets × per-lane metric stacks × 4 cohorts × 3 batch profiles. Cost guard via `Http::fake()`. Closure: `STATUS-2026-05-10-week3-eval-harness-ci-gate.md`. RC tag `v4.2.0-rc3`.
+- **W4** (PRs #121-#124) — Three admin SPAs mounted: `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (3 Gates + new `dpo` role + R30 supplementary migration), `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (1 outer Gate + 8 row-scoped `ActionAuthorizer` methods + R30 row-scoped tenant lookup), `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (1 read-only Gate + 3 fail-closed fences + R30 HTTP header injection). All iframe-mounted. Closure: `STATUS-2026-05-10-week4-admin-spas.md`. RC tag `v4.2.0-rc4`.
+- **W5** (this release) — RC acceptance audit + ADR 0004 + INTEGRATION-ROADMAP refresh + once-per-major `feature/v4.2` → `main` merge per R37 + `v4.2.0` GA tag at the merge SHA.
+
+**Architecture decisions** captured in `docs/adr/0004-v42-sister-package-integration.md`:
+- D1 — Patent Box stays EXTERNAL.
+- D2 — eval-harness stays in `require-dev`.
+- D3 — laravel-flow is the canonical multi-step orchestrator.
+- D4 — Three R30 strategies for the three admin SPAs.
+- D5 — Iframe mount across all three admin SPAs.
+- D6 — Strict mixed-import Playwright pattern for admin specs.
+
+**Test count:** 1082 (start of v4.2) → **1371** (GA) — +289 PHPUnit tests across cycle. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG regression workflow.
+
+**v4.3 backlog** (parked, not blockers): sub-PR 4.5 (pii-redactor comprehensive boundary coverage); React 19 host bump (would unlock cross-mount of pii-redactor-admin, deserves its own ADR); flow-admin ⌘K palette polish; eval-harness LLM-as-judge live-mode nightly cron.
+
+### v4.2.0-rc4 — 2026-05-10 (W4 milestone — three admin SPAs mounted)
+
+Fourth release candidate of the **v4.2 cycle**. W4 mounts **three operator-facing admin consoles** inside the AskMyDocs admin shell, one per stable-line `padosoft/*-admin` package: `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor`, `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows`, and `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` (non-prod only). All three iframe-mounted, all three R30-tenant-scoped via three different strategies (supplementary migration, Authorizer-level filter, HTTP header injection), all three deny-by-default behind explicit Spatie-role-backed Gates.
+
+**What's new in AskMyDocs v4.2.0-rc4 (W4 — three admin SPAs):**
+
+- **W4 / sub-PR 5** — `padosoft/laravel-pii-redactor-admin` v1.0.2 mounted under `/admin/pii-redactor`. Iframe (React 19 + Tailwind v4 isolated from React 18 host). 3 Gates: viewPiiRedactorAdmin / detokenisePiiRedactor / viewPiiRedactorRawSamples. New `dpo` role added to `RbacSeeder` (5 roles total). R30 supplementary migration adds `tenant_id` to package's audit table + `creating` Eloquent observer. PR #121.
+- **W4 / sub-PR 6** — `padosoft/laravel-flow-admin` v1.0.0 mounted under `/admin/flows`. Iframe (Blade + Alpine). 1 outer-fence Spatie-role Gate `viewFlowAdmin` + 8 row-scoped `ActionAuthorizer` methods (`canViewKpis` / `canViewRuns` / `canViewRunDetail` / `canReplayRun` / `canCancelRun` / `canApproveByToken` / `canRejectByToken` / `canRetryWebhook`) implemented in `AskMyDocsFlowAuthorizer`. R30 via the same authorizer (row-scoped tenant lookup). `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Operators visualise the 9 Flow definitions registered by sub-PRs 3a-3d live in the cockpit. PR #122.
+- **W4 / sub-PR 7** — `padosoft/eval-harness-ui` v1.0.0 mounted under `/admin/eval-harness` (non-prod only). Iframe (React + Vite isolated bundle). 1 read-only Gate `eval-harness.viewer` (super-admin + admin + dpo + editor). Three independent fail-closed fences (env flag + APP_ENV + Gate). R30 via `EvalHarnessUiTenantHeader` middleware injecting `X-Eval-Harness-Tenant` from `TenantContext`. `class_exists()` guard in `bootstrap/providers.php` so `composer install --no-dev` deploys don't crash. Package lives in `require-dev` per the v4.2 plan. PR #123.
+- **(this PR)** v4.2/W4 closure docs — adds this Changelog entry, the W4 ribbon under `### Key Features`, and the closure status doc `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md`.
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc4:**
+- #121 v4.2/W4 — sub-PR 5 — pii-redactor-admin v1.0.2
+- #122 v4.2/W4 — sub-PR 6 — flow-admin v1.0.0
+- #123 v4.2/W4 — sub-PR 7 — eval-harness-ui v1.0.0
+- (this PR) v4.2/W4 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1328 → 1371 (+43 PHPUnit + 3 new Playwright specs). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
+
+### v4.2.0-rc3 — 2026-05-10 (W3 milestone — `padosoft/eval-harness` v1.2 RAG regression CI gate)
+
+Third release candidate of the **v4.2 cycle**. W3 bumps
+`padosoft/eval-harness` from `^0.1.0` (require-dev, vendored, zero call
+sites in v4.0 / v4.1) to `^1.2.0` (GA stable line on Packagist) and
+wires **a real RAG regression gate into CI** that exercises the full
+AskMyDocs RAG pipeline against a 42-sample golden dataset on every PR
+touching the RAG hot path — backed by 4 metrics, 4 cohorts, 3 advisory
+adversarial manifests, and 3 batch profiles. Cost guard via
+`Http::fake()` by default; live-AI mode opt-in via `workflow_dispatch`.
+
+**What's new in AskMyDocs v4.2.0-rc3 (W3 — eval-harness v1.2 CI gate):**
+
+- **W3 / sub-PR 4** — `padosoft/eval-harness` constraint moved from
+  `require-dev` `^0.1.0` to `require-dev` `^1.2.0`. Obsolete VCS
+  repository entry removed from `composer.json` (the package is now on
+  Packagist). New `App\Eval\EvalRegistrar` registers 4 datasets — 1
+  baseline (4 metrics: `contains` + `cosine-embedding` +
+  `CosineGroundednessMetric` + `CitationGroundednessMetric`) and 3
+  adversarial (3 metrics: `contains` + `refusal-quality` +
+  `CitationGroundednessMetric`). 2 custom AskMyDocs
+  metrics: `CosineGroundednessMetric` (cosine similarity between
+  answer text and cited chunks' text — proves grounding-in-citations)
+  and `CitationGroundednessMetric` (strict matching with
+  phantom-cap@0.5 + refusal-fabrication-zero). 42 baseline + 12
+  adversarial Q&A samples in `tests/Eval/golden/`. New
+  `.github/workflows/rag-regression.yml` triggered on PR + push to
+  main / feature/v4.* + manual dispatch — baseline gates the build,
+  adversarial steps are advisory (`continue-on-error: true`) since
+  `Http::fake()` canned responses cannot perfectly mimic the
+  production model's refusal behavior. `tests/Feature/Eval/RegressionDetectionTest`
+  proves the gate **actually catches** regressions (R16). PR #119.
+- **(this PR)** v4.2/W3 closure docs — adds this Changelog entry,
+  promotes the W3 ribbon under `### Key Features` to "rc3 shipped",
+  and lands `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md`.
+
+**Pull request merged on `feature/v4.2` for v4.2.0-rc3:**
+- #119 v4.2/W3 — sub-PR 4 — eval-harness v1.2 RAG regression CI gate
+- (this PR) v4.2/W3 closure — Changelog entry + ribbon promotion + closure status doc
+
+**Test count:** 1306 → 1328 (+22 PHPUnit). All green across PHPUnit
+(PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG
+regression workflow itself.
+
+### v4.2.0-rc2 — 2026-05-10 (W2 milestone — `padosoft/laravel-flow` v1.0 integration)
+
+Second release candidate of the **v4.2 cycle**. W2 graduates
+`padosoft/laravel-flow` from `require-dev` `^0.1` (vendored, zero call
+sites in v4.0 / v4.1) to `require` `^1.0` and migrates **the entire
+multi-step background pipeline surface** of AskMyDocs onto **8 Flow
+definitions** orchestrated by the engine — saga / compensation,
+approval gates, dry-run mode, idempotency keys, persisted forensic
+audit per step, all under R30/R31 tenant scoping.
+
+**What's new in AskMyDocs v4.2.0-rc2 (W2 — laravel-flow v1.0 integration):**
+
+- **W2 / sub-PR 3a** — `padosoft/laravel-flow` constraint moved from
+  `require-dev` `^0.1` to `require` `^1.0`. Auto-discovered;
+  `FlowServiceProvider` registers definitions on every boot. 4 published
+  migrations + supplementary `tenant_id` migration adding the column to
+  all 5 Flow tables and replacing the engine's global
+  `UNIQUE(idempotency_key)` with composite `UNIQUE(tenant_id,
+  idempotency_key)` on `flow_runs`. `FlowRunRecord` / `FlowStepRecord` /
+  `FlowAuditRecord` `creating` hooks stamp `tenant_id` from
+  `TenantContext`. PR #114.
+- **W2 / sub-PR 3b** — `IngestDocumentJob` becomes a thin Flow
+  dispatcher of `kb.ingest`. 5-step saga (parse-markdown →
+  chunk-document → embed-chunks → persist-chunks →
+  maybe-dispatch-canonical-indexer); `RollbackChunksCompensator` calls
+  `DocumentDeleter::deleteDbOnly()` so the source-of-truth file is
+  preserved on transient failures. Try/finally `TenantContext` restore
+  in the job's `handle()` prevents tenant leak across queue jobs.
+  Idempotency key shape `{tenant}:{project}:{source_path}:{version_hash}`.
+  PR #115.
+- **W2 / sub-PR 3c** — 3 new Flow definitions: `kb.canonical-index`
+  (3 steps + `RollbackCanonicalNodesCompensator`), `kb.promote` (4
+  steps with `approval-gate` primitive — first use of approval token in
+  AskMyDocs; `KbPromotionController::approve` / `reject` endpoints with
+  full token validation: status='pending' + `consumed_at` NULL +
+  `decided_at` NULL + `expires_at` not past + tenant_id match + step_name
+  match + `flow_runs.definition_name = PromotionFlow::NAME` to prevent
+  cross-flow token replay; `WriteCanonicalMarkdownStep` writes file +
+  audit atomically — file deleted on audit insert failure;
+  `DeleteCanonicalMarkdownCompensator` removes the file if
+  dispatch-ingest fails), `kb.delete` (4 steps +
+  `RestoreSoftDeletedCompensator`). `flow_audit` →
+  `kb_canonical_audit` bridge writes `rejected_promotion` rows when an
+  operator rejects a promotion. PR #116.
+- **W2 / sub-PR 3d** — 5 scheduled commands + `kb:ingest-folder`
+  fan-out migrated to Flow definitions: `kb.prune-deleted`,
+  `kb.prune-embedding-cache` (with conditional approval gate via
+  `paused()` return — pauses only when projected evictions >
+  `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD`, default 5000; auto-resolves
+  under threshold; dry-run always bypasses), `kb.prune-chat-logs`,
+  `kb.rebuild-graph` (3-step fan-out using `forceReindex=true` to bypass
+  engine-level idempotency cache after truncate), `kb.ingest-folder`
+  (3-step fan-out with optional orphan prune). Per-tenant fan-out:
+  each command queries DISTINCT `tenant_ids` for eligible rows and
+  dispatches one Flow execute per tenant. `DocumentDeleter::deleteOrphans()`
+  extended with `?string $tenantId` parameter (R30 cross-tenant orphan
+  isolation). All CLI signatures preserved verbatim. PR #117.
+- **(this PR)** v4.2/W2 closure docs — adds this Changelog entry, the
+  Key Features section above, and the closure status doc
+  `docs/v4-platform/STATUS-2026-05-10-week2-flow-integration.md`.
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc2:**
+- #114 v4.2/W2 — sub-PR 3a — laravel-flow v1.0 install + migrations
+- #115 v4.2/W2 — sub-PR 3b — IngestDocumentJob → IngestDocumentFlow refactor
+- #116 v4.2/W2 — sub-PR 3c — Flow-orchestrate canonical pipelines (CanonicalIndexer + CanonicalWriter promotion + DocumentDeleter)
+- #117 v4.2/W2 — sub-PR 3d — Flow-orchestrate 5 scheduled commands + folder fan-out
+- (this PR) v4.2/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1198 → 1306 (+108 PHPUnit). All green across PHPUnit
+(PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E.
+
+### v4.2.0-rc1 — 2026-05-09 (W1 milestone — sister-package alignment kickoff)
+
+First release candidate of the **v4.2 cycle** — a focused alignment
+window that brings every `padosoft/*` sister package onto its
+freshly-shipped stable v1.0+ line. Between 2026-05-05 and 2026-05-09,
+all nine sister packages graduated to v1.0+ on GitHub; AskMyDocs was
+on the v0.2 / v1.1 era. v4.2 follows R37 (dedicated
+`feature/v4.2` integration branch, sub-branches per package) and R39
+(per-Wn weekly RC tag at the immutable closure SHA). Patent Box
+tracker stays external per the v4.1.0 GA decision documented in PR #110; the cycle
+covers seven packages (regolo, pii-redactor + admin, flow + admin,
+eval-harness + admin).
+
+**What's new in AskMyDocs v4.2.0-rc1 (W1 — version bumps for
+already-wired packages):**
+
+- **W1 / sub-PR 1** — `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`.
+  Pure stability promotion: regolo v1.0.0 ships the **same commit
+  SHA** as v0.2.3 (zero file diff,
+  `gh api repos/padosoft/laravel-ai-regolo/compare/v0.2.3...1.0.0`
+  returns `total_commits: 0`). v0.2.3 release notes confirm "public
+  API surface unchanged from v0.2.2". `RegoloProvider`,
+  `RegoloAnonymousAgent`, `AiManager`'s regolo `match` arm all
+  unchanged. Full PHPUnit suite (1082 tests / 3343 assertions) green.
+  PR #111.
+- **W1 / sub-PR 2** — `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`.
+  Drop-in upgrade per upstream CHANGELOG (zero breaking changes, no
+  new config knobs, no new middleware, no new artisan commands). v1.2
+  only **adds** 6 admin-readiness inspector classes that the upcoming
+  W4 sub-PR 5 (`laravel-pii-redactor-admin` SPA wiring) will consume:
+  `RedactorAdminInspector`, `RedactionStrategyFactory`,
+  `DetectionReportFormatter`, `TokenResolutionService` +
+  `DetokeniseResult`, `CustomRulePackInspector`. Existing four
+  touch-points (chat middleware, embedding pre-redact, AI-insights
+  snippet sanitiser, operator detokenize endpoint) keep working
+  unchanged. PR #112.
+- **(this PR)** v4.2/W1 closure docs — adds this Changelog entry,
+  cleans up the v4.0-era stale `Sister packages composer constraints`
+  JSON snippet so it matches the actual current `composer.json`
+  (pii-redactor moved from `require-dev` `^0.1.0` to `require` `^1.2`
+  during the v4.1 cycle; regolo bumped to `^1.0` in W1).
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc1:**
+- #111 v4.2/W1 — bump `padosoft/laravel-ai-regolo` `^0.2` → `^1.0`
+- #112 v4.2/W1 — bump `padosoft/laravel-pii-redactor` `^1.1` → `^1.2`
+- (this PR) v4.2/W1 closure — Changelog entry + composer-snippet
+  doc-rot fix
+
+**v4.2 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | regolo v1.0 + pii-redactor v1.2 | `v4.2.0-rc1` |
+| W2 | `padosoft/laravel-flow` v1.0 + `IngestDocumentJob` refactor onto Flow definition (saga / compensation) | `v4.2.0-rc2` |
+| W3 | `padosoft/eval-harness` v1.2 + RAG regression CI gate | `v4.2.0-rc3` |
+| W4 | Three admin SPAs (`laravel-pii-redactor-admin`, `laravel-flow-admin`, `eval-harness-admin`) | `v4.2.0-rc4` |
+| W5 | RC acceptance + `feature/v4.2` → `main` GA merge | **`v4.2.0` GA** |
+
 ### v4.1.0-rc1 — 2026-05-03 (W4.1 milestone — `padosoft/laravel-pii-redactor` integration)
 
 First release candidate of the v4.1 cycle. Wires
@@ -3429,7 +3710,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 
 **Deliverables shipped across the v4.0 cycle**
 - **W1** — Multi-tenant foundation: `BelongsToTenant` trait + `TenantContext` singleton + `ResolveTenant` HTTP middleware + `--tenant=X` CLI option; 17 tenant-aware tables carry `tenant_id` (default `'default'` preserves v3.x backward compatibility); R30/R31 architecture tests gate every new tenant-aware model. `embedding_cache` is intentionally **NOT** tenant-scoped — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE.
-- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist; AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
+- **W2** — Provider federation via `laravel/ai` SDK: `padosoft/laravel-ai-regolo` v0.2.x published on Packagist (historical pin — graduated to v1.0.0 in v4.2; see "Sister packages composer constraints" below); AskMyDocs `RegoloProvider` rewritten to delegate through `laravel/ai`; multi-step finishReason fix; chat-history validation tightened. R36 + R37 + R38 codified during W2.
 - **W3** — Vercel AI SDK chat migration (design fidelity 1:1): new `POST /conversations/{conversation}/messages/stream` SSE endpoint with `auth.sse` middleware (returns JSON 401, never HTML); `useChatStream()` hook + transport + message-shape adapters; legacy `use-chat-mutation` deleted in a single atomic commit (PR #89); 60+ stable testids preserved across the swap; 22 pixel-level `toHaveScreenshot({ maxDiffPixels: 0 })` assertions in `chat-visual.spec.ts` (15 core states + 7 supplementary); wire format aligned to SDK v6 `UIMessageChunk` shape (`start` / `text-start` / `text-delta(id, delta)` / `text-end` / `source-url`; `data-confidence` + `data-refusal` nested under `data:{}`; `finish` constrained via `normalizeFinishReason()`). First-token latency dropped from ~2.8 s (synchronous JSON wait) to ~400 ms (first SSE chunk) on Lighthouse baseline.
 - **W4** — `padosoft/laravel-patent-box-tracker` v0.1.0 on Packagist + `tools/patent-box/2026.yml` dogfood template; **commercialista-validated** dossier output for the Italian Patent Box (110% R&D super-deduction, regime `documentazione_idonea`); tagged `v4.0.0-rc1`.
 - **W5** — `padosoft/laravel-flow` v0.1.0 on Packagist (saga / compensation engine; 32 Unit + 2 Architecture tests on Laravel 13); tagged `v4.0.0-rc2`.
@@ -3437,15 +3718,17 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 - **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
 - **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
 
-**Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo` and `padosoft/laravel-pii-redactor:^1.1` are both in `require` (load-bearing for the chat path and for the v4.1 PII redactor integration respectively); `padosoft/laravel-flow` and `padosoft/eval-harness` are in `require-dev` (scoped for v4.2 / v4.3 integration). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
+**Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo:^1.0` and `padosoft/laravel-pii-redactor:^1.2` are load-bearing in `require` (chat path + v4.1 PII redactor integration respectively). `padosoft/laravel-flow:^1.0` is also in `require` since v4.2/W2 sub-PR 3a (PR #114) — installed as a runtime dependency with its 4 published migrations applied + an AskMyDocs supplementary migration adding tenant_id (R30/R31) — but its actual orchestration of AskMyDocs's pipelines (`IngestDocumentJob` etc.) is **pending** in follow-up sub-PRs 3b/3c/3d. `padosoft/eval-harness` remains in `require-dev` (CI-only, scoped for v4.2 sub-PR 4). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
-"require": {
-    "padosoft/laravel-ai-regolo":          "^0.2"
-},
-"require-dev": {
-    "padosoft/laravel-flow":               "^0.1.0",
-    "padosoft/eval-harness":               "^0.1.0",
-    "padosoft/laravel-pii-redactor":       "^0.1.0"
+{
+    "require": {
+        "padosoft/laravel-ai-regolo":          "^1.0",
+        "padosoft/laravel-pii-redactor":       "^1.2",
+        "padosoft/laravel-flow":               "^1.0"
+    },
+    "require-dev": {
+        "padosoft/eval-harness":               "^0.1.0"
+    }
 }
 ```
 All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
@@ -3469,7 +3752,7 @@ All five packages are **standalone-agnostic** — zero references to `KnowledgeD
 ### v4.0.0-rc4 — 2026-05-02 (W7 milestone)
 
 - `padosoft/laravel-pii-redactor` v0.1.0 published on Packagist — 6 checksum-validated detectors (Email, IBAN with mod-97 over ~75 ISO 13616 countries, Credit Card with Luhn, Italian Phone +39 mobile + landline, Codice Fiscale with the DM 23/12/1976 CIN checksum, Partita IVA with Luhn-IT + zero-payload sentinel) + 4 redaction strategies (Mask, Hash deterministic SHA-256 namespaced per-detector, Tokenise reversible, Drop). Regex + checksum based — zero LLM dependency. PR #3 → `956089b`.
-- `padosoft/askmydocs-pro` foundation seeded (private BSL-1.1). LICENSE with the four canonical BSL parameters (Change Date 4 years from each release date, Change License Apache-2.0); composer manifest declares the v4 sister-package dependency train (`lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`); `.claude/` vibe-coding pack imported; CI lint loop wired up with the empty-`src/` tolerance branch. Product code lands in v4.1+. PR #1 → `085a89c` (foundation) + PR #2 → `53577ce` (Copilot review fix-up — BSL "Change License" canonical-US-spelling, CONTRIBUTING foundation-only-state caveat, CHANGELOG surface-decision).
+- `padosoft/askmydocs-pro` foundation seeded (private BSL-1.1). LICENSE with the four canonical BSL parameters (Change Date 4 years from each release date, Change License Apache-2.0); composer manifest declares the v4 sister-package dependency train _(historical W7 snapshot of askmydocs-pro's own composer pins: `lopadova/askmydocs ^4.0.0-rc1` + `padosoft/laravel-ai-regolo ^0.2` + `padosoft/laravel-flow ^0.1` + `padosoft/eval-harness ^0.1` + `padosoft/laravel-pii-redactor ^0.1`; AskMyDocs's own constraints have advanced — see "Sister packages composer constraints" section)_; `.claude/` vibe-coding pack imported; CI lint loop wired up with the empty-`src/` tolerance branch. Product code lands in v4.1+. PR #1 → `085a89c` (foundation) + PR #2 → `53577ce` (Copilot review fix-up — BSL "Change License" canonical-US-spelling, CONTRIBUTING foundation-only-state caveat, CHANGELOG surface-decision).
 - Closure status doc: `docs/v4-platform/STATUS-2026-05-02-week7.md`.
 
 ### v4.0.0-rc3 — 2026-05-02 (W6 milestone)
@@ -3515,7 +3798,7 @@ Stable consumers stay on v3.x; opt into the rc with
   packages (PR #78); Padosoft company Claude pack imported under
   `.claude/` (PR #80)
 
-**W2 — `padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK**
+**W2 — `padosoft/laravel-ai-regolo` v0.2 + AskMyDocs adopts `laravel/ai` SDK** _(historical milestone — package now at v1.0 since v4.2)_
 - `padosoft/agent-llm` renamed to `padosoft/laravel-ai-regolo` (PR #81);
   the package now ships as a standalone Apache-2.0 Composer package
 - AskMyDocs's `RegoloProvider` delegates to the new package which
