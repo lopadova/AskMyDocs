@@ -38,7 +38,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
-#### v4.2 — W3 in progress (eval-harness v1.2 RAG regression CI gate landed 2026-05-10)
+#### v4.2.0-rc3 — W3 shipped (eval-harness v1.2 RAG regression CI gate closed 2026-05-10)
 
 | Feature | Description |
 |---|---|
@@ -49,7 +49,7 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 | **R16 regression-gate self-test** | `tests/Feature/Eval/RegressionDetectionTest.php` proves the gate ACTUALLY catches regressions: runs the metric stack against a canonical SUT (assert green report), then against a hallucinating SUT (assert `citation-groundedness-strict` mean drops AND macro_f1 drops). The strictly-monotonic comparison (`baselineMean > regressionMean`) means a future change that silently zeroes the gate would fail this test. |
 | **+22 PHPUnit tests across W3 sub-PR 4** | 1306 → 1328. 7 unit tests on `CitationGroundednessMetric` covering perfect / partial-credit / refusal-clean / refusal-fabricated / phantom-cap / extra-real-doc-not-penalised / unparseable-payload paths. 6 unit tests on `CosineGroundednessMetric` covering aligned-vectors / orthogonal / no-citations / unresolved / unparseable / empty-answer paths. 6 feature tests on the registrar (4-dataset registration + ≥30 sample baseline + 4-metric resolution + adversarial-refusal-quality wiring + Http::fake binding + SUT callable). 3 regression-detection tests. |
 
-Closure: pending `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness.md`
+Closure: `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md`
 
 #### v4.2.0-rc2 — W2 shipped (laravel-flow v1.0 saga / compensation engine closed 2026-05-10)
 
@@ -3376,6 +3376,47 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.2.0-rc3 — 2026-05-10 (W3 milestone — `padosoft/eval-harness` v1.2 RAG regression CI gate)
+
+Third release candidate of the **v4.2 cycle**. W3 bumps
+`padosoft/eval-harness` from `^0.1.0` (require-dev, vendored, zero call
+sites in v4.0 / v4.1) to `^1.2.0` (GA stable line on Packagist) and
+wires **a real RAG regression gate into CI** that exercises the full
+AskMyDocs RAG pipeline against a 42-sample golden dataset on every PR
+touching the RAG hot path — backed by 4 metrics, 4 cohorts, 3 advisory
+adversarial manifests, and 3 batch profiles. Cost guard via
+`Http::fake()` by default; live-AI mode opt-in via `workflow_dispatch`.
+
+**What's new in AskMyDocs v4.2.0-rc3 (W3 — eval-harness v1.2 CI gate):**
+
+- **W3 / sub-PR 4** — `padosoft/eval-harness` constraint moved from
+  `require-dev` `^0.1.0` to `require-dev` `^1.2.0`. Obsolete VCS
+  repository entry removed from `composer.json` (the package is now on
+  Packagist). New `App\Eval\EvalRegistrar` registers 4 datasets (1
+  baseline + 3 adversarial) with 4 metrics each. 2 custom AskMyDocs
+  metrics: `CosineGroundednessMetric` (cosine similarity between
+  answer text and cited chunks' text — proves grounding-in-citations)
+  and `CitationGroundednessMetric` (strict matching with
+  phantom-cap@0.5 + refusal-fabrication-zero). 42 baseline + 12
+  adversarial Q&A samples in `tests/Eval/golden/`. New
+  `.github/workflows/rag-regression.yml` triggered on PR + push to
+  main / feature/v4.* + manual dispatch — baseline gates the build,
+  adversarial steps are advisory (`continue-on-error: true`) since
+  `Http::fake()` canned responses cannot perfectly mimic the
+  production model's refusal behavior. `tests/Feature/Eval/RegressionDetectionTest`
+  proves the gate **actually catches** regressions (R16). PR #119.
+- **(this PR)** v4.2/W3 closure docs — adds this Changelog entry,
+  promotes the W3 ribbon under `### Key Features` to "rc3 shipped",
+  and lands `docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md`.
+
+**Pull request merged on `feature/v4.2` for v4.2.0-rc3:**
+- #119 v4.2/W3 — sub-PR 4 — eval-harness v1.2 RAG regression CI gate
+- (this PR) v4.2/W3 closure — Changelog entry + ribbon promotion + closure status doc
+
+**Test count:** 1306 → 1328 (+22 PHPUnit). All green across PHPUnit
+(PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG
+regression workflow itself.
 
 ### v4.2.0-rc2 — 2026-05-10 (W2 milestone — `padosoft/laravel-flow` v1.0 integration)
 
