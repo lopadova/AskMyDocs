@@ -3,13 +3,14 @@
 @import "tailwindcss";
 
 /* Preserves the v3 `darkMode: ['class', '[data-theme="dark"]']` selector
- * contract so existing `dark:*` utilities continue to activate via any
- * ancestor carrying `data-theme="dark"`. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+ * contract: `dark:*` utilities activate via either `<html class="dark">`
+ * (legacy class-based opt-in) OR any ancestor carrying
+ * `data-theme="dark"` (project's preferred attribute-based API). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
 
 @theme {
-    --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
-    --font-mono: var(--font-mono), ui-monospace, Menlo, monospace;
+    --font-sans: var(--font-stack-sans), ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-stack-mono), ui-monospace, Menlo, monospace;
     --color-accent-a: #8b5cf6;
     --color-accent-b: #22d3ee;
 }
