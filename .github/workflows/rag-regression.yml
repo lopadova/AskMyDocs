@@ -68,6 +68,8 @@ jobs:
     env:
       APP_ENV: testing
       APP_DEBUG: 'false'
+      CACHE_STORE: array
+      SESSION_DRIVER: file
       DB_CONNECTION: pgsql
       DB_HOST: 127.0.0.1
       DB_PORT: 5432
@@ -120,13 +122,15 @@ jobs:
       - name: Prepare bootstrap dirs
         run: |
           mkdir -p bootstrap/cache storage/framework/cache/data
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
           mkdir -p storage/app/eval-harness/reports
           mkdir -p storage/app/eval-harness/adversarial/manifests
+          mkdir -p eval-out
 
       - name: Run RAG regression — baseline (JSON + Markdown)
         id: baseline
         run: |
-          mkdir -p eval-out
           php artisan eval-harness:run rag.askmydocs.factuality.fy2026 \
             --registrar="App\\Eval\\EvalRegistrar" \
             --batch-profile=${{ github.event.inputs.batch_profile || 'ci' }} \
