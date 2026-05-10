@@ -7,6 +7,7 @@ namespace App\Eval\Metrics;
 use App\Ai\AiManager;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Padosoft\EvalHarness\Datasets\DatasetSample;
 use Padosoft\EvalHarness\Metrics\Metric;
 use Padosoft\EvalHarness\Metrics\MetricScore;
@@ -40,8 +41,7 @@ use Throwable;
  *     metric handles the actual scoring there).
  *
  * R30: every Eloquent read against KnowledgeDocument / KnowledgeChunk
- * is tenant-scoped — the BelongsToTenant global scope auto-applies
- * tenant_id='default' (set by EvalRegistrar::pinDefaultTenant()).
+ * is explicitly tenant-scoped via forTenant(TenantContext::current()).
  *
  * R23: this class implements Padosoft\EvalHarness\Metrics\Metric so
  * MetricResolver's boot-time validation accepts the FQCN.
@@ -141,9 +141,9 @@ final class CosineGroundednessMetric implements Metric
 
     /**
      * Load + concatenate the chunk_text of every chunk belonging to
-     * the cited documents. Tenant-scoped via the BelongsToTenant
-     * global scope (R30). Empty result → empty string (handled by
-     * caller as "citations unresolved").
+     * the cited documents. Tenant-scoped explicitly (R30). Empty
+     * result → empty string (handled by caller as "citations
+     * unresolved").
      *
      * @param  list<string>  $sourcePaths
      */
@@ -153,7 +153,10 @@ final class CosineGroundednessMetric implements Metric
             return '';
         }
 
+        $tenantId = app(TenantContext::class)->current();
+
         $documentIds = KnowledgeDocument::query()
+            ->forTenant($tenantId)
             ->where('project_key', $projectKey)
             ->whereIn('source_path', $sourcePaths)
             ->pluck('id')
@@ -164,6 +167,7 @@ final class CosineGroundednessMetric implements Metric
         }
 
         $text = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->whereIn('knowledge_document_id', $documentIds)
             ->orderBy('knowledge_document_id')
             ->orderBy('chunk_order')

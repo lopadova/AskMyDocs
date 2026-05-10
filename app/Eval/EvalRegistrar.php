@@ -35,8 +35,9 @@ use RuntimeException;
  *   - llm-as-judge                         (built-in, LLM grading)
  *   - App\Eval\Metrics\CosineGroundednessMetric
  *   - App\Eval\Metrics\CitationGroundednessMetric  (AskMyDocs-specific —
- *     stricter than the package built-in: scores 1.0 only when EVERY
- *     expected citation appears in the actual citations AND no extras)
+ *     stricter than the package built-in: scores 1.0 only when every
+ *     expected citation appears and refusal samples contain no citations;
+ *     extra citations are allowed only when they resolve to real docs)
  *
  * Cost guard (R26 + sub-PR 4 directive):
  *   When EVAL_LIVE_AI=false (default) the registrar binds Http::fake()
@@ -295,7 +296,7 @@ final class EvalRegistrar
      * eval run never touches a real provider. Pins:
      *
      *   - `*embeddings*`        → deterministic 1536-dim vector
-     *     keyed by SHA-256(text). Same input → same vector, so the
+     *     keyed by SHA-512(text). Same input → same vector, so the
      *     baseline run is reproducible across CI runs.
      *   - `*chat/completions*` → deterministic stub answer that
      *     concatenates the user question with a fixed grounding hint.

@@ -50,12 +50,30 @@ jobs:
     name: RAG regression gate (${{ github.event.inputs.batch_profile || 'ci' }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: askmydocs
+          POSTGRES_PASSWORD: askmydocs
+          POSTGRES_DB: askmydocs_eval
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U askmydocs -d askmydocs_eval"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       APP_ENV: testing
       APP_DEBUG: 'false'
-      DB_CONNECTION: sqlite
-      DB_DATABASE: ':memory:'
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: askmydocs_eval
+      DB_USERNAME: askmydocs
+      DB_PASSWORD: askmydocs
       EVAL_LIVE_AI: ${{ github.event.inputs.live_ai || 'false' }}
       EVAL_HARNESS_BATCH_PROFILE: ${{ github.event.inputs.batch_profile || 'ci' }}
       EVAL_HARNESS_REPORTS_DISK: local
@@ -73,7 +91,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
-          extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
+          extensions: mbstring, xml, sqlite, pdo_sqlite, pgsql, pdo_pgsql, intl, bcmath
           coverage: none
           tools: composer:v2
 
@@ -91,6 +109,13 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate --force
+
+      - name: Migrate + seed evaluation dataset
+        env:
+          APP_ENV: testing
+        run: |
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=Database\\Seeders\\DemoSeeder --force
 
       - name: Prepare bootstrap dirs
         run: |

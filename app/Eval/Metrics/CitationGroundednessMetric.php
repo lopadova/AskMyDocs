@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Eval\Metrics;
 
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Padosoft\EvalHarness\Datasets\DatasetSample;
 use Padosoft\EvalHarness\Metrics\Metric;
 use Padosoft\EvalHarness\Metrics\MetricScore;
@@ -37,7 +38,7 @@ use Throwable;
  *   - Refusal sample with non-empty actual citations → 0.0
  *     (the model must NOT fabricate sources when refusing)
  *
- * R30: tenant-scoped queries via the BelongsToTenant global scope.
+ * R30: tenant-scoped queries via forTenant(TenantContext::current()).
  */
 final class CitationGroundednessMetric implements Metric
 {
@@ -156,7 +157,10 @@ final class CitationGroundednessMetric implements Metric
             return [];
         }
 
+        $tenantId = app(TenantContext::class)->current();
+
         $resolved = KnowledgeDocument::query()
+            ->forTenant($tenantId)
             ->where('project_key', $projectKey)
             ->whereIn('source_path', $unexpected)
             ->pluck('source_path')
