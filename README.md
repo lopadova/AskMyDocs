@@ -38,6 +38,17 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.3.0-rc2 — W2 shipped (React 19 host bump closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host SPA bumped to React 19.2.6** | `react` 18.3.1 → 19.2.6, `react-dom` 18.3.1 → 19.2.6, `@types/react` 18.3.12 → 19.2.x, `@types/react-dom` 18.3.1 → 19.2.x. `@vitejs/plugin-react` ^4.3.3 unchanged (supports both majors). `@testing-library/react` ^16 unchanged (supports React 19). Vitest (react + legacy) green; full PHPUnit + Playwright + RAG regression all green post-bump. |
+| **Scope-tight, dependency-only bump** | Pre-flight grep confirmed zero `defaultProps` on function components, zero `findDOMNode`, zero `UNSAFE_*` lifecycles, zero `ReactDOM.render` — every host component was already React 19 compatible. No code changes required outside the dependency manifests. No transitive dep needed pinning, no peer-dep override required, no `--legacy-peer-deps` flag. |
+| **ADR 0005 documents the decision + deferrals** | `docs/adr/0005-v43-react-19-host-bump.md` records: why React 19 now (17 months of GA wear, transitive deps stabilised); why Tailwind v3 → v4 stays deferred (different config surface, different preflight reset, different theme-token API, ~40 utility classes — warrants its own scope-clean PR); why iframe → cross-mount of `pii-redactor-admin` + `eval-harness-ui` stays deferred to v4.4 (gated on Tailwind v4 landing first). `flow-admin` stays iframe-mounted forever (Blade + Alpine, not React). |
+| **Compatibility risks watched** | `@ai-sdk/react` ^3 (peer-dep `^18 \|\| ~19.0.1 \|\| ~19.1.2 \|\| ^19.2.1` — covers 19.2.6); `@tanstack/react-router` ^1.81 (React 19 from 1.61+); `@tanstack/react-query` ^5.59; `recharts` ^3.8; `react-hook-form` ^7.53; `react-markdown` ^10. All checked compatible; no peer overrides required. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week2-react-19-host-bump.md`
+
 #### v4.3.0-rc1 — W1 shipped (PII redactor comprehensive boundary coverage closed 2026-05-10)
 
 | Feature | Description |
@@ -3416,6 +3427,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.3.0-rc2 — 2026-05-10 (W2 milestone — React 19 host bump)
+
+Second release candidate of the **v4.3 cycle**. W2 bumps the host SPA from React 18.3.1 to React 19.2.6 to enable the future v4.4 cross-mount of admin SPAs (currently iframe-mounted per ADR 0004 D5). Bump is dependency-only — pre-flight grep confirmed zero React 18-specific patterns, so no code changes required.
+
+**What's new in AskMyDocs v4.3.0-rc2 (W2 — React 19 host bump):**
+
+- **W2 / sub-PR (#129)** — `react` 18.3.1 → 19.2.6 + `react-dom` + `@types/react` + `@types/react-dom`. ADR 0005 documents the decision + the deferred Tailwind v3 → v4 migration (separate scope) + iframe → cross-mount migration (v4.4 deliverable, gated on Tailwind v4 landing first). Vitest (react + legacy) green; full PHPUnit + Playwright + RAG regression all green.
+- **(this PR)** v4.3/W2 closure docs — adds this Changelog entry, the W2 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc2:**
+- #129 v4.3/W2 — React 19 host bump + ADR 0005
+- (this PR) v4.3/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** unchanged from v4.3.0-rc1 (1397 PHPUnit) — bump is dependency-only and existing tests cover the React 19 surface. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` ✅ |
+| W2 (this) | React 19 host bump + ADR 0005 | `v4.3.0-rc2` ✅ |
+| W3 | eval-harness LLM-as-judge nightly cron + ops polish | `v4.3.0-rc3` |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
 
 ### v4.3.0-rc1 — 2026-05-10 (W1 milestone — PII redactor comprehensive boundary coverage)
 
