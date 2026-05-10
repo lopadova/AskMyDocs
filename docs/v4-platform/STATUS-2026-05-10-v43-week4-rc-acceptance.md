@@ -28,7 +28,7 @@ Every `v4.3.0-rcN` tag below was created via `gh release create … --prerelease
 
 | Tag | Pinned SHA | Closure milestone | GitHub release |
 |---|---|---|---|
-| `v4.3.0-rc1` | `9f7aa47` | W1 closure (PR #128) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc1 |
+| `v4.3.0-rc1` | `9f7aa47fb20defb350d1d82a1d4e901fbffa92f5` | W1 closure (PR #128) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc1 |
 | `v4.3.0-rc2` | `d83b95e7dda58ebbfccdb734736f51f5e75cdda3` | W2 closure (PR #130) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc2 |
 | `v4.3.0-rc3` | `897c33f5bb71dc2b67abaee7bef68719d61eeca5` | W3 closure (PR #132) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc3 |
 

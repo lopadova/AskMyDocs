@@ -3461,7 +3461,7 @@ Use [GitHub Issues](../../issues). Please include:
 - **W1 — PII redactor comprehensive boundary coverage** (PR #127). 11 persistence-boundary touch-points (was 4 in v4.1) + 6 admin-readiness inspectors wired into existing AskMyDocs admin surfaces. New observers + listeners + Monolog log channel processor + Flow `CurrentPayloadRedactorProvider` contract binding. 5 new env knobs all default OFF.
 - **W2 — React 19 host bump** (PR #129). `react` 18.3.1 → 19.2.6 + `react-dom` + `@types/*`. Pre-flight grep confirmed zero breaking patterns. ADR 0005 documents the deferral of Tailwind v4 + cross-mount migration to v4.4.
 - **W3 — eval-harness LLM-as-judge nightly cron + ops polish** (PR #131). New `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC, default-OFF. Three-fence cost guard. Regression detection + alert sidecar. 3 ops flags. ADR 0006.
-- **(this PR)** v4.3 W4 closure docs + GA merge — adds this Changelog entry, the v4.3.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-10-v43-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.3 GA refresh.
+- **(this PR — W4.A)** v4.3 W4 closure docs + GA prep — adds this Changelog entry, the v4.3.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-10-v43-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.3 GA refresh. The `feature/v4.3` → `main` GA merge + `v4.3.0` GA tag itself land in a follow-up **W4.B** PR after this closure PR merges.
 
 **Pull requests merged on `feature/v4.3` for v4.3.0 GA:**
 - #127 v4.3/W1 — sub-PR 4.5 — PII redactor comprehensive boundary coverage
@@ -3470,7 +3470,8 @@ Use [GitHub Issues](../../issues). Please include:
 - #130 v4.3/W2 closure — Changelog entry + Key Features + closure status doc
 - #131 v4.3/W3 — eval-harness nightly cron + ops polish + ADR 0006
 - #132 v4.3/W3 closure — Changelog entry + Key Features + closure status doc
-- (this PR) v4.3 W4 closure + GA merge — Changelog entry + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
+- (this PR — W4.A) v4.3 W4 closure + GA prep — Changelog entry + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
+- (W4.B follow-up PR) `feature/v4.3` → `main` GA merge per R37 + `v4.3.0` GA tag at the merge SHA
 
 **v4.3 cycle test count delta:** 1371 (start of v4.3 from v4.2.0 GA) → **1408** (end of W3). +37 PHPUnit tests across the cycle (W1: +26 boundary-coverage tests; W2: +0 dependency-only bump; W3: +11 nightly-cron tests including 1 R26 defense-in-depth test). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
 

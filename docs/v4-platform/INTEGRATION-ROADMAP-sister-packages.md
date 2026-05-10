@@ -1,13 +1,14 @@
 # Sister packages integration roadmap
 
-> **Honest status as of v4.3 GA (2026-05-10)**
+> **Honest status as of v4.3 RC / GA prep (2026-05-10)**
 >
-> v4.3 GA introduces NO new sister-package integrations or version bumps
+> v4.3 introduces NO new sister-package integrations or version bumps
 > on top of v4.2 GA — the cycle is intentionally **scope-tight on host-side
 > hardening** (PII boundary coverage extension on top of the existing
 > v1.2 surface; React 19 host bump; eval-harness nightly cron consuming
 > the existing v1.2 surface). The full integration matrix below is
-> unchanged since v4.2 GA on 2026-05-10.
+> unchanged since v4.2 GA on 2026-05-10. The v4.3.0 GA tag itself fires
+> in W4.B once `feature/v4.3` merges into `main` per R37.
 >
 > v4.3 cycle deliverables (host-side, no new sister packages):
 >
