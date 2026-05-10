@@ -11,6 +11,6 @@
 @theme {
     --font-sans: var(--font-stack-sans), ui-sans-serif, system-ui, sans-serif;
     --font-mono: var(--font-stack-mono), ui-monospace, Menlo, monospace;
-    --color-accent-a: #8b5cf6;
-    --color-accent-b: #22d3ee;
+    --color-accent-a: var(--accent-a);
+    --color-accent-b: var(--accent-b);
 }
