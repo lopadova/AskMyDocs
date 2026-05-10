@@ -1,82 +1,75 @@
 /*
- * PiiRedactorView — iframe mount of the
- * `padosoft/laravel-pii-redactor-admin` v1.0.2 SPA console.
+ * PiiRedactorView — cross-mount of the
+ * `padosoft/laravel-pii-redactor-admin` v1.0.2 SPA.
  *
- * Mount strategy: IFRAME.
+ * v4.4/W2 — replaces the v4.2/W4 iframe mount (see ADR 0005). The
+ * previous iframe rationale (React 18 + handcrafted CSS host vs React
+ * 19 + Tailwind v4 package) is RESOLVED:
  *
- * Why iframe and not cross-mount: the package ships React 19 + Tailwind
- * v4, while the AskMyDocs SPA is React 18 + a fully-handcrafted CSS
- * variable theme (no Tailwind). Cross-mounting would require either:
- *   (a) shipping two React runtimes in the same window (warns + risks
- *       hook-rule violations across module boundaries), or
- *   (b) downgrading the package bundle to React 18 (forks the package).
- * Iframe is one extra HTTP roundtrip + zero risk of bundle conflict +
- * the package's pre-built bundle keeps working unchanged.
+ *   - v4.4/W1 migrated the host to Tailwind v4 (commit 860d0aa).
+ *   - The host already runs React 19.2.6 (matches the package).
  *
- * The iframe URL points at the package web prefix
- * (`PII_REDACTOR_ADMIN_ROUTE_PREFIX`, default `admin/pii-redactor`).
- * We hardcode the default here because:
- *   1. The Vite build doesn't have access to the runtime Laravel env,
- *   2. Operators who change the prefix would also update this constant
- *      in the same change-set.
+ * Mount strategy: cross-mount. The package's React tree renders
+ * directly inside the host's TanStack Router, sharing one React
+ * runtime, one Sanctum cookie, one axios instance. No iframe means
+ * no double React, no double layout reflow, and one fewer HTTP
+ * round-trip on first paint.
  *
- * The host page is wrapped in the standard AppShell so the AskMyDocs
- * sidebar + topbar + breadcrumbs stay visible.
+ * Config resolution: the package's blade controller injects a
+ * `window.PII_REDACTOR_ADMIN` global with `apiBase`, `routePrefix`,
+ * `userDisplay`, `abilities`, and `csrfToken`. The cross-mount
+ * derives the same shape host-side from:
+ *
+ *   - `apiBase` / `routePrefix` → known constants matching the
+ *     `pii-redactor-admin.api_prefix` / `route_prefix` env defaults
+ *     (operators who change those env vars also redeploy the host
+ *     bundle, same operational coupling the iframe predecessor had).
+ *   - `userDisplay` → `name || email || 'Operator'` from the host
+ *     auth-store (same fallback chain as the package's
+ *     AdminShellController).
+ *   - `abilities` → derived from the host's Spatie roles to mirror
+ *     the BE Gates registered in
+ *     AppServiceProvider::registerPiiRedactorAdminGates(). The BE
+ *     still gates the actual API calls (`can:viewPiiRedactorAdmin`
+ *     middleware on the package routes); the FE-derived abilities
+ *     are purely UX affordances — same security posture as
+ *     RequireRole vs Spatie middleware elsewhere in the host.
+ *   - `csrfToken` → DROPPED. The host axios instance auto-forwards
+ *     `XSRF-TOKEN` cookie → `X-XSRF-TOKEN` header; we don't need
+ *     the meta-tag value the package's blade injects.
  */
-import { useEffect, useState } from 'react';
+import { useMemo } from 'react';
+import { useAuthStore } from '../../../lib/auth-store';
+import PiiRedactorAdminApp from './cross-mount/App';
+import type { PiiRedactorAdminConfig } from './cross-mount/types';
+import './cross-mount/cross-mount.css';
 
-const PII_REDACTOR_BASE_URL = '/admin/pii-redactor';
-const PII_REDACTOR_STATUS_URL = '/admin/pii-redactor/api/status';
+const PII_REDACTOR_API_BASE = '/admin/pii-redactor/api';
+const PII_REDACTOR_ROUTE_PREFIX = '/admin/pii-redactor';
 
 export function PiiRedactorView() {
-    const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+    const user = useAuthStore((state) => state.user);
+    const roles = useAuthStore((state) => state.roles);
 
-    useEffect(() => {
-        let active = true;
-        const controller = new AbortController();
-
-        // Belt-and-braces fallback: if the status endpoint doesn't
-        // respond within 10 s, surface an explicit error state.
-        const id = window.setTimeout(() => {
-            controller.abort();
-            if (active) {
-                setLoadState((prev) => (prev === 'loading' ? 'error' : prev));
-            }
-        }, 10_000);
-
-        void fetch(PII_REDACTOR_STATUS_URL, {
-            method: 'GET',
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-        })
-            .then((response) => {
-                if (!active) {
-                    return;
-                }
-                setLoadState(response.ok ? 'ready' : 'error');
-            })
-            .catch(() => {
-                if (!active) {
-                    return;
-                }
-                setLoadState('error');
-            })
-            .finally(() => {
-                window.clearTimeout(id);
-            });
-
-        return () => {
-            active = false;
-            controller.abort();
-            window.clearTimeout(id);
+    const config = useMemo<PiiRedactorAdminConfig>(() => {
+        const userDisplay = user?.name?.trim() || user?.email?.trim() || 'Operator';
+        return {
+            apiBase: PII_REDACTOR_API_BASE,
+            routePrefix: PII_REDACTOR_ROUTE_PREFIX,
+            userDisplay,
+            abilities: {
+                view: hasAnyRole(roles, ['super-admin', 'dpo', 'admin']),
+                detokenise: hasAnyRole(roles, ['super-admin', 'dpo']),
+                rawSamples: hasAnyRole(roles, ['super-admin']),
+            },
         };
-    }, []);
+    }, [user, roles]);
 
     return (
         <div
             data-testid="admin-pii-redactor-host"
-            data-state={loadState}
+            data-state="ready"
+            data-mount="cross-mount"
             style={{
                 flex: 1,
                 display: 'flex',
@@ -84,72 +77,14 @@ export function PiiRedactorView() {
                 background: 'var(--bg-0)',
                 color: 'var(--fg-1)',
                 position: 'relative',
+                minHeight: 0,
             }}
         >
-            {loadState === 'loading' && (
-                <div
-                    data-testid="admin-pii-redactor-loading"
-                    style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        pointerEvents: 'none',
-                        fontFamily: 'var(--font-sans)',
-                        fontSize: 13,
-                        color: 'var(--fg-2)',
-                    }}
-                >
-                    <span className="shimmer" style={{ padding: '6px 18px', borderRadius: 8 }}>
-                        Loading PII Redactor…
-                    </span>
-                </div>
-            )}
-            {loadState === 'error' && (
-                <div
-                    data-testid="admin-pii-redactor-error"
-                    role="alert"
-                    style={{
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 40,
-                        fontFamily: 'var(--font-sans)',
-                    }}
-                >
-                    <div
-                        className="panel popin"
-                        style={{
-                            maxWidth: 480,
-                            padding: '24px 24px 22px',
-                            textAlign: 'center',
-                        }}
-                    >
-                        <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-                            PII Redactor admin is unavailable
-                        </h2>
-                        <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>
-                            The console did not load. Confirm{' '}
-                            <code>PII_REDACTOR_ADMIN_ENABLED=true</code> in the host
-                            environment, then run <code>php artisan config:clear</code>.
-                        </p>
-                    </div>
-                </div>
-            )}
-            <iframe
-                src={PII_REDACTOR_BASE_URL}
-                title="PII Redactor Admin"
-                data-testid="admin-pii-redactor-iframe"
-                style={{
-                    flex: 1,
-                    width: '100%',
-                    border: 0,
-                    background: 'var(--bg-0)',
-                    visibility: loadState === 'ready' ? 'visible' : 'hidden',
-                }}
-            />
+            <PiiRedactorAdminApp config={config} />
         </div>
     );
+}
+
+function hasAnyRole(roles: string[], allowed: string[]): boolean {
+    return roles.some((role) => allowed.includes(role));
 }

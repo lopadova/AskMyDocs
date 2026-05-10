@@ -35,7 +35,7 @@
 > | `padosoft/laravel-pii-redactor` v1.2 | `require` — 4 touch-points (chat / embedding / insights / detokenize) | v4.1 W4.1; bumped v1.1 → v1.2 in v4.2/W1 (PR #112) |
 > | `padosoft/laravel-flow` v1.0 | `require` — 9 Flow definitions in `app/Flow/Definitions/` orchestrating every multi-step background pipeline | v4.2/W2 (PRs #114-#117). See ADR 0004 D3. |
 > | `padosoft/eval-harness` v1.2 | `require-dev` — RAG regression CI gate (`.github/workflows/rag-regression.yml`) | v4.2/W3 (PR #119). `require-dev` by design — see ADR 0004 D2. |
-> | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (iframe) | v4.2/W4 (PR #121) |
+> | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (cross-mount, v4.4/W2) | v4.2/W4 (PR #121); iframe → cross-mount in v4.4/W2 |
 > | `padosoft/laravel-flow-admin` v1.0.0 | `require` — mounted under `/admin/flows` (iframe) | v4.2/W4 (PR #122) |
 > | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (iframe) | v4.2/W4 (PR #123) |
 >
