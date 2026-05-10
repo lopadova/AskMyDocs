@@ -33,7 +33,7 @@ use Throwable;
  *   - 5 Eloquent observers (Conversation / Message / ChatLog /
  *     AdminCommandAudit / AdminInsightsSnapshot)
  *   - 1 Queue listener (Illuminate\Queue\Events\JobFailed)
- *   - 1 Monolog processor (pushed onto every active log handler)
+ *   - 1 Monolog processor (attached once at the root Monolog logger)
  *   - 1 container binding for laravel-flow's CurrentPayloadRedactorProvider
  *
  * Each touch-point is INDEPENDENTLY default-off and gated by its own
