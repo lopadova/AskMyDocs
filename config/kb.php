@@ -404,7 +404,10 @@ return [
         | (LLM output may echo PII from ingested corpus) AND walks the
         | `chat_logs.sources` JSON (citation snippets) on `creating`
         | events. Complements v4.1's `persist_chat_redacted` knob which
-        | only handled `chat_logs.question`.
+        | covered the inbound user side (`chat_logs.question` +
+        | `messages.content` via the RedactChatPii middleware) — this
+        | knob covers the outbound LLM-output side that lands AFTER the
+        | middleware path.
         */
         'redact_answers' => (bool) env('KB_PII_REDACT_ANSWERS', false),
 
