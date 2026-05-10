@@ -38,6 +38,17 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.3.0-rc3 — W3 shipped (eval-harness LLM-as-judge nightly cron + ops polish closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host-level nightly eval-harness regression sentinel** | New `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC (`bootstrap/app.php`), default-OFF via `EVAL_NIGHTLY_ENABLED`. Runs the seeded golden baseline through the full RAG pipeline once per day, optionally with `EVAL_LIVE_AI=1` to catch real-provider drift (model behaviour shifts, refusal-policy changes, embedding-space drift) the PR-time `Http::fake()` CI gate cannot see by design. Persisted artefacts at `storage/app/eval-harness/nightly/<YYYY-MM-DD>.json` + `<YYYY-MM-DD>.md`; auto-pruned after `EVAL_NIGHTLY_RETENTION_DAYS` (default 90). |
+| **Three-fence cost guard** | (1) `EVAL_NIGHTLY_ENABLED` (default `false`) gates the scheduler entry — when false the cron entry is never registered. (2) `EVAL_NIGHTLY_LIVE` (default `false`) gates the live-AI override even if the scheduler fires — when false the run uses `Http::fake()` exactly as the PR-time gate does. (3) The command refuses live mode if no provider key is present, so a misconfigured prod host that flips both env knobs without provisioning the secret refuses cleanly instead of silently billing tokens. R26 defense-in-depth test pre-seeds `eval-harness.askmydocs.live_ai=true` AND env `EVAL_LIVE_AI=1` then asserts the command FORCES `live_ai=false` at runner-call time + `Http::assertNothingSent()`. |
+| **Regression detection + alert sidecar + ops polish** | `app/Eval/Support/NightlyDeltaCalculator.php` computes `macro_f1` + per-metric mean deltas vs the most recent prior nightly (or, on first run, the most recent PR-time baseline report) and returns `{macro_f1_prior, macro_f1_current, macro_f1_delta, regressed_metrics, improved_metrics}`. When the delta exceeds `EVAL_NIGHTLY_REGRESSION_THRESHOLD` (default 0.05 = 5%) the command fires `Log::alert()` + writes a forensic sidecar `<date>.alert.json` so operators wire alert-channel notifications off the log. Three ops flags: `--dry-run` (skip run, print plan), `--status` (print latest nightly summary without re-running), `--prune-only` (just delete reports beyond retention and exit). |
+| **ADR 0006 documents the design** | `docs/adr/0006-v43-nightly-eval-cron.md` records: cost-guard rationale (three independent fences); alerting choice (`Log::alert` over a Notification class — operators already wire alerts off the log channel, no need for a dedicated SP); retention policy (90 days, auto-pruned); host/package boundary rationale (cron policy + alerting are host concerns; the `padosoft/eval-harness` package stays pure compute — no scheduler, no notifications, no host-specific knobs). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week3-eval-nightly-cron.md`
+
 #### v4.3.0-rc2 — W2 shipped (React 19 host bump closed 2026-05-10)
 
 | Feature | Description |
@@ -3427,6 +3438,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.3.0-rc3 — 2026-05-10 (W3 milestone — eval-harness LLM-as-judge nightly cron + ops polish)
+
+Third release candidate of the **v4.3 cycle**. W3 ships the host-level nightly eval-harness regression sentinel: a new `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC that runs the seeded golden baseline through the full RAG pipeline once per day, optionally with `EVAL_LIVE_AI=1` to catch real-provider drift the PR-time `Http::fake()` CI gate cannot see by design. Default-OFF; three independent fences guard cost.
+
+**What's new in AskMyDocs v4.3.0-rc3 (W3 — eval-harness nightly cron + ops polish):**
+
+- **W3 / sub-PR (#131)** — new `app/Console/Commands/EvalNightlyCommand.php` (4 ops flags: `--dry-run`, `--status`, `--prune-only`, plain run; two-fence cost guard `EVAL_NIGHTLY_ENABLED` scheduler gate + `EVAL_NIGHTLY_LIVE` provider-key check; writes dated JSON+MD report to `storage/app/eval-harness/nightly/`; computes delta vs prior baseline; fires `Log::alert()` + sidecar `<date>.alert.json` on regression > `EVAL_NIGHTLY_REGRESSION_THRESHOLD` default 0.05; auto-prunes beyond `EVAL_NIGHTLY_RETENTION_DAYS` default 90). New `app/Eval/Support/NightlyDeltaCalculator.php` (pure-PHP delta computation). New `app/Eval/Support/EvalHarnessRunner.php` (thin wrapper enabling test-time substitution). 4 new env knobs all default OFF/safe-default. New scheduler entry in `bootstrap/app.php` at 05:30 UTC, gated by `EVAL_NIGHTLY_ENABLED`. ADR 0006 documents cost guard, alerting choice (`Log::alert` over Notification), retention, host/package boundary rationale.
+- **(this PR)** v4.3/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc3:**
+- #131 v4.3/W3 — eval-harness nightly cron + ops polish + ADR 0006
+- (this PR) v4.3/W3 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1397 (start of W3 from v4.3.0-rc2) → 1408 (+11 PHPUnit: 4 unit tests for `NightlyDeltaCalculator` + 6 feature tests for `EvalNightlyCommand` + 1 R26 defense-in-depth test added in iter 2 for the two-fence cost guard). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` ✅ |
+| W2 | React 19 host bump + ADR 0005 | `v4.3.0-rc2` ✅ |
+| W3 (this) | eval-harness LLM-as-judge nightly cron + ops polish + ADR 0006 | `v4.3.0-rc3` ✅ |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
 
 ### v4.3.0-rc2 — 2026-05-10 (W2 milestone — React 19 host bump)
 
