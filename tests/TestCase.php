@@ -28,6 +28,13 @@ abstract class TestCase extends OrchestraTestCase
         // in feature tests for the `redact-chat-pii` middleware.
         $app->register(\Padosoft\PiiRedactor\PiiRedactorServiceProvider::class);
 
+        // v4.2/W4 sub-PR 5 — padosoft/laravel-pii-redactor-admin SP.
+        // Same explicit-registration reason as PiiRedactor above.
+        // Routes are only registered when
+        // `pii-redactor-admin.enabled=true` (default false), so the
+        // bare boot is a safe no-op for tests that don't opt in.
+        $app->register(\Padosoft\PiiRedactorAdmin\PiiRedactorAdminServiceProvider::class);
+
         // v4.2/W2 — laravel-flow saga engine. Registered before
         // App\Providers\FlowServiceProvider so the FlowEngine singleton
         // is available when the in-app definition registry boots.
@@ -95,6 +102,11 @@ abstract class TestCase extends OrchestraTestCase
         // can't read the golden dataset paths under
         // `eval-harness.askmydocs.golden.*` and the registrar throws.
         $app['config']->set('eval-harness', require __DIR__.'/../config/eval-harness.php');
+        // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
+        // enabled=false so the SP boot short-circuits before registering
+        // routes; tests that exercise the admin routes flip this on
+        // explicitly via defineEnvironment() (see PiiRedactorAdminMountingTest).
+        $app['config']->set('pii-redactor-admin', require __DIR__.'/../config/pii-redactor-admin.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).

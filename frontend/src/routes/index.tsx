@@ -18,6 +18,7 @@ import { TagsList } from '../features/admin/tags/TagsList';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
+import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -311,6 +312,29 @@ const adminInsightsRoute = createRoute({
     component: AdminInsightsRoute,
 });
 
+// v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Same flat-RBAC
+// pattern as AdminInsightsRoute / AdminKbRoute: the RequireRole gate
+// lives inside the component so a viewer hitting
+// /app/admin/pii-redactor directly sees <AdminForbidden /> instead of
+// a crash. The Spatie role allowlist matches the BE Gate
+// `viewPiiRedactorAdmin` (super-admin / dpo / admin); the iframe URL
+// (/admin/pii-redactor) is enforced separately by the BE
+// `can:viewPiiRedactorAdmin` middleware so an unprivileged user who
+// somehow reaches the URL still gets a 403 from Laravel.
+function AdminPiiRedactorRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <PiiRedactorView />
+        </RequireRole>
+    );
+}
+
+const adminPiiRedactorRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/pii-redactor',
+    component: AdminPiiRedactorRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -334,6 +358,7 @@ const routeTree = rootRoute.addChildren([
         adminLogsRoute,
         adminMaintenanceRoute,
         adminInsightsRoute,
+        adminPiiRedactorRoute,
     ]),
 ]);
 

@@ -22,4 +22,13 @@ return [
     // also wires the FlowRunRecord::creating() hook that stamps
     // tenant_id from the active TenantContext (R30/R31).
     App\Providers\FlowServiceProvider::class,
+    // v4.2/W4 sub-PR 5 — PII Redactor Admin SPA. Listed explicitly for
+    // the same reason as PiiRedactor / LaravelFlow above (auto-discovery
+    // is brittle on Windows + Herd). Required so config + migrations
+    // can be published via `vendor:publish --tag=pii-redactor-admin-*`
+    // and so the admin routes are registered when
+    // `PII_REDACTOR_ADMIN_ENABLED=true`. Disabled-by-default: when the
+    // env flag is false the SP is loaded but its boot() short-circuits
+    // before registering any routes.
+    Padosoft\PiiRedactorAdmin\PiiRedactorAdminServiceProvider::class,
 ];
