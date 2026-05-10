@@ -10,7 +10,8 @@ export type SidebarSection =
     | 'users'
     | 'logs'
     | 'maintenance'
-    | 'pii-redactor';
+    | 'pii-redactor'
+    | 'flows';
 
 export type SidebarProps = {
     active: SidebarSection;
@@ -42,6 +43,13 @@ const NAV_ITEMS: NavItem[] = [
     // — no new SVGs required. Visible to all roles; the route's
     // RequireRole gate filters down to admin/dpo/super-admin.
     { id: 'pii-redactor', label: 'PII Redactor', icon: 'Shield', section: 'admin' },
+    // v4.2/W4 sub-PR 6 — Flow Admin cockpit mount. Same iframe strategy
+    // as PII Redactor (the package targets Blade + Alpine, not React, so
+    // bundle isolation is the only viable mount). Visible to all roles
+    // in the sidebar; the route's RequireRole gate filters down to
+    // super-admin / admin / dpo. The Spatie role allowlist in the BE
+    // outer-fence Gate `viewFlowAdmin` mirrors the FE one.
+    { id: 'flows', label: 'Flows', icon: 'Bolt', section: 'ops' },
     { id: 'logs', label: 'Logs', icon: 'Activity', section: 'ops' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', section: 'ops' },
 ];

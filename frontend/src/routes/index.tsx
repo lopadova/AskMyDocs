@@ -19,6 +19,7 @@ import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
 import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
+import { FlowsView } from '../features/admin/flows/FlowsView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -335,6 +336,29 @@ const adminPiiRedactorRoute = createRoute({
     component: AdminPiiRedactorRoute,
 });
 
+// v4.2/W4 sub-PR 6 — Flow Admin SPA mount. Same flat-RBAC pattern as
+// AdminPiiRedactorRoute / AdminInsightsRoute: the RequireRole gate
+// lives inside the component so a viewer hitting /app/admin/flows
+// directly sees <AdminForbidden /> instead of a crash. The Spatie
+// role allowlist matches the BE Gate `viewFlowAdmin` (super-admin /
+// admin / dpo); the iframe URL (/admin/flows) is enforced separately
+// by the BE `can:viewFlowAdmin` middleware AND the
+// `flow-admin.enabled` middleware so an unprivileged user who somehow
+// reaches the URL gets a 403 (or 404 when env=false) from Laravel.
+function AdminFlowsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <FlowsView />
+        </RequireRole>
+    );
+}
+
+const adminFlowsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/flows',
+    component: AdminFlowsRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -359,6 +383,7 @@ const routeTree = rootRoute.addChildren([
         adminMaintenanceRoute,
         adminInsightsRoute,
         adminPiiRedactorRoute,
+        adminFlowsRoute,
     ]),
 ]);
 
