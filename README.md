@@ -38,6 +38,20 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.2.0-rc4 — W4 shipped (three admin SPAs mounted closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-pii-redactor-admin` v1.0.2 mounted under `/admin/pii-redactor`** | Sub-PR 5 — pre-built React 19 + Tailwind v4 console iframed inside the AskMyDocs shell. 7 screens (Dashboard / Playground / Token map / Detokenise / Audit logs / Detectors / Custom rules) + 3 Spatie-role-backed Gates: `viewPiiRedactorAdmin` (super-admin / dpo / admin), `detokenisePiiRedactor` (super-admin / dpo only), `viewPiiRedactorRawSamples` (super-admin only). New `dpo` role added to `RbacSeeder` (5 roles total) with `admin.access` + `logs.view` + `pii.detokenize` permissions only — privacy operator, not sysadmin. R30 via supplementary migration adding `tenant_id` to package's audit table + `creating` Eloquent observer that stamps from `TenantContext`. Disabled by default (`PII_REDACTOR_ADMIN_ENABLED=false`). |
+| **`padosoft/laravel-flow-admin` v1.0.0 mounted under `/admin/flows`** | Sub-PR 6 — pre-built Blade + Alpine cockpit iframed inside the AskMyDocs shell. 7 screens (Overview/Dashboard, Runs index/detail, Approvals inbox, Webhook outbox, Flow definitions, Settings, ⌘K palette, Auto-refresh polling) + 5 Spatie-role-backed mutation Gates wired through the package's `ActionAuthorizer` contract: `viewFlowAdmin` + 8 row-scoped methods (`canViewKpis` / `canViewRuns` / `canViewRunDetail` / `canReplayRun` / `canCancelRun` / `canApproveByToken` / `canRejectByToken` / `canRetryWebhook`). R30 via `AskMyDocsFlowAuthorizer` — every row-scoped action reads `tenant_id` via `DB::table` lookup and rejects on cross-tenant. `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Operators can now visualise the 9 Flow definitions registered by sub-PRs 3a-3d (kb.ingest / kb.canonical-index / kb.promote / kb.delete / kb.prune-deleted / kb.prune-embedding-cache / kb.prune-chat-logs / kb.rebuild-graph / kb.ingest-folder) live in the cockpit — every step + every compensator + every approval gate visible in the runs timeline + payload diff. |
+| **`padosoft/eval-harness-ui` v1.0.0 mounted under `/admin/eval-harness` (non-prod only)** | Sub-PR 7 — pre-built React + Vite SPA iframed inside the AskMyDocs shell. 7 screens (Dashboard / Reports list / Report detail / Compare / Trend / Adversarial manifests + details / Live batches). Read-only by design (no mutations) + single Gate `eval-harness.viewer` (super-admin + admin + dpo + editor — editor included so canonical editors can verify their canonical edits did not regress factuality). **Three independent fail-closed fences in series**: env flag `EVAL_HARNESS_UI_ENABLED=false` (default) → package controller `abort(404)`; `EvalHarnessUiNonProduction` middleware `abort(404)` when `APP_ENV=production` even with env=true; `can:eval-harness.viewer` middleware → 403 on viewer / anonymous. R30 via `EvalHarnessUiTenantHeader` middleware that injects `X-Eval-Harness-Tenant` from `TenantContext::current()` (configurable header name; preserves operator-set inbound values). `class_exists()` guard in `bootstrap/providers.php` so production deploys with `composer install --no-dev` don't crash on boot (the package lives in `require-dev` per the v4.2 plan). |
+| **3 R30 strategies — different per package shape** | Each admin SPA needed a different tenant-isolation approach: pii-redactor-admin = supplementary migration + Eloquent observer (package owns its own audit table); flow-admin = Authorizer-level filter (package's ReadModel adapter API doesn't expose query wrapping cleanly without forking); eval-harness-ui = HTTP header injection (package is read-only and consumes its own backend API via the configurable `X-Eval-Harness-Tenant` header). All three are tested against seeded multi-tenant fixtures asserting tenant B's data is unreachable from tenant A's session. |
+| **Sidebar surface refresh** | Three new nav entries — "PII Redactor" + "Flows" + "Eval Harness". The eval-harness entry only renders when both `EVAL_HARNESS_UI_ENABLED=true` AND `APP_ENV != production`. Every entry uses the testid hierarchy convention (R29) so Playwright selectors stay stable. |
+| **Strict mixed-import Playwright pattern** | All three new specs (`admin-pii-redactor.spec.ts`, `admin-flows.spec.ts`, `admin-eval-harness.spec.ts`) use `seededTest` from `'./fixtures'` for the admin block (auto-fixture re-runs DemoSeeder + re-logs admin per test) and `baseTest` from `'@playwright/test'` for the viewer block (uses pre-saved viewer.json storage state, no auto-fixture reset). This pattern was hardened during sub-PR 5 iter 1 + sub-PR 6 iter 1 — both bitten by single-import patterns that reset the DB and cascaded failures across all viewer-RBAC specs in the suite. |
+| **+43 PHPUnit tests across W4** | 1328 → 1371. Per-Gate matrix tests (5 admin x 4 roles + 1 viewer x 4 routes), per-mounting tests (200/403/404 paths including the 3-fence semantic for eval-harness), per-tenant-scoping tests (seed 2 tenants + assert other-tenant rows survive). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md`
+
 #### v4.2.0-rc3 — W3 shipped (eval-harness v1.2 RAG regression CI gate closed 2026-05-10)
 
 | Feature | Description |
@@ -3376,6 +3390,25 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.2.0-rc4 — 2026-05-10 (W4 milestone — three admin SPAs mounted)
+
+Fourth release candidate of the **v4.2 cycle**. W4 mounts **three operator-facing admin consoles** inside the AskMyDocs admin shell, one per stable-line `padosoft/*-admin` package: `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor`, `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows`, and `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` (non-prod only). All three iframe-mounted, all three R30-tenant-scoped via three different strategies (supplementary migration, Authorizer-level filter, HTTP header injection), all three deny-by-default behind explicit Spatie-role-backed Gates.
+
+**What's new in AskMyDocs v4.2.0-rc4 (W4 — three admin SPAs):**
+
+- **W4 / sub-PR 5** — `padosoft/laravel-pii-redactor-admin` v1.0.2 mounted under `/admin/pii-redactor`. Iframe (React 19 + Tailwind v4 isolated from React 18 host). 3 Gates: viewPiiRedactorAdmin / detokenisePiiRedactor / viewPiiRedactorRawSamples. New `dpo` role added to `RbacSeeder` (5 roles total). R30 supplementary migration adds `tenant_id` to package's audit table + `creating` Eloquent observer. PR #121.
+- **W4 / sub-PR 6** — `padosoft/laravel-flow-admin` v1.0.0 mounted under `/admin/flows`. Iframe (Blade + Alpine). 5 Gates wired through the package's `ActionAuthorizer` contract (viewFlowAdmin + 8 row-scoped methods). R30 via `AskMyDocsFlowAuthorizer` row-scoped tenant lookup. `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Operators visualise the 9 Flow definitions registered by sub-PRs 3a-3d live in the cockpit. PR #122.
+- **W4 / sub-PR 7** — `padosoft/eval-harness-ui` v1.0.0 mounted under `/admin/eval-harness` (non-prod only). Iframe (React + Vite isolated bundle). 1 read-only Gate `eval-harness.viewer` (super-admin + admin + dpo + editor). Three independent fail-closed fences (env flag + APP_ENV + Gate). R30 via `EvalHarnessUiTenantHeader` middleware injecting `X-Eval-Harness-Tenant` from `TenantContext`. `class_exists()` guard in `bootstrap/providers.php` so `composer install --no-dev` deploys don't crash. Package lives in `require-dev` per the v4.2 plan. PR #123.
+- **(this PR)** v4.2/W4 closure docs — adds this Changelog entry, the W4 ribbon under `### Key Features`, and the closure status doc `docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md`.
+
+**Pull requests merged on `feature/v4.2` for v4.2.0-rc4:**
+- #121 v4.2/W4 — sub-PR 5 — pii-redactor-admin v1.0.2
+- #122 v4.2/W4 — sub-PR 6 — flow-admin v1.0.0
+- #123 v4.2/W4 — sub-PR 7 — eval-harness-ui v1.0.0
+- (this PR) v4.2/W4 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1328 → 1371 (+43 PHPUnit + 3 new Playwright specs). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
 
 ### v4.2.0-rc3 — 2026-05-10 (W3 milestone — `padosoft/eval-harness` v1.2 RAG regression CI gate)
 
