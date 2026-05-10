@@ -38,6 +38,18 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.3.0-rc1 — W1 shipped (PII redactor comprehensive boundary coverage closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **7 new PII persistence-boundary touch-points** | Sub-PR 4.5 extends `padosoft/laravel-pii-redactor` v1.2 coverage from the 4 v4.1 touch-points (chat middleware / embedding pre-redact / insights snippet / detokenize endpoint) to **11 total**. New: (1) Monolog log channel processor (strips PII from `Log::*` calls before disk write); (2) Failed-jobs payload sanitiser via `JobFailed` listener with deterministic `failed_jobs.uuid` matching (no race window in multi-worker setups); (3) `Conversation` + `Message` `saving` Eloquent observers (full chat history persistence); (4) `ChatLog::creating` observer for `answer` + `sources` JSON (LLM output may echo PII); (5) `AdminCommandAudit::creating` observer for `output`/`error_message`/`args_json`; (6) `AdminInsightsSnapshot::creating` observer walking 6 JSON columns; (7) `AskMyDocsFlowPayloadRedactor` bound to laravel-flow's `CurrentPayloadRedactorProvider` contract — **ONE wire covers run input + step results + audit + webhook outbox + approvals** (the elegant magic alignment between flow + pii-redactor). |
+| **6 admin-readiness inspectors wired into existing AskMyDocs surfaces** | The package's v1.2 ships 6 admin-readiness classes (`RedactorAdminInspector`, `DetectionReportFormatter`, `CustomRulePackInspector`, `RedactionStrategyFactory`, `TokenResolutionService`, `DetokeniseResult`). Sub-PR 4.5 wires each into the appropriate existing AskMyDocs admin surface: per-detector counts in `AiInsightsService::redactionSnapshot()`; sanitised samples (`[email]`, `[iban]`) in `DashboardMetricsController::health()`; active pack(s) + checksum in `HealthCheckService::piiRedactorReport()`; new `GET /api/admin/pii/strategy` endpoint via `PiiStrategyController`; DPO token-hashed payload resolution in `LogViewerController::chatDetokenize`; typed `DetokeniseResult` shape additive to existing detokenize endpoint. |
+| **Default-off invariant + 5 new env knobs** | All 5 new env knobs default `false` (`KB_PII_REDACT_LOGS`, `KB_PII_REDACT_FAILED_JOBS`, `KB_PII_REDACT_ANSWERS`, `KB_PII_REDACT_COMMAND_AUDIT`, `KB_PII_REDACT_FLOW_PAYLOADS`). v4.2 hosts upgrading to v4.3.0-rc1 see byte-identical behaviour until they explicitly opt in. Operators opt in per-touchpoint without an all-or-nothing cliff. |
+| **R7 / R14 inversion: redactor as safety net, not load-bearing wall** | Every observer / listener / processor catches its own `Throwable`s and falls through to the original write — a redactor regression NEVER blocks user-facing flows. Failures are logged loudly + the original write proceeds. The Gate / route layer enforces R14 fail-loud (404 when env disabled, 403 when role insufficient); the redaction layer enforces silent-fall-through so a defective regex / detector never breaks the chat surface. |
+| **+26 PHPUnit tests** | 1371 → 1397. 10 feature tests covering each touch-point + 13 inspector / strategy contract tests + 3 race-window / dpo-can-read / route-gate-middleware tests. Race-window test for `RedactFailedJobPayload` fires two simultaneous failures on the same queue and asserts the right rows are redacted via deterministic `failed_jobs.uuid` matching (R16). Every persistence-boundary test asserts no leak via the canonical regex (R26). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week1-pii-boundary-coverage.md`
+
 #### v4.2.0 GA — full sister-package alignment shipped (closed 2026-05-10)
 
 The v4.2 cycle aligns AskMyDocs with the v1.0+ stable lines of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). +289 PHPUnit tests landed (1082 → 1371) plus a new RAG regression workflow gating every PR. **Patent Box stays external per ADR 0004 D1** — operators install `padosoft/laravel-patent-box-tracker` in a separate Laravel project; AskMyDocs is the subject of the dossier, never the tooling host.
@@ -3404,6 +3416,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.3.0-rc1 — 2026-05-10 (W1 milestone — PII redactor comprehensive boundary coverage)
+
+First release candidate of the **v4.3 cycle**. W1 ships sub-PR 4.5 — the comprehensive boundary-coverage extension of `padosoft/laravel-pii-redactor` v1.2 that was scoped during v4.2 but parked until this cycle. AskMyDocs now has **11 persistence-boundary touch-points + 6 admin-readiness inspectors wired**.
+
+**What's new in AskMyDocs v4.3.0-rc1 (W1 — PII boundary coverage):**
+
+- **W1 / sub-PR 4.5** — 7 new persistence-boundary touch-points (Monolog log processor; failed-jobs payload sanitiser via `JobFailed` listener with deterministic `failed_jobs.uuid` matching; `Conversation` + `Message` + `ChatLog` + `AdminCommandAudit` + `AdminInsightsSnapshot` Eloquent observers; `AskMyDocsFlowPayloadRedactor` bound to `Padosoft\LaravelFlow\Contracts\CurrentPayloadRedactorProvider` — one wire covers run input + step results + audit + webhook outbox + approvals). 6 admin-readiness inspectors wired into existing AskMyDocs admin surfaces. 5 new env knobs all default OFF. PR #127.
+- **(this PR)** v4.3/W1 closure docs — adds this Changelog entry, the W1 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc1:**
+- #127 v4.3/W1 — sub-PR 4.5 — PII redactor comprehensive boundary coverage
+- (this PR) v4.3/W1 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1371 (start of v4.3) → 1397 (+26 PHPUnit). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` |
+| W2 | React 19 host bump (with ADR — unlocks cross-mount of admin SPAs) | `v4.3.0-rc2` |
+| W3 | eval-harness LLM-as-judge nightly cron + ops polish | `v4.3.0-rc3` |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
 
 ### v4.2.0 — 2026-05-10 (GA — full v4.2 cycle closed)
 
