@@ -241,10 +241,16 @@ return [
             // Lazy-parallel is reserved for the nightly profile
             // (live AI mode) where the wall-clock saving on real
             // provider latency justifies the worker hop.
+            // Serial-mode profiles MUST NOT carry `timeout_seconds` or
+            // `wait_timeout_seconds` — eval-harness v1.2's BatchProfile
+            // validator rejects either key on serial mode (parallel-only).
+            // Per-sample timeouts come from the engine default. The
+            // previous fix (5c5390b) removed timeout_seconds but missed
+            // wait_timeout_seconds, which the rag-regression workflow
+            // surfaced loudly on the next CI run.
             'ci' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'wait_timeout_seconds' => 60,
                 'checkpoint_every' => 10,
             ],
             'smoke' => [
@@ -254,7 +260,6 @@ return [
             'nightly' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'wait_timeout_seconds' => 300,
                 'checkpoint_every' => 25,
             ],
         ],
