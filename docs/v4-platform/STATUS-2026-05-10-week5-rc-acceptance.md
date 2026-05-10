@@ -81,7 +81,7 @@ Every box below was verified via `gh release` / `gh run` / `gh pr` / `gh api` qu
 
 ### G — Lorenzo's "all powerful features" directive
 
-- [x] laravel-flow: full feature surface wired (8 definitions, approval gates, dry-run mode, persistence, audit hooks, webhook outbox visible in flow-admin SPA, replay lineage). Not just step/compensator chain.
+- [x] laravel-flow: full feature surface wired (9 definitions, approval gates, dry-run mode, persistence, audit hooks, webhook outbox visible in flow-admin SPA, replay lineage). Not just step/compensator chain.
 - [x] laravel-pii-redactor v1.2: 4 v4.1 touch-points retained + 6 admin-readiness inspectors surface in pii-redactor-admin SPA.
 - [x] eval-harness v1.2: full registrar against the real RAG pipeline (4 metrics including 2 AskMyDocs custom + cohorts + adversarial lane + 3 batch profiles + checkpointing).
 - [x] All 3 admin SPAs: every screen, every Gate, full E2E coverage.
@@ -109,5 +109,5 @@ gh release create v4.2.0 \
   --repo lopadova/AskMyDocs \
   --target "$GA_SHA" \
   --title "v4.2.0 — Sister-package alignment GA" \
-  --notes "v4.2.0 GA — full-feature integration of seven padosoft/* sister packages (regolo v1.0 + pii-redactor v1.2 + laravel-flow v1.0 + flow-admin v1.0 + pii-redactor-admin v1.0.2 + eval-harness v1.2 CI gate + eval-harness-ui v1.0 non-prod admin SPA). 8 sub-PRs (#111-#124), 4 weekly RC tags (rc1/rc2/rc3/rc4), +289 PHPUnit tests (1082 -> 1371), 8 Flow definitions registered + observable, RAG regression gate on every PR. Patent Box stays external per ADR 0004 D1. Closure: docs/v4-platform/STATUS-2026-05-10-week5-rc-acceptance.md + docs/adr/0004-v42-sister-package-integration.md"
+  --notes "v4.2.0 GA — full-feature integration of seven padosoft/* sister packages (regolo v1.0 + pii-redactor v1.2 + laravel-flow v1.0 + flow-admin v1.0 + pii-redactor-admin v1.0.2 + eval-harness v1.2 CI gate + eval-harness-ui v1.0 non-prod admin SPA). 8 sub-PRs (#111-#124), 4 weekly RC tags (rc1/rc2/rc3/rc4), +289 PHPUnit tests (1082 -> 1371), 9 Flow definitions registered + observable, RAG regression gate on every PR. Patent Box stays external per ADR 0004 D1. Closure: docs/v4-platform/STATUS-2026-05-10-week5-rc-acceptance.md + docs/adr/0004-v42-sister-package-integration.md"
 ```

@@ -38,7 +38,7 @@ Despite v1.2.0 being GA-stable on Packagist, `padosoft/eval-harness` stays in As
 
 ### D3 — `padosoft/laravel-flow` is the canonical multi-step orchestrator
 
-Every multi-step background pipeline in AskMyDocs runs through a Flow definition (8 definitions registered in `App\Providers\FlowServiceProvider`):
+Every multi-step background pipeline in AskMyDocs runs through a Flow definition (9 definitions registered in `App\Providers\FlowServiceProvider`):
 
 1. `kb.ingest` — IngestDocumentJob refactored to thin Flow dispatcher (sub-PR 3b)
 2. `kb.canonical-index` — CanonicalIndexerJob (sub-PR 3c)
