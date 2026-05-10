@@ -1,8 +1,18 @@
-import { expect } from '@playwright/test';
-import { test } from './fixtures';
+import { test, expect } from '@playwright/test';
 
 /*
  * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount.
+ *
+ * Imports from '@playwright/test' (NOT './fixtures') deliberately:
+ * the `seeded` auto-fixture in fixtures.ts runs `resetDb` before every
+ * test, which `migrate:fresh`-es the users table — invalidating EVERY
+ * other storage-state cookie file (Laravel's password_<id> session key
+ * detects the bcrypt-salt change and logs the user out). Other viewer
+ * specs (admin-dashboard-viewer.spec.ts, admin-insights-viewer.spec.ts
+ * etc.) follow the same convention: viewer-RBAC scenarios use the
+ * pre-saved viewer storage state directly, without the auto-fixture
+ * reset. See fixtures.ts §"Step 3 is non-obvious but load-bearing"
+ * comment for the underlying mechanism.
  *
  * The package's pre-built console (Dashboard, Playground, Token map,
  * Detokenise, Audit logs, Detectors, Custom rules) is embedded via an
@@ -17,8 +27,9 @@ import { test } from './fixtures';
  *   - viewer role: SPA route shows AdminForbidden, BE rejects the
  *     iframe URL with 403/404.
  *
- * R13 compliance: real backend, real seeders, real Sanctum cookies.
- * No `page.route` interception — the BE responses ARE the assertion.
+ * R13 compliance: real backend, real seeders (already run by the
+ * setup projects), real Sanctum cookies. No `page.route` interception
+ * — the BE responses ARE the assertion.
  */
 
 test.describe('Admin PII Redactor — admin (mount + nav)', () => {
