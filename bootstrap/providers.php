@@ -38,11 +38,11 @@ return [
     // by AskMyDocs through:
     //   1. config/flow-admin.php receives an additional `enabled` key
     //      (not present in the vendor's published config).
-    //   2. AppServiceProvider::registerFlowAdminGate() exposes
+    //   2. FlowAdminIntegrationServiceProvider defines
     //      `Gate::define('viewFlowAdmin')` which the configured outer
     //      middleware `can:viewFlowAdmin` consults.
     //   3. The custom `App\Http\Middleware\FlowAdminEnabled` middleware
-    //      (registered by name in FlowAdminServiceProvider boot below)
+    //      (aliased by FlowAdminIntegrationServiceProvider)
     //      `abort(404)`s when the env switch is off, satisfying R14
     //      (correct semantic for a disabled subsystem) AND
     //      preventing routes from leaking on an unprepared deploy.

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Http\Middleware\FlowAdminEnabled;
-use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Routing\Router;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -58,7 +57,7 @@ final class FlowAdminIntegrationServiceProvider extends ServiceProvider
      * AppServiceProvider::registerPiiRedactorAdminGates() — Spatie
      * roles back the check; anonymous denies explicitly.
      *
-     * The 7 mutation gates the package consults at row level
+     * The package's 8 authorizer methods
      * (canReplayRun, canCancelRun, canApproveByToken, canRejectByToken,
      * canRetryWebhook, canViewRunDetail, canViewKpis, canViewRuns) are
      * implemented inside {@see \App\Flow\Admin\AskMyDocsFlowAuthorizer},

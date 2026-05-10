@@ -79,10 +79,10 @@ return [
     | your permission model and make read / mutation actions available.
     |
     | AskMyDocs binds {@see AskMyDocsFlowAuthorizer} which maps the 8
-    | mutations on the package's ActionAuthorizer contract to Spatie
+    | methods on the package's ActionAuthorizer contract to Spatie
     | role checks (super-admin / admin / dpo). Tenant scoping happens
     | inside that class — every action checks the row's tenant_id
-    | against the active TenantContext (R30) via TenantScopedFlowGuard.
+    | against the active TenantContext (R30).
     */
     'authorizer' => AskMyDocsFlowAuthorizer::class,
 

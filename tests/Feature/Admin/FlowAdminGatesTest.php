@@ -22,7 +22,7 @@ use Tests\TestCase;
  *
  *   1. The outer-fence Laravel Gate `viewFlowAdmin` (consumed by the
  *      `can:viewFlowAdmin` middleware in `config/flow-admin.php`).
- *   2. The 8 mutation methods on {@see AskMyDocsFlowAuthorizer} that
+ *   2. The 8 methods on {@see AskMyDocsFlowAuthorizer} that
  *      back the package's `Padosoft\LaravelFlowAdmin\Contracts\
  *      ActionAuthorizer` contract.
  *

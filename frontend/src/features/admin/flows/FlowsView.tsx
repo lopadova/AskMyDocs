@@ -23,14 +23,16 @@
  * `FLOW_ADMIN_PREFIX` will also update this constant in the same
  * change-set.
  *
- * Status probing: we GET `/admin/flows` (the cockpit's overview
- * route) with `Accept: text/html` and check for a 200 / 3xx. A 404
- * means `FLOW_ADMIN_ENABLED=false` and we surface the explicit error
- * state per R14 — never a blank iframe under a 200.
+ * Status probing: we GET `/admin/flows/api/live` with
+ * `Accept: application/json`. That gives us deterministic 2xx / 4xx
+ * semantics from Laravel (instead of browser-specific
+ * `opaqueredirect` status 0 handling on HTML redirects), so an
+ * expired/anonymous session cannot be mistaken for a healthy cockpit.
  */
 import { useEffect, useState } from 'react';
 
 const FLOW_ADMIN_BASE_URL = '/admin/flows';
+const FLOW_ADMIN_LIVE_URL = `${FLOW_ADMIN_BASE_URL}/api/live`;
 
 export function FlowsView() {
     const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -48,26 +50,17 @@ export function FlowsView() {
             }
         }, 10_000);
 
-        void fetch(FLOW_ADMIN_BASE_URL, {
+        void fetch(FLOW_ADMIN_LIVE_URL, {
             method: 'GET',
             credentials: 'same-origin',
-            // Don't follow the package's internal redirects — we only
-            // need to know whether the route resolves.
-            redirect: 'manual',
-            headers: { Accept: 'text/html' },
+            headers: { Accept: 'application/json' },
             signal: controller.signal,
         })
             .then((response) => {
                 if (!active) {
                     return;
                 }
-                // 200 (rendered HTML), 0 (opaque-redirect after
-                // redirect: 'manual') or 3xx all signal the route
-                // is registered. 404 means the master switch is off.
-                const ok =
-                    response.status === 0 ||
-                    (response.status >= 200 && response.status < 400);
-                setLoadState(ok ? 'ready' : 'error');
+                setLoadState(response.ok ? 'ready' : 'error');
             })
             .catch(() => {
                 if (!active) {

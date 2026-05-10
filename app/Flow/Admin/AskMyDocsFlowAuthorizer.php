@@ -48,8 +48,9 @@ use Padosoft\LaravelFlowAdmin\Contracts\ActionAuthorizer;
  *   flow_run.
  *
  *   Cross-tenant leak is structurally impossible: a super-admin in
- *   tenant A still cannot resume a run owned by tenant B because the
- *   row-level guard fires before the role check is even reached.
+ *   tenant A still cannot resume a run owned by tenant B because every
+ *   row-scoped allow path requires both the matching role AND a
+ *   same-tenant row ownership check.
  *
  * Anonymous requests deny everything explicitly. The package passes
  * `?array $actor` for forwards-compat with API tokens; we use it only
