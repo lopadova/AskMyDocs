@@ -10,6 +10,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Mockery;
 use Padosoft\PiiRedactor\RedactorEngine;
 use Tests\TestCase;
 
@@ -100,7 +102,7 @@ final class FailedJobPayloadRedactionTest extends TestCase
     private function insertFailedJob(array $payload, string $exception): int
     {
         return (int) DB::table('failed_jobs')->insertGetId([
-            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'uuid' => (string) Str::uuid(),
             'connection' => 'database',
             'queue' => 'default',
             'payload' => json_encode($payload),
@@ -111,111 +113,24 @@ final class FailedJobPayloadRedactionTest extends TestCase
 
     private function fireJobFailed(): void
     {
-        $jobMock = new class implements JobContract
-        {
-            public function getJobId(): ?string
-            {
-                return null;
-            }
-
-            public function getQueue(): ?string
-            {
-                return 'default';
-            }
-
-            public function uuid(): string
-            {
-                return 'x';
-            }
-
-            public function fire(): void {}
-
-            public function release($delay = 0): void {}
-
-            public function isReleased(): bool
-            {
-                return false;
-            }
-
-            public function isDeleted(): bool
-            {
-                return false;
-            }
-
-            public function isDeletedOrReleased(): bool
-            {
-                return false;
-            }
-
-            public function delete(): void {}
-
-            public function hasFailed(): bool
-            {
-                return true;
-            }
-
-            public function markAsFailed(): void {}
-
-            public function fail($e = null): void {}
-
-            public function attempts()
-            {
-                return 1;
-            }
-
-            public function maxTries()
-            {
-                return 1;
-            }
-
-            public function maxExceptions()
-            {
-                return null;
-            }
-
-            public function backoff()
-            {
-                return 0;
-            }
-
-            public function timeout()
-            {
-                return 0;
-            }
-
-            public function retryUntil()
-            {
-                return null;
-            }
-
-            public function getName()
-            {
-                return 'TestJob';
-            }
-
-            public function resolveName()
-            {
-                return 'TestJob';
-            }
-
-            public function getConnectionName()
-            {
-                return 'database';
-            }
-
-            public function getRawBody()
-            {
-                return '';
-            }
-
-            public function payload()
-            {
-                return [];
-            }
-        };
+        // Mockery shim — implementing every Job contract method by hand
+        // is brittle across Laravel minors. Mockery handles abstract
+        // method auto-implementation and lets us return a stable queue
+        // name for the listener's lookup.
+        /** @var JobContract $jobMock */
+        $jobMock = Mockery::mock(JobContract::class);
+        $jobMock->shouldReceive('getQueue')->andReturn('default');
+        $jobMock->shouldReceive('getJobId')->andReturn(null);
+        $jobMock->shouldIgnoreMissing();
 
         $event = new JobFailed('database', $jobMock, new \RuntimeException('boom'));
         $listener = new RedactFailedJobPayload(app(RedactorEngine::class));
         $listener->handle($event);
+    }
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
     }
 }
