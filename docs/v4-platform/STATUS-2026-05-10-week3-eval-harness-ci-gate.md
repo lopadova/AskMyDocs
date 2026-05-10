@@ -14,7 +14,7 @@ in §RC tag below.
 
 | Sub-PR | Reference PR | Closure SHA on `feature/v4.2` | Scope |
 |---|---|---|---|
-| **4** — eval-harness v1.2 RAG regression CI gate | [#119](https://github.com/lopadova/AskMyDocs/pull/119) | `cd4fc93` | composer constraint `^0.1.0` → `^1.2.0`; obsolete VCS repo entry removed; `App\Eval\EvalRegistrar` registers 4 datasets (1 baseline + 3 adversarial) with 4 metrics each; 2 custom AskMyDocs metrics (`CosineGroundednessMetric` + `CitationGroundednessMetric`); 42 baseline + 12 adversarial Q&A samples in `tests/Eval/golden/`; new `.github/workflows/rag-regression.yml` triggered on PR + push + manual dispatch; baseline gates the build, adversarial steps are advisory (`continue-on-error: true`); `Http::fake()` cost guard, live mode opt-in via `EVAL_LIVE_AI=1`; +22 PHPUnit tests including a regression-detection self-test that actually proves the gate catches regressions |
+| **4** — eval-harness v1.2 RAG regression CI gate | [#119](https://github.com/lopadova/AskMyDocs/pull/119) | `cd4fc93` | composer constraint `^0.1.0` → `^1.2.0`; obsolete VCS repo entry removed; `App\Eval\EvalRegistrar` registers 4 datasets (1 baseline + 3 adversarial), with a 4-metric baseline stack and 3-metric adversarial stack; 2 custom AskMyDocs metrics (`CosineGroundednessMetric` + `CitationGroundednessMetric`); 42 baseline + 12 adversarial Q&A samples in `tests/Eval/golden/`; new `.github/workflows/rag-regression.yml` triggered on PR + push + manual dispatch; baseline gates the build, adversarial steps are advisory (`continue-on-error: true`); `Http::fake()` cost guard, live mode opt-in via `EVAL_LIVE_AI=1`; +22 PHPUnit tests including a regression-detection self-test that actually proves the gate catches regressions |
 
 **Cycle-wide test count delta on `feature/v4.2` HEAD:** 1306 (start of W3) → 1328 (end of W3) — **+22 new tests**, all green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the new RAG regression workflow.
 
@@ -84,7 +84,7 @@ gh release create v4.2.0-rc3 \
   --target "$CLOSURE_SHA" \
   --title "v4.2.0-rc3 — W3 milestone (eval-harness v1.2 RAG regression CI gate)" \
   --prerelease \
-  --notes "RAG regression CI gate landed: padosoft/eval-harness v1.2 wired against the full AskMyDocs RAG pipeline. 42-sample baseline gates every PR; 12-sample adversarial telemetry uploaded as artefact. 4 metrics × 4 cohorts × 3 batch profiles. Cost guard via Http::fake by default; live-AI mode opt-in via workflow_dispatch. 1 sub-PR (#119). +22 PHPUnit tests (1306 -> 1328). Closure: docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md"
+  --notes "RAG regression CI gate landed: padosoft/eval-harness v1.2 wired against the full AskMyDocs RAG pipeline. 42-sample baseline gates every PR; 12-sample adversarial telemetry uploaded as artefact. Baseline stack: 4 metrics; adversarial stack: 3 metrics; 4 cohorts; 3 batch profiles. Cost guard via Http::fake by default; live-AI mode opt-in via workflow_dispatch. 1 sub-PR (#119). +22 PHPUnit tests (1306 -> 1328). Closure: docs/v4-platform/STATUS-2026-05-10-week3-eval-harness-ci-gate.md"
 ```
 
 ## What's next — W4
