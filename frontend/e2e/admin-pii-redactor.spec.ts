@@ -1,18 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { test as baseTest, expect } from '@playwright/test';
+import { test as seededTest } from './fixtures';
 
 /*
  * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount.
  *
- * Imports from '@playwright/test' (NOT './fixtures') deliberately:
- * the `seeded` auto-fixture in fixtures.ts runs `resetDb` before every
- * test, which `migrate:fresh`-es the users table — invalidating EVERY
- * other storage-state cookie file (Laravel's password_<id> session key
- * detects the bcrypt-salt change and logs the user out). Other viewer
- * specs (admin-dashboard-viewer.spec.ts, admin-insights-viewer.spec.ts
- * etc.) follow the same convention: viewer-RBAC scenarios use the
- * pre-saved viewer storage state directly, without the auto-fixture
- * reset. See fixtures.ts §"Step 3 is non-obvious but load-bearing"
- * comment for the underlying mechanism.
+ * Two separate `test` instances on purpose:
+ *   - `seededTest` (from './fixtures') runs the `seeded` auto-fixture
+ *     before every admin test → resetDb + DemoSeeder + per-test
+ *     re-login. Required for the admin happy path because earlier
+ *     specs in the chromium project may have left the DB in a state
+ *     where admin's session cookie is invalidated (Laravel's
+ *     password_<id> hash check). Same pattern as
+ *     admin-dashboard.spec.ts.
+ *   - `baseTest` (from '@playwright/test') skips the auto-fixture for
+ *     the viewer-RBAC scenarios. The viewer.json storage state is
+ *     created once by viewer.setup.ts and would be invalidated if a
+ *     spec in this file ran resetDb under a viewer body. Same
+ *     pattern as the other admin-*-viewer.spec.ts files.
  *
  * The package's pre-built console (Dashboard, Playground, Token map,
  * Detokenise, Audit logs, Detectors, Custom rules) is embedded via an
@@ -27,13 +31,12 @@ import { test, expect } from '@playwright/test';
  *   - viewer role: SPA route shows AdminForbidden, BE rejects the
  *     iframe URL with 403/404.
  *
- * R13 compliance: real backend, real seeders (already run by the
- * setup projects), real Sanctum cookies. No `page.route` interception
- * — the BE responses ARE the assertion.
+ * R13 compliance: real backend, real seeders, real Sanctum cookies.
+ * No `page.route` interception — the BE responses ARE the assertion.
  */
 
-test.describe('Admin PII Redactor — admin (mount + nav)', () => {
-    test('happy — sidebar entry navigates to admin/pii-redactor and renders the iframe host', async ({
+seededTest.describe('Admin PII Redactor — admin (mount + nav)', () => {
+    seededTest('happy — sidebar entry navigates to admin/pii-redactor and renders the iframe host', async ({
         page,
     }) => {
         await page.goto('/app/chat');
@@ -64,10 +67,10 @@ test.describe('Admin PII Redactor — admin (mount + nav)', () => {
     });
 });
 
-test.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
-    test.use({ storageState: 'playwright/.auth/viewer.json' });
+baseTest.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
+    baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
 
-    test('viewer hitting /app/admin/pii-redactor sees admin-forbidden', async ({ page }) => {
+    baseTest('viewer hitting /app/admin/pii-redactor sees admin-forbidden', async ({ page }) => {
         await page.goto('/app/admin/pii-redactor');
 
         // Same RequireRole pattern as the rest of the admin SPA — the
@@ -85,7 +88,7 @@ test.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
      * env=true + non-allowed-role case (403 from `can:`) without
      * branching the test on env.
      */
-    test('viewer GET /admin/pii-redactor rejects with 4xx (R13: failure injection on package mount URL)', async ({
+    baseTest('viewer GET /admin/pii-redactor rejects with 4xx (R13: failure injection on package mount URL)', async ({
         request,
     }) => {
         const response = await request.get('/admin/pii-redactor');
