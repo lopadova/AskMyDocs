@@ -2,7 +2,15 @@ import { Icon, type IconName } from '../Icons';
 import { Avatar } from './Avatar';
 import type { SeedUser } from '../../lib/seed';
 
-export type SidebarSection = 'chat' | 'dashboard' | 'kb' | 'insights' | 'users' | 'logs' | 'maintenance';
+export type SidebarSection =
+    | 'chat'
+    | 'dashboard'
+    | 'kb'
+    | 'insights'
+    | 'users'
+    | 'logs'
+    | 'maintenance'
+    | 'pii-redactor';
 
 export type SidebarProps = {
     active: SidebarSection;
@@ -26,6 +34,14 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'kb', label: 'Knowledge', icon: 'Book', section: 'admin' },
     { id: 'insights', label: 'AI Insights', icon: 'Sparkles', section: 'admin', badge: 5 },
     { id: 'users', label: 'Users & Roles', icon: 'Users', section: 'admin' },
+    // v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Cross-mount
+    // strategy is iframe (the package targets React 19 + Tailwind v4
+    // while the AskMyDocs SPA is React 18 — safer to isolate the two
+    // bundles), but the sidebar entry itself is just another nav item.
+    // The route uses an icon already present in our Icons set (Shield)
+    // — no new SVGs required. Visible to all roles; the route's
+    // RequireRole gate filters down to admin/dpo/super-admin.
+    { id: 'pii-redactor', label: 'PII Redactor', icon: 'Shield', section: 'admin' },
     { id: 'logs', label: 'Logs', icon: 'Activity', section: 'ops' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', section: 'ops' },
 ];

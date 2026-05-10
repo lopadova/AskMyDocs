@@ -13,9 +13,15 @@ use Spatie\Permission\PermissionRegistrar;
 /**
  * Idempotent RBAC seeder.
  *
- *  - 4 roles: super-admin, admin, editor, viewer (guard: web).
- *  - 11 permissions (kb.* for content, users/roles/permissions for admin,
- *    commands/logs/insights/admin.access for ops panel).
+ *  - 5 roles: super-admin, admin, dpo, editor, viewer (guard: web).
+ *    `dpo` is the Data Protection Officer role added in v4.2/W4 sub-PR 5
+ *    so the PII Redactor Admin Gates have a non-super-admin role they
+ *    can grant detokenise + admin-view access to without escalating to
+ *    full system admin. DPOs see PII tooling but NOT command runner
+ *    or destructive admin commands.
+ *  - 12 permissions (kb.* for content, users/roles/permissions for admin,
+ *    commands/logs/insights/admin.access for ops panel,
+ *    pii.detokenize for PII reverse lookup).
  *  - Backfill: assign `viewer` to every existing user and create a
  *    viewer-role membership against every existing project_key so PR3
  *    deploy does not lock out the userbase.
@@ -34,6 +40,7 @@ class RbacSeeder extends Seeder
     private const ROLES = [
         'super-admin',
         'admin',
+        'dpo',
         'editor',
         'viewer',
     ];
@@ -59,6 +66,13 @@ class RbacSeeder extends Seeder
         'logs.view',
         'insights.view',
         'admin.access',
+        // v4.2/W4 sub-PR 5 — pii-redactor-admin reverse-lookup capability.
+        // Distinct from the Spatie role check the Gate uses (Gate-level
+        // wiring lives in AppServiceProvider::registerPiiRedactorAdminGates);
+        // this permission lets non-Gate consumers (e.g. integration
+        // tests, future API clients) reason about who can detokenise
+        // through the standard `$user->can('pii.detokenize')` channel.
+        'pii.detokenize',
     ];
 
     public function run(): void
@@ -91,6 +105,7 @@ class RbacSeeder extends Seeder
     {
         $superAdmin = Role::findByName('super-admin', self::GUARD);
         $admin = Role::findByName('admin', self::GUARD);
+        $dpo = Role::findByName('dpo', self::GUARD);
         $editor = Role::findByName('editor', self::GUARD);
         $viewer = Role::findByName('viewer', self::GUARD);
 
@@ -111,6 +126,23 @@ class RbacSeeder extends Seeder
             'logs.view',
             'insights.view',
             'admin.access',
+        ]);
+
+        // v4.2/W4 sub-PR 5 — DPO has admin.access (so the AskMyDocs admin
+        // shell renders + the PII Redactor sidebar entry shows up),
+        // logs.view (so they can correlate detokenise events with
+        // upstream activity), and pii.detokenize. Intentionally NO
+        // kb.* / users.manage / commands.run — DPO is a privacy
+        // role, not a system administrator. The Gate
+        // `viewPiiRedactorAdmin` checks `hasAnyRole(['super-admin',
+        // 'dpo', 'admin'])` independently of these permissions; this
+        // permission grant gives the same coverage through the
+        // permission system for downstream tooling that prefers
+        // `$user->can()` over `Gate::allows()`.
+        $dpo->syncPermissions([
+            'admin.access',
+            'logs.view',
+            'pii.detokenize',
         ]);
 
         $editor->syncPermissions([
