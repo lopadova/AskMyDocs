@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Padosoft\PiiRedactor\CustomRules\CustomRulePackInspector;
 use Throwable;
 
 /**
@@ -25,6 +26,7 @@ class HealthCheckService
      *   kb_disk_ok: string,
      *   embedding_provider_ok: string,
      *   chat_provider_ok: string,
+     *   pii_redactor: array<string, mixed>,
      *   checked_at: string
      * }
      */
@@ -37,8 +39,68 @@ class HealthCheckService
             'kb_disk_ok' => $this->kbDiskOk(),
             'embedding_provider_ok' => $this->embeddingProviderOk(),
             'chat_provider_ok' => $this->chatProviderOk(),
+            // v4.3/W1 sub-PR 4.5 — B3 — surface the active PII redactor
+            // pack(s) (Italy / Germany / Spain / custom YAML) so admins
+            // see at a glance which rules are guarding the boundary.
+            'pii_redactor' => $this->piiRedactorReport(),
             'checked_at' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * v4.3/W1 sub-PR 4.5 — B3 — uses the package's
+     * `CustomRulePackInspector` to report configured packs + total
+     * detection-rule count for the admin /healthz panel. Pure config
+     * + filesystem read; no network. Returns an `enabled=false` short
+     * shape when the master switch is off so the dashboard can render
+     * "PII redaction disabled" as a status, not as an error.
+     *
+     * @return array<string, mixed>
+     */
+    public function piiRedactorReport(): array
+    {
+        try {
+            $enabled = (bool) config('kb.pii_redactor.enabled', false);
+            if (! $enabled) {
+                return [
+                    'enabled' => false,
+                    'packs' => [],
+                    'total_rules' => 0,
+                    'status' => 'disabled',
+                ];
+            }
+
+            /** @var CustomRulePackInspector $inspector */
+            $inspector = app(CustomRulePackInspector::class);
+            $packs = $inspector->configuredPacks();
+
+            $totalRules = 0;
+            $hasInvalid = false;
+            foreach ($packs as $pack) {
+                $totalRules += (int) ($pack['rule_count'] ?? 0);
+                if (! ($pack['valid'] ?? false)) {
+                    $hasInvalid = true;
+                }
+            }
+
+            return [
+                'enabled' => true,
+                'packs' => $packs,
+                'total_rules' => $totalRules,
+                'status' => $hasInvalid ? 'degraded' : 'ok',
+            ];
+        } catch (Throwable $e) {
+            // R14 — surface the failure rather than pretending
+            // everything's fine. The admin probe distinguishes
+            // "disabled" (intentional) from "down" (broken).
+            return [
+                'enabled' => true,
+                'packs' => [],
+                'total_rules' => 0,
+                'status' => 'down',
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     public function dbOk(): string

@@ -25,7 +25,10 @@ use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use Padosoft\PiiRedactor\Strategies\RedactionStrategy;
 use Padosoft\PiiRedactor\Strategies\TokeniseStrategy;
+use Padosoft\PiiRedactor\TokenStore\DetokeniseResult;
+use Padosoft\PiiRedactor\TokenStore\TokenResolutionService;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * Phase H1 — admin Log Viewer (READ-ONLY).
@@ -340,8 +343,22 @@ class LogViewerController extends Controller
             ], Response::HTTP_FORBIDDEN);
         }
 
-        $question = is_string($log->question) ? $strategy->detokeniseString($log->question) : null;
-        $answer = is_string($log->answer) ? $strategy->detokeniseString($log->answer) : null;
+        // v4.3/W1 sub-PR 4.5 — B5 + B6 — route detokenisation through
+        // the package's `TokenResolutionService` so the response surfaces
+        // a typed `DetokeniseResult` shape (token_count / resolved_count
+        // / unresolved_tokens) alongside the legacy scalar fields.
+        // Additive (R27) — `question` + `answer` keep their scalar
+        // shape for back-compat; the new `*_meta` keys carry the
+        // typed-result accounting for forensic UX (DPO can see how
+        // many tokens were unresolved → potentially-stale `pii_token_maps`).
+        $resolver = app(TokenResolutionService::class);
+
+        $questionResult = is_string($log->question)
+            ? $this->safeDetokenise($resolver, $log->question)
+            : null;
+        $answerResult = is_string($log->answer)
+            ? $this->safeDetokenise($resolver, $log->answer)
+            : null;
 
         AdminCommandAudit::query()->create([
             'user_id' => $user?->id,
@@ -356,9 +373,34 @@ class LogViewerController extends Controller
 
         return response()->json([
             'id' => $log->id,
-            'question' => $question,
-            'answer' => $answer,
+            // Legacy scalar fields — kept identical so existing FE / E2E
+            // assertions don't break.
+            'question' => $questionResult?->output,
+            'answer' => $answerResult?->output,
+            // v4.3 additive — typed `DetokeniseResult` accounting.
+            'question_meta' => $questionResult?->toArray(),
+            'answer_meta' => $answerResult?->toArray(),
         ]);
+    }
+
+    /**
+     * Wrap `TokenResolutionService::detokeniseString()` so a single
+     * failing payload doesn't tank the whole detokenise response.
+     * Returns null on input that fails to resolve at all (logs +
+     * preserves scalar back-compat).
+     */
+    private function safeDetokenise(TokenResolutionService $resolver, string $text): ?DetokeniseResult
+    {
+        try {
+            return $resolver->detokeniseString($text);
+        } catch (Throwable $e) {
+            Log::warning('LogViewerController::safeDetokenise failed.', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

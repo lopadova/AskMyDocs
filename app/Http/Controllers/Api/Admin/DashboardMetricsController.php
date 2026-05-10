@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Pii\Inspectors\InsightsRedactionFormatter;
 use App\Services\Admin\AdminMetricsService;
 use App\Services\Admin\HealthCheckService;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class DashboardMetricsController extends Controller
     public function __construct(
         private readonly AdminMetricsService $metrics,
         private readonly HealthCheckService $health,
+        private readonly InsightsRedactionFormatter $piiFormatter,
     ) {}
 
     public function overview(Request $request): JsonResponse
@@ -81,7 +83,17 @@ class DashboardMetricsController extends Controller
 
     public function health(): JsonResponse
     {
-        return response()->json($this->health->run());
+        $payload = $this->health->run();
+
+        // v4.3/W1 sub-PR 4.5 — B1 + B2 — additive extension (R27): include
+        // a `pii_redactor_config` snapshot so the dashboard PII strip can
+        // render config (strategy / token store / detector list / pack
+        // count) WITHOUT a second round-trip. The existing `pii_redactor`
+        // key from HealthCheckService::run() (status + pack-validity)
+        // stays intact; this is a sibling key.
+        $payload['pii_redactor_config'] = $this->piiFormatter->configSnapshot();
+
+        return response()->json($payload);
     }
 
     private function project(Request $request): ?string

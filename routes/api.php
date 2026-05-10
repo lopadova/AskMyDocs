@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
+use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\UserController;
@@ -278,6 +279,15 @@ Route::middleware([
                 ->name('api.admin.logs.activity');
             Route::get('/failed-jobs', [LogViewerController::class, 'failedJobs'])
                 ->name('api.admin.logs.failed-jobs');
+        });
+
+        // v4.3/W1 sub-PR 4.5 — B4 — PII strategy admin endpoint.
+        // Returns active strategy + selectable strategies + display
+        // config for the dashboard PII panel. Pure config read; gated
+        // by the same Spatie role middleware as the rest of /admin/*.
+        Route::prefix('pii')->group(function () {
+            Route::get('/strategy', [PiiStrategyController::class, 'show'])
+                ->name('api.admin.pii.strategy');
         });
 
         // Phase I — AI insights. /latest + /{date} read the pre-computed
