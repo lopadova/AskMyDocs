@@ -1,6 +1,30 @@
 # Sister packages integration roadmap
 
-> **Honest status as of v4.2 GA (2026-05-10)**
+> **Honest status as of v4.3 RC / GA prep (2026-05-10)**
+>
+> v4.3 introduces NO new sister-package integrations or version bumps
+> on top of v4.2 GA — the cycle is intentionally **scope-tight on host-side
+> hardening** (PII boundary coverage extension on top of the existing
+> v1.2 surface; React 19 host bump; eval-harness nightly cron consuming
+> the existing v1.2 surface). The full integration matrix below is
+> unchanged since v4.2 GA on 2026-05-10. The v4.3.0 GA tag itself fires
+> in W4.B once `feature/v4.3` merges into `main` per R37.
+>
+> v4.3 cycle deliverables (host-side, no new sister packages):
+>
+> - **W1** — `padosoft/laravel-pii-redactor` v1.2 boundary coverage extended
+>   from the 4 v4.1 touch-points to **11 persistence-boundary touch-points
+>   + 6 admin-readiness inspectors wired**. New observers + listeners +
+>   Monolog log channel processor + Flow `CurrentPayloadRedactorProvider`
+>   contract binding. 5 new env knobs all default OFF. PR #127.
+> - **W2** — React 19 host bump (`react` 18.3.1 → 19.2.6). Dependency-only
+>   bump; pre-flight grep confirmed zero breaking patterns. ADR 0005
+>   defers Tailwind v3 → v4 + iframe → cross-mount migrations to v4.4.
+>   PR #129.
+> - **W3** — `padosoft/eval-harness` v1.2 nightly cron consumer: new
+>   `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC,
+>   default-OFF. Three-fence cost guard. Regression detection +
+>   `Log::alert()` + sidecar JSON. ADR 0006. PR #131.
 >
 > Of the nine `padosoft/*` sister packages currently published on
 > GitHub / Packagist, **seven are integrated into AskMyDocs**:

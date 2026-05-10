@@ -14,6 +14,7 @@ use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Padosoft\PiiRedactor\Admin\RedactorAdminInspector;
 use Padosoft\PiiRedactor\RedactorEngine;
 use Padosoft\PiiRedactor\Strategies\MaskStrategy;
 use RuntimeException;
@@ -545,6 +546,40 @@ PROMPT;
         $questions = $this->maskInsightSnippetsIfEnabled($questions);
 
         return $this->clusterQuestionsViaLlm($questions, $zeroCount, $lowCount);
+    }
+
+    /**
+     * v4.3/W1 sub-PR 4.5 — B1 — per-detector + per-pack snapshot for the
+     * admin insights dashboard. Pure config / catalogue read; no DB
+     * touch and no LLM call. Returns the package's
+     * `RedactorAdminInspector::snapshot()` payload verbatim so the SPA
+     * can render the same shape the package's own admin UI uses.
+     *
+     * Safe to call regardless of `kb.pii_redactor.enabled`: the
+     * inspector reflects the configuration state, not the runtime
+     * behaviour. A disabled redactor still has a configured detector
+     * list; the snapshot reports it.
+     *
+     * @return array<string, mixed>
+     */
+    public function redactionSnapshot(): array
+    {
+        try {
+            /** @var RedactorAdminInspector $inspector */
+            $inspector = app(RedactorAdminInspector::class);
+
+            return $inspector->snapshot();
+        } catch (Throwable $e) {
+            Log::warning('AiInsightsService::redactionSnapshot failed.', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'enabled' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**

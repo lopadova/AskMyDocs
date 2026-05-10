@@ -368,5 +368,71 @@ return [
         | audited — it's a config-stage error, not an operator action.
         */
         'detokenize_permission' => (string) env('KB_PII_DETOKENIZE_PERMISSION', 'pii.detokenize'),
+
+        /*
+        | v4.3/W1 sub-PR 4.5 — comprehensive boundary coverage knobs.
+        | Each one is INDEPENDENTLY default-off and gated by the master
+        | `enabled` flag above. See `App\Providers\PiiBoundaryCoverageServiceProvider`
+        | for the touch-point wiring.
+        */
+
+        /*
+        | Monolog log channel processor — when true, the
+        | `App\Pii\Logging\PiiRedactingProcessor` is pushed onto every
+        | configured Monolog handler so PII is stripped BEFORE the line
+        | hits disk. Defence-in-depth: even if a developer logs
+        | `Log::info("user " . $request->input('email'))`, the disk
+        | record is masked. Mask strategy (not Tokenise) — logs are a
+        | forensic trail, not a round-trippable record.
+        */
+        'redact_logs' => (bool) env('KB_PII_REDACT_LOGS', false),
+
+        /*
+        | Failed-jobs payload sanitiser — when true, the
+        | `App\Pii\Listeners\RedactFailedJobPayload` listener subscribes
+        | to `Illuminate\Queue\Events\JobFailed` and re-writes the
+        | `failed_jobs.payload` JSON column through RedactorEngine.
+        | Failing jobs serialise their constructor args into payload;
+        | a job that took an email or IBAN as a constructor arg would
+        | otherwise leak that PII into `failed_jobs` indefinitely.
+        */
+        'redact_failed_jobs' => (bool) env('KB_PII_REDACT_FAILED_JOBS', false),
+
+        /*
+        | Chat answers + sources redaction — when true, the
+        | `App\Pii\Observers\ChatLogObserver` redacts `chat_logs.answer`
+        | (LLM output may echo PII from ingested corpus) AND walks the
+        | `chat_logs.sources` JSON (citation snippets) on `creating`
+        | events. Complements v4.1's `persist_chat_redacted` knob which
+        | covered the inbound user side (`chat_logs.question` +
+        | `messages.content` via the RedactChatPii middleware) — this
+        | knob covers the outbound LLM-output side that lands AFTER the
+        | middleware path.
+        */
+        'redact_answers' => (bool) env('KB_PII_REDACT_ANSWERS', false),
+
+        /*
+        | Admin command audit redaction — when true, the
+        | `App\Pii\Observers\AdminCommandAuditObserver` redacts
+        | `stdout_head`, `error_message`, and JSON values inside
+        | `args_json` on the `creating` event. Operators occasionally
+        | pass paths / emails / IDs as command arguments; this keeps the
+        | forensic trail clean of PII without dropping the operator
+        | identity columns (user_id stays plain — needed for the audit
+        | trail to be useful).
+        */
+        'redact_command_audit' => (bool) env('KB_PII_REDACT_COMMAND_AUDIT', false),
+
+        /*
+        | Flow payload redactor — when true, the
+        | `App\Pii\AskMyDocsFlowPayloadRedactor` (implements
+        | `Padosoft\LaravelFlow\Contracts\CurrentPayloadRedactorProvider`)
+        | is bound into the container so EVERY persisted Flow payload
+        | (run input, step results, audit trail rows, webhook outbox
+        | bodies) is auto-redacted by the package's
+        | `RedactorAwareFlowStore` decorator. ONE wire, comprehensive
+        | coverage across the entire saga engine.
+        */
+        'redact_flow_payloads' => (bool) env('KB_PII_REDACT_FLOW_PAYLOADS', false),
     ],
 ];

@@ -11,6 +11,16 @@ $providers = [
     // unwritable even when it isn't). Listing it here is a no-op
     // when auto-discovery succeeds and a safety net when it doesn't.
     Padosoft\PiiRedactor\PiiRedactorServiceProvider::class,
+    // v4.3/W1 sub-PR 4.5 — PII redactor comprehensive boundary coverage.
+    // Wires 5 Eloquent observers + 1 Queue listener + 1 Monolog processor
+    // + 1 Flow CurrentPayloadRedactorProvider binding in ONE place. Every
+    // touch-point is INDEPENDENTLY default-off; gates live in
+    // `config/kb.php` `pii_redactor` block under the `redact_*` keys.
+    // Listed AFTER PiiRedactorServiceProvider so the package's
+    // RedactorEngine binding is in the container before observers run,
+    // and AFTER any package providers that bind the Flow contract default
+    // so our `redact_flow_payloads`-gated singleton wins when active.
+    App\Providers\PiiBoundaryCoverageServiceProvider::class,
     // v4.2/W2 — laravel-flow saga engine SP. Listed explicitly for the
     // same reason as PiiRedactor above (auto-discovery is brittle on
     // Windows + Herd). Required for `Flow::define()` / `Flow::execute()`

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Console\Commands\AuthGrantCommand;
+use App\Console\Commands\EvalNightlyCommand;
 use App\Console\Commands\InsightsComputeCommand;
 use App\Console\Commands\KbDeleteCommand;
 use App\Console\Commands\KbIngestCommand;
@@ -93,6 +94,8 @@ class AppServiceProvider extends ServiceProvider
             PruneAdminCommandNoncesCommand::class,
             // PR14 / Phase I — daily AI insights snapshot.
             InsightsComputeCommand::class,
+            // v4.3/W3 — nightly eval-harness regression sentinel.
+            EvalNightlyCommand::class,
         ]);
     }
 

@@ -38,6 +38,53 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.3.0 GA — host-side hardening cycle complete (closed 2026-05-10)
+
+The v4.3 cycle adds **three host-side hardening surfaces** on top of v4.2.0 GA's full sister-package integration. No new sister packages, no version bumps — every constraint inherited from v4.2.0 GA's locked stable line. **+37 PHPUnit tests** landed (1371 → 1408) plus React 19 on the host SPA. Default-off invariant preserved across all 9 new env knobs.
+
+| Surface | What it ships |
+|---|---|
+| **W1 — PII redactor comprehensive boundary coverage** | Extends `padosoft/laravel-pii-redactor` v1.2 coverage from the 4 v4.1 touch-points to **11 persistence-boundary touch-points + 6 admin-readiness inspectors wired**. New observers + listeners + Monolog log channel processor + Flow `CurrentPayloadRedactorProvider` contract binding (one wire covers run input + step results + audit + webhook outbox + approvals — the elegant magic alignment between flow + pii-redactor). 5 new env knobs all default OFF (`KB_PII_REDACT_LOGS`, `KB_PII_REDACT_FAILED_JOBS`, `KB_PII_REDACT_ANSWERS`, `KB_PII_REDACT_COMMAND_AUDIT`, `KB_PII_REDACT_FLOW_PAYLOADS`). PR #127. |
+| **W2 — React 19 host bump** | `react` 18.3.1 → 19.2.6 + `react-dom` + `@types/*`. Pre-flight grep confirmed zero breaking patterns (no `defaultProps` on function components, no `findDOMNode`, no `UNSAFE_*` lifecycles, no `ReactDOM.render`). ADR 0005 documents the decision + the deferred Tailwind v3 → v4 migration (separate scope) + iframe → cross-mount migration (v4.4 deliverable, gated on Tailwind v4 landing first). PR #129. |
+| **W3 — eval-harness LLM-as-judge nightly cron + ops polish** | New `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC, default-OFF via `EVAL_NIGHTLY_ENABLED`. Three-fence cost guard (`EVAL_NIGHTLY_ENABLED` scheduler gate + `EVAL_NIGHTLY_LIVE` provider-key check + provider-key presence check inside the command). Persisted artefacts at `storage/app/eval-harness/nightly/<YYYY-MM-DD>.json` + `<YYYY-MM-DD>.md`. Regression detection vs prior baseline; fires `Log::alert()` + sidecar `<date>.alert.json` on regression > `EVAL_NIGHTLY_REGRESSION_THRESHOLD` (default 0.05). Auto-pruned beyond `EVAL_NIGHTLY_RETENTION_DAYS` (default 90). 3 ops flags (`--dry-run`, `--status`, `--prune-only`). ADR 0006 documents cost guard, alerting choice (`Log::alert` over Notification), retention, host/package boundary rationale. PR #131. |
+| **+37 PHPUnit tests + ADR 0005 + ADR 0006 across v4.3** | 1371 → 1408. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow. R36 review-loop discipline applied to every sub-PR (Copilot review + CI green loop until 0 outstanding must-fix + all CI green). |
+
+Closure artefacts: `docs/v4-platform/STATUS-2026-05-10-v43-week1-pii-boundary-coverage.md` (W1) + `docs/v4-platform/STATUS-2026-05-10-v43-week2-react-19-host-bump.md` (W2) + `docs/v4-platform/STATUS-2026-05-10-v43-week3-eval-nightly-cron.md` (W3) + `docs/v4-platform/STATUS-2026-05-10-v43-week4-rc-acceptance.md` (W4 — RC acceptance + GA merge) + `docs/adr/0005-v43-react-19-host-bump.md` + `docs/adr/0006-v43-nightly-eval-cron.md`.
+
+#### v4.3.0-rc3 — W3 shipped (eval-harness LLM-as-judge nightly cron + ops polish closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host-level nightly eval-harness regression sentinel** | New `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC (`bootstrap/app.php`), default-OFF via `EVAL_NIGHTLY_ENABLED`. Runs the seeded golden baseline through the full RAG pipeline once per day, optionally with `EVAL_NIGHTLY_LIVE=true` (plus a provider key) to catch real-provider drift (model behaviour shifts, refusal-policy changes, embedding-space drift) the PR-time `Http::fake()` CI gate cannot see by design. (`EVAL_NIGHTLY_LIVE` is the nightly-cron's own opt-in; the PR-time CI gate's separate `EVAL_LIVE_AI=1` knob is unrelated.) Persisted artefacts at `storage/app/eval-harness/nightly/<YYYY-MM-DD>.json` + `<YYYY-MM-DD>.md`; auto-pruned after `EVAL_NIGHTLY_RETENTION_DAYS` (default 90). |
+| **Three-fence cost guard** | (1) `EVAL_NIGHTLY_ENABLED` (default `false`) gates the scheduler entry — when false the cron entry is never registered. (2) `EVAL_NIGHTLY_LIVE` (default `false`) gates the live-AI override even if the scheduler fires — when false the run uses `Http::fake()` exactly as the PR-time gate does. (3) The command refuses live mode if no provider key is present, so a misconfigured prod host that flips both env knobs without provisioning the secret refuses cleanly instead of silently billing tokens. R26 defense-in-depth test pre-seeds `eval-harness.askmydocs.live_ai=true` AND env `EVAL_LIVE_AI=1` then asserts the command FORCES `live_ai=false` at runner-call time + `Http::assertNothingSent()`. |
+| **Regression detection + alert sidecar + ops polish** | `app/Eval/Support/NightlyDeltaCalculator.php` computes `macro_f1` + per-metric mean deltas vs the most recent prior nightly (or, on first run, the most recent JSON report under the configured reports directory `eval-harness.reports.path_prefix` — no baseline-name filter is applied) and returns `{macro_f1_prior, macro_f1_current, macro_f1_delta, regressed_metrics, improved_metrics}`. When the delta exceeds `EVAL_NIGHTLY_REGRESSION_THRESHOLD` (default 0.05 = 5%) the command fires `Log::alert()` + writes a forensic sidecar `<date>.alert.json` so operators wire alert-channel notifications off the log. Three ops flags: `--dry-run` (skip run, print plan), `--status` (print latest nightly summary without re-running), `--prune-only` (just delete reports beyond retention and exit). |
+| **ADR 0006 documents the design** | `docs/adr/0006-v43-nightly-eval-cron.md` records: cost-guard rationale (three independent fences); alerting choice (`Log::alert` over a Notification class — operators already wire alerts off the log channel, no need for a dedicated SP); retention policy (90 days, auto-pruned); host/package boundary rationale (cron policy + alerting are host concerns; the `padosoft/eval-harness` package stays pure compute — no scheduler, no notifications, no host-specific knobs). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week3-eval-nightly-cron.md`
+
+#### v4.3.0-rc2 — W2 shipped (React 19 host bump closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host SPA bumped to React 19.2.6** | `react` 18.3.1 → 19.2.6, `react-dom` 18.3.1 → 19.2.6, `@types/react` 18.3.12 → 19.2.x, `@types/react-dom` 18.3.1 → 19.2.x. `@vitejs/plugin-react` ^4.3.3 unchanged (supports both majors). `@testing-library/react` ^16 unchanged (supports React 19). Vitest (react + legacy) green; full PHPUnit + Playwright + RAG regression all green post-bump. |
+| **Scope-tight, dependency-only bump** | Pre-flight grep confirmed zero `defaultProps` on function components, zero `findDOMNode`, zero `UNSAFE_*` lifecycles, zero `ReactDOM.render` — every host component was already React 19 compatible. No code changes required outside the dependency manifests. No transitive dep needed pinning, no peer-dep override required, no `--legacy-peer-deps` flag. |
+| **ADR 0005 documents the decision + deferrals** | `docs/adr/0005-v43-react-19-host-bump.md` records: why React 19 now (17 months of GA wear, transitive deps stabilised); why Tailwind v3 → v4 stays deferred (different config surface, different preflight reset, different theme-token API, ~40 utility classes — warrants its own scope-clean PR); why iframe → cross-mount of `pii-redactor-admin` + `eval-harness-ui` stays deferred to v4.4 (gated on Tailwind v4 landing first). `flow-admin` stays iframe-mounted forever (Blade + Alpine, not React). |
+| **Compatibility risks watched** | `@ai-sdk/react` ^3 (peer-dep `^18 \|\| ~19.0.1 \|\| ~19.1.2 \|\| ^19.2.1` — covers 19.2.6); `@tanstack/react-router` ^1.81 (React 19 from 1.61+); `@tanstack/react-query` ^5.59; `recharts` ^3.8; `react-hook-form` ^7.53; `react-markdown` ^10. All checked compatible; no peer overrides required. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week2-react-19-host-bump.md`
+
+#### v4.3.0-rc1 — W1 shipped (PII redactor comprehensive boundary coverage closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **7 new PII persistence-boundary touch-points** | Sub-PR 4.5 extends `padosoft/laravel-pii-redactor` v1.2 coverage from the 4 v4.1 touch-points (chat middleware / embedding pre-redact / insights snippet / detokenize endpoint) to **11 total**. New: (1) Monolog log channel processor (strips PII from `Log::*` calls before disk write); (2) Failed-jobs payload sanitiser via `JobFailed` listener with deterministic `failed_jobs.uuid` matching (no race window in multi-worker setups); (3) `Conversation` + `Message` `saving` Eloquent observers (full chat history persistence); (4) `ChatLog::creating` observer for `answer` + `sources` JSON (LLM output may echo PII); (5) `AdminCommandAudit::creating` observer for `output`/`error_message`/`args_json`; (6) `AdminInsightsSnapshot::creating` observer walking 6 JSON columns; (7) `AskMyDocsFlowPayloadRedactor` bound to laravel-flow's `CurrentPayloadRedactorProvider` contract — **ONE wire covers run input + step results + audit + webhook outbox + approvals** (the elegant magic alignment between flow + pii-redactor). |
+| **6 admin-readiness inspectors wired into existing AskMyDocs surfaces** | The package's v1.2 ships 6 admin-readiness classes (`RedactorAdminInspector`, `DetectionReportFormatter`, `CustomRulePackInspector`, `RedactionStrategyFactory`, `TokenResolutionService`, `DetokeniseResult`). Sub-PR 4.5 wires each into the appropriate existing AskMyDocs admin surface: per-detector counts in `AiInsightsService::redactionSnapshot()`; sanitised samples (`[email]`, `[iban]`) in `DashboardMetricsController::health()`; active pack(s) + checksum in `HealthCheckService::piiRedactorReport()`; new `GET /api/admin/pii/strategy` endpoint via `PiiStrategyController`; DPO token-hashed payload resolution in `LogViewerController::chatDetokenize`; typed `DetokeniseResult` shape additive to existing detokenize endpoint. |
+| **Default-off invariant + 5 new env knobs** | All 5 new env knobs default `false` (`KB_PII_REDACT_LOGS`, `KB_PII_REDACT_FAILED_JOBS`, `KB_PII_REDACT_ANSWERS`, `KB_PII_REDACT_COMMAND_AUDIT`, `KB_PII_REDACT_FLOW_PAYLOADS`). v4.2 hosts upgrading to v4.3.0-rc1 see byte-identical behaviour until they explicitly opt in. Operators opt in per-touchpoint without an all-or-nothing cliff. |
+| **R7 / R14 inversion: redactor as safety net, not load-bearing wall** | Every observer / listener / processor catches its own `Throwable`s and falls through to the original write — a redactor regression NEVER blocks user-facing flows. Failures are logged loudly + the original write proceeds. The Gate / route layer enforces R14 fail-loud (404 when env disabled, 403 when role insufficient); the redaction layer enforces silent-fall-through so a defective regex / detector never breaks the chat surface. |
+| **+26 PHPUnit tests** | 1371 → 1397. 10 feature tests covering each touch-point + 13 inspector / strategy contract tests + 3 race-window / dpo-can-read / route-gate-middleware tests. Race-window test for `RedactFailedJobPayload` fires two simultaneous failures on the same queue and asserts the right rows are redacted via deterministic `failed_jobs.uuid` matching (R16). Every persistence-boundary test asserts no leak via the canonical regex (R26). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v43-week1-pii-boundary-coverage.md`
+
 #### v4.2.0 GA — full sister-package alignment shipped (closed 2026-05-10)
 
 The v4.2 cycle aligns AskMyDocs with the v1.0+ stable lines of every in-scope `padosoft/*` sister package over four weekly milestones (W1 = bumps; W2 = laravel-flow integration; W3 = eval-harness CI gate; W4 = three admin SPAs). +289 PHPUnit tests landed (1082 → 1371) plus a new RAG regression workflow gating every PR. **Patent Box stays external per ADR 0004 D1** — operators install `padosoft/laravel-patent-box-tracker` in a separate Laravel project; AskMyDocs is the subject of the dossier, never the tooling host.
@@ -3404,6 +3451,116 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.3.0 — 2026-05-10 (GA — host-side hardening cycle complete)
+
+**v4.3.0 GA** closes the v4.3 cycle. Three host-side hardening surfaces shipped on top of v4.2.0 GA's full sister-package integration. NO new sister packages, NO version bumps — every constraint inherited from v4.2.0 GA's locked stable line. Default-off invariant preserved across all 9 new env knobs; a v4.2.0 host upgrading to v4.3.0 sees byte-identical behaviour until they explicitly opt in.
+
+**What's new in AskMyDocs v4.3.0 GA:**
+
+- **W1 — PII redactor comprehensive boundary coverage** (PR #127). 11 persistence-boundary touch-points (was 4 in v4.1) + 6 admin-readiness inspectors wired into existing AskMyDocs admin surfaces. New observers + listeners + Monolog log channel processor + Flow `CurrentPayloadRedactorProvider` contract binding. 5 new env knobs all default OFF.
+- **W2 — React 19 host bump** (PR #129). `react` 18.3.1 → 19.2.6 + `react-dom` + `@types/*`. Pre-flight grep confirmed zero breaking patterns. ADR 0005 documents the deferral of Tailwind v4 + cross-mount migration to v4.4.
+- **W3 — eval-harness LLM-as-judge nightly cron + ops polish** (PR #131). New `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC, default-OFF. Three-fence cost guard. Regression detection + alert sidecar. 3 ops flags. ADR 0006.
+- **(this PR — W4.A)** v4.3 W4 closure docs + GA prep — adds this Changelog entry, the v4.3.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-10-v43-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.3 GA refresh. The `feature/v4.3` → `main` GA merge + `v4.3.0` GA tag itself land in a follow-up **W4.B** PR after this closure PR merges.
+
+**Pull requests merged on `feature/v4.3` for v4.3.0 GA:**
+- #127 v4.3/W1 — sub-PR 4.5 — PII redactor comprehensive boundary coverage
+- #128 v4.3/W1 closure — Changelog entry + Key Features + closure status doc
+- #129 v4.3/W2 — React 19 host bump + ADR 0005
+- #130 v4.3/W2 closure — Changelog entry + Key Features + closure status doc
+- #131 v4.3/W3 — eval-harness nightly cron + ops polish + ADR 0006
+- #132 v4.3/W3 closure — Changelog entry + Key Features + closure status doc
+- (this PR — W4.A) v4.3 W4 closure + GA prep — Changelog entry + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
+- (W4.B follow-up PR) `feature/v4.3` → `main` GA merge per R37 + `v4.3.0` GA tag at the merge SHA
+
+**v4.3 cycle test count delta:** 1371 (start of v4.3 from v4.2.0 GA) → **1408** (end of W3). +37 PHPUnit tests across the cycle (W1: +26 boundary-coverage tests; W2: +0 dependency-only bump; W3: +11 nightly-cron tests including 1 R26 defense-in-depth test). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle weekly RC tags (preserved):**
+
+| Tag | Closure SHA | Milestone | GitHub release |
+|---|---|---|---|
+| `v4.3.0-rc1` | `9f7aa47` | W1 closure (PII boundary coverage) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc1 |
+| `v4.3.0-rc2` | `d83b95e` | W2 closure (React 19 host bump) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc2 |
+| `v4.3.0-rc3` | `897c33f` | W3 closure (eval nightly cron) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0-rc3 |
+| **`v4.3.0` GA** | _filled in on W4.B merge_ | `feature/v4.3` → `main` | https://github.com/lopadova/AskMyDocs/releases/tag/v4.3.0 |
+
+**Forward-looking — v4.4 backlog (parked, NOT v4.3 blockers):**
+
+- Tailwind v3 → v4 host migration (separate scope per ADR 0005).
+- Iframe → cross-mount of pii-redactor-admin + eval-harness-ui (gated on Tailwind v4 landing first).
+- eval-harness adversarial-lane nightly opt-in (small operational follow-up once nightly cron has stable baseline data).
+
+### v4.3.0-rc3 — 2026-05-10 (W3 milestone — eval-harness LLM-as-judge nightly cron + ops polish)
+
+Third release candidate of the **v4.3 cycle**. W3 ships the host-level nightly eval-harness regression sentinel: a new `eval:nightly` Artisan command + Laravel scheduler entry at 05:30 UTC that runs the seeded golden baseline through the full RAG pipeline once per day, optionally with `EVAL_NIGHTLY_LIVE=true` (plus a provider key) to catch real-provider drift the PR-time `Http::fake()` CI gate cannot see by design. (The PR-time CI gate's separate `EVAL_LIVE_AI=1` knob remains unrelated to the nightly cron's `EVAL_NIGHTLY_LIVE` opt-in.) Default-OFF; three independent fences guard cost.
+
+**What's new in AskMyDocs v4.3.0-rc3 (W3 — eval-harness nightly cron + ops polish):**
+
+- **W3 / sub-PR (#131)** — new `app/Console/Commands/EvalNightlyCommand.php` (4 ops flags: `--dry-run`, `--status`, `--prune-only`, plain run; two-fence cost guard `EVAL_NIGHTLY_ENABLED` scheduler gate + `EVAL_NIGHTLY_LIVE` provider-key check; writes dated JSON+MD report to `storage/app/eval-harness/nightly/`; computes delta vs prior baseline; fires `Log::alert()` + sidecar `<date>.alert.json` on regression > `EVAL_NIGHTLY_REGRESSION_THRESHOLD` default 0.05; auto-prunes beyond `EVAL_NIGHTLY_RETENTION_DAYS` default 90). New `app/Eval/Support/NightlyDeltaCalculator.php` (pure-PHP delta computation). New `app/Eval/Support/EvalHarnessRunner.php` (thin wrapper enabling test-time substitution). 4 new env knobs all default OFF/safe-default. New scheduler entry in `bootstrap/app.php` at 05:30 UTC, gated by `EVAL_NIGHTLY_ENABLED`. ADR 0006 documents cost guard, alerting choice (`Log::alert` over Notification), retention, host/package boundary rationale.
+- **(this PR)** v4.3/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc3:**
+- #131 v4.3/W3 — eval-harness nightly cron + ops polish + ADR 0006
+- (this PR) v4.3/W3 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1397 (start of W3 from v4.3.0-rc2) → 1408 (+11 PHPUnit: 4 unit tests for `NightlyDeltaCalculator` + 6 feature tests for `EvalNightlyCommand` + 1 R26 defense-in-depth test added in iter 2 for the two-fence cost guard). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` ✅ |
+| W2 | React 19 host bump + ADR 0005 | `v4.3.0-rc2` ✅ |
+| W3 (this) | eval-harness LLM-as-judge nightly cron + ops polish + ADR 0006 | `v4.3.0-rc3` ✅ |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
+
+### v4.3.0-rc2 — 2026-05-10 (W2 milestone — React 19 host bump)
+
+Second release candidate of the **v4.3 cycle**. W2 bumps the host SPA from React 18.3.1 to React 19.2.6 to enable the future v4.4 cross-mount of admin SPAs (currently iframe-mounted per ADR 0004 D5). Bump is dependency-only — pre-flight grep confirmed zero React 18-specific patterns, so no code changes required.
+
+**What's new in AskMyDocs v4.3.0-rc2 (W2 — React 19 host bump):**
+
+- **W2 / sub-PR (#129)** — `react` 18.3.1 → 19.2.6 + `react-dom` + `@types/react` + `@types/react-dom`. ADR 0005 documents the decision + the deferred Tailwind v3 → v4 migration (separate scope) + iframe → cross-mount migration (v4.4 deliverable, gated on Tailwind v4 landing first). Vitest (react + legacy) green; full PHPUnit + Playwright + RAG regression all green.
+- **(this PR)** v4.3/W2 closure docs — adds this Changelog entry, the W2 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc2:**
+- #129 v4.3/W2 — React 19 host bump + ADR 0005
+- (this PR) v4.3/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** unchanged from v4.3.0-rc1 (1397 PHPUnit) — bump is dependency-only and existing tests cover the React 19 surface. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` ✅ |
+| W2 (this) | React 19 host bump + ADR 0005 | `v4.3.0-rc2` ✅ |
+| W3 | eval-harness LLM-as-judge nightly cron + ops polish | `v4.3.0-rc3` |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
+
+### v4.3.0-rc1 — 2026-05-10 (W1 milestone — PII redactor comprehensive boundary coverage)
+
+First release candidate of the **v4.3 cycle**. W1 ships sub-PR 4.5 — the comprehensive boundary-coverage extension of `padosoft/laravel-pii-redactor` v1.2 that was scoped during v4.2 but parked until this cycle. AskMyDocs now has **11 persistence-boundary touch-points + 6 admin-readiness inspectors wired**.
+
+**What's new in AskMyDocs v4.3.0-rc1 (W1 — PII boundary coverage):**
+
+- **W1 / sub-PR 4.5** — 7 new persistence-boundary touch-points (Monolog log processor; failed-jobs payload sanitiser via `JobFailed` listener with deterministic `failed_jobs.uuid` matching; `Conversation` + `Message` + `ChatLog` + `AdminCommandAudit` + `AdminInsightsSnapshot` Eloquent observers; `AskMyDocsFlowPayloadRedactor` bound to `Padosoft\LaravelFlow\Contracts\CurrentPayloadRedactorProvider` — one wire covers run input + step results + audit + webhook outbox + approvals). 6 admin-readiness inspectors wired into existing AskMyDocs admin surfaces. 5 new env knobs all default OFF. PR #127.
+- **(this PR)** v4.3/W1 closure docs — adds this Changelog entry, the W1 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.3` for v4.3.0-rc1:**
+- #127 v4.3/W1 — sub-PR 4.5 — PII redactor comprehensive boundary coverage
+- (this PR) v4.3/W1 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1371 (start of v4.3) → 1397 (+26 PHPUnit). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
+
+**v4.3 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | sub-PR 4.5 — PII redactor comprehensive boundary coverage | `v4.3.0-rc1` |
+| W2 | React 19 host bump (with ADR — unlocks cross-mount of admin SPAs) | `v4.3.0-rc2` |
+| W3 | eval-harness LLM-as-judge nightly cron + ops polish | `v4.3.0-rc3` |
+| W4 | RC acceptance + `feature/v4.3` → `main` GA merge | **`v4.3.0` GA** |
 
 ### v4.2.0 — 2026-05-10 (GA — full v4.2 cycle closed)
 
