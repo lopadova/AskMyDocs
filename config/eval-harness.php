@@ -244,19 +244,16 @@ return [
             'ci' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'timeout_seconds' => 30,
                 'wait_timeout_seconds' => 60,
                 'checkpoint_every' => 10,
             ],
             'smoke' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'timeout_seconds' => 15,
             ],
             'nightly' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'timeout_seconds' => 90,
                 'wait_timeout_seconds' => 300,
                 'checkpoint_every' => 25,
             ],
