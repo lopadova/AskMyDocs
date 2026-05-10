@@ -61,6 +61,7 @@ final class EvalNightlyCommandTest extends TestCase
         $this->clearEnv('EVAL_NIGHTLY_LIVE');
         $this->clearEnv('EVAL_NIGHTLY_REGRESSION_THRESHOLD');
         $this->clearEnv('EVAL_NIGHTLY_RETENTION_DAYS');
+        $this->clearEnv('EVAL_LIVE_AI');
 
         parent::tearDown();
     }
@@ -95,7 +96,7 @@ final class EvalNightlyCommandTest extends TestCase
         Storage::disk($this->diskName)->assertDirectoryEmpty('eval-harness/nightly');
     }
 
-    public function test_command_refuses_when_live_disabled_without_provider_key(): void
+    public function test_command_refuses_when_live_requested_without_provider_key(): void
     {
         // Force the "operator wanted live but no key" arm by setting the
         // override true while every provider env var is empty.
@@ -186,6 +187,68 @@ final class EvalNightlyCommandTest extends TestCase
         Storage::disk($this->diskName)->assertMissing('eval-harness/nightly/2026-05-10.alert.json');
     }
 
+    public function test_command_runs_in_fake_mode_when_eval_live_ai_set_but_nightly_live_false(): void
+    {
+        // Simulate a host with EVAL_LIVE_AI=1 in env (e.g. a developer's
+        // dotfile leak) AND EVAL_NIGHTLY_LIVE=false. Without the
+        // unconditional `Config::set('eval-harness.askmydocs.live_ai',
+        // $live)` write inside invokeEvalRun(), the prior config value
+        // would persist and the cron would silently bill tokens.
+        $this->setEnv('EVAL_LIVE_AI', '1');
+        $this->setEnv('EVAL_NIGHTLY_LIVE', 'false');
+
+        // Pre-seed the config to live=true so the test fails loudly if
+        // the command does NOT explicitly overwrite it back to false.
+        config()->set('eval-harness.askmydocs.live_ai', true);
+
+        $observedLiveAi = null;
+        $disk = Storage::disk($this->diskName);
+        $disk->makeDirectory('eval-harness/nightly');
+        $payload = $this->reportPayload(macroF1: 0.90);
+        $testCase = $this;
+
+        $stub = new class($payload, $observedLiveAi, $testCase) extends EvalHarnessRunner
+        {
+            public ?bool $capturedLiveAi = null;
+
+            public function __construct(
+                private string $payload,
+                private $unused,
+                private $testCase,
+            ) {}
+
+            public function run(array $parameters): int
+            {
+                // Capture what config sees AT runner-call time. This is
+                // the value the EvalRegistrar would consult to decide
+                // whether to bind Http::fake() — the load-bearing fence.
+                $this->capturedLiveAi = (bool) config('eval-harness.askmydocs.live_ai');
+
+                $body = ($parameters['--json'] ?? false) === true
+                    ? $this->payload
+                    : '# stub';
+                file_put_contents((string) $parameters['--out'], $body);
+
+                return 0;
+            }
+        };
+
+        $this->app->instance(EvalHarnessRunner::class, $stub);
+
+        // R26 — no real provider HTTP call may leak through.
+        Http::assertNothingSent();
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        $this->assertSame(
+            false,
+            $stub->capturedLiveAi,
+            'EVAL_NIGHTLY_LIVE=false MUST force live_ai=false even when EVAL_LIVE_AI=1 is set in env.',
+        );
+        // R26 confirmation: still nothing sent after the run.
+        Http::assertNothingSent();
+    }
+
     private function stubArtisanRun(float $macroF1, float $contains = 0.85): void
     {
         $disk = Storage::disk($this->diskName);
@@ -207,13 +270,24 @@ final class EvalNightlyCommandTest extends TestCase
 
             public function run(array $parameters): int
             {
-                $this->testCase::assertNotSame('', (string) ($parameters['--out'] ?? ''));
-                $this->testCase::assertStringContainsString('eval-harness/nightly/2026-05-10', (string) $parameters['--out']);
+                $out = (string) ($parameters['--out'] ?? '');
+                $this->testCase::assertNotSame('', $out);
+                $this->testCase::assertTrue(
+                    ($parameters['--raw-path'] ?? false) === true,
+                    'eval:nightly must pass --raw-path so the absolute --out is honored verbatim.',
+                );
+                // Normalise Windows backslashes for the contains-check.
+                $normalised = str_replace('\\', '/', $out);
+                $this->testCase::assertStringContainsString('eval-harness/nightly/2026-05-10', $normalised);
 
                 $body = ($parameters['--json'] ?? false) === true
                     ? $this->payload
                     : sprintf('# Eval report%smacro_f1: %.4f', PHP_EOL, $this->macroF1);
-                $this->disk->put($parameters['--out'], $body);
+                // The command passes an ABSOLUTE path now (--raw-path).
+                // Write to it directly so the disk lookup against the
+                // original RELATIVE path (handle() keeps it for the
+                // post-run readJsonReport call) still finds the file.
+                file_put_contents($out, $body);
 
                 return 0;
             }

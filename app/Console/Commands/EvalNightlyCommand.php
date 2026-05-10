@@ -53,8 +53,6 @@ class EvalNightlyCommand extends Command
 
     private const NIGHTLY_DIRECTORY = 'eval-harness/nightly';
 
-    private const REGULAR_REPORTS_DIRECTORY = 'eval-harness/reports';
-
     private const BASELINE_DATASET = 'rag.askmydocs.factuality.fy2026';
 
     private const REGISTRAR_FQCN = 'App\\Eval\\EvalRegistrar';
@@ -102,7 +100,10 @@ class EvalNightlyCommand extends Command
         $disk = $this->reportsDisk();
         $disk->makeDirectory(self::NIGHTLY_DIRECTORY);
 
-        $exitCode = $this->invokeEvalRun($runner, $live, $jsonRelative, $markdownRelative, $disk);
+        $jsonAbsolute = $this->absolutePathFor($disk, $jsonRelative);
+        $markdownAbsolute = $this->absolutePathFor($disk, $markdownRelative);
+
+        $exitCode = $this->invokeEvalRun($runner, $live, $jsonAbsolute, $markdownAbsolute, $disk, $jsonRelative);
         if ($exitCode === self::FAILURE) {
             return self::FAILURE;
         }
@@ -126,26 +127,42 @@ class EvalNightlyCommand extends Command
         return self::SUCCESS;
     }
 
-    private function invokeEvalRun(EvalHarnessRunner $runner, bool $live, string $jsonRelative, string $markdownRelative, Filesystem $disk): int
-    {
-        if ($live) {
-            Config::set('eval-harness.askmydocs.live_ai', true);
-        }
+    private function invokeEvalRun(
+        EvalHarnessRunner $runner,
+        bool $live,
+        string $jsonAbsolute,
+        string $markdownAbsolute,
+        Filesystem $disk,
+        string $jsonRelative,
+    ): int {
+        // Two-fence cost guard: ALWAYS write the live_ai value, never
+        // assume the prior config matches our intent. A host with
+        // EVAL_LIVE_AI=1 in env would otherwise leak into the nightly
+        // run even when EVAL_NIGHTLY_LIVE=false, bypassing the second
+        // fence and billing tokens unexpectedly.
+        Config::set('eval-harness.askmydocs.live_ai', $live);
 
+        // --raw-path: pass the absolute filesystem path so the
+        // package writes EXACTLY where we tell it; without this knob
+        // eval-harness:run resolves --out under
+        // eval-harness.reports.path_prefix and our subsequent
+        // disk lookups (which use the unprefixed relative path) miss.
         try {
             $jsonExit = $runner->run([
                 'dataset' => self::BASELINE_DATASET,
                 '--registrar' => self::REGISTRAR_FQCN,
                 '--batch-profile' => 'nightly',
                 '--json' => true,
-                '--out' => $jsonRelative,
+                '--out' => $jsonAbsolute,
+                '--raw-path' => true,
             ]);
 
             $markdownExit = $runner->run([
                 'dataset' => self::BASELINE_DATASET,
                 '--registrar' => self::REGISTRAR_FQCN,
                 '--batch-profile' => 'nightly',
-                '--out' => $markdownRelative,
+                '--out' => $markdownAbsolute,
+                '--raw-path' => true,
             ]);
         } catch (Throwable $e) {
             Log::alert('eval:nightly invocation failed: '.$e->getMessage(), [
@@ -264,9 +281,10 @@ class EvalNightlyCommand extends Command
             return $this->readJsonReport($disk, end($candidates));
         }
 
+        $regularDir = $this->regularReportsDirectory();
         $regular = [];
-        if ($disk->exists(self::REGULAR_REPORTS_DIRECTORY)) {
-            foreach ($disk->files(self::REGULAR_REPORTS_DIRECTORY) as $path) {
+        if ($regularDir !== '' && $disk->exists($regularDir)) {
+            foreach ($disk->files($regularDir) as $path) {
                 if (str_ends_with($path, '.json')) {
                     $regular[] = $path;
                 }
@@ -419,5 +437,35 @@ class EvalNightlyCommand extends Command
         $diskName = (string) Config::get('eval-harness.reports.disk', 'local');
 
         return Storage::disk($diskName);
+    }
+
+    /**
+     * Resolve the directory the package's `eval-harness:run` writes
+     * its regular (non-nightly) reports into. Honors the operator's
+     * `EVAL_HARNESS_REPORTS_PATH` override so the prior-baseline
+     * fallback locates reports written under a custom prefix.
+     */
+    private function regularReportsDirectory(): string
+    {
+        $prefix = (string) Config::get('eval-harness.reports.path_prefix', '');
+
+        return trim($prefix, '/');
+    }
+
+    /**
+     * Resolve the absolute filesystem path for a relative entry on the
+     * reports disk so we can pass it to `eval-harness:run --raw-path`.
+     * Local disks expose `path()`; cloud-only disks do not — operators
+     * pointing the reports disk at a remote driver should keep using
+     * the relative path, but cloud disks aren't a documented use case
+     * for the nightly cron and would need separate plumbing anyway.
+     */
+    private function absolutePathFor(Filesystem $disk, string $relative): string
+    {
+        if (method_exists($disk, 'path')) {
+            return $disk->path($relative);
+        }
+
+        return $relative;
     }
 }
