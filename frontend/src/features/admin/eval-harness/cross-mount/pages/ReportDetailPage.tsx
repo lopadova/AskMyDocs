@@ -12,7 +12,7 @@ import { useApiResource } from '../hooks/useApiResource';
 import { useI18n } from '../hooks/useI18n';
 import ErrorPanel from '../components/ui/ErrorPanel';
 import EmptyState from '../components/ui/EmptyState';
-import { formatDateTime, formatPercent } from '../utils/format';
+import { formatPercent, useFormatters } from '../utils/format';
 import type { CohortsPayload, HistogramsPayload, ReportDetailPayload } from '../types/models';
 
 type TabKey = 'summary' | 'cohorts' | 'histograms' | 'failures' | 'raw';
@@ -28,6 +28,8 @@ const ReportDetailPage = () => {
   const { createClient } = useAppContext();
   const client = createClient();
   const { t } = useI18n();
+  // Copilot iter 2 finding #5: locale-aware date formatting.
+  const { formatDateTime } = useFormatters();
 
   const report = useApiResource<ReportDetailPayload>(() => client.getReport(id ?? ''), [id], {
     cacheKey: id ? `report:${id}` : undefined,
@@ -134,11 +136,15 @@ const ReportDetailPage = () => {
 
       <div className="flex gap-2">
         {(['summary', 'cohorts', 'histograms', 'failures', 'raw'] as TabKey[]).map((tab) => (
+          // Copilot iter 2 finding #6 (R11 / R29): each tab carries
+          // a stable testid so vitest can drive tab navigation.
           <button
             key={tab}
             className={`ehu-rounded border px-3 py-1.5 text-sm ${activeTab === tab ? 'bg-slate-900 text-white' : 'bg-white'}`}
             onClick={() => setActiveTab(tab)}
             type="button"
+            data-testid={`eval-harness-report-detail-tab-${tab}`}
+            aria-pressed={activeTab === tab}
           >
             {t(`section_${tab}`)}
           </button>

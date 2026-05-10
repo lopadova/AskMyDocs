@@ -105,11 +105,21 @@ const ComparePage = () => {
 
       {comparison.status === 'error' && comparison.error ? <ErrorPanel error={comparison.error} /> : null}
 
+      {/*
+        * Copilot iter 2 finding #6 (R11 / R29): every interactive
+        * select + button on the Compare page carries a stable
+        * `data-testid` for vitest + Playwright determinism.
+        */}
       <section className="ehu-panel ehu-rounded">
         <div className="flex flex-wrap gap-3">
           <label className="text-sm">
             {t('text_select_left')}
-            <select className="mt-1 block ehu-rounded border border-slate-200 p-2" value={leftValue} onChange={(event) => setLeftValue(event.target.value)}>
+            <select
+              className="mt-1 block ehu-rounded border border-slate-200 p-2"
+              value={leftValue}
+              onChange={(event) => setLeftValue(event.target.value)}
+              data-testid="eval-harness-compare-select-left"
+            >
               <option value="">seleziona</option>
               {reportRows.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -120,7 +130,12 @@ const ComparePage = () => {
           </label>
           <label className="text-sm">
             {t('text_select_right')}
-            <select className="mt-1 block ehu-rounded border border-slate-200 p-2" value={rightValue} onChange={(event) => setRightValue(event.target.value)}>
+            <select
+              className="mt-1 block ehu-rounded border border-slate-200 p-2"
+              value={rightValue}
+              onChange={(event) => setRightValue(event.target.value)}
+              data-testid="eval-harness-compare-select-right"
+            >
               <option value="">seleziona</option>
               {reportRows.map((item) => (
                 <option key={`r-${item.id}`} value={item.id} disabled={!available.has(item.id)}>
@@ -131,7 +146,12 @@ const ComparePage = () => {
           </label>
           <label className="text-sm">
             {t('label_dataset')}
-            <select className="mt-1 block ehu-rounded border border-slate-200 p-2" value={datasetForAuto} onChange={(event) => setDatasetForAuto(event.target.value)}>
+            <select
+              className="mt-1 block ehu-rounded border border-slate-200 p-2"
+              value={datasetForAuto}
+              onChange={(event) => setDatasetForAuto(event.target.value)}
+              data-testid="eval-harness-compare-select-dataset"
+            >
               <option value="">{t('text_select_dataset')}</option>
               {datasetOptions.map((dataset) => (
                 <option key={dataset} value={dataset}>
@@ -141,7 +161,12 @@ const ComparePage = () => {
             </select>
           </label>
           <div className="self-end">
-            <button type="button" className="ehu-rounded bg-slate-900 px-4 py-2 text-white" onClick={apply}>
+            <button
+              type="button"
+              className="ehu-rounded bg-slate-900 px-4 py-2 text-white"
+              onClick={apply}
+              data-testid="eval-harness-compare-apply"
+            >
               {t('action_compare')}
             </button>
             <button
@@ -149,6 +174,7 @@ const ComparePage = () => {
               onClick={applyLatestPrevious}
               disabled={!latestPreviousAvailable}
               type="button"
+              data-testid="eval-harness-compare-latest-previous"
             >
               {t('action_latest_previous')}
             </button>

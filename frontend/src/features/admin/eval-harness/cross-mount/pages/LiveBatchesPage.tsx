@@ -85,7 +85,12 @@ const LiveBatchesPage = () => {
     <div className="space-y-4" data-testid="admin-eval-harness-live-batches">
       <div className="flex items-center justify-between">
         <h2 className="ehu-screen-title">{t('heading_live_batches')}</h2>
-        <button type="button" className="ehu-rounded border px-3 py-2 text-sm" onClick={() => void data.reload()}>
+        <button
+          type="button"
+          className="ehu-rounded border px-3 py-2 text-sm"
+          onClick={() => void data.reload()}
+          data-testid="eval-harness-live-batches-refresh"
+        >
           {progressLoading ? t('text_loading') : t('button_refresh')}
         </button>
       </div>

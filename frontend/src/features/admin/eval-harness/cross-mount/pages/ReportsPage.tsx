@@ -11,7 +11,7 @@ import { useApiResource } from '../hooks/useApiResource';
 import DataTable from '../components/ui/DataTable';
 import ErrorPanel from '../components/ui/ErrorPanel';
 import EmptyState from '../components/ui/EmptyState';
-import { formatDateTime, formatPercent } from '../utils/format';
+import { formatPercent, useFormatters } from '../utils/format';
 import type { ReportRow, ReportListPayload } from '../types/api';
 import { useI18n } from '../hooks/useI18n';
 
@@ -19,6 +19,9 @@ const ReportsPage = () => {
   const { createClient } = useAppContext();
   const client = createClient();
   const { t, metricLabel } = useI18n();
+  // Copilot iter 2 finding #5: bind formatters to the active locale
+  // (en/it) instead of the package's hard-coded `it-IT` default.
+  const { formatDateTime } = useFormatters();
   const reports = useApiResource<ReportListPayload>(() => client.getReports(), [], {
     cacheKey: 'reports:list',
     ttlMs: 30_000,
@@ -64,6 +67,14 @@ const ReportsPage = () => {
         <EmptyState title={t('empty_no_reports')}>{t('text_no_data_for_endpoint')}</EmptyState>
       ) : null}
 
+      {/*
+        * Copilot iter 2 finding #6 (R11 / R29): every interactive
+        * filter input carries a stable `data-testid` so vitest +
+        * Playwright can drive filter scenarios deterministically.
+        * Naming follows the `eval-harness-reports-filter-{name}`
+        * convention so future filter additions slot in without
+        * memorisation.
+        */}
       <form className="flex flex-wrap gap-3" onSubmit={onSubmit}>
         <label className="flex flex-col text-sm">
           {t('label_filter_dataset')}
@@ -72,6 +83,7 @@ const ReportsPage = () => {
             value={datasetFilter}
             onChange={(event) => setDatasetFilter(event.target.value)}
             placeholder={t('text_select_dataset')}
+            data-testid="eval-harness-reports-filter-dataset"
           />
         </label>
         <label className="flex flex-col text-sm">
@@ -81,6 +93,7 @@ const ReportsPage = () => {
             value={minMacroF1}
             onChange={(event) => setMinMacroF1(event.target.value)}
             placeholder="0.9"
+            data-testid="eval-harness-reports-filter-macro-f1"
           />
         </label>
         <label className="flex flex-col text-sm">
@@ -90,6 +103,7 @@ const ReportsPage = () => {
             value={formatFilter}
             onChange={(event) => setFormatFilter(event.target.value)}
             placeholder="json"
+            data-testid="eval-harness-reports-filter-format"
           />
         </label>
         <label className="flex flex-col text-sm">
@@ -99,6 +113,7 @@ const ReportsPage = () => {
             value={schemaFilter}
             onChange={(event) => setSchemaFilter(event.target.value)}
             placeholder="v1"
+            data-testid="eval-harness-reports-filter-schema"
           />
         </label>
         <label className="flex flex-col text-sm">
@@ -108,6 +123,7 @@ const ReportsPage = () => {
             className="mt-1 ehu-rounded border border-slate-200 px-3 py-2"
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
+            data-testid="eval-harness-reports-filter-date-from"
           />
         </label>
         <label className="flex flex-col text-sm">
@@ -117,6 +133,7 @@ const ReportsPage = () => {
             className="mt-1 ehu-rounded border border-slate-200 px-3 py-2"
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
+            data-testid="eval-harness-reports-filter-date-to"
           />
         </label>
       </form>

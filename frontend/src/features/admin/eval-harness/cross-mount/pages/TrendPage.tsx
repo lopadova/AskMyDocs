@@ -107,12 +107,17 @@ const TrendPage = () => {
 
       <section className="ehu-panel ehu-rounded">
         <div className="flex flex-wrap gap-3">
+          {/*
+            * Copilot iter 2 finding #6 (R11 / R29): Trend page
+            * filter inputs all carry stable testids.
+            */}
           <label className="text-sm">
             {t('label_dataset')}
             <select
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={dataset}
               onChange={(event) => setDataset(event.target.value)}
+              data-testid="eval-harness-trend-select-dataset"
             >
               <option value="">seleziona</option>
               {datasetOptions.map((name) => (
@@ -128,6 +133,7 @@ const TrendPage = () => {
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={metric}
               onChange={(event) => setMetric(event.target.value)}
+              data-testid="eval-harness-trend-select-metric"
             >
               {metricOptions.map((item) => (
                 <option key={item} value={item}>
@@ -142,6 +148,7 @@ const TrendPage = () => {
               className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
               value={cohort}
               onChange={(event) => setCohort(event.target.value)}
+              data-testid="eval-harness-trend-select-cohort"
             >
               {selectedCohorts.map((item) => (
                 <option key={item} value={item}>
@@ -152,7 +159,12 @@ const TrendPage = () => {
           </label>
           <label className="text-sm">
             {t('label_limit')}
-            <select className="mt-1 ehu-rounded border border-slate-200 px-2 py-2" value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+            <select
+              className="mt-1 ehu-rounded border border-slate-200 px-2 py-2"
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value))}
+              data-testid="eval-harness-trend-select-limit"
+            >
               {[10, 30, 50, 100].map((size) => (
                 <option key={size} value={size}>
                   {size}
@@ -167,6 +179,7 @@ const TrendPage = () => {
                 checked={overlayTokens}
                 onChange={() => setOverlayTokens((prev) => !prev)}
                 type="checkbox"
+                data-testid="eval-harness-trend-overlay-tokens"
               />{' '}
               {t('label_include_token')}
             </label>
@@ -175,6 +188,7 @@ const TrendPage = () => {
                 checked={overlayLatency}
                 onChange={() => setOverlayLatency((prev) => !prev)}
                 type="checkbox"
+                data-testid="eval-harness-trend-overlay-latency"
               />{' '}
               {t('label_include_latency')}
             </label>

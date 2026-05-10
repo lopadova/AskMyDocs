@@ -241,7 +241,7 @@ describe('EvalHarnessUiApp (cross-mount)', () => {
         expect(after).toBe(before);
     });
 
-    it('forwards the configured tenant header on every package API request (R30: tenant boundary preserved)', async () => {
+    it('does NOT forward a client-side tenant header so the BE EvalHarnessUiTenantHeader middleware is the source of truth (R30 — Copilot iter 2 finding #1)', async () => {
         apiMock.responses['/admin/eval-harness/api/reports'] = {
             kind: 'ok',
             data: { schema_version: 'eval-harness.report-api.v1.reports', items: [], total: 0 },
@@ -270,14 +270,22 @@ describe('EvalHarnessUiApp (cross-mount)', () => {
             expect(apiMock.calls.length).toBeGreaterThan(0);
         });
 
-        // The cross-mount routes all 8 controller calls through the
-        // host axios instance with the tenant header set when
-        // `config.tenant_header` is truthy. This is what enforces R30
-        // tenant isolation server-side — the BE
-        // `EvalHarnessUiTenantHeader` middleware reads the header and
-        // injects it into TenantContext::current(). If the cross-mount
-        // dropped the tenant header on the floor, BE writes would
-        // collide across tenants.
+        /*
+         * Iter 1 sent the literal sentinel value `'active'` for the
+         * configured tenant header, which RACES the BE
+         * `EvalHarnessUiTenantHeader` middleware: that middleware
+         * short-circuits when an inbound non-empty header is already
+         * set, so client-side `'active'` would BYPASS the proper
+         * `TenantContext::current()` injection and corrupt every
+         * downstream tenant scope.
+         *
+         * Fixed by NOT sending the header from FE at all — the BE
+         * resolves the tenant from the Sanctum session via
+         * `TenantContext::current()` and the middleware injects the
+         * header server-side. This test pins that contract: a
+         * regression that re-introduces a client-side tenant value
+         * fails immediately.
+         */
         const apiModule = (await import('../../../../lib/api')) as unknown as {
             api: { request: { mock: { calls: Array<[AxiosRequestConfig]> } } };
         };
@@ -285,8 +293,31 @@ describe('EvalHarnessUiApp (cross-mount)', () => {
         expect(recordedRequests.length).toBeGreaterThan(0);
         for (const cfg of recordedRequests) {
             const headers = (cfg.headers ?? {}) as Record<string, string>;
-            expect(headers['X-Eval-Harness-Tenant']).toBe('active');
+            expect(headers['X-Eval-Harness-Tenant']).toBeUndefined();
+            // Other contract headers stay set so the BE still sees
+            // an SPA-shaped request.
             expect(headers['Accept']).toBe('application/json');
+            expect(headers['X-Requested-With']).toBe('XMLHttpRequest');
         }
+    });
+
+    it('formatDateTime/formatNumber render in en-US format when locale is en (Copilot iter 2 finding #5)', async () => {
+        // Sanity: pure-function locale routing — the bare formatters
+        // in `utils/format.ts` accept an optional locale argument
+        // and pick `en-US` for `'en'`. This test pins that contract
+        // without booting the SPA so the assertion is exact.
+        const { formatDateTime, formatNumber } = await import('./utils/format');
+
+        // Pick a value where the date format differs between
+        // `it-IT` (DD/MM/YY) and `en-US` (M/D/YY) so the assertion
+        // truly distinguishes the two.
+        const formattedEn = formatDateTime('2026-05-11T09:00:00Z', 'en');
+        const formattedIt = formatDateTime('2026-05-11T09:00:00Z', 'it');
+        expect(formattedEn).not.toBe(formattedIt);
+        // en-US numbers use `,` as the thousands separator; it-IT
+        // uses `.`. 1234567 is large enough that the separators
+        // appear and differ visibly.
+        expect(formatNumber(1234567, 'en')).toContain(',');
+        expect(formatNumber(1234567, 'it')).toContain('.');
     });
 });

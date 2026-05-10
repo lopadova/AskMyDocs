@@ -180,14 +180,35 @@ export class EvalHarnessApiClient {
   }
 
   private requestOptions(): AxiosRequestConfig {
+    /*
+     * Copilot iter 2 finding #1 (HIGH — R30 tenant header bypass):
+     * we INTENTIONALLY DO NOT set the configured tenant header
+     * client-side. The upstream package set it to the literal
+     * sentinel `'active'`, which would race the BE
+     * `EvalHarnessUiTenantHeader` middleware: the middleware checks
+     * for a non-empty inbound header value and short-circuits when
+     * one exists (so an operator proxy can override the tenant
+     * deliberately). Forwarding `'active'` would therefore SKIP the
+     * proper `TenantContext::current()` injection and corrupt every
+     * downstream eval-harness API call's tenant scope.
+     *
+     * The host axios already attaches the Sanctum session cookie via
+     * `withCredentials: true`; the BE resolves the current tenant
+     * from `TenantContext` (populated by `ResolveTenant` middleware
+     * out of the user / project_membership row); the
+     * `EvalHarnessUiTenantHeader` middleware then injects the
+     * tenant header into the forwarded request.
+     *
+     * The `tenantHeader` constructor param is preserved for API
+     * compatibility but deliberately unused here — keeping it on
+     * the constructor signature lets a future test plug a custom
+     * value if a tenant-override scenario emerges.
+     */
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'X-Requested-With': 'XMLHttpRequest',
     };
-
-    if (this.tenantHeader) {
-      headers[this.tenantHeader] = 'active';
-    }
+    void this.tenantHeader;
 
     return { headers, withCredentials: true };
   }
