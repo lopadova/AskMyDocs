@@ -1,11 +1,14 @@
 # v4.3 Week 3 closure — 2026-05-10 — eval-harness LLM-as-judge nightly cron + ops polish
 
 W3 of the v4.3 cycle ships the **host-level nightly eval-harness regression
-sentinel**: a `eval:nightly` Artisan command + Laravel scheduler entry that
+sentinel**: an `eval:nightly` Artisan command + Laravel scheduler entry that
 runs the full RAG pipeline against the seeded golden baseline once per day
-at 05:30 UTC, optionally with `EVAL_LIVE_AI=1` to catch real-provider drift
-(model behaviour, refusal-policy shifts, embedding-space changes) that the
-PR-time CI gate cannot see because it pins `Http::fake()` for cost.
+at 05:30 UTC, optionally with `EVAL_NIGHTLY_LIVE=true` (plus a provider key)
+to catch real-provider drift (model behaviour, refusal-policy shifts,
+embedding-space changes) that the PR-time CI gate cannot see because it pins
+`Http::fake()` for cost. (The PR-time CI gate's own opt-in remains the
+separate `EVAL_LIVE_AI=1` knob — `EVAL_NIGHTLY_LIVE` is the nightly-cron
+fence and intentionally distinct.)
 
 Defense-in-depth on cost: the master kill switch (`EVAL_NIGHTLY_ENABLED`)
 gates the scheduler entry at all; a second independent fence
@@ -19,10 +22,12 @@ Persisted artefacts land in `storage/app/eval-harness/nightly/<YYYY-MM-DD>.json`
 + `<YYYY-MM-DD>.md` and are auto-pruned after `EVAL_NIGHTLY_RETENTION_DAYS`
 (default 90). Regression detection compares the current run's `macro_f1`
 against the most recent prior nightly (or, on first run, the most recent
-PR-time baseline report) and emits `Log::alert()` + a forensic sidecar
-`<date>.alert.json` when the delta exceeds `EVAL_NIGHTLY_REGRESSION_THRESHOLD`
-(default 0.05 = 5%). Operators wire alert-channel notifications off the
-log; no Notification class is shipped (rationale in ADR 0006).
+JSON report under the configured reports directory `eval-harness.reports.path_prefix`
+— no baseline-name filter is applied) and emits `Log::alert()` + a forensic
+sidecar `<date>.alert.json` when the delta exceeds
+`EVAL_NIGHTLY_REGRESSION_THRESHOLD` (default 0.05 = 5%). Operators wire
+alert-channel notifications off the log; no Notification class is shipped
+(rationale in ADR 0006).
 
 This document is the W3 closure artefact per R39. Closure SHA pinned in
 §RC tag below.
