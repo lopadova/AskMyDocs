@@ -11,7 +11,8 @@ export type SidebarSection =
     | 'logs'
     | 'maintenance'
     | 'pii-redactor'
-    | 'flows';
+    | 'flows'
+    | 'eval-harness';
 
 export type SidebarProps = {
     active: SidebarSection;
@@ -50,6 +51,14 @@ const NAV_ITEMS: NavItem[] = [
     // super-admin / admin / dpo. The Spatie role allowlist in the BE
     // outer-fence Gate `viewFlowAdmin` mirrors the FE one.
     { id: 'flows', label: 'Flows', icon: 'Bolt', section: 'ops' },
+    // v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same iframe
+    // strategy as PII Redactor + Flow Admin (the package ships its own
+    // React + Vite bundle that hydrates against a Blade bootstrap; we
+    // isolate the bundle to avoid double-React + bootstrap-pipeline
+    // duplication). Visible to all roles in the sidebar; the route's
+    // RequireRole gate filters down to super-admin / admin / dpo /
+    // editor — same allowlist as the BE Gate `eval-harness.viewer`.
+    { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', section: 'ops' },
     { id: 'logs', label: 'Logs', icon: 'Activity', section: 'ops' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', section: 'ops' },
 ];

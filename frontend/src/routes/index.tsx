@@ -20,6 +20,7 @@ import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
 import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
 import { FlowsView } from '../features/admin/flows/FlowsView';
+import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -359,6 +360,32 @@ const adminFlowsRoute = createRoute({
     component: AdminFlowsRoute,
 });
 
+// v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same flat-RBAC
+// pattern as AdminFlowsRoute / AdminPiiRedactorRoute: the RequireRole
+// gate lives inside the component so a viewer hitting
+// /app/admin/eval-harness directly sees <AdminForbidden /> instead of
+// a crash. The Spatie role allowlist matches the BE Gate
+// `eval-harness.viewer` (super-admin / admin / dpo / editor); the
+// iframe URL (/admin/eval-harness) is enforced separately by the BE
+// `can:eval-harness.viewer` middleware AND the `eval-harness-ui.non-prod`
+// middleware (404 in production) AND the package controller's own
+// `eval-harness-ui.enabled` check (404 when env=false), so an
+// unprivileged user who somehow reaches the URL gets a 403 / 404 from
+// Laravel.
+function AdminEvalHarnessRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo', 'editor']}>
+            <EvalHarnessView />
+        </RequireRole>
+    );
+}
+
+const adminEvalHarnessRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/eval-harness',
+    component: AdminEvalHarnessRoute,
+});
+
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
@@ -384,6 +411,7 @@ const routeTree = rootRoute.addChildren([
         adminInsightsRoute,
         adminPiiRedactorRoute,
         adminFlowsRoute,
+        adminEvalHarnessRoute,
     ]),
 ]);
 

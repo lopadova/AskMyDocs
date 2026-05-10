@@ -48,4 +48,27 @@ return [
     //      preventing routes from leaking on an unprepared deploy.
     Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class,
     App\Providers\FlowAdminIntegrationServiceProvider::class,
+    // v4.2/W4 sub-PR 7 — Eval Harness UI SPA (padosoft/eval-harness-ui
+    // v1.0.0). Listed explicitly because the package lives in
+    // require-dev and Laravel's auto-discovery cache may exclude
+    // require-dev packages on optimised production builds. This
+    // explicit entry keeps the SP loaded in dev / test / staging where
+    // the dashboard is wanted.
+    //
+    // Two AskMyDocs fences gate the package routes regardless of how
+    // the SP is loaded:
+    //   1. The package controller's own `eval-harness-ui.enabled`
+    //      check (default false) returns 404 for every request.
+    //   2. The `App\Http\Middleware\EvalHarnessUiNonProduction`
+    //      middleware (registered as alias `eval-harness-ui.non-prod`
+    //      by EvalHarnessUiIntegrationServiceProvider) returns 404
+    //      whenever `APP_ENV=production` — even if an operator flipped
+    //      `EVAL_HARNESS_UI_ENABLED=true` by accident in prod.
+    //
+    // The integration SP also wires the `eval-harness-ui.tenant-header`
+    // middleware alias (R30 — injects X-Eval-Harness-Tenant from
+    // TenantContext) and is intentionally separate from the vendor SP
+    // so the touchpoint is grep-able in one place.
+    Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class,
+    App\Providers\EvalHarnessUiIntegrationServiceProvider::class,
 ];

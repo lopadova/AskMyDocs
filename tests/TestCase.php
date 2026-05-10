@@ -58,6 +58,18 @@ abstract class TestCase extends OrchestraTestCase
         // the eval-harness:run / eval-harness:adversarial commands.
         $app->register(\Padosoft\EvalHarness\EvalHarnessServiceProvider::class);
 
+        // v4.2/W4 sub-PR 7 — padosoft/eval-harness-ui v1.0.0 + the
+        // host-app integration provider. The package SP unconditionally
+        // registers routes; the package CONTROLLER aborts 404 when
+        // `eval-harness-ui.enabled=false` (the default), and the
+        // host-app `eval-harness-ui.non-prod` middleware aborts 404
+        // when APP_ENV=production. Either fence alone is enough; both
+        // must be open for the SPA to render. The integration SP MUST
+        // be registered AFTER the package SP so the alias is available
+        // before any request matches the package's route group.
+        $app->register(\Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class);
+        $app->register(\App\Providers\EvalHarnessUiIntegrationServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -125,6 +137,12 @@ abstract class TestCase extends OrchestraTestCase
         // wired routes flip this on via getEnvironmentSetUp() in
         // FlowAdminMountingTest.
         $app['config']->set('flow-admin', require __DIR__.'/../config/flow-admin.php');
+        // v4.2/W4 sub-PR 7 — published eval-harness-ui config (host-app
+        // override of the vendor middleware list). Default enabled=false
+        // so every request to the SPA mount returns 404 via the package
+        // controller's own check. Tests that exercise the wired routes
+        // flip this on via config(['eval-harness-ui.enabled' => true]).
+        $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).
