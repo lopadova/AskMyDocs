@@ -2,8 +2,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Underlying font-stack tokens. Tailwind v4 `@theme` in globals.css
+   * re-exports these as `--font-sans` / `--font-mono` on `:root`, so
+   * consumers continue reading `var(--font-sans)` unchanged. The rename
+   * exists purely to break the @theme self-reference cycle. */
+  --font-stack-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-stack-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   /* Dark (default) — moody, high contrast */
   --bg-0:   #07070b;

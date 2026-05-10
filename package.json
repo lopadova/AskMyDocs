@@ -2,6 +2,9 @@
   "name": "askmydocs",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b frontend/tsconfig.json && vite build",
@@ -40,6 +43,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.0.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.5.2",
@@ -47,12 +51,10 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.3",
-    "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",
     "laravel-vite-plugin": "^1.0.5",
-    "postcss": "^8.4.47",
     "remark-parse": "^11.0.0",
-    "tailwindcss": "^3.4.14",
+    "tailwindcss": "^4.0.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.4"
