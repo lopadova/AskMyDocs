@@ -1,7 +1,7 @@
 # v4.4 Week 1 closure — 2026-05-10 — Tailwind v3 → v4 host migration
 
 W1 of the v4.4 cycle ships the **AskMyDocs frontend host SPA migration from
-Tailwind v3.4 (PostCSS pipeline) to Tailwind v4.3** (`@tailwindcss/vite`
+Tailwind v3.4 (PostCSS pipeline) to Tailwind v4** (`@tailwindcss/vite`
 plugin). This is the **hard prerequisite** for the v4.4/W2 + v4.4/W3
 cross-mount of `pii-redactor-admin` and `eval-harness-ui` per ADR 0005:
 the admin SPAs ship Tailwind v4 + React 19 internally, so cross-mounting
@@ -9,8 +9,11 @@ them on a Tailwind v3 host would force two CSS engines to coexist on the
 same page (the iframe-mount workaround the v4.2 cycle already pays for).
 W1 unblocks W2/W3 by aligning the host's Tailwind major.
 
-This document is the W1 closure artefact per R39. Closure SHA pinned in
-§RC tag below.
+This document is the W1 closure artefact per R39. The §RC tag block
+below captures the closure SHA at tag-creation time via `git rev-parse
+origin/feature/v4.4` (run AFTER this docs PR merges and BEFORE any
+subsequent commit lands on `feature/v4.4`); the resulting tag points at
+an immutable commit per R39's "exact closure-commit SHA" convention.
 
 ## Sub-PR shipped (v4.4 W1)
 
@@ -51,7 +54,7 @@ gh release create v4.4.0-rc1 \
   --target "$CLOSURE_SHA" \
   --title "v4.4.0-rc1 — W1 milestone (Tailwind v4 host migration)" \
   --prerelease \
-  --notes "Host SPA migrated from Tailwind v3.4 PostCSS pipeline to Tailwind v4.3 + @tailwindcss/vite plugin. Hard prerequisite for v4.4/W2 + v4.4/W3 cross-mount of pii-redactor-admin + eval-harness-ui per ADR 0005. tailwindcss ^3.4.14 -> ^4.0.0; drops autoprefixer + postcss; adds @tailwindcss/vite. tailwind.config.ts + postcss.config.js deleted (v4 auto-detects content). globals.css uses @import + @theme + @custom-variant dark to preserve the v3 darkMode contract (both [data-theme=\"dark\"] and .dark selectors). package.json declares engines.node >=20 for Tailwind v4's transitive @tailwindcss/oxide. Vitest (react + legacy) + full PHPUnit (PHP 8.3/8.4/8.5) + Playwright + RAG regression all green. 1 sub-PR (#136). Closure: docs/v4-platform/STATUS-2026-05-10-v44-week1-tailwind-v4-host-migration.md"
+  --notes "Host SPA migrated from Tailwind v3.4 PostCSS pipeline to Tailwind v4 + @tailwindcss/vite plugin. Hard prerequisite for v4.4/W2 + v4.4/W3 cross-mount of pii-redactor-admin + eval-harness-ui per ADR 0005. tailwindcss ^3.4.14 -> ^4.0.0; drops autoprefixer + postcss; adds @tailwindcss/vite. tailwind.config.ts + postcss.config.js deleted (v4 auto-detects content). globals.css uses @import + @theme + @custom-variant dark to preserve the v3 darkMode contract (both [data-theme=\"dark\"] and .dark selectors). package.json declares engines.node >=20 for Tailwind v4's transitive @tailwindcss/oxide. Vitest (react + legacy) + full PHPUnit (PHP 8.3/8.4/8.5) + Playwright + RAG regression all green. 1 sub-PR (#136). Closure: docs/v4-platform/STATUS-2026-05-10-v44-week1-tailwind-v4-host-migration.md"
 ```
 
 ## What's next — W2
