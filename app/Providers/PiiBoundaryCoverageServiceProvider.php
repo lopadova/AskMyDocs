@@ -38,12 +38,15 @@ use Throwable;
  *
  * Each touch-point is INDEPENDENTLY default-off and gated by its own
  * `kb.pii_redactor.*` knob. Per-touchpoint flags are checked at RUNTIME
- * inside the Eloquent observers and the JobFailed listener (so toggling
- * the env var without a worker restart takes effect on the next event).
- * The Monolog log processor and the laravel-flow CurrentPayloadRedactorProvider
- * binding are wired at BOOT / register() respectively, so toggling
- * `KB_PII_REDACT_LOGS` or `KB_PII_REDACT_FLOW_PAYLOADS` requires
- * `php artisan config:clear` plus a worker / FPM restart.
+ * inside the Eloquent observers and the JobFailed listener via
+ * `config('kb.pii_redactor.*')`. Note that `config()` reads the cached
+ * config repository populated at app boot — env-var changes do NOT
+ * apply to long-running queue workers / FPM processes until the worker
+ * restarts (and in `config:cache`-d production deployments, env-var
+ * changes do not apply at all without re-caching). Treat the per-touchpoint
+ * flags as deploy-time switches, not hot-toggles. The Monolog log
+ * processor and the laravel-flow CurrentPayloadRedactorProvider binding
+ * are wired at BOOT / register() respectively — same restart requirement.
  *
  * Defence-in-depth: every wired component catches its own redactor
  * Throwables and logs + lets the original write proceed (R14 inversion
