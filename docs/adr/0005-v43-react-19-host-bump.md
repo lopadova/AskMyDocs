@@ -62,10 +62,12 @@ v4 in v4.3/W3 or v4.4; cross-mount in v4.4).
   React 18 AND React 19 from the same release line. No plugin bump.
 - **Vitest unchanged**: `@testing-library/react` ^16 supports React 19;
   no test-runner changes required.
-- **Tests pass green**: 304/304 Vitest tests pass post-bump with
-  identical warning count to pre-bump (5 preexisting `act()` warnings
-  in `CommandWizard.test.tsx` and `CommandPalette.test.tsx` —
-  unchanged, not introduced by the bump).
+- **Tests pass green**: Vitest (react + legacy suites) all pass
+  post-bump with identical warning count to pre-bump (5 preexisting
+  `act()` warnings in `CommandWizard.test.tsx` and
+  `CommandPalette.test.tsx` — unchanged, not introduced by the bump).
+  CI's `Vitest` job runs both `npm test` (react) and `npm run test:legacy`
+  (legacy modules under `resources/js/*.mjs`); both green.
 - **Build clean**: `npm run build` succeeds; no chunk-size regression.
 
 ### Why Tailwind v4 stays deferred
@@ -110,7 +112,7 @@ without consuming the budget of the cross-mount migration itself.
 ### Immediate (this PR)
 - Host SPA runs on React 19.2.6.
 - All host SPA components type-clean against `@types/react` 19.2.x.
-- 304/304 Vitest tests green.
+- Vitest (react + legacy) green.
 - Production build green; bundle size unchanged from v4.2 GA baseline
   (within rounding — React 19's runtime is marginally larger but
   scheduler changes net out to no observable size delta).

@@ -16,7 +16,7 @@ in §RC tag below.
 
 | Sub-PR | Reference PR | Closure SHA on `feature/v4.3` | Scope |
 |---|---|---|---|
-| **W2** — React 19 host bump + ADR 0005 | [#129](https://github.com/lopadova/AskMyDocs/pull/129) | `c5f8e1b` | `react` 18.3.1 → 19.2.6, `react-dom` 18.3.1 → 19.2.6, `@types/react` 18.3.12 → 19.2.x, `@types/react-dom` 18.3.1 → 19.2.x. `@vitejs/plugin-react` ^4.3.3 unchanged (supports both majors). `@testing-library/react` ^16 unchanged (supports React 19). 304/304 Vitest green; full PHPUnit + Playwright + RAG regression all green post-bump. ADR 0005 documents the deferral of Tailwind v3 → v4 (separate scope) and iframe → cross-mount migration (v4.4 deliverable, gated on Tailwind v4 landing first). |
+| **W2** — React 19 host bump + ADR 0005 | [#129](https://github.com/lopadova/AskMyDocs/pull/129) | `c5f8e1b` | `react` 18.3.1 → 19.2.6, `react-dom` 18.3.1 → 19.2.6, `@types/react` 18.3.12 → 19.2.x, `@types/react-dom` 18.3.1 → 19.2.x. `@vitejs/plugin-react` ^4.3.3 unchanged (supports both majors). `@testing-library/react` ^16 unchanged (supports React 19). Vitest (react + legacy suites) green; full PHPUnit + Playwright + RAG regression all green post-bump. ADR 0005 documents the deferral of Tailwind v3 → v4 (separate scope) and iframe → cross-mount migration (v4.4 deliverable, gated on Tailwind v4 landing first). |
 
 **Cycle test count delta on `feature/v4.3` HEAD:** 1397 (start of W2 from W1 closure SHA `9f7aa47`) → **1397** (end of W2) — **no test count delta** (the bump is dependency-only; existing tests cover the React 19 surface). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
 
@@ -27,7 +27,7 @@ ADR 0005 documents the scope rationale in detail. Summary:
 - **Bump only**: react/react-dom/@types/* — no code changes required.
 - **Vite plugin unchanged**: `@vitejs/plugin-react` ^4.3.3 supports both React 18 and 19.
 - **Vitest unchanged**: `@testing-library/react` ^16 supports React 19.
-- **Tests pass green**: 304/304 Vitest, full PHPUnit + Playwright + RAG regression.
+- **Tests pass green**: Vitest (react + legacy suites), full PHPUnit + Playwright + RAG regression.
 - **No transitive dep needed pinning**: every peer-dep already supports React 19.
 
 ## Why Tailwind v4 + cross-mount stay deferred
@@ -49,7 +49,7 @@ gh release create v4.3.0-rc2 \
   --target "$CLOSURE_SHA" \
   --title "v4.3.0-rc2 — W2 milestone (React 19 host bump)" \
   --prerelease \
-  --notes "Host SPA bumped from React 18.3.1 to 19.2.6. ADR 0005 documents the decision + the deferred Tailwind v4 (separate scope) + iframe -> cross-mount migration (v4.4, gated on Tailwind v4 first). Bump is dependency-only — zero code changes required. 304/304 Vitest + full PHPUnit + Playwright + RAG regression all green. 1 sub-PR (#129). Closure: docs/v4-platform/STATUS-2026-05-10-v43-week2-react-19-host-bump.md"
+  --notes "Host SPA bumped from React 18.3.1 to 19.2.6. ADR 0005 documents the decision + the deferred Tailwind v4 (separate scope) + iframe -> cross-mount migration (v4.4, gated on Tailwind v4 first). Bump is dependency-only — zero code changes required. Vitest (react + legacy) + full PHPUnit + Playwright + RAG regression all green. 1 sub-PR (#129). Closure: docs/v4-platform/STATUS-2026-05-10-v43-week2-react-19-host-bump.md"
 ```
 
 ## What's next — W3
