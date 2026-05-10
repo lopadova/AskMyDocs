@@ -73,6 +73,10 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
+        // v4.3/W1 sub-PR 4.5 — comprehensive PII boundary coverage.
+        // Registered after AppServiceProvider so the RedactorEngine
+        // binding is in the container when observers boot.
+        $app->register(\App\Providers\PiiBoundaryCoverageServiceProvider::class);
         // v4.2/W2 — IngestDocumentFlow definition + FlowRunRecord
         // tenant_id stamping hook. Registered after AppServiceProvider
         // because it depends on the TenantContext singleton it binds.
