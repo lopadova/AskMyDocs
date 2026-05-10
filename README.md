@@ -38,6 +38,16 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.4.0-rc2 — W2 shipped (cross-mount pii-redactor-admin closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-pii-redactor-admin` cross-mounted at `/admin/pii-redactor`** | Iframe → cross-mount migration. Admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/pii-redactor/cross-mount/` (`App.tsx` + `adminApi.ts` + `types.ts` + `cross-mount.css`), sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. Gated on v4.4/W1 Tailwind v4 host alignment per ADR 0005 — host and admin SPA now share the same Tailwind major, eliminating the dual-CSS-engine cost the iframe pattern paid for. |
+| **Scope-tight FE shell change; BE unchanged** | The `vendor/padosoft/laravel-pii-redactor-admin/` directory is untouched — the cross-mount is a host-owned vendored adaptation. Package config payload (`apiBase`, `routePrefix`, `userDisplay`, `abilities`) derived host-side from `useAuthStore` + known constants; no new BE config endpoint needed. R30 strategy unchanged (supplementary migration + Eloquent observer per ADR 0004 D4); Spatie role gates (`viewPiiRedactorAdmin`, `detokenisePiiRedactor`, `viewPiiRedactorRawSamples`) remain enforced server-side. Single new dep: `lucide-react@^1.14.0` (matches package's pinned version). |
+| **+3 Vitest scenarios + R14/R15 hardening from iter-2 review** | Vitest 1408 → 1411 (+3 scenarios for Overview tri-state + Ctrl+K accessibility); PHPUnit unchanged at 1408 (cross-mount is purely FE-side). Iter 1 surfaced 2 Copilot findings: R14 Overview tri-state (no more definitive "Disabled" / "0" before `/status` resolves — `loading | error | ready` state with `data-state` + `aria-busy` for assistive tech); R15 Ctrl+K shortcut button got explicit `aria-label="Open playground"` + `aria-keyshortcuts="Control+K"` (Search icon `aria-hidden="true"`). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + RAG regression. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v44-week2-cross-mount-pii-redactor-admin.md`
+
 #### v4.4.0-rc1 — W1 shipped (Tailwind v4 host migration closed 2026-05-10)
 
 | Feature | Description |
@@ -3462,6 +3472,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.4.0-rc2 — 2026-05-10 (W2 milestone — cross-mount pii-redactor-admin)
+
+Second release candidate of the **v4.4 cycle**. W2 ships the **iframe → cross-mount migration** of `padosoft/laravel-pii-redactor-admin` at `/admin/pii-redactor`. The admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/pii-redactor/cross-mount/`, sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround.
+
+**What's new in AskMyDocs v4.4.0-rc2 (W2 — cross-mount pii-redactor-admin):**
+
+- **W2 / sub-PR (#138)** — NEW `frontend/src/features/admin/pii-redactor/cross-mount/` (App.tsx + adminApi.ts + types.ts + cross-mount.css + App.test.tsx). REWRITTEN `PiiRedactorView.tsx` (drops iframe + readiness probe; derives package config host-side from `useAuthStore`). REWRITTEN `frontend/e2e/admin-pii-redactor.spec.ts` (strips iframe locators; asserts `data-mount="cross-mount"` + page-level testids). UPDATED `INTEGRATION-ROADMAP-sister-packages.md` (pii-redactor-admin row: iframe → cross-mount). Single new dep: `lucide-react@^1.14.0`. Iter 2 fixed 2 Copilot findings (R14 Overview tri-state + R15 Ctrl+K aria-label). +3 vitest scenarios.
+- **(this PR)** v4.4/W2 closure docs — adds this Changelog entry, the W2 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc2:**
+- #138 v4.4/W2 — iframe → cross-mount of pii-redactor-admin
+- (this PR) v4.4/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1408 (start of W2 from v4.4.0-rc1) → **1411** (+3 vitest scenarios for the cross-mount tri-state + a11y assertions; PHPUnit unchanged at 1408 — cross-mount is purely FE-side). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 (this) | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` ✅ |
+| W3 | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + GA merge | **`v4.4.0` GA** |
 
 ### v4.4.0-rc1 — 2026-05-10 (W1 milestone — Tailwind v4 host migration)
 
