@@ -53,16 +53,32 @@ final class RedactFailedJobPayload
             }
 
             // Locate the failed-job row that the framework just inserted.
-            // `JobFailed::$job->getJobId()` returns the queue's
-            // job-correlation id, but `failed_jobs.payload->id` is the
-            // canonical match-point. We grab the most-recent row for the
-            // job's connection + queue tuple (Laravel inserts one row
-            // per fail event, so the latest row IS the just-failed one).
-            $row = DB::table('failed_jobs')
+            // Laravel writes the row with `failed_jobs.uuid` set to the
+            // job's stable UUID (extracted from the framework-emitted
+            // payload envelope). Matching deterministically on uuid
+            // avoids the multi-worker race where a sibling job fails on
+            // the same (connection, queue) tuple between the framework
+            // insert and this listener query — `orderByDesc('id')` would
+            // then pick the wrong row, leaving the original unredacted
+            // and corrupting the sibling.
+            //
+            // If the uuid cannot be extracted (older payload formats,
+            // synchronous queue driver edge cases) we fall back to the
+            // latest-by-(connection, queue) heuristic — degraded but
+            // still better than skipping the redaction altogether.
+            $uuid = $this->extractJobUuid($event);
+
+            $query = DB::table('failed_jobs')
                 ->where('connection', $event->connectionName)
-                ->where('queue', $event->job->getQueue() ?? 'default')
-                ->orderByDesc('id')
-                ->first();
+                ->where('queue', $event->job->getQueue() ?? 'default');
+
+            if ($uuid !== null) {
+                $query->where('uuid', $uuid);
+            } else {
+                $query->orderByDesc('id');
+            }
+
+            $row = $query->first();
 
             if ($row === null) {
                 return;
@@ -104,6 +120,33 @@ final class RedactFailedJobPayload
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Best-effort extraction of the job UUID from the framework-emitted
+     * raw payload envelope. Laravel's queue payload always carries a
+     * top-level `uuid` key (set by `Illuminate\Queue\Queue::createPayload`)
+     * which is also written into `failed_jobs.uuid`. We never rely on
+     * this for correctness — the caller falls back to the latest-row
+     * heuristic when extraction returns null.
+     */
+    private function extractJobUuid(JobFailed $event): ?string
+    {
+        try {
+            $raw = $event->job->getRawBody();
+            if ($raw === '') {
+                return null;
+            }
+            $decoded = json_decode($raw, true);
+            if (! is_array($decoded)) {
+                return null;
+            }
+            $uuid = $decoded['uuid'] ?? null;
+
+            return is_string($uuid) && $uuid !== '' ? $uuid : null;
+        } catch (Throwable) {
+            return null;
         }
     }
 

@@ -62,21 +62,53 @@ final class FlowPayloadRedactorTest extends TestCase
 
     public function test_when_flag_off_provider_binding_is_absent(): void
     {
-        // Reset both gates.
-        config()->set('kb.pii_redactor.enabled', false);
-        config()->set('kb.pii_redactor.redact_flow_payloads', false);
+        // R16 — assert the actual contract: when either gate is OFF,
+        // PiiBoundaryCoverageServiceProvider::register() MUST NOT bind
+        // the AskMyDocs implementation onto the contract.
+        //
+        // We exercise the SP's register() branch under all four flag
+        // permutations against fresh `Illuminate\Container\Container`
+        // instances. A bare Container (NOT a Foundation\Application) is
+        // sufficient because the SP's register() only reads `config(...)`
+        // and calls `$app->singleton(...)`. Container::setInstance() is
+        // restored after each permutation so the global `app()` helper
+        // (used by tearDown's RefreshDatabase rollback) keeps pointing
+        // at the booted test app.
 
-        // Re-register the SP under the new config so the conditional
-        // singleton binding inside register() is re-evaluated.
-        $app = app();
-        $sp = new \App\Providers\PiiBoundaryCoverageServiceProvider($app);
-        $sp->register();
+        $globalBefore = \Illuminate\Container\Container::getInstance();
+        $contract = \Padosoft\LaravelFlow\Contracts\CurrentPayloadRedactorProvider::class;
 
-        // The SP did NOT bind a singleton, so resolution falls back to
-        // whatever was bound earlier (or NULL if nothing). We just
-        // verify the SP path itself didn't throw — the absence of a
-        // host-app binding is the contract.
-        $this->assertTrue(true);
+        $check = function (bool $enabled, bool $redactFlow, bool $expectBound, string $message) use ($contract): void {
+            $container = new \Illuminate\Container\Container;
+            $container->instance('config', new \Illuminate\Config\Repository([
+                'kb' => [
+                    'pii_redactor' => [
+                        'enabled' => $enabled,
+                        'redact_flow_payloads' => $redactFlow,
+                    ],
+                ],
+            ]));
+
+            // The SP's shouldBindFlowProvider() reads the GLOBAL `config()`
+            // helper, which delegates through Container::getInstance().
+            // Swap the global instance to our fresh container for the
+            // duration of register(), then restore in the outer finally.
+            \Illuminate\Container\Container::setInstance($container);
+
+            $sp = new \App\Providers\PiiBoundaryCoverageServiceProvider($container);
+            $sp->register();
+
+            $this->assertSame($expectBound, $container->bound($contract), $message);
+        };
+
+        try {
+            $check(false, false, false, 'Provider must NOT be bound when master gate is off.');
+            $check(true, false, false, 'Provider must NOT be bound when redact_flow_payloads is off.');
+            $check(false, true, false, 'Provider must NOT be bound when master gate is off, even with flow flag on.');
+            $check(true, true, true, 'Provider MUST be bound when both gates are on.');
+        } finally {
+            \Illuminate\Container\Container::setInstance($globalBefore);
+        }
     }
 
     private function factory(): AskMyDocsFlowPayloadRedactor

@@ -66,6 +66,40 @@ final class PiiStrategyEndpointTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * Finding #6 + #7 — the route MUST be reachable by the `dpo` role.
+     * The `viewPiiRedactorAdmin` Gate (AppServiceProvider) admits dpo;
+     * the route must be mounted accordingly (i.e. NOT trapped behind
+     * the role:admin|super-admin admin group, which would 403 dpo).
+     */
+    public function test_dpo_can_read_pii_strategy(): void
+    {
+        $dpo = User::create([
+            'name' => 'd',
+            'email' => 'd@example.com',
+            'password' => Hash::make('x'),
+        ]);
+        $dpo->assignRole('dpo');
+
+        $this->actingAs($dpo)
+            ->getJson('/api/admin/pii/strategy')
+            ->assertOk()
+            ->assertJsonPath('active.name', 'mask');
+    }
+
+    public function test_route_is_explicitly_gated_by_can_view_pii_redactor_admin(): void
+    {
+        $route = \Illuminate\Support\Facades\Route::getRoutes()
+            ->getByName('api.admin.pii.strategy');
+
+        $this->assertNotNull($route, 'Expected api.admin.pii.strategy route to be registered.');
+        $this->assertContains(
+            'can:viewPiiRedactorAdmin',
+            $route->gatherMiddleware(),
+            'Expected /api/admin/pii/strategy to carry can:viewPiiRedactorAdmin middleware.',
+        );
+    }
+
     private function makeAdmin(): User
     {
         $admin = User::create([

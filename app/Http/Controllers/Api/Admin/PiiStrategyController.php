@@ -25,11 +25,17 @@ use Throwable;
  * which one is currently in effect AND offer a future "switch strategy"
  * affordance. Pure config read; no DB and no LLM.
  *
- * The endpoint is mounted behind `Gate::define('viewPiiRedactorAdmin', ...)`
- * (registered by the pii-redactor-admin integration provider) so only
- * operators with that gate can see config details — strategies + token
- * lengths + salt-presence are configuration metadata that should not
- * leak to standard admins.
+ * The endpoint is mounted behind `auth:sanctum` + the
+ * `can:viewPiiRedactorAdmin` middleware (Gate registered in
+ * AppServiceProvider). The Gate admits `super-admin`, `dpo`, `admin`
+ * — i.e. the three roles the broader pii-redactor-admin SPA also
+ * trusts. The route is intentionally NOT mounted under the
+ * `role:admin|super-admin` admin group, because that would 403 the
+ * `dpo` role despite the Gate allowing it (mirrors the
+ * laravel-pii-redactor-admin v1.0.2 mounting precedent).
+ *
+ * Strategies + token lengths + salt-presence are configuration
+ * metadata that should not leak to standard viewers/editors.
  *
  * Response shape (200):
  *   {

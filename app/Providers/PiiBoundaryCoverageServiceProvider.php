@@ -17,13 +17,11 @@ use App\Pii\Observers\AdminInsightsSnapshotObserver;
 use App\Pii\Observers\ChatLogObserver;
 use App\Pii\Observers\ConversationObserver;
 use App\Pii\Observers\MessageObserver;
-use Illuminate\Contracts\Container\Container;
 use Illuminate\Log\LogManager;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
-use Monolog\Handler\HandlerInterface;
 use Monolog\Logger as MonologLogger;
 use Padosoft\LaravelFlow\Contracts\CurrentPayloadRedactorProvider;
 use Throwable;
@@ -39,11 +37,13 @@ use Throwable;
  *   - 1 container binding for laravel-flow's CurrentPayloadRedactorProvider
  *
  * Each touch-point is INDEPENDENTLY default-off and gated by its own
- * `kb.pii_redactor.*` knob. The master `kb.pii_redactor.enabled` flag
- * is checked at runtime inside each observer / listener / processor —
- * NOT at boot here. Reason: hosts can flip individual knobs without
- * restarting workers, and tests can override config per test without
- * needing to re-register the observers.
+ * `kb.pii_redactor.*` knob. Per-touchpoint flags are checked at RUNTIME
+ * inside the Eloquent observers and the JobFailed listener (so toggling
+ * the env var without a worker restart takes effect on the next event).
+ * The Monolog log processor and the laravel-flow CurrentPayloadRedactorProvider
+ * binding are wired at BOOT / register() respectively, so toggling
+ * `KB_PII_REDACT_LOGS` or `KB_PII_REDACT_FLOW_PAYLOADS` requires
+ * `php artisan config:clear` plus a worker / FPM restart.
  *
  * Defence-in-depth: every wired component catches its own redactor
  * Throwables and logs + lets the original write proceed (R14 inversion
@@ -62,15 +62,15 @@ final class PiiBoundaryCoverageServiceProvider extends ServiceProvider
         // every payload write; binding here is enough to wire EVERY
         // persistence point inside laravel-flow in ONE shot.
         //
-        // The binding is unconditional at register() — the
-        // CurrentPayloadRedactorProvider's redact() method is itself a
-        // pass-through when kb.pii_redactor.enabled is false (the
-        // RedactorEngine respects its own enabled flag). This avoids
-        // a "first request after env-flip needs a restart" footgun.
-        //
-        // Hosts that don't want any binding at all (e.g. they want to
-        // keep the flow package's default no-op redactor) gate via
-        // `kb.pii_redactor.redact_flow_payloads=false`.
+        // Binding is CONDITIONAL on `kb.pii_redactor.enabled` AND
+        // `kb.pii_redactor.redact_flow_payloads` at register() — when
+        // either flag is false, the SP simply does NOT bind, and the
+        // flow package falls back to its default no-op redactor.
+        // Toggling either flag therefore requires `php artisan config:clear`
+        // plus a worker / FPM restart so register() re-evaluates the
+        // gate. This trade-off (boot-time gate vs runtime check) keeps
+        // the host control over whether the AskMyDocs implementation is
+        // wired at all — see `shouldBindFlowProvider()` below.
         if ($this->shouldBindFlowProvider()) {
             $this->app->singleton(
                 CurrentPayloadRedactorProvider::class,
@@ -88,9 +88,15 @@ final class PiiBoundaryCoverageServiceProvider extends ServiceProvider
 
     private function registerObservers(): void
     {
-        // R30: observer logic itself is content-only (not tenant-aware).
-        // Tenant scoping for these tables is enforced by the BelongsToTenant
-        // trait + ResolveTenant middleware at the request boundary.
+        // R30 note: BelongsToTenant auto-stamps `tenant_id` on CREATE; the
+        // trait does NOT enforce tenant scoping on reads/queries (read-side
+        // scoping is the query author's responsibility per R30). The
+        // redaction touch-points wired below are content-only — they mutate
+        // the model attributes about to be persisted and do NOT read
+        // tenant-aware tables — so this concern doesn't apply directly to
+        // PII boundary coverage. The existing `forTenant()` discipline in
+        // the v4.1 detokenize path (LogViewerController::chatDetokenize)
+        // remains intact.
         Conversation::observe(ConversationObserver::class);
         Message::observe(MessageObserver::class);
         ChatLog::observe(ChatLogObserver::class);
@@ -122,17 +128,12 @@ final class PiiBoundaryCoverageServiceProvider extends ServiceProvider
                 return;
             }
 
-            // Push the processor onto every existing handler. New handlers
-            // created later (e.g. on-the-fly stack additions) miss out;
-            // they can be covered by a future refresh hook if needed.
-            /** @var HandlerInterface $handler */
-            foreach ($logger->getHandlers() as $handler) {
-                if (method_exists($handler, 'pushProcessor')) {
-                    $handler->pushProcessor($processor);
-                }
-            }
-            // Also push at the top-level Monolog logger so processors run
-            // for handlers that haven't enabled per-handler stacks.
+            // Push the processor ONCE at the logger level. Monolog runs
+            // logger-level processors for EVERY handler automatically, so
+            // pushing into each handler's individual processor stack would
+            // execute the redactor twice per record (and double-redact
+            // already-replaced sentinel tokens). The logger-level push
+            // also covers handlers added on-the-fly later in the request.
             $logger->pushProcessor($processor);
         } catch (Throwable $e) {
             Log::warning('PiiBoundaryCoverageServiceProvider: failed to attach log processor.', [

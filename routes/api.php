@@ -281,15 +281,6 @@ Route::middleware([
                 ->name('api.admin.logs.failed-jobs');
         });
 
-        // v4.3/W1 sub-PR 4.5 — B4 — PII strategy admin endpoint.
-        // Returns active strategy + selectable strategies + display
-        // config for the dashboard PII panel. Pure config read; gated
-        // by the same Spatie role middleware as the rest of /admin/*.
-        Route::prefix('pii')->group(function () {
-            Route::get('/strategy', [PiiStrategyController::class, 'show'])
-                ->name('api.admin.pii.strategy');
-        });
-
         // Phase I — AI insights. /latest + /{date} read the pre-computed
         // snapshot; /compute triggers a recompute (super-admin only +
         // throttle:3,5 because it burns provider quota);
@@ -334,4 +325,37 @@ Route::middleware([
             Route::get('/scheduler-status', [MaintenanceCommandController::class, 'schedulerStatus'])
                 ->name('api.admin.commands.scheduler-status');
         });
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — PII redactor strategy (gate-protected, role-permissive)
+|--------------------------------------------------------------------------
+|
+| v4.3/W1 sub-PR 4.5 — B4 — PII strategy admin endpoint.
+|
+| Mounted OUTSIDE the role-restricted /api/admin group above because the
+| `viewPiiRedactorAdmin` Gate (registered in AppServiceProvider) admits
+| three Spatie roles — `super-admin`, `dpo`, `admin`. Wrapping it under
+| the `role:admin|super-admin` middleware would 403 the `dpo` role even
+| though the Gate explicitly allows it. This mirrors the
+| `padosoft/laravel-pii-redactor-admin` v1.0.2 mounting precedent
+| (sub-PR 5): every PII admin route is gated by `can:viewPiiRedactorAdmin`
+| only, never by Spatie roles.
+|
+| Defence in depth: even if the Gate definition shifts in a future
+| AppServiceProvider edit, the explicit `can:` middleware on the route
+| keeps the HTTP boundary aligned with the controller docblock contract.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewPiiRedactorAdmin',
+])
+    ->prefix('admin/pii')
+    ->group(function () {
+        Route::get('/strategy', [PiiStrategyController::class, 'show'])
+            ->name('api.admin.pii.strategy');
     });

@@ -8,7 +8,6 @@ use App\Pii\Logging\PiiRedactingProcessor;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger as MonologLogger;
 use Padosoft\PiiRedactor\RedactorEngine;
-use PHPUnit\Framework\TestCase as PhpUnitTestCase;
 use Tests\TestCase;
 
 /**

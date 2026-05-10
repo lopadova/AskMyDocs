@@ -111,7 +111,7 @@ final class FailedJobPayloadRedactionTest extends TestCase
         ]);
     }
 
-    private function fireJobFailed(): void
+    private function fireJobFailed(?string $uuid = null): void
     {
         // Mockery shim — implementing every Job contract method by hand
         // is brittle across Laravel minors. Mockery handles abstract
@@ -121,11 +121,85 @@ final class FailedJobPayloadRedactionTest extends TestCase
         $jobMock = Mockery::mock(JobContract::class);
         $jobMock->shouldReceive('getQueue')->andReturn('default');
         $jobMock->shouldReceive('getJobId')->andReturn(null);
+        // When a uuid is supplied we encode it into the raw payload
+        // envelope (matching the Laravel framework's payload shape)
+        // so the listener's `extractJobUuid()` returns it and the row
+        // lookup matches deterministically on `failed_jobs.uuid`.
+        $rawBody = $uuid === null ? '' : json_encode(['uuid' => $uuid]);
+        $jobMock->shouldReceive('getRawBody')->andReturn($rawBody);
         $jobMock->shouldIgnoreMissing();
 
         $event = new JobFailed('database', $jobMock, new \RuntimeException('boom'));
         $listener = new RedactFailedJobPayload(app(RedactorEngine::class));
         $listener->handle($event);
+    }
+
+    /**
+     * R16 + finding #1 — multi-worker race: two failures arrive on the
+     * same (connection, queue) tuple. Without uuid-aware matching the
+     * listener would redact the LATEST row twice (and leave the other
+     * unredacted). With uuid extraction in place the listener targets
+     * the exact failed-job row by its framework-assigned uuid.
+     */
+    public function test_uuid_match_redacts_correct_row_in_multi_worker_race(): void
+    {
+        config()->set('kb.pii_redactor.enabled', true);
+        config()->set('kb.pii_redactor.redact_failed_jobs', true);
+
+        $uuidA = (string) Str::uuid();
+        $uuidB = (string) Str::uuid();
+
+        // Insert worker-A's row first.
+        $rowA = (int) DB::table('failed_jobs')->insertGetId([
+            'uuid' => $uuidA,
+            'connection' => 'database',
+            'queue' => 'default',
+            'payload' => json_encode(['email' => 'mario@example.com']),
+            'exception' => 'failed worker A: paolo@example.it',
+            'failed_at' => now(),
+        ]);
+
+        // Worker-B's row arrives BEFORE the listener for worker-A
+        // queries — emulating the race window. With order-by-id-desc
+        // matching, this would be redacted instead of worker-A.
+        $rowB = (int) DB::table('failed_jobs')->insertGetId([
+            'uuid' => $uuidB,
+            'connection' => 'database',
+            'queue' => 'default',
+            'payload' => json_encode(['email' => 'lucia@example.de']),
+            'exception' => 'failed worker B: anna@example.fr',
+            'failed_at' => now(),
+        ]);
+
+        // Now fire the listener for worker-A's event.
+        $this->fireJobFailed($uuidA);
+
+        // Worker-A's row MUST be redacted.
+        $rowAAfter = DB::table('failed_jobs')->where('id', $rowA)->first();
+        $this->assertDoesNotMatchRegularExpression(
+            '/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i',
+            $rowAAfter->payload,
+            'Worker-A payload must be redacted (matched by uuid).',
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i',
+            $rowAAfter->exception,
+            'Worker-A exception must be redacted (matched by uuid).',
+        );
+
+        // Worker-B's row MUST be untouched (no JobFailed has fired
+        // for it yet from the perspective of this test).
+        $rowBAfter = DB::table('failed_jobs')->where('id', $rowB)->first();
+        $this->assertSame(
+            'lucia@example.de',
+            json_decode($rowBAfter->payload, true)['email'],
+            'Worker-B payload must NOT be touched by worker-A listener.',
+        );
+        $this->assertStringContainsString(
+            'anna@example.fr',
+            $rowBAfter->exception,
+            'Worker-B exception must NOT be touched by worker-A listener.',
+        );
     }
 
     protected function tearDown(): void
