@@ -2,7 +2,11 @@ import { test as baseTest, expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 
 /*
- * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount.
+ * v4.2/W4 sub-PR 5 — Admin PII Redactor SPA mount (initial iframe).
+ * v4.4/W2 — switched from iframe to cross-mount of the package's
+ * React tree (see PiiRedactorView.tsx + ADR 0005). The package's
+ * Sun/Moon theme toggle and `dark` local state were dropped because
+ * the host already drives `data-theme` on `<html>`.
  *
  * Two separate `test` instances on purpose:
  *   - `seededTest` (from './fixtures') runs the `seeded` auto-fixture
@@ -18,25 +22,23 @@ import { test as seededTest } from './fixtures';
  *     spec in this file ran resetDb under a viewer body. Same
  *     pattern as the other admin-*-viewer.spec.ts files.
  *
- * The package's pre-built console (Dashboard, Playground, Token map,
- * Detokenise, Audit logs, Detectors, Custom rules) is embedded via an
- * iframe (mount strategy: iframe — see PiiRedactorView.tsx for the
- * React 19 + Tailwind v4 incompatibility rationale). These E2E
- * scenarios cover BOTH the AskMyDocs shell (sidebar entry, route,
- * iframe element) AND the BE Gate matrix:
- *
- *   - admin role: shell renders, iframe element present, BE gate
- *     allows the iframe URL to load (when env=true) or 404s
- *     (default-off env behaviour kept by AskMyDocs E2E config).
- *   - viewer role: SPA route shows AdminForbidden, BE rejects the
- *     iframe URL with 403/404.
+ * The cross-mounted SPA renders the same 8 sections the iframe
+ * predecessor exposed (Overview, Playground, Audit log, Token map,
+ * Detokenise, Detectors, Custom rules, Settings) but inside the host
+ * React tree — sharing one Sanctum cookie, one axios instance, one
+ * theme contract.
  *
  * R13 compliance: real backend, real seeders, real Sanctum cookies.
  * No `page.route` interception — the BE responses ARE the assertion.
+ * The package API routes (/admin/pii-redactor/api/*) are NOT
+ * registered when `PII_REDACTOR_ADMIN_ENABLED=false` (the CI/dev
+ * default), so the cross-mounted Overview surface stays in its
+ * loading-defaults shape. The shell + nav still render — that's what
+ * we assert here.
  */
 
-seededTest.describe('Admin PII Redactor — admin (mount + nav)', () => {
-    seededTest('happy — sidebar entry navigates to admin/pii-redactor and renders the iframe host', async ({
+seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
+    seededTest('happy — sidebar entry navigates to admin/pii-redactor and renders the cross-mounted SPA shell', async ({
         page,
     }) => {
         await page.goto('/app/chat');
@@ -50,34 +52,63 @@ seededTest.describe('Admin PII Redactor — admin (mount + nav)', () => {
         await navButton.click();
 
         // Route lands on the host component. The host's
-        // data-testid="admin-pii-redactor-host" is unconditional —
-        // independent of the iframe load state — so the assertion
-        // doesn't race the iframe network roundtrip.
+        // data-testid="admin-pii-redactor-host" wraps the cross-mounted
+        // tree; data-mount="cross-mount" proves we're on the v4.4/W2
+        // path and not the legacy iframe shape (defensive against a
+        // partial revert during a rebase).
         await expect(page).toHaveURL(/\/app\/admin\/pii-redactor$/);
         await expect(page.getByTestId('admin-pii-redactor-host')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('admin-pii-redactor-host')).toHaveAttribute(
+            'data-mount',
+            'cross-mount',
+        );
 
-        // The iframe element itself is mounted unconditionally. The
-        // visibility of its CONTENTS depends on
-        // PII_REDACTOR_ADMIN_ENABLED — which defaults to false in
-        // CI/dev — so we only assert the wrapper element exists, not
-        // that it loads. (When the operator flips the env var on, a
-        // follow-up smoke test under the trusted-env setup would
-        // assert iframe content too.)
-        await expect(page.getByTestId('admin-pii-redactor-iframe')).toBeAttached();
+        // The cross-mounted SPA root is unconditional — independent of
+        // the package API status. Overview is the default landing
+        // page; both the section heading and the sidebar nav live in
+        // the host's React tree (no iframe boundary) so we can
+        // interrogate them with normal page-level locators.
+        await expect(page.getByTestId('admin-pii-redactor-app')).toBeVisible();
+        await expect(page.getByTestId('admin-pii-redactor-app')).toHaveAttribute(
+            'data-page',
+            'overview',
+        );
+        await expect(page.getByTestId('admin-pii-redactor-overview')).toBeVisible();
+
+        // Sidebar nav buttons render with stable testids per
+        // feature-resource-{id} convention (R29). Clicking one flips
+        // data-page and reveals the matching panel — proving the
+        // hooks-driven navigation survives the cross-mount port.
+        const playgroundNav = page.getByTestId('admin-pii-redactor-nav-playground');
+        await expect(playgroundNav).toBeVisible();
+        await playgroundNav.click();
+        await expect(page.getByTestId('admin-pii-redactor-app')).toHaveAttribute(
+            'data-page',
+            'playground',
+        );
+        await expect(page.getByTestId('admin-pii-redactor-playground')).toBeVisible();
+
+        // Top-bar shortcut is a second affordance for the same
+        // navigation target. The Sun/Moon toggle from the iframe era
+        // is intentionally absent — host theme switcher takes over.
+        await expect(page.getByTestId('admin-pii-redactor-shortcut-playground')).toBeVisible();
     });
 });
 
 baseTest.describe('Admin PII Redactor — viewer (RBAC denied)', () => {
     baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
 
-    baseTest('viewer hitting /app/admin/pii-redactor sees admin-forbidden', async ({ page }) => {
+    baseTest('viewer hitting /app/admin/pii-redactor sees admin-forbidden and no cross-mounted shell', async ({
+        page,
+    }) => {
         await page.goto('/app/admin/pii-redactor');
 
         // Same RequireRole pattern as the rest of the admin SPA — the
-        // route gate filters before the iframe ever mounts, so the
-        // viewer never even sees the package URL.
+        // route gate filters before the cross-mounted SPA tree ever
+        // mounts, so the viewer never even sees the package shell.
         await expect(page.getByTestId('admin-forbidden')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-pii-redactor-host')).toHaveCount(0);
+        await expect(page.getByTestId('admin-pii-redactor-app')).toHaveCount(0);
     });
 
     /*
