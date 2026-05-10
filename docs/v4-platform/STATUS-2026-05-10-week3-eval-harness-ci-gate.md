@@ -29,14 +29,31 @@ in §RC tag below.
 | `rag.askmydocs.adversarial.contradicting-claims` | adversarial | 4 | `tests/Eval/golden/adversarial/contradicting-claims.yml` | advisory |
 | `rag.askmydocs.adversarial.rejected-approach-trigger` | adversarial | 3 | `tests/Eval/golden/adversarial/rejected-approach-trigger.yml` | advisory |
 
-### Metrics (4 per dataset)
+### Metrics
 
-| Metric | Origin | What it scores |
+The two stacks differ by lane: the baseline runs 4 metrics, the
+adversarial lanes run 3 (refusal-quality replaces the answer-quality
+metrics; CitationGroundedness stays so a refusal that hallucinates a
+source-path is caught directly).
+
+**Baseline stack (4 metrics — `EvalRegistrar::baselineMetrics()`):**
+
+| Metric slug | Origin | What it scores |
 |---|---|---|
-| `CosineEmbedding` | package | Cosine similarity between expected and actual answers in embedding space |
-| `LlmAsJudge` | package | LLM-as-judge scoring (gpt-4o-mini default; opt-in via `EVAL_LIVE_AI=1`) |
+| `contains` | package | Substring match of expected vs actual answer text |
+| `cosine-embedding` | package | Cosine similarity between expected and actual answers in embedding space |
 | `CosineGroundednessMetric` | AskMyDocs custom | Cosine similarity between answer text and the cited chunks' text — proves the model is grounded in citations rather than hallucinating |
 | `CitationGroundednessMetric` | AskMyDocs custom | Strict matching with phantom-cap@0.5 and refusal-fabrication-zero — every URL/path in `meta.citations` must exist in the corpus AND overlap with retriever hits |
+
+**Adversarial stack (3 metrics — `EvalRegistrar::adversarialMetrics()`):**
+
+| Metric slug | Origin | What it scores |
+|---|---|---|
+| `contains` | package | Substring match of expected refusal/marker text vs actual answer |
+| `refusal-quality` | package | Reads `metadata.refusal_expected` per sample — scores BOTH "refused when expected" AND "did not refuse when expected" |
+| `CitationGroundednessMetric` | AskMyDocs custom | Refusal samples score 1.0 when no citation is fabricated; catches "refused but invented a source-path anyway" |
+
+`LlmAsJudge` is registered by the package but NOT wired into either stack — keep it available for `EVAL_LIVE_AI=1` opt-in nightly runs.
 
 ### Cohorts (4)
 
@@ -52,7 +69,7 @@ All three serial-mode profiles carry strictly `{ mode, concurrency }` per the ev
 
 ### Cost guard
 
-CI default `EVAL_LIVE_AI=false` — `EvalRegistrar::pinDefaultTenant()` calls `Http::preventStrayRequests()` and `Http::fake()` so neither chat nor embeddings ever touch a real provider. Live-mode opt-in via `workflow_dispatch` input or local env `EVAL_LIVE_AI=1` (mirrors the standing `feedback_package_live_testsuite_opt_in` rule).
+CI default `EVAL_LIVE_AI=false` — `EvalRegistrar::bindFakeProviders()` calls `Http::preventStrayRequests()` and `Http::fake()` against the embedding + chat-completions URL patterns so neither chat nor embeddings ever touch a real provider. (`EvalRegistrar::pinDefaultTenant()` is a separate concern: it sets `TenantContext` to `'default'` so the seeded corpus is reachable.) Live-mode opt-in via `workflow_dispatch` input or local env `EVAL_LIVE_AI=1` (mirrors the standing `feedback_package_live_testsuite_opt_in` rule).
 
 ### R36 review-loop summary
 
