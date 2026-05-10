@@ -107,6 +107,23 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
+      # bootstrap dirs must exist BEFORE any artisan command runs —
+      # `key:generate` boots the Laravel app which compiles config /
+      # views and requires storage/framework/{cache,sessions,views}
+      # already on disk; otherwise Compiler.php throws "Please provide
+      # a valid cache path." Original workflow had this step AFTER
+      # Prepare .env which started failing the moment any new SP
+      # (sub-PR 6 LaravelFlowAdminServiceProvider) eagerly resolved a
+      # view-using component during boot.
+      - name: Prepare bootstrap dirs
+        run: |
+          mkdir -p bootstrap/cache storage/framework/cache/data
+          mkdir -p storage/framework/sessions
+          mkdir -p storage/framework/views
+          mkdir -p storage/app/eval-harness/reports
+          mkdir -p storage/app/eval-harness/adversarial/manifests
+          mkdir -p eval-out
+
       - name: Prepare .env
         run: |
           cp .env.example .env
@@ -118,15 +135,6 @@ jobs:
         run: |
           php artisan migrate:fresh --force
           php artisan db:seed --class=Database\\Seeders\\DemoSeeder --force
-
-      - name: Prepare bootstrap dirs
-        run: |
-          mkdir -p bootstrap/cache storage/framework/cache/data
-          mkdir -p storage/framework/sessions
-          mkdir -p storage/framework/views
-          mkdir -p storage/app/eval-harness/reports
-          mkdir -p storage/app/eval-harness/adversarial/manifests
-          mkdir -p eval-out
 
       - name: Run RAG regression — baseline (JSON + Markdown)
         id: baseline

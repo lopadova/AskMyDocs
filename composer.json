@@ -10,6 +10,7 @@
         "laravel/sanctum": "^4.2",
         "padosoft/laravel-ai-regolo": "^1.0",
         "padosoft/laravel-flow": "^1.0",
+        "padosoft/laravel-flow-admin": "^1.0",
         "padosoft/laravel-pii-redactor": "^1.2",
         "padosoft/laravel-pii-redactor-admin": "^1.0.2",
         "phpoffice/phpword": "^1.3",

@@ -31,4 +31,21 @@ return [
     // env flag is false the SP is loaded but its boot() short-circuits
     // before registering any routes.
     Padosoft\PiiRedactorAdmin\PiiRedactorAdminServiceProvider::class,
+    // v4.2/W4 sub-PR 6 — Flow Admin SPA (padosoft/laravel-flow-admin
+    // v1.0.0). Listed explicitly for the same auto-discovery brittleness
+    // rationale as the siblings above. The package is unconditionally
+    // route-registering — the host-app-level `enabled` flag is enforced
+    // by AskMyDocs through:
+    //   1. config/flow-admin.php receives an additional `enabled` key
+    //      (not present in the vendor's published config).
+    //   2. FlowAdminIntegrationServiceProvider defines
+    //      `Gate::define('viewFlowAdmin')` which the configured outer
+    //      middleware `can:viewFlowAdmin` consults.
+    //   3. The custom `App\Http\Middleware\FlowAdminEnabled` middleware
+    //      (aliased by FlowAdminIntegrationServiceProvider)
+    //      `abort(404)`s when the env switch is off, satisfying R14
+    //      (correct semantic for a disabled subsystem) AND
+    //      preventing routes from leaking on an unprepared deploy.
+    Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class,
+    App\Providers\FlowAdminIntegrationServiceProvider::class,
 ];

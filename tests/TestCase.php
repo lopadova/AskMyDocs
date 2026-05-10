@@ -40,6 +40,18 @@ abstract class TestCase extends OrchestraTestCase
         // is available when the in-app definition registry boots.
         $app->register(\Padosoft\LaravelFlow\LaravelFlowServiceProvider::class);
 
+        // v4.2/W4 sub-PR 6 — padosoft/laravel-flow-admin v1.0.0 + the
+        // host-app integration provider. The package SP unconditionally
+        // registers routes; `flow-admin.enabled=false` (the default) is
+        // enforced by the `flow-admin.enabled` middleware aliased by
+        // FlowAdminIntegrationServiceProvider. The integration SP MUST
+        // be registered AFTER the package SP so the alias is available
+        // before the package's route group is matched on the first
+        // request, and so the AskMyDocsFlowAuthorizer binding overrides
+        // the vendor's DenyAllAuthorizer.
+        $app->register(\Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class);
+        $app->register(\App\Providers\FlowAdminIntegrationServiceProvider::class);
+
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
         // Provides EvalEngine, MetricResolver, YamlDatasetLoader, and
@@ -107,6 +119,12 @@ abstract class TestCase extends OrchestraTestCase
         // routes; tests that exercise the admin routes flip this on
         // explicitly via defineEnvironment() (see PiiRedactorAdminMountingTest).
         $app['config']->set('pii-redactor-admin', require __DIR__.'/../config/pii-redactor-admin.php');
+        // v4.2/W4 sub-PR 6 — published flow-admin config. Default
+        // enabled=false so every request to a flow-admin route returns
+        // 404 via the master-switch middleware. Tests that exercise the
+        // wired routes flip this on via getEnvironmentSetUp() in
+        // FlowAdminMountingTest.
+        $app['config']->set('flow-admin', require __DIR__.'/../config/flow-admin.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).
