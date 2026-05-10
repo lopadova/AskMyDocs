@@ -248,10 +248,16 @@ return [
             // previous fix (5c5390b) removed timeout_seconds but missed
             // wait_timeout_seconds, which the rag-regression workflow
             // surfaced loudly on the next CI run.
+            // Serial-mode profiles in eval-harness v1.2 reject ALL
+            // parallel-only knobs at the BatchProfile validator:
+            // timeout_seconds, wait_timeout_seconds, AND checkpoint_every.
+            // The previous fixes removed the first two; checkpoint_every
+            // surfaced as the next failure mode. Keep these profiles
+            // strictly { mode, concurrency } only — anything richer
+            // requires lazy-parallel.
             'ci' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'checkpoint_every' => 10,
             ],
             'smoke' => [
                 'mode' => 'serial',
@@ -260,7 +266,6 @@ return [
             'nightly' => [
                 'mode' => 'serial',
                 'concurrency' => 1,
-                'checkpoint_every' => 25,
             ],
         ],
     ],
