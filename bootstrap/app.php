@@ -164,5 +164,20 @@ return Application::configure(basePath: dirname(__DIR__))
             ->dailyAt('05:00')
             ->onOneServer()
             ->withoutOverlapping();
+
+        // v4.3/W3 — Nightly eval-harness regression run. Hits the real RAG
+        // pipeline with EVAL_LIVE_AI=1 (cost-controlled by the package's
+        // `nightly` batch profile applied to the BASELINE dataset only —
+        // adversarial lanes stay PR-time-only on the rag-regression
+        // workflow). Default-off via EVAL_NIGHTLY_ENABLED. Writes the
+        // dated report + optional alert sidecar to
+        // storage/app/eval-harness/nightly/.
+        if ((bool) env('EVAL_NIGHTLY_ENABLED', false)) {
+            $schedule->command('eval:nightly')
+                ->dailyAt('05:30')
+                ->onOneServer()
+                ->withoutOverlapping()
+                ->runInBackground();
+        }
     })
     ->create();
