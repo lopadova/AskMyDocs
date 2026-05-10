@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PiiRedactorAdminConfig } from './types';
 
@@ -16,7 +16,10 @@ import type { PiiRedactorAdminConfig } from './types';
  * passing trues.
  */
 
-type MockResult = { kind: 'resolve'; value: unknown } | { kind: 'reject'; error: Error };
+type MockResult =
+    | { kind: 'resolve'; value: unknown }
+    | { kind: 'reject'; error: Error }
+    | { kind: 'pending' };
 
 const apiMock: { responses: Record<string, MockResult>; calls: Array<{ path: string; opts?: unknown }> } = {
     responses: {},
@@ -32,6 +35,11 @@ vi.mock('./adminApi', async () => {
             const result = apiMock.responses[normalisePath(path)] ?? apiMock.responses['*'];
             if (!result) {
                 return null;
+            }
+            if (result.kind === 'pending') {
+                // Never resolves — caller is testing the pre-resolve
+                // frame. The test must not await on this fetch.
+                return new Promise(() => {});
             }
             if (result.kind === 'reject') {
                 throw result.error;
@@ -157,6 +165,78 @@ describe('PiiRedactorAdminApp (cross-mount)', () => {
         await user.click(await screen.findByTestId('admin-pii-redactor-nav-playground'));
         const rawCheckbox = screen.getByTestId('admin-pii-redactor-playground-raw') as HTMLInputElement;
         expect(rawCheckbox.disabled).toBe(true);
+    });
+
+    it('does NOT render literal "Disabled" / "0" before /status resolves — loading placeholder used instead (Copilot iter 1: R14)', async () => {
+        // `pending` makes the mocked adminFetch return a never-resolving
+        // promise, so the Overview is stuck in its pre-resolve frame
+        // for the duration of the assertion window.
+        apiMock.responses['status'] = { kind: 'pending' };
+
+        render(<PiiRedactorAdminApp config={makeConfig()} />);
+
+        const overview = await screen.findByTestId('admin-pii-redactor-overview');
+        expect(overview).toHaveAttribute('data-state', 'loading');
+        expect(overview).toHaveAttribute('aria-busy', 'true');
+
+        // Pre-resolve frame: the Engine / Detectors cards must NOT
+        // claim a definitive 'Disabled' / '0' value. Both were the
+        // bug Copilot iter 1 caught.
+        expect(overview).not.toHaveTextContent('Disabled');
+        // Scoped to the overview section — the sidebar nav also has a
+        // 'Detectors' button, so an unscoped getByText would match
+        // multiple elements.
+        const detectorsLabel = within(overview).getByText('Detectors');
+        const detectorsCard = detectorsLabel.closest('.pra-panel');
+        expect(detectorsCard).not.toBeNull();
+        expect(detectorsCard?.textContent ?? '').not.toMatch(/\b0\b/);
+
+        // All four cards show the same loading placeholder so the UI
+        // is internally consistent across the grid.
+        const placeholders = overview.querySelectorAll('strong');
+        expect(placeholders.length).toBe(4);
+        placeholders.forEach((node) => expect(node.textContent).toBe('—'));
+    });
+
+    it('renders the "unavailable" placeholder on every Overview card when /status fails (Copilot iter 1: R14)', async () => {
+        apiMock.responses['status'] = {
+            kind: 'reject',
+            error: new AdminApiError('Not found.', 404, { message: 'Not found.' }),
+        };
+
+        render(<PiiRedactorAdminApp config={makeConfig()} />);
+
+        // Wait for the error path to settle — the top-level alert
+        // rendering proves the fetch rejected.
+        await screen.findByTestId('admin-pii-redactor-status-error');
+
+        const overview = screen.getByTestId('admin-pii-redactor-overview');
+        expect(overview).toHaveAttribute('data-state', 'error');
+        // Every card shows the 'unavailable' placeholder — no card
+        // claims a definitive 'Disabled' / '0' value when the fetch
+        // failed.
+        expect(overview).not.toHaveTextContent('Disabled');
+        const placeholders = overview.querySelectorAll('strong');
+        expect(placeholders.length).toBe(4);
+        placeholders.forEach((node) => expect(node.textContent).toBe('unavailable'));
+    });
+
+    it('exposes an aria-label on the Ctrl K shortcut button so screen readers announce its purpose (Copilot iter 1: R15)', async () => {
+        apiMock.responses['status'] = {
+            kind: 'resolve',
+            value: { package: {}, strategies: ['mask'], snapshot: {} },
+        };
+        render(<PiiRedactorAdminApp config={makeConfig()} />);
+
+        const shortcut = await screen.findByTestId('admin-pii-redactor-shortcut-playground');
+        // accessibleName must describe the action, not be the keyboard
+        // hint alone — `title` attribute is not a reliable accessible
+        // name across screen-reader engines.
+        expect(shortcut).toHaveAttribute('aria-label', 'Open playground');
+        expect(shortcut).toHaveAttribute('aria-keyshortcuts', 'Control+K');
+        // The button is now reachable BY accessible name (R15).
+        const byName = screen.getByRole('button', { name: 'Open playground' });
+        expect(byName).toBe(shortcut);
     });
 
     it('does NOT touch document.documentElement.dataset.theme — host owns the theme (cross-mount drops package toggle)', async () => {

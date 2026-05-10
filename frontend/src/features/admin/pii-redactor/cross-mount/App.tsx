@@ -106,7 +106,12 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
     }, []);
 
     return (
-        <div className="pra-shell" data-testid="admin-pii-redactor-app" data-page={page}>
+        <div
+            className="pra-shell"
+            data-testid="admin-pii-redactor-app"
+            data-page={page}
+            data-status-state={status === null ? (error ? 'error' : 'loading') : 'ready'}
+        >
             <aside className="pra-sidebar" aria-label="PII Redactor sections">
                 <div className="pra-brand">
                     <div className="pra-mark"><KeyRound size={18} /></div>
@@ -140,10 +145,12 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
                         <button
                             type="button"
                             title="Open playground"
+                            aria-label="Open playground"
+                            aria-keyshortcuts="Control+K"
                             data-testid="admin-pii-redactor-shortcut-playground"
                             onClick={() => setPage('playground')}
                         >
-                            <Search size={16} /> Ctrl K
+                            <Search size={16} aria-hidden="true" /> Ctrl K
                         </button>
                     </div>
                 </header>
@@ -152,7 +159,13 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
                         {error}
                     </div>
                 )}
-                <PageView page={page} status={status} abilities={config.abilities} apiBase={config.apiBase} />
+                <PageView
+                    page={page}
+                    status={status}
+                    statusError={error}
+                    abilities={config.abilities}
+                    apiBase={config.apiBase}
+                />
             </main>
         </div>
     );
@@ -161,11 +174,13 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
 function PageView({
     page,
     status,
+    statusError,
     abilities,
     apiBase,
 }: {
     page: Page;
     status: StatusPayload | null;
+    statusError: string | null;
     abilities: PiiRedactorAdminAbilities;
     apiBase: string;
 }) {
@@ -212,19 +227,55 @@ function PageView({
     if (page === 'settings') {
         return <JsonPanel apiBase={apiBase} endpoint="settings" />;
     }
-    return <Overview status={status} />;
+    return <Overview status={status} statusError={statusError} />;
 }
 
-function Overview({ status }: { status: StatusPayload | null }) {
+/*
+ * Copilot iter 1 fix (R14): the previous Overview body fell through to
+ * 'Disabled' / '0' whenever `status === null` — i.e. on the first render
+ * before `/status` resolved, AND on a fetch failure (e.g. when
+ * `PII_REDACTOR_ADMIN_ENABLED=false` so the package routes 404). Both
+ * are 'unknown' states and presenting them as definitive 'Disabled' /
+ * '0' contradicted the rest of the cards (Strategy / Token store
+ * already used a 'loading' placeholder via `?? 'loading'`). The card
+ * grid now uses one consistent placeholder ('—' for loading, 'unavailable'
+ * for error) for ALL four cards while `status === null`, and only
+ * renders concrete values once the fetch resolves successfully.
+ */
+function Overview({
+    status,
+    statusError,
+}: {
+    status: StatusPayload | null;
+    statusError: string | null;
+}) {
+    const overviewState: 'loading' | 'error' | 'ready' =
+        status === null ? (statusError ? 'error' : 'loading') : 'ready';
+    const placeholder = overviewState === 'error' ? 'unavailable' : '—';
     const snapshot = status?.snapshot;
-    const cards: Array<[string, string]> = [
-        ['Engine', snapshot?.enabled ? 'Enabled' : 'Disabled'],
-        ['Strategy', String(snapshot?.default_strategy ?? 'loading')],
-        ['Token store', String(snapshot?.token_store?.driver ?? 'loading')],
-        ['Detectors', String(snapshot?.detectors?.length ?? 0)],
-    ];
+
+    const cards: Array<[string, string]> =
+        overviewState === 'ready'
+            ? [
+                  ['Engine', snapshot?.enabled ? 'Enabled' : 'Disabled'],
+                  ['Strategy', String(snapshot?.default_strategy ?? placeholder)],
+                  ['Token store', String(snapshot?.token_store?.driver ?? placeholder)],
+                  ['Detectors', String(snapshot?.detectors?.length ?? 0)],
+              ]
+            : [
+                  ['Engine', placeholder],
+                  ['Strategy', placeholder],
+                  ['Token store', placeholder],
+                  ['Detectors', placeholder],
+              ];
+
     return (
-        <section className="pra-grid" data-testid="admin-pii-redactor-overview">
+        <section
+            className="pra-grid"
+            data-testid="admin-pii-redactor-overview"
+            data-state={overviewState}
+            aria-busy={overviewState === 'loading'}
+        >
             {cards.map(([label, value]) => (
                 <MetricPanel key={label} label={label} value={value} />
             ))}
