@@ -2,7 +2,7 @@
 
 W4 of the v4.2 cycle mounts **three operator-facing admin consoles** inside
 the AskMyDocs admin shell, one per stable-line `padosoft/*-admin` package
-released between 2026-05-06 and 2026-05-06: `padosoft/laravel-pii-redactor-admin`
+released on 2026-05-06: `padosoft/laravel-pii-redactor-admin`
 v1.0.2, `padosoft/laravel-flow-admin` v1.0.0, and `padosoft/eval-harness-ui`
 v1.0.0. All three mount as iframes (each package targets React 19 + Tailwind v4
 or Blade + Alpine — incompatible with the AskMyDocs React 18 host SPA), all
@@ -19,7 +19,7 @@ This document is the W4 closure artefact per R39. Closure SHA pinned in
 | Sub-PR | Reference PR | Closure SHA on `feature/v4.2` | Scope |
 |---|---|---|---|
 | **5** — pii-redactor-admin v1.0.2 | [#121](https://github.com/lopadova/AskMyDocs/pull/121) | `5d13710` | Mount under `/admin/pii-redactor`. 3 Spatie-role Gates: `viewPiiRedactorAdmin` (super-admin / dpo / admin), `detokenisePiiRedactor` (super-admin / dpo only), `viewPiiRedactorRawSamples` (super-admin only). New `dpo` role added to `RbacSeeder` (5 roles total) with admin.access + logs.view + pii.detokenize permissions. R30 supplementary migration adds `tenant_id` to package's audit table + `creating` Eloquent observer stamps from TenantContext. Iframe mount (React 19 / Tailwind v4 vs our React 18 host). |
-| **6** — flow-admin v1.0.0 | [#122](https://github.com/lopadova/AskMyDocs/pull/122) | `bc60ca6` | Mount under `/admin/flows`. 5 Spatie-role-backed Gates wired through the package's `ActionAuthorizer` contract: `viewFlowAdmin` + 8 row-scoped methods (`canViewKpis` / `canViewRuns` / `canViewRunDetail` / `canReplayRun` / `canCancelRun` / `canApproveByToken` / `canRejectByToken` / `canRetryWebhook`). R30 via `AskMyDocsFlowAuthorizer` — every row-scoped action reads `tenant_id` via `DB::table` lookup and rejects on cross-tenant. `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Iframe mount (Blade + Alpine — not React). |
+| **6** — flow-admin v1.0.0 | [#122](https://github.com/lopadova/AskMyDocs/pull/122) | `bc60ca6` | Mount under `/admin/flows`. 1 outer-fence Spatie-role Gate `viewFlowAdmin` (super-admin / admin / dpo) PLUS 8 row-scoped `ActionAuthorizer` methods implemented in `AskMyDocsFlowAuthorizer` (`canViewKpis` / `canViewRuns` / `canViewRunDetail` / `canReplayRun` / `canCancelRun` / `canApproveByToken` / `canRejectByToken` / `canRetryWebhook`). R30 via the same authorizer — every row-scoped action reads `tenant_id` via `DB::table` lookup and rejects on cross-tenant. `FlowAdminEnabled` middleware aborts 404 when `FLOW_ADMIN_ENABLED=false` (default). Iframe mount (Blade + Alpine — not React). |
 | **7** — eval-harness-ui v1.0.0 | [#123](https://github.com/lopadova/AskMyDocs/pull/123) | `2c7d262` | Mount under `/admin/eval-harness`. Single read-only Gate `eval-harness.viewer` (super-admin + admin + dpo + editor). Editor included so canonical editors can verify their canonical edits did not regress factuality. **3 independent fail-closed fences in series**: env flag `EVAL_HARNESS_UI_ENABLED=false` default → Package controller `abort(404)`; `EvalHarnessUiNonProduction` middleware `abort(404)` when `APP_ENV=production`; `can:eval-harness.viewer` middleware → 403 on viewer / anonymous. Tenant header injection via `EvalHarnessUiTenantHeader` middleware (reads from `TenantContext::current()`). `class_exists()` guard in bootstrap/providers.php so `composer install --no-dev` deploys don't crash. Iframe mount (React + Vite isolated bundle). |
 
 **Cycle-wide test count delta on `feature/v4.2` HEAD:** 1328 (start of W4) → 1371 (end of W4) — **+43 new tests** across PHPUnit feature tests for Gates / mounting / tenant-scoping / 3-fence semantics + 3 new Playwright specs. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + the RAG regression workflow.
@@ -38,33 +38,38 @@ All three approaches are tested against seeded multi-tenant fixtures asserting t
 
 ## Sidebar surface (end of W4)
 
-The AskMyDocs admin sidebar now exposes the W4 SPAs alongside the existing admin sections:
+The AskMyDocs admin sidebar now exposes the W4 SPAs alongside the existing admin sections, mirroring the actual `NAV_ITEMS` layout in `frontend/src/components/shell/Sidebar.tsx`:
 
 ```
+Workspace
+└── Chat
+
 Admin
 ├── Dashboard
 ├── Knowledge
 ├── AI Insights
 ├── Users & Roles
-├── PII Redactor       (new — sub-PR 5)
-└── Flows              (new — sub-PR 6)
+└── PII Redactor       (new — sub-PR 5)
 
-Ops
+Operations
+├── Flows              (new — sub-PR 6)
+├── Eval Harness       (new — sub-PR 7)
 ├── Logs
-├── Maintenance
-└── Eval Harness       (new — sub-PR 7; visible only when EVAL_HARNESS_UI_ENABLED=true AND APP_ENV != production)
+└── Maintenance
 ```
 
-Every nav entry uses the same testid hierarchy convention (R29) so Playwright selectors stay stable: `admin-pii-redactor-host` / `admin-flows-host` / `admin-eval-harness-host` are the iframe-wrapper testids; the iframe elements themselves carry `*-iframe` testids.
+All three new nav entries are rendered **unconditionally** in the sidebar; the fail-closed behaviour for `EVAL_HARNESS_UI_ENABLED=false` and `APP_ENV=production` is enforced server-side by the per-route fences (RequireRole + middleware-level `can:` Gates + env-flag `abort(404)` on disabled subsystems). Operators clicking the nav entry under disabled / unauthorised conditions land on the AdminForbidden screen instead of the package console.
 
-## Playwright test discipline (R30 mixed-import lesson)
+Every nav entry uses the testid hierarchy convention (R29) so Playwright selectors stay stable: `admin-pii-redactor-host` / `admin-flows-host` / `admin-eval-harness-host` are the iframe-wrapper testids; the iframe elements themselves carry `*-iframe` testids.
+
+## Playwright test discipline (R12/R13 mixed-import lesson)
 
 All three new specs (`admin-pii-redactor.spec.ts`, `admin-flows.spec.ts`, `admin-eval-harness.spec.ts`) follow the **strict mixed-import pattern**:
 
 - `seededTest` from `./fixtures` for the `'admin (mount + nav)'` describe block (auto-fixture re-runs DemoSeeder + re-logs admin per test — needed because earlier specs may have invalidated the admin storage state).
 - `baseTest` from `'@playwright/test'` for the `'viewer (RBAC denied)'` describe block (uses pre-saved viewer.json storage state, no auto-fixture reset that would invalidate the cookie).
 
-This pattern was hardened during sub-PR 5 iter 1 + sub-PR 6 iter 1 — both bitten by single-import patterns that reset the DB and cascaded failures across all viewer-RBAC specs. Documented in the new `feedback_v42_admin_spa_playwright_pattern` memory entry.
+This pattern was hardened during sub-PR 5 iter 1 + sub-PR 6 iter 1 — both bitten by single-import patterns that reset the DB and cascaded failures across all viewer-RBAC specs. The pattern itself is captured inline in the file headers of all three new specs (each carries an explanatory comment block at the top citing the storage-state-invalidation mechanism described in `frontend/e2e/fixtures.ts`'s "Step 3 is non-obvious but load-bearing" note). The lesson sits adjacent to R12 (E2E coverage) and R13 (real-data E2E) in the project rules, NOT to R30 (cross-tenant isolation) — the storage-state mechanism is unrelated to tenant scoping.
 
 ## R36 review-loop summary
 
