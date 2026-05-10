@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
+use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
@@ -358,4 +359,49 @@ Route::middleware([
     ->group(function () {
         Route::get('/strategy', [PiiStrategyController::class, 'show'])
             ->name('api.admin.pii.strategy');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Eval Harness UI bootstrap config (gate-protected)
+|--------------------------------------------------------------------------
+|
+| v4.4/W3 Copilot iter 2 finding #2 — Eval Harness UI cross-mount
+| bootstrap config endpoint.
+|
+| Returns the runtime config payload the cross-mounted
+| `padosoft/eval-harness-ui` SPA needs to render in parity with the
+| iframe predecessor (metric labels, polling intervals, locale,
+| command-palette shortcut). Iter 1 hard-coded an empty payload
+| host-side which diverged from `config/eval-harness-ui.php` (R9 +
+| R14); this endpoint replays that config exactly so operators'
+| tuned settings reach the FE.
+|
+| Mounted OUTSIDE the role-restricted /api/admin group above because
+| the `eval-harness.viewer` Gate admits four Spatie roles —
+| `super-admin`, `admin`, `dpo`, `editor`. Wrapping it under the
+| `role:admin|super-admin` middleware would 403 `dpo` and `editor`
+| even though the Gate explicitly allows them. Same mounting
+| precedent as `admin/pii/strategy` above.
+|
+| The two `vendor/padosoft/eval-harness-ui` server-side fences
+| (env flag + `eval-harness-ui.non-prod` middleware) only guard the
+| package's blade routes at `/admin/eval-harness/{view?}` — they do
+| NOT cover this host endpoint. The host-side `auth:sanctum` +
+| `can:eval-harness.viewer` stack is the only defence here, which is
+| correct: a viewer / anonymous request 403s before the payload is
+| rendered, and the payload itself contains no secrets — only what
+| the package config already exposes through `config/eval-harness-ui.php`.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:eval-harness.viewer',
+])
+    ->prefix('admin/eval-harness')
+    ->group(function () {
+        Route::get('/bootstrap-config', [EvalHarnessUiBootstrapController::class, 'show'])
+            ->name('api.admin.eval-harness.bootstrap-config');
     });

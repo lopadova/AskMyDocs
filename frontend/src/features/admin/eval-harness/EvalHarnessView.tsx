@@ -1,99 +1,156 @@
 /*
- * EvalHarnessView — iframe mount of the
- * `padosoft/eval-harness-ui` v1.0.0 SPA console.
+ * EvalHarnessView — cross-mount of the
+ * `padosoft/eval-harness-ui` v0.1.0 SPA dashboard.
  *
- * Mount strategy: IFRAME.
+ * v4.4/W3 — replaces the v4.2/W4 iframe mount (see ADR 0005). The
+ * previous iframe rationale (Tailwind v3 + handcrafted CSS host vs
+ * Tailwind v3 + own bundle in the package) is RESOLVED by the v4.4/W1
+ * Tailwind v4 host migration (commit `860d0aa`) and by re-emitting
+ * the package's component-layer classes as plain CSS scoped under
+ * `.ehu-shell` (see `cross-mount/eval-harness-ui.css`).
  *
- * Why iframe and not cross-mount: the package ships its own React + Vite
- * bundle that hydrates against a Blade-rendered bootstrap payload
- * (api_base / tenant_header / locale / metric_labels). Cross-mounting
- * would require replicating the bootstrap pipeline inside the AskMyDocs
- * SPA AND keeping two React runtimes in the same window. Iframe
- * isolates the two cleanly: the AskMyDocs shell (sidebar / topbar /
- * breadcrumbs) stays in our React tree; the eval dashboard lives at
- * its own URL inside the frame.
+ * Mount strategy: cross-mount. The package's React tree renders
+ * directly inside the host's TanStack Router, sharing one React
+ * runtime, one Sanctum cookie, one axios instance. No iframe means
+ * no double React, no double layout reflow, and one fewer HTTP
+ * round-trip on first paint. Same pattern as the W2 cross-mount of
+ * `padosoft/laravel-pii-redactor-admin` (see {@see PiiRedactorView}).
  *
- * Mirrors the exact pattern used for {@see PiiRedactorView} (sub-PR 5)
- * and {@see FlowsView} (sub-PR 6).
+ * Routing: the package internally uses `react-router-dom` v6's
+ * `<BrowserRouter basename="/app/admin/eval-harness">` for its 8 sub-
+ * pages (Dashboard / Reports / ReportDetail / Compare / Trend /
+ * Adversarial / AdversarialDetail / LiveBatches). The host's
+ * TanStack Router owns the `/app/admin/eval-harness` shell mount;
+ * the cross-mount uses `BrowserRouter` for everything below it. Two
+ * routers coexist at different scopes — acceptable cost: ~14 KB of
+ * `react-router-dom` for the package's existing wiring vs the
+ * full-rewrite cost of porting 8 pages onto TanStack child routes.
  *
- * The iframe URL points at the package web prefix
- * (`EVAL_HARNESS_UI_PREFIX`, default `admin/eval-harness`). Hardcoded
- * here for the same reasons documented on the sibling views: the Vite
- * build does not see the runtime Laravel env, and operators who change
- * `EVAL_HARNESS_UI_PREFIX` will also update this constant in the same
- * change-set.
+ * Config resolution (Copilot iter 2 finding #2): the cross-mount
+ * fetches the runtime config from
+ * `GET /api/admin/eval-harness/bootstrap-config` (the host endpoint
+ * mounted in `routes/api.php`) at mount time. The endpoint replays
+ * `config/eval-harness-ui.php` so operators' tuned `metric_labels`,
+ * `polling`, `locale`, and `shortcuts` settings actually reach the
+ * SPA — iter 1 hard-coded an empty payload host-side, which
+ * diverged from what the iframe predecessor delivered through the
+ * package's blade `<script id="eval-harness-ui-bootstrap">` tag.
  *
- * Status probing: we GET a JSON-only API endpoint
- * (`/admin/eval-harness/api/bootstrap`) with `Accept: application/json`
- * and `redirect: 'manual'`. The package controller returns:
- *   - 200 + JSON when both fences are open (env=true AND non-prod)
- *     AND the user has the `eval-harness.viewer` Gate
- *   - 401/403 when the auth/Gate fences reject
- *   - 404 when env=false OR APP_ENV=production
+ *   - `apiBase` → `/admin/eval-harness/api` (matches
+ *     `EVAL_HARNESS_API_BASE` env default — the path the package's
+ *     blade controller mounts the eval-harness JSON API at).
+ *   - `routeBase` → `/app/admin/eval-harness` (the path the host
+ *     TanStack shell mounts the cross-mount at; this is NOT the
+ *     `EVAL_HARNESS_UI_PREFIX` env value, which targets the
+ *     package's blade route at `/admin/eval-harness/{view?}`).
  *
- * Why the JSON endpoint + manual redirect: an HTML probe of the SPA
- * mount URL would falsely mark "ready" if the user's session has
- * expired — Laravel's `auth` middleware 302→/login, fetch follows
- * the redirect by default, and the login page returns 200 HTML which
- * passes `response.ok`. JSON Accept + manual-redirect means an
- * expired session surfaces as an opaqueredirect (status 0) → treated
- * as `error`, never `ready`. Same defence as FlowsView (sub-PR 6).
+ * The three fail-closed fences (env flag `EVAL_HARNESS_UI_ENABLED`,
+ * `APP_ENV=production`, Gate `eval-harness.viewer`) stay enforced
+ * server-side on every package API route — the cross-mount only
+ * changes the FRONTEND mount strategy. A viewer who somehow reaches
+ * the route still hits a 4xx from Laravel. The host bootstrap-config
+ * endpoint is gated by `auth:sanctum` + `can:eval-harness.viewer`
+ * with the same role allowlist (see
+ * `app/Http/Controllers/Api/Admin/EvalHarnessUiBootstrapController.php`).
  */
 import { useEffect, useState } from 'react';
+import { api } from '../../../lib/api';
+import EvalHarnessUiApp from './cross-mount/main-entry';
+import type { AppBootstrapConfig } from './cross-mount/utils/bootstrap';
 
-const EVAL_HARNESS_BASE_URL = '/admin/eval-harness';
-const EVAL_HARNESS_PROBE_URL = '/admin/eval-harness/api/bootstrap';
+/*
+ * `apiBase` targets the package's eval-harness BE API routes mounted
+ * at `/admin/eval-harness/api/*` (the `EVAL_HARNESS_API_BASE` env
+ * default). The cross-mount forwards every API call through this
+ * prefix; operators who change `EVAL_HARNESS_API_BASE` also redeploy
+ * the host bundle, same operational coupling the iframe predecessor
+ * had.
+ */
+const EVAL_HARNESS_API_BASE = '/admin/eval-harness/api';
+
+/*
+ * `EVAL_HARNESS_ROUTE_BASE` is the FE mount path INSIDE the host
+ * TanStack shell — i.e. the URL prefix the package's internal
+ * `<BrowserRouter basename={...}>` aligns to. This is `/app/admin/
+ * eval-harness` and intentionally NOT the `EVAL_HARNESS_UI_PREFIX`
+ * env value:
+ *
+ *   - `EVAL_HARNESS_UI_PREFIX` (default `admin/eval-harness`) is the
+ *     LARAVEL prefix where the package mounts its blade route +
+ *     `/api/*` controllers — server-side, not browser-visible to the
+ *     SPA shell.
+ *   - `/app/admin/eval-harness` is where the host TanStack route
+ *     `appRoute > 'admin/eval-harness'` puts the cross-mount in the
+ *     browser URL bar.
+ *
+ * Two distinct concepts that happened to share the suffix; the
+ * cross-mount has to use the host TanStack path so back/forward
+ * navigation from the BrowserRouter sub-routes resolves correctly.
+ */
+const EVAL_HARNESS_ROUTE_BASE = '/app/admin/eval-harness';
+
+const EVAL_HARNESS_BOOTSTRAP_CONFIG_URL = '/api/admin/eval-harness/bootstrap-config';
+
+/*
+ * Hard-coded fallback payload — used ONLY when the bootstrap-config
+ * fetch fails (e.g. env=false at the package level rejects the
+ * response with a 404, or the host endpoint itself errors). The SPA
+ * still mounts in degraded mode with empty metric labels + default
+ * polling + en locale; the dashboard's fan-out fetches will then
+ * surface the underlying BE error through the package's existing
+ * `<ErrorPanel />` so the operator sees what's broken (R7 / R14).
+ */
+const FALLBACK_CONFIG: AppBootstrapConfig = {
+    ui_version: '0.1.0',
+    metric_labels: {},
+    tenant_header: null,
+    polling: {},
+    locale: 'en',
+    shortcuts: { commandPalette: 'mod+k' },
+};
+
+type LoadState = 'loading' | 'ready' | 'error';
 
 export function EvalHarnessView() {
-    const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+    const [config, setConfig] = useState<AppBootstrapConfig | null>(null);
+    const [state, setState] = useState<LoadState>('loading');
 
     useEffect(() => {
         let active = true;
-        const controller = new AbortController();
+        setState('loading');
 
-        // Belt-and-braces fallback: if the probe doesn't respond
-        // within 10 s, surface an explicit error state.
-        const id = window.setTimeout(() => {
-            controller.abort();
-            if (active) {
-                setLoadState((prev) => (prev === 'loading' ? 'error' : prev));
-            }
-        }, 10_000);
-
-        void fetch(EVAL_HARNESS_PROBE_URL, {
-            method: 'GET',
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json' },
-            redirect: 'manual',
-            signal: controller.signal,
-        })
+        api.get<AppBootstrapConfig>(EVAL_HARNESS_BOOTSTRAP_CONFIG_URL)
             .then((response) => {
                 if (!active) {
                     return;
                 }
-                setLoadState(response.ok ? 'ready' : 'error');
+                setConfig(response.data);
+                setState('ready');
             })
             .catch(() => {
                 if (!active) {
                     return;
                 }
-                setLoadState('error');
-            })
-            .finally(() => {
-                window.clearTimeout(id);
+                // R7 / R14: surface the failure visibly. We still
+                // mount the SPA below so the package's own
+                // <ErrorPanel /> surfaces the underlying API
+                // failures, but the host wrapper carries
+                // data-state="error" so E2E + observability tools
+                // see the degraded state.
+                setConfig(FALLBACK_CONFIG);
+                setState('error');
             });
 
         return () => {
             active = false;
-            controller.abort();
-            window.clearTimeout(id);
         };
     }, []);
 
     return (
         <div
             data-testid="admin-eval-harness-host"
-            data-state={loadState}
+            data-state={state}
+            data-mount="cross-mount"
             style={{
                 flex: 1,
                 display: 'flex',
@@ -101,18 +158,17 @@ export function EvalHarnessView() {
                 background: 'var(--bg-0)',
                 color: 'var(--fg-1)',
                 position: 'relative',
+                minHeight: 0,
             }}
         >
-            {loadState === 'loading' && (
+            {config === null ? (
                 <div
                     data-testid="admin-eval-harness-loading"
                     style={{
-                        position: 'absolute',
-                        inset: 0,
+                        flex: 1,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        pointerEvents: 'none',
                         fontFamily: 'var(--font-sans)',
                         fontSize: 13,
                         color: 'var(--fg-2)',
@@ -122,53 +178,13 @@ export function EvalHarnessView() {
                         Loading Eval Harness…
                     </span>
                 </div>
+            ) : (
+                <EvalHarnessUiApp
+                    config={config}
+                    apiBase={EVAL_HARNESS_API_BASE}
+                    routeBase={EVAL_HARNESS_ROUTE_BASE}
+                />
             )}
-            {loadState === 'error' && (
-                <div
-                    data-testid="admin-eval-harness-error"
-                    role="alert"
-                    style={{
-                        flex: 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: 40,
-                        fontFamily: 'var(--font-sans)',
-                    }}
-                >
-                    <div
-                        className="panel popin"
-                        style={{
-                            maxWidth: 480,
-                            padding: '24px 24px 22px',
-                            textAlign: 'center',
-                        }}
-                    >
-                        <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
-                            Eval Harness is unavailable
-                        </h2>
-                        <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>
-                            The dashboard did not load. Confirm{' '}
-                            <code>EVAL_HARNESS_UI_ENABLED=true</code> AND{' '}
-                            <code>APP_ENV</code> is not <code>production</code> in
-                            the host environment, then run{' '}
-                            <code>php artisan config:clear</code>.
-                        </p>
-                    </div>
-                </div>
-            )}
-            <iframe
-                src={EVAL_HARNESS_BASE_URL}
-                title="Eval Harness"
-                data-testid="admin-eval-harness-iframe"
-                style={{
-                    flex: 1,
-                    width: '100%',
-                    border: 0,
-                    background: 'var(--bg-0)',
-                    visibility: loadState === 'ready' ? 'visible' : 'hidden',
-                }}
-            />
         </div>
     );
 }

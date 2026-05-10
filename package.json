@@ -34,6 +34,7 @@
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.53.1",
     "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.30.3",
     "recharts": "^3.8.1",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
