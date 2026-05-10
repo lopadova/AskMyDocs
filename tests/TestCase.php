@@ -33,6 +33,12 @@ abstract class TestCase extends OrchestraTestCase
         // is available when the in-app definition registry boots.
         $app->register(\Padosoft\LaravelFlow\LaravelFlowServiceProvider::class);
 
+        // v4.2/W3 — padosoft/eval-harness service provider. Manual
+        // registration because Testbench skips package auto-discovery.
+        // Provides EvalEngine, MetricResolver, YamlDatasetLoader, and
+        // the eval-harness:run / eval-harness:adversarial commands.
+        $app->register(\Padosoft\EvalHarness\EvalHarnessServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -85,6 +91,10 @@ abstract class TestCase extends OrchestraTestCase
         // flow_steps + flow_audit row assertions). Override only the
         // persistence.enabled knob; the package SP merges the rest.
         $app['config']->set('laravel-flow', require __DIR__.'/../config/laravel-flow.php');
+        // v4.2/W3 — eval-harness CI gate. Without this, EvalRegistrar
+        // can't read the golden dataset paths under
+        // `eval-harness.askmydocs.golden.*` and the registrar throws.
+        $app['config']->set('eval-harness', require __DIR__.'/../config/eval-harness.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).

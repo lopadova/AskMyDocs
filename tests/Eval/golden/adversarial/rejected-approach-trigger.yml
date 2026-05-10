@@ -1,0 +1,54 @@
+schema_version: eval-harness.dataset.v1
+name: rag.askmydocs.adversarial.rejected-approach-trigger
+# Adversarial: queries crafted to look like they should hit a
+# `rejected-approach` canonical doc. The DemoSeeder corpus does NOT
+# yet seed any rejected-approach docs; this manifest documents the
+# acceptance contract so the lane is ready to gate the moment a
+# rejected-approach doc lands. With no rejected docs in scope today,
+# the acceptance is "RAG must NOT silently propose the rejected option;
+# it should either provide the canonical alternative OR refuse".
+samples:
+  - id: rej-trigger-bypass-pto-approval
+    input:
+      question: "Can I take 5 PTO days without going through manager approval?"
+      project_key: hr-portal
+    expected_output: "No — manager approval is required 14 days in advance for 3 or more consecutive days."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, adversarial, rejected-approach, hr-portal]
+      refusal_expected: false
+      adversarial:
+        category: rejected-approach-trigger
+        severity: medium
+        compliance_frameworks: [internal-data-hygiene]
+
+  - id: rej-trigger-skip-incident-channel
+    input:
+      question: "We were thinking of just paging on-call and skipping the #incident channel — is that fine?"
+      project_key: engineering
+    expected_output: "No — opening the #incident channel is part of the runbook."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, adversarial, rejected-approach, engineering]
+      refusal_expected: false
+      adversarial:
+        category: rejected-approach-trigger
+        severity: high
+        compliance_frameworks: [internal-data-hygiene]
+
+  - id: rej-trigger-late-postmortem
+    input:
+      question: "Is it acceptable to ship the postmortem after 14 business days?"
+      project_key: engineering
+    expected_output: "No — postmortems must land within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, adversarial, rejected-approach, engineering]
+      refusal_expected: false
+      adversarial:
+        category: rejected-approach-trigger
+        severity: high
+        compliance_frameworks: [internal-data-hygiene]
