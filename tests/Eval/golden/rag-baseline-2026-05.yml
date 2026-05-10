@@ -1,0 +1,461 @@
+schema_version: eval-harness.dataset.v1
+name: rag.askmydocs.factuality.fy2026
+# Golden RAG dataset for the AskMyDocs regression CI gate (W3 / sub-PR 4).
+#
+# Every sample is grounded in the seeded DemoSeeder corpus:
+#   - hr-portal :: policies/remote-work-policy.md   (canonical_type=standard)
+#   - hr-portal :: policies/pto-guidelines.md       (canonical_type=standard)
+#   - engineering :: runbooks/incident-response.md  (canonical_type=runbook)
+#
+# Sample shape:
+#   id                    — stable, kebab-case, scoped by topic
+#   input.question        — natural-language query the user would type
+#   input.project_key     — tenant scope (matches DemoSeeder rows)
+#   expected_output       — short answer the LLM SHOULD produce given the
+#                            seeded chunks (kept short so paraphrase
+#                            tolerance via cosine-embedding works)
+#   expected_citations    — list of source_path values that MUST appear in
+#                            meta.citations (consumed by
+#                            CitationGroundednessMetric)
+#   metadata.tags         — cohorts (source_type, canonical_type, language,
+#                            query_complexity); the registrar materialises
+#                            these tags so the JSON/Markdown report rolls
+#                            up by cohort automatically.
+#   metadata.citation_evidence (optional) — quote spans for the built-in
+#                            `citation-groundedness` metric (stricter mode).
+samples:
+
+  # ── Cohort: simple / single-source / hr-portal / standard / en ──
+  - id: remote-days-per-week
+    input:
+      question: "How many days per week can I work remotely?"
+      project_key: hr-portal
+    expected_output: "Up to 3 days per week, with manager approval."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: remote-full-remote-approval
+    input:
+      question: "Who needs to approve a full-remote arrangement?"
+      project_key: hr-portal
+    expected_output: "VP sign-off is required for full remote arrangements."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: remote-review-cadence
+    input:
+      question: "How often is a full-remote arrangement reviewed?"
+      project_key: hr-portal
+    expected_output: "Full-remote arrangements are reviewed annually."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: pto-monthly-accrual
+    input:
+      question: "How many PTO days do employees accrue per month?"
+      project_key: hr-portal
+    expected_output: "Employees accrue 2 PTO days per month."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: pto-long-request-notice
+    input:
+      question: "How much advance notice is required for 3+ consecutive PTO days?"
+      project_key: hr-portal
+    expected_output: "Manager approval is required 14 days in advance for 3 or more consecutive days."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: pto-approval-authority
+    input:
+      question: "Who approves a long PTO request?"
+      project_key: hr-portal
+    expected_output: "The employee's manager approves PTO requests of 3 or more consecutive days."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: incident-first-step
+    input:
+      question: "What is the first step when an incident occurs?"
+      project_key: engineering
+    expected_output: "Page the on-call engineer via /alert."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  - id: incident-channel
+    input:
+      question: "Which channel should be opened during an incident?"
+      project_key: engineering
+    expected_output: "Open the #incident channel."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  - id: incident-postmortem-deadline
+    input:
+      question: "When is the postmortem due after an incident?"
+      project_key: engineering
+    expected_output: "The postmortem is due within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering, temporal]
+
+  - id: incident-severity-declaration
+    input:
+      question: "What happens after the on-call is paged and the channel is opened?"
+      project_key: engineering
+    expected_output: "Declare the severity of the incident."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  # ── Cohort: paraphrase / synonym tolerance ──
+  - id: remote-days-paraphrase-1
+    input:
+      question: "Quanti giorni a settimana posso lavorare da casa?"
+      project_key: hr-portal
+    expected_output: "Up to 3 days per week with manager approval."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, it, simple, hr-portal]
+
+  - id: pto-monthly-paraphrase-1
+    input:
+      question: "What is the rate at which paid time off is earned?"
+      project_key: hr-portal
+    expected_output: "2 days per month."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: incident-severity-paraphrase-1
+    input:
+      question: "After paging on-call and opening the channel, what's next?"
+      project_key: engineering
+    expected_output: "Declare severity."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  # ── Cohort: multi-hop (combine two policy facts) ──
+  - id: multi-hop-remote-and-pto
+    input:
+      question: "If I work 3 days remote, am I still entitled to PTO accrual?"
+      project_key: hr-portal
+    expected_output: "Yes — remote-work eligibility does not change PTO accrual; employees still accrue 2 days per month."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, multi-hop, hr-portal]
+
+  - id: multi-hop-incident-and-postmortem
+    input:
+      question: "What are the four ordered actions during an incident, and when is the postmortem due?"
+      project_key: engineering
+    expected_output: "Page on-call via /alert, open #incident, declare severity, then run the postmortem within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, multi-hop, engineering]
+
+  # ── Cohort: temporal queries ──
+  - id: temporal-pto-week-window
+    input:
+      question: "If I want 5 consecutive PTO days starting next Monday, what's the latest I can request?"
+      project_key: hr-portal
+    expected_output: "At least 14 days before the start date."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, temporal, hr-portal]
+
+  - id: temporal-incident-postmortem-overdue
+    input:
+      question: "After 6 business days without a postmortem document, what is the status?"
+      project_key: engineering
+    expected_output: "It is overdue — postmortems must land within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, temporal, engineering]
+
+  # ── Cohort: clarifying / disambiguation ──
+  - id: scope-ambiguous-policy-name
+    input:
+      question: "What does the remote policy say about manager approval?"
+      project_key: hr-portal
+    expected_output: "Up to 3 remote days per week requires manager approval; full-remote requires VP sign-off."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, multi-hop, hr-portal]
+
+  - id: scope-ambiguous-pto-approval
+    input:
+      question: "When does PTO need manager approval?"
+      project_key: hr-portal
+    expected_output: "When the request is for 3 or more consecutive days; the request must come 14 days in advance."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, multi-hop, hr-portal]
+
+  # ── Cohort: stricter citation evidence (built-in citation-groundedness) ──
+  - id: citation-evidence-remote-3-days
+    input:
+      question: "What is the maximum number of remote workdays per week per the policy?"
+      project_key: hr-portal
+    expected_output: "Up to 3 days per week with manager approval."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+      citation_evidence:
+        - citation: "policies/remote-work-policy.md"
+          quote: "ACME employees may work remotely up to 3 days per week"
+
+  - id: citation-evidence-incident-postmortem
+    input:
+      question: "What is the deadline for an incident postmortem?"
+      project_key: engineering
+    expected_output: "Within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+      citation_evidence:
+        - citation: "runbooks/incident-response.md"
+          quote: "Postmortem due within 5 business days"
+
+  # ── Cohort: cross-project (must NOT leak across project_key) ──
+  - id: tenant-isolation-engineering-pto
+    input:
+      question: "What is the PTO accrual rate for engineering project members?"
+      project_key: engineering
+    expected_output: "The PTO policy is not in the engineering knowledge base; it lives under hr-portal."
+    metadata:
+      expected_citations: []
+      tags: [markdown, runbook, en, refusal, engineering]
+
+  - id: tenant-isolation-hr-incident
+    input:
+      question: "What is the incident-response runbook for hr-portal?"
+      project_key: hr-portal
+    expected_output: "The incident-response runbook is not in the hr-portal knowledge base; it lives under engineering."
+    metadata:
+      expected_citations: []
+      tags: [markdown, standard, en, refusal, hr-portal]
+
+  # ── Cohort: refusal / out-of-corpus (no citation should be returned) ──
+  - id: refusal-out-of-corpus-finance
+    input:
+      question: "What is ACME's quarterly revenue projection for Q3 2026?"
+      project_key: hr-portal
+    expected_output: "I don't have information about quarterly revenue in this knowledge base."
+    metadata:
+      expected_citations: []
+      tags: [markdown, standard, en, refusal, hr-portal]
+
+  - id: refusal-out-of-corpus-deploy
+    input:
+      question: "What is the kubernetes deployment recipe for the payment service?"
+      project_key: engineering
+    expected_output: "I don't have information about the kubernetes deployment recipe in this knowledge base."
+    metadata:
+      expected_citations: []
+      tags: [markdown, runbook, en, refusal, engineering]
+
+  - id: refusal-out-of-corpus-marketing
+    input:
+      question: "What is the rebrand timeline for 2027?"
+      project_key: hr-portal
+    expected_output: "I don't have information about the rebrand timeline in this knowledge base."
+    metadata:
+      expected_citations: []
+      tags: [markdown, standard, en, refusal, hr-portal]
+
+  # ── Cohort: hallucination guard (specific numbers / names not in corpus) ──
+  - id: hallucination-guard-specific-employee
+    input:
+      question: "Who is the VP responsible for approving full-remote work at ACME?"
+      project_key: hr-portal
+    expected_output: "The policy requires VP sign-off but does not name a specific VP."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, refusal, hr-portal]
+
+  - id: hallucination-guard-pto-cap
+    input:
+      question: "What is the maximum number of PTO days an employee can roll over to next year?"
+      project_key: hr-portal
+    expected_output: "The PTO guidelines do not specify a rollover cap."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, refusal, hr-portal]
+
+  - id: hallucination-guard-incident-pager-tool
+    input:
+      question: "What pager tool is used for the incident-response /alert command?"
+      project_key: engineering
+    expected_output: "The runbook says to page on-call via /alert but does not specify the pager tool."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, refusal, engineering]
+
+  # ── Cohort: filler — long-form synonym variants ──
+  - id: longform-pto-rate
+    input:
+      question: "Could you tell me the monthly accrual rate for paid time off according to ACME's PTO guidelines?"
+      project_key: hr-portal
+    expected_output: "Per the PTO guidelines, employees accrue 2 PTO days per month."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: longform-incident-channel
+    input:
+      question: "When the on-call engineer has been paged and we need to coordinate, which Slack channel is used?"
+      project_key: engineering
+    expected_output: "The #incident channel is used for coordination."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  - id: longform-remote-eligibility
+    input:
+      question: "Could you summarize the eligibility criteria for working remotely under the ACME remote-work policy?"
+      project_key: hr-portal
+    expected_output: "Up to 3 days per week with manager approval; full-remote requires VP sign-off and is reviewed annually."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, multi-hop, hr-portal]
+
+  # ── Cohort: yes/no questions ──
+  - id: yesno-remote-permission
+    input:
+      question: "Can an employee work remotely without manager approval?"
+      project_key: hr-portal
+    expected_output: "No — remote work requires manager approval."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: yesno-pto-self-approve
+    input:
+      question: "Can an employee self-approve a 5-day PTO request?"
+      project_key: hr-portal
+    expected_output: "No — 3+ consecutive days require manager approval 14 days in advance."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: yesno-incident-skip-postmortem
+    input:
+      question: "Is the postmortem optional after a small incident?"
+      project_key: engineering
+    expected_output: "No — every incident requires a postmortem within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  # ── Cohort: extraction (specific numeric/date facts) ──
+  - id: extract-pto-days-month
+    input:
+      question: "How many PTO days?"
+      project_key: hr-portal
+    expected_output: "2 PTO days per month."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: extract-remote-days-week
+    input:
+      question: "Remote days?"
+      project_key: hr-portal
+    expected_output: "Up to 3 per week."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: extract-postmortem-business-days
+    input:
+      question: "Postmortem deadline in business days?"
+      project_key: engineering
+    expected_output: "5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]
+
+  - id: extract-pto-notice-days
+    input:
+      question: "PTO advance-notice days for long requests?"
+      project_key: hr-portal
+    expected_output: "14 days."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  # ── Cohort: filler — round to ~40 ──
+  - id: filler-remote-vp-language
+    input:
+      question: "What sign-off does a full-remote arrangement require?"
+      project_key: hr-portal
+    expected_output: "VP sign-off."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: filler-pto-three-day-threshold
+    input:
+      question: "Above how many consecutive PTO days is manager approval mandatory?"
+      project_key: hr-portal
+    expected_output: "3 or more consecutive days."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, simple, hr-portal]
+
+  - id: filler-incident-page-channel
+    input:
+      question: "How is the on-call engineer paged?"
+      project_key: engineering
+    expected_output: "Via /alert."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, simple, engineering]

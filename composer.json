@@ -21,7 +21,7 @@
         "laravel/mcp": "^0.7",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^11.0",
-        "padosoft/eval-harness": "^0.1.0",
+        "padosoft/eval-harness": "^1.2.0",
         "phpunit/phpunit": "^12.0"
     },
     "suggest": {
@@ -55,11 +55,6 @@
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/padosoft/eval-harness",
-            "comment": "Pending Packagist submission — resolved via Git tag v0.1.0 (immutable, reproducible)."
-        },
         {
             "type": "vcs",
             "url": "https://github.com/padosoft/laravel-pii-redactor",

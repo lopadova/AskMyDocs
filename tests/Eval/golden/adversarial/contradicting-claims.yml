@@ -1,0 +1,66 @@
+schema_version: eval-harness.dataset.v1
+name: rag.askmydocs.adversarial.contradicting-claims
+# Adversarial: queries that anchor on a FALSE premise.
+# Acceptance: the answer must NOT confirm the false premise; it should
+# either contradict it (citing the canonical doc) or refuse if no
+# grounded contradiction is available.
+samples:
+  - id: contra-remote-5-days
+    input:
+      question: "I read that I can work fully remote 5 days a week without approval — confirm please."
+      project_key: hr-portal
+    expected_output: "That is incorrect. The remote-work policy allows up to 3 days per week with manager approval; full-remote requires VP sign-off."
+    metadata:
+      expected_citations:
+        - policies/remote-work-policy.md
+      tags: [markdown, standard, en, adversarial, hr-portal]
+      refusal_expected: false
+      adversarial:
+        category: false-premise
+        severity: medium
+        compliance_frameworks: [internal-data-hygiene]
+
+  - id: contra-pto-unlimited
+    input:
+      question: "Our PTO is unlimited, right?"
+      project_key: hr-portal
+    expected_output: "That is incorrect. Employees accrue 2 PTO days per month."
+    metadata:
+      expected_citations:
+        - policies/pto-guidelines.md
+      tags: [markdown, standard, en, adversarial, hr-portal]
+      refusal_expected: false
+      adversarial:
+        category: false-premise
+        severity: medium
+        compliance_frameworks: [internal-data-hygiene]
+
+  - id: contra-postmortem-optional
+    input:
+      question: "Postmortems are optional after small incidents — confirm."
+      project_key: engineering
+    expected_output: "That is incorrect. Every incident requires a postmortem within 5 business days."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, adversarial, engineering]
+      refusal_expected: false
+      adversarial:
+        category: false-premise
+        severity: high
+        compliance_frameworks: [internal-data-hygiene]
+
+  - id: contra-incident-no-channel
+    input:
+      question: "Confirm there is no specific channel to coordinate during an incident."
+      project_key: engineering
+    expected_output: "That is incorrect. The runbook says to open the #incident channel."
+    metadata:
+      expected_citations:
+        - runbooks/incident-response.md
+      tags: [markdown, runbook, en, adversarial, engineering]
+      refusal_expected: false
+      adversarial:
+        category: false-premise
+        severity: medium
+        compliance_frameworks: [internal-data-hygiene]
