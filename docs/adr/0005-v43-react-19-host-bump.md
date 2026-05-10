@@ -33,9 +33,12 @@ costs:
    navigation because the cookie scope is path-restricted to the
    iframe URL.
 
-React 19 has been GA since 2024-12; six months of production wear at
-adopting shops + Vercel + Vite + TanStack Router 1.81 + React Query 5
-all stabilised on React 19. The window to bump cleanly is now.
+React 19 has been GA since 2024-12 — roughly **17 months** of
+production wear at adopting shops by 2026-05; Vercel + Vite + TanStack
+Router 1.81 + React Query 5 all stabilised on React 19 long ago. The
+window to bump cleanly has been open for many months; v4.3/W2 is when
+AskMyDocs picks it up so v4.4 can move the admin SPAs from iframe to
+cross-mount.
 
 The v4.3/W2 milestone scope is the host React major bump only. The
 follow-on cross-mount migration is a v4.4 deliverable.
