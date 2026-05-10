@@ -90,7 +90,7 @@ gh release create v4.2.0-rc4 \
   --target "$CLOSURE_SHA" \
   --title "v4.2.0-rc4 — W4 milestone (3 admin SPAs: PII Redactor + Flow Admin + Eval Harness UI)" \
   --prerelease \
-  --notes "Three operator-facing admin consoles mounted inside the AskMyDocs shell: padosoft/laravel-pii-redactor-admin v1.0.2 at /admin/pii-redactor (3 Gates), padosoft/laravel-flow-admin v1.0.0 at /admin/flows (5 Gates + ActionAuthorizer), padosoft/eval-harness-ui v1.0.0 at /admin/eval-harness (1 read-only Gate + 3-fence chain). All iframe-mounted, all R30-tenant-scoped via 3 different strategies. 3 sub-PRs (#121, #122, #123) + W4 closure docs (this PR). +43 PHPUnit tests (1328 -> 1371) + 3 new Playwright specs. Closure: docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md"
+  --notes "Three operator-facing admin consoles mounted inside the AskMyDocs shell: padosoft/laravel-pii-redactor-admin v1.0.2 at /admin/pii-redactor (3 Gates), padosoft/laravel-flow-admin v1.0.0 at /admin/flows (outer Gate viewFlowAdmin + 8 ActionAuthorizer methods), padosoft/eval-harness-ui v1.0.0 at /admin/eval-harness (1 read-only Gate + 3-fence chain). All iframe-mounted, all R30-tenant-scoped via 3 different strategies. 3 sub-PRs (#121, #122, #123) + W4 closure docs (this PR). +43 PHPUnit tests (1328 -> 1371) + 3 new Playwright specs. Closure: docs/v4-platform/STATUS-2026-05-10-week4-admin-spas.md"
 ```
 
 ## What's next — W5
