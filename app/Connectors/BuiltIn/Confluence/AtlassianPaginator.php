@@ -27,10 +27,10 @@ use Illuminate\Http\Client\Response;
  *       }
  *     }
  *
- * The `_links.next` value is a RELATIVE path — Atlassian's convention.
- * The fetch closure receives the absolute URL it should hit; on the
- * first iteration that's the caller-supplied initial URL, on
- * subsequent iterations it's the prefix-joined value of `_links.next`.
+ * The `_links.next` value is usually a RELATIVE path — Atlassian's
+ * convention. This paginator passes that raw `_links.next` value to the
+ * fetch closure; callers that need absolute URLs must resolve it before
+ * issuing the next request.
  *
  * Two traversal modes mirror {@see \App\Connectors\BuiltIn\Notion\NotionPaginator}:
  *
@@ -70,8 +70,8 @@ final class AtlassianPaginator
 
     /**
      * Lazy traversal — yield one batch at a time. The fetch closure
-     * receives the absolute URL to hit on each iteration (null on the
-     * first call so the closure can use its initial URL).
+     * receives the raw `_links.next` value from the previous response
+     * (null on the first call so the closure can use its initial URL).
      *
      * @param  \Closure(?string $nextLink): Response  $fetch
      * @return Generator<int, list<array<string,mixed>>>

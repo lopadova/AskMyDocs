@@ -605,7 +605,7 @@ class ConfluenceConnector extends BaseConnector
      *
      * @param  array<string,mixed>  $provider
      */
-    private function resolveCloudId(array $provider, string $accessToken): ?string
+    private function resolveCloudId(array $provider, string $accessToken): string
     {
         $url = $provider['accessible_resources_url'] ?? 'https://api.atlassian.com/oauth/token/accessible-resources';
 
@@ -648,14 +648,28 @@ class ConfluenceConnector extends BaseConnector
             }
             foreach ($scopes as $scope) {
                 if (is_string($scope) && str_starts_with($scope, 'read:confluence')) {
-                    return (string) ($resource['id'] ?? '');
+                    $cloudId = $resource['id'] ?? null;
+                    if (! is_string($cloudId) || trim($cloudId) === '') {
+                        throw new ConnectorAuthException(
+                            'Confluence accessible-resources returned a Confluence-capable site with a missing id.',
+                        );
+                    }
+
+                    return $cloudId;
                 }
             }
         }
 
         $first = $resources[0] ?? null;
-        if (is_array($first) && isset($first['id'])) {
-            return (string) $first['id'];
+        if (is_array($first)) {
+            $cloudId = $first['id'] ?? null;
+            if (! is_string($cloudId) || trim($cloudId) === '') {
+                throw new ConnectorAuthException(
+                    'Confluence accessible-resources returned a site with a missing id.',
+                );
+            }
+
+            return $cloudId;
         }
 
         throw new ConnectorAuthException(

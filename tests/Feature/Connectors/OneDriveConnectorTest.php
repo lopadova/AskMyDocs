@@ -392,6 +392,37 @@ final class OneDriveConnectorTest extends TestCase
         });
     }
 
+    public function test_sync_full_falls_back_to_default_item_suffix_when_item_id_sanitises_to_empty(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id);
+
+        Http::fake([
+            'graph.microsoft.com/v1.0/me/drive/root/children' => Http::response([
+                'value' => [[
+                    'id' => '🙂/??',
+                    'name' => 'unsafe-id.md',
+                    'file' => ['mimeType' => 'text/markdown'],
+                ]],
+                '@odata.nextLink' => null,
+            ], 200),
+            'graph.microsoft.com/v1.0/me/drive/items/%F0%9F%99%82%2F%3F%3F/content' => Http::response('hello', 200),
+            'graph.microsoft.com/v1.0/me/drive/root/delta*' => Http::response([
+                'value' => [],
+                '@odata.deltaLink' => 'https://graph.microsoft.com/v1.0/me/drive/root/delta?token=fallback',
+            ], 200),
+        ]);
+
+        $this->connector()->syncFull($installation->id);
+
+        Queue::assertPushed(IngestDocumentJob::class, function (IngestDocumentJob $job) {
+            return str_contains($job->relativePath, '-item.md');
+        });
+    }
+
     public function test_sync_incremental_uses_delta_cursor_and_persists_new_link(): void
     {
         Queue::fake();

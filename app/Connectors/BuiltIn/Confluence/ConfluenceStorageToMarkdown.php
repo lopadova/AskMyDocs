@@ -31,7 +31,7 @@ namespace App\Connectors\BuiltIn\Confluence;
  *   - <ac:task-list>/<ac:task>      → GitHub-flavoured task list
  *     (`- [x]` / `- [ ]`) — Confluence task lists are first-class.
  *   - <ac:link>                     → inline link to another page;
- *     emitted as a markdown link with the page-title (or fallback).
+ *     emitted as a wikilink `[[Page Title|label]]` (or fallback title).
  *   - <ac:image>/<ri:attachment>    → `<!-- confluence: attachment X
  *     skipped -->` placeholder; AskMyDocs does not yet ingest binary
  *     attachments from Confluence.

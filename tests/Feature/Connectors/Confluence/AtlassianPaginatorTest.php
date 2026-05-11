@@ -15,9 +15,8 @@ use Tests\TestCase;
  * v4.5/W5 — AtlassianPaginator tests.
  *
  * Validates the `_links.next` loop against Atlassian-shaped payloads.
- * The fetch closure receives the absolute URL the caller should hit
- * (null on first iteration so the closure can use its own seed URL,
- * then the absolutised `_links.next` value).
+ * The fetch closure receives raw `_links.next` values (often relative),
+ * with null on first iteration so the closure can use its own seed URL.
  */
 final class AtlassianPaginatorTest extends TestCase
 {

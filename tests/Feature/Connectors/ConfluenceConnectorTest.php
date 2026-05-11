@@ -240,6 +240,35 @@ final class ConfluenceConnectorTest extends TestCase
         $this->connector()->handleOAuthCallback($installation->id, $req);
     }
 
+    public function test_oauth_callback_throws_when_confluence_resource_id_is_missing(): void
+    {
+        config()->set('connectors.providers.confluence.client_id', 'cid');
+        config()->set('connectors.providers.confluence.client_secret', 'cs');
+        config()->set('connectors.providers.confluence.redirect_uri', 'http://localhost/cb');
+
+        $installation = $this->makeInstallation();
+        $state = $this->initiateAndExtractState($installation->id);
+
+        Http::fake([
+            'auth.atlassian.com/oauth/token' => Http::response([
+                'access_token' => 'AT-y',
+                'expires_in' => 3600,
+            ], 200),
+            'api.atlassian.com/oauth/token/accessible-resources' => Http::response([
+                [
+                    'name' => 'Confluence site without id',
+                    'scopes' => ['read:confluence-content.all'],
+                ],
+            ], 200),
+        ]);
+
+        $req = Request::create('/cb', 'GET', ['code' => 'c', 'state' => $state]);
+
+        $this->expectException(ConnectorAuthException::class);
+        $this->expectExceptionMessageMatches('/missing id/i');
+        $this->connector()->handleOAuthCallback($installation->id, $req);
+    }
+
     public function test_oauth_callback_throws_on_token_exchange_failure(): void
     {
         $installation = $this->makeInstallation();

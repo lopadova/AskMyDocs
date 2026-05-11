@@ -593,6 +593,8 @@ class OneDriveConnector extends BaseConnector
 
         $outputExtension = $this->extensionForMime($mimeType, $name);
         $persistedMime = $mimeType !== '' ? $mimeType : 'application/octet-stream';
+        $sanitisedItemId = preg_replace('/[^A-Za-z0-9!\-]/', '', $itemId) ?? '';
+        $safeItemId = $sanitisedItemId !== '' ? $sanitisedItemId : 'item';
 
         $relativePath = sprintf(
             '%s/connectors/%s/installation-%d/%s-%s%s',
@@ -600,7 +602,7 @@ class OneDriveConnector extends BaseConnector
             $this->key(),
             $installation->id,
             Str::slug($name) !== '' ? Str::slug($name) : 'doc',
-            preg_replace('/[^A-Za-z0-9!\-]/', '', $itemId) ?? 'item',
+            $safeItemId,
             $outputExtension,
         );
 
