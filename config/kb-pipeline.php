@@ -32,13 +32,18 @@ return [
     /**
      * @var class-string<\App\Services\Kb\Contracts\ChunkerInterface>[]
      *
-     * Order is significant — first match wins. PdfPageChunker is listed
-     * BEFORE MarkdownChunker so the registry resolves `pdf` source-type
-     * to the page-aware chunker even though MarkdownChunker would no
-     * longer claim 'pdf' anyway (defence-in-depth).
+     * Order is significant — first match wins. v4.5/W5.5 source-aware
+     * chunkers are listed BEFORE the generic MarkdownChunker fallback,
+     * and PdfPageChunker stays first for the `pdf` token. The non-overlap
+     * invariant is enforced by `PipelineRegistryChunkerMutexTest` so the
+     * order is structural, not a hidden ordering trap.
      */
     'chunkers' => [
         \App\Services\Kb\Chunkers\PdfPageChunker::class,
+        \App\Services\Kb\Chunkers\NotionBlockChunker::class,
+        \App\Services\Kb\Chunkers\ConfluencePageChunker::class,
+        \App\Services\Kb\Chunkers\OfficeDocChunker::class,
+        \App\Services\Kb\Chunkers\AtomicNoteChunker::class,
         \App\Services\Kb\MarkdownChunker::class,
     ],
 
@@ -64,5 +69,21 @@ return [
         'text/plain'      => 'text',
         'application/pdf' => 'pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+
+        // v4.5/W5.5 — synthetic vendor MIME tokens. Connectors set the
+        // source MIME on the SourceDocument so the registry routes to
+        // the right chunker without inventing a new dispatch surface.
+        // The corresponding source-type tokens land on
+        // `knowledge_documents.source_type` and on the chunk metadata,
+        // letting the SPA `facets[source]` filter narrow by provenance.
+        'application/vnd.notion.page+json'        => 'notion',
+        'application/vnd.notion.note+json'        => 'notion_note',
+        'application/vnd.confluence.page+json'    => 'confluence',
+        'application/vnd.evernote.note+xml'       => 'evernote',
+        'application/vnd.fabric.note+json'        => 'fabric',
+        'application/vnd.google-apps.document'    => 'drive_gdoc',
+        'application/vnd.google-apps.spreadsheet' => 'drive_gsheet',
+        'application/vnd.google-apps.presentation' => 'drive_gslide',
+        'application/vnd.onedrive.office+json'    => 'onedrive_office',
     ],
 ];

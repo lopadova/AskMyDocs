@@ -74,9 +74,21 @@ return [
     'reranking' => [
         'enabled' => env('KB_RERANKING_ENABLED', true),
         'candidate_multiplier' => env('KB_RERANK_CANDIDATE_MULTIPLIER', 3),
-        'vector_weight' => env('KB_RERANK_VECTOR_WEIGHT', 0.60),
-        'keyword_weight' => env('KB_RERANK_KEYWORD_WEIGHT', 0.30),
-        'heading_weight' => env('KB_RERANK_HEADING_WEIGHT', 0.10),
+        'vector_weight' => env('KB_RERANK_VECTOR_WEIGHT', 0.55),
+        'keyword_weight' => env('KB_RERANK_KEYWORD_WEIGHT', 0.25),
+        'heading_weight' => env('KB_RERANK_HEADING_WEIGHT', 0.05),
+
+        // v4.5/W5.5 source-aware retrieval-boost signals. All four are
+        // additive on top of the base (vec, kw, heading) score. Defaults
+        // sum to 0.14 — leaving room for the canonical_boost adjustment
+        // (~0.003 × retrieval_priority on a 0..100 scale, capped at
+        // 0.30) so the full reranker stays under the 1.0 ceiling. Tune
+        // via env at deploy time when shipping a regression-tested
+        // weight refresh.
+        'tag_overlap_weight'    => (float) env('KB_RERANK_TAG_OVERLAP_WEIGHT', 0.05),
+        'preamble_match_weight' => (float) env('KB_RERANK_PREAMBLE_WEIGHT', 0.05),
+        'recency_weight'        => (float) env('KB_RERANK_RECENCY_WEIGHT', 0.02),
+        'status_active_weight'  => (float) env('KB_RERANK_STATUS_WEIGHT', 0.02),
     ],
 
     'chunking' => [
