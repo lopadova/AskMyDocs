@@ -229,6 +229,32 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 
 ---
 
+## Canonical Knowledge Compilation
+
+AskMyDocs's signature differentiator: every retrieved chunk passes through a
+**typed canonical knowledge graph** with **human-gated promotion**. The LLM
+proposes; only humans (or operators via `kb:promote`) commit canonical storage.
+
+The three-stage promotion API is the architectural boundary between "AI
+drafting" and "knowledge canon":
+
+| Stage | Route | Effect |
+|---|---|---|
+| **Suggest** | `POST /api/kb/promotion/suggest` | LLM extracts candidate artefacts from a transcript via `PromotionSuggestService`. **Writes nothing.** |
+| **Validate** | `POST /api/kb/promotion/candidates` | Validates a markdown draft against `CanonicalParser` (9 canonical types / 6 statuses / YAML frontmatter). Returns `{valid, errors}`. **Writes nothing.** |
+| **Promote** | `POST /api/kb/promotion/promote` | `CanonicalWriter` writes markdown to KB disk + dispatches `IngestDocumentJob`. HTTP 202. **Only this stage commits canonical storage.** |
+
+Claude skills + the `suggest` / `candidates` endpoints stop at the validation
+boundary. Only humans (via git push → GitHub Action → ingest) and operators
+(via `kb:promote` CLI) commit canonical storage. Every promotion writes an
+immutable `kb_canonical_audit` row — promotion is forever traceable.
+
+See **ADR 0003** for the architectural decision rationale + the
+**Retrieval & Knowledge** features table above for the surrounding canonical
+infrastructure (typed parser, knowledge graph, rejected-approach injection).
+
+---
+
 ## Quick start (5 minutes)
 
 ### Prerequisites
