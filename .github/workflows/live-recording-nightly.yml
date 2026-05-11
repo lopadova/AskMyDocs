@@ -27,12 +27,17 @@ jobs:
       # Live gates wired from repo secrets only when the operator
       # selected the corresponding provider. Empty secrets stay empty,
       # the LiveConnectorTestCase gate skips the test cleanly.
-      CONNECTOR_NOTION_LIVE: ${{ contains(inputs.providers, 'notion') && '1' || '' }}
-      CONNECTOR_GOOGLE_DRIVE_LIVE: ${{ contains(inputs.providers, 'google_drive') && '1' || '' }}
-      CONNECTOR_CONFLUENCE_LIVE: ${{ contains(inputs.providers, 'confluence') && '1' || '' }}
-      CONNECTOR_EVERNOTE_LIVE: ${{ contains(inputs.providers, 'evernote') && '1' || '' }}
-      CONNECTOR_FABRIC_LIVE: ${{ contains(inputs.providers, 'fabric') && '1' || '' }}
-      CONNECTOR_ONEDRIVE_LIVE: ${{ contains(inputs.providers, 'onedrive') && '1' || '' }}
+      # Empty `inputs.providers` means "run every provider" — the input
+      # description literally says "Empty = all". A bare
+      # `contains(inputs.providers, 'notion')` would evaluate to false
+      # for the empty string, skipping every test silently. The
+      # `(empty || contains)` shape mirrors the documented semantics.
+      CONNECTOR_NOTION_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'notion')) && '1' || '' }}
+      CONNECTOR_GOOGLE_DRIVE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'google_drive')) && '1' || '' }}
+      CONNECTOR_CONFLUENCE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'confluence')) && '1' || '' }}
+      CONNECTOR_EVERNOTE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'evernote')) && '1' || '' }}
+      CONNECTOR_FABRIC_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'fabric')) && '1' || '' }}
+      CONNECTOR_ONEDRIVE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'onedrive')) && '1' || '' }}
 
       CONNECTOR_NOTION_TOKEN: ${{ secrets.CONNECTOR_NOTION_TOKEN }}
       CONNECTOR_GOOGLE_DRIVE_TOKEN: ${{ secrets.CONNECTOR_GOOGLE_DRIVE_TOKEN }}

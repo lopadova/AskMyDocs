@@ -16,20 +16,30 @@ use Illuminate\Support\Facades\Schema;
  * tests green AND lets the production pgsql query plan benefit
  * from the index when the facets fire.
  *
- * What gets indexed:
+ * What gets indexed (all three expressions cast to `jsonb` because
+ * `knowledge_chunks.metadata` is the legacy `json` column type —
+ * see the inline comment in `up()` for the rationale):
  *
- *   - (metadata->>'source_type')   — the v4.5/W5.5 per-chunk source
- *     tag set by the source-aware chunkers. Matches the SPA
- *     "filter by Notion / Confluence / Drive / …" facet at
- *     chunk-grain, not document-grain.
+ *   - `((metadata::jsonb)->'source_type')` — GIN-jsonb-ops index.
+ *     The v4.5/W5.5 per-chunk source tag set by the source-aware
+ *     chunkers. Matches the SPA "filter by Notion / Confluence /
+ *     Drive / …" facet at chunk-grain, not document-grain. Use
+ *     `metadata::jsonb @> '{"source_type":"notion"}'::jsonb` on
+ *     the read path so the planner picks this index.
  *
- *   - (metadata->'search_tags')    — GIN-jsonb-ops index so
- *     `metadata->'search_tags' ?| ARRAY['decision', 'cache']`
+ *   - `((metadata::jsonb)->'search_tags')` — GIN-jsonb-ops (the
+ *     default opclass), NOT `jsonb_path_ops`. Supports BOTH the
+ *     `@>` containment operator AND the `?|` "any of these keys"
+ *     operator, so a tag-overlap filter like
+ *     `metadata::jsonb->'search_tags' ?| ARRAY['decision','cache']`
  *     uses the index. Tag overlap is the highest-value of the
  *     four Layer-4 reranker signals and the most likely SPA
- *     facet to fire on a busy tenant.
+ *     facet to fire on a busy tenant. `jsonb_path_ops` would be
+ *     smaller / faster but ONLY supports `@>` — switching to it
+ *     would silently break the `?|` query path.
  *
- *   - (metadata->>'recency_bucket')— B-tree index. Recency bucket
+ *   - `((metadata::jsonb)->>'recency_bucket')` — B-tree index on
+ *     the text-projection (`->>` returns text). Recency bucket
  *     is a small finite domain (4 values) so the cardinality
  *     warrants a B-tree, not a GIN.
  *
@@ -58,7 +68,12 @@ return new class extends Migration
         );
         DB::statement(
             "CREATE INDEX IF NOT EXISTS idx_kb_chunks_search_tags ".
-            "ON knowledge_chunks USING gin (((metadata::jsonb)->'search_tags') jsonb_path_ops)"
+            // Default `jsonb_ops` opclass (i.e. no explicit opclass) so
+            // BOTH `@>` and `?|` queries can use this index. The smaller
+            // `jsonb_path_ops` variant would only support `@>` — which
+            // would silently disable the index for the tag-overlap
+            // facet that ships in the SPA.
+            "ON knowledge_chunks USING gin (((metadata::jsonb)->'search_tags'))"
         );
         DB::statement(
             "CREATE INDEX IF NOT EXISTS idx_kb_chunks_recency_bucket ".

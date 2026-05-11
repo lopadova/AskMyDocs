@@ -25,11 +25,31 @@ use Illuminate\Support\Facades\Http;
  * Stateless static API so callers (LiveConnectorTestCase::setUp,
  * tearDown) can enable / disable without DI plumbing. Idempotent —
  * calling `enable()` twice for the same provider is a no-op.
+ *
+ * ---
+ *
+ * Middleware-leak design (Copilot PR #154 finding):
+ *
+ * Laravel's `Http::globalResponseMiddleware()` API has NO public
+ * deregistration hook. Closures registered there persist for the
+ * lifetime of the Http facade in the current process. Per-call
+ * `enable($provider)` registering a fresh closure that closes over
+ * `$provider` would leak: switching from provider A → B leaves the A
+ * closure firing on every B call too, writing B responses into the
+ * A directory.
+ *
+ * The fix is to register ONE static-method middleware exactly once
+ * (idempotent guard on `self::$middlewareRegistered`). The middleware
+ * reads `self::$activeProvider` at runtime — so `disable()` setting it
+ * to null is the only thing needed to stop persistence, and
+ * `enable($new)` swapping the value is the only thing needed to
+ * redirect persistence. No closures retained between provider switches.
  */
 final class HttpResponseRecorder
 {
     private static ?string $activeProvider = null;
     private static ?IdentifierScrubber $scrubber = null;
+    private static bool $middlewareRegistered = false;
 
     public static function enable(string $providerSlug): void
     {
@@ -39,8 +59,15 @@ final class HttpResponseRecorder
         self::$activeProvider = $providerSlug;
         self::$scrubber = new IdentifierScrubber();
 
-        Http::globalResponseMiddleware(static function (Response $response) use ($providerSlug): Response {
-            self::persist($response, $providerSlug);
+        if (self::$middlewareRegistered) {
+            return;
+        }
+        self::$middlewareRegistered = true;
+        // Single static-method registration. The middleware reads
+        // `self::$activeProvider` at call time so swapping providers
+        // (or disabling) does NOT leak the previous closure.
+        Http::globalResponseMiddleware(static function (Response $response): Response {
+            self::onResponse($response);
             return $response;
         });
     }
@@ -49,17 +76,23 @@ final class HttpResponseRecorder
     {
         self::$activeProvider = null;
         self::$scrubber = null;
-        // Note: Laravel does not expose a "remove middleware" hook on
-        // the global Http facade — the recorder remains registered for
-        // the rest of the process but the persist() guard on
-        // $activeProvider makes it a no-op once disable() runs.
+        // The single registered middleware stays installed for the rest
+        // of the process; setting $activeProvider to null makes
+        // onResponse() a no-op, which is the same effect as
+        // deregistration without needing an API Laravel doesn't expose.
+    }
+
+    private static function onResponse(Response $response): void
+    {
+        $provider = self::$activeProvider;
+        if ($provider === null) {
+            return;
+        }
+        self::persist($response, $provider);
     }
 
     private static function persist(Response $response, string $providerSlug): void
     {
-        if (self::$activeProvider === null) {
-            return;
-        }
         $body = $response->body();
         if ($body === '') {
             return;
@@ -80,8 +113,14 @@ final class HttpResponseRecorder
         $filename = sprintf('%s-%s.json', $endpointSlug, $hash);
 
         $dir = self::recordingDir($providerSlug);
-        if (! is_dir($dir) && ! @mkdir($dir, 0755, true) && ! is_dir($dir)) {
-            throw new \RuntimeException("Failed to create recorder directory: {$dir}");
+        if (! is_dir($dir)) {
+            // R7: explicit mkdir with return check + error_get_last()
+            // context. No @-silenced errors.
+            if (! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+                $err = error_get_last();
+                $detail = isset($err['message']) ? ' (' . $err['message'] . ')' : '';
+                throw new \RuntimeException("Failed to create recorder directory: {$dir}{$detail}");
+            }
         }
 
         $payload = [
@@ -91,10 +130,23 @@ final class HttpResponseRecorder
             'body' => $scrubbed,
         ];
 
-        file_put_contents(
-            $dir . DIRECTORY_SEPARATOR . $filename,
-            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-        );
+        // R4: never ignore the return value of a side-effecting call.
+        // Both json_encode() and file_put_contents() can fail; surface
+        // each failure as a RuntimeException so the recorder loudly
+        // signals "this fixture did NOT land" instead of silently
+        // dropping it.
+        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($encoded === false) {
+            throw new \RuntimeException(
+                'Failed to JSON-encode fixture: ' . json_last_error_msg()
+            );
+        }
+
+        $path = $dir . DIRECTORY_SEPARATOR . $filename;
+        $bytesWritten = file_put_contents($path, $encoded);
+        if ($bytesWritten === false) {
+            throw new \RuntimeException("Failed to write fixture to {$path}");
+        }
     }
 
     /**

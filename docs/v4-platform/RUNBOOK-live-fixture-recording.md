@@ -212,16 +212,25 @@ php vendor/bin/phpunit tests/Live/Connectors/NotionLiveTest.php --testdox
 CONNECTOR_CONFLUENCE_LIVE=1
 CONNECTOR_CONFLUENCE_TOKEN=your-api-token-from-step-3.2
 CONNECTOR_CONFLUENCE_CLOUD_ID=your-cloud-id-from-step-3.3
-CONNECTOR_CONFLUENCE_EMAIL=your-test-email@example.com
 ```
 
-Confluence API tokens use **Basic auth** (`email:token` base64'd) — the `LiveConnectorTestCase` test wires this via Bearer for the Cloud OAuth path; if Basic is needed, set `CONNECTOR_CONFLUENCE_EMAIL` and the test will fall back.
+The live test (`ConfluenceLiveTest`) hits the Cloud OAuth path via
+`Authorization: Bearer <token>` against
+`https://api.atlassian.com/ex/confluence/<CLOUD_ID>/wiki/api/v2/...`.
+An Atlassian Cloud API token issued under
+`https://id.atlassian.com/manage-profile/security/api-tokens` is
+accepted on this endpoint without the email pair — the recorder
+relies on this single-credential path. If you have a workflow that
+requires the legacy Basic-auth pair (`email:token`), that is a
+separate path not exercised by the live test; do NOT add
+`CONNECTOR_CONFLUENCE_EMAIL` to `.env.live` expecting it to be
+picked up.
 
 ### 3.5 Verify
 
 ```bash
-curl -s -u "$CONNECTOR_CONFLUENCE_EMAIL:$CONNECTOR_CONFLUENCE_TOKEN" \
-  "https://api.atlassian.com/ex/confluence/$CONNECTOR_CONFLUENCE_CLOUD_ID/wiki/api/v2/spaces?limit=1" \
+curl -s "https://api.atlassian.com/ex/confluence/$CONNECTOR_CONFLUENCE_CLOUD_ID/wiki/api/v2/spaces?limit=1" \
+  -H "Authorization: Bearer $CONNECTOR_CONFLUENCE_TOKEN" \
   -H "Accept: application/json"
 ```
 
@@ -271,7 +280,7 @@ CONNECTOR_EVERNOTE_BASE=https://sandbox.evernote.com
 Evernote is Thrift-based on the production API but exposes a REST shim on the sandbox. The verification call:
 
 ```bash
-curl -s "https://sandbox.evernote.com/edam/note/users/me" \
+curl -s "https://sandbox.evernote.com/shard/s1/v2/users/me" \
   -H "Authorization: Bearer $CONNECTOR_EVERNOTE_TOKEN"
 ```
 
@@ -450,8 +459,14 @@ For **each** provider you recorded:
 
 4. **Wipe `.env.live` before pushing**:
    ```bash
-   shred -uvz .env.live   # Linux/macOS
-   # OR on Windows: Remove-Item .env.live -Force
+   # Linux (GNU coreutils — shred is NOT native on macOS):
+   shred -uvz .env.live
+
+   # macOS (BSD rm with -P overwrites 3× before unlink):
+   rm -P .env.live
+
+   # Windows (PowerShell):
+   Remove-Item .env.live -Force
    ```
    `.gitignore` already excludes it, but defense-in-depth.
 
