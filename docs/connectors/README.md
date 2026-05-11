@@ -1,8 +1,9 @@
 # AskMyDocs Connector Framework — Developer Guide
 
 > v4.5/W1 — Connector framework core + Google Drive reference.
-> Subsequent W2-W6 add Notion / Evernote / Fabric / OneDrive /
-> Confluence / Jira connectors.
+> v4.5/W2 — Notion reference connector + framework helper refinements
+> extracted from the second connector. Subsequent W4-W6 add Evernote /
+> Fabric / OneDrive / Confluence / Jira.
 
 This guide is for engineers writing new connectors against the
 AskMyDocs connector framework. Read `app/Connectors/ConnectorInterface.php`
@@ -61,6 +62,20 @@ default implementations for:
 - `kb_canonical_audit` emission (`emitAudit()`).
 - PII redaction at the ingest boundary (`maybeRedactContent()`).
 - Tenant-scoped installation lookup (`loadInstallation()`).
+- Deletion routing by remote-id metadata key
+  (`softDeleteByMetadataKey()` — v4.5/W2 refinement).
+- KB-disk path resolution with `kb.sources.path_prefix` already
+  applied (`resolveKbSourcePath()` — v4.5/W2 refinement).
+
+The `OAuthCredentialVault` also gained two granular helpers in W2 for
+single-key updates on the `extra_json` blob (Notion `bot_id`, Drive
+`changes_page_token`, MS Graph `delta_link`, ...):
+
+- `getExtraKey(int $installationId, string $key): mixed`
+- `setExtraKey(int $installationId, string $key, mixed $value): void`
+
+Both preserve every other key in `extra_json` — clobbering siblings
+when storing a cursor was a recurring trap before W2.
 
 ---
 
@@ -182,6 +197,50 @@ the single ingestion execution path (per CLAUDE.md §6). Write the
 fetched body to the KB disk first, then dispatch the job with the
 relative path + MIME type + `tenant_id`. Do NOT re-implement
 `DocumentIngestor::ingestMarkdown()` from scratch.
+
+**KB disk write contract (W2 refinement)**: use the shared
+`BaseConnector::resolveKbSourcePath($relative)` helper. It returns
+`['relative' => ..., 'absolute' => ..., 'disk' => ...]` where:
+
+- `disk` is the value of `config('kb.sources.disk')`
+- `absolute` is the prefixed key (with `config('kb.sources.path_prefix')`
+  applied) — pass this to `Storage::disk($disk)->put(...)`
+- `relative` is the UN-prefixed path — pass this to
+  `IngestDocumentJob::dispatch(..., relativePath: $paths['relative'], ...)`
+
+`IngestDocumentJob` (via `ParseMarkdownStep::resolveStoragePath`)
+re-applies `kb.sources.path_prefix` on its own, so passing the
+prefixed path leads to double-application and a "file not found"
+crash inside the job. The helper makes this impossible to get wrong.
+
+### Handling provider deletion events
+
+Most providers emit some form of deletion signal (Drive `changes`
+with `removed=true`, Notion `archived=true` on search results,
+MS Graph `delta` removed items). Use the shared
+`BaseConnector::softDeleteByMetadataKey()` helper to route the
+event to the matching `knowledge_documents` row:
+
+```php
+if ($change['removed'] === true) {
+    $remoteId = (string) $change['fileId'];
+    if ($this->softDeleteByMetadataKey($installation, 'drive_file_id', $remoteId)) {
+        $removed++; // honest counter — only increments on actual delete
+    }
+}
+```
+
+The helper:
+- looks up `knowledge_documents` by `metadata->{key}` scoped to the
+  installation's tenant (R30 — cross-tenant remote-id collisions
+  never cross the boundary)
+- skips already-soft-deleted rows so the counter doesn't double-count
+  on a re-played cursor
+- funnels through `DocumentDeleter` so soft-vs-hard delete honours
+  `kb.deletion.soft_delete`
+- returns `false` when nothing matched — caller MUST NOT increment
+  the `documentsRemoved` counter on false (honest metric beats
+  inflated metric).
 
 ### Memory safety
 
@@ -360,7 +419,12 @@ All endpoints behind `auth:sanctum` + `can:manageConnectors`
 - `app/Connectors/Auth/OAuthCredentialVault.php` — encrypted store
 - `app/Jobs/ConnectorSyncJob.php` — scheduler-dispatched worker
 - `app/Connectors/Scheduling/SyncScheduler.php` — cadence walker
-- `app/Connectors/BuiltIn/GoogleDriveConnector.php` — reference impl
+- `app/Connectors/BuiltIn/GoogleDriveConnector.php` — reference impl #1
+- `app/Connectors/BuiltIn/NotionConnector.php` — reference impl #2
+- `app/Connectors/BuiltIn/Notion/NotionBlockToMarkdown.php` — Notion
+  block tree → markdown converter (testable in isolation)
+- `app/Connectors/BuiltIn/Notion/NotionPaginator.php` — `next_cursor`
+  pagination walker shared across Notion endpoints
 - `config/connectors.php` — built-in registry + cadence knobs
 - `docs/v4-platform/PLAN-v4.5-connector-framework-and-vercel-sdk-completion.md`
   — overall cycle plan

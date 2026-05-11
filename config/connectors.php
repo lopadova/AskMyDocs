@@ -31,6 +31,7 @@ return [
     */
     'built_in' => [
         \App\Connectors\BuiltIn\GoogleDriveConnector::class,
+        \App\Connectors\BuiltIn\NotionConnector::class,
     ],
 
     /*
@@ -115,6 +116,22 @@ return [
             'oauth_token_url' => 'https://oauth2.googleapis.com/token',
             'oauth_revoke_url' => 'https://oauth2.googleapis.com/revoke',
             'api_base' => 'https://www.googleapis.com/drive/v3',
+        ],
+
+        'notion' => [
+            'client_id' => env('CONNECTOR_NOTION_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_NOTION_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'CONNECTOR_NOTION_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/notion/oauth/callback'
+            ),
+            'oauth_authorize_url' => 'https://api.notion.com/v1/oauth/authorize',
+            'oauth_token_url' => 'https://api.notion.com/v1/oauth/token',
+            // Notion has no programmatic revoke endpoint as of API
+            // v2022-06-28; operators must disconnect inside the
+            // Notion workspace UI to fully revoke an integration.
+            'oauth_revoke_url' => null,
+            'api_base' => 'https://api.notion.com/v1',
         ],
     ],
 

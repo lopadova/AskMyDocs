@@ -105,6 +105,61 @@ class OAuthCredentialVault
     }
 
     /**
+     * v4.5/W2 — granular helper that reads a single key out of the
+     * `extra_json` blob. Returns `null` when the credential row is
+     * missing, the key is absent, OR the stored value is `null`. The
+     * caller cannot distinguish "missing" from "null-by-value" without
+     * `getExtra()` + `array_key_exists()`; in practice every consumer
+     * just needs the value (Notion `bot_id`, Drive `changes_page_token`,
+     * MS Graph `delta_link`) and treats null as "go fetch a fresh one".
+     */
+    public function getExtraKey(int $installationId, string $key): mixed
+    {
+        $extra = $this->getExtra($installationId);
+
+        return $extra[$key] ?? null;
+    }
+
+    /**
+     * v4.5/W2 — granular helper that updates a single key in the
+     * `extra_json` blob, preserving every other key already stored.
+     *
+     * Re-uses the existing credential row's access/refresh/expiry
+     * surface verbatim so this method is safe to call from inside a
+     * connector's `syncIncremental()` without worrying about clobbering
+     * the rotation state. When the credential row does NOT exist yet
+     * (a sync running against a half-installed connector), the call
+     * is a silent no-op — the operator hasn't completed OAuth, so
+     * there's nowhere to attach the cursor.
+     */
+    public function setExtraKey(int $installationId, string $key, mixed $value): void
+    {
+        $row = $this->findCredential($installationId);
+        if ($row === null) {
+            return;
+        }
+
+        $extra = $row->extra_json ?? [];
+        $extra[$key] = $value;
+
+        $installation = $this->findInstallation($installationId);
+        if ($installation === null) {
+            return;
+        }
+
+        ConnectorCredential::query()->updateOrCreate(
+            ['connector_installation_id' => $installationId],
+            [
+                'tenant_id' => $installation->tenant_id,
+                'encrypted_access_token' => $row->encrypted_access_token,
+                'encrypted_refresh_token' => $row->encrypted_refresh_token,
+                'expires_at' => $row->expires_at,
+                'extra_json' => $extra === [] ? null : $extra,
+            ]
+        );
+    }
+
+    /**
      * Persist or rotate the credential pair for the installation.
      * Encrypts BOTH tokens before write. `$extra` carries provider-
      * specific metadata (e.g. Notion `bot_id`, Atlassian `cloudId`).

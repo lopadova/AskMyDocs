@@ -9,9 +9,6 @@ use App\Connectors\Exceptions\ConnectorAuthException;
 use App\Connectors\HealthStatus;
 use App\Connectors\SyncResult;
 use App\Jobs\IngestDocumentJob;
-use App\Models\KnowledgeDocument;
-use App\Services\Kb\DocumentDeleter;
-use App\Support\KbPath;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -337,7 +334,7 @@ class GoogleDriveConnector extends BaseConnector
                     // per `kb.deletion.soft_delete` — operator-
                     // visible in the admin trash UI).
                     $driveFileId = (string) ($change['fileId'] ?? '');
-                    if ($driveFileId !== '' && $this->softDeleteByDriveFileId($installation, $driveFileId)) {
+                    if ($driveFileId !== '' && $this->softDeleteByMetadataKey($installation, 'drive_file_id', $driveFileId)) {
                         $removed++;
                     }
                     continue;
@@ -532,18 +529,20 @@ class GoogleDriveConnector extends BaseConnector
             $outputExtension,
         );
 
-        $disk = (string) config('kb.sources.disk', 'kb');
-        $fullPath = $this->applyPathPrefix($relativePath);
+        // iter2 finding #6 + W2 refinement — resolve both forms via
+        // the shared `BaseConnector::resolveKbSourcePath()` helper so
+        // every connector applies the prefix consistently.
+        $paths = $this->resolveKbSourcePath($relativePath);
 
-        $written = Storage::disk($disk)->put($fullPath, $body);
+        $written = Storage::disk($paths['disk'])->put($paths['absolute'], $body);
         if ($written === false) {
-            throw new \RuntimeException("Failed to write {$fullPath} to KB disk [{$disk}].");
+            throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
         IngestDocumentJob::dispatch(
             projectKey: $projectKey,
-            relativePath: $relativePath,
-            disk: $disk,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
             title: $name,
             metadata: [
                 'connector' => $this->key(),
@@ -555,76 +554,6 @@ class GoogleDriveConnector extends BaseConnector
             mimeType: $persistedMime,
             tenantId: $installation->tenant_id,
         );
-    }
-
-    /**
-     * iter2 finding #7 — Drive deletion event handler.
-     *
-     * Maps a Drive `fileId` → the matching `knowledge_documents` row
-     * (looked up by `metadata->>'drive_file_id'`, scoped to the
-     * installation's tenant), then funnels through `DocumentDeleter`.
-     * Soft delete by default per `kb.deletion.soft_delete`; the
-     * operator can hard-delete via the admin trash UI or wait for
-     * `kb:prune-deleted` to do it on the retention window.
-     *
-     * Returns true when at least one row was acted upon, false when
-     * no matching document was found (caller does NOT increment the
-     * `documentsRemoved` counter in that case — silently dropped
-     * changes would otherwise inflate the metric).
-     */
-    private function softDeleteByDriveFileId(
-        \App\Models\ConnectorInstallation $installation,
-        string $driveFileId,
-    ): bool {
-        $deleter = app(DocumentDeleter::class);
-
-        // Eloquent JSON path syntax — `metadata->drive_file_id` works
-        // on both pgsql (jsonb ->) and sqlite (json_extract). Scope by
-        // tenant_id (R30) so a deletion event on tenant A never
-        // affects tenant B's documents that happen to share a
-        // drive_file_id (different Google account, same file id).
-        $documents = KnowledgeDocument::withTrashed()
-            ->forTenant($installation->tenant_id)
-            ->where('metadata->drive_file_id', $driveFileId)
-            ->get();
-
-        if ($documents->isEmpty()) {
-            return false;
-        }
-
-        $any = false;
-        foreach ($documents as $document) {
-            // Skip already-soft-deleted rows so the counter is
-            // honest (re-running an incremental sweep on the same
-            // cursor shouldn't double-count).
-            if ($document->trashed()) {
-                continue;
-            }
-
-            $deleter->delete($document);
-            $any = true;
-        }
-
-        return $any;
-    }
-
-    /**
-     * Apply `config('kb.sources.path_prefix')` to a relative path,
-     * mirroring exactly the convention used by
-     * {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}
-     * and {@see \App\Flow\Steps\ParseMarkdownStep::resolveStoragePath()}.
-     * The result is the physical storage key on the disk;
-     * `IngestDocumentJob` callers always receive the UN-prefixed
-     * relative path.
-     */
-    private function applyPathPrefix(string $relativePath): string
-    {
-        $prefix = (string) config('kb.sources.path_prefix', '');
-        if ($prefix === '') {
-            return KbPath::normalize($relativePath);
-        }
-
-        return KbPath::normalize($prefix.'/'.$relativePath);
     }
 
     private function extensionForMime(string $mime, string $fallbackName): string
@@ -664,26 +593,10 @@ class GoogleDriveConnector extends BaseConnector
 
     private function persistChangesToken(int $installationId, string $token): void
     {
-        $extra = $this->vault->getExtra($installationId);
-        $extra['changes_page_token'] = $token;
-
-        $access = $this->vault->getAccessToken($installationId);
-        $refresh = $this->vault->getRefreshToken($installationId);
-        $row = $this->vault->getCredentialRow($installationId);
-
-        if ($access === null && $refresh === null) {
-            // Nothing to persist against — leave the token unset; the
-            // next sync will go through the full-sync fallback.
-            return;
-        }
-
-        $this->vault->setCredentials(
-            $installationId,
-            accessToken: $access ?? '',
-            refreshToken: $refresh,
-            expiresAt: $row?->expires_at,
-            extra: $extra,
-        );
+        // W2 refinement — use the granular `setExtraKey` vault helper
+        // so we no longer have to re-thread access/refresh/expiry
+        // through `setCredentials()` just to update one cursor field.
+        $this->vault->setExtraKey($installationId, 'changes_page_token', $token);
     }
 
     /**

@@ -7,6 +7,9 @@ namespace App\Connectors;
 use App\Connectors\Auth\OAuthCredentialVault;
 use App\Models\ConnectorInstallation;
 use App\Models\KbCanonicalAudit;
+use App\Models\KnowledgeDocument;
+use App\Services\Kb\DocumentDeleter;
+use App\Support\KbPath;
 use App\Support\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -216,5 +219,94 @@ abstract class BaseConnector implements ConnectorInterface
         }
 
         return $installation;
+    }
+
+    /**
+     * v4.5/W2 — generic deletion handler abstracted from the W1
+     * Google Drive impl (`softDeleteByDriveFileId`).
+     *
+     * Provider deletion events typically carry a stable remote-id
+     * (Drive `fileId`, Notion `page_id`, OneDrive `driveItemId`).
+     * Every connector stashes that id in `knowledge_documents.metadata`
+     * under a connector-specific key at ingest time, so the deletion
+     * handler can find the row and route through {@see DocumentDeleter}.
+     *
+     * The lookup is scoped to the installation's tenant (R30) so a
+     * deletion event in tenant A never affects tenant B's documents
+     * that happen to share the same remote-id (different upstream
+     * account, same id is a real-world possibility).
+     *
+     * Returns true when at least one matching row was acted upon,
+     * false when no matching document was found — callers should NOT
+     * increment the `documentsRemoved` counter on false (silently
+     * dropped changes would otherwise inflate the metric). Already
+     * soft-deleted rows are skipped so re-running an incremental
+     * sweep on the same cursor doesn't double-count.
+     */
+    protected function softDeleteByMetadataKey(
+        ConnectorInstallation $installation,
+        string $metadataKey,
+        string $remoteId,
+    ): bool {
+        $deleter = app(DocumentDeleter::class);
+
+        // Eloquent JSON path syntax — `metadata->{$metadataKey}` works
+        // on both pgsql (jsonb ->) and sqlite (json_extract). Tenant
+        // scoping is enforced via `forTenant()` (BelongsToTenant trait)
+        // so cross-tenant remote-id collisions never cross the boundary.
+        $documents = KnowledgeDocument::withTrashed()
+            ->forTenant($installation->tenant_id)
+            ->where("metadata->{$metadataKey}", $remoteId)
+            ->get();
+
+        if ($documents->isEmpty()) {
+            return false;
+        }
+
+        $any = false;
+        foreach ($documents as $document) {
+            if ($document->trashed()) {
+                continue;
+            }
+
+            $deleter->delete($document);
+            $any = true;
+        }
+
+        return $any;
+    }
+
+    /**
+     * v4.5/W2 — resolve a relative KB source path to both forms.
+     *
+     * `IngestDocumentJob` (via `ParseMarkdownStep::resolveStoragePath`)
+     * re-applies `config('kb.sources.path_prefix')` when it reads the
+     * file off disk. The connector therefore needs:
+     *   - the UN-prefixed `relativePath` to pass to `IngestDocumentJob`
+     *   - the prefix-applied `absolutePath` to pass to `Storage::put()`
+     *
+     * Mirrors exactly the convention used by
+     * {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}
+     * and {@see \App\Flow\Steps\ParseMarkdownStep::resolveStoragePath()}.
+     *
+     * Returns an array shaped `['relative' => ..., 'absolute' => ...,
+     * 'disk' => ...]` so callers grab whichever piece they need.
+     *
+     * @return array{relative: string, absolute: string, disk: string}
+     */
+    protected function resolveKbSourcePath(string $relativePath): array
+    {
+        $disk = (string) config('kb.sources.disk', 'kb');
+        $prefix = (string) config('kb.sources.path_prefix', '');
+
+        $absolute = $prefix === ''
+            ? KbPath::normalize($relativePath)
+            : KbPath::normalize($prefix.'/'.$relativePath);
+
+        return [
+            'relative' => KbPath::normalize($relativePath),
+            'absolute' => $absolute,
+            'disk' => $disk,
+        ];
     }
 }
