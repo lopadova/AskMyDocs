@@ -235,7 +235,7 @@ class NotionConnector extends BaseConnector
             Log::warning('NotionConnector::syncFull truncated by pagination cap', [
                 'installation_id' => $installationId,
                 'max_pages' => $e->maxPages,
-                'partial_results' => count($e->partialResults),
+                'pages_ingested_before_cap' => $added,
             ]);
         }
 
@@ -369,7 +369,7 @@ class NotionConnector extends BaseConnector
             Log::warning('NotionConnector::syncIncremental truncated by pagination cap', [
                 'installation_id' => $installationId,
                 'max_pages' => $e->maxPages,
-                'partial_results' => count($e->partialResults),
+                'pages_processed_before_cap' => $updated,
             ]);
         }
 

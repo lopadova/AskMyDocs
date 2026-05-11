@@ -6,6 +6,7 @@ use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\RegoloProvider;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 use Tests\TestCase;
 
 /**
@@ -25,7 +26,16 @@ use Tests\TestCase;
  * caller-facing `AiProviderInterface` keeps its existing shape and
  * that the SDK response is mapped onto the AskMyDocs `AiResponse` /
  * `EmbeddingsResponse` DTOs without dropping any field.
+ *
+ * Process isolation: the laravel/ai + padosoft/laravel-ai-regolo SDK
+ * pair registers process-level singletons (MultipleInstanceManager,
+ * embedded Regolo gateway) that are not reset between test application
+ * refreshes.  Running in separate processes ensures each test starts
+ * with a clean SDK state and prevents random-seed-dependent PHP
+ * crashes when the shared static state becomes inconsistent after many
+ * application re-creations.
  */
+#[RunTestsInSeparateProcesses]
 class RegoloProviderTest extends TestCase
 {
     private function setupConfig(array $overrides = []): void

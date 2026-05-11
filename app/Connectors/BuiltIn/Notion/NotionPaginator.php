@@ -89,7 +89,6 @@ final class NotionPaginator
     {
         $cursor = null;
         $page = 0;
-        $accumulated = [];
 
         do {
             $response = $fetch($cursor);
@@ -123,7 +122,6 @@ final class NotionPaginator
             foreach (($payload['results'] ?? []) as $row) {
                 if (is_array($row)) {
                     $batch[] = $row;
-                    $accumulated[] = $row;
                 }
             }
 
@@ -140,11 +138,12 @@ final class NotionPaginator
             $page++;
             if ($page >= $maxPages && $hasMore) {
                 // Finding #5 — never silently truncate. Surface the
-                // truncation as a typed exception carrying the partial
-                // results so the connector can record an `errors[]`
-                // entry on the SyncResult.
+                // truncation as a typed exception so the connector can
+                // record an `errors[]` entry on the SyncResult.
+                // Partial results are intentionally omitted: the caller
+                // already processed (and ingested) every yielded batch,
+                // keeping memory bounded by page_size at all times.
                 throw new ConnectorPaginationLimitException(
-                    partialResults: $accumulated,
                     maxPages: $maxPages,
                 );
             }

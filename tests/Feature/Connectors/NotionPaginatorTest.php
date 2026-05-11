@@ -266,8 +266,13 @@ final class NotionPaginatorTest extends TestCase
         ), maxPages: 2);
     }
 
-    public function test_pagination_limit_exception_carries_partial_results(): void
+    public function test_pagination_limit_exception_exposes_max_pages(): void
     {
+        // Verifies that ConnectorPaginationLimitException correctly
+        // carries the maxPages cap and does NOT accumulate partial
+        // results (the caller already processed every yielded batch
+        // incrementally, so doubling memory here would violate the
+        // memory-bounded contract).
         Http::fake([
             'api.notion.com/v1/search' => Http::response([
                 'results' => [['id' => 'partial-page']],
@@ -286,8 +291,9 @@ final class NotionPaginatorTest extends TestCase
             $this->fail('Expected ConnectorPaginationLimitException');
         } catch (ConnectorPaginationLimitException $e) {
             $this->assertSame(2, $e->maxPages);
-            $this->assertGreaterThan(0, count($e->partialResults));
-            $this->assertSame('partial-page', $e->partialResults[0]['id']);
+            // partialResults is always empty — the connector already
+            // processed every batch before the cap fires.
+            $this->assertSame([], $e->partialResults);
         }
     }
 }
