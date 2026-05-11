@@ -132,6 +132,10 @@ return [
             // Notion workspace UI to fully revoke an integration.
             'oauth_revoke_url' => null,
             'api_base' => 'https://api.notion.com/v1',
+            // Notion-Version header value. Pin to a known-good
+            // revision; bump when Notion ships a backward-compatible
+            // version we've validated against.
+            'api_version' => env('CONNECTOR_NOTION_API_VERSION', '2022-06-28'),
         ],
     ],
 

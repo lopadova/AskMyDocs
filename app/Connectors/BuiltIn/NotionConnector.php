@@ -8,6 +8,7 @@ use App\Connectors\BaseConnector;
 use App\Connectors\BuiltIn\Notion\NotionBlockToMarkdown;
 use App\Connectors\BuiltIn\Notion\NotionPaginator;
 use App\Connectors\Exceptions\ConnectorAuthException;
+use App\Connectors\Exceptions\ConnectorPaginationLimitException;
 use App\Connectors\HealthStatus;
 use App\Connectors\SyncResult;
 use App\Jobs\IngestDocumentJob;
@@ -55,10 +56,12 @@ use Illuminate\Support\Str;
  */
 class NotionConnector extends BaseConnector
 {
-    private const API_BASE = 'https://api.notion.com';
-
-    /** Notion-Version header pinned to a known-good revision. */
-    private const NOTION_API_VERSION = '2022-06-28';
+    /**
+     * Default Notion-Version header pinned to a known-good revision.
+     * Overridable per-deployment via
+     * `config('connectors.providers.notion.api_version')`.
+     */
+    private const DEFAULT_NOTION_API_VERSION = '2022-06-28';
 
     public function key(): string
     {
@@ -186,11 +189,11 @@ class NotionConnector extends BaseConnector
         $added = 0;
         $errors = [];
 
-        // Walk every page in the workspace via the search endpoint.
-        // Notion's `next_cursor` pagination is abstracted by the
-        // dedicated NotionPaginator helper.
+        // Finding #3 — walk lazily. Each batch is processed before
+        // the next network call, so memory stays bounded by
+        // `page_size` (100 rows) regardless of total workspace size.
         $paginator = new NotionPaginator;
-        $pages = $paginator->walk(function (?string $cursor) use ($accessToken) {
+        $fetch = function (?string $cursor) use ($accessToken) {
             $body = [
                 'filter' => ['property' => 'object', 'value' => 'page'],
                 'page_size' => 100,
@@ -199,22 +202,41 @@ class NotionConnector extends BaseConnector
                 $body['start_cursor'] = $cursor;
             }
 
-            return $this->notionPost('/v1/search', $accessToken, $body);
-        });
+            return $this->notionPost('/search', $accessToken, $body);
+        };
 
-        foreach ($pages as $page) {
-            try {
-                $this->ingestPage($installation, $projectKey, $accessToken, $page, $workspaceId);
-                $added++;
-            } catch (\Throwable $e) {
-                $pageId = (string) ($page['id'] ?? '?');
-                $errors[] = sprintf('page %s: %s', $pageId, $e->getMessage());
-                Log::error('NotionConnector::syncFull failed for page', [
-                    'installation_id' => $installationId,
-                    'page_id' => $pageId,
-                    'exception' => $e->getMessage(),
-                ]);
+        try {
+            foreach ($paginator->walkLazy($fetch) as $batch) {
+                foreach ($batch as $page) {
+                    try {
+                        $this->ingestPage($installation, $projectKey, $accessToken, $page, $workspaceId);
+                        $added++;
+                    } catch (\Throwable $e) {
+                        $pageId = (string) ($page['id'] ?? '?');
+                        $errors[] = sprintf('page %s: %s', $pageId, $e->getMessage());
+                        Log::error('NotionConnector::syncFull failed for page', [
+                            'installation_id' => $installationId,
+                            'page_id' => $pageId,
+                            'exception' => $e->getMessage(),
+                        ]);
+                    }
+                }
             }
+        } catch (ConnectorPaginationLimitException $e) {
+            // Finding #5 — record truncation honestly. The connector
+            // has accumulated whatever batches landed before the cap
+            // and we've already processed them above; the warning
+            // surfaces in the admin log so operators raise the cap
+            // or trigger a follow-up sync.
+            $errors[] = sprintf(
+                'sync truncated at maxPages=%d (Notion still reports has_more=true); raise the cap or trigger another sync.',
+                $e->maxPages,
+            );
+            Log::warning('NotionConnector::syncFull truncated by pagination cap', [
+                'installation_id' => $installationId,
+                'max_pages' => $e->maxPages,
+                'partial_results' => count($e->partialResults),
+            ]);
         }
 
         $result = new SyncResult(
@@ -265,23 +287,14 @@ class NotionConnector extends BaseConnector
         $removed = 0;
         $errors = [];
 
-        // Search results are sorted desc by last_edited_time so we
-        // can break out of pagination as soon as we hit a page older
-        // than `$since`. Notion doesn't expose a server-side time
-        // filter on search; client-side filter is the supported path.
+        // Finding #2 + #3 — walk lazily AND short-circuit as soon as
+        // a batch contains a page older than `$since`. Notion sorts
+        // by `last_edited_time desc`, so the FIRST stale page implies
+        // every subsequent page is also stale → break out of the
+        // outer foreach to skip remaining batches and their network
+        // calls. The dead `$shouldStop` flag from iter1 is removed.
         $paginator = new NotionPaginator;
-        $shouldStop = false;
-
-        $pages = $paginator->walk(function (?string $cursor) use ($accessToken, &$shouldStop) {
-            if ($shouldStop) {
-                // The previous page already had entries older than
-                // $since; force the paginator to return an empty page
-                // by passing an unsatisfiable cursor — but the
-                // paginator's `has_more=false` short-circuit is the
-                // cleaner exit. Achieve that by stopping inside this
-                // closure: throw a sentinel and catch outside.
-            }
-
+        $fetch = function (?string $cursor) use ($accessToken) {
             $body = [
                 'filter' => ['property' => 'object', 'value' => 'page'],
                 'sort' => ['timestamp' => 'last_edited_time', 'direction' => 'descending'],
@@ -291,46 +304,73 @@ class NotionConnector extends BaseConnector
                 $body['start_cursor'] = $cursor;
             }
 
-            return $this->notionPost('/v1/search', $accessToken, $body);
-        });
+            return $this->notionPost('/search', $accessToken, $body);
+        };
 
-        foreach ($pages as $page) {
-            $lastEdited = $page['last_edited_time'] ?? null;
-            if (is_string($lastEdited)) {
-                try {
-                    $editedAt = Carbon::parse($lastEdited);
-                } catch (\Throwable) {
-                    $editedAt = null;
+        try {
+            foreach ($paginator->walkLazy($fetch) as $batch) {
+                $reachedWatermark = false;
+                foreach ($batch as $page) {
+                    $lastEdited = $page['last_edited_time'] ?? null;
+                    if (is_string($lastEdited)) {
+                        try {
+                            $editedAt = Carbon::parse($lastEdited);
+                        } catch (\Throwable) {
+                            $editedAt = null;
+                        }
+                        if ($editedAt !== null && $editedAt->lessThanOrEqualTo($since)) {
+                            // Sort is desc → mark batch as
+                            // watermark-crossing AND skip this row;
+                            // outer loop breaks after we drain the
+                            // remaining rows of THIS batch (which are
+                            // all guaranteed older too, but draining
+                            // is cheap and keeps the control flow
+                            // dead simple).
+                            $reachedWatermark = true;
+                            continue;
+                        }
+                    }
+
+                    // Archive reconciliation — Notion deletions arrive
+                    // as a page-with-`archived: true` flag in search
+                    // results. Route through the shared
+                    // softDeleteByMetadataKey helper so the
+                    // knowledge_documents row is actually deleted
+                    // (W1 iter2 finding #7 lesson).
+                    if (($page['archived'] ?? false) === true) {
+                        $pageId = (string) ($page['id'] ?? '');
+                        if ($pageId !== '' && $this->softDeleteByMetadataKey($installation, 'notion_page_id', $pageId)) {
+                            $removed++;
+                        }
+                        continue;
+                    }
+
+                    try {
+                        $this->ingestPage($installation, $projectKey, $accessToken, $page, $workspaceId);
+                        $updated++;
+                    } catch (\Throwable $e) {
+                        $pageId = (string) ($page['id'] ?? '?');
+                        $errors[] = sprintf('page %s: %s', $pageId, $e->getMessage());
+                    }
                 }
-                if ($editedAt !== null && $editedAt->lessThanOrEqualTo($since)) {
-                    // Older than the watermark — skip (sort:desc means
-                    // every following page is also older, but the
-                    // paginator already loaded the batch so we just
-                    // skip remaining entries here for simplicity).
-                    continue;
+
+                if ($reachedWatermark) {
+                    // Saves every subsequent /search HTTP call when
+                    // the workspace is large — the cardinal benefit
+                    // of walkLazy() over walk().
+                    break;
                 }
             }
-
-            // Archive reconciliation — Notion deletions arrive as a
-            // page-with-`archived: true` flag in the search results.
-            // Route through the shared softDeleteByMetadataKey helper
-            // so the `knowledge_documents` row is actually deleted
-            // (W1 iter2 finding #7 lesson).
-            if (($page['archived'] ?? false) === true) {
-                $pageId = (string) ($page['id'] ?? '');
-                if ($pageId !== '' && $this->softDeleteByMetadataKey($installation, 'notion_page_id', $pageId)) {
-                    $removed++;
-                }
-                continue;
-            }
-
-            try {
-                $this->ingestPage($installation, $projectKey, $accessToken, $page, $workspaceId);
-                $updated++;
-            } catch (\Throwable $e) {
-                $pageId = (string) ($page['id'] ?? '?');
-                $errors[] = sprintf('page %s: %s', $pageId, $e->getMessage());
-            }
+        } catch (ConnectorPaginationLimitException $e) {
+            $errors[] = sprintf(
+                'incremental sync truncated at maxPages=%d (Notion still reports has_more=true); raise the cap or trigger another sync.',
+                $e->maxPages,
+            );
+            Log::warning('NotionConnector::syncIncremental truncated by pagination cap', [
+                'installation_id' => $installationId,
+                'max_pages' => $e->maxPages,
+                'partial_results' => count($e->partialResults),
+            ]);
         }
 
         $result = new SyncResult(
@@ -370,9 +410,9 @@ class NotionConnector extends BaseConnector
 
         try {
             $response = Http::withToken($accessToken)
-                ->withHeaders(['Notion-Version' => self::NOTION_API_VERSION])
+                ->withHeaders(['Notion-Version' => $this->apiVersion()])
                 ->timeout(5)
-                ->get(self::API_BASE.'/v1/users/me');
+                ->get($this->apiBase().'/users/me');
         } catch (\Throwable $e) {
             return HealthStatus::errored("Network error: {$e->getMessage()}");
         }
@@ -485,7 +525,7 @@ class NotionConnector extends BaseConnector
                 $params['start_cursor'] = $cursor;
             }
 
-            return $this->notionGet('/v1/blocks/'.urlencode($blockId).'/children', $accessToken, $params);
+            return $this->notionGet('/blocks/'.urlencode($blockId).'/children', $accessToken, $params);
         });
 
         foreach ($blocks as &$block) {
@@ -538,16 +578,51 @@ class NotionConnector extends BaseConnector
     }
 
     /**
+     * Finding #7 — derive the API base URL from
+     * `config('connectors.providers.notion.api_base')` so deployments
+     * can point at a proxy / test stub by overriding config. Falls
+     * back to the documented Notion endpoint when unset. We accept
+     * both forms (`https://api.notion.com` and
+     * `https://api.notion.com/v1`) by normalising to the bare host +
+     * always prepending `/v1` ourselves below.
+     *
+     * `$path` in the helpers below is the resource segment after
+     * `/v1/` (e.g. `/users/me`, `/search`, `/blocks/{id}/children`).
+     */
+    private function apiBase(): string
+    {
+        $config = (string) ($this->providerConfig()['api_base'] ?? '');
+        $base = $config !== '' ? rtrim($config, '/') : 'https://api.notion.com';
+
+        // If the operator configured the URL with `/v1` already
+        // appended (matches `config/connectors.php` shipped default),
+        // use it verbatim. Otherwise append the version segment so
+        // every caller can write `/users/me` etc. consistently.
+        if (str_ends_with($base, '/v1')) {
+            return $base;
+        }
+
+        return $base.'/v1';
+    }
+
+    private function apiVersion(): string
+    {
+        $config = (string) ($this->providerConfig()['api_version'] ?? '');
+
+        return $config !== '' ? $config : self::DEFAULT_NOTION_API_VERSION;
+    }
+
+    /**
      * @param  array<string,mixed>  $body
      */
     private function notionPost(string $path, string $accessToken, array $body): Response
     {
         return Http::withToken($accessToken)
             ->withHeaders([
-                'Notion-Version' => self::NOTION_API_VERSION,
+                'Notion-Version' => $this->apiVersion(),
                 'Content-Type' => 'application/json',
             ])
-            ->post(self::API_BASE.$path, $body);
+            ->post($this->apiBase().$path, $body);
     }
 
     /**
@@ -556,8 +631,8 @@ class NotionConnector extends BaseConnector
     private function notionGet(string $path, string $accessToken, array $params = []): Response
     {
         return Http::withToken($accessToken)
-            ->withHeaders(['Notion-Version' => self::NOTION_API_VERSION])
-            ->get(self::API_BASE.$path, $params);
+            ->withHeaders(['Notion-Version' => $this->apiVersion()])
+            ->get($this->apiBase().$path, $params);
     }
 
     /**

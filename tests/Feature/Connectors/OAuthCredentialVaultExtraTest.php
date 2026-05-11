@@ -114,7 +114,7 @@ final class OAuthCredentialVaultExtraTest extends TestCase
         $this->assertSame('cursor-1', $extra['changes_page_token']);
     }
 
-    public function test_setExtra_is_noop_when_no_credential_row(): void
+    public function test_setExtraKey_throws_if_credentials_deleted_concurrently(): void
     {
         $user = User::create([
             'name' => 'Tester',
@@ -129,14 +129,39 @@ final class OAuthCredentialVaultExtraTest extends TestCase
             'created_by' => $user->id,
         ]);
 
-        // No credential row exists for this installation — the call
-        // is a silent no-op so a sync running against a half-installed
-        // connector doesn't crash.
-        $this->vault()->setExtraKey($installation->id, 'bot_id', 'bot-x');
+        // R21 — no credential row exists (simulating a parallel
+        // `disconnect()` that ran between the caller's outer
+        // `getCredentialRow()` check and the `setExtraKey()` call).
+        // The vault MUST refuse to recreate the row — silently
+        // recreating would make a fresh credential row with no
+        // access token (impossible to authenticate) and would mask
+        // the disconnect from the operator.
+        $this->expectException(\App\Connectors\Exceptions\ConnectorAuthException::class);
+        $this->expectExceptionMessage('credential row was deleted concurrently');
 
-        $this->assertDatabaseMissing('connector_credentials', [
-            'connector_installation_id' => $installation->id,
+        $this->vault()->setExtraKey($installation->id, 'bot_id', 'bot-x');
+    }
+
+    public function test_setExtraKey_concurrent_updates_dont_lose_data(): void
+    {
+        // R21 — the implementation holds `lockForUpdate()` inside a
+        // `DB::transaction`, so the read and write are atomic
+        // relative to other writers. Two sequential writes (the
+        // closest we can simulate single-process) MUST land both
+        // values; the OLD read-modify-write `updateOrCreate` lost
+        // siblings under contention because each thread re-read +
+        // re-wrote without holding a lock.
+        $installation = $this->makeInstallationWithCredential([
+            'workspace_id' => 'ws-1',
         ]);
+
+        $this->vault()->setExtraKey($installation->id, 'bot_id', 'bot-A');
+        $this->vault()->setExtraKey($installation->id, 'changes_page_token', 'cursor-B');
+
+        $extra = $this->vault()->getExtra($installation->id);
+        $this->assertSame('ws-1', $extra['workspace_id'], 'pre-existing key preserved');
+        $this->assertSame('bot-A', $extra['bot_id'], 'first write preserved');
+        $this->assertSame('cursor-B', $extra['changes_page_token'], 'second write preserved');
     }
 
     public function test_setExtra_does_not_corrupt_encrypted_tokens(): void

@@ -395,6 +395,59 @@ final class NotionConnectorTest extends TestCase
         Queue::assertPushed(IngestDocumentJob::class, 1);
     }
 
+    /**
+     * Finding #3 — incremental sync MUST short-circuit pagination as
+     * soon as a batch contains a page older than `$since`. Otherwise
+     * a large workspace would still pay for every /search HTTP call.
+     */
+    public function test_sync_incremental_short_circuits_when_batch_crosses_watermark(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, extra: ['workspace_id' => 'ws-1']);
+
+        $since = Carbon::parse('2026-05-10T12:00:00Z');
+
+        Http::fake([
+            // Batch 1 contains a stale page → must trigger early break.
+            // Batch 2 must NOT be requested.
+            'api.notion.com/v1/search' => Http::sequence()
+                ->push([
+                    'results' => [
+                        ['id' => 'page-fresh', 'last_edited_time' => '2026-05-10T13:00:00Z', 'properties' => []],
+                        ['id' => 'page-stale', 'last_edited_time' => '2026-05-10T09:00:00Z', 'properties' => []],
+                    ],
+                    'next_cursor' => 'cursor-2',
+                    'has_more' => true,
+                ], 200)
+                ->push([
+                    'results' => [
+                        ['id' => 'page-should-never-fetch', 'last_edited_time' => '2026-05-10T08:00:00Z', 'properties' => []],
+                    ],
+                    'next_cursor' => null,
+                    'has_more' => false,
+                ], 200),
+            'api.notion.com/v1/blocks/*' => Http::response([
+                'results' => [],
+                'next_cursor' => null,
+                'has_more' => false,
+            ], 200),
+        ]);
+
+        $this->connector()->syncIncremental($installation->id, $since);
+
+        // Only ONE /search call was issued — second batch was skipped.
+        Http::assertSent(function ($req) {
+            return str_contains((string) $req->url(), '/search');
+        });
+        $searchCalls = collect(Http::recorded())
+            ->filter(fn ($pair) => str_contains((string) $pair[0]->url(), '/search'))
+            ->count();
+        $this->assertSame(1, $searchCalls, 'only one /search HTTP call must have been issued');
+    }
+
     public function test_sync_incremental_archived_pages_soft_deleted_via_helper(): void
     {
         Queue::fake();
@@ -574,5 +627,117 @@ final class NotionConnectorTest extends TestCase
         $this->assertNotEmpty($files);
         $contents = $disk->get($files[0]);
         $this->assertStringNotContainsString('user@example.com', $contents);
+    }
+
+    /**
+     * Finding #6 — icon file must actually exist at the URL the
+     * connector advertises, so the admin UI doesn't 404 the logo.
+     * Testbench overrides Laravel's base_path()/public_path() during
+     * tests, so we resolve to the real repo root via __DIR__ instead.
+     */
+    public function test_icon_url_resolves_to_existing_file(): void
+    {
+        $url = $this->connector()->iconUrl();
+        $this->assertStringEndsWith('/connectors/notion.svg', $url);
+
+        // tests/Feature/Connectors/ -> repo root is 3 levels up.
+        $repoRoot = realpath(__DIR__.'/../../../');
+        $this->assertNotFalse($repoRoot, 'repo root must resolve');
+        $this->assertFileExists($repoRoot.'/public/connectors/notion.svg');
+    }
+
+    /**
+     * Companion to Finding #6 — assert the Google Drive icon ships
+     * too. Without this regression coverage, future refactors could
+     * delete one without breaking the other's test.
+     */
+    public function test_google_drive_icon_file_also_exists(): void
+    {
+        $repoRoot = realpath(__DIR__.'/../../../');
+        $this->assertNotFalse($repoRoot);
+        $this->assertFileExists($repoRoot.'/public/connectors/google-drive.svg');
+    }
+
+    /**
+     * Finding #7 — `api_base` config knob must drive the HTTP call
+     * target. Override it to a localhost stub and assert requests
+     * hit there instead of api.notion.com.
+     */
+    public function test_api_base_config_overrides_target_host(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+        config()->set('connectors.providers.notion.api_base', 'https://notion.proxy.local/v1');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, extra: ['workspace_id' => 'ws-1']);
+
+        Http::fake([
+            'notion.proxy.local/*' => Http::response([
+                'results' => [],
+                'next_cursor' => null,
+                'has_more' => false,
+            ], 200),
+        ]);
+
+        $this->connector()->syncFull($installation->id);
+
+        Http::assertSent(function ($req) {
+            return str_starts_with((string) $req->url(), 'https://notion.proxy.local/v1/search');
+        });
+    }
+
+    /**
+     * Finding #5 — pagination truncation must surface as an error
+     * entry on the SyncResult (silent truncation forbidden).
+     */
+    public function test_sync_full_surfaces_pagination_truncation_in_errors(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, extra: ['workspace_id' => 'ws-1']);
+
+        // Every search response says has_more=true; with the
+        // shipped maxPages cap (100) the paginator will eventually
+        // throw. Use a shorter cap by patching the connector?
+        // Simpler approach: a single endless page response is enough
+        // because the cap is 100 and we never reach it — instead
+        // we cap differently: rely on the paginator's default of
+        // 100 pages. To test deterministically, fake a sequence of
+        // 101 pages each with has_more=true. That's a lot but it's
+        // the contract; for the unit-style speed, we instead point
+        // at NotionPaginator directly and rely on the paginator
+        // tests for the actual cap, and ASSERT here that the
+        // connector PROPAGATES truncation when it occurs by simulating
+        // it via the same endless-response shape.
+        // Use a recursive cap test: pump 105 pages all has_more=true.
+        $sequence = Http::sequence();
+        for ($i = 0; $i < 110; $i++) {
+            $sequence->push([
+                'results' => [['id' => "page-{$i}", 'last_edited_time' => '2026-05-10T10:00:00Z', 'properties' => []]],
+                'next_cursor' => "cursor-{$i}",
+                'has_more' => true,
+            ], 200);
+        }
+
+        Http::fake([
+            'api.notion.com/v1/search' => $sequence,
+            'api.notion.com/v1/blocks/*' => Http::response([
+                'results' => [],
+                'next_cursor' => null,
+                'has_more' => false,
+            ], 200),
+        ]);
+
+        $result = $this->connector()->syncFull($installation->id);
+
+        $this->assertNotEmpty($result->errors, 'truncation must surface as an error entry');
+        $this->assertStringContainsString(
+            'truncated',
+            implode("\n", $result->errors),
+            'error message must mention truncation',
+        );
     }
 }

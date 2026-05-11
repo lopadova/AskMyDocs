@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Notion">
+  <title>Notion</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <g transform="translate(12, 12)">
+    <path d="M5 4 L29 6 L29 32 L25 34 L8 32 L5 30 Z" fill="#ffffff" stroke="#000000" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M10 11 L10 27 M10 11 L21 27 L21 11" stroke="#000000" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="6" cy="6" r="1.5" fill="#000000"/>
+  </g>
+</svg>

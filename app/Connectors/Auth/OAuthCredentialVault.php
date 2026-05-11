@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Connectors\Auth;
 
+use App\Connectors\Exceptions\ConnectorAuthException;
 use App\Models\ConnectorCredential;
 use App\Models\ConnectorInstallation;
 use App\Support\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 
 /**
  * v4.5/W1 — Encrypted-at-rest OAuth credential vault.
@@ -124,39 +126,55 @@ class OAuthCredentialVault
      * v4.5/W2 — granular helper that updates a single key in the
      * `extra_json` blob, preserving every other key already stored.
      *
-     * Re-uses the existing credential row's access/refresh/expiry
-     * surface verbatim so this method is safe to call from inside a
-     * connector's `syncIncremental()` without worrying about clobbering
-     * the rotation state. When the credential row does NOT exist yet
-     * (a sync running against a half-installed connector), the call
-     * is a silent no-op — the operator hasn't completed OAuth, so
-     * there's nowhere to attach the cursor.
+     * **R21 — atomic invariant.** Two concurrent connectors writing
+     * different `extra_json` keys would otherwise race on the
+     * read-modify-write window: thread A reads `{a: 1}`, thread B
+     * reads `{a: 1}`, A writes `{a: 1, b: 2}`, B writes `{a: 1, c: 3}`
+     * — B's write loses A's `b: 2`. The implementation now holds a
+     * `SELECT ... FOR UPDATE` row lock inside a `DB::transaction`,
+     * so the read and the write are atomic relative to other writers.
+     *
+     * Concurrent-delete safety: if `disconnect()` deletes the row
+     * between an outer `getCredentialRow()` check and this call,
+     * the `lockForUpdate()->first()` returns null inside the
+     * transaction → throw {@see ConnectorAuthException}. We do NOT
+     * recreate the row via `updateOrCreate()` — a recreated credential
+     * row without an encrypted access token would be impossible to
+     * authenticate with anyway, and silently recreating "looks like
+     * the disconnect worked" from the operator's perspective.
+     *
+     * @throws ConnectorAuthException when the credential row vanished
+     *         mid-operation (e.g. concurrent disconnect).
      */
     public function setExtraKey(int $installationId, string $key, mixed $value): void
     {
-        $row = $this->findCredential($installationId);
-        if ($row === null) {
-            return;
-        }
-
-        $extra = $row->extra_json ?? [];
-        $extra[$key] = $value;
-
         $installation = $this->findInstallation($installationId);
         if ($installation === null) {
             return;
         }
 
-        ConnectorCredential::query()->updateOrCreate(
-            ['connector_installation_id' => $installationId],
-            [
-                'tenant_id' => $installation->tenant_id,
-                'encrypted_access_token' => $row->encrypted_access_token,
-                'encrypted_refresh_token' => $row->encrypted_refresh_token,
-                'expires_at' => $row->expires_at,
-                'extra_json' => $extra === [] ? null : $extra,
-            ]
-        );
+        DB::transaction(function () use ($installationId, $installation, $key, $value): void {
+            $row = ConnectorCredential::query()
+                ->where('connector_installation_id', $installationId)
+                ->where('tenant_id', $installation->tenant_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($row === null) {
+                throw new ConnectorAuthException(
+                    "Cannot update extra_json for installation {$installationId}: credential row was deleted concurrently (likely a parallel disconnect)."
+                );
+            }
+
+            $extra = $row->extra_json ?? [];
+            $extra[$key] = $value;
+
+            // Mutate in-place + save — guarantees we touch exactly the
+            // row we held the lock on. `updateOrCreate()` would have
+            // happily re-created a freshly-deleted row.
+            $row->extra_json = $extra === [] ? null : $extra;
+            $row->save();
+        });
     }
 
     /**
