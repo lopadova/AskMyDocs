@@ -14,6 +14,7 @@ const SECTION_ROUTES: Record<SidebarSection, string> = {
     kb: '/app/kb',
     insights: '/app/insights',
     users: '/app/users',
+    connectors: '/app/admin/connectors',
     logs: '/app/logs',
     maintenance: '/app/maintenance',
     'pii-redactor': '/app/admin/pii-redactor',

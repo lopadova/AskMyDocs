@@ -21,7 +21,8 @@ export type AdminSection =
     | 'kb'
     | 'logs'
     | 'maintenance'
-    | 'insights';
+    | 'insights'
+    | 'connectors';
 
 interface RailEntry {
     id: AdminSection;
@@ -40,6 +41,12 @@ const RAIL: RailEntry[] = [
     { id: 'logs', label: 'Logs', icon: 'Activity', to: '/app/admin/logs' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', to: '/app/admin/maintenance' },
     { id: 'insights', label: 'Insights', icon: 'Sparkles', to: '/app/admin/insights' },
+    // v4.5/W3 — connector framework admin landing. Same flat-RBAC
+    // pattern as the rest of /app/admin/*: BE Gate `manageConnectors`
+    // (super-admin only) enforces; the FE rail entry is always
+    // visible and the route component renders <AdminForbidden /> on
+    // role miss via <RequireRole>.
+    { id: 'connectors', label: 'Connectors', icon: 'Link', to: '/app/admin/connectors' },
 ];
 
 export interface AdminShellProps {
