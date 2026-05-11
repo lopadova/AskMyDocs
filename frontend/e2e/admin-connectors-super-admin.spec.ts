@@ -96,11 +96,13 @@ baseTest.describe('Admin Connectors — super-admin', () => {
     });
 
     baseTest('callback without a pending row surfaces a loud error (R14)', async ({ page }) => {
-        // No install was started for this connector in this scenario,
-        // so the BE's oauthCallback() endpoint will return 404 — we
-        // assert the SPA surfaces it as an inline error rather than
-        // silently rendering an empty page.
-        await page.goto('/app/admin/connectors/google-drive/callback?code=fake&state=nope');
+        // No install was started for `notion` in this run — `google-drive`
+        // is touched by the previous BE-contract probe scenario which
+        // writes a PENDING row, but `notion` stays untouched. The BE's
+        // oauthCallback() endpoint must therefore return 404 for the
+        // notion key, and the SPA must surface it as an inline error
+        // (R14 — never silently render an empty page).
+        await page.goto('/app/admin/connectors/notion/callback?code=fake&state=nope');
 
         const callbackHost = page.getByTestId('admin-connectors-callback');
         await expect(callbackHost).toBeVisible({ timeout: 15_000 });
