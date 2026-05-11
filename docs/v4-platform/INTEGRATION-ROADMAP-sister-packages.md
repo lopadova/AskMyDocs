@@ -1,5 +1,34 @@
 # Sister packages integration roadmap
 
+> **Honest status as of v4.4 RC / GA prep (2026-05-11)**
+>
+> v4.4 introduces NO new sister-package integrations or version bumps on
+> top of v4.3 GA. The cycle is intentionally **scope-tight on host-side
+> mount-mode migrations + an operational opt-in**:
+>
+> - **W1** — `tailwindcss` host bump `^3.4.14` → `^4.0.0` + `@tailwindcss/vite`
+>   plugin. Hard prerequisite for W2/W3 per ADR 0005.
+> - **W2** — `padosoft/laravel-pii-redactor-admin` v1.0.2 mount mode flipped
+>   from iframe → **cross-mount** at `/admin/pii-redactor` (vendored SPA
+>   sharing host React 19 + Sanctum + axios). BE unchanged.
+> - **W3** — `padosoft/eval-harness-ui` v1.0.0 mount mode flipped from
+>   iframe → **cross-mount** at `/admin/eval-harness` (non-prod-only;
+>   8-page SPA). 3 fail-closed fences (env flag + APP_ENV + Gate)
+>   PRESERVED. NEW host-side `EvalHarnessUiBootstrapController` returns
+>   the bootstrap payload (`ui_version` / `metric_labels` / `polling` /
+>   `locale` / `tenant_header` / `shortcuts`) derived from
+>   `config('eval-harness-ui')`, gated by Spatie role.
+> - **W4** — `eval:nightly` adversarial-lane opt-in (2 new env knobs,
+>   default OFF). Advisory-only sidecar; baseline-gates-adversarial. ADR 0007.
+>
+> `padosoft/laravel-flow-admin` stays iframe-mounted forever (Blade + Alpine,
+> not React, so cross-mount does not apply per ADR 0005).
+>
+> v4.3 GA was tagged at `4f375f1` on 2026-05-10. v4.4.0 GA tag fires in W4.B
+> once `feature/v4.4` merges into `main` per R37.
+
+---
+
 > **Honest status as of v4.3 RC / GA prep (2026-05-10)**
 >
 > v4.3 introduces NO new sister-package integrations or version bumps
