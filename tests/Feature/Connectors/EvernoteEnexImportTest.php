@@ -233,6 +233,38 @@ XML;
         );
     }
 
+    public function test_non_enexport_root_with_note_children_does_not_dispatch_jobs(): void
+    {
+        // R14 + Copilot iter1 finding #3: a non-Evernote XML file that
+        // happens to carry <note> elements MUST be rejected BEFORE any
+        // file write or job dispatch fires. Validate root-first.
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $file = $this->writeEnexFixture(
+            '<?xml version="1.0"?><foo><note><title>Sneaky</title>'
+            .'<content><![CDATA[<en-note><p>should never be written</p></en-note>]]></content>'
+            .'</note></foo>'
+        );
+
+        $threw = false;
+        try {
+            $this->app->make(EnexImporter::class)->import(
+                $file,
+                $installation,
+                'connector-evernote',
+            );
+        } catch (InvalidEnexException) {
+            $threw = true;
+        }
+
+        $this->assertTrue($threw, 'Expected InvalidEnexException on non-en-export root.');
+        Queue::assertNotPushed(IngestDocumentJob::class);
+        $disk = Storage::disk((string) config('kb.sources.disk', 'kb'));
+        $this->assertSame([], $disk->allFiles(), 'No files should have been written before the root-check rejected.');
+    }
+
     public function test_missing_file_throws_invalid_enex_exception(): void
     {
         $installation = $this->makeInstallation();

@@ -55,16 +55,6 @@
             "php-http/discovery": true
         }
     },
-    "extra": {
-        "askmydocs": {
-            "connectors": [
-                "App\\Connectors\\BuiltIn\\GoogleDriveConnector",
-                "App\\Connectors\\BuiltIn\\NotionConnector",
-                "App\\Connectors\\BuiltIn\\EvernoteConnector",
-                "App\\Connectors\\BuiltIn\\FabricConnector"
-            ]
-        }
-    },
     "minimum-stability": "stable",
     "prefer-stable": true,
     "repositories": [

@@ -336,6 +336,40 @@ final class EvernoteConnectorTest extends TestCase
         $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
     }
 
+    public function test_sync_incremental_uses_utc_zulu_date_format_in_search_filter(): void
+    {
+        // Copilot iter1 finding #4: the `updated:` search-grammar
+        // filter expects UTC Zulu (YYYYMMDDTHHMMSSZ), NOT
+        // milliseconds-since-epoch, NOT the locale-dependent `p` token.
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id);
+
+        Http::fake([
+            'api.evernote.com/v1/notes/search' => Http::response([
+                'notes' => [],
+                'totalNotes' => 0,
+            ], 200),
+        ]);
+
+        $since = Carbon::parse('2026-05-10T13:45:30+02:00'); // -> 11:45:30 UTC
+        $this->connector()->syncIncremental($installation->id, $since);
+
+        Http::assertSent(function ($req) {
+            $body = (string) $req->body();
+            // Decode the JSON body and walk to filter.words.
+            $decoded = json_decode($body, true);
+            if (! is_array($decoded)) {
+                return false;
+            }
+            $words = $decoded['filter']['words'] ?? '';
+
+            return $words === 'updated:20260510T114530Z';
+        });
+    }
+
     public function test_sync_incremental_falls_back_to_full_when_no_watermark(): void
     {
         Queue::fake();

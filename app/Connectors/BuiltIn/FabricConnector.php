@@ -32,9 +32,11 @@ use Illuminate\Support\Str;
  *
  * **AskMyDocs decision (v4.5/W4)**: ship this connector with the
  * API-key auth path enabled and the OAuth path stubbed. The admin SPA
- * sees the `requires_api_key` capability flag (returned via the
- * connector's `displayName`-adjacent metadata) and renders an API-key
- * input form INSTEAD of redirecting to an OAuth authorize URL. When
+ * currently hardcodes an "API-key required" notice for the `fabric`
+ * connector and prompts the operator to supply `api_key` (+ optional
+ * `workspace_id`) through the standard install endpoint — there is no
+ * capability-flag surface on {@see \App\Connectors\ConnectorInterface}
+ * yet (a future change can add one; out of scope for v4.5/W4). When
  * Fabric.so ships OAuth2, we'll flip a feature flag in
  * `config/connectors.php::providers.fabric.oauth_enabled = true`,
  * implement `initiateOAuth()` + `handleOAuthCallback()` properly, and
@@ -122,10 +124,11 @@ class FabricConnector extends BaseConnector
 
         throw new ConnectorAuthException(
             'Fabric (fabric.so) OAuth2 is not yet available upstream — Fabric documents it as '
-            ."'coming soon' in their developer guide. Install Fabric by posting your "
-            ."Personal or Developer API Key to /api/admin/connectors/fabric/configure-api-key "
-            ."instead, or wait for Fabric to ship OAuth2 and flip "
-            ."config('connectors.providers.fabric.oauth_enabled') to true."
+            ."'coming soon' in their developer guide. Configure Fabric by writing your "
+            .'Personal or Developer API Key (and optional workspace_id) to the installation '
+            ."row's `config_json` (e.g. via the standard admin install endpoint or by setting "
+            .'env CONNECTOR_FABRIC_API_KEY for single-tenant operators), or wait for Fabric '
+            ."to ship OAuth2 and flip config('connectors.providers.fabric.oauth_enabled') to true."
         );
     }
 
@@ -156,52 +159,12 @@ class FabricConnector extends BaseConnector
 
         $added = 0;
         $errors = [];
-        $cursor = null;
 
         try {
-            do {
-                $params = ['limit' => 50];
-                if ($cursor !== null) {
-                    $params['cursor'] = $cursor;
-                }
-
-                $response = Http::withHeaders($headers)
-                    ->acceptJson()
-                    ->timeout(20)
-                    ->get($this->apiBase().'/notes', $params);
-
-                if (! $response->successful()) {
-                    if ($response->status() === 401 || $response->status() === 403) {
-                        throw new ConnectorAuthException(sprintf(
-                            'Fabric /notes rejected credentials: HTTP %d %s',
-                            $response->status(),
-                            Str::limit((string) $response->body(), 200),
-                        ));
-                    }
-                    throw new ConnectorApiException(sprintf(
-                        'Fabric /notes failed: HTTP %d %s',
-                        $response->status(),
-                        Str::limit((string) $response->body(), 200),
-                    ));
-                }
-
-                $payload = $response->json();
-                if (! is_array($payload)) {
-                    throw new ConnectorApiException('Fabric /notes returned non-JSON body.');
-                }
-
-                // Fabric's published OpenAPI is partial; we accept
-                // either `{ notes: [...], next_cursor: ... }` or
-                // `{ data: [...], pagination: { next: ... } }`.
-                $notes = $payload['notes'] ?? $payload['data'] ?? [];
-                if (! is_array($notes)) {
-                    $notes = [];
-                }
-
-                foreach ($notes as $note) {
-                    if (! is_array($note)) {
-                        continue;
-                    }
+            $this->walkNotesPages(
+                $headers,
+                baseParams: ['limit' => 50],
+                onNote: function (array $note) use ($installation, $projectKey, $headers, &$added, &$errors): void {
                     try {
                         $this->ingestNote($installation, $projectKey, $headers, $note);
                         $added++;
@@ -209,14 +172,8 @@ class FabricConnector extends BaseConnector
                         $noteId = (string) ($note['id'] ?? '?');
                         $errors[] = sprintf('note %s: %s', $noteId, $e->getMessage());
                     }
-                }
-
-                $cursor = $payload['next_cursor']
-                    ?? ($payload['pagination']['next'] ?? null);
-                if (! is_string($cursor) || $cursor === '') {
-                    $cursor = null;
-                }
-            } while ($cursor !== null);
+                },
+            );
         } catch (ConnectorAuthException $e) {
             throw $e;
         } catch (ConnectorApiException $e) {
@@ -245,6 +202,10 @@ class FabricConnector extends BaseConnector
      * this filter on the Notepads listing endpoint per their developer
      * guide; we pass it best-effort and fall back to a full sweep
      * (filtered client-side) when the server ignores it.
+     *
+     * Walks `next_cursor` / `pagination.next` exactly like
+     * {@see syncFull()} so that more than one page of recently-updated
+     * notes is never silently dropped (Copilot iter1 finding #7).
      */
     public function syncIncremental(int $installationId, ?Carbon $since): SyncResult
     {
@@ -262,46 +223,24 @@ class FabricConnector extends BaseConnector
         $errors = [];
 
         try {
-            $response = Http::withHeaders($headers)
-                ->acceptJson()
-                ->timeout(20)
-                ->get($this->apiBase().'/notes', [
+            $this->walkNotesPages(
+                $headers,
+                baseParams: [
                     'updated_after' => $since->toIso8601String(),
                     'limit' => 50,
-                ]);
-
-            if (! $response->successful()) {
-                if ($response->status() === 401 || $response->status() === 403) {
-                    throw new ConnectorAuthException(sprintf(
-                        'Fabric /notes (incremental) rejected credentials: HTTP %d',
-                        $response->status(),
-                    ));
-                }
-                throw new ConnectorApiException(sprintf(
-                    'Fabric /notes (incremental) failed: HTTP %d',
-                    $response->status(),
-                ));
-            }
-
-            $payload = $response->json();
-            $notes = is_array($payload)
-                ? ($payload['notes'] ?? $payload['data'] ?? [])
-                : [];
-            if (! is_array($notes)) {
-                $notes = [];
-            }
-
-            foreach ($notes as $note) {
-                if (! is_array($note)) {
-                    continue;
-                }
-                try {
-                    $this->ingestNote($installation, $projectKey, $headers, $note);
-                    $updated++;
-                } catch (\Throwable $e) {
-                    $errors[] = sprintf('note %s: %s', $note['id'] ?? '?', $e->getMessage());
-                }
-            }
+                ],
+                onNote: function (array $note) use ($installation, $projectKey, $headers, &$updated, &$errors): void {
+                    try {
+                        $this->ingestNote($installation, $projectKey, $headers, $note);
+                        $updated++;
+                    } catch (\Throwable $e) {
+                        $errors[] = sprintf('note %s: %s', $note['id'] ?? '?', $e->getMessage());
+                    }
+                },
+                contextLabel: 'incremental',
+            );
+        } catch (ConnectorAuthException $e) {
+            throw $e;
         } catch (ConnectorApiException $e) {
             $errors[] = $e->getMessage();
         }
@@ -320,6 +259,89 @@ class FabricConnector extends BaseConnector
         ));
 
         return $result;
+    }
+
+    /**
+     * Walk `/v2/notes` honouring cursor pagination. The callback
+     * receives one note array per yielded record. Both full + incremental
+     * sync funnel through here so the cursor-loop is implemented once.
+     *
+     * Recognises BOTH response shapes that Fabric's partial OpenAPI
+     * documents:
+     *   { notes: [...], next_cursor: "..." }
+     *   { data: [...], pagination: { next: "..." } }
+     *
+     * @param  array<string,string>           $headers
+     * @param  array<string,mixed>            $baseParams
+     * @param  callable(array<string,mixed>): void  $onNote
+     *
+     * @throws ConnectorAuthException on 401/403
+     * @throws ConnectorApiException  on other non-2xx or non-JSON body
+     */
+    private function walkNotesPages(
+        array $headers,
+        array $baseParams,
+        callable $onNote,
+        string $contextLabel = 'full',
+    ): void {
+        $cursor = null;
+        $maxIterations = 200; // safety cap — Fabric workspaces are bounded
+        for ($i = 0; $i < $maxIterations; $i++) {
+            $params = $baseParams;
+            if ($cursor !== null) {
+                $params['cursor'] = $cursor;
+            }
+
+            $response = Http::withHeaders($headers)
+                ->acceptJson()
+                ->timeout(20)
+                ->get($this->apiBase().'/notes', $params);
+
+            if (! $response->successful()) {
+                $bodyExcerpt = Str::limit((string) $response->body(), 200);
+                if ($response->status() === 401 || $response->status() === 403) {
+                    throw new ConnectorAuthException(sprintf(
+                        'Fabric /notes (%s) rejected credentials: HTTP %d %s',
+                        $contextLabel,
+                        $response->status(),
+                        $bodyExcerpt,
+                    ));
+                }
+                throw new ConnectorApiException(sprintf(
+                    'Fabric /notes (%s) failed: HTTP %d %s',
+                    $contextLabel,
+                    $response->status(),
+                    $bodyExcerpt,
+                ));
+            }
+
+            $payload = $response->json();
+            if (! is_array($payload)) {
+                throw new ConnectorApiException(sprintf(
+                    'Fabric /notes (%s) returned non-JSON body.',
+                    $contextLabel,
+                ));
+            }
+
+            $notes = $payload['notes'] ?? $payload['data'] ?? [];
+            if (! is_array($notes)) {
+                $notes = [];
+            }
+
+            foreach ($notes as $note) {
+                if (! is_array($note)) {
+                    continue;
+                }
+                $onNote($note);
+            }
+
+            $next = $payload['next_cursor']
+                ?? ($payload['pagination']['next'] ?? null);
+            if (! is_string($next) || $next === '') {
+                return;
+            }
+            $cursor = $next;
+        }
     }
 
     public function disconnect(int $installationId): void

@@ -23,10 +23,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | FQCN list of connector implementations that ship inside AskMyDocs
-    | core (no separate composer package required). The reference Google
-    | Drive connector lands here in v4.5/W1 — subsequent connectors
-    | (Notion, Evernote, ...) ship as `padosoft/askmydocs-connector-*`
-    | packages and auto-register via composer extra discovery.
+    | core (no separate composer package required). The four reference
+    | connectors (Google Drive, Notion, Evernote, Fabric) currently
+    | ship inline as built-ins for v4.5/W1..W4. The
+    | `extra.askmydocs.connectors` composer-package auto-discovery hook
+    | in `App\Connectors\ConnectorRegistry` remains in place so future
+    | third-party connector packages (`padosoft/askmydocs-connector-*`
+    | or community-authored) can register themselves without editing
+    | this file.
     |
     */
     'built_in' => [

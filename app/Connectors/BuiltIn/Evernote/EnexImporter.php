@@ -43,8 +43,10 @@ use Padosoft\PiiRedactor\RedactorEngine;
  *
  * Returns an {@see EnexImportResult} carrying counts + per-note errors.
  * R14: a malformed `.enex` (XMLReader::open() fails OR the root element
- * is not `en-export`) raises {@see InvalidEnexException} — callers
- * MUST translate this to HTTP 422; never silent success-on-empty.
+ * is not `en-export`) raises {@see InvalidEnexException} BEFORE any
+ * <note> child is ingested — callers MUST translate this to HTTP 422;
+ * never silent success-on-empty, never partial writes from a non-Evernote
+ * XML file that happens to contain <note> tags.
  *
  * Tested in tests/Feature/Connectors/EvernoteEnexImportTest.php.
  */
@@ -70,57 +72,118 @@ final class EnexImporter
             );
         }
 
+        // Capture libxml errors explicitly instead of suppressing them
+        // with `@` — operators need actionable error messages when a
+        // .enex file is malformed (R14: surface failures loudly).
+        $previousLibxmlState = libxml_use_internal_errors(true);
+        libxml_clear_errors();
+
         $reader = new \XMLReader;
         // LIBXML_NONET — never fetch external entities; ENEX DOCTYPE
         // points at a publicly-hosted DTD that we have no business
         // fetching at parse time.
-        $opened = @$reader->open($localFilePath, 'UTF-8', LIBXML_NONET);
-        if ($opened === false) {
-            throw new InvalidEnexException(
-                "Failed to open ENEX file '{$localFilePath}' — XMLReader rejected it as non-XML."
-            );
-        }
-
-        $imported = 0;
-        $skipped = 0;
-        $errors = [];
-        $rootSeen = false;
-        $importId = (string) Str::ulid();
-        $noteIndex = 0;
-
         try {
-            while (@$reader->read()) {
-                if ($reader->nodeType === \XMLReader::ELEMENT) {
-                    if ($reader->name === 'en-export') {
-                        $rootSeen = true;
-                        continue;
+            $opened = $reader->open($localFilePath, 'UTF-8', LIBXML_NONET);
+            if ($opened === false) {
+                $detail = $this->collectLibxmlErrors();
+                throw new InvalidEnexException(sprintf(
+                    "Failed to open ENEX file '%s' — XMLReader rejected it as non-XML.%s",
+                    $localFilePath,
+                    $detail === '' ? '' : ' '.$detail,
+                ));
+            }
+
+            // R14 / Finding #3: validate the root element FIRST, before
+            // iterating any <note> elements. A non-Evernote XML file
+            // that happens to contain <note> tags MUST be rejected
+            // before we write a single byte to the KB disk or dispatch
+            // a single ingest job.
+            $rootName = $this->advanceToFirstElement($reader);
+            if ($rootName === null) {
+                $detail = $this->collectLibxmlErrors();
+                throw new InvalidEnexException(sprintf(
+                    "ENEX file '%s' contains no XML elements (truncated or non-XML).%s",
+                    $localFilePath,
+                    $detail === '' ? '' : ' '.$detail,
+                ));
+            }
+            if ($rootName !== 'en-export') {
+                throw new InvalidEnexException(sprintf(
+                    'ENEX file is not a valid Evernote export — expected <en-export> root element, got <%s>.',
+                    $rootName,
+                ));
+            }
+
+            $imported = 0;
+            $skipped = 0;
+            $errors = [];
+            $importId = (string) Str::ulid();
+            $noteIndex = 0;
+
+            while ($reader->read()) {
+                if ($reader->nodeType !== \XMLReader::ELEMENT) {
+                    continue;
+                }
+                if ($reader->name !== 'note') {
+                    continue;
+                }
+                $noteIndex++;
+                try {
+                    $note = $this->readNote($reader);
+                    if ($this->ingestNote($note, $installation, $projectKey, $importId, $noteIndex)) {
+                        $imported++;
+                    } else {
+                        $skipped++;
                     }
-                    if ($reader->name === 'note') {
-                        $noteIndex++;
-                        try {
-                            $note = $this->readNote($reader);
-                            if ($this->ingestNote($note, $installation, $projectKey, $importId, $noteIndex)) {
-                                $imported++;
-                            } else {
-                                $skipped++;
-                            }
-                        } catch (\Throwable $e) {
-                            $errors[] = sprintf('note #%d: %s', $noteIndex, $e->getMessage());
-                        }
-                    }
+                } catch (\Throwable $e) {
+                    $errors[] = sprintf('note #%d: %s', $noteIndex, $e->getMessage());
                 }
             }
+
+            return new EnexImportResult($imported, $skipped, $errors);
         } finally {
             $reader->close();
+            libxml_clear_errors();
+            libxml_use_internal_errors($previousLibxmlState);
+        }
+    }
+
+    /**
+     * Advance the reader to the first ELEMENT node and return its name,
+     * or `null` if the document holds no elements. We treat DOCTYPE +
+     * processing-instruction + comments as ignorable header noise so a
+     * file starting with `<?xml ...?><!DOCTYPE ...><en-export>` parses
+     * correctly.
+     */
+    private function advanceToFirstElement(\XMLReader $reader): ?string
+    {
+        while ($reader->read()) {
+            if ($reader->nodeType === \XMLReader::ELEMENT) {
+                return $reader->name;
+            }
         }
 
-        if (! $rootSeen) {
-            throw new InvalidEnexException(
-                'ENEX file is not a valid Evernote export — expected <en-export> root element.'
-            );
+        return null;
+    }
+
+    /**
+     * Drain queued libxml errors into a single human-readable line.
+     * Returns an empty string when no errors are pending.
+     */
+    private function collectLibxmlErrors(): string
+    {
+        $errors = libxml_get_errors();
+        libxml_clear_errors();
+        if ($errors === []) {
+            return '';
         }
 
-        return new EnexImportResult($imported, $skipped, $errors);
+        $messages = [];
+        foreach ($errors as $error) {
+            $messages[] = trim($error->message);
+        }
+
+        return 'libxml: '.implode('; ', array_slice($messages, 0, 3));
     }
 
     /**

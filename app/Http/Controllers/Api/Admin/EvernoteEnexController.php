@@ -51,9 +51,10 @@ final class EvernoteEnexController extends Controller
             isset($validated['installation_id']) ? (int) $validated['installation_id'] : null,
         );
 
-        $projectKey = $validated['project_key'] ?? (
-            ($installation->config_json['project_key'] ?? null) ?? 'connector-evernote'
-        );
+        $installationConfig = (array) ($installation->config_json ?? []);
+        $projectKey = $validated['project_key']
+            ?? ($installationConfig['project_key'] ?? null)
+            ?? 'connector-evernote';
 
         $uploaded = $request->file('enex');
         if ($uploaded === null) {

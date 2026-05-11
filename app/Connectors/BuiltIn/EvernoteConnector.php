@@ -437,10 +437,18 @@ class EvernoteConnector extends BaseConnector
                 ],
             ];
             if ($since !== null) {
-                // Evernote's filter expects ms-since-epoch.
+                // Evernote search-grammar `updated:<datetime>` expects
+                // a UTC Zulu timestamp formatted `YYYYMMDDTHHMMSSZ`
+                // (NOT ms-since-epoch, despite earlier docblock wording;
+                // NOT the locale-dependent `p` token either — `p` would
+                // render `a.m.`/`p.m.` and break the filter). See
+                // https://dev.evernote.com/doc/articles/search_grammar.php
                 $body['filter'] = [
                     'ascending' => false,
-                    'words' => sprintf('updated:%s', $since->format('Ymd\THisp')),
+                    'words' => sprintf(
+                        'updated:%s',
+                        $since->copy()->utc()->format('Ymd\\THis\\Z'),
+                    ),
                 ];
             }
 

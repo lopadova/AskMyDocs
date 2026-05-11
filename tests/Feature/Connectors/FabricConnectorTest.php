@@ -218,6 +218,37 @@ final class FabricConnectorTest extends TestCase
         });
     }
 
+    public function test_sync_incremental_paginates_via_next_cursor(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation(['api_key' => 'PK-fabric']);
+
+        Http::fake([
+            'api.fabric.so/v2/notes*' => Http::sequence()
+                ->push([
+                    'notes' => [
+                        ['id' => 'fab-i1', 'title' => 'Incr A', 'content_markdown' => 'aa'],
+                    ],
+                    'next_cursor' => 'incr-cursor-2',
+                ], 200)
+                ->push([
+                    'notes' => [
+                        ['id' => 'fab-i2', 'title' => 'Incr B', 'content_markdown' => 'bb'],
+                    ],
+                    'next_cursor' => null,
+                ], 200),
+        ]);
+
+        $since = \Carbon\Carbon::parse('2026-05-10T12:00:00Z');
+        $result = $this->connector()->syncIncremental($installation->id, $since);
+
+        $this->assertSame(2, $result->documentsUpdated);
+        $this->assertSame([], $result->errors);
+        Queue::assertPushed(IngestDocumentJob::class, 2);
+    }
+
     public function test_sync_incremental_falls_back_to_full_when_no_watermark(): void
     {
         Queue::fake();
