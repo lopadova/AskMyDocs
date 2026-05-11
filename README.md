@@ -38,6 +38,16 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.4.0-rc3 — W3 shipped (cross-mount eval-harness-ui closed 2026-05-11)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/eval-harness-ui` cross-mounted at `/admin/eval-harness`** | Iframe → cross-mount migration of the 8-page admin SPA (Dashboard / Reports / ReportDetail / Compare / Trend / Adversarial / AdversarialDetail / LiveBatches). Vendored source under `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC), sharing the host's React 19 + Sanctum cookie + axios client. The package's internal `BrowserRouter basename="/app/admin/eval-harness"` continues to own sub-page navigation; two routers coexist by scope (host TanStack = top-level shell; package = sub-routes). Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. `flow-admin` stays iframe-mounted forever (Blade + Alpine, not React). |
+| **NEW BE bootstrap config endpoint + 3 fail-closed fences PRESERVED** | New `GET /api/admin/eval-harness/bootstrap-config` controller returns `config('eval-harness-ui')` JSON gated by `auth:sanctum` + `can:eval-harness.viewer` (mirrors `admin/pii/strategy` precedent). FE fetches at mount time so operator-tuned `metric_labels` / `polling` / `locale` reach the cross-mount identically to the iframe version. The 3 fail-closed fences from ADR 0004 D5 are PRESERVED end-to-end: env flag `EVAL_HARNESS_UI_ENABLED=false` (default) → 404; `EvalHarnessUiNonProduction` middleware → 404 when `APP_ENV=production`; `can:eval-harness.viewer` → 403 on viewer/anonymous. |
+| **+8 PHPUnit tests + +9 Vitest react scenarios + R30/R9/R11 hardening from iter-2 review** | PHPUnit 1408 → 1416 (+8 BE scenarios for the bootstrap config endpoint: happy path / locale normalisation × 2 / blank tenant_header / dpo+editor pass / viewer 403 / guest 401). Vitest react 312 → 321 (+9 cycle-wide: +5 in iter 1 for testid/main-entry coverage, +4 in iter 2 for bootstrap fetch + tenant-header + locale routing). Iter 1 surfaced 6 Copilot findings: HIGH R30 tenant header bypass (FE no longer sends `X-Eval-Harness-Tenant`; BE middleware injects from `TenantContext::current()`); HIGH R9+R14 hard-coded bootstrap (replaced with BE endpoint); LOW × 2 R9 comment mismatches; MEDIUM i18n (formatters now locale-aware via `useFormatters()` hook); MEDIUM R11 testid coverage (added across 5 pages). Single new dep: `react-router-dom@^6.30.1` (~14 KB). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-11-v44-week3-cross-mount-eval-harness-ui.md`
+
 #### v4.4.0-rc2 — W2 shipped (cross-mount pii-redactor-admin closed 2026-05-10)
 
 | Feature | Description |
@@ -3472,6 +3482,30 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.4.0-rc3 — 2026-05-11 (W3 milestone — cross-mount eval-harness-ui)
+
+Third release candidate of the **v4.4 cycle**. W3 ships the **iframe → cross-mount migration** of `padosoft/eval-harness-ui` at `/admin/eval-harness` (non-prod-only). The 8-page admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/eval-harness/cross-mount/`, sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. The 3 fail-closed fences (env flag + APP_ENV + Gate) are PRESERVED end-to-end.
+
+**What's new in AskMyDocs v4.4.0-rc3 (W3 — cross-mount eval-harness-ui):**
+
+- **W3 / sub-PR (#140)** — NEW `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC vendored from `vendor/.../resources/js/` plus host-scoped `eval-harness-ui.css` + new `main-entry.tsx` wrapper + adapted `services/evalHarnessApi.ts`). REWRITTEN `EvalHarnessView.tsx` (drops iframe + readiness probe; fetches bootstrap config from new BE endpoint; drives `data-state="loading|ready|error"`; mounts SPA in degraded mode on error so `<ErrorPanel />` surfaces failures). NEW `app/Http/Controllers/Api/Admin/EvalHarnessUiBootstrapController.php` returning `config('eval-harness-ui')` JSON gated by `auth:sanctum` + `can:eval-harness.viewer`. REWRITTEN `frontend/e2e/admin-eval-harness.spec.ts` (strips iframe locators; preserves 3-fence assertions). UPDATED `INTEGRATION-ROADMAP-sister-packages.md` (eval-harness-ui row: iframe → cross-mount). NEW dep `react-router-dom@^6.30.1` (~14 KB; package's internal `BrowserRouter` continues to own sub-page navigation). Iter 2 fixed 6 Copilot findings (HIGH R30 tenant header bypass + HIGH R9 hard-coded bootstrap + 4 medium/low). +8 PHPUnit tests + +9 vitest react scenarios (312 → 321 cycle-wide: +5 iter 1 + +4 iter 2).
+- **(this PR)** v4.4/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc3:**
+- #140 v4.4/W3 — iframe → cross-mount of eval-harness-ui
+- (this PR) v4.4/W3 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** PHPUnit 1408 → **1416** (+8 BE scenarios for the new `/api/admin/eval-harness/bootstrap-config` endpoint). Vitest react 312 → **321** (+9 cycle-wide: +5 in iter 1 + +4 in iter 2). Vitest legacy unchanged at 18. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` ✅ |
+| W3 (this) | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` ✅ |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + GA merge | **`v4.4.0` GA** |
 
 ### v4.4.0-rc2 — 2026-05-10 (W2 milestone — cross-mount pii-redactor-admin)
 
