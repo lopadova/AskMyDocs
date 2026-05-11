@@ -27,6 +27,7 @@ return [
         \App\Services\Kb\Converters\TextPassthroughConverter::class,
         \App\Services\Kb\Converters\PdfConverter::class,
         \App\Services\Kb\Converters\DocxConverter::class,
+        \App\Services\Kb\Converters\VendorMarkdownPassthroughConverter::class,
     ],
 
     /**
