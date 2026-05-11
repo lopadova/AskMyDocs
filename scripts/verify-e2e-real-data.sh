@@ -52,6 +52,15 @@ EXTERNAL_PATTERNS=(
   'storage.googleapis.com'
   'r2.cloudflarestorage.com'
   'api.stripe.com'
+  # v4.5/W3 — OAuth providers used by the connector framework. Each
+  # connector's initiateOAuth() builds a redirect to its provider's
+  # OAuth consent screen, which lives outside the application
+  # boundary and requires real-user input — the admin-connectors-*
+  # specs cancel navigation at the boundary host via page.route().
+  'accounts.google.com'         # google-drive connector (W1)
+  'api.notion.com'              # notion connector (W2)
+  'login.microsoftonline.com'   # MS Graph (OneDrive / SharePoint) — future W3+
+  'auth.atlassian.com'          # Jira / Confluence — future W3+
 )
 
 # Controller endpoints that themselves invoke an external provider.

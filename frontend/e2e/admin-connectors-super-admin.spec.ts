@@ -12,7 +12,7 @@ import { test as seededTest } from './fixtures';
  * R13 compliance:
  *   - The Laravel side (controller + DB + queue + Gate) runs real
  *     against SQLite + the seeded super@demo.local user.
- *   - The ONLY `page.route()` interception here is the external
+ *   - The ONLY page-level network interception here is the external
  *     OAuth redirect — when the SPA clicks "Connect", the BE
  *     responds with a redirect_to pointing at accounts.google.com,
  *     and we MUST cancel the navigation so the test does not actually
