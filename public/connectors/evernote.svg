@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Evernote">
+  <title>Evernote</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <g transform="translate(10, 8)">
+    <!-- Notebook spine + page fold -->
+    <path d="M2 8 L18 6 L18 16 L8 16 Q4 16 4 20 L4 44 Q4 48 8 48 L36 48 Q40 48 40 44 L40 14 Q40 10 36 10 L20 8 Z"
+          fill="#00A82D" stroke="#007A22" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Page corner fold highlight -->
+    <path d="M18 6 L18 14 Q18 16 16 16 L4 18 L4 20 Q4 16 8 16 L18 16 Z"
+          fill="#00C53D" stroke="#007A22" stroke-width="0.8" stroke-linejoin="round"/>
+    <!-- Elephant tusk hint (stylised letter e accent) -->
+    <path d="M30 22 Q28 22 28 24 L28 32 Q28 38 24 38 Q30 40 32 34 L32 24 Q32 22 30 22 Z"
+          fill="#ffffff" stroke="#007A22" stroke-width="0.8" stroke-linejoin="round"/>
+  </g>
+</svg>

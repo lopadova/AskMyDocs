@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Fabric">
+  <title>Fabric</title>
+  <rect width="64" height="64" rx="8" fill="#0F0F10"/>
+  <g transform="translate(12, 12)">
+    <!-- Stylised woven-thread mark — interlocking quadrants -->
+    <path d="M4 4 L20 4 L20 20 L4 20 Z" fill="#FFFFFF" opacity="0.92"/>
+    <path d="M20 4 L36 4 L36 20 L20 20 Z" fill="#7C7CFF" opacity="0.85"/>
+    <path d="M4 20 L20 20 L20 36 L4 36 Z" fill="#7C7CFF" opacity="0.85"/>
+    <path d="M20 20 L36 20 L36 36 L20 36 Z" fill="#FFFFFF" opacity="0.92"/>
+    <!-- Thread accent diagonals -->
+    <path d="M4 4 L36 36" stroke="#0F0F10" stroke-width="2.5" fill="none"/>
+    <path d="M36 4 L4 36" stroke="#0F0F10" stroke-width="2.5" fill="none"/>
+  </g>
+</svg>
