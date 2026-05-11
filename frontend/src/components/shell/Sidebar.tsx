@@ -8,6 +8,7 @@ export type SidebarSection =
     | 'kb'
     | 'insights'
     | 'users'
+    | 'connectors'
     | 'logs'
     | 'maintenance'
     | 'pii-redactor'
@@ -36,6 +37,12 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'kb', label: 'Knowledge', icon: 'Book', section: 'admin' },
     { id: 'insights', label: 'AI Insights', icon: 'Sparkles', section: 'admin', badge: 5 },
     { id: 'users', label: 'Users & Roles', icon: 'Users', section: 'admin' },
+    // v4.5/W3 — Connectors admin landing. Sits in the Administration
+    // section between Users and PII Redactor. BE Gate
+    // `manageConnectors` restricts to super-admin only; the entry
+    // itself is always visible — the route component handles RBAC via
+    // <RequireRole roles={['super-admin']}>.
+    { id: 'connectors', label: 'Connectors', icon: 'Link', section: 'admin' },
     // v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Cross-mount
     // strategy is iframe (the package targets React 19 + Tailwind v4
     // while the AskMyDocs SPA is React 18 — safer to isolate the two
