@@ -15,7 +15,9 @@
 >   iframe → **cross-mount** at `/admin/eval-harness` (non-prod-only;
 >   8-page SPA). 3 fail-closed fences (env flag + APP_ENV + Gate)
 >   PRESERVED. NEW host-side `EvalHarnessUiBootstrapController` returns
->   `config('eval-harness-ui')` JSON gated by Spatie role.
+>   the bootstrap payload (`ui_version` / `metric_labels` / `polling` /
+>   `locale` / `tenant_header` / `shortcuts`) derived from
+>   `config('eval-harness-ui')`, gated by Spatie role.
 > - **W4** — `eval:nightly` adversarial-lane opt-in (2 new env knobs,
 >   default OFF). Advisory-only sidecar; baseline-gates-adversarial. ADR 0007.
 >

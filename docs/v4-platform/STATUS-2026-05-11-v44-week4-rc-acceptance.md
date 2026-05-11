@@ -38,7 +38,7 @@ Every `v4.4.0-rcN` tag below was created via `gh release create … --prerelease
 
 Every box below was verified via `gh release` / `gh run` / `gh pr` / `gh api` queries against the live GitHub state on 2026-05-11. No speculation — each gate is paired with the discipline that confirmed it.
 
-### A — Composer alignment (no version drift since v4.3.0 GA, except adding `react-router-dom`)
+### A — Dependency alignment (no Composer version drift since v4.3.0 GA; npm-side adds `react-router-dom` + `lucide-react` + Tailwind v4)
 
 The v4.4 cycle is **scope-tight on host-side mount migrations** plus one operational opt-in (adversarial nightly). No sister-package version bumps.
 
