@@ -108,6 +108,14 @@ const catalog: Record<I18nLocale, MessageCatalog> = {
     label_include_token: 'Token usage overlay',
     label_include_latency: 'Latency overlay',
     heading_actions: 'Quick actions',
+    // v4.4 GA Copilot iter 1 fix — DashboardPage + DataTable empty-state
+    // strings were hard-coded in Italian; adding catalogue keys so the
+    // `en` locale renders the matching English copy instead of mixed-
+    // language UI.
+    dashboard_no_manifest: 'No manifests',
+    dashboard_no_manifest_helper: 'Latest available series',
+    dashboard_no_trend_data: 'No trend data',
+    table_empty: 'No items available',
   },
   it: {
     app_title: 'Eval Harness UI',
@@ -207,6 +215,11 @@ const catalog: Record<I18nLocale, MessageCatalog> = {
     label_include_token: 'Overlay token',
     label_include_latency: 'Overlay latency',
     heading_actions: 'Azioni rapide',
+    // v4.4 GA Copilot iter 1 fix — see `en` block.
+    dashboard_no_manifest: 'Nessun manifesto',
+    dashboard_no_manifest_helper: 'Ultima serie disponibile',
+    dashboard_no_trend_data: 'Nessun dato trend',
+    table_empty: 'Nessun elemento disponibile',
   },
 } as const;
 
