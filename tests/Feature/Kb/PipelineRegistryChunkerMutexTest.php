@@ -48,6 +48,8 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
             // v4.5/W5.5 source-aware
             'notion', 'notion_note',
             'confluence',
+            // v4.5/W6 source-aware
+            'jira',
             'evernote', 'fabric',
             'drive_gdoc', 'drive_gsheet', 'drive_gslide',
             'onedrive_office',
@@ -81,6 +83,7 @@ final class PipelineRegistryChunkerMutexTest extends TestCase
         $registry = $this->app->make(PipelineRegistry::class);
         $tokens = [
             'notion', 'notion_note', 'confluence',
+            'jira',
             'evernote', 'fabric',
             'drive_gdoc', 'drive_gsheet', 'drive_gslide', 'onedrive_office',
         ];

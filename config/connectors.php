@@ -40,6 +40,7 @@ return [
         \App\Connectors\BuiltIn\FabricConnector::class,
         \App\Connectors\BuiltIn\OneDriveConnector::class,
         \App\Connectors\BuiltIn\ConfluenceConnector::class,
+        \App\Connectors\BuiltIn\JiraConnector::class,
     ],
 
     /*
@@ -230,6 +231,35 @@ return [
             // connector composes `{api_base}/ex/confluence/{cloudId}/wiki/rest/api`
             // at call time.
             'api_base' => env('CONNECTOR_CONFLUENCE_API_BASE', 'https://api.atlassian.com'),
+        ],
+
+        'jira' => [
+            // OAuth 2.0 3LO — shared Atlassian flow with Confluence.
+            // The same workspace can install both connectors (one
+            // ConfluenceConnector + one JiraConnector row) against
+            // the same `cloud_id`; the connector keys are distinct so
+            // installation rows don't collide.
+            'client_id' => env('JIRA_OAUTH_CLIENT_ID'),
+            'client_secret' => env('JIRA_OAUTH_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'JIRA_OAUTH_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/jira/oauth/callback'
+            ),
+            'oauth_authorize_url' => env('JIRA_OAUTH_AUTHORIZE', 'https://auth.atlassian.com/authorize'),
+            'oauth_token_url' => env('JIRA_OAUTH_TOKEN', 'https://auth.atlassian.com/oauth/token'),
+            // Atlassian DOES expose a programmatic revoke endpoint
+            // for OAuth 2.0 3LO; `disconnect()` calls it best-effort.
+            'oauth_revoke_url' => env('JIRA_OAUTH_REVOKE', 'https://auth.atlassian.com/oauth/token/revoke'),
+            'accessible_resources_url' => env(
+                'JIRA_ACCESSIBLE_RESOURCES',
+                'https://api.atlassian.com/oauth/token/accessible-resources',
+            ),
+            // API base template with `{cloud_id}` placeholder. The
+            // connector substitutes it at call time.
+            'api_base_template' => env(
+                'JIRA_API_BASE_TEMPLATE',
+                'https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3',
+            ),
         ],
     ],
 

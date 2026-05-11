@@ -1,0 +1,26 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Jira REST API v3 — /project/search response",
+    "type": "object",
+    "required": ["values"],
+    "properties": {
+        "values": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "key"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "key": {"type": "string", "minLength": 1},
+                    "name": {"type": ["string", "null"]},
+                    "self": {"type": ["string", "null"]},
+                    "projectTypeKey": {"type": ["string", "null"]}
+                }
+            }
+        },
+        "startAt": {"type": ["integer", "null"]},
+        "maxResults": {"type": ["integer", "null"]},
+        "total": {"type": ["integer", "null"]},
+        "isLast": {"type": ["boolean", "null"]}
+    }
+}

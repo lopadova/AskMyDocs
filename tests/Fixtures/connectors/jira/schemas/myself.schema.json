@@ -1,0 +1,13 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Jira REST API v3 — /myself response (subset used by AskMyDocs)",
+    "type": "object",
+    "required": ["accountId"],
+    "properties": {
+        "accountId": {"type": "string", "minLength": 1},
+        "emailAddress": {"type": ["string", "null"]},
+        "displayName": {"type": ["string", "null"]},
+        "active": {"type": "boolean"},
+        "timeZone": {"type": ["string", "null"]}
+    }
+}
