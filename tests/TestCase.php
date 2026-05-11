@@ -149,6 +149,10 @@ abstract class TestCase extends OrchestraTestCase
         // controller's own check. Tests that exercise the wired routes
         // flip this on via config(['eval-harness-ui.enabled' => true]).
         $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
+        // v4.5/W1 — connector framework config. Without this,
+        // ConnectorRegistry boots empty and the admin endpoints + the
+        // GoogleDriveConnector tests can't resolve provider knobs.
+        $app['config']->set('connectors', require __DIR__.'/../config/connectors.php');
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).

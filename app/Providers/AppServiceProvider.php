@@ -17,6 +17,7 @@ use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
+use App\Connectors\ConnectorRegistry;
 use App\Models\KnowledgeDocument;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
@@ -56,6 +57,13 @@ class AppServiceProvider extends ServiceProvider
         // one request. Set by ResolveTenant middleware on incoming HTTP;
         // reset between PHPUnit tests via the Application instance lifecycle.
         $this->app->singleton(TenantContext::class);
+
+        // v4.5/W1 — Connector framework registry. Singleton so the
+        // built-in + composer auto-discovery cost is paid once per
+        // request. R23 — every registered FQCN is validated at boot.
+        $this->app->singleton(ConnectorRegistry::class, function ($app) {
+            return new ConnectorRegistry($app, (array) config('connectors', []));
+        });
     }
 
     public function boot(): void
@@ -67,6 +75,25 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPiiRedactorAdminTenantScope();
         $this->registerPiiRedactorAdminTenantStamping();
         $this->registerEvalHarnessUiGates();
+        $this->registerConnectorGates();
+    }
+
+    /**
+     * v4.5/W1 — Wires the Gate that protects the connector admin
+     * surface. Super-admin only by default — connectors expose
+     * cross-tenant credential vaults + OAuth callback handlers and
+     * the blast radius of a misconfigured `admin` granting connector
+     * mutations is too large to widen without an ADR.
+     */
+    private function registerConnectorGates(): void
+    {
+        Gate::define('manageConnectors', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
+        });
     }
 
     private function registerCommands(): void
