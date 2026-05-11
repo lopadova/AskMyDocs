@@ -41,6 +41,15 @@ use Throwable;
  *   --dry-run     prints the planned action and exits without running.
  *   --status      prints the latest nightly summary and exits.
  *   --prune-only  deletes nightly reports older than retention and exits.
+ *
+ * v4.4/W4 — Adversarial nightly opt-in (ADR 0007). When
+ * `EVAL_NIGHTLY_ADVERSARIAL=true` AND the baseline run succeeds, the
+ * command additionally runs each enabled adversarial dataset (or the
+ * subset listed in `EVAL_NIGHTLY_ADVERSARIAL_DATASETS`) and writes a
+ * per-slug `.adversarial.<slug>.summary.json` sidecar. Adversarial
+ * regressions are advisory only — no `Log::alert()` fires for them.
+ * Default OFF: when the knob is unset/false, the v4.3/W3 baseline-only
+ * behaviour is preserved bit-identically.
  */
 class EvalNightlyCommand extends Command
 {
@@ -122,9 +131,180 @@ class EvalNightlyCommand extends Command
         $delta = $calculator->compute($prior, $current);
 
         $this->reportDelta($delta, $today, $disk);
+
+        // v4.4/W4 — adversarial opt-in: only after the baseline pass
+        // succeeded above (we reach this point only on baseline success;
+        // the FAILURE branch returned early). Adversarial runs are
+        // advisory: failures are logged but never propagate, and the
+        // baseline alert pipeline above is unaffected by anything
+        // happening below.
+        $this->runAdversarialPass($runner, $live, $disk, $today);
+
         $this->prune();
 
         return self::SUCCESS;
+    }
+
+    /**
+     * v4.4/W4 — opt-in adversarial nightly pass. No-op when
+     * `eval-harness.adversarial_nightly.enabled` is false (the default),
+     * preserving the v4.3/W3 baseline-only behaviour bit-identically.
+     *
+     * Each enabled slug runs `eval-harness:run` twice (JSON + Markdown)
+     * with the `nightly` batch profile and writes a summary sidecar
+     * under `<NIGHTLY_DIRECTORY>/<date>.adversarial.<slug>.summary.json`.
+     * Adversarial regressions are advisory: the sidecar is the audit
+     * trail; no `Log::alert()` fires (per ADR 0007 — adversarial
+     * scoring is too noisy in live mode for hard alerting). Per-slug
+     * runtime exceptions are logged with `Log::warning()` so a single
+     * misbehaving lane never poisons the others or the scheduler
+     * heartbeat.
+     */
+    private function runAdversarialPass(
+        EvalHarnessRunner $runner,
+        bool $live,
+        Filesystem $disk,
+        string $today,
+    ): void {
+        if (! (bool) Config::get('eval-harness.adversarial_nightly.enabled', false)) {
+            return;
+        }
+
+        $slugs = $this->resolveAdversarialSlugs();
+        if ($slugs === []) {
+            return;
+        }
+
+        // Re-assert the live_ai fence per slug iteration just like the
+        // baseline pass does. A misbehaving runner that mutates config
+        // must not silently flip subsequent runs.
+        foreach ($slugs as $slug) {
+            Config::set('eval-harness.askmydocs.live_ai', $live);
+
+            $jsonRelative = self::NIGHTLY_DIRECTORY.'/'.$today.'.adversarial.'.$slug.'.json';
+            $markdownRelative = self::NIGHTLY_DIRECTORY.'/'.$today.'.adversarial.'.$slug.'.md';
+            $summaryRelative = self::NIGHTLY_DIRECTORY.'/'.$today.'.adversarial.'.$slug.'.summary.json';
+
+            $jsonAbsolute = $this->absolutePathFor($disk, $jsonRelative);
+            $markdownAbsolute = $this->absolutePathFor($disk, $markdownRelative);
+            $dataset = 'rag.askmydocs.adversarial.'.$slug;
+
+            try {
+                $jsonExit = $runner->run([
+                    'dataset' => $dataset,
+                    '--registrar' => self::REGISTRAR_FQCN,
+                    '--batch-profile' => 'nightly',
+                    '--json' => true,
+                    '--out' => $jsonAbsolute,
+                    '--raw-path' => true,
+                ]);
+
+                $markdownExit = $runner->run([
+                    'dataset' => $dataset,
+                    '--registrar' => self::REGISTRAR_FQCN,
+                    '--batch-profile' => 'nightly',
+                    '--out' => $markdownAbsolute,
+                    '--raw-path' => true,
+                ]);
+            } catch (Throwable $e) {
+                // R7/R14 — surface the failure loudly via Log::warning so
+                // ops sees the missed lane, but DO NOT fire Log::alert
+                // (advisory scope) and DO NOT abort the loop: the
+                // remaining adversarial slugs still get their chance.
+                Log::warning('eval:nightly adversarial slug failed: '.$slug, [
+                    'date' => $today,
+                    'slug' => $slug,
+                    'dataset' => $dataset,
+                    'exception' => $e::class,
+                    'message' => $e->getMessage(),
+                ]);
+                $this->warn(sprintf(
+                    'Adversarial slug "%s" threw %s: %s',
+                    $slug,
+                    $e::class,
+                    $e->getMessage(),
+                ));
+
+                continue;
+            }
+
+            $exitCode = ($jsonExit !== 0 || $markdownExit !== 0) ? 1 : 0;
+            $summary = [
+                'schema_version' => 'eval-harness.adversarial-summary.v1',
+                'dataset' => $dataset,
+                'slug' => $slug,
+                'profile' => 'nightly',
+                'exit_code' => $exitCode,
+                'ran_at' => Carbon::now()->toIso8601String(),
+                'json_path' => $jsonRelative,
+                'md_path' => $markdownRelative,
+            ];
+
+            try {
+                $encoded = json_encode($summary, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            } catch (JsonException $e) {
+                Log::warning('eval:nightly failed to encode adversarial summary for '.$slug.': '.$e->getMessage(), $summary);
+
+                continue;
+            }
+
+            if (! $disk->put($summaryRelative, $encoded)) {
+                // R4 — surface the write failure rather than pretending
+                // success. Still no Log::alert: this is the advisory lane.
+                Log::warning('eval:nightly failed to persist adversarial summary at '.$summaryRelative, $summary);
+                $this->warn('Failed to write adversarial summary at '.$summaryRelative);
+
+                continue;
+            }
+
+            $this->info(sprintf(
+                'eval:nightly adversarial slug "%s" complete (exit=%d).',
+                $slug,
+                $exitCode,
+            ));
+        }
+    }
+
+    /**
+     * Resolve the configured adversarial dataset slugs filtered by the
+     * operator allowlist. Unknown slugs are skipped with a Log::warning
+     * — typos in the allowlist must surface, not silently no-op.
+     *
+     * @return list<string>
+     */
+    private function resolveAdversarialSlugs(): array
+    {
+        /** @var array<string, mixed> $configured */
+        $configured = (array) Config::get('eval-harness.askmydocs.golden.adversarial', []);
+        $configuredSlugs = array_keys($configured);
+
+        $rawAllowlist = trim((string) Config::get('eval-harness.adversarial_nightly.datasets', ''));
+        if ($rawAllowlist === '') {
+            return $configuredSlugs;
+        }
+
+        $requested = array_values(array_filter(array_map(
+            static fn (string $part): string => trim($part),
+            explode(',', $rawAllowlist),
+        ), static fn (string $part): bool => $part !== ''));
+
+        $resolved = [];
+        foreach ($requested as $slug) {
+            if (! in_array($slug, $configuredSlugs, true)) {
+                Log::warning('eval:nightly adversarial slug not configured; skipping.', [
+                    'slug' => $slug,
+                    'configured' => $configuredSlugs,
+                ]);
+
+                continue;
+            }
+            if (in_array($slug, $resolved, true)) {
+                continue;
+            }
+            $resolved[] = $slug;
+        }
+
+        return $resolved;
     }
 
     private function invokeEvalRun(
@@ -269,7 +449,16 @@ class EvalNightlyCommand extends Command
             if ($path === $todayFile) {
                 continue;
             }
-            if (! str_ends_with($path, '.json') || str_ends_with($path, '.alert.json')) {
+            if (! str_ends_with($path, '.json')) {
+                continue;
+            }
+            // Skip alert sidecars (regression payload, not a baseline
+            // report) and v4.4/W4 adversarial sidecars / summary files
+            // (advisory only; never compared as a baseline-prior).
+            if (str_ends_with($path, '.alert.json')) {
+                continue;
+            }
+            if (str_contains($path, '.adversarial.')) {
                 continue;
             }
             $candidates[] = $path;
@@ -339,9 +528,18 @@ class EvalNightlyCommand extends Command
 
         $reports = [];
         foreach ($disk->files(self::NIGHTLY_DIRECTORY) as $path) {
-            if (str_ends_with($path, '.json') && ! str_ends_with($path, '.alert.json')) {
-                $reports[] = $path;
+            if (! str_ends_with($path, '.json')) {
+                continue;
             }
+            if (str_ends_with($path, '.alert.json')) {
+                continue;
+            }
+            // v4.4/W4 — adversarial sidecars are advisory and never
+            // representative of the "latest nightly" status surface.
+            if (str_contains($path, '.adversarial.')) {
+                continue;
+            }
+            $reports[] = $path;
         }
 
         if ($reports === []) {
