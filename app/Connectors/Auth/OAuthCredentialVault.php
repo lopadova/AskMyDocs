@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Connectors\Auth;
 
+use App\Connectors\Exceptions\ConnectorAuthException;
 use App\Models\ConnectorCredential;
 use App\Models\ConnectorInstallation;
 use App\Support\TenantContext;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 
 /**
  * v4.5/W1 — Encrypted-at-rest OAuth credential vault.
@@ -102,6 +104,77 @@ class OAuthCredentialVault
         }
 
         return $row->extra_json ?? [];
+    }
+
+    /**
+     * v4.5/W2 — granular helper that reads a single key out of the
+     * `extra_json` blob. Returns `null` when the credential row is
+     * missing, the key is absent, OR the stored value is `null`. The
+     * caller cannot distinguish "missing" from "null-by-value" without
+     * `getExtra()` + `array_key_exists()`; in practice every consumer
+     * just needs the value (Notion `bot_id`, Drive `changes_page_token`,
+     * MS Graph `delta_link`) and treats null as "go fetch a fresh one".
+     */
+    public function getExtraKey(int $installationId, string $key): mixed
+    {
+        $extra = $this->getExtra($installationId);
+
+        return $extra[$key] ?? null;
+    }
+
+    /**
+     * v4.5/W2 — granular helper that updates a single key in the
+     * `extra_json` blob, preserving every other key already stored.
+     *
+     * **R21 — atomic invariant.** Two concurrent connectors writing
+     * different `extra_json` keys would otherwise race on the
+     * read-modify-write window: thread A reads `{a: 1}`, thread B
+     * reads `{a: 1}`, A writes `{a: 1, b: 2}`, B writes `{a: 1, c: 3}`
+     * — B's write loses A's `b: 2`. The implementation now holds a
+     * `SELECT ... FOR UPDATE` row lock inside a `DB::transaction`,
+     * so the read and the write are atomic relative to other writers.
+     *
+     * Concurrent-delete safety: if `disconnect()` deletes the row
+     * between an outer `getCredentialRow()` check and this call,
+     * the `lockForUpdate()->first()` returns null inside the
+     * transaction → throw {@see ConnectorAuthException}. We do NOT
+     * recreate the row via `updateOrCreate()` — a recreated credential
+     * row without an encrypted access token would be impossible to
+     * authenticate with anyway, and silently recreating "looks like
+     * the disconnect worked" from the operator's perspective.
+     *
+     * @throws ConnectorAuthException when the credential row vanished
+     *         mid-operation (e.g. concurrent disconnect).
+     */
+    public function setExtraKey(int $installationId, string $key, mixed $value): void
+    {
+        $installation = $this->findInstallation($installationId);
+        if ($installation === null) {
+            return;
+        }
+
+        DB::transaction(function () use ($installationId, $installation, $key, $value): void {
+            $row = ConnectorCredential::query()
+                ->where('connector_installation_id', $installationId)
+                ->where('tenant_id', $installation->tenant_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($row === null) {
+                throw new ConnectorAuthException(
+                    "Cannot update extra_json for installation {$installationId}: credential row was deleted concurrently (likely a parallel disconnect)."
+                );
+            }
+
+            $extra = $row->extra_json ?? [];
+            $extra[$key] = $value;
+
+            // Mutate in-place + save — guarantees we touch exactly the
+            // row we held the lock on. `updateOrCreate()` would have
+            // happily re-created a freshly-deleted row.
+            $row->extra_json = $extra === [] ? null : $extra;
+            $row->save();
+        });
     }
 
     /**

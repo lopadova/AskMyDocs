@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Google Drive">
+  <title>Google Drive</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <g transform="translate(8, 10)">
+    <path d="M16 4 L32 4 L48 32 L40 44 L24 44 L8 16 Z" fill="#1FA463"/>
+    <path d="M16 4 L8 16 L0 32 L8 44 L24 44 L16 32 Z" fill="#FFCF63"/>
+    <path d="M32 4 L48 32 L24 44 L40 44 Z" fill="#4688F1"/>
+  </g>
+</svg>

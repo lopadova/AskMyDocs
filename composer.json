@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "laravel/ai": "^0.6",
+        "laravel/ai": ">=0.6,<0.6.8",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
         "padosoft/laravel-ai-regolo": "^1.0",
