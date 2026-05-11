@@ -60,34 +60,7 @@ final class ConfluenceStorageToMarkdown
             return '';
         }
 
-        // Confluence storage format declares the Atlassian namespaces
-        // — DOMDocument's HTML loader handles namespace-prefixed tags
-        // (e.g. `<ac:link>`) but warns about them. Suppress the
-        // warnings; the tag walker below handles `<ac:*>` + `<ri:*>`
-        // explicitly.
-        $wrapped = '<?xml encoding="UTF-8"?><root xmlns:ac="http://atlassian.com/content" xmlns:ri="http://atlassian.com/resource/identifier">'
-            .$storage
-            .'</root>';
-
-        $dom = new \DOMDocument('1.0', 'UTF-8');
-        $previous = libxml_use_internal_errors(true);
-        $loaded = $dom->loadHTML(
-            $wrapped,
-            LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET,
-        );
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        if ($loaded === false) {
-            return '';
-        }
-
-        // The `<root>` wrapper might have been mangled by the HTML
-        // parser into a generic element under <body>; walk the body's
-        // children to be safe.
-        $root = $dom->getElementsByTagName('body')->item(0)
-            ?? $dom->documentElement;
-
+        $root = $this->parse($storage);
         if ($root === null) {
             return '';
         }
@@ -98,6 +71,62 @@ final class ConfluenceStorageToMarkdown
         $markdown = preg_replace("/\n{3,}/", "\n\n", $markdown) ?? $markdown;
 
         return trim($markdown);
+    }
+
+    /**
+     * Parse the storage-format fragment into a walkable DOM root.
+     *
+     * We try `loadXML()` first: Confluence storage format is documented
+     * as XHTML-with-namespace-prefixed-extensions, and libxml's HTML
+     * parser silently DROPS unknown-namespace tags on Linux builds
+     * (only the text content survives) — which is why a converter that
+     * worked locally on Windows shipped 7 failing tests on Ubuntu CI.
+     *
+     * The XML parser is strict, so we fall back to a sanitised HTML
+     * parse for malformed fragments (e.g. truncated tags) so the
+     * "handles malformed input gracefully" contract still holds.
+     */
+    private function parse(string $storage): ?\DOMNode
+    {
+        $wrapped = '<?xml version="1.0" encoding="UTF-8"?>'
+            .'<root xmlns:ac="http://atlassian.com/content"'
+            .' xmlns:ri="http://atlassian.com/resource/identifier">'
+            .$storage
+            .'</root>';
+
+        $dom = new \DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $loaded = $dom->loadXML(
+            $wrapped,
+            LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET,
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        if ($loaded && $dom->documentElement !== null) {
+            return $dom->documentElement;
+        }
+
+        // XML parse failed — fall back to the HTML parser. Namespaced
+        // tags don't survive this path, but it's only reached for
+        // malformed input where the contract is "don't crash; do your
+        // best to return SOMETHING readable".
+        $htmlWrapped = '<?xml encoding="UTF-8"?><root>'.$storage.'</root>';
+        $htmlDom = new \DOMDocument('1.0', 'UTF-8');
+        $previous = libxml_use_internal_errors(true);
+        $htmlLoaded = $htmlDom->loadHTML(
+            $htmlWrapped,
+            LIBXML_NOERROR | LIBXML_NOWARNING | LIBXML_NONET,
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        if (! $htmlLoaded) {
+            return null;
+        }
+
+        return $htmlDom->getElementsByTagName('body')->item(0)
+            ?? $htmlDom->documentElement;
     }
 
     private function renderChildren(\DOMNode $node, int $listDepth): string
