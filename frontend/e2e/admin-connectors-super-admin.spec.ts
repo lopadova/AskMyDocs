@@ -65,16 +65,39 @@ seededTest.describe('Admin Connectors — super-admin', () => {
 
     seededTest('connect → BE returns redirect_to, SPA navigates to provider (intercepted)', async ({
         page,
+        request,
     }) => {
-        // R13 exception: intercept the EXTERNAL OAuth provider only.
-        // The internal /api/admin/connectors/google-drive/install call
-        // is NOT intercepted — the controller really runs and writes
-        // a pending row into connector_installations.
+        // Split the assertion into two halves to avoid the
+        // Network.getResponseBody race: when the SPA click triggers a
+        // top-level `window.location.assign(redirect_to)`, Playwright's
+        // `waitForResponse` resolves but the browser tears the page
+        // context down for the navigation, disposing the response body
+        // before `.json()` can read it.
+        //
+        // Half A — direct BE contract probe via Playwright's
+        // APIRequestContext (carries the storage-state cookies, so the
+        // controller runs the real Gate). No SPA involved, no
+        // navigation, response body is fully available.
+        const installResp = await request.get('/api/admin/connectors/google-drive/install');
+        if (!installResp.ok()) {
+            throw new Error(
+                `GET install returned ${installResp.status()}: ${await installResp.text()}`,
+            );
+        }
+        const payload = await installResp.json();
+        expect(payload.data.installation_id).toEqual(expect.any(Number));
+        expect(payload.data.redirect_to).toContain('accounts.google.com');
+        expect(payload.data.redirect_to).toContain('drive.readonly');
+
+        // Half B — UI smoke: clicking the Connect button on the list
+        // page actually leaves the SPA boundary. We intercept the
+        // external OAuth provider host (R13 exception — external) and
+        // abort so the browser context cannot navigate away mid-suite
+        // and dirty downstream specs' storage state.
         let providerUrl: string | null = null;
-        await page.route('https://accounts.google.com/**', (route) => {
+        await page.route('https://accounts.google.com/**', async (route) => {
             providerUrl = route.request().url();
-            // Abort so the test does not actually leave the SPA.
-            return route.abort();
+            await route.abort();
         });
 
         await page.goto('/app/admin/connectors');
@@ -84,28 +107,14 @@ seededTest.describe('Admin Connectors — super-admin', () => {
             { timeout: 15_000 },
         );
 
-        const installCall = page.waitForResponse(
-            (r) =>
-                r.url().endsWith('/api/admin/connectors/google-drive/install') &&
-                r.request().method() === 'GET',
-            { timeout: 15_000 },
-        );
         await page.getByTestId('connector-google-drive-connect').click();
-        const installResp = await installCall;
-        if (!installResp.ok()) {
-            throw new Error(
-                `GET install returned ${installResp.status()}: ${await installResp.text()}`,
-            );
-        }
-        const payload = await installResp.json();
-        expect(payload.data.installation_id).toEqual(expect.any(Number));
-        expect(payload.data.redirect_to).toContain('accounts.google.com');
-
-        // The SPA called window.location.assign() with the provider
-        // URL. Playwright intercepted via page.route — give it a tick
-        // to register.
         await expect.poll(() => providerUrl, { timeout: 10_000 }).not.toBeNull();
         expect(providerUrl).toContain('drive.readonly');
+
+        // Tear the route handler down so it can't intercept anything
+        // after the test ends (defensive — Playwright already resets
+        // page-scoped state, but explicit beats implicit here).
+        await page.unroute('https://accounts.google.com/**');
     });
 
     seededTest('callback without a pending row surfaces a loud error (R14)', async ({ page }) => {
