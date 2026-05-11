@@ -1,0 +1,72 @@
+name: Live Connector Recording (manual)
+
+# v4.5/W5.5 — workflow_dispatch only. Operators trigger this workflow
+# manually after setting CONNECTOR_*_LIVE=1 and the matching credential
+# env vars as GitHub Actions secrets at the repo level.
+#
+# CI never runs the live tests on PRs (the gates skip them by default).
+# This workflow exists so the recording pipeline has a uniform entry
+# point — and so future automation (e.g. weekly fixture refresh) can
+# point at the same workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      providers:
+        description: 'Comma-separated provider slugs (notion,confluence,evernote,fabric,google_drive,onedrive). Empty = all.'
+        required: false
+        default: ''
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      APP_ENV: testing
+      CONNECTOR_RECORD_FIXTURES: '1'
+      # Live gates wired from repo secrets only when the operator
+      # selected the corresponding provider. Empty secrets stay empty,
+      # the LiveConnectorTestCase gate skips the test cleanly.
+      # Empty `inputs.providers` means "run every provider" — the input
+      # description literally says "Empty = all". A bare
+      # `contains(inputs.providers, 'notion')` would evaluate to false
+      # for the empty string, skipping every test silently. The
+      # `(empty || contains)` shape mirrors the documented semantics.
+      CONNECTOR_NOTION_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'notion')) && '1' || '' }}
+      CONNECTOR_GOOGLE_DRIVE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'google_drive')) && '1' || '' }}
+      CONNECTOR_CONFLUENCE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'confluence')) && '1' || '' }}
+      CONNECTOR_EVERNOTE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'evernote')) && '1' || '' }}
+      CONNECTOR_FABRIC_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'fabric')) && '1' || '' }}
+      CONNECTOR_ONEDRIVE_LIVE: ${{ (github.event.inputs.providers == '' || contains(github.event.inputs.providers, 'onedrive')) && '1' || '' }}
+
+      CONNECTOR_NOTION_TOKEN: ${{ secrets.CONNECTOR_NOTION_TOKEN }}
+      CONNECTOR_GOOGLE_DRIVE_TOKEN: ${{ secrets.CONNECTOR_GOOGLE_DRIVE_TOKEN }}
+      CONNECTOR_CONFLUENCE_TOKEN: ${{ secrets.CONNECTOR_CONFLUENCE_TOKEN }}
+      CONNECTOR_CONFLUENCE_CLOUD_ID: ${{ secrets.CONNECTOR_CONFLUENCE_CLOUD_ID }}
+      CONNECTOR_EVERNOTE_TOKEN: ${{ secrets.CONNECTOR_EVERNOTE_TOKEN }}
+      CONNECTOR_FABRIC_API_KEY: ${{ secrets.CONNECTOR_FABRIC_API_KEY }}
+      CONNECTOR_FABRIC_WORKSPACE_ID: ${{ secrets.CONNECTOR_FABRIC_WORKSPACE_ID }}
+      CONNECTOR_ONEDRIVE_TOKEN: ${{ secrets.CONNECTOR_ONEDRIVE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Run live connector tests (record mode)
+        run: |
+          php vendor/bin/phpunit --testdox tests/Live/
+
+      - name: Upload recorded fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recorded-fixtures
+          path: tests/Fixtures/connectors/**/recorded/*.json
+          retention-days: 14

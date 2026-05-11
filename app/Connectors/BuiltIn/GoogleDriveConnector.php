@@ -539,21 +539,117 @@ class GoogleDriveConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
-        IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $paths['relative'],
-            disk: $paths['disk'],
-            title: $name,
-            metadata: [
+        $owners = $this->extractFileOwners($file);
+        $folderPath = $this->resolveFolderPath($file);
+        $driveFields = [
+            'file_id'        => $fileId,
+            'mime_type'      => $mimeType,
+            'native_mime'    => $mimeType,
+            'modified_time'  => $file['modifiedTime'] ?? null,
+            'owner'          => $owners[0] ?? null,
+            'owners'         => $owners,
+            'folder_path'    => $folderPath,
+            'revision_id'    => $file['headRevisionId'] ?? null,
+            'shared_with'    => $file['permissionIds'] ?? [],
+        ];
+
+        // v4.5/W5.5 — route Office-family Drive docs through the source-
+        // aware vendor MIME so OfficeDocChunker fires. Plain markdown /
+        // pdf / text downloads keep their native MIME so the existing
+        // chunkers handle them; only Google-native formats need the
+        // synthetic token because the registry dispatches on it.
+        $effectiveMime = $this->resolveEffectiveMime($mimeType, $persistedMime);
+
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
                 'connector' => $this->key(),
                 'installation_id' => $installation->id,
                 'drive_file_id' => $fileId,
                 'drive_mime_type' => $mimeType,
                 'drive_modified_time' => $file['modifiedTime'] ?? null,
             ],
-            mimeType: $persistedMime,
+            sourceKey: 'google_drive',
+            sourceFields: $driveFields,
+            tags: [],
+            statusActive: true,
+            lastModified: $file['modifiedTime'] ?? null,
+            owner: $driveFields['owner'],
+        );
+
+        IngestDocumentJob::dispatch(
+            projectKey: $projectKey,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
+            title: $name,
+            metadata: $sourceMeta,
+            mimeType: $effectiveMime,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * @param  array<string,mixed>  $file
+     * @return list<string>
+     */
+    private function extractFileOwners(array $file): array
+    {
+        $owners = $file['owners'] ?? [];
+        if (! is_array($owners)) {
+            return [];
+        }
+        $out = [];
+        foreach ($owners as $owner) {
+            if (! is_array($owner)) {
+                continue;
+            }
+            $email = $owner['emailAddress'] ?? null;
+            $name = $owner['displayName'] ?? null;
+            if (is_string($email) && $email !== '') {
+                $out[] = $email;
+                continue;
+            }
+            if (is_string($name) && $name !== '') {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * @param  array<string,mixed>  $file
+     */
+    private function resolveFolderPath(array $file): ?string
+    {
+        // Drive's `parents` is an array of parent IDs only — the names
+        // require additional API roundtrips we don't want to pay at
+        // ingest time. We surface the IDs so the chunker / reranker can
+        // at least correlate co-located docs; a future enrichment pass
+        // can resolve them to human-readable paths.
+        $parents = $file['parents'] ?? [];
+        if (! is_array($parents) || $parents === []) {
+            return null;
+        }
+        $clean = array_values(array_filter(
+            array_map(static fn ($p) => is_string($p) ? $p : null, $parents),
+            static fn ($p): bool => $p !== null,
+        ));
+        return $clean === [] ? null : implode('/', $clean);
+    }
+
+    /**
+     * @param  string  $googleNativeMime  The MIME Drive reports for the source file.
+     * @param  string  $persistedMime     The MIME the body was persisted as (export target).
+     */
+    private function resolveEffectiveMime(string $googleNativeMime, string $persistedMime): string
+    {
+        $vendor = \App\Connectors\Support\VendorMimeSelector::forGoogleDrive($googleNativeMime);
+        if ($vendor === \App\Connectors\Support\VendorMimeSelector::MIME_GENERIC_MARKDOWN) {
+            // Fall through to whatever the body was actually persisted as
+            // (markdown / pdf / text) — keeps the legacy chunker path
+            // working for non-Office Drive files.
+            return $persistedMime;
+        }
+        return $vendor;
     }
 
     private function extensionForMime(string $mime, string $fallbackName): string

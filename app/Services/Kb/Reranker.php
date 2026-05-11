@@ -2,6 +2,10 @@
 
 namespace App\Services\Kb;
 
+use App\Services\Kb\Retrieval\PreambleMatchDetector;
+use App\Services\Kb\Retrieval\QueryTagExtractor;
+use App\Services\Kb\Retrieval\RecencyScorer;
+use App\Services\Kb\Retrieval\TagOverlapScorer;
 use Illuminate\Support\Collection;
 
 /**
@@ -19,6 +23,27 @@ use Illuminate\Support\Collection;
  */
 class Reranker
 {
+    private TagOverlapScorer $tagOverlap;
+    private QueryTagExtractor $queryTagExtractor;
+    private RecencyScorer $recencyScorer;
+    private PreambleMatchDetector $preambleDetector;
+
+    public function __construct(
+        ?TagOverlapScorer $tagOverlap = null,
+        ?QueryTagExtractor $queryTagExtractor = null,
+        ?RecencyScorer $recencyScorer = null,
+        ?PreambleMatchDetector $preambleDetector = null,
+    ) {
+        // Default-construct the v4.5/W5.5 source-aware signal scorers so
+        // legacy resolutions of Reranker (older test bindings, the
+        // KbSearchService constructor that takes Reranker directly) keep
+        // working without signature churn. All four are stateless.
+        $this->tagOverlap = $tagOverlap ?? new TagOverlapScorer();
+        $this->queryTagExtractor = $queryTagExtractor ?? new QueryTagExtractor();
+        $this->recencyScorer = $recencyScorer ?? new RecencyScorer();
+        $this->preambleDetector = $preambleDetector ?? new PreambleMatchDetector();
+    }
+
     private static array $stopWords = [
         // Italian
         'il', 'lo', 'la', 'i', 'gli', 'le', 'un', 'uno', 'una',
@@ -62,14 +87,38 @@ class Reranker
             return $chunks->take($limit)->values();
         }
 
-        $vectorWeight = (float) config('kb.reranking.vector_weight', 0.60);
-        $keywordWeight = (float) config('kb.reranking.keyword_weight', 0.30);
-        $headingWeight = (float) config('kb.reranking.heading_weight', 0.10);
+        $vectorWeight = (float) config('kb.reranking.vector_weight', 0.55);
+        $keywordWeight = (float) config('kb.reranking.keyword_weight', 0.25);
+        $headingWeight = (float) config('kb.reranking.heading_weight', 0.05);
 
         $priorityWeight = (float) config('kb.canonical.priority_weight', 0.003);
 
+        // v4.5/W5.5 Layer-4 weights. All four signals additive.
+        $tagOverlapWeight    = (float) config('kb.reranking.tag_overlap_weight', 0.05);
+        $preambleWeight      = (float) config('kb.reranking.preamble_match_weight', 0.05);
+        $recencyWeight       = (float) config('kb.reranking.recency_weight', 0.02);
+        $statusActiveWeight  = (float) config('kb.reranking.status_active_weight', 0.02);
+
+        // Query-derived tags reused across chunks (extraction is cheap
+        // but doing it per-chunk wastes cycles when reranking 24+
+        // candidates).
+        $queryTags = $this->queryTagExtractor->extract($query);
+        $preambleSignal = $this->preambleDetector->score($query);
+
         return $chunks
-            ->map(function (array $chunk) use ($queryTokens, $vectorWeight, $keywordWeight, $headingWeight, $priorityWeight) {
+            ->map(function (array $chunk) use (
+                $queryTokens,
+                $vectorWeight,
+                $keywordWeight,
+                $headingWeight,
+                $priorityWeight,
+                $tagOverlapWeight,
+                $preambleWeight,
+                $recencyWeight,
+                $statusActiveWeight,
+                $queryTags,
+                $preambleSignal,
+            ) {
                 $vectorScore = (float) ($chunk['vector_score'] ?? 0.0);
                 $keywordScore = $this->keywordScore($queryTokens, $chunk['chunk_text'] ?? '');
                 $headingScore = $this->keywordScore($queryTokens, $chunk['heading_path'] ?? '');
@@ -80,7 +129,20 @@ class Reranker
 
                 $canonicalAdjustment = $this->canonicalAdjustment($chunk, $priorityWeight);
 
-                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'];
+                // v4.5/W5.5 Layer-4 signal contributions.
+                $sourceMetadata = $this->chunkMetadata($chunk);
+                $chunkTags = $this->chunkSearchTags($sourceMetadata);
+                $tagOverlapScore = $this->tagOverlap->score($queryTags, $chunkTags);
+                $recencyScore = $this->recencyScorer->score($sourceMetadata['recency_bucket'] ?? null);
+                $statusActive = (bool) ($sourceMetadata['status_active'] ?? false);
+                $isPreamble = (bool) ($sourceMetadata['page_property_panel'] ?? false);
+
+                $sourceAwareDelta = ($tagOverlapWeight * $tagOverlapScore)
+                    + ($preambleWeight * ($preambleSignal * ($isPreamble ? 1.0 : 0.0)))
+                    + ($recencyWeight * $recencyScore)
+                    + ($statusActiveWeight * ($statusActive ? 1.0 : 0.0));
+
+                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'] + $sourceAwareDelta;
                 $chunk['rerank_detail'] = [
                     'vector' => round($vectorScore, 4),
                     'keyword' => round($keywordScore, 4),
@@ -88,6 +150,12 @@ class Reranker
                     'base' => round($baseScore, 4),
                     'canonical_boost' => round($canonicalAdjustment['boost'], 4),
                     'canonical_penalty' => round($canonicalAdjustment['penalty'], 4),
+                    // v4.5/W5.5 — Layer-4 visibility for the dashboard.
+                    'tag_overlap' => round($tagOverlapScore, 4),
+                    'preamble_match' => round($preambleSignal * ($isPreamble ? 1.0 : 0.0), 4),
+                    'recency' => round($recencyScore, 4),
+                    'status_active' => $statusActive,
+                    'source_aware_delta' => round($sourceAwareDelta, 4),
                     'combined' => round($chunk['rerank_score'], 4),
                 ];
 
@@ -96,6 +164,31 @@ class Reranker
             ->sortByDesc('rerank_score')
             ->take($limit)
             ->values();
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function chunkMetadata(array $chunk): array
+    {
+        $meta = $chunk['metadata'] ?? [];
+        return is_array($meta) ? $meta : [];
+    }
+
+    /**
+     * @param  array<string,mixed>  $metadata
+     * @return list<string>
+     */
+    private function chunkSearchTags(array $metadata): array
+    {
+        $tags = $metadata['search_tags'] ?? [];
+        if (! is_array($tags)) {
+            return [];
+        }
+        return array_values(array_filter(
+            array_map(static fn ($t) => is_string($t) ? $t : '', $tags),
+            static fn (string $t): bool => $t !== '',
+        ));
     }
 
     /**

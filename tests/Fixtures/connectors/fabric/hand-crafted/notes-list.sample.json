@@ -1,0 +1,17 @@
+{
+    "__source": "hand-crafted-sample",
+    "body": {
+        "notes": [
+            {
+                "id": "sha256-fb000001",
+                "workspace_id": "sha256-fb000002",
+                "collection_id": "sha256-fb000003",
+                "title": "Research note",
+                "content": "Research markdown body.",
+                "tags": ["research", "fabric"],
+                "updated_at": "2026-05-09T12:00:00Z",
+                "ai_annotations": [{"summary": "Auto-summary"}]
+            }
+        ]
+    }
+}

@@ -85,6 +85,16 @@ class DocumentIngestor
 
         $sourceType = $this->resolveSourceType($normalizedSource->mimeType);
         $chunker = $this->registry->resolveChunker($sourceType);
+
+        // v4.5/W5.5 — projects the resolved source-type token AND every
+        // connector-supplied namespaced block (notion/confluence/...) +
+        // the `_derived` map into `extractionMeta` so the chunker can
+        // dispatch on the token AND read the connector signals without
+        // needing a second constructor parameter on ChunkerInterface.
+        // The connector packs the data under `SourceDocument::metadata['converter_hints']`
+        // for transport; here we merge it into `extractionMeta` so the
+        // chunker reads a single, uniform surface.
+        $converted = $this->projectChunkerHints($converted, $normalizedSource, $sourceType);
         $chunkDrafts = $chunker->chunk($converted);
 
         $combinedMetadata = array_merge($normalizedSource->metadata, $extraMetadata, [
@@ -103,6 +113,61 @@ class DocumentIngestor
             markdown: $converted->markdown,
             chunkDrafts: $chunkDrafts,
             metadata: $combinedMetadata,
+        );
+    }
+
+    /**
+     * Project the source-type token plus every connector-supplied hint
+     * onto the converter output so source-aware chunkers can read a
+     * single uniform surface.
+     *
+     * Recognised keys lifted from `SourceDocument::metadata`:
+     *  - `converter_hints`: free-form namespaced bag, e.g.
+     *      `['notion' => [...], '_derived' => [...]]` written by the
+     *      v4.5 connectors per DESIGN-v4.5-W5.5 §Layer 1.
+     *  - `_derived`: top-level shorthand for connectors that bypass
+     *      the `converter_hints` wrapper.
+     *
+     * Any non-array hint payload is silently dropped — the chunker's
+     * DerivedMetadataReader guards against missing/malformed shapes.
+     */
+    private function projectChunkerHints(
+        \App\Services\Kb\Pipeline\ConvertedDocument $converted,
+        \App\Services\Kb\Pipeline\SourceDocument $source,
+        string $sourceType,
+    ): \App\Services\Kb\Pipeline\ConvertedDocument {
+        $extra = ['source_type' => $sourceType];
+
+        $hints = $source->metadata['converter_hints'] ?? null;
+        if (is_array($hints)) {
+            foreach ($hints as $key => $value) {
+                if (is_string($key) && $key !== '') {
+                    $extra[$key] = $value;
+                }
+            }
+        }
+
+        $derived = $source->metadata['_derived'] ?? null;
+        if (is_array($derived) && ! isset($extra['_derived'])) {
+            $extra['_derived'] = $derived;
+        }
+
+        if ($extra === ['source_type' => $sourceType] && ! isset($converted->extractionMeta['source_type'])) {
+            // No connector hints to merge — only tag the source_type so
+            // chunkers that dispatch on it have the token available.
+            return new \App\Services\Kb\Pipeline\ConvertedDocument(
+                markdown: $converted->markdown,
+                mediaItems: $converted->mediaItems,
+                extractionMeta: array_merge($converted->extractionMeta, $extra),
+                sourceMimeType: $converted->sourceMimeType,
+            );
+        }
+
+        return new \App\Services\Kb\Pipeline\ConvertedDocument(
+            markdown: $converted->markdown,
+            mediaItems: $converted->mediaItems,
+            extractionMeta: array_merge($converted->extractionMeta, $extra),
+            sourceMimeType: $converted->sourceMimeType,
         );
     }
 
