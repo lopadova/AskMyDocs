@@ -49,6 +49,20 @@ final class EvalNightlyCommandTest extends TestCase
         $this->setEnv('EVAL_NIGHTLY_REGRESSION_THRESHOLD', '0.05');
         $this->setEnv('EVAL_NIGHTLY_RETENTION_DAYS', '90');
 
+        // v4.4/W4 — pin the adversarial opt-in knobs to OFF on every
+        // test boot so a developer/CI environment that exports
+        // EVAL_NIGHTLY_ADVERSARIAL=true cannot leak into baseline-only
+        // tests via the cached config repository. Tests that exercise
+        // the adversarial branch explicitly override `enabled` /
+        // `datasets` via `config()->set(...)` after setUp.
+        $this->setEnv('EVAL_NIGHTLY_ADVERSARIAL', 'false');
+        $this->setEnv('EVAL_NIGHTLY_ADVERSARIAL_DATASETS', '');
+        // Mirror the env pin into the live config repository for the
+        // current process so the command boot path sees the same
+        // defaults (the package config is loaded once per request).
+        config()->set('eval-harness.adversarial_nightly.enabled', false);
+        config()->set('eval-harness.adversarial_nightly.datasets', '');
+
         Carbon::setTestNow(Carbon::parse('2026-05-10 05:30:00'));
 
         // R26 — block any stray HTTP that would slip past the harness.
@@ -62,6 +76,8 @@ final class EvalNightlyCommandTest extends TestCase
         $this->clearEnv('EVAL_NIGHTLY_REGRESSION_THRESHOLD');
         $this->clearEnv('EVAL_NIGHTLY_RETENTION_DAYS');
         $this->clearEnv('EVAL_LIVE_AI');
+        $this->clearEnv('EVAL_NIGHTLY_ADVERSARIAL');
+        $this->clearEnv('EVAL_NIGHTLY_ADVERSARIAL_DATASETS');
 
         parent::tearDown();
     }
@@ -247,6 +263,409 @@ final class EvalNightlyCommandTest extends TestCase
         );
         // R26 confirmation: still nothing sent after the run.
         Http::assertNothingSent();
+    }
+
+    public function test_adversarial_nightly_disabled_by_default_runs_baseline_only(): void
+    {
+        // Default state — EVAL_NIGHTLY_ADVERSARIAL unset/false. The
+        // baseline path must remain bit-identical to the v4.3/W3
+        // behaviour: exactly two runner invocations (baseline JSON +
+        // baseline MD), zero adversarial files, and the
+        // adversarial_nightly.enabled config remains false.
+        config()->set('eval-harness.adversarial_nightly.enabled', false);
+
+        $stub = $this->bindRecordingRunner();
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        $this->assertSame(
+            2,
+            $stub->callCount,
+            'Baseline-only path MUST invoke the runner exactly twice (JSON + MD).',
+        );
+
+        $disk = Storage::disk($this->diskName);
+        $disk->assertExists('eval-harness/nightly/2026-05-10.json');
+        $disk->assertExists('eval-harness/nightly/2026-05-10.md');
+
+        // No adversarial artefacts at all.
+        foreach ($disk->files('eval-harness/nightly') as $path) {
+            $this->assertStringNotContainsString(
+                '.adversarial.',
+                $path,
+                'Adversarial artefacts MUST NOT be written when EVAL_NIGHTLY_ADVERSARIAL is false.',
+            );
+        }
+    }
+
+    public function test_adversarial_nightly_enabled_runs_all_configured_datasets(): void
+    {
+        // Enable the opt-in master gate, no allowlist → every
+        // configured adversarial dataset must run after the baseline.
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        config()->set('eval-harness.adversarial_nightly.datasets', '');
+        $configured = array_keys((array) config('eval-harness.askmydocs.golden.adversarial', []));
+        $this->assertNotEmpty(
+            $configured,
+            'Test fixture invariant: at least one adversarial dataset must be configured.',
+        );
+
+        $stub = $this->bindRecordingRunner();
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        // 2 baseline + 2 per adversarial slug.
+        $this->assertSame(
+            2 + (2 * count($configured)),
+            $stub->callCount,
+            'Adversarial pass must run JSON+MD for each configured slug.',
+        );
+
+        $disk = Storage::disk($this->diskName);
+        foreach ($configured as $slug) {
+            $disk->assertExists("eval-harness/nightly/2026-05-10.adversarial.{$slug}.json");
+            $disk->assertExists("eval-harness/nightly/2026-05-10.adversarial.{$slug}.md");
+            $disk->assertExists("eval-harness/nightly/2026-05-10.adversarial.{$slug}.summary.json");
+        }
+    }
+
+    public function test_adversarial_nightly_allowlist_filters_datasets(): void
+    {
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        config()->set('eval-harness.adversarial_nightly.datasets', 'out-of-corpus');
+
+        $stub = $this->bindRecordingRunner();
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        // 2 baseline + 2 for the single allowlisted slug.
+        $this->assertSame(4, $stub->callCount);
+
+        $disk = Storage::disk($this->diskName);
+        $disk->assertExists('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.summary.json');
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.contradicting-claims.summary.json');
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.rejected-approach-trigger.summary.json');
+    }
+
+    public function test_adversarial_nightly_unknown_slug_logs_warning_and_skips(): void
+    {
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        config()->set('eval-harness.adversarial_nightly.datasets', 'out-of-corpus,bogus-slug');
+
+        $warningCaptured = false;
+        Log::shouldReceive('warning')
+            ->atLeast()
+            ->once()
+            ->withArgs(function (string $message, array $context = []) use (&$warningCaptured): bool {
+                if (str_contains($message, 'adversarial slug not configured')
+                    && ($context['slug'] ?? null) === 'bogus-slug') {
+                    $warningCaptured = true;
+                }
+
+                return true;
+            });
+        Log::shouldReceive('alert')->never();
+
+        $stub = $this->bindRecordingRunner();
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        $this->assertTrue(
+            $warningCaptured,
+            'Log::warning MUST fire with the unknown adversarial slug.',
+        );
+
+        // 2 baseline + 2 for the known slug; bogus-slug must be skipped.
+        $this->assertSame(4, $stub->callCount);
+
+        $disk = Storage::disk($this->diskName);
+        $disk->assertExists('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.summary.json');
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.bogus-slug.summary.json');
+    }
+
+    public function test_adversarial_nightly_runner_failure_does_not_block_other_datasets(): void
+    {
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        // Pin an explicit, ordered allowlist so the failure-injection
+        // logic is deterministic regardless of array_keys() order.
+        config()->set(
+            'eval-harness.adversarial_nightly.datasets',
+            'out-of-corpus,contradicting-claims,rejected-approach-trigger',
+        );
+
+        $disk = Storage::disk($this->diskName);
+        $disk->makeDirectory('eval-harness/nightly');
+        $payload = $this->reportPayload(macroF1: 0.90);
+        $testCase = $this;
+
+        $stub = new class($payload, $testCase) extends EvalHarnessRunner
+        {
+            public int $callCount = 0;
+
+            public array $datasetsRun = [];
+
+            public function __construct(
+                private string $payload,
+                private $testCase,
+            ) {}
+
+            public function run(array $parameters): int
+            {
+                $this->callCount++;
+                $dataset = (string) ($parameters['dataset'] ?? '');
+                $this->datasetsRun[] = $dataset;
+
+                // Inject failure ONLY on the second adversarial slug
+                // (contradicting-claims). Baseline + first slug + third
+                // slug must all complete normally.
+                if ($dataset === 'rag.askmydocs.adversarial.contradicting-claims') {
+                    throw new \RuntimeException('Simulated provider failure for contradicting-claims.');
+                }
+
+                $body = ($parameters['--json'] ?? false) === true
+                    ? $this->payload
+                    : '# stub';
+                file_put_contents((string) $parameters['--out'], $body);
+
+                return 0;
+            }
+        };
+
+        $warningSlugs = [];
+        Log::shouldReceive('warning')
+            ->atLeast()
+            ->once()
+            ->withArgs(function (string $message, array $context = []) use (&$warningSlugs): bool {
+                if (str_contains($message, 'adversarial slug failed')) {
+                    $warningSlugs[] = $context['slug'] ?? null;
+                }
+
+                return true;
+            });
+        // Baseline alert pipeline must remain unaffected — no Log::alert
+        // (no prior baseline + within-threshold path).
+        Log::shouldReceive('alert')->never();
+
+        $this->app->instance(EvalHarnessRunner::class, $stub);
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        $this->assertContains(
+            'contradicting-claims',
+            $warningSlugs,
+            'Log::warning MUST fire for the failing adversarial slug.',
+        );
+
+        // Verify the third slug ran AFTER the failure: the dataset list
+        // must include the rejected-approach-trigger run, proving the
+        // loop did not abort on the throw.
+        $this->assertContains(
+            'rag.askmydocs.adversarial.rejected-approach-trigger',
+            $stub->datasetsRun,
+            'Adversarial loop MUST continue past a per-slug failure.',
+        );
+
+        // Surface sidecars: only the slugs that completed produce them.
+        $disk->assertExists('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.summary.json');
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.contradicting-claims.summary.json');
+        $disk->assertExists('eval-harness/nightly/2026-05-10.adversarial.rejected-approach-trigger.summary.json');
+    }
+
+    public function test_adversarial_nightly_missing_artifact_skips_summary(): void
+    {
+        // R14 parity with baseline: a runner that returns exit_code=0
+        // but never writes the JSON/MD to disk must NOT produce a
+        // summary sidecar pointing at a non-existent report. The
+        // command must Log::warning + skip the summary + continue.
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        config()->set('eval-harness.adversarial_nightly.datasets', 'out-of-corpus');
+
+        $disk = Storage::disk($this->diskName);
+        $disk->makeDirectory('eval-harness/nightly');
+        $payload = $this->reportPayload(macroF1: 0.90);
+        $testCase = $this;
+
+        $stub = new class($payload, $testCase) extends EvalHarnessRunner
+        {
+            public int $callCount = 0;
+
+            public array $datasetsRun = [];
+
+            public function __construct(
+                private string $payload,
+                private $testCase,
+            ) {}
+
+            public function run(array $parameters): int
+            {
+                $this->callCount++;
+                $dataset = (string) ($parameters['dataset'] ?? '');
+                $this->datasetsRun[] = $dataset;
+
+                $out = (string) ($parameters['--out'] ?? '');
+
+                // Baseline run — write normally so the adversarial
+                // branch is reached. Adversarial slug — DO NOT write,
+                // simulating a runner that exits 0 with no artifact.
+                if (str_contains($dataset, '.adversarial.')) {
+                    return 0;
+                }
+
+                $body = ($parameters['--json'] ?? false) === true
+                    ? $this->payload
+                    : '# stub';
+                file_put_contents($out, $body);
+
+                return 0;
+            }
+        };
+
+        $missingArtifactWarningFired = false;
+        Log::shouldReceive('warning')
+            ->atLeast()
+            ->once()
+            ->withArgs(function (string $message, array $context = []) use (&$missingArtifactWarningFired): bool {
+                if (str_contains($message, 'produced no artifact on disk')
+                    && ($context['slug'] ?? null) === 'out-of-corpus'
+                    && in_array('json', (array) ($context['missing_artifacts'] ?? []), true)) {
+                    $missingArtifactWarningFired = true;
+                }
+
+                return true;
+            });
+        // Advisory scope: no Log::alert for the missing-artifact case.
+        Log::shouldReceive('alert')->never();
+
+        $this->app->instance(EvalHarnessRunner::class, $stub);
+
+        $this->artisan('eval:nightly')->assertSuccessful();
+
+        $this->assertTrue(
+            $missingArtifactWarningFired,
+            'Log::warning MUST fire when the adversarial runner returns exit=0 but writes no artifact.',
+        );
+
+        // Critical: no summary sidecar must exist for the missing slug.
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.summary.json');
+        // The missing JSON / MD also stay missing (the runner never
+        // wrote them); no phantom sidecar should appear in their place.
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.json');
+        $disk->assertMissing('eval-harness/nightly/2026-05-10.adversarial.out-of-corpus.md');
+    }
+
+    public function test_adversarial_nightly_baseline_failure_skips_adversarial(): void
+    {
+        config()->set('eval-harness.adversarial_nightly.enabled', true);
+        config()->set('eval-harness.adversarial_nightly.datasets', '');
+
+        $disk = Storage::disk($this->diskName);
+        $disk->makeDirectory('eval-harness/nightly');
+
+        $stub = new class extends EvalHarnessRunner
+        {
+            public int $callCount = 0;
+
+            public array $datasetsRun = [];
+
+            public function __construct() {}
+
+            public function run(array $parameters): int
+            {
+                $this->callCount++;
+                $this->datasetsRun[] = (string) ($parameters['dataset'] ?? '');
+
+                // Baseline: exit non-zero AND do NOT write the report
+                // file. The command's invokeEvalRun() FAILURE branch
+                // hinges on the missing JSON, which forces command
+                // FAILURE before the adversarial pass can fire.
+                return 1;
+            }
+        };
+
+        $this->app->instance(EvalHarnessRunner::class, $stub);
+
+        Log::shouldReceive('alert')->andReturnNull();
+        Log::shouldReceive('warning')->andReturnNull();
+
+        $this->artisan('eval:nightly')->assertFailed();
+
+        // Only baseline JSON attempt fired (we never even get to the MD
+        // run because invokeEvalRun aborts on the missing file). What
+        // matters for this test: NO adversarial dataset was attempted.
+        foreach ($stub->datasetsRun as $dataset) {
+            $this->assertStringNotContainsString(
+                '.adversarial.',
+                $dataset,
+                'Adversarial pass MUST NOT fire when the baseline run fails.',
+            );
+        }
+
+        foreach ($disk->files('eval-harness/nightly') as $path) {
+            $this->assertStringNotContainsString(
+                '.adversarial.',
+                $path,
+                'No adversarial sidecars MUST exist when the baseline failed.',
+            );
+        }
+    }
+
+    /**
+     * Recording stub for the adversarial pass tests. Tracks call count
+     * + datasets seen, writes JSON or MD depending on the --json flag.
+     * Honors --out / --raw-path so the host command's disk lookups
+     * still find the files post-run.
+     */
+    private function bindRecordingRunner(): EvalHarnessRunner
+    {
+        $disk = Storage::disk($this->diskName);
+        $disk->makeDirectory('eval-harness/nightly');
+        $payload = $this->reportPayload(macroF1: 0.90);
+        $testCase = $this;
+
+        $stub = new class($payload, $testCase) extends EvalHarnessRunner
+        {
+            public int $callCount = 0;
+
+            public array $datasetsRun = [];
+
+            public function __construct(
+                private string $payload,
+                private $testCase,
+            ) {}
+
+            public function run(array $parameters): int
+            {
+                $this->callCount++;
+                $this->datasetsRun[] = (string) ($parameters['dataset'] ?? '');
+
+                // R16 — pin the --raw-path contract so a future
+                // refactor that drops the flag (which would break disk
+                // lookups against the configured path_prefix in the
+                // real eval-harness command) is caught immediately.
+                // The stub writes directly to --out so the absence of
+                // --raw-path would not surface here without this assert.
+                $this->testCase::assertTrue(
+                    ($parameters['--raw-path'] ?? false) === true,
+                    'eval:nightly must pass --raw-path so the absolute --out is honored verbatim.',
+                );
+
+                $out = (string) ($parameters['--out'] ?? '');
+                if ($out === '') {
+                    return 1;
+                }
+
+                $body = ($parameters['--json'] ?? false) === true
+                    ? $this->payload
+                    : '# stub';
+                file_put_contents($out, $body);
+
+                return 0;
+            }
+        };
+
+        $this->app->instance(EvalHarnessRunner::class, $stub);
+
+        return $stub;
     }
 
     private function stubArtisanRun(float $macroF1, float $contains = 0.85): void

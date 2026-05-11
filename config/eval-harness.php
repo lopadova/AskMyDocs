@@ -272,6 +272,45 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Adversarial nightly opt-in (v4.4/W4)
+    |--------------------------------------------------------------------------
+    |
+    | The v4.3/W3 `eval:nightly` cron runs the BASELINE factuality dataset
+    | only. ADR 0006 explicitly deferred the adversarial lanes to a
+    | follow-up because adversarial scoring under live mode is noisier
+    | than baseline scoring and the operator surface needed a stable
+    | refusal-quality manifest first.
+    |
+    | This block adds an opt-in switch so operators with stable adversarial
+    | manifests can ALSO run adversarial datasets after the baseline pass
+    | succeeds. Default OFF — when `enabled=false`, eval:nightly behaviour
+    | stays bit-identical to the v4.3/W3 baseline-only path.
+    |
+    | Adversarial alerts are advisory only: each enabled adversarial run
+    | writes a `<date>.adversarial.<slug>.summary.json` sidecar but does
+    | NOT fire `Log::alert()`. The baseline regression alert remains the
+    | single loud signal; adversarial details are diagnostic, never
+    | gating. See ADR 0007.
+    |
+    */
+
+    'adversarial_nightly' => [
+        // Master gate for the adversarial nightly opt-in. Default OFF
+        // — when false, eval:nightly runs the baseline only and the
+        // v4.3/W3 behaviour is preserved bit-identical.
+        'enabled' => RuntimeOptions::normalizeBoolean(env('EVAL_NIGHTLY_ADVERSARIAL'), false),
+
+        // Comma-separated allowlist of adversarial slugs (e.g.
+        // `out-of-corpus`, `contradicting-claims`,
+        // `rejected-approach-trigger`). Empty string = run every
+        // adversarial dataset configured under
+        // `askmydocs.golden.adversarial`. Unknown slugs are skipped
+        // with a Log::warning so operator typos surface loudly.
+        'datasets' => env('EVAL_NIGHTLY_ADVERSARIAL_DATASETS', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | AskMyDocs RAG dataset roots
     |--------------------------------------------------------------------------
     |
