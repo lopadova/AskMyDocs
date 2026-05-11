@@ -1,5 +1,16 @@
 @import './tokens.css';
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Preserves the v3 `darkMode: ['class', '[data-theme="dark"]']` selector
+ * contract: `dark:*` utilities activate via either `<html class="dark">`
+ * (legacy class-based opt-in) OR any ancestor carrying
+ * `data-theme="dark"` (project's preferred attribute-based API). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, .dark, .dark *));
+
+@theme {
+    --font-sans: var(--font-stack-sans), ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-stack-mono), ui-monospace, Menlo, monospace;
+    --color-accent-a: var(--accent-a);
+    --color-accent-b: var(--accent-b);
+}

@@ -38,6 +38,52 @@ An enterprise-grade RAG system built on Laravel and PostgreSQL. Ingest your docu
 
 ### Key Features
 
+#### v4.4.0 GA — Tailwind v4 + admin SPA cross-mount + adversarial nightly opt-in (closed 2026-05-11)
+
+The v4.4 cycle ships **three host-side mount-mode migrations + one operational opt-in** on top of v4.3.0 GA. NO new sister packages, NO sister-package version bumps — only `react-router-dom` + `lucide-react` + Tailwind v4 + `@tailwindcss/vite` added on the FE. **+15 PHPUnit tests** (1408 → 1423) + **+17 react vitest scenarios** (304 → 321). Default-off invariant preserved across both new env knobs.
+
+| Surface | What it ships |
+|---|---|
+| **W1 — Tailwind v3 → v4 host migration** | `tailwindcss` `^3.4.14` → `^4.0.0` + `@tailwindcss/vite` plugin. Drops `autoprefixer` + `postcss`. `tailwind.config.ts` + `postcss.config.js` deleted (v4 auto-detects content). `globals.css` uses `@import "tailwindcss"` + `@theme` block + `@custom-variant dark` (preserves v3 `darkMode: ['class', '[data-theme="dark"]']` contract bit-identical). `package.json` declares `engines.node >= 20`. **Hard prerequisite** for W2/W3 cross-mount per ADR 0005. PR #136. |
+| **W2 — `padosoft/laravel-pii-redactor-admin` cross-mount** | Iframe → cross-mount at `/admin/pii-redactor`. Vendored source under `frontend/src/features/admin/pii-redactor/cross-mount/`, sharing host React 19 + Sanctum cookie + axios client. Replaces v4.2/W4 ADR 0004 D5 iframe-mount workaround. BE-side R30 strategy unchanged (supplementary migration + Eloquent observer per ADR 0004 D4); Spatie role gates remain enforced server-side. New dep: `lucide-react@^1.14.0`. PR #138. |
+| **W3 — `padosoft/eval-harness-ui` cross-mount** | Iframe → cross-mount at `/admin/eval-harness` (non-prod-only). 8-page SPA vendored under `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC). Two routers coexist by scope: host TanStack owns shell mount; package's internal `BrowserRouter basename="/app/admin/eval-harness"` owns sub-pages. NEW BE bootstrap config endpoint `GET /api/admin/eval-harness/bootstrap-config` gated by `auth:sanctum` + `can:eval-harness.viewer`. **3 fail-closed fences PRESERVED** (env flag + `APP_ENV` + Gate). New dep: `react-router-dom@^6.30.1`. PR #140. |
+| **W4 — eval-harness adversarial nightly opt-in** | 2 NEW env knobs (`EVAL_NIGHTLY_ADVERSARIAL`, `EVAL_NIGHTLY_ADVERSARIAL_DATASETS`), both default OFF. When enabled, `eval:nightly` runs the 3 adversarial datasets after baseline SUCCESS using the `nightly` batch profile. Advisory-only summary sidecar (`<date>.adversarial.<slug>.summary.json`); no `Log::alert` on adversarial regression — adversarial scoring is too noisy for hard alerting. Baseline-gates-adversarial: a baseline regression is the loud alert; adversarial details are diagnostic data. ADR 0007 documents the rationale + future per-lane alerting promotion path. PR #142. |
+
+`padosoft/laravel-flow-admin` stays iframe-mounted forever (Blade + Alpine, not React, so cross-mount does not apply per ADR 0005).
+
+Closure artefacts: `docs/v4-platform/STATUS-2026-05-10-v44-week1-tailwind-v4-host-migration.md` (W1) + `docs/v4-platform/STATUS-2026-05-10-v44-week2-cross-mount-pii-redactor-admin.md` (W2) + `docs/v4-platform/STATUS-2026-05-11-v44-week3-cross-mount-eval-harness-ui.md` (W3) + `docs/v4-platform/STATUS-2026-05-11-v44-week4-rc-acceptance.md` (W4 — RC acceptance + GA merge) + `docs/adr/0005-v43-react-19-host-bump.md` + `docs/adr/0007-v44-adversarial-nightly-opt-in.md`.
+
+#### v4.4.0-rc3 — W3 shipped (cross-mount eval-harness-ui closed 2026-05-11)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/eval-harness-ui` cross-mounted at `/admin/eval-harness`** | Iframe → cross-mount migration of the 8-page admin SPA (Dashboard / Reports / ReportDetail / Compare / Trend / Adversarial / AdversarialDetail / LiveBatches). Vendored source under `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC), sharing the host's React 19 + Sanctum cookie + axios client. The package's internal `BrowserRouter basename="/app/admin/eval-harness"` continues to own sub-page navigation; two routers coexist by scope (host TanStack = top-level shell; package = sub-routes). Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. `flow-admin` stays iframe-mounted forever (Blade + Alpine, not React). |
+| **NEW BE bootstrap config endpoint + 3 fail-closed fences PRESERVED** | New `GET /api/admin/eval-harness/bootstrap-config` controller returns `config('eval-harness-ui')` JSON gated by `auth:sanctum` + `can:eval-harness.viewer` (mirrors `admin/pii/strategy` precedent). FE fetches at mount time so operator-tuned `metric_labels` / `polling` / `locale` reach the cross-mount identically to the iframe version. The 3 fail-closed fences from ADR 0004 D5 are PRESERVED end-to-end: env flag `EVAL_HARNESS_UI_ENABLED=false` (default) → 404; `EvalHarnessUiNonProduction` middleware → 404 when `APP_ENV=production`; `can:eval-harness.viewer` → 403 on viewer/anonymous. |
+| **+8 PHPUnit tests + +9 Vitest react scenarios + R30/R9/R11 hardening from iter-2 review** | PHPUnit 1408 → 1416 (+8 BE scenarios for the bootstrap config endpoint: happy path / locale normalisation × 2 / blank tenant_header / dpo+editor pass / viewer 403 / guest 401). Vitest react 312 → 321 (+9 cycle-wide: +5 in iter 1 for testid/main-entry coverage, +4 in iter 2 for bootstrap fetch + tenant-header + locale routing). Iter 1 surfaced 6 Copilot findings: HIGH R30 tenant header bypass (FE no longer sends `X-Eval-Harness-Tenant`; BE middleware injects from `TenantContext::current()`); HIGH R9+R14 hard-coded bootstrap (replaced with BE endpoint); LOW × 2 R9 comment mismatches; MEDIUM i18n (formatters now locale-aware via `useFormatters()` hook); MEDIUM R11 testid coverage (added across 5 pages). Single new dep: `react-router-dom@^6.30.1` (~14 KB). |
+
+Closure: `docs/v4-platform/STATUS-2026-05-11-v44-week3-cross-mount-eval-harness-ui.md`
+
+#### v4.4.0-rc2 — W2 shipped (cross-mount pii-redactor-admin closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **`padosoft/laravel-pii-redactor-admin` cross-mounted at `/admin/pii-redactor`** | Iframe → cross-mount migration. Admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/pii-redactor/cross-mount/` (`App.tsx` + `adminApi.ts` + `types.ts` + `cross-mount.css`), sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. Gated on v4.4/W1 Tailwind v4 host alignment per ADR 0005 — host and admin SPA now share the same Tailwind major, eliminating the dual-CSS-engine cost the iframe pattern paid for. |
+| **Scope-tight FE shell change; BE unchanged** | The `vendor/padosoft/laravel-pii-redactor-admin/` directory is untouched — the cross-mount is a host-owned vendored adaptation. Package config payload (`apiBase`, `routePrefix`, `userDisplay`, `abilities`) derived host-side from `useAuthStore` + known constants; no new BE config endpoint needed. R30 strategy unchanged (supplementary migration + Eloquent observer per ADR 0004 D4); Spatie role gates (`viewPiiRedactorAdmin`, `detokenisePiiRedactor`, `viewPiiRedactorRawSamples`) remain enforced server-side. Single new dep: `lucide-react@^1.14.0` (matches package's pinned version). |
+| **+3 Vitest scenarios + R14/R15 hardening from iter-2 review** | Vitest 1408 → 1411 (+3 scenarios for Overview tri-state + Ctrl+K accessibility); PHPUnit unchanged at 1408 (cross-mount is purely FE-side). Iter 1 surfaced 2 Copilot findings: R14 Overview tri-state (no more definitive "Disabled" / "0" before `/status` resolves — `loading | error | ready` state with `data-state` + `aria-busy` for assistive tech); R15 Ctrl+K shortcut button got explicit `aria-label="Open playground"` + `aria-keyshortcuts="Control+K"` (Search icon `aria-hidden="true"`). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest + Playwright E2E + RAG regression. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v44-week2-cross-mount-pii-redactor-admin.md`
+
+#### v4.4.0-rc1 — W1 shipped (Tailwind v4 host migration closed 2026-05-10)
+
+| Feature | Description |
+|---|---|
+| **Host SPA migrated to Tailwind v4** | `tailwindcss` `^3.4.14` → `^4.0.0`; drops `autoprefixer` + `postcss` runtime deps; adds `@tailwindcss/vite` plugin. `tailwind.config.ts` + `postcss.config.js` deleted (Tailwind v4 auto-detects content from imported sources, no PostCSS step). `frontend/src/styles/globals.css` replaces v3 `@tailwind base / components / utilities` with `@import "tailwindcss"` + a single `@theme` block + `@custom-variant dark` rule. Build output 15.12 kB → 30.21 kB CSS (purely additive — Tailwind v4's enriched preflight + `@layer properties` block; zero semantic regression). |
+| **`@custom-variant dark` preserves v3 darkMode contract** | Extended to cover BOTH `[data-theme="dark"]` AND `.dark` class selectors so every existing `dark:*` utility activates identically to the v3 `darkMode: ['class', '[data-theme="dark"]']` contract. Forward-compat for the W2/W3 cross-mount work where sister-package SPAs may set `class="dark"` instead of `data-theme`. |
+| **Hard prerequisite for v4.4/W2 + v4.4/W3 cross-mount per ADR 0005** | The `padosoft/laravel-pii-redactor-admin` and `padosoft/eval-harness-ui` admin SPAs ship Tailwind v4 + React 19 internally. Cross-mounting them on a v3 host would force two CSS engines on the same page (the iframe-mount workaround the v4.2/W4 cycle pays for). W1 unblocks W2/W3 by aligning the host Tailwind major. |
+| **Scope-tight, dependency + build-config only** | Pre-flight grep confirmed zero bare `border` / `ring` / `divide-x|y` utilities (which would have hit v4's default-color change to `currentColor`); zero `@apply` / `@layer` directives; zero deprecated v3 utilities. Project uses Tailwind sparingly per the documented convention — design system lives in `frontend/src/styles/tokens.css` with CSS variables; chat / admin / panels / popovers all use inline `style={{ ... var(--token) }}`. No code changes outside the dependency manifests + globals.css. |
+
+Closure: `docs/v4-platform/STATUS-2026-05-10-v44-week1-tailwind-v4-host-migration.md`
+
 #### v4.3.0 GA — host-side hardening cycle complete (closed 2026-05-10)
 
 The v4.3 cycle adds **three host-side hardening surfaces** on top of v4.2.0 GA's full sister-package integration. No new sister packages, no version bumps — every constraint inherited from v4.2.0 GA's locked stable line. **+37 PHPUnit tests** landed (1371 → 1408) plus React 19 on the host SPA. Default-off invariant preserved across all 9 new env knobs.
@@ -3451,6 +3497,117 @@ Use [GitHub Issues](../../issues). Please include:
 ---
 
 ## Changelog
+
+### v4.4.0 — 2026-05-11 (GA — Tailwind v4 + admin SPA cross-mount + adversarial nightly opt-in)
+
+**v4.4.0 GA** closes the v4.4 cycle. Three host-side mount-mode migrations + one operational opt-in shipped on top of v4.3.0 GA. NO new sister packages, NO sister-package version bumps — only `react-router-dom` + `lucide-react` + Tailwind v4 + `@tailwindcss/vite` added on the FE. Default-off invariant preserved across both new env knobs.
+
+**What's new in AskMyDocs v4.4.0 GA:**
+
+- **W1 — Tailwind v3 → v4 host migration** (PR #136). `tailwindcss` `^3.4.14` → `^4.0.0` + `@tailwindcss/vite` plugin. Drops `autoprefixer` + `postcss`. Hard prerequisite for W2/W3 cross-mount per ADR 0005.
+- **W2 — `padosoft/laravel-pii-redactor-admin` cross-mount** (PR #138). Iframe → cross-mount at `/admin/pii-redactor`. Vendored SPA sharing host React 19 + Sanctum cookie + axios. New dep: `lucide-react@^1.14.0`.
+- **W3 — `padosoft/eval-harness-ui` cross-mount** (PR #140). Iframe → cross-mount at `/admin/eval-harness` (non-prod-only). 8-page SPA. NEW BE bootstrap config endpoint. 3 fail-closed fences PRESERVED. New dep: `react-router-dom@^6.30.1`.
+- **W4 — eval-harness adversarial nightly opt-in** (PR #142). 2 NEW env knobs (default OFF). Baseline-gates-adversarial; advisory-only summary sidecar. ADR 0007.
+- **(this PR)** v4.4 W4 closure docs + GA prep — adds this Changelog entry, the v4.4.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-11-v44-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.4 GA refresh.
+
+**Pull requests merged on `feature/v4.4` for v4.4.0 GA:**
+- #136 v4.4/W1 — Tailwind v4 host migration
+- #137 v4.4/W1 closure — rc1 ribbon + status doc
+- #138 v4.4/W2 — cross-mount pii-redactor-admin
+- #139 v4.4/W2 closure — rc2 ribbon + status doc
+- #140 v4.4/W3 — cross-mount eval-harness-ui
+- #141 v4.4/W3 closure — rc3 ribbon + status doc
+- #142 v4.4/W4 — adversarial nightly opt-in + ADR 0007
+- (this PR — W4.A) v4.4 W4 closure + GA prep — Changelog + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
+- (W4.B follow-up PR) `feature/v4.4` → `main` GA merge per R37 + `v4.4.0` GA tag at the merge SHA
+
+**v4.4 cycle test count delta:** PHPUnit 1408 (start of v4.4 from v4.3.0 GA) → **1423** (end of W4) — **+15 BE tests** (W3: +8 bootstrap-config; W4: +7 adversarial nightly). Vitest react 304 → **321** (+17 react scenarios: W2: +5+3 = +8; W3: +9). Vitest legacy unchanged at 18. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle weekly RC tags (preserved):**
+
+| Tag | Closure SHA | Milestone | GitHub release |
+|---|---|---|---|
+| `v4.4.0-rc1` | `ac3bd49` | W1 closure (Tailwind v4 host migration) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.4.0-rc1 |
+| `v4.4.0-rc2` | `76f4d85` | W2 closure (cross-mount pii-redactor-admin) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.4.0-rc2 |
+| `v4.4.0-rc3` | `c74fc1b` | W3 closure (cross-mount eval-harness-ui) | https://github.com/lopadova/AskMyDocs/releases/tag/v4.4.0-rc3 |
+| **`v4.4.0` GA** | _filled in on W4.B merge_ | `feature/v4.4` → `main` | https://github.com/lopadova/AskMyDocs/releases/tag/v4.4.0 |
+
+**Forward-looking — v4.5 backlog (parked, NOT v4.4 blockers):**
+
+- Per-lane adversarial alerting (small operational follow-up; gated on a few weeks of stable adversarial nightly baseline data).
+- TanStack Router unification for the cross-mounted eval-harness-ui (cosmetic polish; zero functional impact).
+
+### v4.4.0-rc3 — 2026-05-11 (W3 milestone — cross-mount eval-harness-ui)
+
+Third release candidate of the **v4.4 cycle**. W3 ships the **iframe → cross-mount migration** of `padosoft/eval-harness-ui` at `/admin/eval-harness` (non-prod-only). The 8-page admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/eval-harness/cross-mount/`, sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround. The 3 fail-closed fences (env flag + APP_ENV + Gate) are PRESERVED end-to-end.
+
+**What's new in AskMyDocs v4.4.0-rc3 (W3 — cross-mount eval-harness-ui):**
+
+- **W3 / sub-PR (#140)** — NEW `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC vendored from `vendor/.../resources/js/` plus host-scoped `eval-harness-ui.css` + new `main-entry.tsx` wrapper + adapted `services/evalHarnessApi.ts`). REWRITTEN `EvalHarnessView.tsx` (drops iframe + readiness probe; fetches bootstrap config from new BE endpoint; drives `data-state="loading|ready|error"`; mounts SPA in degraded mode on error so `<ErrorPanel />` surfaces failures). NEW `app/Http/Controllers/Api/Admin/EvalHarnessUiBootstrapController.php` returning `config('eval-harness-ui')` JSON gated by `auth:sanctum` + `can:eval-harness.viewer`. REWRITTEN `frontend/e2e/admin-eval-harness.spec.ts` (strips iframe locators; preserves 3-fence assertions). UPDATED `INTEGRATION-ROADMAP-sister-packages.md` (eval-harness-ui row: iframe → cross-mount). NEW dep `react-router-dom@^6.30.1` (~14 KB; package's internal `BrowserRouter` continues to own sub-page navigation). Iter 2 fixed 6 Copilot findings (HIGH R30 tenant header bypass + HIGH R9 hard-coded bootstrap + 4 medium/low). +8 PHPUnit tests + +9 vitest react scenarios (312 → 321 cycle-wide: +5 iter 1 + +4 iter 2).
+- **(this PR)** v4.4/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc3:**
+- #140 v4.4/W3 — iframe → cross-mount of eval-harness-ui
+- (this PR) v4.4/W3 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** PHPUnit 1408 → **1416** (+8 BE scenarios for the new `/api/admin/eval-harness/bootstrap-config` endpoint). Vitest react 312 → **321** (+9 cycle-wide: +5 in iter 1 + +4 in iter 2). Vitest legacy unchanged at 18. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` ✅ |
+| W3 (this) | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` ✅ |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + GA merge | **`v4.4.0` GA** |
+
+### v4.4.0-rc2 — 2026-05-10 (W2 milestone — cross-mount pii-redactor-admin)
+
+Second release candidate of the **v4.4 cycle**. W2 ships the **iframe → cross-mount migration** of `padosoft/laravel-pii-redactor-admin` at `/admin/pii-redactor`. The admin SPA now renders directly inside the host React tree via vendored source under `frontend/src/features/admin/pii-redactor/cross-mount/`, sharing the host's React 19 + Sanctum cookie + axios client. Replaces the v4.2/W4 ADR 0004 D5 iframe-mount workaround.
+
+**What's new in AskMyDocs v4.4.0-rc2 (W2 — cross-mount pii-redactor-admin):**
+
+- **W2 / sub-PR (#138)** — NEW `frontend/src/features/admin/pii-redactor/cross-mount/` (App.tsx + adminApi.ts + types.ts + cross-mount.css + App.test.tsx). REWRITTEN `PiiRedactorView.tsx` (drops iframe + readiness probe; derives package config host-side from `useAuthStore`). REWRITTEN `frontend/e2e/admin-pii-redactor.spec.ts` (strips iframe locators; asserts `data-mount="cross-mount"` + page-level testids). UPDATED `INTEGRATION-ROADMAP-sister-packages.md` (pii-redactor-admin row: iframe → cross-mount). Single new dep: `lucide-react@^1.14.0`. Iter 2 fixed 2 Copilot findings (R14 Overview tri-state + R15 Ctrl+K aria-label). +3 vitest scenarios.
+- **(this PR)** v4.4/W2 closure docs — adds this Changelog entry, the W2 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc2:**
+- #138 v4.4/W2 — iframe → cross-mount of pii-redactor-admin
+- (this PR) v4.4/W2 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** 1408 (start of W2 from v4.4.0-rc1) → **1411** (+3 vitest scenarios for the cross-mount tri-state + a11y assertions; PHPUnit unchanged at 1408 — cross-mount is purely FE-side). All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 (this) | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` ✅ |
+| W3 | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + GA merge | **`v4.4.0` GA** |
+
+### v4.4.0-rc1 — 2026-05-10 (W1 milestone — Tailwind v4 host migration)
+
+First release candidate of the **v4.4 cycle**. W1 migrates the AskMyDocs frontend host SPA from Tailwind v3.4 (PostCSS pipeline) to Tailwind v4 + `@tailwindcss/vite` plugin. **Hard prerequisite** for v4.4/W2 + v4.4/W3 cross-mount of the sister-package admin SPAs per ADR 0005 (the admin packages ship Tailwind v4 + React 19 internally; cross-mounting on a v3 host would force two CSS engines on the same page).
+
+**What's new in AskMyDocs v4.4.0-rc1 (W1 — Tailwind v4 host migration):**
+
+- **W1 / sub-PR (#136)** — `tailwindcss` `^3.4.14` → `^4.0.0`; drops `autoprefixer` + `postcss` runtime deps; adds `@tailwindcss/vite` plugin. `tailwind.config.ts` + `postcss.config.js` deleted. `globals.css` uses `@import "tailwindcss"` + `@theme` block (font + accent tokens) + `@custom-variant dark` (preserves v3 `darkMode: ['class', '[data-theme="dark"]']` contract — both `[data-theme="dark"]` AND `.dark` class selectors). `frontend/tsconfig.node.json` purged of deleted-file references. `package.json` declares `engines.node >=20` (Tailwind v4's transitive `@tailwindcss/oxide` requirement).
+- **(this PR)** v4.4/W1 closure docs — adds this Changelog entry, the W1 ribbon under `### Key Features`, and the closure status doc.
+
+**Pull request merged on `feature/v4.4` for v4.4.0-rc1:**
+- #136 v4.4/W1 — Tailwind v4 host migration
+- (this PR) v4.4/W1 closure — Changelog entry + Key Features + closure status doc
+
+**Test count:** unchanged from v4.3.0 GA (1408 PHPUnit) — the migration is dependency + build-config only and existing tests cover the React 19 + Tailwind utility surface. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**v4.4 cycle preview (subsequent RCs):**
+
+| Wn | Scope | Closure RC |
+|---|---|---|
+| W1 (this) | Tailwind v3 → v4 host migration | `v4.4.0-rc1` ✅ |
+| W2 | Iframe → cross-mount of `padosoft/laravel-pii-redactor-admin` | `v4.4.0-rc2` |
+| W3 | Iframe → cross-mount of `padosoft/eval-harness-ui` | `v4.4.0-rc3` |
+| W4 | eval-harness adversarial nightly opt-in + GA closure + `feature/v4.4` → `main` GA merge | **`v4.4.0` GA** |
 
 ### v4.3.0 — 2026-05-10 (GA — host-side hardening cycle complete)
 

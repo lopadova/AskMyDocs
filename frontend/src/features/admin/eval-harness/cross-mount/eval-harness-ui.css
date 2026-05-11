@@ -1,0 +1,113 @@
+/*
+ * Cross-mount CSS for the
+ * `padosoft/eval-harness-ui` v0.1.0 SPA.
+ *
+ * v4.4/W3 — vendored from
+ * `vendor/padosoft/eval-harness-ui/resources/css/app.css` and
+ * rewritten as plain CSS (no Tailwind v3 `@apply` / `@layer`
+ * directives) so it compiles cleanly under the host Tailwind v4 +
+ * Vite pipeline.
+ *
+ * Three material differences vs the upstream `app.css`:
+ *
+ *   1. Removed the `@tailwind base/components/utilities` directives —
+ *      the host `frontend/src/styles/globals.css` already does
+ *      `@import "tailwindcss"` so the standard utilities the package
+ *      uses (`text-slate-500`, `bg-slate-50`, `flex flex-wrap`, etc.)
+ *      are already available cross-mount-side.
+ *
+ *   2. Removed the `body` reset (the host already applies its own
+ *      body reset via `tokens.css`) and the `#eval-harness-ui-root`
+ *      block (the cross-mount has no such DOM id — `.ehu-shell` is
+ *      the wrapper now).
+ *
+ *   3. Renamed the package's bare component classes (`panel`,
+ *      `metric-badge`, `status-ok`, `status-warn`, `status-danger`,
+ *      `screen-title`, `screen-subtitle`, `rounded-ui`) to scoped
+ *      `ehu-*` equivalents and defined them as plain CSS so they
+ *      stay isolated to the cross-mount subtree. This avoids the
+ *      `panel` class shadow-collision the W2 sister cross-mount
+ *      already documented for `pii-redactor-admin` (see
+ *      `.pra-shell` namespace in
+ *      `frontend/src/features/admin/pii-redactor/cross-mount/cross-mount.css`).
+ *
+ * Layout, typography, and Tailwind utility-class usage on the page
+ * components are preserved verbatim so the rendered output is
+ * pixel-close to the iframe predecessor. The cross-mount opts the
+ * subtree out of the host's dark theme tokens — the package's
+ * styling is light-mode only (slate palette + white panels) and
+ * adopting the host's dark `--bg-0` would clash with its
+ * `bg-slate-50` shell.
+ */
+
+.ehu-shell {
+    min-height: 100%;
+    flex: 1;
+    width: 100%;
+    color-scheme: light;
+}
+
+/*
+ * Re-introduce the package's `--eval-*` design tokens locally — they
+ * power the `ehu-panel` border / background and are referenced in
+ * `metric-badge` / `status-*` chip variants below.
+ */
+.ehu-shell {
+    --eval-elev-1: #ffffff;
+    --eval-elev-2: #f8fafc;
+    --eval-line: #e2e8f0;
+    --eval-muted: #334155;
+}
+
+.ehu-shell .ehu-rounded {
+    border-radius: 8px;
+}
+
+.ehu-shell .ehu-panel {
+    border: 1px solid var(--eval-line);
+    background: var(--eval-elev-1);
+    padding: 1rem;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.ehu-shell .ehu-screen-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.4;
+}
+
+.ehu-shell .ehu-screen-subtitle {
+    font-size: 0.875rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.ehu-shell .ehu-metric-badge {
+    display: inline-flex;
+    min-width: 4rem;
+    justify-content: center;
+    border-radius: 8px;
+    background: #f1f5f9;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: #475569;
+}
+
+.ehu-shell .ehu-status-ok {
+    background: #d1fae5;
+    color: #047857;
+}
+
+.ehu-shell .ehu-status-warn {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.ehu-shell .ehu-status-danger {
+    background: #ffe4e6;
+    color: #be123c;
+}

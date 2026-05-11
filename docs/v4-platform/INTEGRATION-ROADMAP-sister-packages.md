@@ -1,5 +1,34 @@
 # Sister packages integration roadmap
 
+> **Honest status as of v4.4 RC / GA prep (2026-05-11)**
+>
+> v4.4 introduces NO new sister-package integrations or version bumps on
+> top of v4.3 GA. The cycle is intentionally **scope-tight on host-side
+> mount-mode migrations + an operational opt-in**:
+>
+> - **W1** — `tailwindcss` host bump `^3.4.14` → `^4.0.0` + `@tailwindcss/vite`
+>   plugin. Hard prerequisite for W2/W3 per ADR 0005.
+> - **W2** — `padosoft/laravel-pii-redactor-admin` v1.0.2 mount mode flipped
+>   from iframe → **cross-mount** at `/admin/pii-redactor` (vendored SPA
+>   sharing host React 19 + Sanctum + axios). BE unchanged.
+> - **W3** — `padosoft/eval-harness-ui` v1.0.0 mount mode flipped from
+>   iframe → **cross-mount** at `/admin/eval-harness` (non-prod-only;
+>   8-page SPA). 3 fail-closed fences (env flag + APP_ENV + Gate)
+>   PRESERVED. NEW host-side `EvalHarnessUiBootstrapController` returns
+>   the bootstrap payload (`ui_version` / `metric_labels` / `polling` /
+>   `locale` / `tenant_header` / `shortcuts`) derived from
+>   `config('eval-harness-ui')`, gated by Spatie role.
+> - **W4** — `eval:nightly` adversarial-lane opt-in (2 new env knobs,
+>   default OFF). Advisory-only sidecar; baseline-gates-adversarial. ADR 0007.
+>
+> `padosoft/laravel-flow-admin` stays iframe-mounted forever (Blade + Alpine,
+> not React, so cross-mount does not apply per ADR 0005).
+>
+> v4.3 GA was tagged at `4f375f1` on 2026-05-10. v4.4.0 GA tag fires in W4.B
+> once `feature/v4.4` merges into `main` per R37.
+
+---
+
 > **Honest status as of v4.3 RC / GA prep (2026-05-10)**
 >
 > v4.3 introduces NO new sister-package integrations or version bumps
@@ -35,9 +64,9 @@
 > | `padosoft/laravel-pii-redactor` v1.2 | `require` — 4 touch-points (chat / embedding / insights / detokenize) | v4.1 W4.1; bumped v1.1 → v1.2 in v4.2/W1 (PR #112) |
 > | `padosoft/laravel-flow` v1.0 | `require` — 9 Flow definitions in `app/Flow/Definitions/` orchestrating every multi-step background pipeline | v4.2/W2 (PRs #114-#117). See ADR 0004 D3. |
 > | `padosoft/eval-harness` v1.2 | `require-dev` — RAG regression CI gate (`.github/workflows/rag-regression.yml`) | v4.2/W3 (PR #119). `require-dev` by design — see ADR 0004 D2. |
-> | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (iframe) | v4.2/W4 (PR #121) |
+> | `padosoft/laravel-pii-redactor-admin` v1.0.2 | `require` — mounted under `/admin/pii-redactor` (cross-mount, v4.4/W2) | v4.2/W4 (PR #121); iframe → cross-mount in v4.4/W2 |
 > | `padosoft/laravel-flow-admin` v1.0.0 | `require` — mounted under `/admin/flows` (iframe) | v4.2/W4 (PR #122) |
-> | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (iframe) | v4.2/W4 (PR #123) |
+> | `padosoft/eval-harness-ui` v1.0.0 | `require-dev` — mounted under `/admin/eval-harness` non-prod-only (cross-mount, v4.4/W3) | v4.2/W4 (PR #123); iframe → cross-mount in v4.4/W3 |
 >
 > `padosoft/laravel-patent-box-tracker` and its admin SPA stay
 > **EXTERNAL** to AskMyDocs's `composer.json` per ADR 0004 D1 — operators
