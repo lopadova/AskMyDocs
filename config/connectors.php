@@ -38,6 +38,8 @@ return [
         \App\Connectors\BuiltIn\NotionConnector::class,
         \App\Connectors\BuiltIn\EvernoteConnector::class,
         \App\Connectors\BuiltIn\FabricConnector::class,
+        \App\Connectors\BuiltIn\OneDriveConnector::class,
+        \App\Connectors\BuiltIn\ConfluenceConnector::class,
     ],
 
     /*
@@ -186,6 +188,48 @@ return [
             ),
             'oauth_authorize_url' => 'https://api.fabric.so/v2/oauth/authorize',
             'oauth_token_url' => 'https://api.fabric.so/v2/oauth/token',
+        ],
+
+        'onedrive' => [
+            'client_id' => env('CONNECTOR_ONEDRIVE_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_ONEDRIVE_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'CONNECTOR_ONEDRIVE_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/onedrive/oauth/callback'
+            ),
+            // Microsoft identity platform v2.0. The `common` tenant
+            // lets both work + personal accounts authorise against
+            // the same redirect URI; operators with a single-tenant
+            // app can override via CONNECTOR_ONEDRIVE_TENANT (e.g.
+            // a customer's Azure AD tenant id).
+            'tenant' => env('CONNECTOR_ONEDRIVE_TENANT', 'common'),
+            // Leave the URLs null in config so the connector composes
+            // them from `tenant` at call time. Override here only if
+            // you need to point at a national/sovereign Microsoft
+            // cloud (e.g. https://login.microsoftonline.us/...).
+            'oauth_authorize_url' => env('CONNECTOR_ONEDRIVE_OAUTH_AUTHORIZE_URL'),
+            'oauth_token_url' => env('CONNECTOR_ONEDRIVE_OAUTH_TOKEN_URL'),
+            'api_base' => env('CONNECTOR_ONEDRIVE_API_BASE', 'https://graph.microsoft.com/v1.0'),
+        ],
+
+        'confluence' => [
+            'client_id' => env('CONNECTOR_CONFLUENCE_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_CONFLUENCE_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'CONNECTOR_CONFLUENCE_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/confluence/oauth/callback'
+            ),
+            'oauth_authorize_url' => 'https://auth.atlassian.com/authorize',
+            'oauth_token_url' => 'https://auth.atlassian.com/oauth/token',
+            // Atlassian's accessible-resources endpoint — returns
+            // every Atlassian product instance the OAuth user
+            // authorised. We pick the first Confluence-capable site
+            // and persist its `cloudId` in `extra_json.cloud_id`.
+            'accessible_resources_url' => 'https://api.atlassian.com/oauth/token/accessible-resources',
+            // API root for per-tenant Confluence requests. The
+            // connector composes `{api_base}/ex/confluence/{cloudId}/wiki/rest/api`
+            // at call time.
+            'api_base' => env('CONNECTOR_CONFLUENCE_API_BASE', 'https://api.atlassian.com'),
         ],
     ],
 
