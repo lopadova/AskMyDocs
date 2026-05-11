@@ -228,6 +228,41 @@ class EvalNightlyCommand extends Command
                 continue;
             }
 
+            // R14 — parity with the baseline path's missing-artifact
+            // guard. A runner that returns exit_code=0 but did not
+            // actually write the JSON/MD on disk would otherwise
+            // silently produce a "healthy" summary sidecar that points
+            // at a non-existent report. Treat it as a soft-failure:
+            // skip the summary so downstream consumers cannot be
+            // misled, log the missing artifact, and continue to the
+            // next slug.
+            $missingArtifacts = [];
+            if (! $disk->exists($jsonRelative)) {
+                $missingArtifacts[] = 'json';
+            }
+            if (! $disk->exists($markdownRelative)) {
+                $missingArtifacts[] = 'md';
+            }
+            if ($missingArtifacts !== []) {
+                Log::warning('eval:nightly adversarial slug produced no artifact on disk; skipping summary.', [
+                    'date' => $today,
+                    'slug' => $slug,
+                    'dataset' => $dataset,
+                    'missing_artifacts' => $missingArtifacts,
+                    'json_path' => $jsonRelative,
+                    'md_path' => $markdownRelative,
+                    'json_exit' => $jsonExit,
+                    'md_exit' => $markdownExit,
+                ]);
+                $this->warn(sprintf(
+                    'Adversarial slug "%s" returned exit=0 but missing artifact(s): %s. Skipping summary.',
+                    $slug,
+                    implode(', ', $missingArtifacts),
+                ));
+
+                continue;
+            }
+
             $exitCode = ($jsonExit !== 0 || $markdownExit !== 0) ? 1 : 0;
             $summary = [
                 'schema_version' => 'eval-harness.adversarial-summary.v1',
