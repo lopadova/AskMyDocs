@@ -60,9 +60,19 @@ final class EvalHarnessUiBootstrapController extends Controller
 
     public function show(): JsonResponse
     {
+        // Locale normalisation must accept BOTH POSIX-style (`it_IT`,
+        // common in Laravel app()->getLocale() / system locales) AND
+        // BCP-47-style (`it-IT`, common in browser Accept-Language and
+        // Intl APIs). Splitting on either separator extracts the
+        // language subtag, then we lower-case it before the en|it
+        // allowlist check. Without the hyphen branch a `it-IT` config
+        // value normalised to `it-it` and fell back to `en` — silent
+        // i18n regression for any operator who configured their
+        // locale the BCP-47 way.
         $rawLocale = config('eval-harness-ui.locale', app()->getLocale());
-        $normalisedLocale = is_string($rawLocale)
-            ? strtolower(explode('_', $rawLocale, 2)[0])
+        $localeParts = is_string($rawLocale) ? preg_split('/[_-]/', $rawLocale, 2) : null;
+        $normalisedLocale = is_array($localeParts) && isset($localeParts[0])
+            ? strtolower($localeParts[0])
             : 'en';
         $locale = in_array($normalisedLocale, ['en', 'it'], true) ? $normalisedLocale : 'en';
 

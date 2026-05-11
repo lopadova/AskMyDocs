@@ -90,6 +90,77 @@ class EvalHarnessUiBootstrapControllerTest extends TestCase
         $this->assertSame('it', $payload['locale']);
     }
 
+    /**
+     * v4.4 GA Copilot iter 1 finding #1 — BCP-47 hyphenated locales
+     * (`it-IT`, `en-US`) are first-class inputs alongside POSIX
+     * underscored ones (`it_IT`). Browser Accept-Language headers and
+     * Intl APIs emit the hyphenated form, so a host that pinned the
+     * config to `it-IT` would have silently fallen back to `en` until
+     * the underscore-only split was widened to `[_-]`.
+     */
+    public function test_locale_normalises_bcp47_hyphenated_it_dialect_to_it(): void
+    {
+        config()->set('eval-harness-ui.locale', 'it-IT');
+        $admin = $this->makeUserWithRole('admin');
+
+        $payload = $this->actingAs($admin)
+            ->getJson('/api/admin/eval-harness/bootstrap-config')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('it', $payload['locale']);
+    }
+
+    public function test_locale_normalises_bcp47_hyphenated_en_dialect_to_en(): void
+    {
+        config()->set('eval-harness-ui.locale', 'en-US');
+        $admin = $this->makeUserWithRole('admin');
+
+        $payload = $this->actingAs($admin)
+            ->getJson('/api/admin/eval-harness/bootstrap-config')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('en', $payload['locale']);
+    }
+
+    public function test_locale_normalises_bare_language_subtags(): void
+    {
+        config()->set('eval-harness-ui.locale', 'it');
+        $admin = $this->makeUserWithRole('admin');
+
+        $payload = $this->actingAs($admin)
+            ->getJson('/api/admin/eval-harness/bootstrap-config')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('it', $payload['locale']);
+
+        config()->set('eval-harness-ui.locale', 'en');
+
+        $payload = $this->actingAs($admin)
+            ->getJson('/api/admin/eval-harness/bootstrap-config')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('en', $payload['locale']);
+    }
+
+    public function test_locale_normalises_unsupported_bcp47_value_to_en(): void
+    {
+        // Unsupported BCP-47 values should fall back to `en` exactly
+        // as their POSIX siblings do — the catalogue only ships en+it.
+        config()->set('eval-harness-ui.locale', 'pt-BR');
+        $admin = $this->makeUserWithRole('admin');
+
+        $payload = $this->actingAs($admin)
+            ->getJson('/api/admin/eval-harness/bootstrap-config')
+            ->assertOk()
+            ->json();
+
+        $this->assertSame('en', $payload['locale']);
+    }
+
     public function test_tenant_header_serialises_as_null_when_blank(): void
     {
         // The package's `AppBootstrapConfig.tenant_header` accepts

@@ -72,8 +72,8 @@ const DashboardPage = () => {
         <StatCard label={t('label_live_batches')} value={batches.status === 'ready' ? activeBatches : '—'} />
         <StatCard
           label={t('label_adversarial')}
-          value={adversarialStatus ?? 'Nessun manifesto'}
-          helper={adversarial.status === 'ready' ? 'Ultima serie disponibile' : undefined}
+          value={adversarialStatus ?? t('dashboard_no_manifest')}
+          helper={adversarial.status === 'ready' ? t('dashboard_no_manifest_helper') : undefined}
         />
       </section>
 
@@ -82,7 +82,7 @@ const DashboardPage = () => {
           <h3 className="ehu-screen-title">{t('text_dataset_trend')}</h3>
           <ul className="mt-3 space-y-2 text-sm text-slate-700">
             {topDatasets.length === 0 ? (
-              <li>Nessun dato trend</li>
+              <li>{t('dashboard_no_trend_data')}</li>
             ) : (
               topDatasets.map((dataset) => <li key={dataset}>- {dataset}</li>)
             )}
