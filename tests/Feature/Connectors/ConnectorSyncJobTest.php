@@ -169,6 +169,112 @@ final class ConnectorSyncJobTest extends TestCase
         $this->assertSame(0, $stub->syncIncrementalCalls);
     }
 
+    /**
+     * iter2 finding #2 — pending installations are mid-OAuth and have
+     * no credentials yet. The job must skip them rather than dispatch
+     * a doomed sync that flips the row to ERRORED.
+     */
+    public function test_job_skips_when_installation_is_pending(): void
+    {
+        $installation = $this->makeInstallation('default');
+        $installation->forceFill(['status' => ConnectorInstallation::STATUS_PENDING])->save();
+
+        $stub = new RecordingStubConnector(result: SyncResult::empty());
+        $this->swapConnectorRegistry($stub);
+
+        $job = new ConnectorSyncJob($installation->id, 'default');
+        $job->handle(
+            $this->app->make(ConnectorRegistry::class),
+            $this->app->make(\App\Support\TenantContext::class),
+        );
+
+        $this->assertSame(0, $stub->syncIncrementalCalls);
+        // The row stays PENDING — the job does NOT flip it to ERRORED.
+        $installation->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
+    }
+
+    /**
+     * iter2 finding #2 — errored installations also skipped (operator
+     * drives a reinstall to recover; we don't auto-flap the cycle).
+     */
+    public function test_job_skips_when_installation_is_errored(): void
+    {
+        $installation = $this->makeInstallation('default');
+        $installation->forceFill(['status' => ConnectorInstallation::STATUS_ERRORED])->save();
+
+        $stub = new RecordingStubConnector(result: SyncResult::empty());
+        $this->swapConnectorRegistry($stub);
+
+        $job = new ConnectorSyncJob($installation->id, 'default');
+        $job->handle(
+            $this->app->make(ConnectorRegistry::class),
+            $this->app->make(\App\Support\TenantContext::class),
+        );
+
+        $this->assertSame(0, $stub->syncIncrementalCalls);
+    }
+
+    /**
+     * iter2 finding #1 — R30 long-lived-worker contract. The job
+     * MUST restore the prior tenant context on success so the next
+     * job in the same worker process is not silently scoped to this
+     * tenant.
+     */
+    public function test_job_restores_prior_tenant_context_on_success(): void
+    {
+        $installation = $this->makeInstallation('tenant-a');
+
+        $tenantContext = $this->app->make(\App\Support\TenantContext::class);
+        $tenantContext->set('original-tenant');
+
+        $stub = new RecordingStubConnector(result: SyncResult::empty());
+        $this->swapConnectorRegistry($stub);
+
+        $job = new ConnectorSyncJob($installation->id, 'tenant-a');
+        $job->handle(
+            $this->app->make(ConnectorRegistry::class),
+            $tenantContext,
+        );
+
+        $this->assertSame('original-tenant', $tenantContext->current());
+        // And during the call, the connector saw 'tenant-a'.
+        $this->assertSame('tenant-a', $stub->tenantContextSeenDuringSync);
+
+        $tenantContext->reset();
+    }
+
+    /**
+     * iter2 finding #1 — also restores on exception (try/finally).
+     */
+    public function test_job_restores_prior_tenant_context_on_exception(): void
+    {
+        $installation = $this->makeInstallation('tenant-a');
+
+        $tenantContext = $this->app->make(\App\Support\TenantContext::class);
+        $tenantContext->set('original-tenant');
+
+        $stub = new RecordingStubConnector(
+            result: SyncResult::empty(),
+            throwOnSync: new \RuntimeException('boom'),
+        );
+        $this->swapConnectorRegistry($stub);
+
+        $job = new ConnectorSyncJob($installation->id, 'tenant-a');
+        try {
+            $job->handle(
+                $this->app->make(ConnectorRegistry::class),
+                $tenantContext,
+            );
+        } catch (\RuntimeException) {
+            // Expected — job rethrows so Laravel queue can retry.
+        }
+
+        $this->assertSame('original-tenant', $tenantContext->current());
+
+        $tenantContext->reset();
+    }
+
     public function test_job_silent_no_op_when_installation_missing(): void
     {
         $stub = new RecordingStubConnector(result: SyncResult::empty());
@@ -272,6 +378,8 @@ final class RecordingStubConnector implements ConnectorInterface
 
     public ?Carbon $lastSince = null;
 
+    public ?string $tenantContextSeenDuringSync = null;
+
     public function __construct(
         public SyncResult $result,
         public ?\Throwable $throwOnSync = null,
@@ -317,6 +425,7 @@ final class RecordingStubConnector implements ConnectorInterface
         $this->syncIncrementalCalls++;
         $this->lastInstallationId = $installationId;
         $this->lastSince = $since;
+        $this->tenantContextSeenDuringSync = app(\App\Support\TenantContext::class)->current();
 
         if ($this->throwOnSync !== null) {
             throw $this->throwOnSync;

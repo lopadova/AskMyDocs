@@ -145,7 +145,7 @@ final class ConnectorAdminControllerTest extends TestCase
         $admin = $this->makeSuperAdmin();
 
         // Pre-create a pending installation but DON'T issue a state.
-        ConnectorInstallation::create([
+        $installation = ConnectorInstallation::create([
             'tenant_id' => 'default',
             'connector_name' => 'google-drive',
             'status' => ConnectorInstallation::STATUS_PENDING,
@@ -157,6 +157,74 @@ final class ConnectorAdminControllerTest extends TestCase
 
         $resp->assertStatus(400);
         $this->assertStringContainsString('state token', strtolower($resp->json('error')));
+
+        // iter2 finding #5 — OAuth failure leaves the row PENDING so
+        // the operator can retry by re-clicking Install. The error
+        // message is recorded in `error_json` for surface visibility
+        // but the status itself does NOT flip to ERRORED.
+        $installation->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $installation->status);
+        $this->assertNotNull($installation->error_json);
+        $this->assertStringContainsString('state token', strtolower($installation->error_json['message']));
+    }
+
+    /**
+     * iter2 finding #4 — clicking Install on an ACTIVE row re-arms it
+     * to PENDING and clears error_json so the OAuth round-trip can
+     * complete via the standard `oauthCallback()` path (which only
+     * matches PENDING rows). Without this, reinstall + scope expansion
+     * is impossible — the callback 404s because no PENDING row exists.
+     */
+    public function test_reinstall_arms_existing_active_row_to_pending(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $active = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'last_sync_at' => Carbon::parse('2026-05-15T10:00:00Z'),
+            'error_json' => null,
+            'created_by' => $admin->id,
+        ]);
+        $originalId = $active->id;
+
+        $resp = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install');
+
+        $resp->assertOk();
+        // Same row, not a new one — composite unique on (tenant, name)
+        // makes a second row impossible anyway.
+        $this->assertSame($originalId, $resp->json('data.installation_id'));
+
+        $active->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $active->status);
+        $this->assertNull($active->error_json);
+    }
+
+    /**
+     * iter2 finding #4 — also re-arms ERRORED + DISABLED. These cases
+     * existed in iter1 too but now share a single, simpler code path.
+     */
+    public function test_reinstall_arms_existing_errored_row_to_pending(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $errored = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'status' => ConnectorInstallation::STATUS_ERRORED,
+            'error_json' => ['message' => 'old failure'],
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install');
+
+        $resp->assertOk();
+        $errored->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $errored->status);
+        $this->assertNull($errored->error_json);
     }
 
     public function test_sync_now_dispatches_connector_sync_job(): void

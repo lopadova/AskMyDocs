@@ -9,6 +9,9 @@ use App\Connectors\Exceptions\ConnectorAuthException;
 use App\Connectors\HealthStatus;
 use App\Connectors\SyncResult;
 use App\Jobs\IngestDocumentJob;
+use App\Models\KnowledgeDocument;
+use App\Services\Kb\DocumentDeleter;
+use App\Support\KbPath;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -323,7 +326,20 @@ class GoogleDriveConnector extends BaseConnector
 
             foreach (($payload['changes'] ?? []) as $change) {
                 if (($change['removed'] ?? false) === true) {
-                    $removed++;
+                    // iter2 finding #7 — deletion events MUST drive
+                    // an actual delete on the corresponding
+                    // `knowledge_documents` row, otherwise the
+                    // documents linger in RAG indefinitely and the
+                    // `documentsRemoved` counter is misleading.
+                    // Look up by the `drive_file_id` we stashed in
+                    // `metadata` at ingest time, then funnel through
+                    // `DocumentDeleter::delete()` (soft by default
+                    // per `kb.deletion.soft_delete` — operator-
+                    // visible in the admin trash UI).
+                    $driveFileId = (string) ($change['fileId'] ?? '');
+                    if ($driveFileId !== '' && $this->softDeleteByDriveFileId($installation, $driveFileId)) {
+                        $removed++;
+                    }
                     continue;
                 }
 
@@ -493,6 +509,19 @@ class GoogleDriveConnector extends BaseConnector
             $body = $this->maybeRedactContent($body);
         }
 
+        // iter2 finding #6 — honour the KB storage contract.
+        // `IngestDocumentJob` → `ParseMarkdownStep` reads its bytes
+        // off `config('kb.sources.disk')` and re-applies
+        // `config('kb.sources.path_prefix')` when computing the
+        // physical storage key (see ParseMarkdownStep::resolveStoragePath).
+        // The job MUST therefore be handed the UN-prefixed
+        // `relativePath` (the canonical write-pattern mirrors
+        // CanonicalWriter::write() which returns the relative path
+        // and writes to the prefixed path internally). Previously
+        // we wrote to `config('kb.disk')` (a non-existent key) and
+        // dispatched with the un-prefixed path — meaning on any
+        // host where KB_PATH_PREFIX is set, ingest read the wrong
+        // path and the document silently vanished from RAG.
         $relativePath = sprintf(
             '%s/connectors/%s/installation-%d/%s-%s%s',
             $projectKey,
@@ -503,10 +532,12 @@ class GoogleDriveConnector extends BaseConnector
             $outputExtension,
         );
 
-        $disk = (string) (config('kb.disk') ?? 'kb');
-        $written = Storage::disk($disk)->put($relativePath, $body);
+        $disk = (string) config('kb.sources.disk', 'kb');
+        $fullPath = $this->applyPathPrefix($relativePath);
+
+        $written = Storage::disk($disk)->put($fullPath, $body);
         if ($written === false) {
-            throw new \RuntimeException("Failed to write {$relativePath} to KB disk.");
+            throw new \RuntimeException("Failed to write {$fullPath} to KB disk [{$disk}].");
         }
 
         IngestDocumentJob::dispatch(
@@ -524,6 +555,76 @@ class GoogleDriveConnector extends BaseConnector
             mimeType: $persistedMime,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * iter2 finding #7 — Drive deletion event handler.
+     *
+     * Maps a Drive `fileId` → the matching `knowledge_documents` row
+     * (looked up by `metadata->>'drive_file_id'`, scoped to the
+     * installation's tenant), then funnels through `DocumentDeleter`.
+     * Soft delete by default per `kb.deletion.soft_delete`; the
+     * operator can hard-delete via the admin trash UI or wait for
+     * `kb:prune-deleted` to do it on the retention window.
+     *
+     * Returns true when at least one row was acted upon, false when
+     * no matching document was found (caller does NOT increment the
+     * `documentsRemoved` counter in that case — silently dropped
+     * changes would otherwise inflate the metric).
+     */
+    private function softDeleteByDriveFileId(
+        \App\Models\ConnectorInstallation $installation,
+        string $driveFileId,
+    ): bool {
+        $deleter = app(DocumentDeleter::class);
+
+        // Eloquent JSON path syntax — `metadata->drive_file_id` works
+        // on both pgsql (jsonb ->) and sqlite (json_extract). Scope by
+        // tenant_id (R30) so a deletion event on tenant A never
+        // affects tenant B's documents that happen to share a
+        // drive_file_id (different Google account, same file id).
+        $documents = KnowledgeDocument::withTrashed()
+            ->forTenant($installation->tenant_id)
+            ->where('metadata->drive_file_id', $driveFileId)
+            ->get();
+
+        if ($documents->isEmpty()) {
+            return false;
+        }
+
+        $any = false;
+        foreach ($documents as $document) {
+            // Skip already-soft-deleted rows so the counter is
+            // honest (re-running an incremental sweep on the same
+            // cursor shouldn't double-count).
+            if ($document->trashed()) {
+                continue;
+            }
+
+            $deleter->delete($document);
+            $any = true;
+        }
+
+        return $any;
+    }
+
+    /**
+     * Apply `config('kb.sources.path_prefix')` to a relative path,
+     * mirroring exactly the convention used by
+     * {@see \App\Services\Kb\Canonical\CanonicalWriter::applyPathPrefix()}
+     * and {@see \App\Flow\Steps\ParseMarkdownStep::resolveStoragePath()}.
+     * The result is the physical storage key on the disk;
+     * `IngestDocumentJob` callers always receive the UN-prefixed
+     * relative path.
+     */
+    private function applyPathPrefix(string $relativePath): string
+    {
+        $prefix = (string) config('kb.sources.path_prefix', '');
+        if ($prefix === '') {
+            return KbPath::normalize($relativePath);
+        }
+
+        return KbPath::normalize($prefix.'/'.$relativePath);
     }
 
     private function extensionForMime(string $mime, string $fallbackName): string

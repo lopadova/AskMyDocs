@@ -58,8 +58,28 @@ class ConnectorSyncJob implements ShouldQueue
 
     public function handle(ConnectorRegistry $registry, TenantContext $tenantContext): void
     {
+        // R30 / iter2 finding #1 — TenantContext is request-scoped, but
+        // in long-lived queue workers (Horizon / queue:work) the same
+        // PHP process handles many jobs back-to-back. If we set the
+        // active tenant and forget to restore it, the NEXT job (which
+        // may belong to a different tenant) inherits this job's
+        // tenant_id via the BelongsToTenant auto-fill trait — a
+        // cross-tenant write disaster waiting to happen. Capture-and-
+        // restore in a finally block is the only safe shape;
+        // `try/finally` runs even if the inner sync throws (and
+        // re-throws to trigger the Laravel queue retry).
+        $priorTenant = $tenantContext->current();
         $tenantContext->set($this->tenantId);
 
+        try {
+            $this->runSync($registry);
+        } finally {
+            $tenantContext->set($priorTenant);
+        }
+    }
+
+    private function runSync(ConnectorRegistry $registry): void
+    {
         $installation = ConnectorInstallation::query()
             ->where('id', $this->installationId)
             ->where('tenant_id', $this->tenantId)
@@ -75,8 +95,16 @@ class ConnectorSyncJob implements ShouldQueue
             return;
         }
 
-        if ($installation->status === ConnectorInstallation::STATUS_DISABLED) {
-            // Operator disabled the connector since dispatch — skip.
+        // iter2 finding #2 — only ACTIVE installations are eligible
+        // for sync. PENDING rows are mid-OAuth-flow and have no
+        // credentials yet; syncing them would race the OAuth callback
+        // and flip the row to ERRORED because `refreshTokenIfExpired()`
+        // returns null. DISABLED rows are explicitly paused by the
+        // operator. ERRORED rows wait for an operator-driven
+        // reinstall — auto-resyncing them would mask the underlying
+        // failure and produce a flapping "errored → errored" cycle in
+        // the audit log.
+        if ($installation->status !== ConnectorInstallation::STATUS_ACTIVE) {
             return;
         }
 

@@ -100,6 +100,26 @@ final class SyncSchedulerTest extends TestCase
     }
 
     /**
+     * iter2 finding #3 — pending installations are mid-OAuth-flow
+     * (no credentials yet). Dispatching a sync against them would
+     * race the OAuth callback and flip the row to ERRORED via the
+     * job's missing-credentials failure path.
+     */
+    public function test_skips_pending_installations(): void
+    {
+        Queue::fake();
+
+        $this->makeInstallation([
+            'last_sync_at' => null,
+            'status' => ConnectorInstallation::STATUS_PENDING,
+        ]);
+
+        $dispatched = (new SyncScheduler)->dispatchDueSyncs();
+        $this->assertSame(0, $dispatched);
+        Queue::assertNotPushed(ConnectorSyncJob::class);
+    }
+
+    /**
      * @param  array<string,mixed>  $overrides
      */
     private function makeInstallation(array $overrides = []): ConnectorInstallation

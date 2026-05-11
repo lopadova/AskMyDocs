@@ -80,6 +80,17 @@ final class ConnectorAdminController extends Controller
      * for the active tenant, then asks the connector to build the
      * provider OAuth URL. The browser navigates to `redirect_to` to
      * complete the flow.
+     *
+     * iter2 finding #4 — when an installation row already exists for
+     * the active tenant + connector (regardless of its current
+     * status: ACTIVE / PENDING / ERRORED / DISABLED), we ALWAYS arm
+     * it back to PENDING and clear `error_json`. The unique
+     * `(tenant_id, connector_name)` constraint allows only one row
+     * per tenant per connector, so the reinstall flow MUST drive the
+     * single row through the OAuth lifecycle again. If we left the
+     * row in ACTIVE while issuing a new OAuth URL, the subsequent
+     * `oauthCallback()` 404s (it only looks at PENDING rows) and the
+     * operator is stuck — exactly the bug Copilot iter1 caught.
      */
     public function startInstall(Request $request, string $name): JsonResponse
     {
@@ -88,8 +99,6 @@ final class ConnectorAdminController extends Controller
             throw new NotFoundHttpException("Connector '{$name}' is not registered.");
         }
 
-        // Re-use a `pending` row if it already exists — operators may
-        // re-initiate the install flow without piling up rows.
         $installation = ConnectorInstallation::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->where('connector_name', $name)
@@ -102,11 +111,13 @@ final class ConnectorAdminController extends Controller
                 'status' => ConnectorInstallation::STATUS_PENDING,
                 'created_by' => $request->user()->getAuthIdentifier(),
             ]);
-        } elseif (in_array($installation->status, [
-            ConnectorInstallation::STATUS_ERRORED,
-            ConnectorInstallation::STATUS_DISABLED,
-        ], true)) {
-            // Re-arm the row for a fresh OAuth round-trip.
+        } else {
+            // iter2 finding #4 — re-arm regardless of prior status so
+            // the reinstall flow goes through the standard
+            // PENDING → callback → ACTIVE round-trip even when the
+            // operator clicks "Install" on a currently-active row
+            // (intentional reinstall, e.g. re-grant after a scope
+            // expansion).
             $installation->forceFill([
                 'status' => ConnectorInstallation::STATUS_PENDING,
                 'error_json' => null,
@@ -158,8 +169,24 @@ final class ConnectorAdminController extends Controller
         try {
             $connector->handleOAuthCallback($installation->id, $request);
         } catch (ConnectorAuthException $e) {
+            // iter2 finding #5 — contract alignment. The
+            // ConnectorInterface docblock promises the framework
+            // "leaves the row in `pending` so the admin UI can offer
+            // a 'retry install' action" on OAuth callback failure
+            // (invalid state, code-exchange rejected, ...). We honour
+            // that contract here: record the error message in
+            // `error_json` for surface visibility, but keep the row
+            // STATUS_PENDING so the operator can simply re-click
+            // Install and run through the OAuth flow again without
+            // the controller treating the row as terminally errored.
+            //
+            // ERRORED status is reserved for truly non-recoverable
+            // failures (token revoked mid-sync, repeated 401 from
+            // provider, package uninstalled) — those are stamped by
+            // ConnectorSyncJob::recordFailure() and the
+            // "connector de-registered" branch of runSync().
             $installation->forceFill([
-                'status' => ConnectorInstallation::STATUS_ERRORED,
+                'status' => ConnectorInstallation::STATUS_PENDING,
                 'error_json' => [
                     'message' => $e->getMessage(),
                     'recorded_at' => now()->toIso8601String(),

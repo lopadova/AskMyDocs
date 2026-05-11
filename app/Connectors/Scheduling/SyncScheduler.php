@@ -66,11 +66,17 @@ class SyncScheduler
 
         // R3 — chunkById so the sweep is memory-safe even on hosts
         // with hundreds of installations across many tenants.
+        //
+        // iter2 finding #3 — scheduler sweep ONLY picks ACTIVE
+        // installations. PENDING rows are mid-OAuth-flow and have no
+        // credentials yet; dispatching a sync job against a pending
+        // row would race the OAuth callback and flip the row to
+        // ERRORED via the ConnectorSyncJob's missing-credentials
+        // failure path. DISABLED + ERRORED are also excluded (the
+        // job itself short-circuits them, but filtering at the query
+        // level avoids waking workers needlessly).
         ConnectorInstallation::query()
-            ->whereIn('status', [
-                ConnectorInstallation::STATUS_ACTIVE,
-                ConnectorInstallation::STATUS_PENDING,
-            ])
+            ->where('status', ConnectorInstallation::STATUS_ACTIVE)
             ->orderBy('id')
             ->chunkById(100, function ($installations) use ($defaultMinutes, $perConnector, &$dispatched): void {
                 foreach ($installations as $installation) {

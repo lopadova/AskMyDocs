@@ -181,6 +181,12 @@ final class GoogleDriveConnectorTest extends TestCase
         $installation = $this->makeInstallation();
         $this->seedActiveCredential($installation->id, 'AT-xyz', extra: ['changes_page_token' => 'cursor-1']);
 
+        // iter2 finding #7 — the connector now only counts a
+        // deletion when the corresponding knowledge_documents row is
+        // actually present. Seed one so the assertion below is
+        // meaningful.
+        $this->seedKnowledgeDocument($installation->tenant_id, 'file-deleted');
+
         Http::fake([
             'www.googleapis.com/drive/v3/changes*' => Http::response([
                 'changes' => [
@@ -211,6 +217,12 @@ final class GoogleDriveConnectorTest extends TestCase
         $extra = $this->app->make(\App\Connectors\Auth\OAuthCredentialVault::class)
             ->getExtra($installation->id);
         $this->assertSame('cursor-2', $extra['changes_page_token']);
+
+        // The seeded document is now soft-deleted.
+        $this->assertSoftDeleted('knowledge_documents', [
+            'project_key' => 'connector-google-drive',
+            'tenant_id' => $installation->tenant_id,
+        ]);
     }
 
     public function test_sync_incremental_falls_back_to_full_when_no_cursor(): void
@@ -294,6 +306,145 @@ final class GoogleDriveConnectorTest extends TestCase
         $this->assertSame(HealthStatus::STATE_ERRORED, $status->state);
     }
 
+    /**
+     * iter2 finding #6 — connector MUST write to `config('kb.sources.disk')`
+     * and apply `config('kb.sources.path_prefix')`. The earlier impl
+     * used a non-existent `kb.disk` config key and skipped the prefix,
+     * making Drive-ingested docs invisible to RAG on any host with
+     * KB_PATH_PREFIX set.
+     */
+    public function test_google_drive_sync_writes_to_kb_sources_disk_with_path_prefix(): void
+    {
+        Queue::fake();
+        config()->set('kb.sources.disk', 'kb');
+        config()->set('kb.sources.path_prefix', 'tenant-prefix');
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, 'AT-xyz');
+
+        Http::fake([
+            'www.googleapis.com/drive/v3/files/file-md*' => Http::response('# body', 200),
+            'www.googleapis.com/drive/v3/changes/startPageToken' => Http::response(['startPageToken' => 'cursor-x'], 200),
+            'www.googleapis.com/drive/v3/files*' => Http::response([
+                'files' => [['id' => 'file-md', 'name' => 'doc.md', 'mimeType' => 'text/markdown']],
+            ], 200),
+        ]);
+
+        $this->connector()->syncFull($installation->id);
+
+        // Physical path on disk MUST be prefix-applied.
+        $disk = Storage::disk('kb');
+        $files = $disk->allFiles();
+        $this->assertCount(1, $files);
+        $this->assertStringStartsWith('tenant-prefix/', $files[0]);
+
+        // The dispatched IngestDocumentJob MUST receive the UN-prefixed
+        // relative path (ParseMarkdownStep re-applies the prefix when
+        // reading). Otherwise the prefix gets applied twice and the
+        // ingest reads the wrong path.
+        Queue::assertPushed(\App\Jobs\IngestDocumentJob::class, function (\App\Jobs\IngestDocumentJob $job) {
+            return ! str_starts_with($job->relativePath, 'tenant-prefix/')
+                && str_contains($job->relativePath, 'file-md');
+        });
+    }
+
+    /**
+     * iter2 finding #7 — Drive deletion events MUST soft-delete the
+     * corresponding `knowledge_documents` row (looked up by
+     * `metadata->drive_file_id`). Without this, removed Drive files
+     * linger in RAG indefinitely and `documentsRemoved` is misleading.
+     */
+    public function test_drive_deletion_event_soft_deletes_knowledge_document(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, 'AT-xyz', extra: ['changes_page_token' => 'cursor-1']);
+
+        $doc = $this->seedKnowledgeDocument($installation->tenant_id, 'file-to-delete');
+
+        Http::fake([
+            'www.googleapis.com/drive/v3/changes*' => Http::response([
+                'changes' => [['fileId' => 'file-to-delete', 'removed' => true]],
+                'newStartPageToken' => 'cursor-2',
+            ], 200),
+        ]);
+
+        $result = $this->connector()->syncIncremental($installation->id, Carbon::now()->subHour());
+
+        $this->assertSame(1, $result->documentsRemoved);
+        $this->assertSoftDeleted('knowledge_documents', ['id' => $doc->id]);
+    }
+
+    /**
+     * iter2 finding #7 — when a Drive deletion event references a
+     * file_id we never ingested (or we already trashed), the counter
+     * does NOT increment. Honest metric beats inflated metric.
+     */
+    public function test_drive_deletion_event_with_no_matching_document_does_not_increment_counter(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential($installation->id, 'AT-xyz', extra: ['changes_page_token' => 'cursor-1']);
+
+        Http::fake([
+            'www.googleapis.com/drive/v3/changes*' => Http::response([
+                'changes' => [['fileId' => 'never-seen-file', 'removed' => true]],
+                'newStartPageToken' => 'cursor-2',
+            ], 200),
+        ]);
+
+        $result = $this->connector()->syncIncremental($installation->id, Carbon::now()->subHour());
+
+        $this->assertSame(0, $result->documentsRemoved);
+    }
+
+    /**
+     * iter2 finding #7 — cross-tenant guard. A deletion event in
+     * tenant A MUST NOT soft-delete a document in tenant B that
+     * happens to carry the same drive_file_id (different Google
+     * accounts, same file id is a real-world possibility).
+     */
+    public function test_drive_deletion_event_respects_tenant_boundary(): void
+    {
+        Queue::fake();
+        Storage::fake('kb');
+
+        $installationA = $this->makeInstallation('tenant-a');
+        $this->seedActiveCredential(
+            $installationA->id,
+            'AT-xyz',
+            extra: ['changes_page_token' => 'cursor-1'],
+            tenantId: 'tenant-a',
+        );
+
+        // Same drive_file_id under tenant B; MUST NOT be touched.
+        $docB = $this->seedKnowledgeDocument('tenant-b', 'shared-file-id');
+
+        Http::fake([
+            'www.googleapis.com/drive/v3/changes*' => Http::response([
+                'changes' => [['fileId' => 'shared-file-id', 'removed' => true]],
+                'newStartPageToken' => 'cursor-2',
+            ], 200),
+        ]);
+
+        app(\App\Support\TenantContext::class)->set('tenant-a');
+        $result = $this->connector()->syncIncremental($installationA->id, Carbon::now()->subHour());
+        app(\App\Support\TenantContext::class)->reset();
+
+        // No document in tenant-a → counter stays at 0.
+        $this->assertSame(0, $result->documentsRemoved);
+        // tenant-b's document is untouched.
+        $this->assertDatabaseHas('knowledge_documents', [
+            'id' => $docB->id,
+            'deleted_at' => null,
+        ]);
+    }
+
     public function test_pii_redactor_runs_at_ingest_boundary_when_enabled(): void
     {
         Queue::fake();
@@ -323,7 +474,7 @@ final class GoogleDriveConnectorTest extends TestCase
         $this->connector()->syncFull($installation->id);
 
         // The KB disk should hold a redacted body — no raw email.
-        $disk = Storage::disk((string) (config('kb.disk') ?? 'kb'));
+        $disk = Storage::disk((string) config('kb.sources.disk', 'kb'));
         $files = $disk->allFiles();
         $this->assertNotEmpty($files);
         $contents = $disk->get($files[0]);
@@ -347,14 +498,38 @@ final class GoogleDriveConnectorTest extends TestCase
         string $access,
         ?string $refresh = null,
         array $extra = [],
+        string $tenantId = 'default',
     ): void {
         ConnectorCredential::create([
-            'tenant_id' => 'default',
+            'tenant_id' => $tenantId,
             'connector_installation_id' => $installationId,
             'encrypted_access_token' => Crypt::encryptString($access),
             'encrypted_refresh_token' => $refresh === null ? null : Crypt::encryptString($refresh),
             'expires_at' => Carbon::now()->addHour(),
             'extra_json' => $extra === [] ? null : $extra,
+        ]);
+    }
+
+    /**
+     * iter2 finding #7 — seed a knowledge_documents row carrying
+     * the given drive_file_id in its metadata, so the deletion
+     * handler can look it up.
+     */
+    private function seedKnowledgeDocument(string $tenantId, string $driveFileId): \App\Models\KnowledgeDocument
+    {
+        return \App\Models\KnowledgeDocument::create([
+            'tenant_id' => $tenantId,
+            'project_key' => 'connector-google-drive',
+            'source_type' => 'markdown',
+            'title' => 'Drive doc for '.$driveFileId,
+            'source_path' => 'connector-google-drive/connectors/google-drive/installation-x/'.$driveFileId.'.md',
+            'mime_type' => 'text/markdown',
+            'document_hash' => str_repeat('a', 64),
+            'version_hash' => str_repeat('b', 64),
+            'metadata' => [
+                'connector' => 'google-drive',
+                'drive_file_id' => $driveFileId,
+            ],
         ]);
     }
 }
