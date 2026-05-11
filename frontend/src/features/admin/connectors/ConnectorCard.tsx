@@ -205,10 +205,11 @@ export function ConnectorCard({
                         type="button"
                         data-testid={`connector-${entry.key}-cancel-install`}
                         className="focus-ring"
+                        disabled={pending.disconnecting}
                         onClick={() => onCancelInstall(entry.installation!.id)}
-                        style={ghostButton()}
+                        style={ghostButton(pending.disconnecting)}
                     >
-                        Cancel install
+                        {pending.disconnecting ? 'Cancelling…' : 'Cancel install'}
                     </button>
                 )}
 
@@ -274,10 +275,11 @@ export function ConnectorCard({
                             type="button"
                             data-testid={`connector-${entry.key}-reenable`}
                             className="focus-ring"
+                            disabled={pending.connecting}
                             onClick={() => onConnect(entry.key)}
                             style={primaryButton(pending.connecting)}
                         >
-                            Re-enable
+                            {pending.connecting ? 'Connecting…' : 'Re-enable'}
                         </button>
                         <button
                             type="button"
@@ -308,7 +310,7 @@ function primaryButton(disabled: boolean): React.CSSProperties {
     };
 }
 
-function ghostButton(): React.CSSProperties {
+function ghostButton(disabled = false): React.CSSProperties {
     return {
         padding: '6px 12px',
         fontSize: 12.5,
@@ -316,7 +318,8 @@ function ghostButton(): React.CSSProperties {
         color: 'var(--fg-1)',
         border: '1px solid var(--hairline)',
         borderRadius: 8,
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
     };
 }
 

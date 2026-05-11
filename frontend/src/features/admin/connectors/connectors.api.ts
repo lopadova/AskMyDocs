@@ -47,6 +47,20 @@ export interface SyncNowResponse {
     };
 }
 
+/*
+ * Backend `ConnectorAdminController::disable()` returns the minimal
+ * `{ installation_id, status }` envelope — the FE refetches the list
+ * after a successful disable, so the partial payload is enough to
+ * acknowledge state-change. Do NOT widen this to a full DTO without
+ * also widening the BE response (Copilot inline #1 on PR #151).
+ */
+export interface DisableResponse {
+    data: {
+        installation_id: number;
+        status: ConnectorStatus;
+    };
+}
+
 export const adminConnectorsApi = {
     async list(): Promise<ConnectorEntry[]> {
         const { data } = await api.get<ConnectorListResponse>('/api/admin/connectors');
@@ -67,8 +81,8 @@ export const adminConnectorsApi = {
         return data.data;
     },
 
-    async disable(installationId: number): Promise<ConnectorInstallationDto> {
-        const { data } = await api.post<{ data: ConnectorInstallationDto }>(
+    async disable(installationId: number): Promise<DisableResponse['data']> {
+        const { data } = await api.post<DisableResponse>(
             `/api/admin/connectors/${installationId}/disable`,
         );
         return data.data;

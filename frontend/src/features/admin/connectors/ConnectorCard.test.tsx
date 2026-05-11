@@ -12,7 +12,9 @@ import type { ConnectorEntry } from './connectors.api';
  * click that button.
  */
 
-function makeEntry(status: ConnectorEntry['installation'] extends infer _ ? string : string): ConnectorEntry {
+type MakeEntryStatus = 'not_installed' | 'active' | 'pending' | 'errored' | 'disabled';
+
+function makeEntry(status: MakeEntryStatus): ConnectorEntry {
     if (status === 'not_installed') {
         return {
             key: 'google-drive',
@@ -29,7 +31,7 @@ function makeEntry(status: ConnectorEntry['installation'] extends infer _ ? stri
         oauth_scopes: ['drive.readonly'],
         installation: {
             id: 42,
-            status: status as 'active' | 'pending' | 'errored' | 'disabled',
+            status,
             last_sync_at: '2026-05-11T11:00:00Z',
             error:
                 status === 'errored'

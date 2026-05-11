@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     adminConnectorsApi,
     type ConnectorEntry,
-    type ConnectorInstallationDto,
+    type DisableResponse,
 } from './connectors.api';
 
 /*
@@ -50,7 +50,7 @@ export function useSyncNow() {
 
 export function useDisableConnector() {
     const qc = useQueryClient();
-    return useMutation<ConnectorInstallationDto, unknown, number>({
+    return useMutation<DisableResponse['data'], unknown, number>({
         mutationFn: (installationId: number) => adminConnectorsApi.disable(installationId),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
