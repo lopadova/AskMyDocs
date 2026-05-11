@@ -45,17 +45,24 @@ return new class extends Migration
             return;
         }
 
+        // The `knowledge_chunks.metadata` column is `json`, not `jsonb`
+        // — switching the column type would rewrite the entire table
+        // and is out of scope for W5.5. Instead, every GIN-on-JSON
+        // expression below casts to `jsonb` at index-eval time so the
+        // index actually builds (json has no default GIN op class;
+        // jsonb does). The query patterns in KbSearchService cast on
+        // the read path too so the planner uses the index.
         DB::statement(
             "CREATE INDEX IF NOT EXISTS idx_kb_chunks_source_type ".
-            "ON knowledge_chunks USING gin ((metadata->'source_type'))"
+            "ON knowledge_chunks USING gin (((metadata::jsonb)->'source_type'))"
         );
         DB::statement(
             "CREATE INDEX IF NOT EXISTS idx_kb_chunks_search_tags ".
-            "ON knowledge_chunks USING gin ((metadata->'search_tags') jsonb_path_ops)"
+            "ON knowledge_chunks USING gin (((metadata::jsonb)->'search_tags') jsonb_path_ops)"
         );
         DB::statement(
             "CREATE INDEX IF NOT EXISTS idx_kb_chunks_recency_bucket ".
-            "ON knowledge_chunks ((metadata->>'recency_bucket'))"
+            "ON knowledge_chunks (((metadata::jsonb)->>'recency_bucket'))"
         );
     }
 
