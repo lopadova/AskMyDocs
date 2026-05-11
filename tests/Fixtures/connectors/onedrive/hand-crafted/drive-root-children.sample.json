@@ -1,0 +1,17 @@
+{
+    "__source": "hand-crafted-sample",
+    "body": {
+        "value": [
+            {
+                "id": "sha256-od000001",
+                "name": "Q2 Roadmap.docx",
+                "file": {"mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+                "size": 12345,
+                "webUrl": "https://onedrive.live.com/items/sha256-od000001",
+                "lastModifiedDateTime": "2026-05-09T12:00:00Z",
+                "createdBy": {"user": {"email": "lorenzo@padosoft.com", "displayName": "Lorenzo Padovani"}},
+                "parentReference": {"path": "/drive/root:/Documents"}
+            }
+        ]
+    }
+}

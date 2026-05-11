@@ -24,6 +24,7 @@ composer.lock
 .env
 .env.local
 .env.*.local
+.env.live
 *.log
 # Playwright
 /playwright/.auth/
