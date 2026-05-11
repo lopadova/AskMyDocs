@@ -15,7 +15,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 
 
 <p align="center">
-  <a href="#installation"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
+  <a href="#quick-start-5-minutes"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"></a>
@@ -25,11 +25,11 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Canonical--KB-9%20types-ff7a00?style=flat-square" alt="Canonical KB"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Knowledge%20Graph-10%20relations-7c3aed?style=flat-square" alt="Knowledge Graph"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Anti--Repetition-%E2%9A%A0%EF%B8%8F%20built--in-dc2626?style=flat-square" alt="Anti-Repetition Memory"></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
+  <a href="#prerequisites"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
-  <a href="#requirements"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
+  <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v4.4.0-blueviolet?style=flat-square" alt="Release v4.4.0"></a>
-  <a href="#testing"><img src="https://img.shields.io/badge/tests-1423%20PHPUnit%20%2B%20321%20Vitest-brightgreen?style=flat-square" alt="1423 PHPUnit + 321 Vitest"></a>
+  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1423%20PHPUnit%20%2B%20321%20Vitest-brightgreen?style=flat-square" alt="1423 PHPUnit + 321 Vitest"></a>
 </p>
 
 <p align="center">
@@ -491,7 +491,7 @@ The chat surface and admin shell, page by page.
 
 ## Sister packages
 
-Six `padosoft/*` MIT Composer packages ship alongside AskMyDocs. Every
+Several `padosoft/*` MIT Composer packages ship alongside AskMyDocs. Every
 package carries architecture tests enforcing **standalone-agnostic
 invariants** — zero references to `KnowledgeDocument`, `KbSearchService`,
 `kb_*` tables, or `lopadova/askmydocs` in `src/`. `composer require

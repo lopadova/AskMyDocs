@@ -21,7 +21,7 @@ moats and roadmap, see [README.md](README.md).
 - **W2 — `padosoft/laravel-pii-redactor-admin` cross-mount** (PR #138). Iframe → cross-mount at `/admin/pii-redactor`. Vendored SPA sharing host React 19 + Sanctum cookie + axios. New dep: `lucide-react@^1.14.0`.
 - **W3 — `padosoft/eval-harness-ui` cross-mount** (PR #140). Iframe → cross-mount at `/admin/eval-harness` (non-prod-only). 8-page SPA. NEW BE bootstrap config endpoint. 3 fail-closed fences PRESERVED. New dep: `react-router-dom@^6.30.1`.
 - **W4 — eval-harness adversarial nightly opt-in** (PR #142). 2 NEW env knobs (default OFF). Baseline-gates-adversarial; advisory-only summary sidecar. ADR 0007.
-- **(this PR)** v4.4 W4 closure docs + GA prep — adds this Changelog entry, the v4.4.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-11-v44-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.4 GA refresh.
+- **W4.A closure docs PR** v4.4 W4 closure + GA prep — adds this Changelog entry, the v4.4.0 GA ribbon under `### Key Features`, the closure status doc `docs/v4-platform/STATUS-2026-05-11-v44-week4-rc-acceptance.md`, and the `INTEGRATION-ROADMAP-sister-packages.md` v4.4 GA refresh.
 
 **Pull requests merged on `feature/v4.4` for v4.4.0 GA:**
 - #136 v4.4/W1 — Tailwind v4 host migration
@@ -31,7 +31,7 @@ moats and roadmap, see [README.md](README.md).
 - #140 v4.4/W3 — cross-mount eval-harness-ui
 - #141 v4.4/W3 closure — rc3 ribbon + status doc
 - #142 v4.4/W4 — adversarial nightly opt-in + ADR 0007
-- (this PR — W4.A) v4.4 W4 closure + GA prep — Changelog + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
+- (W4.A closure docs PR) v4.4 W4 closure + GA prep — Changelog + Key Features + RC acceptance doc + INTEGRATION-ROADMAP refresh
 - (W4.B follow-up PR) `feature/v4.4` → `main` GA merge per R37 + `v4.4.0` GA tag at the merge SHA
 
 **v4.4 cycle test count delta:** PHPUnit 1408 (start of v4.4 from v4.3.0 GA) → **1423** (end of W4) — **+15 BE tests** (W3: +8 bootstrap-config; W4: +7 adversarial nightly). Vitest react 304 → **321** (+17 react scenarios: W2: +5+3 = +8; W3: +9). Vitest legacy unchanged at 18. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
@@ -57,11 +57,11 @@ Third release candidate of the **v4.4 cycle**. W3 ships the **iframe → cross-m
 **What's new in AskMyDocs v4.4.0-rc3 (W3 — cross-mount eval-harness-ui):**
 
 - **W3 / sub-PR (#140)** — NEW `frontend/src/features/admin/eval-harness/cross-mount/` (29 files / ~3300 LOC vendored from `vendor/.../resources/js/` plus host-scoped `eval-harness-ui.css` + new `main-entry.tsx` wrapper + adapted `services/evalHarnessApi.ts`). REWRITTEN `EvalHarnessView.tsx` (drops iframe + readiness probe; fetches bootstrap config from new BE endpoint; drives `data-state="loading|ready|error"`; mounts SPA in degraded mode on error so `<ErrorPanel />` surfaces failures). NEW `app/Http/Controllers/Api/Admin/EvalHarnessUiBootstrapController.php` returning `config('eval-harness-ui')` JSON gated by `auth:sanctum` + `can:eval-harness.viewer`. REWRITTEN `frontend/e2e/admin-eval-harness.spec.ts` (strips iframe locators; preserves 3-fence assertions). UPDATED `INTEGRATION-ROADMAP-sister-packages.md` (eval-harness-ui row: iframe → cross-mount). NEW dep `react-router-dom@^6.30.1` (~14 KB; package's internal `BrowserRouter` continues to own sub-page navigation). Iter 2 fixed 6 Copilot findings (HIGH R30 tenant header bypass + HIGH R9 hard-coded bootstrap + 4 medium/low). +8 PHPUnit tests + +9 vitest react scenarios (312 → 321 cycle-wide: +5 iter 1 + +4 iter 2).
-- **(this PR)** v4.4/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
+- **W3 closure docs PR (#141)** v4.4/W3 closure docs — adds this Changelog entry, the W3 ribbon under `### Key Features`, and the closure status doc.
 
 **Pull request merged on `feature/v4.4` for v4.4.0-rc3:**
 - #140 v4.4/W3 — iframe → cross-mount of eval-harness-ui
-- (this PR) v4.4/W3 closure — Changelog entry + Key Features + closure status doc
+- #141 v4.4/W3 closure — Changelog entry + Key Features + closure status doc
 
 **Test count:** PHPUnit 1408 → **1416** (+8 BE scenarios for the new `/api/admin/eval-harness/bootstrap-config` endpoint). Vitest react 312 → **321** (+9 cycle-wide: +5 in iter 1 + +4 in iter 2). Vitest legacy unchanged at 18. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
 
@@ -545,7 +545,7 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
 - **W7** — `padosoft/laravel-pii-redactor` v0.1.0 on Packagist (six checksum-validated detectors including Italian Codice Fiscale + Partita IVA + IBAN mod-97 + Luhn; four redaction strategies — Mask, Hash, Tokenise reversible, Drop; 68 Unit + 2 Architecture tests; zero LLM dependency) + `padosoft/askmydocs-pro` foundation seed (private BSL-1.1 commercial sister package; foundation-only); tagged `v4.0.0-rc4`.
 - **W8** — RC acceptance gates audit (`docs/v4-platform/STATUS-2026-05-02-week8-rc-acceptance.md`) + `feature/v4.0` → `main` once-per-major merge (PR #98) + `v4.0.0` GA tag.
 
-**Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo:^1.0` and `padosoft/laravel-pii-redactor:^1.2` are load-bearing in `require` (chat path + v4.1 PII redactor integration respectively). `padosoft/laravel-flow:^1.0` is also in `require` since v4.2/W2 sub-PR 3a (PR #114) — installed as a runtime dependency with its 4 published migrations applied + an AskMyDocs supplementary migration adding tenant_id (R30/R31) — but its actual orchestration of AskMyDocs's pipelines (`IngestDocumentJob` etc.) is **pending** in follow-up sub-PRs 3b/3c/3d. `padosoft/eval-harness` remains in `require-dev` (CI-only, scoped for v4.2 sub-PR 4). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
+**Sister packages composer constraints (v4 release train)** — `padosoft/laravel-ai-regolo:^1.0` and `padosoft/laravel-pii-redactor:^1.2` are load-bearing in `require` (chat path + v4.1 PII redactor integration respectively). `padosoft/laravel-flow:^1.0` is also in `require` since v4.2/W2 sub-PR 3a (PR #114) — installed as a runtime dependency with its 4 published migrations applied + an AskMyDocs supplementary migration adding tenant_id (R30/R31) — but its actual orchestration of AskMyDocs's pipelines (`IngestDocumentJob` etc.) is **pending** in follow-up sub-PRs 3b/3c/3d. `padosoft/eval-harness` remains in `require-dev` (CI-only, now pinned to `^1.2.0`). `padosoft/laravel-patent-box-tracker` is intentionally NOT declared in AskMyDocs's `composer.json` — operators install it in their own Laravel project per R37 (see [Patent Box dossier](#patent-box-dossier-v40-dogfood)).
 ```json
 {
     "require": {
@@ -554,11 +554,11 @@ The v4.0.0 GA closes the **8-week v4.0 cycle**. `feature/v4.0` was merged into `
         "padosoft/laravel-flow":               "^1.0"
     },
     "require-dev": {
-        "padosoft/eval-harness":               "^0.1.0"
+        "padosoft/eval-harness":               "^1.2.0"
     }
 }
 ```
-All five packages are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
+All five sister packages named in this paragraph (`laravel-ai-regolo`, `laravel-pii-redactor`, `laravel-flow`, `eval-harness`, `laravel-patent-box-tracker`) are **standalone-agnostic** — zero references to `KnowledgeDocument`, `KbSearchService`, `kb_*` tables, `lopadova/askmydocs`, or any other sister Padosoft package in their own `src/`. Architecture tests enforce this on every CI run.
 
 **Pull requests merged on `feature/v4.0` since v3.0.0** (W5..W8 additions on top of the rc1 list below)
 - #96 W7.G — RC2/RC3/RC4 cuts + W5+W6+W7 closure docs + README + dogfood YAML refresh
@@ -693,7 +693,7 @@ Stable consumers stay on v3.x; opt into the rc with
 - #92 — copilot-pr-review-loop skill: codify dual-bot polling pattern
 - #93 W4 — W4 closure status + Patent Box tracker dogfood YAML config
 - #94 — R39 rule (tag `vX.Y.0-rcN` at every Wn milestone closure)
-- #95 W4.F — README + STATUS-week4 + dogfood YAML refresh for `v4.0.0-rc1` (this PR)
+- #95 W4.F — README + STATUS-week4 + dogfood YAML refresh for `v4.0.0-rc1`
 
 **Roadmap — still pending in v4.0**
 - ~~**W5** — `padosoft/laravel-flow` v0.1 (saga / workflow orchestration)~~ — shipped 2026-05-02 (`v4.0.0-rc2`); closure under `STATUS-2026-05-02-week5.md`
