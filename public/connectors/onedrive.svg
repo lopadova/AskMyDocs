@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Microsoft OneDrive">
+  <title>Microsoft OneDrive</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <g transform="translate(6, 18)">
+    <path d="M16 6 C19 4 23 4 26 6 C27 4 30 3 33 4 C37 5 40 8 40 12 C44 12 48 15 48 19 C48 23 45 26 41 26 L9 26 C5 26 2 23 2 19 C2 15 5 12 9 12 C9 9 12 6 16 6 Z"
+          fill="#0078d4" stroke="#005a9e" stroke-width="0.8" stroke-linejoin="round"/>
+  </g>
+</svg>
