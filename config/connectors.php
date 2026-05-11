@@ -32,6 +32,8 @@ return [
     'built_in' => [
         \App\Connectors\BuiltIn\GoogleDriveConnector::class,
         \App\Connectors\BuiltIn\NotionConnector::class,
+        \App\Connectors\BuiltIn\EvernoteConnector::class,
+        \App\Connectors\BuiltIn\FabricConnector::class,
     ],
 
     /*
@@ -136,6 +138,50 @@ return [
             // revision; bump when Notion ships a backward-compatible
             // version we've validated against.
             'api_version' => env('CONNECTOR_NOTION_API_VERSION', '2022-06-28'),
+        ],
+
+        'evernote' => [
+            'client_id' => env('CONNECTOR_EVERNOTE_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_EVERNOTE_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'CONNECTOR_EVERNOTE_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/evernote/oauth/callback'
+            ),
+            'oauth_authorize_url' => 'https://www.evernote.com/oauth2/authorize',
+            'oauth_token_url' => 'https://www.evernote.com/oauth2/token',
+            'oauth_revoke_url' => 'https://www.evernote.com/oauth2/revoke',
+            // Override to https://sandbox.evernote.com for local dev
+            // (Evernote ships a parallel sandbox at the same /v1 path
+            // structure for testing without affecting production data).
+            'api_base' => env('CONNECTOR_EVERNOTE_API_BASE', 'https://api.evernote.com'),
+        ],
+
+        'fabric' => [
+            // Fabric.so (fabric.so) — the AI-native knowledge tool, NOT
+            // Microsoft Fabric. Auth is API-key based today; OAuth2 is
+            // documented as "coming soon" per
+            // https://developers.fabric.so/developer-guide/getting-started.
+            //
+            // Per-tenant credentials live on the installation's
+            // `config_json.api_key` / `config_json.workspace_id` — the
+            // env-var path below is a development convenience for
+            // single-tenant operators.
+            'api_key' => env('CONNECTOR_FABRIC_API_KEY'),
+            'workspace_id' => env('CONNECTOR_FABRIC_WORKSPACE_ID'),
+            'api_base' => env('CONNECTOR_FABRIC_API_BASE', 'https://api.fabric.so'),
+            // Flip to true once fabric.so ships OAuth2 GA + the
+            // connector's `initiateOAuth()` / `handleOAuthCallback()`
+            // implementations land. Until then, leave false — the
+            // admin SPA renders the API-key form instead of OAuth.
+            'oauth_enabled' => (bool) env('CONNECTOR_FABRIC_OAUTH_ENABLED', false),
+            'client_id' => env('CONNECTOR_FABRIC_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_FABRIC_CLIENT_SECRET'),
+            'redirect_uri' => env(
+                'CONNECTOR_FABRIC_REDIRECT_URI',
+                env('APP_URL', 'http://localhost').'/api/admin/connectors/fabric/oauth/callback'
+            ),
+            'oauth_authorize_url' => 'https://api.fabric.so/v2/oauth/authorize',
+            'oauth_token_url' => 'https://api.fabric.so/v2/oauth/token',
         ],
     ],
 

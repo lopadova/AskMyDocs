@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
@@ -402,6 +403,13 @@ Route::middleware([
         Route::delete('/{installationId}', [ConnectorAdminController::class, 'destroy'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.destroy');
+
+        // v4.5/W4 — Evernote-specific bulk import endpoint (.enex
+        // export upload). Lives inside the same gate group as the
+        // OAuth-driven endpoints so the `can:manageConnectors` ability
+        // applies uniformly.
+        Route::post('/evernote/import-enex', [EvernoteEnexController::class, 'importEnex'])
+            ->name('api.admin.connectors.evernote.import-enex');
     });
 
 /*
