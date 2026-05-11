@@ -469,21 +469,68 @@ class FabricConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
-        \App\Jobs\IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $paths['relative'],
-            disk: $paths['disk'],
-            title: $title !== '' ? $title : 'Fabric note',
-            metadata: [
+        $tags = $this->extractFabricTags($noteListEntry);
+        $fabricFields = [
+            'note_id'         => $noteId,
+            'workspace_id'    => $noteListEntry['workspace_id'] ?? null,
+            'collection_id'   => $noteListEntry['collection_id'] ?? null,
+            'updated_at'      => $noteListEntry['updated_at'] ?? null,
+            'ai_annotations'  => $noteListEntry['ai_annotations'] ?? [],
+            'tags'            => $tags,
+        ];
+
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
                 'connector' => $this->key(),
                 'installation_id' => $installation->id,
                 'fabric_note_id' => $noteId,
                 'fabric_workspace_id' => $noteListEntry['workspace_id'] ?? null,
                 'fabric_updated_at' => $noteListEntry['updated_at'] ?? null,
             ],
-            mimeType: 'text/markdown',
+            sourceKey: 'fabric',
+            sourceFields: $fabricFields,
+            tags: $tags,
+            statusActive: true,
+            lastModified: $noteListEntry['updated_at'] ?? null,
+            owner: null,
+        );
+
+        \App\Jobs\IngestDocumentJob::dispatch(
+            projectKey: $projectKey,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
+            title: $title !== '' ? $title : 'Fabric note',
+            metadata: $sourceMeta,
+            mimeType: \App\Connectors\Support\VendorMimeSelector::MIME_FABRIC_NOTE,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * Fabric returns tags either as a flat list of strings or as
+     * `{id, name}` objects depending on workspace setup. Normalise to
+     * a list of names so the chunker and reranker see one shape.
+     *
+     * @param  array<string,mixed>  $note
+     * @return list<string>
+     */
+    private function extractFabricTags(array $note): array
+    {
+        $raw = $note['tags'] ?? [];
+        if (! is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $t) {
+            if (is_string($t) && $t !== '') {
+                $out[] = trim($t);
+                continue;
+            }
+            if (is_array($t) && isset($t['name']) && is_string($t['name']) && $t['name'] !== '') {
+                $out[] = trim($t['name']);
+            }
+        }
+        return array_values(array_unique($out));
     }
 
     /**

@@ -483,12 +483,9 @@ class NotionConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
-        IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $paths['relative'],
-            disk: $paths['disk'],
-            title: $title !== '' ? $title : 'Notion page',
-            metadata: [
+        $notionFields = $this->extractNotionFields($page);
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
                 'connector' => $this->key(),
                 'installation_id' => $installation->id,
                 'notion_page_id' => $pageId,
@@ -497,9 +494,145 @@ class NotionConnector extends BaseConnector
                 'created_time' => $page['created_time'] ?? null,
                 'archived' => (bool) ($page['archived'] ?? false),
             ],
-            mimeType: 'text/markdown',
+            sourceKey: 'notion',
+            sourceFields: $notionFields,
+            tags: $notionFields['tags'] ?? [],
+            statusActive: $this->resolveStatusActive($notionFields['properties']['status'] ?? null),
+            lastModified: $page['last_edited_time'] ?? null,
+            owner: $notionFields['properties']['owner'] ?? null,
+        );
+
+        IngestDocumentJob::dispatch(
+            projectKey: $projectKey,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
+            title: $title !== '' ? $title : 'Notion page',
+            metadata: $sourceMeta,
+            mimeType: \App\Connectors\Support\VendorMimeSelector::MIME_NOTION_PAGE,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * Pull the rich frontmatter v4.5/W5.5 chunker + reranker need from a
+     * Notion page object. Best-effort extraction — every key is optional
+     * (Notion APIs return wildly different shapes per property type) and
+     * the SourceAwareMetadataBuilder degrades gracefully when fields are
+     * missing.
+     *
+     * Property types collapsed to scalar/list shapes:
+     *   - `select`        → string (option name)
+     *   - `multi_select`  → list<string> (option names; flat-promoted to tags)
+     *   - `status`        → string (status name)
+     *   - `date`          → string (start)
+     *   - `people`        → list<string> (user names; first → owner)
+     *   - `email` / `url` → string
+     *   - `formula` / `rollup` → resolved scalar where possible
+     *
+     * @param  array<string,mixed>  $page
+     * @return array<string,mixed>
+     */
+    private function extractNotionFields(array $page): array
+    {
+        $databaseId = null;
+        $parent = $page['parent'] ?? [];
+        if (is_array($parent) && ($parent['type'] ?? null) === 'database_id') {
+            $databaseId = (string) ($parent['database_id'] ?? '');
+        }
+
+        $properties = $page['properties'] ?? [];
+        $resolved = [];
+        $tags = [];
+        $owner = null;
+        if (is_array($properties)) {
+            foreach ($properties as $name => $prop) {
+                if (! is_array($prop) || ! is_string($name)) {
+                    continue;
+                }
+                $resolved[$name] = $this->scalarisePropertyValue($prop);
+                $type = $prop['type'] ?? '';
+                if ($type === 'multi_select' && is_array($prop['multi_select'] ?? null)) {
+                    foreach ($prop['multi_select'] as $opt) {
+                        if (is_array($opt) && isset($opt['name']) && is_string($opt['name'])) {
+                            $tags[] = $opt['name'];
+                        }
+                    }
+                }
+                if ($owner === null && $type === 'people' && is_array($prop['people'] ?? null)) {
+                    foreach ($prop['people'] as $person) {
+                        if (is_array($person) && isset($person['person']['email']) && is_string($person['person']['email'])) {
+                            $owner = $person['person']['email'];
+                            break;
+                        }
+                        if (is_array($person) && isset($person['name']) && is_string($person['name']) && $person['name'] !== '') {
+                            $owner = $person['name'];
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        $lastEditedBy = $page['last_edited_by']['name']
+            ?? $page['last_edited_by']['id']
+            ?? null;
+
+        return [
+            'database_id' => $databaseId,
+            'properties' => $resolved,
+            'tags' => array_values(array_unique($tags)),
+            'last_edited_by' => $lastEditedBy,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $prop
+     */
+    private function scalarisePropertyValue(array $prop): mixed
+    {
+        $type = $prop['type'] ?? '';
+        $value = $prop[$type] ?? null;
+        return match ($type) {
+            'select', 'status' => is_array($value) && isset($value['name']) ? (string) $value['name'] : null,
+            'multi_select'     => is_array($value)
+                ? array_values(array_filter(
+                    array_map(static fn ($v) => is_array($v) && isset($v['name']) ? (string) $v['name'] : null, $value),
+                    static fn ($v): bool => $v !== null,
+                ))
+                : [],
+            'date'             => is_array($value) ? ($value['start'] ?? null) : null,
+            'people'           => is_array($value)
+                ? array_values(array_filter(array_map(
+                    static fn ($p) => is_array($p) ? ($p['name'] ?? null) : null,
+                    $value,
+                )))
+                : [],
+            'email', 'url', 'phone_number' => is_string($value) ? $value : null,
+            'number', 'checkbox' => $value,
+            'title', 'rich_text' => is_array($value)
+                ? trim(implode('', array_map(
+                    static fn ($seg) => is_array($seg) ? (string) ($seg['plain_text'] ?? '') : '',
+                    $value,
+                )))
+                : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Status-active heuristic: anything other than "Done", "Completed",
+     * "Archived", "Cancelled" (case-insensitive) is treated as active.
+     * The reranker uses this signal to nudge in-flight work above
+     * already-finished entries — losing the nuance is preferable to
+     * codifying a project-specific status lexicon.
+     */
+    private function resolveStatusActive(mixed $status): ?bool
+    {
+        if (! is_string($status) || $status === '') {
+            return null;
+        }
+        $inactive = ['done', 'completed', 'archived', 'cancelled', 'canceled', 'closed'];
+        return ! in_array(strtolower(trim($status)), $inactive, true);
     }
 
     /**

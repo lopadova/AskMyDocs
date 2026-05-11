@@ -613,12 +613,33 @@ class OneDriveConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
-        IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $paths['relative'],
-            disk: $paths['disk'],
-            title: $name,
-            metadata: [
+        $owner = $this->extractItemOwner($item);
+        $folderPath = $item['parentReference']['path'] ?? null;
+        $oneDriveFields = [
+            'item_id'         => $itemId,
+            'mime_type'       => $mimeType,
+            'web_url'         => $item['webUrl'] ?? null,
+            'size'            => $item['size'] ?? null,
+            'folder_path'     => is_string($folderPath) ? $folderPath : null,
+            'owner'           => $owner,
+            'last_modified'   => $item['lastModifiedDateTime'] ?? null,
+            'last_modified_by' => $item['lastModifiedBy']['user']['displayName'] ?? null,
+            'shared_with'     => array_values(array_filter(
+                array_map(
+                    static fn ($p) => is_array($p) ? ($p['grantedTo']['user']['email'] ?? null) : null,
+                    (array) ($item['permissions'] ?? []),
+                ),
+                static fn ($v): bool => is_string($v) && $v !== '',
+            )),
+        ];
+
+        $effectiveMime = \App\Connectors\Support\VendorMimeSelector::forOneDrive($mimeType);
+        if ($effectiveMime === \App\Connectors\Support\VendorMimeSelector::MIME_GENERIC_MARKDOWN) {
+            $effectiveMime = $persistedMime;
+        }
+
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
                 'connector' => $this->key(),
                 'installation_id' => $installation->id,
                 'onedrive_item_id' => $itemId,
@@ -627,9 +648,46 @@ class OneDriveConnector extends BaseConnector
                 'onedrive_web_url' => $item['webUrl'] ?? null,
                 'onedrive_size' => $item['size'] ?? null,
             ],
-            mimeType: $persistedMime,
+            sourceKey: 'onedrive',
+            sourceFields: $oneDriveFields,
+            tags: [],
+            statusActive: true,
+            lastModified: $item['lastModifiedDateTime'] ?? null,
+            owner: $owner,
+        );
+
+        IngestDocumentJob::dispatch(
+            projectKey: $projectKey,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
+            title: $name,
+            metadata: $sourceMeta,
+            mimeType: $effectiveMime,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * Owner comes via `createdBy.user.email` (preferred) or
+     * `createdBy.user.displayName` (fallback). Microsoft Graph nests
+     * everything two levels deep.
+     *
+     * @param  array<string,mixed>  $item
+     */
+    private function extractItemOwner(array $item): ?string
+    {
+        $created = $item['createdBy']['user'] ?? null;
+        if (is_array($created)) {
+            $email = $created['email'] ?? null;
+            if (is_string($email) && $email !== '') {
+                return $email;
+            }
+            $name = $created['displayName'] ?? null;
+            if (is_string($name) && $name !== '') {
+                return $name;
+            }
+        }
+        return null;
     }
 
     /**

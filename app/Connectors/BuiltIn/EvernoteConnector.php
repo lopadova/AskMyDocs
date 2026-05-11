@@ -543,24 +543,85 @@ class EvernoteConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
+        $tags = $this->normaliseTagList($note['tagNames'] ?? ($metadata['tagNames'] ?? null));
+        $lastModified = $this->normaliseEvernoteTimestamp($note['updated'] ?? ($metadata['updated'] ?? null));
+
+        $evernoteFields = [
+            'note_guid'      => $guid,
+            'notebook_guid'  => $metadata['notebookGuid'] ?? ($note['notebookGuid'] ?? null),
+            'notebook'       => $metadata['notebookName'] ?? null,
+            'tags'           => $tags,
+            'created'        => $note['created'] ?? ($metadata['created'] ?? null),
+            'updated'        => $note['updated'] ?? ($metadata['updated'] ?? null),
+            'source_url'     => $note['attributes']['sourceURL'] ?? null,
+            'reminder_done'  => isset($note['attributes']['reminderDoneTime']),
+        ];
+
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
+                'connector' => $this->key(),
+                'installation_id' => $installation->id,
+                'evernote_note_guid' => $guid,
+                'evernote_notebook_guid' => $evernoteFields['notebook_guid'],
+                'evernote_created' => $evernoteFields['created'],
+                'evernote_updated' => $evernoteFields['updated'],
+                'evernote_tag_guids' => $note['tagGuids'] ?? ($metadata['tagGuids'] ?? null),
+                'evernote_source' => 'oauth',
+            ],
+            sourceKey: 'evernote',
+            sourceFields: $evernoteFields,
+            tags: $tags,
+            statusActive: ! ($evernoteFields['reminder_done']),
+            lastModified: $lastModified,
+            owner: null,
+        );
+
         IngestDocumentJob::dispatch(
             projectKey: $projectKey,
             relativePath: $paths['relative'],
             disk: $paths['disk'],
             title: $title !== '' ? $title : 'Evernote note',
-            metadata: [
-                'connector' => $this->key(),
-                'installation_id' => $installation->id,
-                'evernote_note_guid' => $guid,
-                'evernote_notebook_guid' => $metadata['notebookGuid'] ?? ($note['notebookGuid'] ?? null),
-                'evernote_created' => $note['created'] ?? ($metadata['created'] ?? null),
-                'evernote_updated' => $note['updated'] ?? ($metadata['updated'] ?? null),
-                'evernote_tag_guids' => $note['tagGuids'] ?? ($metadata['tagGuids'] ?? null),
-                'evernote_source' => 'oauth',
-            ],
-            mimeType: 'text/markdown',
+            metadata: $sourceMeta,
+            mimeType: \App\Connectors\Support\VendorMimeSelector::MIME_EVERNOTE_NOTE,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function normaliseTagList(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return [];
+        }
+        return array_values(array_unique(array_filter(
+            array_map(static fn ($t) => is_string($t) ? trim($t) : '', $raw),
+            static fn (string $t): bool => $t !== '',
+        )));
+    }
+
+    /**
+     * Evernote timestamps come as milliseconds-since-epoch (Thrift legacy).
+     * RecencyBucketer needs ISO-8601 or DateTimeInterface — convert here.
+     */
+    private function normaliseEvernoteTimestamp(mixed $raw): ?string
+    {
+        if ($raw === null) {
+            return null;
+        }
+        if (is_string($raw) && trim($raw) !== '') {
+            return $raw;
+        }
+        if (is_int($raw) || (is_numeric($raw) && (int) $raw > 0)) {
+            $seconds = (int) ((int) $raw / 1000);
+            try {
+                return (new \DateTimeImmutable('@' . $seconds))->format(\DateTimeInterface::ATOM);
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private function throwAuthOrApi(Response $response, string $context): never

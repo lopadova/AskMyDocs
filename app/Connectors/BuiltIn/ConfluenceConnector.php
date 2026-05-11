@@ -576,24 +576,100 @@ class ConfluenceConnector extends BaseConnector
             throw new \RuntimeException("Failed to write {$paths['absolute']} to KB disk [{$paths['disk']}].");
         }
 
-        IngestDocumentJob::dispatch(
-            projectKey: $projectKey,
-            relativePath: $paths['relative'],
-            disk: $paths['disk'],
-            title: $title !== '' ? $title : 'Confluence page',
-            metadata: [
+        $labels = $this->extractLabels($page);
+        $ancestorTitles = $this->extractAncestorTitles($page);
+        $version = $page['version']['number'] ?? null;
+        $lastModified = $page['version']['when'] ?? null;
+        $status = (string) ($page['status'] ?? 'current');
+        $hasRestrictions = ! empty($page['restrictions']['read']['restrictions']['user']['results'] ?? []);
+
+        $confluenceFields = [
+            'space_key'           => $spaceKey,
+            'space_name'          => $page['space']['name'] ?? null,
+            'cloud_id'            => $cloudId,
+            'page_id'             => $pageId,
+            'version'             => $version,
+            'labels'              => $labels,
+            'ancestor_titles'     => $ancestorTitles,
+            'restrictions_present' => $hasRestrictions,
+            'status'              => $status,
+        ];
+
+        $sourceMeta = (new \App\Connectors\Support\SourceAwareMetadataBuilder())->build(
+            base: [
                 'connector' => $this->key(),
                 'installation_id' => $installation->id,
                 'confluence_page_id' => $pageId,
                 'confluence_space_key' => $spaceKey,
                 'confluence_cloud_id' => $cloudId,
-                'confluence_version' => $page['version']['number'] ?? null,
-                'confluence_last_modified' => $page['version']['when'] ?? null,
-                'confluence_status' => $page['status'] ?? 'current',
+                'confluence_version' => $version,
+                'confluence_last_modified' => $lastModified,
+                'confluence_status' => $status,
             ],
-            mimeType: 'text/markdown',
+            sourceKey: 'confluence',
+            sourceFields: $confluenceFields,
+            tags: $labels,
+            statusActive: $status === 'current',
+            lastModified: $lastModified,
+            owner: null,
+        );
+
+        IngestDocumentJob::dispatch(
+            projectKey: $projectKey,
+            relativePath: $paths['relative'],
+            disk: $paths['disk'],
+            title: $title !== '' ? $title : 'Confluence page',
+            metadata: $sourceMeta,
+            mimeType: \App\Connectors\Support\VendorMimeSelector::MIME_CONFLUENCE_PAGE,
             tenantId: $installation->tenant_id,
         );
+    }
+
+    /**
+     * Confluence Cloud nests labels under `metadata.labels.results[*].name`
+     * when the page was fetched with `expand=metadata.labels`. Missing /
+     * malformed expansions degrade to an empty list — the reranker's
+     * tag-overlap signal is additive, not gating.
+     *
+     * @param  array<string,mixed>  $page
+     * @return list<string>
+     */
+    private function extractLabels(array $page): array
+    {
+        $results = $page['metadata']['labels']['results'] ?? [];
+        if (! is_array($results)) {
+            return [];
+        }
+        $out = [];
+        foreach ($results as $row) {
+            if (is_array($row) && isset($row['name']) && is_string($row['name'])) {
+                $out[] = $row['name'];
+            }
+        }
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Ancestor pages — Confluence returns them root → leaf. We keep that
+     * order so the chunker can render "Engineering > Architecture > …"
+     * breadcrumbs without re-sorting.
+     *
+     * @param  array<string,mixed>  $page
+     * @return list<string>
+     */
+    private function extractAncestorTitles(array $page): array
+    {
+        $ancestors = $page['ancestors'] ?? [];
+        if (! is_array($ancestors)) {
+            return [];
+        }
+        $out = [];
+        foreach ($ancestors as $a) {
+            if (is_array($a) && isset($a['title']) && is_string($a['title']) && $a['title'] !== '') {
+                $out[] = $a['title'];
+            }
+        }
+        return $out;
     }
 
     /**
