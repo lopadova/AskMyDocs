@@ -49,8 +49,12 @@ SPA + Glide Data Grid + citation popover + SSE streaming land in W3.
   SSE transport. R14 loud refusal: red flag + reasoning when no
   chunks above the relevance threshold, when the LLM omits a JSON
   line, when JSON parse fails, when JSON encode fails on bad UTF-8.
-  Atomic upsert via `Model::upsert()` keyed on the composite UNIQUE
-  — concurrent generate/regenerate calls cannot race past each other.
+  DB-level upsert via `Model::upsert()` keyed on the composite UNIQUE
+  `(tenant_id, review_id, document_id, column_index)` prevents
+  duplicate rows under concurrent generate/regenerate. Cell content
+  itself is last-writer-wins — there is no row-level lock, so the
+  later writer's `summary`/`flag`/`reasoning`/`citations` overwrite
+  the earlier writer's. The narrow guarantee is "no duplicate rows".
 
 - **`ColumnPromptSuggester`** — `POST /api/admin/tabular-reviews/prompt`
   drafts a 1-2 sentence extraction prompt from a column name + format.
