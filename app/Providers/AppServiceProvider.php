@@ -105,6 +105,23 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPiiRedactorAdminTenantStamping();
         $this->registerEvalHarnessUiGates();
         $this->registerConnectorGates();
+        $this->registerTabularReviewGates();
+    }
+
+    /**
+     * v4.7/W1 — Wires the Gate that protects the tabular-review admin
+     * surface. Admits super-admin + admin (full RW within tenant) and
+     * viewer (read-only). The controller enforces the read-only side
+     * of viewer at the action layer.
+     */
+    private function registerTabularReviewGates(): void
+    {
+        Gate::define('viewTabularReviews', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin', 'viewer']);
+        });
     }
 
     /**

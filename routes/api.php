@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
+use App\Http\Controllers\Api\Admin\TabularReviewController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
@@ -455,4 +456,51 @@ Route::middleware([
     ->group(function () {
         Route::get('/bootstrap-config', [EvalHarnessUiBootstrapController::class, 'show'])
             ->name('api.admin.eval-harness.bootstrap-config');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Tabular Reviews (v4.7/W1)
+|--------------------------------------------------------------------------
+|
+| Spreadsheet-style document extraction. Mounted under
+| `can:viewTabularReviews` so the `viewer` Spatie role can browse
+| (read-only) alongside `admin` + `super-admin`. The controller enforces
+| the read-only constraint for viewer at the action layer.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewTabularReviews',
+])
+    ->prefix('admin/tabular-reviews')
+    ->group(function () {
+        Route::get('/', [TabularReviewController::class, 'index'])
+            ->name('api.admin.tabular-reviews.index');
+        Route::post('/', [TabularReviewController::class, 'store'])
+            ->name('api.admin.tabular-reviews.store');
+        // `/prompt` MUST come before `/{id}` so the literal path is
+        // matched first (otherwise "prompt" parses as an id and 404s).
+        Route::post('/prompt', [TabularReviewController::class, 'suggestPrompt'])
+            ->name('api.admin.tabular-reviews.prompt');
+        Route::get('/{id}', [TabularReviewController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.show');
+        Route::patch('/{id}', [TabularReviewController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.update');
+        Route::delete('/{id}', [TabularReviewController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.destroy');
+        Route::post('/{id}/generate', [TabularReviewController::class, 'generate'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.generate');
+        Route::post('/{id}/regenerate-cell', [TabularReviewController::class, 'regenerateCell'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.regenerate-cell');
+        Route::post('/{id}/clear-cells', [TabularReviewController::class, 'clearCells'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.clear-cells');
     });
