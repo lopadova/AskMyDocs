@@ -116,8 +116,13 @@ function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
         if (!code) {
             return;
         }
+        // Guard: if the Clipboard API is unavailable, `navigator.clipboard?.writeText`
+        // resolves to `undefined` (no throw) — never set copied=true in that case.
+        if (!navigator.clipboard?.writeText) {
+            return;
+        }
         try {
-            await navigator.clipboard?.writeText(code.textContent ?? '');
+            await navigator.clipboard.writeText(code.textContent ?? '');
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {

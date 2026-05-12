@@ -52,8 +52,12 @@ export function SuggestedFollowups({
     useEffect(() => {
         // Don't fetch while the SDK is mid-turn — the BE has nothing
         // useful to offer yet and the row would shift on the user.
+        // Also reset loading so a fetch that was in-flight when
+        // isStreaming flipped doesn't leave the bar stuck in a blank
+        // loading state.
         if (conversationId === null || turnId === 0 || isStreaming) {
             setSuggestions([]);
+            setLoading(false);
             return;
         }
         let cancelled = false;

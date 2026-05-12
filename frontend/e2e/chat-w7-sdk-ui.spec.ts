@@ -29,10 +29,11 @@ import {
  *
  * The base scenarios all use `stubChatAssistantReply()` so the AI
  * provider is mocked exactly as the rest of the `chat*.spec.ts`
- * family does. The follow-up suggestions endpoint is `/conversations/*\/
- * suggested-followups` which lives under the same conversation-messages
- * route prefix and is therefore in the EXTERNAL_PROXY_PATTERNS
- * allowlist via the parent wildcard.
+ * family does. The `/conversations/*/suggested-followups` endpoint
+ * is NOT stubbed here — it hits the real Laravel back-end (R13).
+ * It is therefore NOT in EXTERNAL_PROXY_PATTERNS and does not need
+ * to be allowlisted; `scripts/verify-e2e-real-data.sh` will pass
+ * without any changes to that file.
  */
 
 test.describe.configure({ timeout: 60_000 });

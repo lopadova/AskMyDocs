@@ -47,9 +47,13 @@ export interface MessageThreadProps {
     onBranchAt?: (messageId: number) => void | Promise<void>;
     /**
      * v4.5/W7 Tier 1 #4 — edit a user turn and re-submit. Receives
-     * the message index (from `messages[]`) and the new content.
+     * the message index (from `messages[]`), the persisted numeric
+     * message id (null for UIMessage rows not yet persisted), and the
+     * new content. The caller MUST truncate the DB history using
+     * the numeric id before re-submitting so the BE context window
+     * re-runs from the edit point.
      */
-    onEditUserMessage?: (messageIndex: number, newContent: string) => void | Promise<void>;
+    onEditUserMessage?: (messageIndex: number, messageId: number | null, newContent: string) => void | Promise<void>;
 }
 
 /**
@@ -192,10 +196,10 @@ export function MessageThread({
                                 ? () => onBranchAt(numericId)
                                 : undefined;
                         // Edit: any user message when not mid-stream
-                        // and we have an edit callback.
+                         // and we have an edit callback.
                         const editHandler =
                             m.role === 'user' && !isStreaming && onEditUserMessage
-                                ? (newText: string) => onEditUserMessage(i, newText)
+                                ? (newText: string) => onEditUserMessage(i, numericId, newText)
                                 : undefined;
                         return (
                             <MessageBubble

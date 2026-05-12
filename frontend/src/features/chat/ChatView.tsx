@@ -287,12 +287,23 @@ export function ChatView(): ReactNode {
     };
 
     // v4.5/W7 Tier 1 #4 — inline edit a user message and re-submit.
-    // The SDK's `setMessages` truncates the cache to everything BEFORE
-    // the edited message, then `sendMessage({ text: newContent })`
-    // restarts the turn from the edit point.
-    const handleEditUserMessage = async (messageIndex: number, newContent: string) => {
-        // Truncate the cache: keep everything strictly before the
-        // edited message. The new turn then re-appends user + assistant.
+    // The edit flow requires a backend truncation FIRST (R20 — the BE
+    // loads history from DB, not from client-sent messages) so the
+    // next turn's context window starts from the edit point:
+    //   1. DELETE /conversations/{id}/messages-from/{messageId} — removes
+    //      the edited message + everything after it from the DB.
+    //   2. chat.setMessages() truncates the SDK's in-memory cache to match.
+    //   3. sendMessage({ text: newContent }) sends the replacement text.
+    // On onFinish the TanStack invalidation refetches the trimmed history
+    // + new user + assistant pair, so the thread looks exactly as if
+    // the user had typed the new content from the start.
+    const handleEditUserMessage = async (messageIndex: number, messageId: number | null, newContent: string) => {
+        if (activeId !== null && messageId !== null) {
+            // Truncate DB history from the edited message onwards.
+            await chatApi.truncateMessagesFrom(activeId, messageId);
+        }
+        // Truncate the SDK in-memory cache to keep the UI consistent
+        // with the DB state during the in-flight request window.
         chat.setMessages((prev) => prev.slice(0, messageIndex));
         await chat.sendMessage({ text: newContent });
     };

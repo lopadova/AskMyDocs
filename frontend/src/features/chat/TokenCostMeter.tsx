@@ -39,6 +39,11 @@ export function TokenCostMeter({
         queryFn: () => chatCostApi.fetchRates(),
         staleTime: 60 * 60 * 1000,
         gcTime: 60 * 60 * 1000,
+        // Skip the network request entirely when the meter won't render
+        // (no token telemetry, or provider/model absent). The early return
+        // below short-circuits the render, but without this guard the
+        // query fires for every assistant bubble that has no token data.
+        enabled: tokensTotal > 0 && !!provider && !!model,
     });
 
     if (tokensTotal <= 0) {

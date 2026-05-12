@@ -220,6 +220,27 @@ export const chatApi = {
     },
 
     /**
+     * v4.5/W7 Tier 1 #4 — inline user-message edit: delete the message
+     * being edited AND all subsequent messages from the DB so the BE
+     * history window re-runs from the edit point when `sendMessage()`
+     * fires next. Returns the count of deleted rows for diagnostics.
+     *
+     * R20: the BE is authoritative for conversation history; client-only
+     * cache truncation via `chat.setMessages()` is NOT sufficient because
+     * `MessageStreamController` / `MessageController` load history from
+     * `$conversation->messages()`, not from the client-sent payload.
+     */
+    async truncateMessagesFrom(
+        conversationId: number,
+        messageId: number,
+    ): Promise<{ deleted_count: number }> {
+        const { data } = await api.delete<{ deleted_count: number }>(
+            `/conversations/${conversationId}/messages-from/${messageId}`,
+        );
+        return data;
+    },
+
+    /**
      * v4.5/W7 Tier 2 — 3 follow-up question suggestions for the most
      * recent assistant turn. Best-effort — the BE returns
      * `{suggestions: []}` on any provider failure so the FE pill bar

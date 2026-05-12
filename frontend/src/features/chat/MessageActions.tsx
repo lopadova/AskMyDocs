@@ -5,29 +5,27 @@ export interface MessageActionsProps {
     content: string;
     onRegenerate?: () => void;
     onBranch?: () => void;
-    /**
-     * v4.5/W7 Tier 1 #4 — inline edit handler for user messages. The
-     * caller wires the pencil button to lifting the message into an
-     * inline textarea (handled at the MessageBubble level so the
-     * actions row stays presentational).
-     */
-    onEdit?: () => void;
 }
 
 /**
- * Inline action row for messages: copy, edit (user only), regenerate,
+ * Inline action row for messages: copy, regenerate (assistant only),
  * branch (assistant only).
  *
- * v4.5/W7 Tier 1: regenerate + branch + edit are now first-class
- * features wired through MessageBubble (see ChatView for the actual
- * SDK hook integration).
+ * v4.5/W7 Tier 1: regenerate + branch are wired through MessageBubble.
+ * User-message editing is handled directly in MessageBubble (the edit
+ * button lives on the bubble itself, not in this shared actions row).
  */
-export function MessageActions({ content, onRegenerate, onBranch, onEdit }: MessageActionsProps): ReactNode {
+export function MessageActions({ content, onRegenerate, onBranch }: MessageActionsProps): ReactNode {
     const [copied, setCopied] = useState(false);
 
     const onCopy = async () => {
+        // Guard: if the Clipboard API is unavailable, `navigator.clipboard?.writeText`
+        // resolves to `undefined` (no throw) — never set copied=true in that case.
+        if (!navigator.clipboard?.writeText) {
+            return;
+        }
         try {
-            await navigator.clipboard?.writeText(content);
+            await navigator.clipboard.writeText(content);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {
@@ -47,17 +45,6 @@ export function MessageActions({ content, onRegenerate, onBranch, onEdit }: Mess
             >
                 {copied ? <Icon.Check size={12} /> : <Icon.Copy size={12} />}
             </button>
-            {onEdit && (
-                <button
-                    type="button"
-                    className="btn icon sm ghost"
-                    data-testid="chat-message-edit"
-                    onClick={onEdit}
-                    aria-label="Edit message"
-                >
-                    <Icon.Edit size={12} />
-                </button>
-            )}
             {onRegenerate && (
                 <button
                     type="button"

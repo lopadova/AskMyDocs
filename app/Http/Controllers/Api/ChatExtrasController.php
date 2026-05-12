@@ -9,36 +9,44 @@ use App\Services\Chat\SuggestedFollowupGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 
 /**
  * v4.5/W7 — adjunct endpoints for the Vercel AI SDK UI Tier 1 + Tier 2
  * surface that do NOT belong in the existing controllers:
  *
  *   1. {@see costRates()} — `GET /api/chat/cost-rates`
- *       Public list of (provider, model) → input/output USD per million
- *       tokens. The FE token/cost meter on every assistant bubble
- *       multiplies persisted token counts by this rate. Anonymous
- *       endpoint (no PII, no per-tenant data) — cached at the CDN /
- *       browser side via a short max-age.
+ *       Session-authenticated (auth middleware) list of
+ *       (provider, model) → input/output USD per million tokens.
+ *       The FE token/cost meter on every assistant bubble multiplies
+ *       persisted token counts by this rate. Contains no PII or
+ *       per-tenant data; response carries a short CDN/browser
+ *       max-age so price updates propagate within an hour.
  *
  *   2. {@see branchFromMessage()} — `POST /conversations/{conversation}/branch-from-message/{message}`
  *       Forks the current conversation into a new one rooted at the
  *       given message id. Every message up to AND INCLUDING the named
  *       one is copied into the new conversation (same role + content
- *       + metadata + tenant). The user can then "regenerate" or send a
- *       follow-up off the branch without polluting the source thread.
+ *       + metadata + tenant), inside a DB transaction so the branch
+ *       creation and message copies are atomic.
  *
  *   3. {@see suggestedFollowups()} — `POST /conversations/{conversation}/suggested-followups`
  *       Returns 3 short follow-up prompts the user is likely to want
  *       after the most recent assistant turn. Generates via a cheap
- *       LLM call (re-uses the conversation's chat provider). Falls
- *       back to a small static set if the provider call fails so the
- *       FE never has to handle a 5xx for a non-essential surface.
+ *       LLM call (re-uses the conversation's chat provider). Returns
+ *       `{suggestions: []}` on any provider failure so the FE never
+ *       sees a 5xx for a non-essential surface.
+ *
+ *   4. {@see truncateMessagesFrom()} — `DELETE /conversations/{conversation}/messages-from/{message}`
+ *       Deletes the given message AND all subsequent messages from the
+ *       conversation. Used by the inline user-message edit flow: the
+ *       FE calls this before `sendMessage()` so the BE history window
+ *       re-runs from the edit point (R20 — BE context is DB-authoritative).
  *
  * R30/R31: every query is tenant-scoped through the `user()` /
  * conversation ownership check (mirrors ConversationController).
  *
- * R36 / R26: BE tests use `Http::fake()` for the LLM call.
+ * R26: BE tests mock `AiManager` via Mockery; no real LLM calls in CI.
  */
 class ChatExtrasController extends Controller
 {
@@ -113,34 +121,68 @@ class ChatExtrasController extends Controller
             ->orderBy('id')
             ->get();
 
-        // We do NOT wrap in DB::transaction here: every persistence in
-        // this method targets a NEW row (no concurrent-read invariant
-        // to protect), and an explicit nested transaction conflicts
-        // with the test suite's RefreshDatabase outer transaction on
-        // some SQLite versions. If a copy mid-way fails, the user
-        // sees a partial branch — they delete it and retry. The cost
-        // of guaranteeing atomicity here outweighs the recovery path.
-        $branch = $request->user()->conversations()->create([
-            'title' => $conversation->title ? $conversation->title.' (branch)' : 'Branch',
-            'project_key' => $conversation->project_key,
-        ]);
-
-        $copied = [];
-        foreach ($messages as $source) {
-            $copy = $branch->messages()->create([
-                'role' => $source->role,
-                'content' => $source->content,
-                'metadata' => $source->metadata,
-                'confidence' => $source->confidence,
-                'refusal_reason' => $source->refusal_reason,
+        // Wrap branch creation + message copies in a single transaction
+        // so a mid-loop insert failure cannot leave an empty branch
+        // conversation. Laravel's RefreshDatabase wraps tests in a
+        // transaction and inner DB::transaction() calls nest via
+        // savepoints (supported by both PostgreSQL and SQLite).
+        [$branch, $copied] = DB::transaction(function () use ($request, $conversation, $messages) {
+            $branch = $request->user()->conversations()->create([
+                'title' => $conversation->title ? $conversation->title.' (branch)' : 'Branch',
+                'project_key' => $conversation->project_key,
             ]);
-            $copied[] = $copy->id;
-        }
+
+            $copied = [];
+            foreach ($messages as $source) {
+                $copy = $branch->messages()->create([
+                    'role' => $source->role,
+                    'content' => $source->content,
+                    'metadata' => $source->metadata,
+                    'confidence' => $source->confidence,
+                    'refusal_reason' => $source->refusal_reason,
+                ]);
+                $copied[] = $copy->id;
+            }
+
+            return [$branch, $copied];
+        });
 
         return response()->json([
             'conversation' => $branch->refresh(),
             'copied_message_ids' => $copied,
         ], 201);
+    }
+
+    /**
+     * Truncate a conversation from a given message onwards (inclusive).
+     * Deletes the named message AND every subsequent message so the
+     * backend history window re-runs from the edit point when the
+     * caller's next `sendMessage()` fires.
+     *
+     * Used exclusively by the inline user-message edit flow:
+     *   1. FE calls this endpoint with the id of the message being edited.
+     *   2. FE calls `sendMessage({ text: newContent })`.
+     *   3. On `onFinish`, TanStack query invalidation refetches the
+     *      trimmed history + new user + assistant pair — the thread
+     *      looks exactly like the edit replaced the original message.
+     *
+     * R30: ownership check mirrors the other mutation endpoints.
+     */
+    public function truncateMessagesFrom(Request $request, Conversation $conversation, Message $message): JsonResponse
+    {
+        if ($conversation->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        if ($message->conversation_id !== $conversation->id) {
+            abort(404, 'Message does not belong to this conversation.');
+        }
+
+        $deleted = $conversation->messages()
+            ->where('id', '>=', $message->id)
+            ->delete();
+
+        return response()->json(['deleted_count' => $deleted]);
     }
 
     /**

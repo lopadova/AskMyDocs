@@ -53,6 +53,10 @@ final class ChatExtrasControllerTest extends TestCase
                 '/test/conversations/{conversation}/suggested-followups',
                 [ChatExtrasController::class, 'suggestedFollowups'],
             );
+            Route::delete(
+                '/test/conversations/{conversation}/messages-from/{message}',
+                [ChatExtrasController::class, 'truncateMessagesFrom'],
+            );
         });
     }
 
@@ -246,6 +250,60 @@ final class ChatExtrasControllerTest extends TestCase
 
         $this->postJson("/test/conversations/{$aliceConv->id}/suggested-followups")
             ->assertStatus(403);
+    }
+
+    public function test_truncate_messages_from_deletes_message_and_subsequent_rows(): void
+    {
+        $alice = $this->makeUser('alice');
+        Sanctum::actingAs($alice);
+
+        $conv = $alice->conversations()->create(['title' => 'Edit target']);
+        $m1 = $conv->messages()->create(['role' => 'user', 'content' => 'First question']);
+        $m2 = $conv->messages()->create(['role' => 'assistant', 'content' => 'First answer']);
+        $m3 = $conv->messages()->create(['role' => 'user', 'content' => 'Second question']);
+        $m4 = $conv->messages()->create(['role' => 'assistant', 'content' => 'Second answer']);
+
+        // Truncate from m3 onwards (the user message being edited).
+        $resp = $this->deleteJson("/test/conversations/{$conv->id}/messages-from/{$m3->id}");
+
+        $resp->assertOk()
+            ->assertJsonPath('deleted_count', 2); // m3 + m4 deleted
+
+        // m1 + m2 must survive.
+        $this->assertDatabaseHas('messages', ['id' => $m1->id]);
+        $this->assertDatabaseHas('messages', ['id' => $m2->id]);
+        $this->assertDatabaseMissing('messages', ['id' => $m3->id]);
+        $this->assertDatabaseMissing('messages', ['id' => $m4->id]);
+    }
+
+    public function test_truncate_messages_from_returns_403_for_cross_user_conversation(): void
+    {
+        $alice = $this->makeUser('alice');
+        $bob = $this->makeUser('bob');
+
+        $aliceConv = $alice->conversations()->create(['title' => 'Alice thread']);
+        $aliceMsg = $aliceConv->messages()->create(['role' => 'user', 'content' => 'hi']);
+
+        Sanctum::actingAs($bob);
+
+        $this->deleteJson("/test/conversations/{$aliceConv->id}/messages-from/{$aliceMsg->id}")
+            ->assertStatus(403);
+
+        // Alice's message must be untouched.
+        $this->assertDatabaseHas('messages', ['id' => $aliceMsg->id]);
+    }
+
+    public function test_truncate_messages_from_returns_404_when_message_is_not_in_conversation(): void
+    {
+        $alice = $this->makeUser('alice');
+        Sanctum::actingAs($alice);
+
+        $convA = $alice->conversations()->create(['title' => 'A']);
+        $convB = $alice->conversations()->create(['title' => 'B']);
+        $msgInB = $convB->messages()->create(['role' => 'user', 'content' => 'wrong thread']);
+
+        $this->deleteJson("/test/conversations/{$convA->id}/messages-from/{$msgInB->id}")
+            ->assertStatus(404);
     }
 
     protected function tearDown(): void

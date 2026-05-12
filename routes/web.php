@@ -60,12 +60,16 @@ Route::middleware('auth')->group(function () {
         // v4.5/W7 — Vercel AI SDK UI Tier 1 + Tier 2 surfaces.
         Route::post('/{conversation}/branch-from-message/{message}', [ChatExtrasController::class, 'branchFromMessage']);
         Route::post('/{conversation}/suggested-followups', [ChatExtrasController::class, 'suggestedFollowups']);
+        // Truncate a conversation from a given message onwards (inclusive).
+        // Called by the inline user-message edit flow before sendMessage()
+        // so the BE history window re-runs from the edit point.
+        Route::delete('/{conversation}/messages-from/{message}', [ChatExtrasController::class, 'truncateMessagesFrom']);
     });
 
-    // v4.5/W7 — anonymous, public cost-rate lookup table for the
-    // token/cost meter. Kept under the auth middleware so it still
-    // requires a session (rates are NOT secrets but the endpoint is
-    // part of the chat surface).
+    // v4.5/W7 — session-authenticated cost-rate lookup table for the
+    // token/cost meter. Registered under the auth middleware (rates are
+    // not secrets but the endpoint is part of the authenticated chat
+    // surface). Response carries a 1-hour max-age so clients cache it.
     Route::get('/api/chat/cost-rates', [ChatExtrasController::class, 'costRates']);
 });
 
