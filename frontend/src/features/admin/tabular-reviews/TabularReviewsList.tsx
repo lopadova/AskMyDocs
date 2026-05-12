@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
-import { adminTabularReviewsApi, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
+import { adminTabularReviewsApi, FORMAT_TYPES, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
 
 /**
  * v4.7/W3 — Admin Tabular Reviews list view.
@@ -285,29 +285,20 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                                 style={{ width: '100%', padding: 6 }}
                             >
                                 {/*
-                                 * Full FormatType domain — keep in sync with
-                                 * app/Support/TabularReview/FormatType.php
-                                 * (Copilot iter 3 caught a 7-of-17 subset
-                                 * that prevented creating most valid review
-                                 * configs from the admin UI). 17 cases as
-                                 * of v4.7 GA.
+                                 * Full FormatType domain rendered from the
+                                 * `FORMAT_TYPES` constant in the API client,
+                                 * which mirrors `App\Support\TabularReview\
+                                 * FormatType` (17 cases as of v4.7 GA).
+                                 * R18 — never literal-subset a domain that
+                                 * the BE enforces server-side; Copilot
+                                 * iter 4 caught the Mike-style literals
+                                 * (`free_text` / `percent` / `duration` /
+                                 * `boolean` / `choice` / `flag` / `entity` /
+                                 * `list`) that don't exist on the BE.
                                  */}
-                                <option value="text">text</option>
-                                <option value="free_text">free_text</option>
-                                <option value="number">number</option>
-                                <option value="currency">currency</option>
-                                <option value="percent">percent</option>
-                                <option value="date">date</option>
-                                <option value="duration">duration</option>
-                                <option value="person">person</option>
-                                <option value="entity">entity</option>
-                                <option value="boolean">boolean</option>
-                                <option value="choice">choice</option>
-                                <option value="enum">enum</option>
-                                <option value="enum_status">enum_status</option>
-                                <option value="flag">flag</option>
-                                <option value="list">list</option>
-                                <option value="json_path">json_path</option>
+                                {FORMAT_TYPES.map((ft) => (
+                                    <option key={ft} value={ft}>{ft}</option>
+                                ))}
                             </select>
                             {columns.length > 1 && (
                                 <button

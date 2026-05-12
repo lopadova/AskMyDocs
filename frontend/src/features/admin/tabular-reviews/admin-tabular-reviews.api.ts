@@ -9,29 +9,71 @@ import { api } from '../../../lib/api';
  *
  * The synchronous `/generate` endpoint is exposed here as a typed
  * Promise. The SSE streaming variant (`/generate-stream`) is consumed
- * directly via an `EventSource` constructed by the show-page hook in
- * v4.7.x — keeping it out of this REST client lets the hook own the
- * subscription lifecycle (open / event-by-event-handler / close) and
- * avoid leaking a long-lived EventSource through the axios layer.
+ * by a fetch-based SSE client constructed by the show-page hook in
+ * v4.7.x — native `EventSource` is NOT used because the streaming
+ * route is POST (EventSource is GET-only) and we need to send a
+ * JSON body + Sanctum CSRF/auth cookies. The hook owns the
+ * subscription lifecycle (open / event-by-event handler / close)
+ * and avoids leaking a long-lived readable stream through the axios
+ * layer.
  */
 
+/**
+ * Mirrors `App\Support\TabularReview\FormatType` (17 cases as of
+ * v4.7 GA). Adding a new format requires touching both:
+ *   - this union, AND
+ *   - `app/Support/TabularReview/FormatType.php` (single source of
+ *     truth on the BE).
+ * Copilot iter 4 caught a divergence here — the FE union had Mike-
+ * style literals (`free_text` / `percent` / `duration` / `boolean` /
+ * `choice` / `flag` / `entity` / `list`) that don't exist on the
+ * BE enum. R18 / R9: align FE to the real domain.
+ */
 export type FormatType =
     | 'text'
-    | 'enum_status'
-    | 'enum'
+    | 'bulleted_list'
     | 'number'
-    | 'date'
-    | 'person'
-    | 'entity'
-    | 'list'
-    | 'json_path'
+    | 'percentage'
+    | 'monetary_amount'
     | 'currency'
-    | 'percent'
-    | 'duration'
-    | 'flag'
-    | 'boolean'
-    | 'choice'
-    | 'free_text';
+    | 'yes_no'
+    | 'date'
+    | 'tag'
+    | 'enum'
+    | 'enum_status'
+    | 'rating'
+    | 'url'
+    | 'person'
+    | 'tags_multi'
+    | 'relation'
+    | 'json_path';
+
+/**
+ * Ordered list of every FormatType the BE accepts. Derived from
+ * `App\Support\TabularReview\FormatType` (`values()` static).
+ *
+ * Use this constant — NOT a literal subset — when rendering a
+ * format-picker so the FE never drifts from the BE enum (R18).
+ */
+export const FORMAT_TYPES: ReadonlyArray<FormatType> = [
+    'text',
+    'bulleted_list',
+    'number',
+    'percentage',
+    'monetary_amount',
+    'currency',
+    'yes_no',
+    'date',
+    'tag',
+    'enum',
+    'enum_status',
+    'rating',
+    'url',
+    'person',
+    'tags_multi',
+    'relation',
+    'json_path',
+] as const;
 
 export interface ColumnConfig {
     name: string;

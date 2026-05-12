@@ -146,6 +146,54 @@ describe('TabularReviewsList', () => {
         expect(payload.columns_config[0].name).toBe('Severity');
     });
 
+    it('renders the full FORMAT_TYPES domain (17 options) in the create dialog column dropdown', async () => {
+        // R18 — Copilot iter 4 caught a Mike-style subset (`free_text`,
+        // `percent`, `duration`, `boolean`, `choice`, `flag`, `entity`,
+        // `list`) that doesn't exist on the BE enum. The dropdown must
+        // mirror `App\Support\TabularReview\FormatType` exactly: 17
+        // cases, no synonyms.
+        mockGet.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
+
+        render(wrapped(<TabularReviewsList />));
+        await screen.findByTestId('admin-tabular-reviews-empty');
+        await userEvent.click(screen.getByTestId('admin-tabular-reviews-create'));
+        await screen.findByTestId('admin-tabular-review-create-dialog');
+
+        const select = screen.getByTestId('admin-tabular-review-create-column-0-format') as HTMLSelectElement;
+        const optionValues = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+
+        // Exact 17-element domain (alphabetical order optional; what
+        // matters is the SET).
+        expect(optionValues).toEqual([
+            'text',
+            'bulleted_list',
+            'number',
+            'percentage',
+            'monetary_amount',
+            'currency',
+            'yes_no',
+            'date',
+            'tag',
+            'enum',
+            'enum_status',
+            'rating',
+            'url',
+            'person',
+            'tags_multi',
+            'relation',
+            'json_path',
+        ]);
+        // None of the obsolete Mike-style literals are present.
+        expect(optionValues).not.toContain('free_text');
+        expect(optionValues).not.toContain('percent');
+        expect(optionValues).not.toContain('duration');
+        expect(optionValues).not.toContain('boolean');
+        expect(optionValues).not.toContain('choice');
+        expect(optionValues).not.toContain('flag');
+        expect(optionValues).not.toContain('entity');
+        expect(optionValues).not.toContain('list');
+    });
+
     it('surfaces a create error in the dialog without closing it', async () => {
         mockGet.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
         mockPost.mockRejectedValueOnce(new Error('422 validation failed'));

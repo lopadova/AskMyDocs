@@ -182,17 +182,20 @@ final class TabularReviewStreamController extends Controller
                     'truncated' => $totalAvailable > $processed,
                 ]);
             } catch (\Throwable $e) {
-                // Server-side log carries the full exception (including
-                // any SQL fragment / hostname / stack frame). The
-                // client receives a generic message + correlation id
-                // so the operator can pivot from a support report to
-                // the log line without leaking internal detail.
+                // Server-side log carries the full Throwable so Laravel's
+                // logger renders the class + message + stack trace + any
+                // chained previous-exceptions. The client receives a
+                // generic message + correlation id so the operator can
+                // pivot from a support report to the log line without
+                // leaking internal detail.
+                // Copilot iter 4: passing `exception => $e` (the
+                // Throwable itself) replaces the previous
+                // `class + getMessage()` pair so the trace survives.
                 $correlationId = (string) Str::uuid();
                 Log::error('tabular-review.stream.error', [
                     'review_id' => $review->id,
                     'correlation_id' => $correlationId,
-                    'exception' => $e::class,
-                    'message' => $e->getMessage(),
+                    'exception' => $e,
                 ]);
                 $this->emit('error', [
                     'message' => 'Extraction failed. Please retry; if it persists, contact support.',
@@ -250,7 +253,7 @@ final class TabularReviewStreamController extends Controller
             // cell update. Log the original failure for forensics.
             Log::error('tabular-review.stream.encode_error', [
                 'event' => $event,
-                'exception' => $e->getMessage(),
+                'exception' => $e,
             ]);
             $emitEvent = 'error';
             $json = json_encode(
