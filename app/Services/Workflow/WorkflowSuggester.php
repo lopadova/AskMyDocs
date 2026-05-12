@@ -168,9 +168,18 @@ final class WorkflowSuggester
     {
         $oversample = self::SAMPLE_SIZE * 3;
 
+        // Copilot iter 8: align with the rest of the KB read surface
+        // (KbSearchService / GraphExpander / RejectedApproachInjector
+        // all use `status != 'archived'`). The production ingest
+        // pipeline writes `status='active'`, NOT `status='indexed'`,
+        // so the previous strict equality filter would have returned
+        // zero rows in production and always hit the empty-KB
+        // refusal path. The negative-match shape admits every
+        // non-archived state ('active', 'indexed' for tests,
+        // pending, …) consistently with the rest of the codebase.
         $rows = KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('status', 'indexed')
+            ->where('status', '!=', 'archived')
             ->latest('id')
             ->limit($oversample)
             ->get();
