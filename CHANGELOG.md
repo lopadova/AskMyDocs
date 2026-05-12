@@ -11,6 +11,106 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v4.6.0 — 2026-05-12 (GA — Connector package extraction + IoC bridge + composer-extra discovery)
+
+**v4.6.0 GA** is the architectural cleanup cycle on top of v4.5.0 GA.
+The seven inline connectors built during v4.5/W1–W6 are now extracted
+into 8 standalone composer packages under the `padosoft/askmydocs-
+connector-*` family. The host's `app/Connectors/BuiltIn/` tree and
+most of `app/Connectors/` (the framework primitives) is **deleted**;
+the host's only remaining connector code is the new
+`App\Connectors\HostIngestionBridge` — the IoC implementation that the
+packages call back into via `Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract`.
+
+**No new end-user features.** Every connector behaves identically under
+the same `/admin/connectors` SPA. The change is architectural (package
+boundary + IoC bridge) and operational (community adoption path —
+each connector is `composer require`-able by any Laravel app).
+
+**What's new in AskMyDocs v4.6.0 GA:**
+
+- **8 new composer packages** (each v1.x, each CI-green, each with its
+  own README + tests + docs):
+  - `padosoft/askmydocs-connector-base` v1.1.1 — framework primitives:
+    `ConnectorInterface`, `BaseConnector`, `ConnectorRegistry`,
+    `ConnectorSyncJob`, `OAuthCredentialVault`, `SyncScheduler`,
+    `ConnectorIngestionContract` IoC + `NullConnectorIngestionContract`
+    fail-loud default + 2 framework migrations.
+  - `padosoft/askmydocs-connector-google-drive` v1.0.1 — Drive OAuth2 + Drive API v3 sync.
+  - `padosoft/askmydocs-connector-notion` v1.0.1 — Notion OAuth2 + page/block sync + `NotionBlockToMarkdown`.
+  - `padosoft/askmydocs-connector-evernote` v1.0.0 — Evernote OAuth2 + Cloud API + ENEX bulk-import (`EnexImporter` + `EnmlToMarkdown`).
+  - `padosoft/askmydocs-connector-fabric` v1.0.0 — Fabric.so API-key + OAuth-ready.
+  - `padosoft/askmydocs-connector-onedrive` v1.0.0 — Microsoft Graph + MS Identity v2 + `MicrosoftGraphPaginator`.
+  - `padosoft/askmydocs-connector-confluence` v1.0.0 — Atlassian OAuth 2.0 3LO + Confluence Cloud + `ConfluenceStorageToMarkdown` + `AtlassianPaginator`.
+  - `padosoft/askmydocs-connector-jira` v1.0.0 — Atlassian OAuth 2.0 3LO + Jira Cloud + `JiraAdfToMarkdown` + `JqlBuilder` + `JiraPaginator`.
+- **`HostIngestionBridge`** (`app/Connectors/HostIngestionBridge.php`)
+  is the single host-side connector class — implements 5 methods:
+  - `dispatchIngestion(...)` dispatches `IngestDocumentJob` with the
+    tenant captured at dispatch time (R30 / R31 preserved).
+  - `resolveKbSourcePath($relative)` calls `KbPath::normalize()` (R1)
+    and honours `KB_FILESYSTEM_DISK` + `KB_PATH_PREFIX`.
+  - `redactContent($content)` applies `RedactorEngine` (Mask strategy)
+    when `KB_PII_REDACTOR_ENABLED=true` AND
+    `KB_CONNECTOR_INGEST_PII_REDACT=true` (R26 — both default OFF;
+    existing connector users see no behaviour change).
+  - `emitAudit($connectorKey, $eventType, ...)` writes to
+    `kb_canonical_audit` under `actor='connector:<key>'` and
+    `event_type='connector_<eventType>'` (auto-namespaced if not
+    prefixed). Wrapped in try/catch so audit failures never break
+    the connector hot path.
+  - `softDeleteByRemoteId($installation, $metadataKey, $remoteId)`
+    looks up `knowledge_documents` tenant-scoped (R30) +
+    `metadata->$metadataKey == $remoteId` then routes through
+    `DocumentDeleter::delete(force: false)`. Idempotent on already-
+    trashed rows.
+- **Composer-extra discovery** — every connector package declares its
+  FQCNs under `composer.json::extra.askmydocs.connectors`; the
+  framework registry walks `composer.lock` at boot, reads each
+  package's `extra` block, and registers every FQCN with R23
+  validation. Mirrors Laravel's `extra.laravel.providers` convention.
+  Adding a new connector to AskMyDocs is now `composer require
+  padosoft/askmydocs-connector-<new>` — zero further wiring.
+- **Inline-code deletion** — the host repo's connector footprint
+  shrank from ~30 files to **1 new `HostIngestionBridge.php` + its
+  12-test feature suite**. Removed:
+  - `app/Connectors/BuiltIn/` (entire tree: 7 connectors + 5 helper subdirectories).
+  - `app/Connectors/{BaseConnector,ConnectorInterface,ConnectorRegistry,HealthStatus,SyncResult}.php` + `Auth/` + `Scheduling/` + `Support/` + `Exceptions/`.
+  - `app/Models/{ConnectorInstallation,ConnectorCredential}.php`.
+  - `app/Jobs/ConnectorSyncJob.php`.
+  - `database/migrations/2026_05_15_000001_create_connector_installations_table.php` + `2026_05_15_000002_create_connector_credentials_table.php` (the package supplies them auto-loaded by `ConnectorServiceProvider::boot()`).
+  - 14 inline-connector unit-test files (each is now owned by its
+    package's own CI; the host keeps the admin controller / gate /
+    architecture / bridge tests).
+- **Chunkers stay in host** — `app/Services/Kb/Chunkers/{AtomicNoteChunker,ConfluencePageChunker,JiraIssueChunker,NotionBlockChunker,OfficeDocChunker,PdfPageChunker}.php` and `app/Services/Kb/MarkdownChunker.php` are UNCHANGED in v4.6. They depend on host types (`ChunkerInterface`, `ChunkDraft`, `ConvertedDocument`, `TokenCounter`, `DerivedMetadataReader`) that the standalone-agnostic packages cannot reference. ADR 0009 decision (e) records this trade-off.
+- **New env knob** `KB_CONNECTOR_INGEST_PII_REDACT=false` (default OFF)
+  added to `.env.example` + `config/kb.php::pii_redactor.redact_before_ingest`.
+  Closes the R26 boundary-coverage gap for connector-ingested
+  documents.
+- **8 new `repositories[]` annotation rows** in `composer.json` for
+  the connector packages — same VCS-pre-Packagist posture as
+  `padosoft/laravel-pii-redactor`.
+- **ADR 0009 — `docs/adr/0009-v46-connector-package-extraction.md`** —
+  5 architecture decisions LOCKED: (a) composer-extra discovery,
+  (b) per-connector source-type helpers in package, (c) IoC bridge,
+  (d) VCS-`repositories[]` pre-Packagist workaround, (e) chunkers
+  stay in host.
+- **Test gates** — full PHPUnit run: 1548 tests, 4817 assertions,
+  only 1 pre-existing unrelated failure (`JiraIssueChunkerTest::comments_section_aggregates_into_separate_chunk` from v4.5/W6 commit `c60047c` — deferred to v4.6.x). Vitest react: 384/384 green. Architecture: 20/20 green.
+
+**Pull requests merged on `feature/v4.6` for v4.6.0 GA:**
+- W1..W3 — 8 connector packages shipped externally on their own GitHub
+  repos under `padosoft/askmydocs-connector-*` with their own CI.
+- W4 — Host-side wire-up + inline-code deletion + ADR 0009 + closure
+  status doc + this entry (this PR).
+
+**Acceptance:** see `docs/v4-platform/STATUS-2026-05-12-v46-week4-rc-acceptance.md`. Tagged `v4.6.0-rcN` at each W closure per R39; `v4.6.0` GA at the integration-merge SHA per R37 + R39.
+
+**Deferred to v4.6.x patches:**
+- Fix `JiraIssueChunkerTest::comments_section_aggregates_into_separate_chunk` (pre-existing regression, unrelated to v4.6).
+- Packagist submission for all 8 connector packages (operational task).
+
+---
+
 ### v4.5.0 — 2026-05-12 (GA — Universal Connectors + Source-Aware Ingestion + Modern Chat Surface)
 
 **v4.5.0 GA** closes the v4.5 cycle. Seven new external-source connectors + per-source chunking framework + Vercel AI SDK UI Tier 1 + partial Tier 2 ship on top of v4.4.0 GA. NO new sister packages or sister-package version bumps in the host this cycle (host-side); two side-quest releases shipped in the upstream `padosoft/*` ecosystem.

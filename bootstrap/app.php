@@ -171,7 +171,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // The per-installation cadence is read from `config/connectors.php`
         // (default 15 min, per-connector overrides supported). No-op
         // when the migration hasn't run yet.
-        (new \App\Connectors\Scheduling\SyncScheduler)->registerSchedules($schedule);
+        (new \Padosoft\AskMyDocsConnectorBase\Scheduling\SyncScheduler)->registerSchedules($schedule);
 
         // v4.3/W3 — Nightly eval-harness regression run. Hits the real RAG
         // pipeline when EVAL_NIGHTLY_LIVE=true AND a provider key is

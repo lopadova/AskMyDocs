@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
-use App\Jobs\ConnectorSyncJob;
-use App\Models\ConnectorCredential;
-use App\Models\ConnectorInstallation;
 use App\Models\User;
 use App\Support\TenantContext;
+use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorCredential;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Carbon\Carbon;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;

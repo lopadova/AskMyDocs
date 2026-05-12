@@ -7,7 +7,26 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Test mirror of database/migrations/2026_05_15_000002_create_connector_credentials_table.php.
+ * Connector framework: encrypted OAuth credential store.
+ *
+ * One row per `connector_installations.id`. Access + refresh tokens
+ * are encrypted at rest via Laravel `Crypt::encryptString()` before
+ * being written by
+ * `Padosoft\AskMyDocsConnectorBase\Auth\OAuthCredentialVault`.
+ *
+ * `tenant_id` is denormalised onto this table even though
+ * `connector_installations` already carries it — the redundancy
+ * lets an architecture-level R30 sweep verify cross-tenant
+ * isolation without a join, and keeps
+ * `OAuthCredentialVault::clearCredentials()` able to enforce tenant
+ * scoping in a single WHERE clause.
+ *
+ * Cascade on installation delete: when an installation row is
+ * removed (operator disconnect), the credential row goes with it —
+ * no orphaned encrypted secrets. Defence in depth:
+ * `OAuthCredentialVault::clearCredentials()` additionally deletes
+ * the row explicitly + revokes upstream when the connector
+ * supports it.
  */
 return new class extends Migration
 {

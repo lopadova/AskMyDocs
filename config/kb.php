@@ -406,6 +406,20 @@ return [
         'redact_insights_snippets' => (bool) env('KB_INSIGHTS_PII_REDACT', false),
 
         /*
+        | v4.6 — connector ingest boundary. When true, the
+        | `App\Connectors\HostIngestionBridge::redactContent()` IoC
+        | method (called by every standalone `padosoft/askmydocs-connector-*`
+        | package BEFORE it writes the freshly-fetched document body
+        | to the KB disk) applies `RedactorEngine::redact($content,
+        | MaskStrategy)`. Mask strategy because the redacted form ends
+        | up on the KB disk and inside `knowledge_documents.metadata` —
+        | one-way semantics like the embedding cache (no round-trip
+        | tokenisation required). Default off so existing connector
+        | users see no behaviour change until they explicitly opt in.
+        */
+        'redact_before_ingest' => (bool) env('KB_CONNECTOR_INGEST_PII_REDACT', false),
+
+        /*
         | Detokenize permission — Spatie permission name required for the
         | `LogViewerController::chatDetokenize` action
         | (`POST /api/admin/logs/chat/{id}/detokenize`) that surfaces the
