@@ -15,7 +15,7 @@ return new class extends Migration {
     {
         Schema::create('tabular_cells', function (Blueprint $table): void {
             $table->bigIncrements('id');
-            $table->string('tenant_id', 50)->default('default');
+            $table->string('tenant_id', 50)->default('default')->index('idx_tabular_cells_tenant_id');
             $table->foreignId('review_id')
                 ->constrained('tabular_reviews')
                 ->cascadeOnDelete();

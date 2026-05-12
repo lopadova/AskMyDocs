@@ -31,7 +31,7 @@ return new class extends Migration {
     {
         Schema::create('tabular_reviews', function (Blueprint $table): void {
             $table->bigIncrements('id');
-            $table->string('tenant_id', 50)->default('default');
+            $table->string('tenant_id', 50)->default('default')->index('idx_tabular_reviews_tenant_id');
             $table->string('project_key', 120);
             $table->foreignId('user_id')
                 ->constrained('users')
