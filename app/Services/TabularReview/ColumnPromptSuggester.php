@@ -18,9 +18,11 @@ use App\Support\TabularReview\FormatType;
  * user can edit before saving.
  *
  * R14: a refusal path is included. When the LLM returns an empty or
- * whitespace-only completion the caller receives an InvalidArgumentException
- * (the controller maps it to 422). This makes a silent empty prompt
- * impossible.
+ * whitespace-only completion the caller receives a `RuntimeException`
+ * (Laravel maps an unhandled `RuntimeException` to HTTP 500 by default).
+ * When the caller passes an empty column name the suggester throws
+ * `InvalidArgumentException` instead (HTTP 400 / 422 once mapped by the
+ * controller). Either way a silent empty prompt is impossible.
  */
 final class ColumnPromptSuggester
 {

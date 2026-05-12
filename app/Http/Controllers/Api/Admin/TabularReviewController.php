@@ -160,26 +160,41 @@ final class TabularReviewController extends Controller
     /**
      * POST /api/admin/tabular-reviews/{id}/generate
      *
-     * Synchronously runs the extractor over every document in the
-     * review's project. Returns a summary of cells produced. The
-     * streaming SSE transport (per-cell push) ships in W3 — for W1
-     * the response is the materialised cell list. The extractor
-     * accepts an `$onCell` callback so the streaming hook is wire-able
-     * without further refactor.
+     * Synchronously runs the extractor over the review's project
+     * documents and returns a JSON summary with `review_id`,
+     * `documents_processed`, `cells_total`, and `truncated` (true when
+     * the requested batch hit `max_documents`). The streaming SSE
+     * transport (per-cell push) ships in W3; the extractor accepts an
+     * `$onCell` callback so the streaming hook is already wire-able
+     * without a refactor.
+     *
+     * `max_documents` (default 200, hard ceiling 1000) caps the batch
+     * size so a single HTTP request never holds the worker for an
+     * unbounded number of LLM calls. When `truncated=true` the caller
+     * can re-run with a higher cap or wait for W3 to push the work
+     * onto the queue.
+     *
+     * Returns HTTP 200 because the work is synchronous: by the time the
+     * response is written every cell exists in `tabular_cells`.
      */
     public function generate(Request $request, int $id): JsonResponse
     {
         $this->denyMutationForViewer($request);
 
+        $validated = $request->validate([
+            'max_documents' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+        $cap = (int) ($validated['max_documents'] ?? 200);
+
         $review = $this->findOr404($id);
 
         $tenant = $this->ctx->current();
-        $docs = KnowledgeDocument::query()
+        $baseQuery = KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('project_key', $review->project_key)
-            ->orderBy('id')
-            ->limit(200)
-            ->get();
+            ->where('project_key', $review->project_key);
+
+        $totalAvailable = (int) $baseQuery->count();
+        $docs = $baseQuery->orderBy('id')->limit($cap)->get();
 
         $cells = [];
         foreach ($docs as $doc) {
@@ -190,9 +205,12 @@ final class TabularReviewController extends Controller
             'data' => [
                 'review_id' => $review->id,
                 'documents_processed' => $docs->count(),
+                'documents_total_available' => $totalAvailable,
                 'cells_total' => count($cells),
+                'truncated' => $totalAvailable > $docs->count(),
+                'max_documents' => $cap,
             ],
-        ], 202);
+        ]);
     }
 
     /**
@@ -264,9 +282,16 @@ final class TabularReviewController extends Controller
 
     /**
      * POST /api/admin/tabular-reviews/prompt
+     *
+     * Triggers an LLM call to draft a column extraction prompt. Even
+     * though the endpoint doesn't mutate `tabular_reviews` itself, it
+     * spends provider credit — treat it as a mutation and deny viewers
+     * (cost-protection, mirrors the rest of the controller's RW guard).
      */
     public function suggestPrompt(SuggestPromptRequest $request): JsonResponse
     {
+        $this->denyMutationForViewer($request);
+
         $validated = $request->validated();
         $format = FormatType::from($validated['format']);
 

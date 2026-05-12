@@ -7,14 +7,17 @@ namespace App\Support\TabularReview;
 /**
  * v4.7/W1 — Format types for tabular-review columns.
  *
- * AskMyDocs ships 16 format types (Mike has 9 — listed in
- * DESIGN-v4.7-tabular-review-and-workflows.md §3a). Each format
- * contributes a prompt suffix injected after the column instruction
- * so the LLM produces output the cell renderer + validator can trust.
+ * AskMyDocs ships 17 format types — Mike's 9 (text / bulleted_list /
+ * number / percentage / monetary_amount / currency / yes_no / date /
+ * tag) plus 8 AskMyDocs-new ones (enum / enum_status / rating / url /
+ * person / tags_multi / relation / json_path). Each case contributes a
+ * prompt suffix injected after the column instruction so the LLM
+ * produces output the cell renderer + validator can trust.
  *
- * The `prompt_type=frontmatter_lookup` short-circuit (cf. JSON_PATH
- * shortcut) bypasses the LLM entirely when a column maps to a key
- * already present in the document's chunk metadata (v4.5/W5.5).
+ * The `json_path` case is special — it is the LLM-FREE short-circuit
+ * (cf. `isLlmFree()`): the extractor reads the value directly from the
+ * document's chunk metadata via a JSON-path lookup (v4.5/W5.5 source-
+ * aware ingestion). No LLM call is issued for those columns.
  *
  * R23: this enum is the single source of truth — adding a new format
  * requires:

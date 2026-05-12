@@ -34,7 +34,14 @@ class UpdateTabularReviewRequest extends FormRequest
             'columns_config.*.format' => ['required_with:columns_config', 'string', Rule::in(FormatType::values())],
             'columns_config.*.enum_values' => ['nullable', 'array', 'max:100'],
             'columns_config.*.enum_values.*' => ['string', 'max:120'],
-            'columns_config.*.json_path' => ['nullable', 'string', 'max:200'],
+            // Mirrors the store-request rule: format=json_path columns
+            // require the JSON path so the LLM-free shortcut works (R14).
+            'columns_config.*.json_path' => [
+                'required_if:columns_config.*.format,json_path',
+                'nullable',
+                'string',
+                'max:200',
+            ],
             'workflow_id' => ['sometimes', 'nullable', 'integer'],
             'shared_with' => ['sometimes', 'nullable', 'array'],
             'shared_with.*' => ['integer'],

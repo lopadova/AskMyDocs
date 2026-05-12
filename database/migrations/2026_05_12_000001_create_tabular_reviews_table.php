@@ -10,9 +10,13 @@ use Illuminate\Support\Facades\Schema;
  * v4.7/W1 — `tabular_reviews` table.
  *
  * Spreadsheet-style document extraction reviews. Each row owns a column
- * configuration (jsonb) that drives the extraction pipeline; cells
- * referencing this review live in `tabular_cells` with a cascade-on-delete
- * FK so destroying a review removes its grid atomically.
+ * configuration (`columns_config` JSON) that drives the extraction
+ * pipeline; cells referencing this review live in `tabular_cells` with
+ * a cascade-on-delete FK so destroying a review removes its grid
+ * atomically. Laravel's `$table->json(...)` maps to Postgres `json` /
+ * MySQL `json` / SQLite `text` — switch to `jsonb` (Postgres-only)
+ * when GIN indexing on `columns_config` becomes load-bearing; today
+ * the column is read whole-row in the controller, so `json` is fine.
  *
  * R31: `tenant_id` mandatory, indexed.
  * R30: every query must scope to TenantContext::current().

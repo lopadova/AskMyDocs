@@ -167,12 +167,16 @@ final class TabularReviewExtractor
                 'message' => $e->getMessage(),
             ]);
             foreach ($llmColumns as $idx => $col) {
+                // The exception message is logged above with full context.
+                // Do NOT surface it via the persisted cell — the value is
+                // returned to API consumers via `show()` and may contain
+                // internal hostnames / vendor URLs / stack hints.
                 $cell = $this->persistFailure(
                     $tenant,
                     $review,
                     $doc,
                     $idx,
-                    'Extraction failed: '.$e->getMessage(),
+                    'Extraction failed: provider error. See application log for details.',
                 );
                 $persisted[] = $cell;
                 $onCell?->__invoke($cell);

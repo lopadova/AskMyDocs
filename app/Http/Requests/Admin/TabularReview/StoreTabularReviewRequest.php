@@ -33,7 +33,15 @@ class StoreTabularReviewRequest extends FormRequest
             'columns_config.*.format' => ['required', 'string', Rule::in(FormatType::values())],
             'columns_config.*.enum_values' => ['nullable', 'array', 'max:100'],
             'columns_config.*.enum_values.*' => ['string', 'max:120'],
-            'columns_config.*.json_path' => ['nullable', 'string', 'max:200'],
+            // When format=json_path, the path MUST be provided — otherwise
+            // the extractor's no-LLM shortcut has nothing to look up and
+            // every cell would silently fall back to red (R14).
+            'columns_config.*.json_path' => [
+                'required_if:columns_config.*.format,json_path',
+                'nullable',
+                'string',
+                'max:200',
+            ],
             'workflow_id' => ['nullable', 'integer'],
             'shared_with' => ['nullable', 'array'],
             'shared_with.*' => ['integer'],

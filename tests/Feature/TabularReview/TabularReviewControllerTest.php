@@ -15,10 +15,15 @@ use Tests\TestCase;
 /**
  * v4.7/W1 — Tabular review controller integration.
  *
- * Coverage: index (paged + project filter), store (validation + 201),
- * show (with cells), update (project_key immutable), destroy (cascade),
- * regenerate-cell (route binding + extractor invocation), clear-cells,
- * suggestPrompt, viewer ACL (403 on mutation, 200 on read), guest 401.
+ * Coverage: index (paged + project filter), store (validation + 201 +
+ * required_if json_path), show (with cells), update (project_key
+ * immutable), destroy (cascade), clear-cells, viewer ACL (403 on
+ * mutation, 200 on read), guest 401, unrole'd-user 403. End-to-end
+ * tests for `generate` / `regenerate-cell` / `suggestPrompt` live in
+ * {@see TabularReviewExtractorTest} and {@see ColumnPromptSuggesterTest}
+ * — driving them through the controller would require running real LLM
+ * stubs from inside a HTTP test, which is exactly what those dedicated
+ * suites already cover at the service layer.
  */
 final class TabularReviewControllerTest extends TestCase
 {
@@ -246,6 +251,47 @@ final class TabularReviewControllerTest extends TestCase
             'project_key' => 'hr',
             'title' => 'X',
             'columns_config' => [['name' => 'Y', 'format' => 'text']],
+        ])->assertStatus(403);
+    }
+
+    public function test_store_requires_json_path_when_format_is_json_path(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->postJson('/api/admin/tabular-reviews', [
+            'project_key' => 'hr',
+            'title' => 'X',
+            'columns_config' => [
+                ['name' => 'Status', 'format' => 'json_path'],
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors(['columns_config.0.json_path']);
+    }
+
+    public function test_store_accepts_json_path_column_with_path(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->postJson('/api/admin/tabular-reviews', [
+            'project_key' => 'hr',
+            'title' => 'X',
+            'columns_config' => [
+                ['name' => 'Status', 'format' => 'json_path', 'json_path' => '$.status'],
+            ],
+        ])->assertStatus(201);
+    }
+
+    public function test_viewer_cannot_call_suggest_prompt(): void
+    {
+        $viewer = User::create([
+            'name' => 'V',
+            'email' => 'v-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret'),
+        ]);
+        $viewer->assignRole('viewer');
+
+        $this->actingAs($viewer)->postJson('/api/admin/tabular-reviews/prompt', [
+            'column_name' => 'Title',
+            'format' => 'text',
         ])->assertStatus(403);
     }
 

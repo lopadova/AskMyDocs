@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Schema;
  * v4.7/W1 — `tabular_cells` table.
  *
  * Stores the extracted content for each (review, document, column) tuple.
- * `content` jsonb carries `{summary, flag, reasoning, citations[]}`.
+ * `content` (Laravel `json` column — Postgres `json`, MySQL `json`,
+ * SQLite `text`) carries `{summary, flag, reasoning, citations[]}`.
  * `status` follows the pending → generating → ready | failed state machine.
  *
  * R31: tenant_id mandatory, indexed.
