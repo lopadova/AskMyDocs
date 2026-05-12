@@ -301,11 +301,26 @@ SYS;
      */
     private function validateProposal(array $proposal): ?array
     {
-        $title = (string) ($proposal['title'] ?? '');
-        $type = (string) ($proposal['type'] ?? '');
-        $promptMd = (string) ($proposal['prompt_md'] ?? '');
-        $practice = (string) ($proposal['practice'] ?? WorkflowPractice::Generic->value);
-        $reasoning = (string) ($proposal['reasoning'] ?? '');
+        // Copilot iter 14: strict type checks instead of `(string)` casts.
+        // A misbehaving LLM that returned `title: []` would have been
+        // cast to the literal string "Array" and emitted a PHP warning,
+        // then potentially passed downstream validation as a junk
+        // proposal. Reject non-strings up front.
+        $title = isset($proposal['title']) && is_string($proposal['title'])
+            ? trim($proposal['title'])
+            : '';
+        $type = isset($proposal['type']) && is_string($proposal['type'])
+            ? $proposal['type']
+            : '';
+        $promptMd = isset($proposal['prompt_md']) && is_string($proposal['prompt_md'])
+            ? $proposal['prompt_md']
+            : '';
+        $practice = isset($proposal['practice']) && is_string($proposal['practice'])
+            ? $proposal['practice']
+            : WorkflowPractice::Generic->value;
+        $reasoning = isset($proposal['reasoning']) && is_string($proposal['reasoning'])
+            ? $proposal['reasoning']
+            : '';
         $columnsConfig = $proposal['columns_config'] ?? null;
 
         if ($title === '' || $promptMd === '') {
