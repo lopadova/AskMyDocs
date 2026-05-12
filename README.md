@@ -28,8 +28,9 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v4.4.0-blueviolet?style=flat-square" alt="Release v4.4.0"></a>
-  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1423%20PHPUnit%20%2B%20321%20Vitest-brightgreen?style=flat-square" alt="1423 PHPUnit + 321 Vitest"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v4.5.0-blueviolet?style=flat-square" alt="Release v4.5.0"></a>
+  <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
+  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1885%20PHPUnit%20%2B%20384%20Vitest-brightgreen?style=flat-square" alt="1885 PHPUnit + 384 Vitest"></a>
 </p>
 
 <p align="center">
@@ -49,6 +50,8 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 
 - [What it is](#what-it-is)
 - [Why AskMyDocs — the 5 moats](#why-askmydocs--the-5-moats)
+- [✨ Universal Connectors](#universal-connectors)
+- [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
 - [Features by area](#features-by-area)
   - [Retrieval & Knowledge](#retrieval--knowledge)
   - [Chat & Conversation](#chat--conversation)
@@ -118,6 +121,70 @@ no other public RAG platform — open-source or SaaS — currently ships.
 
 ---
 
+## ✨ Universal Connectors
+
+**Plug AskMyDocs into Google Drive, Notion, OneDrive, Evernote, Fabric, Confluence, and Jira with OAuth in one click — every document chunked and cited correctly per source.**
+
+Most "RAG over docs" tools either expect a pile of pre-flattened
+markdown or ship a single brittle "Google Drive sync" feature. AskMyDocs
+v4.5 ships a real **connector framework** + **seven native connectors**
++ **per-source chunkers** so every external knowledge corpus lands in
+the canonical KB with its provenance, native IDs, ACL hints, and
+status preserved — and gets chunked the way that source actually wants
+to be chunked.
+
+- **7 native connectors live in v4.5** — `google-drive` (OAuth2 + delta-query), `notion` (OAuth2 + block paginator), `evernote` (OAuth + `.enex` bulk import), `fabric` (API-key, OAuth pending upstream), `onedrive` (Microsoft Graph delta-query — supports `text/markdown` / `text/plain` / `application/pdf`; Office formats `.docx` / `.xlsx` / `.pptx` ingestion deferred), `confluence` (Atlassian OAuth 2.0 3LO; `cloud_id` persisted in tenant-scoped `connector_credentials.extra_json.cloud_id`, optionally reused by a Jira install in the same tenant/workspace), `jira` (Atlassian OAuth 2.0 3LO + ADF-to-markdown + injection-safe JQL builder).
+- **Per-source chunkers** — `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` dispatched via `PipelineRegistry::resolveChunker()` (R23 FQCN-validated + `supports()` mutex-checked at boot).
+- **Rich frontmatter capture** — every connector populates document-level metadata (`connector`, `external_id`, `external_url`, native timestamps) plus chunk-level metadata (`source_type`, `search_tags` (top-level in chunk metadata), `recency_bucket`, ACL hint, status, preamble-path). Drives `KbSearchService` facets + `Reranker` Layer-4 signals (tag overlap + recency + status-active + preamble-match).
+- **Admin OAuth flow at `/app/admin/connectors`** — React SPA + Spatie super-admin gate + signed OAuth callback + per-installation `connector_installations` + `connector_credentials` rows + scheduler-driven incremental sync via `App\Jobs\ConnectorSyncJob`.
+- **Opt-in live-test recording infrastructure** — `tests/Live/Connectors/` skeleton + per-provider env-var guard + `docs/v4-platform/RUNBOOK-live-fixture-recording.md` junior-proof setup guide. CI runs only `Unit` + `Feature`; operators refresh fixtures explicitly when provider APIs drift.
+
+### How it compares
+
+| Capability | AskMyDocs v4.5 | Glean | Notion AI | ChatGPT Enterprise | M365 Copilot | Mendable | Vectara |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Self-hostable + connector framework | ✅ MIT | ❌ SaaS | ❌ SaaS | ❌ SaaS | ❌ SaaS | ❌ SaaS | ❌ $500K/yr |
+| Native Google Drive | ✅ | ✅ | ❌ | ✅ | ❌ | partial | ❌ |
+| Native Notion | ✅ | ✅ | ✅ | ✅ | ❌ | partial | ❌ |
+| Native OneDrive | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| Native Evernote | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Native Confluence | ✅ | ✅ | ❌ | ❌ | partial | partial | ❌ |
+| Native Jira | ✅ | ✅ | ❌ | ❌ | ❌ | partial | ❌ |
+| Source-aware chunking framework | ✅ | private | ❌ | ❌ | ❌ | partial | partial |
+| Plugin/package extensibility | ✅ (v4.6 packages) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+
+**Try it.** Read [`docs/connectors/README.md`](docs/connectors/README.md)
+for the developer guide (10-method `ConnectorInterface` contract +
+auto-discovery + framework reuse pattern), then log in as a
+super-admin and navigate to `/app/admin/connectors` to install the first
+connector.
+
+---
+
+## ✨ Modern Chat Surface (Vercel AI SDK UI)
+
+**Stop / regenerate / branch / inline-edit / token-cost meter — the chat surface every modern AI app should have, with full streaming citations and suggested follow-ups.**
+
+The chat UX gap against Claude Desktop / ChatGPT Plus / Vercel
+reference apps is what 90% of first-time users notice and 0% of
+self-hostable RAG OSS ships. v4.5 closes that gap on all seven Tier 1
+affordances plus the first Tier 2 win (suggested follow-ups), built on
+top of the v4.0 Vercel AI SDK v6 `UIMessageChunk` streaming foundation.
+
+- **7 Tier 1 features** — stop-streaming button (`AbortController`-backed), regenerate-last-assistant, branch-from-message endpoint (forks the conversation tree), inline-edit user message, token+cost meter (BE `config('ai.cost_rates')`), enhanced per-message provider+model+timestamp badge, copy-code-block.
+- **Suggested follow-up pills** — `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply; renders as clickable pill chips under the message; submits via the streaming endpoint when clicked.
+- **Full Vercel AI SDK v6 message-parts integration** — `MessageStreamController` emits canonical `start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish` frames over SSE; `useChatStream()` exposes `data-state="idle|loading|ready|empty|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both map to `loading` via `mapStatusToDataState()` — see `frontend/src/features/chat/map-status-to-data-state.test.ts`).
+- **Canvas-ready architecture (artifact panel ships in v5.0)** — Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) is deliberately deferred to v5.0 so it can be designed alongside the MCP **client** tool dispatcher and share one storage contract. See ADR 0008 D4.
+- **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — every provider is called via raw `Http::` (no SDK); `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
+
+**Try it.** Open `/app/chat` in the React SPA. Start a long answer
+and hit Stop; click Regenerate; hover the assistant message and pick
+Branch (a new conversation forks from that point); pick a follow-up
+pill chip to chain into the next prompt; hover any code block for the
+Copy button.
+
+---
+
 ## Features by area
 
 Six grouped feature tables. Every entry is verifiable against the
@@ -129,7 +196,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 
 | Feature | Description | Since |
 |---|---|---|
-| Hybrid retrieval (pgvector + FTS + reranker) | Vector top-K (pgvector cosine) fused with full-text top-K (PostgreSQL `to_tsvector` GIN index) via Reciprocal Rank Fusion; `Reranker` runs `0.6·vec + 0.3·kw + 0.1·heading` on top of 3× over-retrieval | v1.0 |
+| Hybrid retrieval (pgvector + FTS + reranker) | Vector top-K (pgvector cosine) fused with full-text top-K (PostgreSQL `to_tsvector` GIN index) via Reciprocal Rank Fusion; `Reranker` runs `0.55·vec + 0.25·kw + 0.05·heading` on top of 3× over-retrieval | v1.0 |
 | Multi-format ingestion pipeline | `markdown`, `text`, **PDF** (`smalot/pdfparser` + Poppler fallback), **DOCX** (`phpoffice/phpword`) — all converge on `DocumentIngestor::ingest(SourceDocument)` via the `PipelineRegistry` (R23: FQCN validated at boot, `supports()` mutex-checked) | v3.0 |
 | Canonical knowledge graph (9 node types / 10 edge types) | `kb_nodes` + `kb_edges` with `decision` / `runbook` / `standard` / `incident` / `integration` / `domain-concept` / `module-kb` / `rejected-approach` / `project-index` nodes and `depends_on` / `uses` / `implements` / `related_to` / `supersedes` / `invalidated_by` / `decision_for` / `documented_by` / `affects` / `owned_by` edges. Tenant-scoped composite FKs make cross-tenant edges structurally impossible | v3.0 |
 | `CanonicalParser` (9 canonical types / 6 statuses) | YAML frontmatter parser via `symfony/yaml`; validates `type`, `status`, `slug`, `retrieval_priority` in `[0, 100]`. Invalid frontmatter degrades gracefully to non-canonical (R4) | v3.0 |
@@ -144,13 +211,16 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | MCP server `enterprise-kb` (10 tools) | 5 retrieval tools (`kb.search` / `kb.read_document` / `kb.read_chunk` / `kb.recent_changes` / `kb.search_by_project`) + 5 canonical/promotion tools (`kb.graph.neighbours` / `kb.graph.subgraph` / `kb.documents.by_slug` / `kb.documents.by_type` / `kb.promotion.suggest`) exposed at `/mcp/kb` for Claude Desktop / Claude Code / any MCP-compatible agent | v3.0 |
 | Enterprise chat filters (10 dimensions) | `RetrievalFilters` DTO with `project_keys` / `tag_slugs` / `source_types` / `canonical_types` / `connector_types` / `doc_ids` / `folder_globs` / `date_from` / `date_to` / `languages`. Per-user saved presets with 404-not-403 cross-user isolation; `@mention` doc pinning via cursor-context detection | v3.0 |
 | Reranker canonical boost + status penalty | Reranker applies `priority × 0.003` canonical boost and `superseded −0.4` / `deprecated −0.4` / `archived −0.6` status penalties on top of the vector/keyword/heading fusion; non-canonical chunks get zero adjustment (legacy behaviour preserved) | v3.0 |
+| Source-aware chunkers + rich frontmatter capture | `PipelineRegistry::resolveChunker($sourceType)` dispatches per source (R23 FQCN-validated + `supports()` mutex-checked at boot) to: `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` / `MarkdownChunker`. Document-level metadata carries `connector` + `external_id` + `external_url` + native timestamps; chunk-level metadata carries `source_type` + `search_tags` (top-level) + `recency_bucket` + ACL hint + status + preamble-path | v4.5 |
+| `Reranker` Layer-4 signals (tag overlap, recency, status-active, preamble) | Four additive Layer-4 deltas: `tag_overlap_weight=0.05` + `preamble_match_weight=0.05` + `recency_weight=0.02` + `status_active_weight=0.02`, on top of the base `0.55·vec + 0.25·kw + 0.05·heading`. Max score ~1.44 (documented in code); base 4 signals still sum to 1.0 | v4.5 |
+| `KbSearchService` facets (`source` + `tag`) | `searchWithContext()` accepts optional `facets` param; emits `facets[source]` + `facets[tag]` counts; backed by 2 new GIN-on-`jsonb` indexes (`source_type` + `search_tags`) plus 1 B-tree on `recency_bucket` on `knowledge_chunks.metadata`, all PostgreSQL-only (SQLite is a no-op) | v4.5 |
 
 ### Chat & Conversation
 
 | Feature | Description | Since |
 |---|---|---|
 | Vercel AI SDK v6 streaming | `MessageStreamController` emits SDK v6 `UIMessageChunk` frames (`start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish`) over SSE; first-token latency dropped from ~2.8 s synchronous to ~400 ms streaming on the Lighthouse baseline | v4.0 |
-| `useChatStream()` React hook | `mapStatusToDataState()` adapter exposes `data-state="idle\|submitted\|streaming\|ready\|error"` for deterministic Playwright waits; unit-tested in `frontend/src/features/chat/map-status-to-data-state.test.ts` | v4.0 |
+| `useChatStream()` React hook | `mapStatusToDataState()` adapter exposes `data-state="idle\|loading\|ready\|empty\|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both collapse to `loading` per the R11 comment in `MessageThread.tsx`); unit-tested in `frontend/src/features/chat/map-status-to-data-state.test.ts` | v4.0 |
 | Citations panel | Every assistant reply ships the source documents (`document_id`, `title`, `source_path`, `headings`, `chunks_used`); persisted on `messages.metadata.citations`; survives conversation reload | v1.0 |
 | Conversation history | `conversations` + `messages` tables (user-scoped); inline rename, delete with confirmation, AI-generated title after first turn, full multi-turn history sent to provider on every request | v1.0 |
 | Composite confidence score (0–100) | `ConfidenceCalculator`: `0.40·mean_top_k_sim + 0.20·threshold_margin + 0.20·chunk_diversity + 0.20·citation_density`; renders as `high / moderate / low / refused` tier in the `ConfidenceBadge` | v3.0 |
@@ -162,6 +232,9 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Smart visual artifacts | `~~~chart` JSON blocks render as Chart.js bar/line/pie/doughnut; `~~~actions` JSON renders as copy/download buttons; every code block ships a "Copy" button | v1.0 |
 | Multi-provider AI federation | OpenAI / Anthropic / Gemini / OpenRouter / Regolo via raw `Http::` calls (no SDK); `AiManager::chat()` + `chatStream()` + `embeddings()`; per-provider streaming where supported (all 5 native or via `FallbackStreaming` trait); chat and embeddings providers configured separately | v1.0 |
 | Stateless JSON chat API | `POST /api/kb/chat` synchronous endpoint kept as backward-compat fallback alongside the v4 SSE streaming path; same hybrid retrieval pipeline + refusal short-circuit + confidence score serve both | v1.0 |
+| Stop / regenerate / branch / inline-edit affordances | Vercel AI SDK UI Tier 1 closure: stop-streaming via `AbortController`; regenerate-last-assistant; branch-from-message endpoint (forks the conversation tree); inline-edit user message; copy-code-block. All wired on `MessageStreamController` + the `useChatStream()` hook | v4.5 |
+| Per-message provider/model/cost metadata | Enhanced badge below every assistant message shows `provider`, `model`, `started_at`, prompt + completion tokens, and derived USD cost when `config('ai.cost_rates')` is populated (keyed by `provider → model → {input, output}`); cost is omitted (not zero) when rates are missing. Public lookup at `GET /api/chat/cost-rates` with 1-hour CDN cache | v4.5 |
+| Suggested follow-up pills | `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply via `AiManager::chat()`; renders as clickable pill chips above the composer; clicking submits via the streaming endpoint. Best-effort — provider error / parse failure / empty response returns `[]` and the row is not rendered. Triggered once on `onFinish` per assistant turn at `POST /conversations/{id}/suggested-followups` | v4.5 |
 
 ### Security & Compliance
 
@@ -195,6 +268,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Cross-mounted admin SPAs (3 packages) | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (cross-mount since v4.4/W2) + `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (iframe — Blade+Alpine, will remain iframed per ADR 0005) + `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (cross-mount since v4.4/W3, 3 fail-closed fences preserved) | v4.2 |
 | Laravel scheduler (10+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF); all `onOneServer()->withoutOverlapping()` | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
+| Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
 
 ### Integrations & Extensibility
 
@@ -208,7 +282,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Pluggable chat-log driver | `ChatLogDriverInterface`; `database` driver shipped; BigQuery / CloudWatch are extension points via `ChatLogManager::resolveDriver()` | v1.0 |
 | Sister `padosoft/*` package stack | `laravel-ai-regolo` v1.0 (Regolo provider for `laravel/ai`) + `laravel-pii-redactor` v1.2 (PII detection with EU country packs: Italy + Germany + Spain) + `laravel-pii-redactor-admin` v1.0.2 + `laravel-flow` v1.0 (saga engine + approval gates + webhook outbox + replay) + `laravel-flow-admin` v1.0.0 + `eval-harness` v1.2 (golden datasets + 7 metrics + cohorts + adversarial + LLM-as-judge) + `eval-harness-ui` v1.0.0 — every package MIT, every architecture test enforces standalone-agnostic invariants (zero refs to `KnowledgeDocument` / `kb_*` tables / `lopadova/askmydocs` in `src/`) | v4.2 |
 | External Patent Box dossier tool | `padosoft/laravel-patent-box-tracker` v0.1 generates audit-grade Italian Patent Box dossiers; **deliberately NOT in AskMyDocs `composer.json`** — operators install it in a separate Laravel project (R37 standalone-agnostic) and consume `tools/patent-box/2026.yml` from this repo. Commercialista-validated 2026-05-02 | v4.0 |
-| Connector framework (planned v4.5) | Plugin/package architecture (`ConnectorInterface` + `ConnectorRegistry` with composer auto-discovery via `extra.askmydocs.connectors` field); reference connectors planned: Google Drive + Notion + Evernote + Fabric (OS) and OneDrive + Confluence + Jira (Pro). NOT yet shipped | v4.5 ⏳ |
+| Connector framework + 7 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 7 native connectors: `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (all inline for v4.5; extracted to `padosoft/askmydocs-connector-*` packages in v4.6 per ADR 0008 D1) | v4.5 |
 | MCP client framework (planned v5.0) | AskMyDocs as MCP **CLIENT** (outward direction) — registry per workspace/tenant (`mcp_servers` table + `auth_config_json` + `enabled_tools_json` + per-tool RBAC); credential vault; admin UI to register MCP servers; per-conversation tool authorization; audit trail (`mcp_tool_call_audit`); Node sidecar via `@modelcontextprotocol/sdk`. NOT yet shipped | v5.0 ⏳ |
 
 ### Quality & Observability
@@ -222,10 +296,11 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Adversarial nightly opt-in | 2 env knobs (`EVAL_NIGHTLY_ADVERSARIAL` / `EVAL_NIGHTLY_ADVERSARIAL_DATASETS`) default OFF; runs the 3 adversarial datasets after baseline SUCCESS using the `nightly` batch profile; advisory-only summary sidecar; baseline-gates-adversarial alerting policy. ADR 0007 | v4.4 |
 | Regression-detection self-test | `RegressionDetectionTest` proves the gate ACTUALLY catches regressions: runs the metric stack against a canonical SUT (asserts green report) then against a hallucinating SUT (asserts `citation-groundedness-strict` mean AND macro_f1 drop, strict `>` comparison per R16) | v4.2 |
 | Playwright E2E suite | Real Postgres + pgvector in CI; deterministic via `data-state` + `data-testid` contract (R11); happy-path + failure-injection per feature (R12); real data only — `page.route()` reserved for external boundaries (R13) gated by `scripts/verify-e2e-real-data.sh` | v3.0 |
-| Test inventory | **1423 PHPUnit tests** across PHP 8.3 / 8.4 / 8.5 + **321 Vitest react scenarios** + **18 Vitest legacy** + full Playwright E2E suite + RAG regression workflow — all green as of v4.4.0 GA | v4.4 |
+| Test inventory | **1885 PHPUnit tests** across PHP 8.3 / 8.4 / 8.5 + **384 Vitest react scenarios** + **18 Vitest legacy** + 36 Playwright spec files + RAG regression workflow — all green as of v4.5.0 GA | v4.5 |
+| Opt-in live-test recording infrastructure | `tests/Live/Connectors/` skeleton + `LiveConnectorTestCase` per-provider env-var guard: each test gates on `CONNECTOR_<PROVIDER>_LIVE=1` (e.g. `CONNECTOR_NOTION_LIVE=1`) and needs the provider credential vars (e.g. `CONNECTOR_NOTION_TOKEN`, `CONNECTOR_CONFLUENCE_TOKEN`+`CONNECTOR_CONFLUENCE_CLOUD_ID`); fixture recording is enabled via `CONNECTOR_RECORD_FIXTURES=1`. Default CI runs `Unit` + `Feature` only (zero provider cost). Manual workflow `.github/workflows/live-recording-nightly.yml` available via `workflow_dispatch`. Junior-proof per-provider setup in [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](docs/v4-platform/RUNBOOK-live-fixture-recording.md) | v4.5 |
 | Structured chat logging | DB driver (extensible to BigQuery / CloudWatch); `session_id` / `user_id` / `question` / `answer` / `project_key` / `ai_provider` / `ai_model` / `chunks_count` / `sources` / `prompt_tokens` / `completion_tokens` / `total_tokens` / `latency_ms` / `client_ip` / `user_agent` / `extra` columns; try/catch — never propagates failures | v1.0 |
 | 39 codified review rules (R1–R39) | Distilled from ~110+ live Copilot findings across PR #4–#142; mirrored in `CLAUDE.md` + `.github/copilot-instructions.md` + per-rule `.claude/skills/<rule>/`; auto-loaded by Claude Code when trigger conditions match; pre-push agent at `.claude/agents/copilot-review-anticipator.md` | v3.0 |
-| ADR set (ADR 0001 → 0007) | Architectural decisions records: 0001 ingestion path, 0002 storage agnostic, 0003 human-gated promotion, 0004 v4.2 sister-package integration, 0005 React 19 host bump + iframe→cross-mount deferral, 0006 nightly eval cron, 0007 adversarial nightly opt-in | v3.0 |
+| ADR set (ADR 0001 → 0008) | Architectural decisions records: 0001 ingestion path, 0002 storage agnostic, 0003 human-gated promotion, 0004 v4.2 sister-package integration, 0005 React 19 host bump + iframe→cross-mount deferral, 0006 nightly eval cron, 0007 adversarial nightly opt-in, 0008 v4.5 universal connectors + source-aware ingestion + modern chat surface | v3.0 |
 
 ---
 
@@ -414,7 +489,9 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v4.2** | ✅ shipped 2026-05-10 | Sister-package integration GA — laravel-flow v1.0 (9 Flow definitions) + eval-harness v1.2 RAG regression CI gate + 3 admin SPAs cross-mounted |
 | **v4.3** | ✅ shipped 2026-05-10 | Host-side hardening — PII at 11 persistence touch-points + React 19 host bump + `eval:nightly` LLM-as-judge cron (ADR 0005 + ADR 0006) |
 | **v4.4** | ✅ shipped 2026-05-11 | Tailwind v4 host migration + iframe→cross-mount of pii-redactor-admin + eval-harness-ui + adversarial nightly opt-in (ADR 0007) |
-| **v4.5** | ⏳ planned | Connector framework (plugin/package, composer auto-discovery) + 7 reference connectors (Drive / Notion / Evernote / Fabric / OneDrive / Confluence / Jira) + Vercel AI SDK UI completion (regenerate / branch / edit / generative UI / canvas / artifacts) |
+| **v4.5** | ✅ shipped 2026-05-12 | Universal Connectors (Google Drive / Notion / Evernote / Fabric / OneDrive / Confluence / Jira) + admin OAuth SPA + source-aware ingestion (per-source chunker dispatch + Reranker Layer-4 + facets) + Vercel AI SDK UI Tier 1 + partial Tier 2 (suggested follow-ups). Stretch Tier 2 (tool-result render / streaming source parts / export / image attachments / artifact panel) deferred to v5.0 per ADR 0008 D4 |
+| **v4.6** | ⏳ planned | Connector package extraction — 7 inline connectors lifted to `padosoft/askmydocs-connector-*` packages + shared `-base` package + `padosoft/askmydocs-connector-template` for community contributors |
+| **v4.7** | ⏳ planned | Tabular Review + Workflows + AI-suggest — Glide Data Grid canvas tables + workflow editor + KB-sample-driven workflow suggester (16 format types + 12 UX differentiators) |
 | **v5.0** | ⏳ planned | Agentic platform — MCP **client** framework (outward direction) + per-tenant tool registry + credential vault + Node sidecar via `@modelcontextprotocol/sdk` |
 | **v6.0** | ⏳ planned | AI Act compliance bundle — via extracted `padosoft/laravel-ai-act-compliance` + admin SPA package (DSAR / bias monitoring / risk register / human-review tracker / consent / disclosure middleware) + AskMyDocs-specific token-level explainability and refusal-quality cohorts |
 
@@ -431,13 +508,16 @@ For the strategic reasoning behind v4.5+ see
 | Document | What it covers |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | Authoritative project brief — what AskMyDocs is, critical components, schemas, flows, 39 codified review rules (R1–R39), branching strategy (R37), Copilot review loop (R36) |
-| [`docs/adr/`](docs/adr/) | Architectural decision records — 0001 ingestion path / 0002 storage agnostic / 0003 human-gated promotion / 0004 v4.2 sister-package integration / 0005 React 19 host bump / 0006 nightly eval cron / 0007 adversarial nightly opt-in |
-| [`docs/v4-platform/STATUS-*`](docs/v4-platform/) | Per-cycle weekly status docs (v4.0 W1–W8 / v4.1 W4.1 / v4.2 W1–W5 / v4.3 W1–W4 / v4.4 W1–W4) — what shipped, test count delta, RC tag SHAs |
+| [`docs/adr/`](docs/adr/) | Architectural decision records — 0001 ingestion path / 0002 storage agnostic / 0003 human-gated promotion / 0004 v4.2 sister-package integration / 0005 React 19 host bump / 0006 nightly eval cron / 0007 adversarial nightly opt-in / 0008 v4.5 universal connectors + source-aware ingestion + modern chat surface |
+| [`docs/v4-platform/STATUS-*`](docs/v4-platform/) | Per-cycle weekly status docs (v4.0 W1–W8 / v4.1 W4.1 / v4.2 W1–W5 / v4.3 W1–W4 / v4.4 W1–W4 / v4.5 W1–W8) — what shipped, test count delta, RC tag SHAs |
+| [`docs/v4-platform/ROADMAP-v4-v5-v6.md`](docs/v4-platform/ROADMAP-v4-v5-v6.md) | Multi-major roadmap — v4.5 → v4.6 → v4.7 → v5.0 → v6.0 with Wn breakdowns, acceptance gates, and locked-in decision dates |
+| [`docs/connectors/README.md`](docs/connectors/README.md) | Connector framework developer guide — 10-method `ConnectorInterface` contract + composer-package auto-discovery + helper traits + the four channels available to a new connector author |
+| [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](docs/v4-platform/RUNBOOK-live-fixture-recording.md) | Junior-proof per-provider runbook for recording fresh fixtures — exact dev-console URLs, sidebar paths, button labels, scopes, env vars produced, verification one-liner with expected output |
 | [`docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md`](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | Per-sister-package integration timeline + status: regolo / pii-redactor / flow / eval-harness + the 3 admin SPAs + patent-box-tracker (external) |
 | [`docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md`](docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md) | Competitor audit vs Glean / Notion AI / ChatGPT Enterprise / M365 Copilot / Mendable / Vectara — feature parity matrix + 5 moats + top 5 v4.5+ gaps |
 | [`docs/v4-platform/AUDIT-2026-05-11-vercel-ai-sdk-ui-coverage.md`](docs/v4-platform/AUDIT-2026-05-11-vercel-ai-sdk-ui-coverage.md) | Vercel AI SDK v6 UI coverage audit — what AskMyDocs already implements vs Vercel reference / Claude / ChatGPT; Tier 1/2/3 v4.5 backlog |
 | [`docs/v4-platform/FEATURE-CATALOG-*.md`](docs/v4-platform/) | Per-sister-package feature catalogs (laravel-flow / eval-harness / pii-redactor / flow-admin / eval-harness-admin) |
-| [`CHANGELOG.md`](CHANGELOG.md) | Full per-release changelog (v1.0 → v4.4.0 GA) — every milestone, every RC tag, every test count delta |
+| [`CHANGELOG.md`](CHANGELOG.md) | Full per-release changelog (v1.0 → v4.5.0 GA) — every milestone, every RC tag, every test count delta |
 
 ---
 
@@ -552,4 +632,4 @@ including commercial use.
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for detailed release notes from
-v1.0 through v4.4.0 GA.
+v1.0 through v4.5.0 GA.
