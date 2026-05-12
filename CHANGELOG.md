@@ -29,8 +29,10 @@ SPA + Glide Data Grid + citation popover + SSE streaming land in W3.
     appears) + `shared_with`.
   - `tabular_cells` carries `(review, document, column)` extractions:
     `content` JSON `{summary, flag, reasoning, citations[]}` + `flag`
-    enum (`green` / `grey` / `yellow` / `red`) + `status` enum
-    (`pending` / `generating` / `ready` / `failed`).
+    (string column, application-enforced via the PHP `App\Support\TabularReview\CellFlag`
+    enum — values `green` / `grey` / `yellow` / `red`) + `status`
+    (string column, application-enforced via `CellStatus` — values
+    `pending` / `generating` / `ready` / `failed`).
   - Both tables: R31 tenant_id mandatory + standalone index +
     composite unique `(tenant_id, review_id, document_id, column_index)`.
   - FK cascade on review_id + document_id keeps the grid orphan-free.
