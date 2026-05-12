@@ -391,22 +391,41 @@ SYS;
                         continue;
                     }
                 }
-                // enum_values: cap count + per-value length so the
-                // downstream FormRequest accepts the payload.
-                if (isset($col['enum_values']) && is_array($col['enum_values'])) {
-                    if (count($col['enum_values']) > self::ENUM_VALUES_MAX) {
+                // Copilot iter 16: defensively strip / reject
+                // keys whose type does not match what
+                // StoreWorkflowRequest / FromProposalRequest expect.
+                // enum_values present but non-array → reject the
+                // column. json_path present + non-string OR present
+                // when format != json_path → strip it from the
+                // normalised payload so downstream `nullable + string`
+                // validation accepts the column. Without this, a
+                // proposal could pass here and 422 on save with a
+                // type-mismatch error.
+                if (array_key_exists('enum_values', $col)) {
+                    if ($col['enum_values'] !== null && ! is_array($col['enum_values'])) {
                         continue;
                     }
-                    $bad = false;
-                    foreach ($col['enum_values'] as $val) {
-                        if (! is_string($val) || mb_strlen($val) > self::ENUM_VALUE_MAX_CHARS) {
-                            $bad = true;
-                            break;
+                    if (is_array($col['enum_values'])) {
+                        if (count($col['enum_values']) > self::ENUM_VALUES_MAX) {
+                            continue;
+                        }
+                        $bad = false;
+                        foreach ($col['enum_values'] as $val) {
+                            if (! is_string($val) || mb_strlen($val) > self::ENUM_VALUE_MAX_CHARS) {
+                                $bad = true;
+                                break;
+                            }
+                        }
+                        if ($bad) {
+                            continue;
                         }
                     }
-                    if ($bad) {
-                        continue;
-                    }
+                }
+                if (array_key_exists('json_path', $col) && $format !== $jsonPathFormat) {
+                    // json_path on a non-json-path column is
+                    // meaningless; strip rather than reject so the
+                    // proposal isn't lost over a stray key.
+                    unset($col['json_path']);
                 }
                 $normalised[] = $col;
             }

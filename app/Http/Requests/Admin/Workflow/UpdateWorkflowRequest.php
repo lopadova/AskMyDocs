@@ -29,23 +29,20 @@ class UpdateWorkflowRequest extends FormRequest
             // when `fill() + save()` propagates NULL.
             'practice' => ['sometimes', 'string', Rule::in(WorkflowPractice::values())],
 
-            // Copilot iter 5/13: `columns_config` is required when
-            // the request sets `type=tabular`. Copilot iter 13
-            // flagged that combining `sometimes` + `required_if` is
-            // contradictory — `sometimes` skips validation when the
-            // field is absent, which would let
-            // `{type: 'tabular'}` (no columns_config) pass and then
-            // trigger the service-layer InvalidArgumentException at
-            // 500. Dropping `sometimes` so `required_if` fires
-            // whenever `type=tabular` is present; the field is
-            // ABSENT iff the caller is patching only `type=assistant`
-            // or unrelated fields, in which case `required_if` does
-            // not apply and the rule chain is a no-op (no `sometimes`
-            // bypass needed — the absence itself satisfies the
-            // optional-conditional contract).
+            // Copilot iter 5/13/16: `columns_config` is required
+            // when the request sets `type=tabular`. iter 16 flagged
+            // that `nullable` previously let `{columns_config: null}`
+            // pass when `type` was omitted — but if the existing
+            // workflow is tabular, the effective type after the
+            // patch stays tabular and the service-layer
+            // normaliseColumnsConfig would 500. Dropping `nullable`
+            // so any explicit-null value is rejected at 422; omitting
+            // the field entirely is still fine (the rule chain is a
+            // no-op when the key isn't present). The
+            // assistant-direction patch (type=assistant) lets the
+            // service clear `columns_config` regardless.
             'columns_config' => [
                 'required_if:type,tabular',
-                'nullable',
                 'array',
                 'min:1',
                 'max:50',
