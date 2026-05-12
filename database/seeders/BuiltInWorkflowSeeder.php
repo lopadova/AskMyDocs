@@ -16,6 +16,27 @@ use Illuminate\Database\Seeder;
  * Seeds 15 system workflows (is_system=true, user_id=null) covering
  * the AskMyDocs enterprise feature set. Idempotent on re-run: the
  * (tenant_id, title, is_system=true) tuple is the natural key.
+ *
+ * Copilot iter 15 — multi-tenant invocation pattern:
+ *
+ *   The seeder writes into the tenant currently set on the
+ *   request-scoped {@see TenantContext} singleton. Single-tenant
+ *   deploys (the v3 default) just run
+ *   `php artisan db:seed --class=BuiltInWorkflowSeeder` and pick
+ *   up the `'default'` tenant. Multi-tenant deploys MUST re-invoke
+ *   once per active tenant with the tenant_id set on the context:
+ *
+ *     foreach ($tenantIds as $id) {
+ *         app(TenantContext::class)->set($id);
+ *         (new BuiltInWorkflowSeeder)->run();
+ *     }
+ *
+ *   Consistent with every other seeder in the project (RbacSeeder,
+ *   ConnectorSeeder etc.) — there is intentionally no
+ *   "auto-discover every tenant + iterate" path so an operator
+ *   pruning a tenant cannot accidentally re-mint its templates.
+ *   A `php artisan workflows:install-system --tenant=<id>`
+ *   wrapper is parked for v4.7/W3.
  */
 class BuiltInWorkflowSeeder extends Seeder
 {

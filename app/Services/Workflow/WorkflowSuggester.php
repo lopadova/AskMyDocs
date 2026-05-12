@@ -356,20 +356,37 @@ SYS;
                 if (! is_array($col)) {
                     continue;
                 }
-                $name = (string) ($col['name'] ?? '');
-                $format = (string) ($col['format'] ?? '');
+                // Copilot iter 15: mirror the top-level proposal
+                // strict-string guards on every per-column field so a
+                // non-scalar `name: []` is rejected rather than
+                // emitting a PHP warning and accidentally passing
+                // validation as the string "Array".
+                if (! isset($col['name']) || ! is_string($col['name'])) {
+                    continue;
+                }
+                if (! isset($col['format']) || ! is_string($col['format'])) {
+                    continue;
+                }
+                $name = trim($col['name']);
+                $format = $col['format'];
                 if ($name === '' || $format === '' || ! in_array($format, $formats, true)) {
                     continue;
                 }
                 if (mb_strlen($name) > self::COLUMN_NAME_MAX_CHARS) {
                     continue;
                 }
-                $colPrompt = (string) ($col['prompt'] ?? '');
+                if (isset($col['prompt']) && ! is_string($col['prompt'])) {
+                    continue;
+                }
+                $colPrompt = isset($col['prompt']) ? $col['prompt'] : '';
                 if (mb_strlen($colPrompt) > self::COLUMN_PROMPT_MAX_CHARS) {
                     continue;
                 }
                 if ($format === $jsonPathFormat) {
-                    $jsonPath = trim((string) ($col['json_path'] ?? ''));
+                    if (! isset($col['json_path']) || ! is_string($col['json_path'])) {
+                        continue;
+                    }
+                    $jsonPath = trim($col['json_path']);
                     if ($jsonPath === '' || mb_strlen($jsonPath) > self::COLUMN_JSON_PATH_MAX_CHARS) {
                         continue;
                     }
