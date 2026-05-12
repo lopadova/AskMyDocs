@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
-use App\Connectors\ConnectorRegistry;
-use App\Connectors\Exceptions\ConnectorAuthException;
-use App\Jobs\ConnectorSyncJob;
-use App\Models\ConnectorInstallation;
 use App\Support\TenantContext;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
+use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
+use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

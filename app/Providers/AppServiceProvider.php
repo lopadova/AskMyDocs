@@ -17,13 +17,15 @@ use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
-use App\Connectors\ConnectorRegistry;
+use App\Connectors\HostIngestionBridge;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
+use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
+use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
 use App\Services\Kb\Pipeline\PipelineRegistry;
-use App\Support\TenantContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -58,12 +60,39 @@ class AppServiceProvider extends ServiceProvider
         // reset between PHPUnit tests via the Application instance lifecycle.
         $this->app->singleton(TenantContext::class);
 
-        // v4.5/W1 — Connector framework registry. Singleton so the
-        // built-in + composer auto-discovery cost is paid once per
-        // request. R23 — every registered FQCN is validated at boot.
-        $this->app->singleton(ConnectorRegistry::class, function ($app) {
-            return new ConnectorRegistry($app, (array) config('connectors', []));
+        // v4.6 connector package extraction — the
+        // `padosoft/askmydocs-connector-base` package ships its own
+        // `ConnectorRegistry` (singleton-bound by
+        // `Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider`)
+        // that auto-discovers every connector composer-package via
+        // `extra.askmydocs.connectors`. No host-side binding required.
+
+        // v4.6 — alias the package's `TenantContext` to the host's so
+        // both surfaces observe the same request-scoped tenant. The
+        // package's `BelongsToTenant` trait on
+        // `Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation`
+        // and the `OAuthCredentialVault` both read the package
+        // `TenantContext::current()`; aliasing here guarantees they see
+        // exactly what the host's `ResolveTenant` middleware set on
+        // `App\Support\TenantContext`. Without this, the package
+        // singleton would default to `'default'` and silently break
+        // R30 tenant isolation in non-default tenants.
+        $this->app->singleton(PackageTenantContext::class, function ($app) {
+            $hostCtx = $app->make(TenantContext::class);
+            $packageCtx = new PackageTenantContext;
+            $packageCtx->set($hostCtx->current());
+
+            return $packageCtx;
         });
+
+        // v4.6 — bind the IoC contract that connector packages call
+        // into for ingest dispatch, PII redaction, audit emission,
+        // and provider-side deletion. R26 redaction + R30 tenant
+        // scoping are enforced inside the bridge.
+        $this->app->singleton(
+            ConnectorIngestionContract::class,
+            HostIngestionBridge::class,
+        );
     }
 
     public function boot(): void

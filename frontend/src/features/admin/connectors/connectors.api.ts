@@ -7,9 +7,11 @@ import { api } from '../../../lib/api';
  *
  * R9 — every field name + URL here MUST match the backend source of
  * truth. The status enum is mirrored from
- * `App\Models\ConnectorInstallation::STATUSES`. The `display_name` /
- * `icon_url` / `oauth_scopes` / `installation` shape mirrors the JSON
- * envelope returned by `ConnectorAdminController::index()`.
+ * `Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation::STATUSES`
+ * (v4.6 package extraction; previously `App\Models\ConnectorInstallation`).
+ * The `display_name` / `icon_url` / `oauth_scopes` / `installation`
+ * shape mirrors the JSON envelope returned by
+ * `ConnectorAdminController::index()`.
  */
 
 export type ConnectorStatus = 'pending' | 'active' | 'disabled' | 'errored';

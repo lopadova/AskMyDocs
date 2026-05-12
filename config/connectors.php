@@ -22,25 +22,35 @@ return [
     | Built-in connectors
     |--------------------------------------------------------------------------
     |
-    | FQCN list of connector implementations that ship inside AskMyDocs
-    | core (no separate composer package required). The four reference
-    | connectors (Google Drive, Notion, Evernote, Fabric) currently
-    | ship inline as built-ins for v4.5/W1..W4. The
-    | `extra.askmydocs.connectors` composer-package auto-discovery hook
-    | in `App\Connectors\ConnectorRegistry` remains in place so future
-    | third-party connector packages (`padosoft/askmydocs-connector-*`
-    | or community-authored) can register themselves without editing
-    | this file.
+    | v4.6/Wn — All 7 reference connectors (Google Drive, Notion,
+    | Evernote, Fabric, OneDrive, Confluence, Jira) now ship as
+    | standalone composer packages:
+    |
+    |   - padosoft/askmydocs-connector-google-drive
+    |   - padosoft/askmydocs-connector-notion
+    |   - padosoft/askmydocs-connector-evernote
+    |   - padosoft/askmydocs-connector-fabric
+    |   - padosoft/askmydocs-connector-onedrive
+    |   - padosoft/askmydocs-connector-confluence
+    |   - padosoft/askmydocs-connector-jira
+    |
+    | Each package declares its connector FQCNs under
+    | `composer.json::extra.askmydocs.connectors` and is auto-discovered
+    | at boot by the `Padosoft\AskMyDocsConnectorBase\ConnectorRegistry`
+    | (mirror of Laravel's `extra.laravel.providers` convention).
+    |
+    | This `built_in` array stays as an extension point for host
+    | applications (and community connectors) that want to register a
+    | connector without shipping a separate composer package — e.g. a
+    | proprietary in-house connector that should never appear on
+    | Packagist. Add the FQCN here and the registry resolves + boot-
+    | validates it just like a composer-discovered connector.
     |
     */
     'built_in' => [
-        \App\Connectors\BuiltIn\GoogleDriveConnector::class,
-        \App\Connectors\BuiltIn\NotionConnector::class,
-        \App\Connectors\BuiltIn\EvernoteConnector::class,
-        \App\Connectors\BuiltIn\FabricConnector::class,
-        \App\Connectors\BuiltIn\OneDriveConnector::class,
-        \App\Connectors\BuiltIn\ConfluenceConnector::class,
-        \App\Connectors\BuiltIn\JiraConnector::class,
+        // Empty by design — every shipped connector is a standalone
+        // composer package (v4.6 extraction). Host operators may
+        // append in-house connector FQCNs here.
     ],
 
     /*

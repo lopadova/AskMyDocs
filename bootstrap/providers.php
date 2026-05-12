@@ -58,6 +58,35 @@ $providers = [
     //      preventing routes from leaking on an unprepared deploy.
     Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class,
     App\Providers\FlowAdminIntegrationServiceProvider::class,
+    // v4.6 — Connector framework SP (padosoft/askmydocs-connector-base
+    // v1.1.1). Listed explicitly for the same auto-discovery
+    // brittleness rationale as the siblings above. Required to
+    // register:
+    //   - ConnectorRegistry singleton (composer-extra auto-discovery)
+    //   - OAuthCredentialVault singleton
+    //   - Package's TenantContext (we alias the host's onto it in
+    //     AppServiceProvider::register())
+    //   - NullConnectorIngestionContract fallback (host re-binds the
+    //     real implementation right after via the singleton in
+    //     AppServiceProvider).
+    //   - 2 framework migrations (connector_installations +
+    //     connector_credentials).
+    Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider::class,
+    // v4.6 — 7 standalone connector SPs. Each one registers the
+    // connector's own provider (env-driven config, route helpers if
+    // any, OAuth callback wiring) and surfaces the connector FQCN via
+    // `extra.askmydocs.connectors` so the framework registry picks it
+    // up. Listed explicitly so a `bootstrap/cache/packages.php`
+    // staleness or `--no-dev` install can't silently drop a
+    // connector from the registry — same defence-in-depth posture as
+    // the Pii / Flow / EvalHarness siblings above.
+    Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveServiceProvider::class,
+    Padosoft\AskMyDocsConnectorNotion\NotionServiceProvider::class,
+    Padosoft\AskMyDocsConnectorEvernote\EvernoteServiceProvider::class,
+    Padosoft\AskMyDocsConnectorFabric\FabricServiceProvider::class,
+    Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class,
+    Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class,
+    Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class,
     // v4.2/W4 sub-PR 7 — Eval Harness UI SPA (padosoft/eval-harness-ui
     // v1.0.0). Listed explicitly because the package lives in
     // require-dev and Laravel's auto-discovery cache may exclude

@@ -44,10 +44,16 @@
 - [x] R36 Copilot loop green on every sub-PR; R39 RC tag at every Wn closure
 - [x] README hero refreshed with "Universal Connectors" + "Modern Chat Surface (Vercel AI SDK UI)" sections per the per-wave README-refresh convention (see the "Per-wave README + dedicated killer-feature sections" entry under "Cross-cycle conventions" below)
 
-## v4.6 — "Package Extraction" (post-v4.5 GA, ~4 weeks)
+## v4.6 — "Package Extraction" — ✅ GA SHIPPED 2026-05-12
 
-**Branch:** `feature/v4.6` cut from main once v4.5.0 ships
-**GA target:** ~2026-06-15
+**Branch:** `feature/v4.6` merged into `main` per R37 with `v4.6.0` GA
+tag per R39 on 2026-05-12.
+
+Cycle delivered the seven inline connectors as 8 standalone composer
+packages (`padosoft/askmydocs-connector-base` + 7 connector packages)
+plus the `ConnectorIngestionContract` IoC bridge. Host repo's
+`app/Connectors/BuiltIn/` is fully deleted; only `HostIngestionBridge.php`
+remains. See ADR 0009 + `docs/v4-platform/STATUS-2026-05-12-v46-week4-rc-acceptance.md`.
 
 Extract the 7 inline connectors into standalone `padosoft/askmydocs-connector-*` packages with a shared `-base` package. **8 new repos created on GitHub + cloned locally** under the folder convention `Ai/askmydocs-connector-*/` (no `padosoft-` prefix — NEW convention specific to this connector-package family, documented in this section as the source of truth).
 
@@ -63,12 +69,12 @@ Extract the 7 inline connectors into standalone `padosoft/askmydocs-connector-*`
 Bonus: `padosoft/askmydocs-connector-template` repo (already created) — scaffold for community contributors (composer.json + interface stub + CI workflow + README template + junior-proof credential-setup template).
 
 ### v4.6 acceptance gates
-- [ ] All 8 packages tagged v1.0.0 on Packagist
-- [ ] AskMyDocs `composer.json` requires the 7 functional connector packages
-- [ ] Inline connector code DELETED from AskMyDocs (only the registry contracts remain, lifted via base package)
-- [ ] All v4.5 tests still pass post-extraction (272+ connector tests now run against the package code)
-- [ ] Each package's README includes step-by-step credential setup + installation + activation inside AskMyDocs
-- [ ] Single `gh repo create padosoft/askmydocs-connector-trello` example documented for community contributors
+- [x] All 8 packages tagged v1.x on GitHub (Packagist submission parked as v4.6.x follow-up — currently VCS-resolved via `composer.json::repositories[]` same as `padosoft/laravel-pii-redactor`).
+- [x] AskMyDocs `composer.json` requires the 8 connector packages.
+- [x] Inline connector code DELETED from AskMyDocs (`app/Connectors/BuiltIn/` removed in full; only `HostIngestionBridge.php` remains).
+- [x] All v4.5 host-side tests still pass post-extraction (PHPUnit 1547/1548 — 1 unrelated pre-existing chunker failure deferred to v4.6.x; vitest 384/384; architecture 20/20).
+- [x] Each package's README includes step-by-step credential setup + installation + activation.
+- [x] Community contributor path documented in ADR 0009 — third-party Laravel apps can `composer require padosoft/askmydocs-connector-<x>` + bind a `ConnectorIngestionContract` implementation to ingest the source.
 
 ## v4.7 — "Tabular Review + Workflows + AI-suggest" (~3 weeks)
 

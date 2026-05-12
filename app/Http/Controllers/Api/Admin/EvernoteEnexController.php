@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
-use App\Connectors\BuiltIn\Evernote\EnexImporter;
-use App\Connectors\BuiltIn\Evernote\InvalidEnexException;
-use App\Models\ConnectorInstallation;
 use App\Support\TenantContext;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorEvernote\Support\EnexImporter;
+use Padosoft\AskMyDocsConnectorEvernote\Support\InvalidEnexException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -25,7 +25,7 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * is created on-the-fly so the bulk import can run without forcing
  * the operator through the OAuth dance first.
  *
- * Response shape mirrors {@see \App\Connectors\BuiltIn\Evernote\EnexImporter}:
+ * Response shape mirrors {@see \Padosoft\AskMyDocsConnectorEvernote\Support\EnexImporter}:
  *   { "data": { "imported": int, "skipped": int, "errors": list<string> } }
  *
  * R14 — a malformed ENEX surfaces HTTP 422 with a structured payload.

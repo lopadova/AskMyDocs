@@ -70,6 +70,27 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class);
         $app->register(\App\Providers\EvalHarnessUiIntegrationServiceProvider::class);
 
+        // v4.6 — connector framework + 7 standalone connector packages.
+        // Manual registration parallels every other vendor package above
+        // because Testbench skips Laravel's package-discovery cache. The
+        // base SP binds ConnectorRegistry as a singleton + auto-discovers
+        // every package's connectors via composer.lock's
+        // `extra.askmydocs.connectors`. Each per-connector SP registers
+        // its own connector FQCN; the base SP boots first so the
+        // ConnectorRegistry exists when the connector SPs' boot()
+        // methods reach for it. AppServiceProvider runs LATER in the
+        // list to rebind ConnectorIngestionContract onto
+        // HostIngestionBridge (overriding the package default
+        // NullConnectorIngestionContract).
+        $app->register(\Padosoft\AskMyDocsConnectorBase\ConnectorServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorNotion\NotionServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorEvernote\EvernoteServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorFabric\FabricServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class);
+        $app->register(\Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -150,9 +171,30 @@ abstract class TestCase extends OrchestraTestCase
         // flip this on via config(['eval-harness-ui.enabled' => true]).
         $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
         // v4.5/W1 — connector framework config. Without this,
-        // ConnectorRegistry boots empty and the admin endpoints + the
-        // GoogleDriveConnector tests can't resolve provider knobs.
-        $app['config']->set('connectors', require __DIR__.'/../config/connectors.php');
+        // ConnectorRegistry boots empty and the admin endpoints can't
+        // resolve provider knobs.
+        $connectorConfig = require __DIR__.'/../config/connectors.php';
+        // v4.6 — under Orchestra Testbench, `base_path('composer.lock')`
+        // resolves to the testbench vendor skeleton (not the host
+        // project), so the package's lockfile-driven auto-discovery
+        // sees an empty file. We compensate by seeding the connector
+        // FQCNs into the `built_in` slot explicitly — exercises the
+        // exact same R23 registration path (FQCN validation,
+        // duplicate-key detection, instance caching). Production
+        // continues to walk composer.lock just fine.
+        $connectorConfig['built_in'] = array_values(array_filter(array_merge(
+            $connectorConfig['built_in'] ?? [],
+            [
+                \Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveConnector::class,
+                \Padosoft\AskMyDocsConnectorNotion\NotionConnector::class,
+                \Padosoft\AskMyDocsConnectorEvernote\EvernoteConnector::class,
+                \Padosoft\AskMyDocsConnectorFabric\FabricConnector::class,
+                \Padosoft\AskMyDocsConnectorOneDrive\OneDriveConnector::class,
+                \Padosoft\AskMyDocsConnectorConfluence\ConfluenceConnector::class,
+                \Padosoft\AskMyDocsConnectorJira\JiraConnector::class,
+            ],
+        ), static fn (string $fqcn): bool => class_exists($fqcn)));
+        $app['config']->set('connectors', $connectorConfig);
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
         // cache lock store (FlowEngine rejects ArrayStore as process-local).
@@ -220,6 +262,11 @@ abstract class TestCase extends OrchestraTestCase
 
     protected function defineDatabaseMigrations(): void
     {
+        // v4.6 — `tests/database/migrations/` mirrors the production
+        // `database/migrations/` set for the SQLite test runner.
+        // Includes the connector framework migrations copied verbatim
+        // from `padosoft/askmydocs-connector-base` so the test schema
+        // matches what the package SP loads in production.
         $this->loadMigrationsFrom(__DIR__.'/database/migrations');
     }
 }

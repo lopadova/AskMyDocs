@@ -56,9 +56,12 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandNonce::class,
         \App\Models\AdminInsightsSnapshot::class,
         \App\Models\ChatFilterPreset::class,
-        // v4.5/W1 — connector framework
-        \App\Models\ConnectorInstallation::class,
-        \App\Models\ConnectorCredential::class,
+        // v4.6 — connector framework models now ship in
+        // `padosoft/askmydocs-connector-base` (v1.1.1) — the package
+        // owns the `BelongsToTenant` trait on
+        // `ConnectorInstallation` + `ConnectorCredential` and exercises
+        // R31 in its own CI. No host-side entries here so this gate
+        // doesn't drift between package and host.
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
