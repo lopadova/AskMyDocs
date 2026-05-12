@@ -106,6 +106,15 @@ final class WorkflowSuggester
             );
         }
 
+        // Copilot iter 3: hard-truncate to the caller's $limit AFTER
+        // validation so a chatty LLM that returns 12 proposals when 5
+        // were requested cannot blow the contract. The clamp at the
+        // top of suggest() bounds the prompt; this enforces the same
+        // ceiling on the validated output.
+        if (count($proposals) > $limit) {
+            $proposals = array_slice($proposals, 0, $limit);
+        }
+
         $payload = [
             'proposals' => $proposals,
             'meta' => [

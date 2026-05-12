@@ -62,7 +62,14 @@ final class WorkflowService
             $q->where('user_id', $user->id);
             if ($includeShared) {
                 $q->orWhere('is_system', true);
-                $email = (string) $user->getAttribute('email');
+                // Copilot iter 3: normalise the caller's email to
+                // lower-case before matching `workflow_shares`. The
+                // share() / userCanEdit / findOr404 paths already
+                // lowercase on write; this keeps the read path
+                // symmetric so a User row with a stray-uppercase or
+                // whitespace email never misses their own shared
+                // workflows.
+                $email = mb_strtolower(trim((string) $user->getAttribute('email')));
                 if ($email !== '') {
                     $q->orWhereIn('id', function ($sub) use ($email): void {
                         $sub->select('workflow_id')

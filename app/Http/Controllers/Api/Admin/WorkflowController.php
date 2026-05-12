@@ -65,8 +65,16 @@ final class WorkflowController extends Controller
             $includeHidden,
         );
 
+        // Copilot iter 3: resolve the JsonResource collection before
+        // wrapping it under the controller's own `data` key. Returning
+        // `WorkflowResource::collection(...)` directly would produce
+        // `{data: {data: [...]}}` (double-nesting) because the
+        // ResourceCollection emits its own envelope when serialised
+        // inside a top-level array. Flattening here keeps the FE
+        // contract `data: WorkflowResource[]`.
         return response()->json([
-            'data' => WorkflowResource::collection($workflows),
+            'data' => WorkflowResource::collection($workflows)
+                ->resolve($request),
             'meta' => [
                 'total' => $workflows->count(),
             ],

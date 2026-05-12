@@ -27,7 +27,18 @@ class WorkflowResource extends JsonResource
             'is_system' => $this->is_system,
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
-            'shares' => WorkflowShareResource::collection($this->whenLoaded('shares')),
+            // Copilot iter 3: emit `shares` as a plain array of
+            // resolved payloads. Returning
+            // `WorkflowShareResource::collection($this->whenLoaded('shares'))`
+            // would emit `shares: {data: [...]}` (nested envelope) when
+            // serialised through `response()->json()`. The controller
+            // test asserts `data.shares.0.shared_with_email`, which
+            // only works against the flat-array shape.
+            'shares' => $this->whenLoaded('shares', function () use ($request): array {
+                return $this->shares
+                    ->map(fn ($share) => (new WorkflowShareResource($share))->resolve($request))
+                    ->all();
+            }, []),
         ];
     }
 }
