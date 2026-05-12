@@ -34,6 +34,16 @@ final class WorkflowSuggester
     private const SAMPLE_SIZE = 50;
 
     /**
+     * Oversampling factor for the recent-rows fetch in
+     * {@see sampleDocuments()}. Pulls ~SAMPLE_SIZE * this many rows
+     * so the in-memory stratification has enough material to give
+     * every project_key a slice. Copilot iter 19: previously this
+     * was a hard-coded `3` inside the method with the docblock
+     * referencing a non-existent `SAMPLE_OVERSAMPLE` constant.
+     */
+    private const SAMPLE_OVERSAMPLE = 3;
+
+    /**
      * Title char cap. Mirrored in the system prompt and enforced in
      * {@see validateProposal()}. Copilot iter 1 flagged the drift
      * between "max 80 chars" in the prompt vs `mb_substr(..., 200)`
@@ -186,7 +196,7 @@ final class WorkflowSuggester
      */
     private function sampleDocuments(string $tenant): \Illuminate\Support\Collection
     {
-        $oversample = self::SAMPLE_SIZE * 3;
+        $oversample = self::SAMPLE_SIZE * self::SAMPLE_OVERSAMPLE;
 
         // Copilot iter 8: align with the rest of the KB read surface
         // (KbSearchService / GraphExpander / RejectedApproachInjector
