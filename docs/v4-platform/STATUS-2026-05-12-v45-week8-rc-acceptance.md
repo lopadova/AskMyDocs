@@ -109,7 +109,7 @@ it.
 
 ### G — R30/R31 cross-tenant isolation
 
-- [x] New tenant-aware tables added across the cycle (`connector_installations`, `connector_credentials`, `connector_oauth_state` — when applicable) all carry `tenant_id` with the `BelongsToTenant` trait + composite UNIQUE prefixed by `tenant_id`.
+- [x] New tenant-aware tables added across the cycle (`connector_installations`, `connector_credentials`) both carry `tenant_id` with the `BelongsToTenant` trait + composite UNIQUE prefixed by `tenant_id` (e.g. `uq_connector_installations_tenant_name`). OAuth state tokens are short-lived (`oauth_state_ttl_seconds` default 600s) and live in the application cache, not a DB table.
 - [x] `OAuthCredentialVault` derives the active tenant from `TenantContext::current()` on every read/write; no leaking via shared cache keys.
 - [x] Per-tenant Spatie `manageConnectors` gate enforced at controller + route layer for every `/api/admin/connectors/*` endpoint.
 
