@@ -61,6 +61,15 @@ final class WorkflowController extends Controller
 
     /**
      * GET /api/admin/workflows
+     *
+     * Copilot iter 10: paginates the catalogue (parity with
+     * UserController + TabularReviewController). The service still
+     * returns the full filtered collection (own + shared + system −
+     * hidden) so the access policy stays centralised; the controller
+     * slices that collection per `per_page` here. The full set is
+     * never huge in practice (workflows are firm-curated, not
+     * user-generated content), but per_page bounds the response so
+     * a tenant with 10k system+user workflows cannot DoS the FE.
      */
     public function index(Request $request): JsonResponse
     {
@@ -68,6 +77,8 @@ final class WorkflowController extends Controller
             'type' => ['nullable', 'string', Rule::in(WorkflowType::values())],
             'include_shared' => ['nullable', 'boolean'],
             'include_hidden' => ['nullable', 'boolean'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $type = $validated['type'] ?? null;
@@ -81,18 +92,19 @@ final class WorkflowController extends Controller
             $includeHidden,
         );
 
-        // Copilot iter 3: resolve the JsonResource collection before
-        // wrapping it under the controller's own `data` key. Returning
-        // `WorkflowResource::collection(...)` directly would produce
-        // `{data: {data: [...]}}` (double-nesting) because the
-        // ResourceCollection emits its own envelope when serialised
-        // inside a top-level array. Flattening here keeps the FE
-        // contract `data: WorkflowResource[]`.
+        $perPage = (int) ($validated['per_page'] ?? 25);
+        $page = (int) ($validated['page'] ?? 1);
+        $total = $workflows->count();
+        $offset = ($page - 1) * $perPage;
+        $slice = $workflows->slice($offset, $perPage)->values();
+
         return response()->json([
-            'data' => WorkflowResource::collection($workflows)
-                ->resolve($request),
+            'data' => WorkflowResource::collection($slice)->resolve($request),
             'meta' => [
-                'total' => $workflows->count(),
+                'current_page' => $page,
+                'last_page' => $total === 0 ? 1 : (int) ceil($total / $perPage),
+                'per_page' => $perPage,
+                'total' => $total,
             ],
         ]);
     }

@@ -94,6 +94,14 @@ final class WorkflowService
      * Create a workflow owned by $owner. Always scopes to the active
      * tenant.
      *
+     * Copilot iter 10: enforce type ↔ columns_config coherence at the
+     * service layer — assistant workflows always persist with
+     * `columns_config=null` even if the FormRequest let a payload
+     * through (defence in depth). Tabular workflows MUST carry a
+     * non-empty columns_config — the FormRequest enforces this for
+     * HTTP callers, and the service throws for any other caller (e.g.
+     * the seeder, fromProposal()).
+     *
      * @param array<string, mixed> $attributes
      */
     public function create(User $owner, array $attributes): Workflow
@@ -103,6 +111,12 @@ final class WorkflowService
         // is_system is reserved for the seeder; user-driven creates can
         // never mint a system row, regardless of FormRequest validation.
         $attributes['is_system'] = false;
+
+        $type = (string) ($attributes['type'] ?? '');
+        $attributes['columns_config'] = $this->normaliseColumnsConfig(
+            $type,
+            $attributes['columns_config'] ?? null,
+        );
 
         return Workflow::create($attributes);
     }
@@ -132,10 +146,53 @@ final class WorkflowService
             unset($attributes['user_id']);
         }
 
+        // Copilot iter 10: reconcile type ↔ columns_config. Compute
+        // the EFFECTIVE type after applying the patch — type may be
+        // omitted (sticky) or explicitly switched. Then re-normalise
+        // columns_config against that effective type so a
+        // `tabular → assistant` switch wipes the orphaned columns
+        // and an `assistant → tabular` switch requires non-empty
+        // columns (otherwise the UpdateWorkflowRequest already 422s
+        // on the same predicate; the service throws here as a
+        // defence in depth for non-HTTP callers).
+        $effectiveType = (string) ($attributes['type'] ?? $workflow->type);
+        if (array_key_exists('columns_config', $attributes) || $effectiveType !== $workflow->type) {
+            $columns = array_key_exists('columns_config', $attributes)
+                ? $attributes['columns_config']
+                : $workflow->columns_config;
+            $attributes['columns_config'] = $this->normaliseColumnsConfig($effectiveType, $columns);
+        }
+
         $workflow->fill($attributes);
         $workflow->save();
 
         return $workflow;
+    }
+
+    /**
+     * Enforce type ↔ columns_config coherence in one place.
+     * - assistant → columns_config is always null
+     * - tabular   → columns_config must be a non-empty array
+     *
+     * @param mixed $columnsConfig
+     * @return array<int, mixed>|null
+     */
+    private function normaliseColumnsConfig(string $type, $columnsConfig): ?array
+    {
+        if ($type === \App\Support\Workflow\WorkflowType::Assistant->value) {
+            return null;
+        }
+        if ($type === \App\Support\Workflow\WorkflowType::Tabular->value) {
+            if (! is_array($columnsConfig) || $columnsConfig === []) {
+                throw new \InvalidArgumentException(
+                    'Tabular workflows require a non-empty columns_config.'
+                );
+            }
+            return $columnsConfig;
+        }
+        // Unknown type — pass through; the model column constraint
+        // will reject at the DB layer.
+        return is_array($columnsConfig) ? $columnsConfig : null;
     }
 
     /**
