@@ -1,0 +1,291 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Workflow;
+
+use App\Ai\AiManager;
+use App\Models\KnowledgeDocument;
+use App\Models\User;
+use App\Support\TenantContext;
+use App\Support\Workflow\WorkflowPractice;
+use App\Support\Workflow\WorkflowType;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * v4.7/W2 — AI-suggested workflows from the tenant's own KB.
+ *
+ * The AskMyDocs differentiator over Mike: instead of forcing the user
+ * to discover templates manually, sample the tenant's documents, ask
+ * the LLM to surface workflow templates the user would actually want.
+ *
+ * R14: every failure path emits a structured refusal with `proposals=[]`
+ * and an explanatory `meta.reason`. Never silent null.
+ * R30: KB sampling is tenant-scoped via TenantContext.
+ */
+final class WorkflowSuggester
+{
+    /** Cache TTL in seconds (24 hours). */
+    public const CACHE_TTL = 86_400;
+
+    /** Stratified-sample size. */
+    private const SAMPLE_SIZE = 50;
+
+    public function __construct(
+        private readonly AiManager $ai,
+        private readonly MetadataPatternAnalyzer $analyzer,
+        private readonly TenantContext $ctx,
+    ) {}
+
+    /**
+     * @return array{
+     *     proposals: list<array<string, mixed>>,
+     *     meta: array{
+     *         tenant_id: string,
+     *         documents_analysed: int,
+     *         cache_hit: bool,
+     *         reason?: string,
+     *     },
+     * }
+     */
+    public function suggest(User $user, int $limit = 5, bool $forceRefresh = false): array
+    {
+        $tenant = $this->ctx->current();
+        $limit = max(1, min(10, $limit));
+
+        $cacheKey = sprintf('workflow_suggester:%s:%d', $tenant, $limit);
+
+        if (! $forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                $cached['meta']['cache_hit'] = true;
+                return $cached;
+            }
+        }
+
+        $documents = $this->sampleDocuments($tenant);
+        if ($documents->isEmpty()) {
+            return $this->refusal($tenant, 'No documents available for analysis.');
+        }
+
+        $patterns = $this->analyzer->analyze($documents);
+
+        try {
+            $response = $this->ai->chat(
+                $this->systemPrompt(),
+                $this->userPrompt($patterns, $limit),
+                [
+                    'temperature' => 0.4,
+                    'max_tokens' => 1200,
+                ],
+            );
+        } catch (\Throwable $e) {
+            Log::warning('WorkflowSuggester: AI call failed', [
+                'tenant_id' => $tenant,
+                'message' => $e->getMessage(),
+            ]);
+            return $this->refusal($tenant, 'AI provider call failed.', $patterns['documents_analysed']);
+        }
+
+        $proposals = $this->parseProposals($response->content);
+        if ($proposals === []) {
+            return $this->refusal(
+                $tenant,
+                'AI returned no parseable proposals.',
+                $patterns['documents_analysed'],
+            );
+        }
+
+        $payload = [
+            'proposals' => $proposals,
+            'meta' => [
+                'tenant_id' => $tenant,
+                'documents_analysed' => $patterns['documents_analysed'],
+                'cache_hit' => false,
+            ],
+        ];
+
+        Cache::put($cacheKey, $payload, self::CACHE_TTL);
+
+        return $payload;
+    }
+
+    /**
+     * Sample up to SAMPLE_SIZE documents stratified by project_key.
+     */
+    private function sampleDocuments(string $tenant): \Illuminate\Support\Collection
+    {
+        $baseQuery = KnowledgeDocument::query()
+            ->forTenant($tenant)
+            ->where('status', 'indexed');
+
+        $projectKeys = (clone $baseQuery)
+            ->select('project_key')
+            ->distinct()
+            ->pluck('project_key')
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($projectKeys === []) {
+            return $baseQuery->latest('id')->limit(self::SAMPLE_SIZE)->get();
+        }
+
+        $perProject = (int) max(1, (int) ceil(self::SAMPLE_SIZE / count($projectKeys)));
+        $collected = collect();
+
+        foreach ($projectKeys as $projectKey) {
+            $rows = KnowledgeDocument::query()
+                ->forTenant($tenant)
+                ->where('status', 'indexed')
+                ->where('project_key', $projectKey)
+                ->latest('id')
+                ->limit($perProject)
+                ->get();
+
+            $collected = $collected->concat($rows);
+            if ($collected->count() >= self::SAMPLE_SIZE) {
+                break;
+            }
+        }
+
+        return $collected->take(self::SAMPLE_SIZE);
+    }
+
+    /**
+     * @param array<string, mixed> $patterns
+     */
+    private function userPrompt(array $patterns, int $limit): string
+    {
+        return sprintf(
+            "Document metadata signature:\n%s\n\nPropose %d workflow templates. "
+            ."Reply with ONE JSON array, no commentary.",
+            json_encode($patterns, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+            $limit,
+        );
+    }
+
+    private function systemPrompt(): string
+    {
+        $assistantValue = WorkflowType::Assistant->value;
+        $tabularValue = WorkflowType::Tabular->value;
+        $practiceList = implode(', ', WorkflowPractice::values());
+
+        return <<<SYS
+You are an assistant that proposes reusable workflow templates for a
+knowledge-management tool, given a compact signature of the tenant's
+documents. Each proposal carries:
+  - title (max 80 chars)
+  - type ("{$assistantValue}" or "{$tabularValue}")
+  - prompt_md (the system prompt the workflow will run)
+  - columns_config (array of {name, prompt, format} — required when type
+    is "{$tabularValue}", null otherwise)
+  - practice (one of: {$practiceList})
+  - reasoning (1 sentence explaining why this template fits the KB)
+
+Return ONE JSON array. No prose, no markdown fences, no preamble.
+SYS;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function parseProposals(string $raw): array
+    {
+        $text = trim($raw);
+        $text = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $text) ?? $text;
+
+        $decoded = json_decode($text, true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $valid = [];
+        foreach ($decoded as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $normalised = $this->validateProposal($item);
+            if ($normalised !== null) {
+                $valid[] = $normalised;
+            }
+        }
+
+        return $valid;
+    }
+
+    /**
+     * @param array<string, mixed> $proposal
+     * @return array<string, mixed>|null
+     */
+    private function validateProposal(array $proposal): ?array
+    {
+        $title = (string) ($proposal['title'] ?? '');
+        $type = (string) ($proposal['type'] ?? '');
+        $promptMd = (string) ($proposal['prompt_md'] ?? '');
+        $practice = (string) ($proposal['practice'] ?? WorkflowPractice::Generic->value);
+        $reasoning = (string) ($proposal['reasoning'] ?? '');
+        $columnsConfig = $proposal['columns_config'] ?? null;
+
+        if ($title === '' || $promptMd === '') {
+            return null;
+        }
+
+        if (! in_array($type, WorkflowType::values(), true)) {
+            return null;
+        }
+
+        if (! in_array($practice, WorkflowPractice::values(), true)) {
+            $practice = WorkflowPractice::Generic->value;
+        }
+
+        if ($type === WorkflowType::Tabular->value) {
+            if (! is_array($columnsConfig) || $columnsConfig === []) {
+                return null;
+            }
+            $normalised = [];
+            foreach ($columnsConfig as $col) {
+                if (! is_array($col)) {
+                    continue;
+                }
+                $name = (string) ($col['name'] ?? '');
+                if ($name === '') {
+                    continue;
+                }
+                $normalised[] = $col;
+            }
+            if ($normalised === []) {
+                return null;
+            }
+            $columnsConfig = $normalised;
+        } else {
+            $columnsConfig = null;
+        }
+
+        return [
+            'title' => mb_substr($title, 0, 200),
+            'type' => $type,
+            'prompt_md' => $promptMd,
+            'columns_config' => $columnsConfig,
+            'practice' => $practice,
+            'reasoning' => $reasoning,
+        ];
+    }
+
+    /**
+     * @return array{proposals: list<array<string, mixed>>, meta: array{tenant_id: string, documents_analysed: int, cache_hit: bool, reason: string}}
+     */
+    private function refusal(string $tenant, string $reason, int $analysed = 0): array
+    {
+        return [
+            'proposals' => [],
+            'meta' => [
+                'tenant_id' => $tenant,
+                'documents_analysed' => $analysed,
+                'cache_hit' => false,
+                'reason' => $reason,
+            ],
+        ];
+    }
+}

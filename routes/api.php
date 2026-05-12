@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
 use App\Http\Controllers\Api\Admin\UserController;
+use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -503,4 +504,66 @@ Route::middleware([
         Route::post('/{id}/clear-cells', [TabularReviewController::class, 'clearCells'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.clear-cells');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Workflows (v4.7/W2)
+|--------------------------------------------------------------------------
+|
+| Reusable prompt templates (assistant or tabular) + AI-suggested
+| workflows from the tenant's KB. Mounted under `can:viewWorkflows`
+| so `viewer` can browse + see suggestions (read-only); `admin` +
+| `super-admin` can mutate. The controller enforces the write fence
+| at the action layer.
+|
+| Literal sub-paths (`/suggest`, `/from-proposal`) MUST come before
+| the `/{id}` catch-all so the literal route is matched first. The
+| `/share` and `/hide` routes are nested under `/{id}` and rely on
+| `whereNumber('id')` to keep the dispatch unambiguous.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewWorkflows',
+])
+    ->prefix('admin/workflows')
+    ->group(function () {
+        Route::get('/', [WorkflowController::class, 'index'])
+            ->name('api.admin.workflows.index');
+        Route::post('/', [WorkflowController::class, 'store'])
+            ->name('api.admin.workflows.store');
+
+        // Literal sub-paths before /{id}.
+        Route::post('/suggest', [WorkflowController::class, 'suggest'])
+            ->middleware('throttle:30,1')
+            ->name('api.admin.workflows.suggest');
+        Route::post('/from-proposal', [WorkflowController::class, 'fromProposal'])
+            ->name('api.admin.workflows.from-proposal');
+
+        Route::get('/{id}', [WorkflowController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.show');
+        Route::patch('/{id}', [WorkflowController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.update');
+        Route::delete('/{id}', [WorkflowController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.destroy');
+
+        Route::post('/{id}/share', [WorkflowController::class, 'share'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.share');
+        Route::delete('/{id}/share', [WorkflowController::class, 'unshare'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unshare');
+
+        Route::post('/{id}/hide', [WorkflowController::class, 'hide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.hide');
+        Route::delete('/{id}/hide', [WorkflowController::class, 'unhide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unhide');
     });

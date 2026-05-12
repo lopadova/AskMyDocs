@@ -106,6 +106,42 @@ class AppServiceProvider extends ServiceProvider
         $this->registerEvalHarnessUiGates();
         $this->registerConnectorGates();
         $this->registerTabularReviewGates();
+        $this->registerWorkflowGates();
+    }
+
+    /**
+     * v4.7/W2 — Wires the Gates that protect the workflows admin
+     * surface.
+     *
+     *   - viewWorkflows     → admit super-admin + admin + viewer
+     *     (viewer is read-only, the controller enforces the write fence)
+     *   - createWorkflows   → admit super-admin + admin only
+     *     (viewer cannot mutate)
+     *   - suggestWorkflows  → admit super-admin + admin only (cost-protected;
+     *     viewer cannot trigger LLM-backed suggestions)
+     */
+    private function registerWorkflowGates(): void
+    {
+        Gate::define('viewWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin', 'viewer']);
+        });
+
+        Gate::define('createWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+
+        Gate::define('suggestWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
     }
 
     /**
