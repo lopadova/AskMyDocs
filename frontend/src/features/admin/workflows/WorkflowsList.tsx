@@ -35,7 +35,16 @@ export function WorkflowsList(): ReactNode {
     // (`assertCanSuggest()` admits only admin/super-admin). We mirror
     // that on the FE so a viewer never sees a misleading button.
     const canSuggest = roles.includes('admin') || roles.includes('super-admin');
-    const canMutate = canSuggest; // viewers cannot mutate any workflow
+    // `canCreate` gates the "+ New workflow" button. NOTE: this is NOT
+    // a blanket "viewers cannot mutate" — viewers ARE allowed to hide
+    // a workflow from their personal catalogue (BE Gate
+    // `hideWorkflow` admits any authenticated role; the hide button
+    // below is rendered for everyone). The boolean is scoped to the
+    // create + suggest flows, which the BE restricts to admin /
+    // super-admin via `denyMutationForViewer()` / `assertCanSuggest()`.
+    // Copilot iter 7 caught the doc drift on the previous
+    // `canMutate` naming.
+    const canCreate = canSuggest;
 
     const wfQuery = useQuery({
         // Fetch the same superset for shared+system (include_shared=1);
@@ -112,7 +121,7 @@ export function WorkflowsList(): ReactNode {
         >
             <header style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                 <h2 style={{ margin: 0, flex: 1 }}>Workflows</h2>
-                {canMutate && (
+                {canCreate && (
                     <button
                         type="button"
                         data-testid="admin-workflows-create"

@@ -166,9 +166,15 @@ describe('TabularReviewsList', () => {
         const select = screen.getByTestId('admin-tabular-review-create-column-0-format') as HTMLSelectElement;
         const optionValues = Array.from(select.querySelectorAll('option')).map((o) => o.value);
 
-        // Exact 17-element domain (alphabetical order optional; what
-        // matters is the SET).
-        expect(optionValues).toEqual([
+        // Exact 17-element domain. The assertion is intentionally
+        // order-insensitive (compare as a SET) — the UI surfaces these
+        // options in `FORMAT_TYPES` declaration order today, but the
+        // test's behavioural claim is "every BE-enum value is offered,
+        // no synonyms slip in". Asserting order would couple the test
+        // to a presentation detail and break on legitimate UX
+        // reordering (R16 — let the test name drive the assertion).
+        // Copilot iter 7 flagged the doc-vs-assertion drift.
+        const expectedDomain = [
             'text',
             'bulleted_list',
             'number',
@@ -186,7 +192,9 @@ describe('TabularReviewsList', () => {
             'tags_multi',
             'relation',
             'json_path',
-        ]);
+        ];
+        expect(optionValues.length).toBe(expectedDomain.length);
+        expect([...optionValues].sort()).toEqual([...expectedDomain].sort());
         // None of the obsolete Mike-style literals are present.
         expect(optionValues).not.toContain('free_text');
         expect(optionValues).not.toContain('percent');

@@ -523,19 +523,59 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                                 <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--hairline)' }}>#{docId}</td>
                                 {columns.map((_, i) => {
                                     const cell = byCol.get(i);
+                                    const flag = cell?.flag ?? 'empty';
+                                    const summary = cell?.content?.summary ?? '—';
+                                    const reasoning = cell?.content?.reasoning ?? '';
+                                    // R15 — never rely on color alone for
+                                    // status, and never put load-bearing
+                                    // semantic content (the reasoning) in a
+                                    // `title` attribute: tooltips don't
+                                    // surface on keyboard focus and aren't
+                                    // reliably announced by AT. The cell
+                                    // gets: (a) a visually-hidden status
+                                    // label so screen-readers announce the
+                                    // flag, (b) a small visible flag glyph
+                                    // for sighted users who can't perceive
+                                    // the tint, (c) an `aria-label` that
+                                    // composes summary + flag + reasoning
+                                    // into one self-contained announcement.
+                                    // Copilot iter 7 flagged the
+                                    // color-only + title-only pattern.
+                                    const ariaLabel = [
+                                        `Column ${i + 1}`,
+                                        `flag: ${flag}`,
+                                        `summary: ${summary}`,
+                                        reasoning ? `reasoning: ${reasoning}` : null,
+                                    ].filter(Boolean).join('; ');
                                     return (
                                         <td
                                             key={i}
                                             data-testid={`admin-tabular-review-show-cell-${docId}-${i}`}
-                                            data-flag={cell?.flag ?? 'empty'}
+                                            data-flag={flag}
+                                            aria-label={ariaLabel}
                                             style={{
                                                 padding: '6px 8px',
                                                 borderBottom: '1px solid var(--hairline)',
                                                 background: cellFlagBg(cell?.flag),
                                             }}
-                                            title={cell?.content?.reasoning ?? ''}
                                         >
-                                            {cell?.content?.summary ?? '—'}
+                                            <span aria-hidden="true" style={{ marginRight: 4, fontSize: 11 }}>
+                                                {cellFlagGlyph(flag)}
+                                            </span>
+                                            {summary}
+                                            {reasoning && (
+                                                <span
+                                                    data-testid={`admin-tabular-review-show-cell-${docId}-${i}-reasoning`}
+                                                    style={{
+                                                        display: 'block',
+                                                        marginTop: 4,
+                                                        fontSize: 11,
+                                                        color: 'var(--fg-3)',
+                                                    }}
+                                                >
+                                                    {reasoning}
+                                                </span>
+                                            )}
                                         </td>
                                     );
                                 })}
@@ -560,5 +600,27 @@ function cellFlagBg(flag?: string): string {
             return 'rgba(120, 120, 120, 0.06)';
         default:
             return 'transparent';
+    }
+}
+
+/**
+ * Visible glyph that mirrors the cell-flag tint for sighted users who
+ * cannot perceive the background colour (high-contrast mode, mono
+ * displays, dichromatic vision). Pair this with an `aria-label` on the
+ * cell for the screen-reader announcement — the glyph itself is
+ * decorative (`aria-hidden="true"`). R15.
+ */
+function cellFlagGlyph(flag?: string): string {
+    switch (flag) {
+        case 'green':
+            return '✓';
+        case 'yellow':
+            return '⚠';
+        case 'red':
+            return '✗';
+        case 'grey':
+            return '○';
+        default:
+            return '';
     }
 }
