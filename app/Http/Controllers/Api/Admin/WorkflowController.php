@@ -17,6 +17,7 @@ use App\Models\WorkflowShare;
 use App\Services\Workflow\WorkflowService;
 use App\Services\Workflow\WorkflowSuggester;
 use App\Support\TenantContext;
+use App\Support\Workflow\WorkflowPractice;
 use App\Support\Workflow\WorkflowType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,7 +95,11 @@ final class WorkflowController extends Controller
             'title' => $validated['title'],
             'type' => $validated['type'],
             'prompt_md' => $validated['prompt_md'],
-            'practice' => $validated['practice'] ?? 'generic',
+            // Copilot iter 5: pull the default from WorkflowPractice
+            // rather than hard-coding the string. Single source of
+            // truth — if the enum ever renames `generic`, the
+            // controller does not drift.
+            'practice' => $validated['practice'] ?? WorkflowPractice::Generic->value,
             'columns_config' => $validated['columns_config'] ?? null,
         ];
 
@@ -130,14 +135,20 @@ final class WorkflowController extends Controller
     /**
      * DELETE /api/admin/workflows/{id}
      */
-    public function destroy(Request $request, int $id): JsonResponse
+    public function destroy(Request $request, int $id): \Symfony\Component\HttpFoundation\Response
     {
         $this->assertCanCreate($request);
 
         $workflow = $this->findOr404($id, $request->user());
         $this->service->delete($workflow, $request->user());
 
-        return response()->json(null, 204);
+        // Copilot iter 5: 204 No Content responses must NOT carry a
+        // body. `response()->json(null, 204)` would emit the JSON
+        // literal "null" which some proxies/clients treat as a
+        // payload. Use Laravel's `noContent()` helper for an empty
+        // body. Return type is `Symfony\Response` because
+        // `noContent()` returns a base `Response`, not a `JsonResponse`.
+        return response()->noContent();
     }
 
     /**

@@ -532,6 +532,18 @@ Route::middleware([
 | `/share` and `/hide` routes are nested under `/{id}` and rely on
 | `whereNumber('id')` to keep the dispatch unambiguous.
 |
+| Middleware (`EncryptCookies` + `StartSession`) mirrors every other
+| admin route group in this file: AskMyDocs is a Sanctum-SPA + API
+| hybrid where the React shell at `/admin/*` authenticates via a
+| stateful session cookie. The whole admin surface — Dashboard
+| metrics, Users, Roles, KB tree/explorer, Tabular Reviews, PII admin,
+| Eval Harness, Connectors — uses the same triple
+| (`EncryptCookies` + `StartSession` + `auth:sanctum`), and
+| diverging here would force the FE to issue token-bearer auth on
+| this surface alone. Copilot iter 5 flagged the stateful overhead;
+| the consistency with the rest of the admin surface outweighs the
+| overhead — the FE would otherwise need bespoke fetch wiring.
+|
 */
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,

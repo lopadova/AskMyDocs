@@ -29,7 +29,22 @@ class UpdateWorkflowRequest extends FormRequest
             // when `fill() + save()` propagates NULL.
             'practice' => ['sometimes', 'string', Rule::in(WorkflowPractice::values())],
 
-            'columns_config' => ['sometimes', 'nullable', 'array', 'min:1', 'max:50'],
+            // Copilot iter 5: `columns_config` is required and
+            // non-empty when the request body sets `type=tabular`
+            // (mirrors the StoreWorkflowRequest contract). For
+            // assistant workflows the field is omitted; for tabular
+            // workflows it cannot be NULL even on patch — that would
+            // mint an invalid tabular row with no columns. When the
+            // request omits `type` and only patches the columns, the
+            // service-side update path keeps the existing column set;
+            // an explicit null on tabular goes to 422 here.
+            'columns_config' => [
+                'sometimes',
+                'required_if:type,tabular',
+                'array',
+                'min:1',
+                'max:50',
+            ],
             'columns_config.*.name' => ['required_with:columns_config', 'string', 'max:120'],
             'columns_config.*.prompt' => ['nullable', 'string', 'max:2000'],
             'columns_config.*.format' => [
