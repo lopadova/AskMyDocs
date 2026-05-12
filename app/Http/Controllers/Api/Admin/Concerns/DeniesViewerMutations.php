@@ -37,6 +37,14 @@ trait DeniesViewerMutations
     /**
      * Reject write actions when the caller has only `viewer` role.
      * super-admin / admin are admitted upstream by the Gate.
+     *
+     * Fail-closed: if the authenticated user model doesn't expose the
+     * Spatie role helpers (`hasRole` + `hasAnyRole`), throw 403 rather
+     * than letting the mutation proceed. The host always installs
+     * `spatie/laravel-permission` on the `User` model, so a missing
+     * helper means the request reached this code path with a stub /
+     * mock / non-standard user — that's never an admission case.
+     * Copilot iter 8 flagged the previous behaviour as fail-open.
      */
     private function denyMutationForViewer(Request $request): void
     {
@@ -44,8 +52,12 @@ trait DeniesViewerMutations
         if ($user === null) {
             return;
         }
-        if (method_exists($user, 'hasRole') && $user->hasRole('viewer')
-            && ! $user->hasAnyRole(['admin', 'super-admin'])) {
+        if (! method_exists($user, 'hasRole') || ! method_exists($user, 'hasAnyRole')) {
+            throw new AccessDeniedHttpException(
+                'Cannot verify role membership on this user model — write action denied.',
+            );
+        }
+        if ($user->hasRole('viewer') && ! $user->hasAnyRole(['admin', 'super-admin'])) {
             throw new AccessDeniedHttpException('Viewers cannot mutate tabular reviews.');
         }
     }

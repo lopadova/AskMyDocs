@@ -443,15 +443,17 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
                     <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
                         {data.map((p, idx) => (
                             // Stable React key derived from proposal identity
-                            // (title + type) — the array index is reserved for
-                            // the data-testid hierarchy so existing E2E selectors
-                            // (`admin-workflow-suggestion-${idx}`) survive.
-                            // Copilot iter 5 caught the index-as-key risk:
-                            // if the suggestions list ever re-orders or merges
-                            // an incoming refetch, React must NOT reuse a DOM
-                            // node for a different proposal.
+                            // (title + type) PLUS the array index as a
+                            // tie-breaker — the suggester is an LLM and can
+                            // legitimately emit two proposals with the same
+                            // (title, type) on the same fetch. The data-testid
+                            // hierarchy is kept on idx alone so existing E2E
+                            // selectors (`admin-workflow-suggestion-${idx}`)
+                            // survive. Copilot iter 5 flagged index-as-key
+                            // risk; iter 8 flagged the duplicate-(title,type)
+                            // risk — the `::${idx}` suffix addresses both.
                             <li
-                                key={`${p.title}::${p.type}`}
+                                key={`${p.title}::${p.type}::${idx}`}
                                 data-testid={`admin-workflow-suggestion-${idx}`}
                                 style={{ border: '1px solid var(--hairline)', borderRadius: 6, padding: 12 }}
                             >
