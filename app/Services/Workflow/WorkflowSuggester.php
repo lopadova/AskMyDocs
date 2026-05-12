@@ -427,7 +427,29 @@ SYS;
                     // proposal isn't lost over a stray key.
                     unset($col['json_path']);
                 }
-                $normalised[] = $col;
+                // Copilot iter 17: build a whitelisted column shape.
+                // Appending the raw LLM-provided $col would leak any
+                // unexpected keys (LLM hallucinations, prompt
+                // injection) into the cached payload + API response
+                // and potentially into the workflows.columns_config
+                // column when /from-proposal saves the proposal.
+                $whitelisted = [
+                    'name' => $name,
+                    'format' => $format,
+                ];
+                if (isset($col['prompt']) && is_string($col['prompt']) && $col['prompt'] !== '') {
+                    $whitelisted['prompt'] = $col['prompt'];
+                }
+                if (isset($col['enum_values']) && is_array($col['enum_values'])) {
+                    $whitelisted['enum_values'] = array_values(array_filter(
+                        $col['enum_values'],
+                        fn ($v) => is_string($v),
+                    ));
+                }
+                if ($format === $jsonPathFormat && isset($col['json_path']) && is_string($col['json_path'])) {
+                    $whitelisted['json_path'] = trim($col['json_path']);
+                }
+                $normalised[] = $whitelisted;
             }
             if ($normalised === []) {
                 return null;
