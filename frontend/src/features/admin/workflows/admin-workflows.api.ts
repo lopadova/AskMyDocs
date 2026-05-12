@@ -56,6 +56,12 @@ export const adminWorkflowsApi = {
         } else {
             params.set('include_shared', '1');
         }
+        // Copilot iter 6 — the list endpoint is paginated (default
+        // per_page=25, max 100). v4.7 GA ships with per_page=100 so the
+        // 15 built-in templates plus a reasonable amount of tenant-
+        // created workflows fit on a single page; full pagination
+        // controls land in v4.7.x polish.
+        params.set('per_page', '100');
         const { data } = await api.get<{ data: Workflow[] }>(
             `/api/admin/workflows?${params.toString()}`
         );
@@ -82,7 +88,13 @@ export const adminWorkflowsApi = {
     },
 
     async fromProposal(proposal: WorkflowProposal): Promise<Workflow> {
-        const { data } = await api.post<{ data: Workflow }>(`/api/admin/workflows/from-proposal`, proposal);
+        // Copilot iter 6 — `FromProposalRequest` validates `proposal.*`
+        // (nested under a `proposal` key). Posting the proposal at the
+        // root of the body 422s in production. Wrap the payload.
+        const { data } = await api.post<{ data: Workflow }>(
+            `/api/admin/workflows/from-proposal`,
+            { proposal },
+        );
         return data.data;
     },
 

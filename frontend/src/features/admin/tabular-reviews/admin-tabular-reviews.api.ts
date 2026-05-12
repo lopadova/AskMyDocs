@@ -120,9 +120,15 @@ export interface ListMeta {
 
 export const adminTabularReviewsApi = {
     async list(projectKey?: string): Promise<{ data: TabularReview[]; meta: ListMeta }> {
-        const qs = projectKey ? `?project_key=${encodeURIComponent(projectKey)}` : '';
+        // Copilot iter 6 — list endpoint is paginated (default per_page=25,
+        // max 100). v4.7 GA bumps to per_page=100 so the typical admin
+        // case (a few dozen reviews per tenant) renders without pagination
+        // controls. Full Prev/Next wiring lands in v4.7.x polish.
+        const params = new URLSearchParams();
+        params.set('per_page', '100');
+        if (projectKey) params.set('project_key', projectKey);
         const { data } = await api.get<{ data: TabularReview[]; meta: ListMeta }>(
-            `/api/admin/tabular-reviews${qs}`
+            `/api/admin/tabular-reviews?${params.toString()}`
         );
         return data;
     },

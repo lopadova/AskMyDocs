@@ -100,9 +100,13 @@ describe('TabularReviewsList', () => {
         // GET fan-out: first call = list (empty), subsequent calls =
         // the show-page detail fetch that fires after create succeeds.
         mockGet.mockImplementation((url: string) => {
-            if (url === '/api/admin/tabular-reviews') {
+            // List endpoint now appends `?per_page=100` per Copilot
+            // iter 6 (pagination is BE-paginated but FE wrapper bumps
+            // the page size for v4.7 GA). Match by prefix on the list
+            // path, and by id for the show fetch.
+            if (url.startsWith('/api/admin/tabular-reviews?') || url === '/api/admin/tabular-reviews') {
                 return Promise.resolve({
-                    data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } },
+                    data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } },
                 });
             }
             if (url.startsWith('/api/admin/tabular-reviews/')) {

@@ -149,7 +149,9 @@ describe('WorkflowsList', () => {
                 });
             }
             if (url === '/api/admin/workflows/from-proposal') {
-                return Promise.resolve({ data: { data: { id: 50, title: body.title, type: body.type, user_id: 7 } } });
+                // BE expects { proposal: {...} } per FromProposalRequest —
+                // Copilot iter 6 caught the FE posting at the root.
+                return Promise.resolve({ data: { data: { id: 50, title: body.proposal.title, type: body.proposal.type, user_id: 7 } } });
             }
             return Promise.reject(new Error(`unexpected POST ${url}`));
         });
@@ -165,7 +167,9 @@ describe('WorkflowsList', () => {
         await waitFor(() => {
             const calls = mockPost.mock.calls.filter((c) => c[0] === '/api/admin/workflows/from-proposal');
             expect(calls.length).toBe(1);
-            expect(calls[0]![1].title).toBe('Suggested A');
+            // R20 — payload shape must match FromProposalRequest:
+            // { proposal: { title, type, ... } }, NOT root-level fields.
+            expect(calls[0]![1]).toEqual({ proposal: expect.objectContaining({ title: 'Suggested A' }) });
         });
     });
 
