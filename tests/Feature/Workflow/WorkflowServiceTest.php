@@ -36,6 +36,11 @@ final class WorkflowServiceTest extends TestCase
         // permission cache from a previous RefreshDatabase rollback
         // does not survive into this suite under Testbench.
         Cache::flush();
+        // Copilot iter 12: reset the TenantContext singleton so an
+        // earlier test that switched tenants (the cross-tenant test
+        // below sets `acme`) cannot leak into a later test that
+        // relies on `default`.
+        app(TenantContext::class)->set('default');
         $this->seed(RbacSeeder::class);
     }
 

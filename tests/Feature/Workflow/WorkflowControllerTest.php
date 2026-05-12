@@ -8,6 +8,7 @@ use App\Models\HiddenWorkflow;
 use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowShare;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -38,6 +39,11 @@ final class WorkflowControllerTest extends TestCase
         // permission cache from a previous RefreshDatabase rollback
         // does not survive into this suite under Testbench.
         Cache::flush();
+        // Copilot iter 12: reset the TenantContext singleton so a
+        // previous suite that switched the tenant (e.g.
+        // WorkflowServiceTest's cross-tenant scenarios) cannot leak
+        // a non-default tenant into this suite's fixtures.
+        app(TenantContext::class)->set('default');
         $this->seed(RbacSeeder::class);
     }
 

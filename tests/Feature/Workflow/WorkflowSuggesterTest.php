@@ -34,14 +34,15 @@ final class WorkflowSuggesterTest extends TestCase
         config()->set('ai.default', 'openai');
         config()->set('ai.providers.openai.api_key', 'test-key');
         // Copilot iter 6: real config key is `chat_model` (underscore),
-        // not `chat.model` (dot) — see config/ai.php. The previous
-        // spelling was inert (Http::fake intercepts before the config
-        // is read), but matching the real key keeps the test honest
-        // for any future provider branch that does read it.
+        // not `chat.model` (dot) — see config/ai.php.
         config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
         // Reset suggester cache between tests so cache_hit assertions
         // are deterministic.
         Cache::flush();
+        // Copilot iter 12: reset the TenantContext singleton so the
+        // `test_tenant_isolation` case (which switches to `acme`)
+        // does not leak its mutation into a later test.
+        app(TenantContext::class)->set('default');
     }
 
     public function test_suggest_returns_proposals_on_happy_path(): void

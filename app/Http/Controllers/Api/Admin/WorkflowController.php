@@ -62,14 +62,17 @@ final class WorkflowController extends Controller
     /**
      * GET /api/admin/workflows
      *
-     * Copilot iter 10: paginates the catalogue (parity with
-     * UserController + TabularReviewController). The service still
-     * returns the full filtered collection (own + shared + system −
-     * hidden) so the access policy stays centralised; the controller
-     * slices that collection per `per_page` here. The full set is
-     * never huge in practice (workflows are firm-curated, not
-     * user-generated content), but per_page bounds the response so
-     * a tenant with 10k system+user workflows cannot DoS the FE.
+     * Paginates the catalogue at the SQL layer (parity with
+     * UserController + TabularReviewController). The
+     * `WorkflowService::listQuery()` Builder applies the visibility
+     * predicates (own + shared + system − hidden); the controller
+     * drives `paginate()` so `COUNT(*)` + `LIMIT/OFFSET` run as a
+     * single round-trip and a tenant with thousands of workflows
+     * does not materialise the full result set in memory.
+     *
+     * Copilot iter 12: doc-block updated to match the iter 11
+     * SQL-layer pagination — the earlier description (in-memory
+     * slicing on the service's Collection) was outdated.
      */
     public function index(Request $request): JsonResponse
     {

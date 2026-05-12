@@ -79,6 +79,12 @@ final class MetadataPatternAnalyzerTest extends TestCase
      */
     private function makeDoc(array $attrs = [], array $frontmatter = []): KnowledgeDocument
     {
+        // Copilot iter 12: pass the frontmatter as a native array.
+        // `KnowledgeDocument::frontmatter_json` is cast to `array`
+        // by the model, so Eloquent will json_encode it on save and
+        // json_decode it on read. Passing pre-encoded JSON would
+        // double-encode the value and diverge from how production
+        // rows are written by `DocumentIngestor`.
         return KnowledgeDocument::create(array_merge([
             'tenant_id' => 'default',
             'project_key' => 'p',
@@ -88,7 +94,7 @@ final class MetadataPatternAnalyzerTest extends TestCase
             'document_hash' => str_repeat('a', 64),
             'version_hash' => str_repeat('b', 64),
             'metadata' => [],
-            'frontmatter_json' => $frontmatter !== [] ? json_encode($frontmatter) : null,
+            'frontmatter_json' => $frontmatter !== [] ? $frontmatter : null,
             'status' => 'indexed',
         ], $attrs));
     }

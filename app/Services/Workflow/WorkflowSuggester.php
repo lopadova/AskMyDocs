@@ -102,7 +102,15 @@ final class WorkflowSuggester
 
         if (! $forceRefresh) {
             $cached = Cache::get($cacheKey);
-            if (is_array($cached)) {
+            // Copilot iter 12: validate the cached payload shape
+            // before trusting it. A polluted cache key (different
+            // version of the service, manual cache poison, type
+            // collision) would otherwise turn a cache hit into a
+            // 500 when we mutate `$cached['meta']['cache_hit']` on
+            // a non-array. Treat malformed payloads as a miss and
+            // re-derive.
+            if (is_array($cached) && isset($cached['meta']) && is_array($cached['meta'])
+                && isset($cached['proposals']) && is_array($cached['proposals'])) {
                 $cached['meta']['cache_hit'] = true;
                 return $cached;
             }
