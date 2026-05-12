@@ -5,14 +5,24 @@ export interface MessageActionsProps {
     content: string;
     onRegenerate?: () => void;
     onBranch?: () => void;
+    /**
+     * v4.5/W7 Tier 1 #4 — inline edit handler for user messages. The
+     * caller wires the pencil button to lifting the message into an
+     * inline textarea (handled at the MessageBubble level so the
+     * actions row stays presentational).
+     */
+    onEdit?: () => void;
 }
 
 /**
- * Inline action row for assistant messages: copy, regenerate, branch.
- * Regenerate + branch are hooks the host wires up; they become
- * full-feature in later phases (PR9 adds branching UI).
+ * Inline action row for messages: copy, edit (user only), regenerate,
+ * branch (assistant only).
+ *
+ * v4.5/W7 Tier 1: regenerate + branch + edit are now first-class
+ * features wired through MessageBubble (see ChatView for the actual
+ * SDK hook integration).
  */
-export function MessageActions({ content, onRegenerate, onBranch }: MessageActionsProps): ReactNode {
+export function MessageActions({ content, onRegenerate, onBranch, onEdit }: MessageActionsProps): ReactNode {
     const [copied, setCopied] = useState(false);
 
     const onCopy = async () => {
@@ -37,6 +47,17 @@ export function MessageActions({ content, onRegenerate, onBranch }: MessageActio
             >
                 {copied ? <Icon.Check size={12} /> : <Icon.Copy size={12} />}
             </button>
+            {onEdit && (
+                <button
+                    type="button"
+                    className="btn icon sm ghost"
+                    data-testid="chat-message-edit"
+                    onClick={onEdit}
+                    aria-label="Edit message"
+                >
+                    <Icon.Edit size={12} />
+                </button>
+            )}
             {onRegenerate && (
                 <button
                     type="button"

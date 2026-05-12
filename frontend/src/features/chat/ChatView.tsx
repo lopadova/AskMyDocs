@@ -10,6 +10,7 @@ import { PROJECTS } from '../../lib/seed';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
+import { SuggestedFollowups } from './SuggestedFollowups';
 
 /**
  * Chat feature root. Three columns:
@@ -109,6 +110,10 @@ export function ChatView(): ReactNode {
         [initialQuery.data],
     );
 
+    // v4.5/W7 Tier 2 #10 — bumped each time an assistant turn settles.
+    // Drives the SuggestedFollowups refetch — never on every render.
+    const [turnSettleId, setTurnSettleId] = useState(0);
+
     const chat = useChatStream({
         conversationId: activeId,
         filters,
@@ -131,6 +136,8 @@ export function ChatView(): ReactNode {
             if (activeId !== null) {
                 void qc.invalidateQueries({ queryKey: ['messages', activeId] });
             }
+            // v4.5/W7 — trigger suggested-followups refetch.
+            setTurnSettleId((n) => n + 1);
         },
     });
 
@@ -246,6 +253,50 @@ export function ChatView(): ReactNode {
         }
     };
 
+    // v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn.
+    const handleRegenerate = () => {
+        chat.regenerate();
+    };
+
+    // v4.5/W7 Tier 1 #3 — fork the conversation at a chosen
+    // assistant message. The BE persists every message up to AND
+    // INCLUDING the named one into a fresh conversation; we then
+    // navigate to it so the user can branch the discussion without
+    // touching the source thread.
+    const handleBranchAt = async (messageId: number) => {
+        if (activeId === null) {
+            return;
+        }
+        try {
+            const result = await chatApi.branchFromMessage(activeId, messageId);
+            // Optimistically prepend the new conversation row to the
+            // sidebar list so the user sees it immediately; the next
+            // invalidate refreshes ordering.
+            qc.setQueryData<Conversation[]>(['conversations'], (old) =>
+                old ? [result.conversation, ...old] : [result.conversation],
+            );
+            setActive(result.conversation.id);
+            navigate({ to: `/app/chat/${result.conversation.id}` });
+        } catch (err) {
+            // Branch is a non-critical action — log and let the user
+            // retry. We don't surface a separate error banner; the
+            // existing chat-composer-error path handles transport
+            // errors for now.
+            console.error('Branch failed:', err);
+        }
+    };
+
+    // v4.5/W7 Tier 1 #4 — inline edit a user message and re-submit.
+    // The SDK's `setMessages` truncates the cache to everything BEFORE
+    // the edited message, then `sendMessage({ text: newContent })`
+    // restarts the turn from the edit point.
+    const handleEditUserMessage = async (messageIndex: number, newContent: string) => {
+        // Truncate the cache: keep everything strictly before the
+        // edited message. The new turn then re-appends user + assistant.
+        chat.setMessages((prev) => prev.slice(0, messageIndex));
+        await chat.sendMessage({ text: newContent });
+    };
+
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
 
     // The SDK returns `messages: UIMessage[]`. MessageThread accepts
@@ -311,6 +362,16 @@ export function ChatView(): ReactNode {
                     sdkStatus={chat.status}
                     isLoadingHistory={initialQuery.isLoading}
                     error={chat.error ?? toError(initialQuery.error)}
+                    onRegenerate={handleRegenerate}
+                    onBranchAt={handleBranchAt}
+                    onEditUserMessage={handleEditUserMessage}
+                />
+
+                <SuggestedFollowups
+                    conversationId={activeId}
+                    turnId={turnSettleId}
+                    isStreaming={isStreaming}
+                    onPick={(prompt) => void handleSend(prompt)}
                 />
 
                 <Composer

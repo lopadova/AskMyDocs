@@ -1,4 +1,4 @@
-import { useMemo, type ComponentType, type ReactNode } from 'react';
+import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
@@ -6,6 +6,7 @@ import { remarkWikilink } from './remark-wikilink';
 import { remarkObsidianTag } from './remark-obsidian-tag';
 import { remarkCallout } from './remark-callout';
 import { WikiLink } from '../../features/chat/WikilinkHover';
+import { Icon } from '../../components/Icons';
 
 /*
  * Shared markdown renderer for chat messages + (later) the KB viewer.
@@ -95,6 +96,79 @@ export interface MarkdownProps {
     project?: string;
 }
 
+/**
+ * v4.5/W7 Tier 1 #7 — copy-code-block button. Wraps every fenced code
+ * block in a `<div>` with a hover-revealed copy button. Stable testid
+ * `markdown-codeblock-copy` for Playwright.
+ *
+ * The component reads the textContent of the rendered `<code>` to
+ * decide what to copy — that matches what the user sees, not the
+ * AST-normalized source string. The wrapping `<div>` carries
+ * `data-testid="markdown-codeblock"` so Playwright can scope to a
+ * specific block on a long page.
+ */
+function CodeBlock({ children }: { children?: ReactNode }): ReactNode {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        const pre = e.currentTarget.closest('[data-testid="markdown-codeblock"]');
+        const code = pre?.querySelector('code');
+        if (!code) {
+            return;
+        }
+        try {
+            await navigator.clipboard?.writeText(code.textContent ?? '');
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            setCopied(false);
+        }
+    };
+
+    return (
+        <div
+            data-testid="markdown-codeblock"
+            style={{ position: 'relative', margin: '12px 0' }}
+        >
+            <button
+                type="button"
+                data-testid="markdown-codeblock-copy"
+                data-state={copied ? 'copied' : 'idle'}
+                onClick={handleCopy}
+                aria-label="Copy code"
+                className="btn icon sm ghost"
+                style={{
+                    position: 'absolute',
+                    top: 6,
+                    right: 6,
+                    opacity: 0.7,
+                    background: 'var(--bg-3)',
+                    border: '1px solid var(--panel-border)',
+                    borderRadius: 6,
+                }}
+            >
+                {copied ? <Icon.Check size={11} /> : <Icon.Copy size={11} />}
+            </button>
+            <pre
+                style={{
+                    margin: 0,
+                    padding: '10px 12px',
+                    paddingRight: 36,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--panel-border)',
+                    borderRadius: 8,
+                    overflow: 'auto',
+                    fontSize: 12.5,
+                    fontFamily: 'var(--font-mono)',
+                    lineHeight: 1.5,
+                }}
+            >
+                {children}
+            </pre>
+        </div>
+    );
+}
+
 export function Markdown({ source, project }: MarkdownProps): ReactNode {
     const components = useMemo(
         () =>
@@ -102,7 +176,9 @@ export function Markdown({ source, project }: MarkdownProps): ReactNode {
                 wikilink: (props) => <WikiLink slug={props['data-slug'] ?? ''} label={props['data-label'] ?? ''} project={project} />,
                 tag: Tag,
                 callout: Callout,
-            }) satisfies ExtraComponents,
+                // v4.5/W7 — override <pre> to inject copy button.
+                pre: CodeBlock,
+            }) satisfies ExtraComponents & { pre: ComponentType<{ children?: ReactNode }> },
         [project],
     );
 

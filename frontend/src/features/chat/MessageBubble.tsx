@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
@@ -7,6 +7,8 @@ import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
 import { MessageActions } from './MessageActions';
 import { FeedbackButtons } from './FeedbackButtons';
+import { TokenCostMeter } from './TokenCostMeter';
+import { UserMessageEditor } from './UserMessageEditor';
 import {
     getCitations,
     getConfidence,
@@ -31,6 +33,22 @@ export interface MessageBubbleProps {
     message: RenderableMessage;
     projectKey?: string | null;
     streaming?: boolean;
+    /**
+     * v4.5/W7 Tier 1 #2 — assistant-only. Wired by the parent
+     * (ChatView) for the LAST assistant turn to `chat.regenerate()`.
+     */
+    onRegenerate?: () => void;
+    /**
+     * v4.5/W7 Tier 1 #3 — assistant-only. Wired by the parent for any
+     * assistant turn. Forks the conversation at this reply.
+     */
+    onBranch?: () => void;
+    /**
+     * v4.5/W7 Tier 1 #4 — user-only. Wired by the parent for any user
+     * turn. Replaces the bubble with an inline textarea + Save/Cancel.
+     * Save calls `onEditSubmit(newText)`; Cancel restores the original.
+     */
+    onEditSubmit?: (newContent: string) => void | Promise<void>;
 }
 
 /**
@@ -54,13 +72,35 @@ export interface MessageBubbleProps {
  * exercises only the AppMessage branch — but the DOM contract is
  * unchanged.
  */
-export function MessageBubble({ conversationId, message, projectKey, streaming = false }: MessageBubbleProps): ReactNode {
+export function MessageBubble({
+    conversationId,
+    message,
+    projectKey,
+    streaming = false,
+    onRegenerate,
+    onBranch,
+    onEditSubmit,
+}: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
     const messageId = getMessageId(message);
     const textContent = getTextContent(message);
+    const [editing, setEditing] = useState(false);
 
     if (isUser) {
+        if (editing && onEditSubmit) {
+            return (
+                <UserMessageEditor
+                    messageId={String(messageId)}
+                    initialValue={textContent}
+                    onCancel={() => setEditing(false)}
+                    onSubmit={async (newText) => {
+                        await onEditSubmit(newText);
+                        setEditing(false);
+                    }}
+                />
+            );
+        }
         return (
             <div
                 data-testid={`chat-message-${messageId}`}
@@ -79,9 +119,24 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                         lineHeight: 1.55,
                         color: 'var(--fg-0)',
                         whiteSpace: 'pre-wrap',
+                        position: 'relative',
                     }}
                 >
                     {textContent}
+                    {onEditSubmit && !streaming && (
+                        <div style={{ position: 'absolute', top: -8, right: 4 }}>
+                            <button
+                                type="button"
+                                className="btn icon sm ghost"
+                                data-testid={`chat-message-${messageId}-edit`}
+                                onClick={() => setEditing(true)}
+                                aria-label="Edit your message"
+                                style={{ padding: 4 }}
+                            >
+                                <Icon.Edit size={11} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -159,7 +214,11 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                 )}
                 {!streaming && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>
-                        <MessageActions content={textContent} />
+                        <MessageActions
+                            content={textContent}
+                            onRegenerate={onRegenerate}
+                            onBranch={onBranch}
+                        />
                         {/*
                           * FeedbackButtons posts to
                           * /conversations/{conv}/messages/{id}/feedback (see
@@ -193,18 +252,72 @@ export function MessageBubble({ conversationId, message, projectKey, streaming =
                         />
                         {meta.model && (
                             <span
+                                data-testid={`chat-message-${messageId}-meta`}
                                 className="mono"
-                                style={{ fontSize: 10.5, color: 'var(--fg-3)', marginLeft: 8 }}
+                                style={{
+                                    fontSize: 10.5,
+                                    color: 'var(--fg-3)',
+                                    marginLeft: 8,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                }}
                             >
-                                {meta.provider ? `${meta.provider}/` : ''}
-                                {meta.model}
-                                {meta.latency_ms !== undefined ? ` · ${(meta.latency_ms / 1000).toFixed(1)}s` : ''}
-                                {meta.total_tokens !== undefined ? ` · ${meta.total_tokens} tok` : ''}
+                                <span data-testid={`chat-message-${messageId}-provider-model`}>
+                                    {meta.provider ? `${meta.provider} · ` : ''}
+                                    {meta.model}
+                                </span>
+                                {!isUiMessage(message) && message.created_at && (
+                                    <span data-testid={`chat-message-${messageId}-timestamp`}>
+                                        · {formatTimestamp(message.created_at)}
+                                    </span>
+                                )}
+                                {meta.latency_ms !== undefined && (
+                                    <span>· {(meta.latency_ms / 1000).toFixed(1)}s</span>
+                                )}
                             </span>
                         )}
+                        {/*
+                          * v4.5/W7 Tier 1 #5 — per-turn token + USD cost
+                          * meter. Reads cost rates via TanStack Query;
+                          * renders nothing on user turns / legacy rows
+                          * with no token telemetry. The TokenCostMeter
+                          * also fetches the cost-rate table on first
+                          * mount so subsequent bubbles share the cache.
+                          */}
+                        <TokenCostMeter
+                            provider={meta.provider}
+                            model={meta.model}
+                            promptTokens={meta.prompt_tokens}
+                            completionTokens={meta.completion_tokens}
+                            totalTokens={meta.total_tokens}
+                        />
+                        {/* timestamp moved into provider/model meta block above */}
+
                     </div>
                 )}
             </div>
         </div>
     );
+}
+
+/**
+ * v4.5/W7 — render a message timestamp in the format `HH:MM` for the
+ * same day, `MMM D HH:MM` for older messages. ISO 8601 string in,
+ * locale-aware string out. Defensive against malformed input — a bad
+ * timestamp renders as `—` instead of throwing.
+ */
+export function formatTimestamp(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) {
+        return '—';
+    }
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const hh = d.getHours().toString().padStart(2, '0');
+    const mm = d.getMinutes().toString().padStart(2, '0');
+    if (sameDay) {
+        return `${hh}:${mm}`;
+    }
+    return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${hh}:${mm}`;
 }

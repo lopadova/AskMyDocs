@@ -31,6 +31,25 @@ export interface MessageThreadProps {
      * error). Drives `data-state="error"` + chat-thread-error.
      */
     error?: Error | null;
+    /**
+     * v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn. Wired
+     * by ChatView to `chat.regenerate()`. Only the most-recent
+     * assistant bubble gets this handler; older bubbles render
+     * without the regenerate button (the SDK can only regenerate
+     * the tail of the conversation).
+     */
+    onRegenerate?: () => void;
+    /**
+     * v4.5/W7 Tier 1 #3 — fork conversation at this assistant turn.
+     * Receives the persisted message id (number — UIMessage rows
+     * with string ids don't have a BE row yet).
+     */
+    onBranchAt?: (messageId: number) => void | Promise<void>;
+    /**
+     * v4.5/W7 Tier 1 #4 — edit a user turn and re-submit. Receives
+     * the message index (from `messages[]`) and the new content.
+     */
+    onEditUserMessage?: (messageIndex: number, newContent: string) => void | Promise<void>;
 }
 
 /**
@@ -55,6 +74,9 @@ export function MessageThread({
     sdkStatus,
     isLoadingHistory = false,
     error = null,
+    onRegenerate,
+    onBranchAt,
+    onEditUserMessage,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -139,19 +161,56 @@ export function MessageThread({
                   * placeholder was removed), the caret never appears
                   * during token-by-token render.
                   */}
-                {conversationId !== null && messages.map((m, i) => {
-                    const isLast = i === messages.length - 1;
-                    const streaming = isStreaming && isLast && m.role === 'assistant';
-                    return (
-                        <MessageBubble
-                            key={getMessageId(m)}
-                            conversationId={conversationId}
-                            message={m}
-                            projectKey={projectKey}
-                            streaming={streaming}
-                        />
-                    );
-                })}
+                {conversationId !== null && (() => {
+                    // v4.5/W7 — only the LAST assistant turn gets the
+                    // regenerate handler (the SDK can only regenerate
+                    // the tail of the conversation).
+                    let lastAssistantIdx = -1;
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                        if (messages[i].role === 'assistant') {
+                            lastAssistantIdx = i;
+                            break;
+                        }
+                    }
+                    return messages.map((m, i) => {
+                        const isLast = i === messages.length - 1;
+                        const streaming = isStreaming && isLast && m.role === 'assistant';
+                        const mid = getMessageId(m);
+                        const numericId = typeof mid === 'number' ? mid : null;
+                        // Regenerate: only the LAST assistant turn,
+                        // and only when NOT mid-stream (re-clicking
+                        // mid-stream would race with the in-flight
+                        // request).
+                        const regenerateHandler =
+                            i === lastAssistantIdx && !isStreaming && onRegenerate
+                                ? onRegenerate
+                                : undefined;
+                        // Branch: any assistant message persisted
+                        // (numericId set) when not mid-stream.
+                        const branchHandler =
+                            m.role === 'assistant' && numericId !== null && !isStreaming && onBranchAt
+                                ? () => onBranchAt(numericId)
+                                : undefined;
+                        // Edit: any user message when not mid-stream
+                        // and we have an edit callback.
+                        const editHandler =
+                            m.role === 'user' && !isStreaming && onEditUserMessage
+                                ? (newText: string) => onEditUserMessage(i, newText)
+                                : undefined;
+                        return (
+                            <MessageBubble
+                                key={getMessageId(m)}
+                                conversationId={conversationId}
+                                message={m}
+                                projectKey={projectKey}
+                                streaming={streaming}
+                                onRegenerate={regenerateHandler}
+                                onBranch={branchHandler}
+                                onEditSubmit={editHandler}
+                            />
+                        );
+                    });
+                })()}
             </div>
         </section>
     );
