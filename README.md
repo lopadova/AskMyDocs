@@ -220,7 +220,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Feature | Description | Since |
 |---|---|---|
 | Vercel AI SDK v6 streaming | `MessageStreamController` emits SDK v6 `UIMessageChunk` frames (`start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish`) over SSE; first-token latency dropped from ~2.8 s synchronous to ~400 ms streaming on the Lighthouse baseline | v4.0 |
-| `useChatStream()` React hook | `mapStatusToDataState()` adapter exposes `data-state="idle\|submitted\|streaming\|ready\|error"` for deterministic Playwright waits; unit-tested in `frontend/src/features/chat/map-status-to-data-state.test.ts` | v4.0 |
+| `useChatStream()` React hook | `mapStatusToDataState()` adapter exposes `data-state="idle\|loading\|ready\|empty\|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both collapse to `loading` per the R11 comment in `MessageThread.tsx`); unit-tested in `frontend/src/features/chat/map-status-to-data-state.test.ts` | v4.0 |
 | Citations panel | Every assistant reply ships the source documents (`document_id`, `title`, `source_path`, `headings`, `chunks_used`); persisted on `messages.metadata.citations`; survives conversation reload | v1.0 |
 | Conversation history | `conversations` + `messages` tables (user-scoped); inline rename, delete with confirmation, AI-generated title after first turn, full multi-turn history sent to provider on every request | v1.0 |
 | Composite confidence score (0–100) | `ConfidenceCalculator`: `0.40·mean_top_k_sim + 0.20·threshold_margin + 0.20·chunk_diversity + 0.20·citation_density`; renders as `high / moderate / low / refused` tier in the `ConfidenceBadge` | v3.0 |
