@@ -90,7 +90,13 @@ test.describe('Admin Tabular Reviews (W3)', () => {
         await expect(row).toBeHidden({ timeout: 10_000 });
     });
 
-    test('422 on empty title surfaces an inline error without closing the dialog', async ({ page }) => {
+    test('FE submit-disabled guard keeps the dialog open when title is empty', async ({ page }) => {
+        // FE-side guard: the Create button is disabled until BOTH
+        // title and project_key carry non-empty trimmed strings. This
+        // scenario asserts the disabled-button behaviour explicitly —
+        // the actual 422 path (BE validation rejection) lands in
+        // v4.7.x when the project_key dropdown wires
+        // `/api/admin/projects/keys` per R18.
         await page.goto('/app/admin/tabular-reviews');
         await expect(page.getByTestId('admin-tabular-reviews')).toBeVisible({ timeout: 15_000 });
         await page.getByTestId('admin-tabular-reviews-create').click();

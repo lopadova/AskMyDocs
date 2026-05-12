@@ -7,8 +7,12 @@ import { api } from '../../../lib/api';
  * `{ data: ... }` envelope used across the rest of the admin surface
  * (T2.10 tags, Phase G1 KB, Phase H1 logs, etc.).
  *
- * `generate-stream` returns an `EventSource` rather than a Promise so
- * the caller can subscribe to per-cell SSE events.
+ * The synchronous `/generate` endpoint is exposed here as a typed
+ * Promise. The SSE streaming variant (`/generate-stream`) is consumed
+ * directly via an `EventSource` constructed by the show-page hook in
+ * v4.7.x — keeping it out of this REST client lets the hook own the
+ * subscription lifecycle (open / event-by-event-handler / close) and
+ * avoid leaking a long-lived EventSource through the axios layer.
  */
 
 export type FormatType =

@@ -245,6 +245,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                     <label style={{ marginRight: 16 }}>
                         <input
                             type="radio"
+                            name="workflow-type"
                             data-testid="admin-workflow-create-type-assistant"
                             checked={type === 'assistant'}
                             onChange={() => setType('assistant')}
@@ -254,6 +255,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                     <label>
                         <input
                             type="radio"
+                            name="workflow-type"
                             data-testid="admin-workflow-create-type-tabular"
                             checked={type === 'tabular'}
                             onChange={() => setType('tabular')}

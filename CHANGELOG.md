@@ -57,7 +57,9 @@ W3 (this rc3 / GA):
   the test + CLI path. Per-cell payload carries
   `{document_id, column_index, summary, reasoning, citations, flag, status}`.
 - **Admin SPA — Tabular Reviews** at `/app/admin/tabular-reviews`:
-  list view (paginated + project filter), create dialog (title +
+  list view (paginated; project filter is BE-supported but the FE
+  surface is free-text in this GA — `/api/admin/projects/keys`
+  dropdown lands in v4.7.x per R18), create dialog (title +
   project_key + columns config builder with per-column name/prompt/
   format dropdown + add/remove rows), show page (grid view with
   flag-tinted cells + per-cell hover tooltip on reasoning + Generate
@@ -80,8 +82,11 @@ W3 (this rc3 / GA):
   tests (6 + 7 across the two list components covering loading /
   empty / ready / error states + create dialog happy + failure +
   AI-suggest gallery save-this), 8 Playwright specs (4 + 4 across
-  Tabular Reviews + Workflows covering the list shell + create dialog
-  ARIA + full CRUD round-trip + 422 validation surfacing).
+  Tabular Reviews + Workflows covering the list shell + create
+  dialog ARIA + full CRUD round-trip + FE submit-disabled guard on
+  empty required fields). The real BE 422 validation E2E coverage
+  is deferred to v4.7.x alongside the `/api/admin/projects/keys`
+  dropdown work (R18).
 
 **Test count delta**:
 - PHPUnit: 1885 → 1891 (+6 W3 SSE controller).
