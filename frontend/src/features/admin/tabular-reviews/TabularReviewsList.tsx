@@ -407,7 +407,10 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
     if (showQuery.isError || !showQuery.data) {
         return (
             <div data-testid="admin-tabular-review-show" data-state="error">
-                <button type="button" onClick={onBack}>← Back</button>
+                {/* Copilot iter 5: stable testid on the error-state back
+                  * button so E2E/RTL can resilient-recover from a failed
+                  * show-page fetch (mirrors the ready-state button below). */}
+                <button type="button" data-testid="admin-tabular-review-show-error-back" onClick={onBack}>← Back</button>
                 <p>Could not load review: {showQuery.error instanceof Error ? showQuery.error.message : 'unknown'}</p>
             </div>
         );

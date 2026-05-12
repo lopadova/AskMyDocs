@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Controllers\Api\Admin\Concerns\DeniesViewerMutations;
 use App\Models\KnowledgeDocument;
 use App\Models\TabularCell;
 use App\Models\TabularReview;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
  * v4.7/W3 — SSE streaming variant of TabularReviewController::generate().
@@ -56,6 +58,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class TabularReviewStreamController extends Controller
 {
+    use DeniesViewerMutations;
+
     public function __construct(
         private readonly TabularReviewExtractor $extractor,
         private readonly TenantContext $ctx,
@@ -76,17 +80,20 @@ final class TabularReviewStreamController extends Controller
         // Force-JSON 4xx for pre-stream failures. SSE clients send
         // `Accept: text/event-stream`, which would otherwise trip
         // Laravel's default exception renderer into emitting HTML /
-        // 302 — unparseable by an EventSource consumer. Mirrors
+        // 302 — unparseable by a fetch-based SSE consumer. Mirrors
         // `MessageStreamController::store()`'s pre-stream contract.
-        $user = $request->user();
-        if ($user !== null
-            && method_exists($user, 'hasRole')
-            && $user->hasRole('viewer')
-            && ! $user->hasAnyRole(['admin', 'super-admin'])) {
-            return new JsonResponse(
-                ['message' => 'Viewers cannot generate tabular cells.'],
-                403,
-            );
+        //
+        // The viewer-mutation rule lives in the shared
+        // `DeniesViewerMutations` trait so this controller and
+        // `TabularReviewController` enforce IDENTICAL semantics +
+        // message (Copilot iter 5 — extract guard to avoid drift).
+        // We catch the trait's AccessDeniedHttpException and
+        // re-emit it as a JsonResponse so the SSE client sees a
+        // parseable 403 instead of an HTML error page.
+        try {
+            $this->denyMutationForViewer($request);
+        } catch (AccessDeniedHttpException $e) {
+            return new JsonResponse(['message' => $e->getMessage()], 403);
         }
 
         try {

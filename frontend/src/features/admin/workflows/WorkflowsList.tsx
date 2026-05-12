@@ -398,8 +398,9 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
     return (
         <div
             data-testid="admin-workflow-suggestions-gallery"
-            role="region"
-            aria-label="Workflow suggestions"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-workflow-suggestions-title"
             data-state={isLoading ? 'loading' : isError ? 'error' : 'ready'}
             style={{
                 position: 'fixed',
@@ -413,7 +414,7 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
         >
             <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(720px, 92vw)', maxHeight: '90vh', overflow: 'auto' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ marginTop: 0 }}>AI-suggested workflows</h3>
+                    <h3 id="admin-workflow-suggestions-title" style={{ marginTop: 0 }}>AI-suggested workflows</h3>
                     <button type="button" data-testid="admin-workflow-suggestions-close" onClick={onClose}>
                         Close
                     </button>
@@ -430,8 +431,16 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
                 {!isLoading && !isError && data.length > 0 && (
                     <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
                         {data.map((p, idx) => (
+                            // Stable React key derived from proposal identity
+                            // (title + type) — the array index is reserved for
+                            // the data-testid hierarchy so existing E2E selectors
+                            // (`admin-workflow-suggestion-${idx}`) survive.
+                            // Copilot iter 5 caught the index-as-key risk:
+                            // if the suggestions list ever re-orders or merges
+                            // an incoming refetch, React must NOT reuse a DOM
+                            // node for a different proposal.
                             <li
-                                key={idx}
+                                key={`${p.title}::${p.type}`}
                                 data-testid={`admin-workflow-suggestion-${idx}`}
                                 style={{ border: '1px solid var(--hairline)', borderRadius: 6, padding: 12 }}
                             >
