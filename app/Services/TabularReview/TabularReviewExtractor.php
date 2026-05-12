@@ -327,13 +327,19 @@ final class TabularReviewExtractor
     }
 
     /**
-     * Convert a JSON-path lookup result into a string. Non-scalars go
-     * through `json_encode` with `JSON_THROW_ON_ERROR` so an encoding
-     * failure raises rather than returning the literal string "false"
-     * — which would otherwise leak as a cell value.
+     * Convert a JSON-path lookup result into a string. Booleans map to
+     * the literal "true" / "false" tokens (PHP's default `(string) false`
+     * is the empty string, which would silently lose the value). Other
+     * scalars cast normally. Arrays / objects go through `json_encode`
+     * with `JSON_THROW_ON_ERROR`; encoding failures return null so the
+     * cell falls through to the red-flag refusal path.
      */
     private function stringifyValue(mixed $value): ?string
     {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
         if (is_scalar($value)) {
             return (string) $value;
         }
@@ -558,13 +564,19 @@ final class TabularReviewExtractor
     }
 
     /**
-     * Persist a cell idempotently. Uses Eloquent `updateOrCreate` so the
-     * lookup+write hits the DB as a single transactional sequence —
-     * concurrent `generate` / `regenerate-cell` calls on the same
-     * (tenant, review, doc, column) tuple can't race past each other
-     * into a unique-constraint violation, because the composite UNIQUE
-     * `(tenant_id, review_id, document_id, column_index)` makes the
-     * second writer's CREATE collapse into an UPDATE.
+     * Persist a cell idempotently using a true database-level upsert.
+     *
+     * Eloquent's `updateOrCreate` is NOT atomic (it does a SELECT then
+     * an INSERT/UPDATE) — two concurrent extractors could both miss
+     * the existing row and race to INSERT, with the loser hitting the
+     * composite UNIQUE `(tenant_id, review_id, document_id, column_index)`.
+     * `Model::upsert(...)` issues a single `INSERT ... ON CONFLICT ...
+     * DO UPDATE` (Postgres) / `INSERT ... ON DUPLICATE KEY UPDATE`
+     * (MySQL) / `INSERT OR REPLACE` (SQLite) statement keyed by the
+     * composite UNIQUE, so the operation is atomic at the DB layer.
+     *
+     * The upsert doesn't return the row, so we re-`first()` after for
+     * the caller. Cost is one extra primary-key index lookup per cell.
      *
      * @param  array<string, mixed>  $content
      */
@@ -577,20 +589,32 @@ final class TabularReviewExtractor
         array $content,
         ?CellFlag $flag,
     ): TabularCell {
-        return TabularCell::updateOrCreate(
-            [
+        $now = Carbon::now();
+        TabularCell::query()->upsert(
+            [[
                 'tenant_id' => $tenant,
                 'review_id' => $review->id,
                 'document_id' => $doc->id,
                 'column_index' => $columnIndex,
-            ],
-            [
-                'content' => $content,
+                'content' => json_encode($content),
                 'status' => $status->value,
                 'flag' => $flag?->value,
-                'generated_at' => Carbon::now(),
-            ],
+                'generated_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]],
+            uniqueBy: ['tenant_id', 'review_id', 'document_id', 'column_index'],
+            update: ['content', 'status', 'flag', 'generated_at', 'updated_at'],
         );
+
+        /** @var TabularCell $cell */
+        $cell = TabularCell::query()
+            ->forTenant($tenant)
+            ->where('review_id', $review->id)
+            ->where('document_id', $doc->id)
+            ->where('column_index', $columnIndex)
+            ->firstOrFail();
+        return $cell;
     }
 
     private function persistFailure(

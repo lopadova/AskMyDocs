@@ -97,22 +97,46 @@ final class TabularReviewController extends Controller
     }
 
     /**
-     * GET /api/admin/tabular-reviews/{id}
+     * GET /api/admin/tabular-reviews/{id}?cell_limit=...&cell_offset=...
+     *
+     * Returns the review header + a windowed slice of its cells. The
+     * unbounded `->get()` was a denial-of-service vector for large
+     * reviews (1000 docs × 50 cols = 50k rows in one response); the
+     * default cap of 2000 holds the response under ~1 MB on a typical
+     * grid and a `cells_total` field tells the FE how many more pages
+     * exist. The cap is enforceable in W3's Glide grid via paged
+     * fetches.
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
+        $validated = $request->validate([
+            'cell_limit' => ['nullable', 'integer', 'min:1', 'max:10000'],
+            'cell_offset' => ['nullable', 'integer', 'min:0'],
+        ]);
+        $limit = (int) ($validated['cell_limit'] ?? 2000);
+        $offset = (int) ($validated['cell_offset'] ?? 0);
+
         $review = $this->findOr404($id);
 
-        $cells = TabularCell::query()
+        $cellsQuery = TabularCell::query()
             ->forTenant($this->ctx->current())
             ->where('review_id', $review->id)
             ->orderBy('document_id')
-            ->orderBy('column_index')
-            ->get();
+            ->orderBy('column_index');
+
+        $cellsTotal = (int) $cellsQuery->count();
+        $cells = $cellsQuery->offset($offset)->limit($limit)->get();
 
         return response()->json([
             'data' => $review,
             'cells' => $cells,
+            'cells_meta' => [
+                'total' => $cellsTotal,
+                'returned' => $cells->count(),
+                'offset' => $offset,
+                'limit' => $limit,
+                'truncated' => $cellsTotal > $offset + $cells->count(),
+            ],
         ]);
     }
 
