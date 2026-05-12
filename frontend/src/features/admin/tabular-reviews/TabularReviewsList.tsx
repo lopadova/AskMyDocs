@@ -191,17 +191,41 @@ interface DialogProps {
     error: string | null;
 }
 
+/**
+ * Stable identity for each dynamic column row. Copilot iter 7 caught
+ * the React-key smell: using the array index for `columns.map()` makes
+ * React reuse DOM nodes when a column is removed, so input values can
+ * shift between rows. The `_key` is a monotonically-increasing local
+ * id assigned on add; the data-testid hierarchy (R29) still uses the
+ * visible row index so E2E selectors (`column-0-name`, `column-1-name`)
+ * remain deterministic. The `_key` is stripped before POSTing to the
+ * BE — `CreateReviewPayload.columns_config` is a `ColumnConfig[]`.
+ */
+type KeyedColumn = ColumnConfig & { _key: number };
+
+let columnKeySeq = 0;
+const nextColumnKey = (): number => {
+    columnKeySeq += 1;
+    return columnKeySeq;
+};
+
 function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProps): ReactNode {
     const [title, setTitle] = useState('');
     const [projectKey, setProjectKey] = useState('');
-    const [columns, setColumns] = useState<ColumnConfig[]>([{ name: '', prompt: '', format: 'text' }]);
+    const [columns, setColumns] = useState<KeyedColumn[]>([
+        { _key: nextColumnKey(), name: '', prompt: '', format: 'text' },
+    ]);
 
     const updateColumn = (i: number, patch: Partial<ColumnConfig>) => {
         setColumns(columns.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
     };
 
-    const addColumn = () => setColumns([...columns, { name: '', prompt: '', format: 'text' }]);
+    const addColumn = () =>
+        setColumns([...columns, { _key: nextColumnKey(), name: '', prompt: '', format: 'text' }]);
     const removeColumn = (i: number) => setColumns(columns.filter((_, idx) => idx !== i));
+
+    const stripKeys = (rows: KeyedColumn[]): ColumnConfig[] =>
+        rows.map(({ _key: _ignored, ...rest }) => rest);
 
     return (
         <div
@@ -256,8 +280,12 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                 <div style={{ marginBottom: 12 }}>
                     <strong>Columns</strong>
                     {columns.map((c, i) => (
+                        // R29 — `_key` is the stable local id captured at
+                        // row creation; index `i` is reserved for the
+                        // visible data-testid hierarchy so existing E2E
+                        // selectors keep working. See `KeyedColumn` above.
                         <div
-                            key={i}
+                            key={c._key}
                             data-testid={`admin-tabular-review-create-column-${i}`}
                             style={{ border: '1px solid var(--hairline)', borderRadius: 6, padding: 10, marginTop: 8 }}
                         >
@@ -340,7 +368,10 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                             onSubmit({
                                 title: title.trim(),
                                 project_key: projectKey.trim(),
-                                columns_config: columns,
+                                // Strip the FE-only `_key` field so the
+                                // payload matches `CreateReviewPayload`
+                                // / `StoreTabularReviewRequest`.
+                                columns_config: stripKeys(columns),
                             })
                         }
                         style={{

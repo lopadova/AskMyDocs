@@ -15,9 +15,11 @@ import {
  * calls the W2 AI-suggester endpoint and renders the proposals as
  * cards; each card has a Save-this button that calls /from-proposal.
  *
- * R11/R12/R29: testids follow `feature-resource-{id}-{action}`. The
- * dialog and gallery carry `role="dialog"` / `role="region"` and
- * `data-state` for E2E scenarios.
+ * R11/R12/R29: testids follow `feature-resource-{id}-{action}`. Both
+ * the create modal and the suggestions gallery carry `role="dialog"`
+ * + `aria-modal="true"` + `data-state` for E2E scenarios — the
+ * earlier mention of `role="region"` was stale doc drift (Copilot
+ * iter 7).
  */
 export function WorkflowsList(): ReactNode {
     const qc = useQueryClient();
