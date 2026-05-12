@@ -41,9 +41,15 @@ export function WorkflowsList(): ReactNode {
     const createMutation = useMutation({
         mutationFn: (p: CreateWorkflowPayload) => adminWorkflowsApi.create(p),
         onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['admin-workflows', scope] });
+            // Created workflows live under the Mine scope. Invalidate
+            // every scope so a viewer on Shared/System sees the new
+            // row when they switch back. The exact-key variant
+            // (`['admin-workflows', scope]`) only invalidated the
+            // current tab and left the Mine tab cache stale.
+            qc.invalidateQueries({ queryKey: ['admin-workflows'] });
             setCreateOpen(false);
             setCreateError(null);
+            setScope('mine');
         },
         onError: (err: unknown) => {
             setCreateError(err instanceof Error ? err.message : 'Could not create workflow.');
@@ -52,12 +58,15 @@ export function WorkflowsList(): ReactNode {
 
     const fromProposalMutation = useMutation({
         mutationFn: (p: WorkflowProposal) => adminWorkflowsApi.fromProposal(p),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-workflows', scope] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['admin-workflows'] });
+            setScope('mine');
+        },
     });
 
     const hideMutation = useMutation({
         mutationFn: (id: number) => adminWorkflowsApi.hide(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-workflows', scope] }),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-workflows'] }),
     });
 
     const workflows = wfQuery.data ?? [];
@@ -68,7 +77,11 @@ export function WorkflowsList(): ReactNode {
     else dataState = 'ready';
 
     return (
-        <div data-testid="admin-workflows" data-state={dataState}>
+        <div
+            data-testid="admin-workflows"
+            data-state={dataState}
+            aria-busy={dataState === 'loading'}
+        >
             <header style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                 <h2 style={{ margin: 0, flex: 1 }}>Workflows</h2>
                 <button
@@ -252,15 +265,14 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                         />{' '}
                         Assistant
                     </label>
-                    <label>
+                    <label title="Tabular workflows require a columns-config builder — coming in v4.7.x">
                         <input
                             type="radio"
                             name="workflow-type"
                             data-testid="admin-workflow-create-type-tabular"
-                            checked={type === 'tabular'}
-                            onChange={() => setType('tabular')}
+                            disabled
                         />{' '}
-                        Tabular
+                        Tabular <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>(v4.7.x)</span>
                     </label>
                 </fieldset>
 
@@ -307,7 +319,14 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                                 type,
                                 prompt_md: promptMd,
                                 practice: practice || undefined,
-                                columns_config: type === 'tabular' ? [] : undefined,
+                                // Tabular workflows need a
+                                // columns-config builder — disabled
+                                // in this GA shell. The radio above
+                                // is disabled so `type` is always
+                                // `assistant` here; we only send the
+                                // columns_config key on tabular submits
+                                // (which the disabled radio prevents).
+                                columns_config: undefined,
                             })
                         }
                         style={{

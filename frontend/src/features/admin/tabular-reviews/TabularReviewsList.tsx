@@ -62,7 +62,11 @@ export function TabularReviewsList(): ReactNode {
     }
 
     return (
-        <div data-testid="admin-tabular-reviews" data-state={dataState}>
+        <div
+            data-testid="admin-tabular-reviews"
+            data-state={dataState}
+            aria-busy={dataState === 'loading'}
+        >
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <h2 style={{ fontSize: 18, margin: 0 }}>Tabular Reviews</h2>
                 <button

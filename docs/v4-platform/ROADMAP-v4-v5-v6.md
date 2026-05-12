@@ -86,7 +86,7 @@ GA closure also dated 2026-05-12.
 
 **Status row in README roadmap table is** ✅ shipped 2026-05-12.
 
-Inspired by github.com/willchen96/mike — adopts the two killer features absent from competitors (Tabular Review + Workflows), adds the AI-suggest layer Mike doesn't have, ships **16 format types vs Mike's 9 + 12 UX differentiators MoSCoW-prioritised + Glide Data Grid (MIT, canvas-based)**.
+Inspired by github.com/willchen96/mike — adopts the two killer features absent from competitors (Tabular Review + Workflows), adds the AI-suggest layer Mike doesn't have, ships **17 format types vs Mike's 9 + 12 UX differentiators MoSCoW-prioritised**. GA renders the tabular grid as a plain HTML table (Glide Data Grid canvas migration parked for v4.7.x per ADR 0010 D1).
 
 ### Wn breakdown
 

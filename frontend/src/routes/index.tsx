@@ -437,15 +437,16 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
-// v4.7/W3 — Tabular Reviews + Workflows admin SPA routes. Same
-// flat-RBAC pattern as adminConnectorsRoute / adminKbRoute: the
-// RequireRole gate lives inside the component so a viewer hitting the
-// URL directly sees <AdminForbidden /> instead of a crash. Visibility
-// of writes is enforced separately by the BE gates
-// `viewTabularReviews` / `viewWorkflows`.
+// v4.7/W3 — Tabular Reviews + Workflows admin SPA routes.
+// `viewTabularReviews` / `viewWorkflows` BE Gates admit the `viewer`
+// role for READ-ONLY access (the BE controllers' denyMutationForViewer()
+// guards individual write actions). The FE rail entry must mirror that
+// admission set so a viewer hitting the URL sees the list page rather
+// than <AdminForbidden />; the components themselves treat write attempts
+// as 403 from the BE response.
 function AdminTabularReviewsRoute() {
     return (
-        <RequireRole roles={['admin', 'super-admin']}>
+        <RequireRole roles={['admin', 'super-admin', 'viewer']}>
             <TabularReviewsList />
         </RequireRole>
     );
@@ -453,7 +454,7 @@ function AdminTabularReviewsRoute() {
 
 function AdminWorkflowsRoute() {
     return (
-        <RequireRole roles={['admin', 'super-admin']}>
+        <RequireRole roles={['admin', 'super-admin', 'viewer']}>
             <WorkflowsList />
         </RequireRole>
     );

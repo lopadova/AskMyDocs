@@ -132,7 +132,41 @@ final class TabularReviewStreamControllerTest extends TestCase
         $body = $this->captureStream($resp);
 
         $this->assertStringContainsString('event: error', $body);
-        $this->assertStringContainsString('boom', $body);
+        // The server-side message is masked to avoid leaking SQL
+        // fragments / hostnames / internal stack traces. The
+        // correlation id surfaces in the SSE payload so the operator
+        // can pivot to the log line; the raw exception message
+        // ("boom") does NOT.
+        $this->assertStringContainsString('correlation_id', $body);
+        $this->assertStringNotContainsString('"boom"', $body);
+    }
+
+    public function test_stream_emits_json_403_for_viewer_under_sse_accept_header(): void
+    {
+        $viewer = User::create([
+            'name' => 'V',
+            'email' => 'v-sse-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret'),
+        ]);
+        $viewer->assignRole('viewer');
+
+        $review = TabularReview::create([
+            'project_key' => 'hr',
+            'user_id' => $viewer->id,
+            'title' => 'X',
+            'columns_config' => [['name' => 'X', 'format' => 'text']],
+        ]);
+
+        // SSE clients send `Accept: text/event-stream`. The pre-stream
+        // guard must STILL respond with JSON 403 (not an HTML page /
+        // 302) so the EventSource consumer can parse the failure
+        // before unwrapping the stream.
+        $resp = $this->actingAs($viewer)->withHeaders([
+            'Accept' => 'text/event-stream',
+        ])->post('/api/admin/tabular-reviews/'.$review->id.'/generate-stream');
+
+        $resp->assertStatus(403);
+        $resp->assertHeader('Content-Type', 'application/json');
     }
 
     public function test_stream_respects_max_documents_cap(): void

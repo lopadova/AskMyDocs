@@ -34,7 +34,10 @@ admin SPA & GA).
       max_documents cap)
 - [x] Playwright specs against real backend (8 tests across
       tabular-reviews + workflows: list shell + create dialog ARIA +
-      full CRUD round-trip + 422 validation surfacing)
+      full CRUD round-trip + FE submit-disabled guard on empty
+      required fields). Real BE 422 E2E surfacing is deferred to
+      v4.7.x alongside the `/api/admin/projects/keys` dropdown
+      (R18 work)
 - [x] R13 verification script passes (no internal route stubs)
 - [x] README roadmap row v4.7 flipped from "⏳ planned" → "✅ shipped
       2026-05-12"

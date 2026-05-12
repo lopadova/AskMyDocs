@@ -9,12 +9,14 @@ use App\Models\TabularCell;
 use App\Models\TabularReview;
 use App\Services\TabularReview\TabularReviewExtractor;
 use App\Support\TenantContext;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * v4.7/W3 — SSE streaming variant of TabularReviewController::generate().
@@ -71,17 +73,32 @@ final class TabularReviewStreamController extends Controller
      */
     public function stream(Request $request, int $id): Response
     {
+        // Force-JSON 4xx for pre-stream failures. SSE clients send
+        // `Accept: text/event-stream`, which would otherwise trip
+        // Laravel's default exception renderer into emitting HTML /
+        // 302 — unparseable by an EventSource consumer. Mirrors
+        // `MessageStreamController::store()`'s pre-stream contract.
         $user = $request->user();
         if ($user !== null
             && method_exists($user, 'hasRole')
             && $user->hasRole('viewer')
             && ! $user->hasAnyRole(['admin', 'super-admin'])) {
-            throw new AccessDeniedHttpException('Viewers cannot generate tabular cells.');
+            return new JsonResponse(
+                ['message' => 'Viewers cannot generate tabular cells.'],
+                403,
+            );
         }
 
-        $validated = $request->validate([
-            'max_documents' => ['nullable', 'integer', 'min:1', 'max:1000'],
-        ]);
+        try {
+            $validated = $request->validate([
+                'max_documents' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            ]);
+        } catch (ValidationException $e) {
+            return new JsonResponse(
+                ['message' => $e->getMessage(), 'errors' => $e->errors()],
+                422,
+            );
+        }
         $cap = (int) ($validated['max_documents'] ?? 200);
 
         $tenant = $this->ctx->current();
@@ -91,7 +108,7 @@ final class TabularReviewStreamController extends Controller
             ->first();
 
         if ($review === null) {
-            throw new NotFoundHttpException('Tabular review not found.');
+            return new JsonResponse(['message' => 'Tabular review not found.'], 404);
         }
 
         $baseQuery = KnowledgeDocument::query()
@@ -165,8 +182,21 @@ final class TabularReviewStreamController extends Controller
                     'truncated' => $totalAvailable > $processed,
                 ]);
             } catch (\Throwable $e) {
-                $this->emit('error', [
+                // Server-side log carries the full exception (including
+                // any SQL fragment / hostname / stack frame). The
+                // client receives a generic message + correlation id
+                // so the operator can pivot from a support report to
+                // the log line without leaking internal detail.
+                $correlationId = (string) Str::uuid();
+                Log::error('tabular-review.stream.error', [
+                    'review_id' => $review->id,
+                    'correlation_id' => $correlationId,
+                    'exception' => $e::class,
                     'message' => $e->getMessage(),
+                ]);
+                $this->emit('error', [
+                    'message' => 'Extraction failed. Please retry; if it persists, contact support.',
+                    'correlation_id' => $correlationId,
                 ]);
             }
         });
@@ -207,23 +237,29 @@ final class TabularReviewStreamController extends Controller
      */
     private function emit(string $event, array $payload): void
     {
+        $emitEvent = $event;
         try {
             $json = json_encode(
                 $payload,
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
             );
         } catch (\JsonException $e) {
-            // Fall back to a deterministic error frame so the stream
-            // does not emit corrupted JSON. The caller will continue
-            // with the next iteration; the malformed cell becomes an
-            // error frame instead of a half-written data line.
+            // On encode failure we MUST switch the event name to
+            // `error` so SSE consumers handling a `cell` frame don't
+            // try to render a structurally-different payload as a
+            // cell update. Log the original failure for forensics.
+            Log::error('tabular-review.stream.encode_error', [
+                'event' => $event,
+                'exception' => $e->getMessage(),
+            ]);
+            $emitEvent = 'error';
             $json = json_encode(
-                ['_encode_error' => $e->getMessage()],
+                ['message' => 'Cell payload could not be encoded; skipped.'],
                 JSON_UNESCAPED_SLASHES,
             );
         }
 
-        echo 'event: '.$event."\n";
+        echo 'event: '.$emitEvent."\n";
         echo 'data: '.$json."\n\n";
 
         // Guard the flush calls explicitly rather than silencing them

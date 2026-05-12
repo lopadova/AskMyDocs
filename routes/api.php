@@ -501,7 +501,8 @@ Route::middleware([
             ->name('api.admin.tabular-reviews.generate');
         // v4.7/W3 — SSE streaming variant. Same Gate, same tenant
         // scoping; emits `cell` events as the extractor produces them
-        // so the Glide-style grid in the FE can paint progressively.
+        // so the FE grid (HTML table in v4.7 GA per ADR 0010 D1; Glide
+        // canvas migration parked for v4.7.x) can paint progressively.
         Route::post('/{id}/generate-stream', [TabularReviewStreamController::class, 'stream'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.generate-stream');
