@@ -406,6 +406,17 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
         queryFn: () => adminTabularReviewsApi.show(id),
     });
 
+    // v4.7 GA decision: the show-page Generate button uses the
+    // SYNCHRONOUS `/generate` endpoint, NOT the SSE
+    // `/generate-stream` variant. The SSE wire format is fully
+    // implemented and tested in `TabularReviewStreamController`, and
+    // an SSE consumer is wired in the v4.7 streaming spec, but the
+    // progressive-paint UI on this page is parked for v4.7.x along
+    // with the Glide Data Grid migration (ADR 0010 D1). The sync
+    // path keeps the GA scope bounded: one mutation, one cache
+    // invalidation, no manual readable-stream lifecycle inside this
+    // component. Copilot iter 8 caught the previous wording's
+    // mismatch with the actual implementation.
     const generateMutation = useMutation({
         mutationFn: (max?: number) => adminTabularReviewsApi.generate(id, max),
         onSuccess: () => {

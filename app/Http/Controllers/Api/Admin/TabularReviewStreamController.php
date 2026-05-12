@@ -46,7 +46,13 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  *     data: {"documents_processed":7,"cells_total":21,"truncated":false}
  *
  *     event: error
- *     data: {"message":"..."}
+ *     data: {"message":"...","correlation_id":"..."}
+ *
+ * The `correlation_id` on an `error` frame is the laravel `Str::uuid()`
+ * also written to the application log so an operator can grep the
+ * server-side trace; clients SHOULD surface it in the UI for support
+ * triage. The field is always present on the error frame emitted from
+ * the Throwable catch (Copilot iter 8).
  *
  * The synchronous generate() in TabularReviewController stays in place
  * and keeps working — it is still the path used by tests + CLI clients

@@ -510,17 +510,25 @@ Route::middleware([
 // v4.7/W3 — SSE streaming variant of `tabular-reviews/{id}/generate`.
 // Hoisted out of the main group so it can use the `auth.sse`
 // middleware (`App\Http\Middleware\AuthenticateForSse`) instead of
-// the default `auth:sanctum`. The default Sanctum middleware returns
-// 302 + HTML on session expiry, which a fetch-based SSE client
-// cannot parse; `auth.sse` returns a deterministic JSON 401 so the
-// FE can re-bootstrap auth and retry. The endpoint is POST (so the
-// FE consumer is fetch-based SSE — readable-stream + manual parsing;
-// the native browser `EventSource` is GET-only and not used here).
-// Same Gate as the sync sibling (`can:viewTabularReviews`) so RBAC
-// stays identical; same tenant scoping enforced in the controller.
-// Emits `cell` events as the extractor produces them so the FE grid
-// (HTML table in v4.7 GA per ADR 0010 D1; Glide canvas migration
-// parked for v4.7.x) can paint progressively.
+// the default `auth:sanctum`. NOTE: for /api/* requests the global
+// `Exceptions::shouldRenderJsonWhen(...)` in bootstrap/app.php
+// already forces JSON-401 on auth failure, so the practical
+// difference between the two for THIS route is small. We still use
+// `auth.sse` here for two reasons: (a) defence in depth — if a
+// future bootstrap change narrows the global JSON-render rule, the
+// dedicated middleware keeps streaming auth failures parseable; and
+// (b) consistency with `MessageStreamController`'s route which lives
+// under the web group where the global renderer does NOT apply and
+// the default `auth` would actually emit 302+HTML. Same Gate as the
+// sync sibling (`can:viewTabularReviews`) so RBAC stays identical;
+// same tenant scoping enforced in the controller. The endpoint is
+// POST (so the FE consumer is fetch-based SSE — readable-stream +
+// manual parsing; the native browser `EventSource` is GET-only and
+// not used here). Emits `cell` events as the extractor produces
+// them so the FE grid (HTML table in v4.7 GA per ADR 0010 D1; Glide
+// canvas migration parked for v4.7.x) can paint progressively.
+// Copilot iter 8 caught the previous comment's drift about
+// 302+HTML, which only applies to web routes.
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
