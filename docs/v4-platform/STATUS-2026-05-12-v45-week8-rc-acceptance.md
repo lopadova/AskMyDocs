@@ -133,8 +133,8 @@ it.
 
 - [x] Connector framework default-OFF — `connector_installations` is empty on a fresh host; no provider traffic until an operator runs the OAuth install flow.
 - [x] Live-test suite default-OFF — env-var guard skips the entire `tests/Live/` tree in CI.
-- [x] Suggested-followups default-OFF — `AI_CHAT_SUGGESTED_FOLLOWUPS_ENABLED=false` ships in `.env.example`; the chat surface renders the same as v4.4 unless the operator opts in.
-- [x] Token+cost meter default-OFF — `AI_CHAT_TOKEN_METER_ENABLED=false`; `config('ai.cost_rates')` empty until operator populates.
+- [x] Suggested-followups best-effort — `SuggestedFollowupGenerator` returns `[]` on provider error / parse failure / empty response; the FE simply does not render the pill row, so v4.4 hosts upgrading see no UI breakage on missing provider credentials.
+- [x] Token+cost meter rates default empty — `config('ai.cost_rates')` ships empty; the badge omits cost (not displays 0) until the operator populates `cost_rates[provider][model] = ['input' => float, 'output' => float]`.
 
 ## Acceptance verdict
 
