@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
 use App\Http\Controllers\Api\Admin\UserController;
+use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -503,4 +504,88 @@ Route::middleware([
         Route::post('/{id}/clear-cells', [TabularReviewController::class, 'clearCells'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.clear-cells');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Workflows (v4.7/W2)
+|--------------------------------------------------------------------------
+|
+| Reusable prompt templates (assistant or tabular) + AI-suggested
+| workflows from the tenant's KB. Mounted under `can:viewWorkflows`
+| so `viewer` can browse the catalogue (read-only); `admin` +
+| `super-admin` can mutate templates AND request LLM-backed
+| suggestions (controller enforces these via `assertCanCreate()` /
+| `assertCanSuggest()`).
+|
+| `viewer` is intentionally allowed to call `/{id}/hide` and
+| `/{id}/hide` DELETE — those endpoints only mutate the per-user
+| `hidden_workflows` table (cosmetic personal preference, not the
+| underlying template) and the policy at
+| `WorkflowService::hide() / unhide()` scopes every row to the
+| caller's own user_id. Copilot iter 1 correctly flagged that the
+| previous "viewer is read-only across the surface" comment was
+| inaccurate; this is the corrected contract.
+|
+| Literal sub-paths (`/suggest`, `/from-proposal`) MUST come before
+| the `/{id}` catch-all so the literal route is matched first. The
+| `/share` and `/hide` routes are nested under `/{id}` and rely on
+| `whereNumber('id')` to keep the dispatch unambiguous.
+|
+| Middleware (`EncryptCookies` + `StartSession`) mirrors every other
+| admin route group in this file: AskMyDocs is a Sanctum-SPA + API
+| hybrid where the React shell at `/admin/*` authenticates via a
+| stateful session cookie. The whole admin surface — Dashboard
+| metrics, Users, Roles, KB tree/explorer, Tabular Reviews, PII admin,
+| Eval Harness, Connectors — uses the same triple
+| (`EncryptCookies` + `StartSession` + `auth:sanctum`), and
+| diverging here would force the FE to issue token-bearer auth on
+| this surface alone. Copilot iter 5 flagged the stateful overhead;
+| the consistency with the rest of the admin surface outweighs the
+| overhead — the FE would otherwise need bespoke fetch wiring.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewWorkflows',
+])
+    ->prefix('admin/workflows')
+    ->group(function () {
+        Route::get('/', [WorkflowController::class, 'index'])
+            ->name('api.admin.workflows.index');
+        Route::post('/', [WorkflowController::class, 'store'])
+            ->name('api.admin.workflows.store');
+
+        // Literal sub-paths before /{id}.
+        Route::post('/suggest', [WorkflowController::class, 'suggest'])
+            ->middleware('throttle:30,1')
+            ->name('api.admin.workflows.suggest');
+        Route::post('/from-proposal', [WorkflowController::class, 'fromProposal'])
+            ->name('api.admin.workflows.from-proposal');
+
+        Route::get('/{id}', [WorkflowController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.show');
+        Route::patch('/{id}', [WorkflowController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.update');
+        Route::delete('/{id}', [WorkflowController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.destroy');
+
+        Route::post('/{id}/share', [WorkflowController::class, 'share'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.share');
+        Route::delete('/{id}/share', [WorkflowController::class, 'unshare'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unshare');
+
+        Route::post('/{id}/hide', [WorkflowController::class, 'hide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.hide');
+        Route::delete('/{id}/hide', [WorkflowController::class, 'unhide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unhide');
     });

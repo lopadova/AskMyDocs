@@ -59,6 +59,12 @@ final class TenantIdMandatoryTest extends TestCase
         // v4.7/W1 — tabular review backend tables.
         \App\Models\TabularReview::class,
         \App\Models\TabularCell::class,
+        // v4.7/W2 — workflows backend. `workflow_shares` is an
+        // association table whose FK to `workflows` carries the tenant
+        // boundary transitively; it does NOT need its own tenant_id
+        // column and is intentionally not listed here.
+        \App\Models\Workflow::class,
+        \App\Models\HiddenWorkflow::class,
         // v4.6 — connector framework models now ship in
         // `padosoft/askmydocs-connector-base` (v1.1.1) — the package
         // owns the `BelongsToTenant` trait on
