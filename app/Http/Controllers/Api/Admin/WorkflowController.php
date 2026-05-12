@@ -278,7 +278,10 @@ final class WorkflowController extends Controller
             'title' => $proposal['title'],
             'type' => $proposal['type'],
             'prompt_md' => $proposal['prompt_md'],
-            'practice' => $proposal['practice'] ?? 'generic',
+            // Copilot iter 6: route through the enum for parity with
+            // store(); the literal 'generic' would drift if the enum
+            // ever renames the value.
+            'practice' => $proposal['practice'] ?? WorkflowPractice::Generic->value,
             'columns_config' => $proposal['columns_config'] ?? null,
         ]);
 

@@ -33,7 +33,12 @@ final class WorkflowSuggesterTest extends TestCase
         $this->seed(RbacSeeder::class);
         config()->set('ai.default', 'openai');
         config()->set('ai.providers.openai.api_key', 'test-key');
-        config()->set('ai.providers.openai.chat.model', 'gpt-4o-mini');
+        // Copilot iter 6: real config key is `chat_model` (underscore),
+        // not `chat.model` (dot) — see config/ai.php. The previous
+        // spelling was inert (Http::fake intercepts before the config
+        // is read), but matching the real key keeps the test honest
+        // for any future provider branch that does read it.
+        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
         // Reset suggester cache between tests so cache_hit assertions
         // are deterministic.
         Cache::flush();
