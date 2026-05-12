@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
+import { parseLaravelError, flattenLaravelError } from '../../../lib/laravel-errors';
 import {
     adminWorkflowsApi,
     type CreateWorkflowPayload,
@@ -71,7 +72,11 @@ export function WorkflowsList(): ReactNode {
             setScope('mine');
         },
         onError: (err: unknown) => {
-            setCreateError(err instanceof Error ? err.message : 'Could not create workflow.');
+            // Parse Laravel 422 {message, errors:{field:[...]}} so the
+            // create dialog can show field-level feedback instead of
+            // dropping it. Copilot iter 10 — single generic <p> was
+            // dropping field errors.
+            setCreateError(flattenLaravelError(parseLaravelError(err, 'Could not create workflow.')));
         },
     });
 
@@ -95,7 +100,7 @@ export function WorkflowsList(): ReactNode {
             setSavingForIdx(null);
         },
         onError: (err: unknown) => {
-            setMutationError(err instanceof Error ? err.message : 'Could not save proposal.');
+            setMutationError(flattenLaravelError(parseLaravelError(err, 'Could not save proposal.')));
             setSavingForIdx(null);
         },
     });
@@ -107,7 +112,7 @@ export function WorkflowsList(): ReactNode {
             setMutationError(null);
         },
         onError: (err: unknown) => {
-            setMutationError(err instanceof Error ? err.message : 'Could not hide workflow.');
+            setMutationError(flattenLaravelError(parseLaravelError(err, 'Could not hide workflow.')));
         },
     });
 

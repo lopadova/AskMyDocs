@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
+import { parseLaravelError, flattenLaravelError } from '../../../lib/laravel-errors';
 import { adminTabularReviewsApi, FORMAT_TYPES, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
 
 /**
@@ -41,7 +42,10 @@ export function TabularReviewsList(): ReactNode {
             setActiveId(created.id);
         },
         onError: (err: unknown) => {
-            setCreateError(err instanceof Error ? err.message : 'Could not create review.');
+            // Parse Laravel 422 {message, errors:{field:[...]}} payload so
+            // the create dialog surfaces field-level validation instead of
+            // dropping it to a generic banner. Copilot iter 10.
+            setCreateError(flattenLaravelError(parseLaravelError(err, 'Could not create review.')));
         },
     });
 
@@ -53,7 +57,7 @@ export function TabularReviewsList(): ReactNode {
             setMutationError(null);
         },
         onError: (err: unknown) => {
-            setMutationError(err instanceof Error ? err.message : 'Could not delete review.');
+            setMutationError(flattenLaravelError(parseLaravelError(err, 'Could not delete review.')));
         },
     });
 
@@ -217,12 +221,12 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
     ]);
 
     const updateColumn = (i: number, patch: Partial<ColumnConfig>) => {
-        setColumns(columns.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+        setColumns((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
     };
 
     const addColumn = () =>
-        setColumns([...columns, { _key: nextColumnKey(), name: '', prompt: '', format: 'text' }]);
-    const removeColumn = (i: number) => setColumns(columns.filter((_, idx) => idx !== i));
+        setColumns((prev) => [...prev, { _key: nextColumnKey(), name: '', prompt: '', format: 'text' }]);
+    const removeColumn = (i: number) => setColumns((prev) => prev.filter((_, idx) => idx !== i));
 
     const stripKeys = (rows: KeyedColumn[]): ColumnConfig[] =>
         rows.map(({ _key: _ignored, ...rest }) => rest);
@@ -424,7 +428,7 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
             setShowMutationError(null);
         },
         onError: (err: unknown) => {
-            setShowMutationError(err instanceof Error ? err.message : 'Generation failed.');
+            setShowMutationError(flattenLaravelError(parseLaravelError(err, 'Generation failed.')));
         },
     });
 
@@ -435,7 +439,7 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
             setShowMutationError(null);
         },
         onError: (err: unknown) => {
-            setShowMutationError(err instanceof Error ? err.message : 'Clear failed.');
+            setShowMutationError(flattenLaravelError(parseLaravelError(err, 'Clear failed.')));
         },
     });
 

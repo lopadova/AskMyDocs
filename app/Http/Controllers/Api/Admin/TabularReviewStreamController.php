@@ -124,19 +124,23 @@ final class TabularReviewStreamController extends Controller
             return new JsonResponse(['message' => 'Tabular review not found.'], 404);
         }
 
+        // Release the session write lock BEFORE running any potentially
+        // expensive query (count() on KnowledgeDocument can scan large
+        // tenant corpuses). The route runs under StartSession so the
+        // lock is held for the duration of the response otherwise; the
+        // FE can issue parallel requests under the same session cookie
+        // without blocking on either the count or the stream lifetime.
+        // Copilot iter 10 flagged that count() was held inside the
+        // session lock — moved the release up.
+        if ($request->hasSession()) {
+            $request->session()->save();
+        }
+
         $baseQuery = KnowledgeDocument::query()
             ->forTenant($tenant)
             ->where('project_key', $review->project_key);
 
         $totalAvailable = (int) $baseQuery->count();
-
-        // Release the session write lock before the stream starts.
-        // The route runs under StartSession so the lock is held for the
-        // duration of the response otherwise; the FE can issue parallel
-        // requests under the same session cookie without blocking.
-        if ($request->hasSession()) {
-            $request->session()->save();
-        }
 
         $response = new StreamedResponse(function () use ($review, $baseQuery, $totalAvailable, $cap): void {
             $this->emit('start', [
