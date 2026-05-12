@@ -62,8 +62,13 @@ W3 (this rc3 / GA):
   dropdown lands in v4.7.x per R18), create dialog (title +
   project_key + columns config builder with per-column name/prompt/
   format dropdown + add/remove rows), show page (grid view with
-  flag-tinted cells + per-cell hover tooltip on reasoning + Generate
-  / Clear actions).
+  flag-tinted cells + a per-cell flag glyph + inline reasoning text +
+  Generate / Clear actions; the cell carries an `aria-label`
+  combining summary + flag + reasoning so AT users get the same
+  context as sighted users — R15). The Generate button still calls
+  the synchronous `/generate` endpoint in v4.7 GA; the progressive-
+  paint consumer of `/generate-stream` ships in v4.7.x alongside the
+  Glide Data Grid migration (ADR 0010 D1).
 - **Admin SPA — Workflows** at `/app/admin/workflows`: scope tabs
   (Mine / Shared / System), card grid layout, create dialog
   (**assistant type only in GA** — tabular create UI deferred to

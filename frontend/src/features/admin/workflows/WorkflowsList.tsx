@@ -75,15 +75,28 @@ export function WorkflowsList(): ReactNode {
         },
     });
 
+    // Track the in-flight proposal by a STABLE, unique id (the
+    // gallery's list index) — NOT by title alone, because the
+    // suggester is an LLM and can legitimately emit two proposals
+    // with the same title. `savingFor` is the idx of the proposal
+    // currently being POSTed; the gallery uses it to label exactly
+    // the right card with "Saving…". Copilot iter 9 flagged the
+    // previous title-only tracking as ambiguous under collisions.
+    const [savingForIdx, setSavingForIdx] = useState<number | null>(null);
     const fromProposalMutation = useMutation({
-        mutationFn: (p: WorkflowProposal) => adminWorkflowsApi.fromProposal(p),
+        mutationFn: ({ proposal, idx }: { proposal: WorkflowProposal; idx: number }) => {
+            setSavingForIdx(idx);
+            return adminWorkflowsApi.fromProposal(proposal);
+        },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['admin-workflows'] });
             setScope('mine');
             setMutationError(null);
+            setSavingForIdx(null);
         },
         onError: (err: unknown) => {
             setMutationError(err instanceof Error ? err.message : 'Could not save proposal.');
+            setSavingForIdx(null);
         },
     });
 
@@ -253,8 +266,8 @@ export function WorkflowsList(): ReactNode {
                     isLoading={suggestQuery.isLoading}
                     isError={suggestQuery.isError}
                     onClose={() => setSuggestOpen(false)}
-                    onSave={(p) => fromProposalMutation.mutate(p)}
-                    savingFor={fromProposalMutation.isPending ? fromProposalMutation.variables?.title ?? null : null}
+                    onSave={(proposal, idx) => fromProposalMutation.mutate({ proposal, idx })}
+                    savingForIdx={fromProposalMutation.isPending ? savingForIdx : null}
                 />
             )}
         </div>
@@ -401,11 +414,15 @@ interface SuggestProps {
     isLoading: boolean;
     isError: boolean;
     onClose: () => void;
-    onSave: (p: WorkflowProposal) => void;
-    savingFor: string | null;
+    onSave: (p: WorkflowProposal, idx: number) => void;
+    // Index of the proposal currently being saved (mutation in flight),
+    // or `null` if no save is in flight. Indexed by idx — NOT by title
+    // — so two same-title proposals are tracked independently
+    // (Copilot iter 9).
+    savingForIdx: number | null;
 }
 
-function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingFor }: SuggestProps): ReactNode {
+function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingForIdx }: SuggestProps): ReactNode {
     return (
         <div
             data-testid="admin-workflow-suggestions-gallery"
@@ -467,11 +484,11 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingF
                                 <button
                                     type="button"
                                     data-testid={`admin-workflow-suggestion-${idx}-save`}
-                                    disabled={savingFor !== null}
-                                    onClick={() => onSave(p)}
+                                    disabled={savingForIdx !== null}
+                                    onClick={() => onSave(p, idx)}
                                     style={{ marginTop: 6, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--accent)' }}
                                 >
-                                    {savingFor === p.title ? 'Saving…' : 'Save this'}
+                                    {savingForIdx === idx ? 'Saving…' : 'Save this'}
                                 </button>
                             </li>
                         ))}

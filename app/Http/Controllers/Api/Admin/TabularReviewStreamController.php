@@ -244,12 +244,18 @@ final class TabularReviewStreamController extends Controller
      * Emit a single SSE frame and flush the output buffer so the client
      * receives the message immediately rather than at end-of-response.
      *
-     * `json_encode` uses `JSON_THROW_ON_ERROR` so invalid UTF-8 from
-     * an LLM-generated summary surfaces as a typed exception. The
-     * caller wraps the stream body in a try/catch that emits an
-     * `event: error` frame on any exception, so a malformed payload
-     * NEVER produces a half-written / partially-valid SSE `data:`
-     * line — the SSE contract stays parseable end-to-end.
+     * Encode errors (invalid UTF-8 from an LLM-generated summary, etc.)
+     * are handled INSIDE this method — `json_encode` throws via
+     * `JSON_THROW_ON_ERROR`, we catch the `JsonException`, log the
+     * forensic detail, and emit a fixed `event: error` frame with a
+     * hard-coded sentinel JSON body instead. The caller's outer
+     * try/catch is for non-encode exceptions raised by the extractor
+     * itself; it never sees a `JsonException` from emit(). The SSE
+     * contract stays parseable end-to-end — a malformed payload NEVER
+     * produces a half-written / partially-valid SSE `data:` line.
+     * Copilot iter 9 (a) flagged the previous docblock's control-flow
+     * drift and (b) noted the fallback `json_encode` itself was
+     * unchecked — both are addressed below.
      */
     private function emit(string $event, array $payload): void
     {
@@ -269,10 +275,20 @@ final class TabularReviewStreamController extends Controller
                 'exception' => $e,
             ]);
             $emitEvent = 'error';
+            // The fallback payload is hand-built from constant strings
+            // that are guaranteed-valid UTF-8 + JSON-safe, so the
+            // SECOND `json_encode` cannot itself fail. We still check
+            // for `false` defensively — if some future PHP runtime
+            // change makes this fail, fall back to a hard-coded JSON
+            // literal so the SSE frame is never empty (Copilot
+            // iter 9).
             $json = json_encode(
                 ['message' => 'Cell payload could not be encoded; skipped.'],
                 JSON_UNESCAPED_SLASHES,
             );
+            if ($json === false) {
+                $json = '{"message":"Cell payload could not be encoded; skipped."}';
+            }
         }
 
         echo 'event: '.$emitEvent."\n";

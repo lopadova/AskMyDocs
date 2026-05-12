@@ -525,10 +525,18 @@ Route::middleware([
 // POST (so the FE consumer is fetch-based SSE — readable-stream +
 // manual parsing; the native browser `EventSource` is GET-only and
 // not used here). Emits `cell` events as the extractor produces
-// them so the FE grid (HTML table in v4.7 GA per ADR 0010 D1; Glide
-// canvas migration parked for v4.7.x) can paint progressively.
-// Copilot iter 8 caught the previous comment's drift about
-// 302+HTML, which only applies to web routes.
+// them. NOTE: the v4.7 GA SPA's TabularReviewShow page DOES NOT
+// yet consume this route — its Generate button calls the
+// synchronous `/generate` sibling. The SSE route is fully
+// implemented + tested (`TabularReviewStreamControllerTest`
+// covers happy stream + 4xx + error-event + cap), and the
+// progressive-paint FE consumer ships in v4.7.x alongside the
+// Glide Data Grid migration (ADR 0010 D1). External SSE consumers
+// (custom UIs, notebooks, integrations) can already use this
+// route today. Copilot iter 8 caught the previous comment's drift
+// about 302+HTML which only applies to web routes; iter 9 caught
+// the implication that the v4.7 GA UI already paints
+// progressively (it does not).
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
