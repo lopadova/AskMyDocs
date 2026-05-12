@@ -29,10 +29,24 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * v4.7/W2 — Admin RESTful CRUD on workflows + share + hide + suggest.
  *
- * Auth: `auth:sanctum`. Gates on the route layer:
- *   - viewWorkflows      → index + show + suggest (viewer is admitted
- *     for reads, but the controller fences mutation + suggest)
- *   - createWorkflows    → store + update + destroy + share + from-proposal
+ * Auth: `auth:sanctum`.
+ *
+ * Authorisation:
+ *   - The route group is gated by `can:viewWorkflows` only — that
+ *     Gate admits viewer + admin + super-admin (read-only catalogue
+ *     access + per-user hide markers).
+ *   - Write actions (store / update / destroy / share / unshare /
+ *     from-proposal) are fenced by `$this->assertCanCreate()`, which
+ *     admits admin + super-admin only. Although a `createWorkflows`
+ *     Gate is also defined (super-admin + admin), it is intentionally
+ *     NOT applied via `can:` middleware — the controller's
+ *     `assertCanCreate()` is the single enforcement point so the
+ *     viewer's hide/unhide endpoints can sit inside the same
+ *     `can:viewWorkflows` group without being shut out. Copilot
+ *     iter 7 flagged the earlier docblock that implied route-layer
+ *     enforcement; the controller-layer fence is what actually runs.
+ *   - `/suggest` is similarly fenced by `$this->assertCanSuggest()`
+ *     plus a `throttle:30,1` rate limit at the route layer.
  *
  * Tenant scoping is enforced inside {@see WorkflowService} and the
  * `findOr404()` helper here.

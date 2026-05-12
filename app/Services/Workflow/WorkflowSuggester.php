@@ -41,6 +41,29 @@ final class WorkflowSuggester
      */
     private const TITLE_MAX_CHARS = 80;
 
+    /**
+     * Per-column caps that mirror StoreWorkflowRequest /
+     * FromProposalRequest so every suggested proposal is guaranteed
+     * to round-trip through the save endpoints without a 422.
+     * Copilot iter 7: previously the validator only checked the
+     * format + json_path requirements; a chatty LLM could return
+     * 80 columns or a 500-char name and the FE's "save" button
+     * would fail on the very next request.
+     */
+    private const COLUMNS_MAX = 50;
+
+    private const COLUMN_NAME_MAX_CHARS = 120;
+
+    private const COLUMN_PROMPT_MAX_CHARS = 2000;
+
+    private const COLUMN_JSON_PATH_MAX_CHARS = 200;
+
+    private const ENUM_VALUE_MAX_CHARS = 120;
+
+    private const ENUM_VALUES_MAX = 100;
+
+    private const PROMPT_MD_MAX_CHARS = 20_000;
+
     public function __construct(
         private readonly AiManager $ai,
         private readonly MetadataPatternAnalyzer $analyzer,
@@ -272,17 +295,20 @@ SYS;
             if (! is_array($columnsConfig) || $columnsConfig === []) {
                 return null;
             }
-            // Copilot iter 2: enforce per-column `format` against the
-            // FormatType registry so `/suggest` proposals validate
-            // against the same schema as StoreWorkflowRequest /
-            // FromProposalRequest. Without this, a proposal could
-            // look selectable in the FE catalogue then 422 on save.
-            // Columns that miss `name` OR `format` OR carry an
-            // unknown `format` are dropped from the normalised list.
+            // Copilot iter 2/4/7: validate every column against the
+            // exact constraints that StoreWorkflowRequest /
+            // FromProposalRequest enforce — format ∈ FormatType,
+            // json_path required for `format=json_path`, plus the
+            // per-field length caps + column-count ceiling. Each
+            // suggested proposal is then guaranteed to round-trip
+            // through `/from-proposal` without a 422.
             $formats = FormatType::values();
             $jsonPathFormat = FormatType::JSON_PATH->value;
             $normalised = [];
             foreach ($columnsConfig as $col) {
+                if (count($normalised) >= self::COLUMNS_MAX) {
+                    break;
+                }
                 if (! is_array($col)) {
                     continue;
                 }
@@ -291,14 +317,33 @@ SYS;
                 if ($name === '' || $format === '' || ! in_array($format, $formats, true)) {
                     continue;
                 }
-                // Copilot iter 4: `format=json_path` MUST carry a
-                // non-empty `json_path`. The downstream
-                // FromProposalRequest enforces this with
-                // `required_if` and would otherwise 422 a proposal
-                // that looked selectable here.
+                if (mb_strlen($name) > self::COLUMN_NAME_MAX_CHARS) {
+                    continue;
+                }
+                $colPrompt = (string) ($col['prompt'] ?? '');
+                if (mb_strlen($colPrompt) > self::COLUMN_PROMPT_MAX_CHARS) {
+                    continue;
+                }
                 if ($format === $jsonPathFormat) {
                     $jsonPath = trim((string) ($col['json_path'] ?? ''));
-                    if ($jsonPath === '') {
+                    if ($jsonPath === '' || mb_strlen($jsonPath) > self::COLUMN_JSON_PATH_MAX_CHARS) {
+                        continue;
+                    }
+                }
+                // enum_values: cap count + per-value length so the
+                // downstream FormRequest accepts the payload.
+                if (isset($col['enum_values']) && is_array($col['enum_values'])) {
+                    if (count($col['enum_values']) > self::ENUM_VALUES_MAX) {
+                        continue;
+                    }
+                    $bad = false;
+                    foreach ($col['enum_values'] as $val) {
+                        if (! is_string($val) || mb_strlen($val) > self::ENUM_VALUE_MAX_CHARS) {
+                            $bad = true;
+                            break;
+                        }
+                    }
+                    if ($bad) {
                         continue;
                     }
                 }
@@ -310,6 +355,12 @@ SYS;
             $columnsConfig = $normalised;
         } else {
             $columnsConfig = null;
+        }
+
+        // Same prompt_md length cap as the FormRequest so a chatty
+        // LLM cannot return a 50k-char prompt that 422s on save.
+        if (mb_strlen($promptMd) > self::PROMPT_MD_MAX_CHARS) {
+            return null;
         }
 
         return [
