@@ -304,6 +304,18 @@ final class TabularReviewController extends Controller
 
         $cell = collect($cells)->first(fn ($c) => $c->column_index === $columnIndex);
 
+        // R14: never return 200 with `data: null`. If the extractor
+        // failed to emit a cell for the requested index (e.g. the
+        // stored columns_config was malformed and normaliseColumns()
+        // dropped it), the canonical answer is 500 with a structured
+        // error — the cell IS expected to exist by the time we return.
+        if ($cell === null) {
+            return response()->json([
+                'error' => 'extraction_failed',
+                'message' => 'The extractor did not produce a cell for column_index '.$columnIndex.'.',
+            ], 500);
+        }
+
         return response()->json(['data' => $cell]);
     }
 
