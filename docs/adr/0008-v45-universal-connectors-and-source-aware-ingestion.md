@@ -222,9 +222,13 @@ the v5.0 storage redesign.
 ## Decision D5 — Live-fixture recording is opt-in nightly via `workflow_dispatch` (no provider cost in CI)
 
 The W5.5 + W6 live-test suite (`tests/Live/Connectors/`) is gated
-behind a per-connector env var (`<CONNECTOR_KEY>_LIVE_FIXTURE_RECORD=1`
-+ `<CONNECTOR>_OAUTH_TOKEN=...`). Without the env var, every
-test inside the tree calls `markTestSkipped` immediately.
+by `LiveConnectorTestCase`, which checks a per-connector enable flag
+`CONNECTOR_<PROVIDER>_LIVE=1` (e.g. `CONNECTOR_NOTION_LIVE=1`,
+`CONNECTOR_CONFLUENCE_LIVE=1`) plus the per-provider credential vars
+(e.g. `CONNECTOR_NOTION_TOKEN`, `CONNECTOR_CONFLUENCE_TOKEN` +
+`CONNECTOR_CONFLUENCE_CLOUD_ID`). Fixture recording is enabled
+separately via `CONNECTOR_RECORD_FIXTURES=1`. Without the enable
+flag, every test inside the tree calls `markTestSkipped` immediately.
 
 ### Why opt-in nightly via workflow_dispatch (NOT default CI)
 
@@ -247,10 +251,12 @@ test inside the tree calls `markTestSkipped` immediately.
 - Default CI runs `Unit` + `Feature` only — same cost / latency as
   v4.4. Hosts upgrading to v4.5 see no CI-time inflation.
 - Operators with access to real provider tenants run the live suite
-  via `gh workflow run live-fixtures.yml` (or its local equivalent)
-  to refresh the fixture corpus. The refreshed fixtures get
-  committed; the default CI loop then catches regression at zero
-  provider cost.
+  via `gh workflow run live-recording-nightly.yml` (the manual
+  workflow at `.github/workflows/live-recording-nightly.yml`) — or
+  via `vendor/bin/phpunit tests/Live/Connectors/<Provider>LiveTest.php`
+  locally with the enable + credential + record env vars set — to
+  refresh the fixture corpus. The refreshed fixtures get committed;
+  the default CI loop then catches regression at zero provider cost.
 - The runbook (`docs/v4-platform/RUNBOOK-live-fixture-recording.md`)
   is the single source of truth for credential setup + execution
   steps + replay verification.

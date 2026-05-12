@@ -46,8 +46,8 @@ without further core changes.
 | `notion` | `App\Connectors\BuiltIn\NotionConnector` | OAuth2 (Notion) | `App\Services\Kb\Chunkers\NotionBlockChunker` | `App\Connectors\BuiltIn\Notion\NotionBlockToMarkdown` + `App\Connectors\BuiltIn\Notion\NotionPaginator` |
 | `evernote` | `App\Connectors\BuiltIn\EvernoteConnector` | OAuth (Evernote API) **or** `.enex` bulk import (offline) | `App\Services\Kb\Chunkers\AtomicNoteChunker` (one-note-per-chunk preamble strategy) | `App\Connectors\BuiltIn\Evernote\EnmlToMarkdown` + `App\Connectors\BuiltIn\Evernote\EnexImporter` |
 | `fabric` | `App\Connectors\BuiltIn\FabricConnector` | API key (OAuth pending upstream) | `App\Services\Kb\Chunkers\AtomicNoteChunker` (declares `supports('fabric') = true`) | n/a (Fabric exposes pre-rendered text) |
-| `onedrive` | `App\Connectors\BuiltIn\OneDriveConnector` | OAuth2 (Microsoft Graph) + delta-query | `App\Services\Kb\Chunkers\OfficeDocChunker` for `.docx` / `.pptx` / `.xlsx` | Existing `phpoffice/phpword` + Office converters |
-| `confluence` | `App\Connectors\BuiltIn\ConfluenceConnector` | OAuth 2.0 3LO (Atlassian) + cross-tenant `cloud_id` | `App\Services\Kb\Chunkers\ConfluencePageChunker` | Confluence storage-format-to-markdown (under `App\Connectors\BuiltIn\Confluence\`) |
+| `onedrive` | `App\Connectors\BuiltIn\OneDriveConnector` | OAuth2 (Microsoft Graph) + delta-query | Routes by `sourceType` returned from the document's MIME — currently scoped to `text/markdown` / `text/plain` / `application/pdf` per `OneDriveConnector::SUPPORTED_MIME_TYPES`. `.docx` / `.xlsx` / `.pptx` ingestion deferred until the Office extractors ship; `App\Services\Kb\Chunkers\OfficeDocChunker` is registered in `config/kb-pipeline.php` and ready for that future expansion | Existing converters (PDF via `smalot/pdfparser` + Poppler fallback) |
+| `confluence` | `App\Connectors\BuiltIn\ConfluenceConnector` | OAuth 2.0 3LO (Atlassian); `cloud_id` persisted in tenant-scoped `connector_credentials.extra_json.cloud_id`, optionally reused by a sibling Jira install in the same tenant/workspace | `App\Services\Kb\Chunkers\ConfluencePageChunker` | Confluence storage-format-to-markdown (under `App\Connectors\BuiltIn\Confluence\`) |
 | `jira` | `App\Connectors\BuiltIn\JiraConnector` | OAuth 2.0 3LO (Atlassian) | `App\Services\Kb\Chunkers\JiraIssueChunker` (issue + comments aggregated) | `App\Connectors\BuiltIn\Jira\JiraAdfToMarkdown` + `App\Connectors\BuiltIn\Jira\JqlBuilder` (injection-safe) + `App\Connectors\BuiltIn\Jira\JiraPaginator` (auto-detects `startAt+total` vs `nextPageToken` modes) |
 
 PDF ingestion continues to dispatch to `PdfPageChunker` via the
@@ -86,7 +86,7 @@ it.
 
 - [x] `Reranker` reads four W5.5 weights (`tag_overlap_weight=0.05`, `preamble_match_weight=0.05`, `recency_weight=0.02`, `status_active_weight=0.02`). Layer-4 deltas are additive on top of the base `0.6·vec + 0.3·kw + 0.1·heading` so max score becomes ~1.44 (documented in code).
 - [x] `KbSearchService::searchWithContext()` accepts optional `facets` and emits `facets[source]` + `facets[tag]` counts.
-- [x] Three new GIN indexes on `knowledge_chunks.metadata` for `source` / `tags` / `recency_bucket` paths to keep facet aggregation O(log n).
+- [x] Three new PostgreSQL-only indexes on `knowledge_chunks.metadata`: 2 GIN-on-`jsonb` for the `source_type` + `search_tags` paths and 1 B-tree for `recency_bucket` (text projection — fixed-set ordinal data warrants a B-tree, not a GIN). SQLite is a no-op.
 
 ### D — Live-test recording infrastructure ready (per `feedback_runbook_junior_proof.md`)
 
