@@ -275,6 +275,13 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
         // the `UseChatStreamOptions.initialMessages` JSDoc above.
         messages: initial,
         transport,
+        // v4.5/W7 — audit Tier 1 #2: coalesce UI updates during fast
+        // streams. The SDK's default reconciles on every token; on
+        // long answers (300+ tokens) that produces visible micro-jitter
+        // as React reconciles every chunk. 50ms throttle is the
+        // documented sweet spot — smooth scroll behaviour AND token-
+        // by-token visibility preserved. Zero risk to wire format.
+        experimental_throttle: 50,
         onFinish,
         onError,
     });

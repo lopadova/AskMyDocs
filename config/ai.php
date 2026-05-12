@@ -38,6 +38,54 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Token Cost Rates (v4.5/W7)
+    |--------------------------------------------------------------------------
+    |
+    | USD per 1M tokens, per (provider, model). Used by the FE token/cost
+    | meter on every assistant message to compute the per-turn cost from
+    | the persisted prompt_tokens / completion_tokens counts.
+    |
+    | Format: `cost_rates[provider][model] = ['input' => float, 'output' => float]`.
+    | Rates are USD per million tokens (consistent with provider pricing pages).
+    | Missing models fall back to the provider's `default` entry; missing
+    | providers cause the FE meter to render `—` (no cost guess).
+    |
+    | The FE pulls these via GET /api/chat/cost-rates (anonymous, cached).
+    | Keep this list small — it's a public surface — and only list the
+    | models AskMyDocs actually serves in production.
+    |
+    */
+    'cost_rates' => [
+        'openai' => [
+            'default' => ['input' => 2.50, 'output' => 10.00],
+            'gpt-4o' => ['input' => 2.50, 'output' => 10.00],
+            'gpt-4o-mini' => ['input' => 0.15, 'output' => 0.60],
+            'gpt-4-turbo' => ['input' => 10.00, 'output' => 30.00],
+        ],
+        'anthropic' => [
+            'default' => ['input' => 3.00, 'output' => 15.00],
+            'claude-sonnet-4-20250514' => ['input' => 3.00, 'output' => 15.00],
+            'claude-opus-4-20250514' => ['input' => 15.00, 'output' => 75.00],
+            'claude-haiku-3-5-20241022' => ['input' => 0.80, 'output' => 4.00],
+        ],
+        'gemini' => [
+            'default' => ['input' => 0.075, 'output' => 0.30],
+            'gemini-2.0-flash' => ['input' => 0.075, 'output' => 0.30],
+            'gemini-2.5-pro' => ['input' => 1.25, 'output' => 5.00],
+        ],
+        'openrouter' => [
+            // OpenRouter pricing varies per model; users see real cost
+            // on OpenRouter dashboard. Default a conservative mid-range.
+            'default' => ['input' => 2.00, 'output' => 6.00],
+        ],
+        'regolo' => [
+            // Regolo is a self-hosted EU provider — no per-token cost.
+            'default' => ['input' => 0.00, 'output' => 0.00],
+        ],
+    ],
+
     'providers' => [
 
         'openai' => [
