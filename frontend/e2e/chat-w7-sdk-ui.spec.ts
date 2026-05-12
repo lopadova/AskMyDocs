@@ -44,8 +44,19 @@ test.describe('v4.5/W7 — Vercel SDK UI Tier 1 + Tier 2', () => {
                 id: 7001,
                 content: 'PTO accrues at 1.5 days per month.',
                 // The metadata.provider + model + total_tokens are what
-                // the TokenCostMeter renders. The cost-rate table on
-                // the BE has openai/gpt-4o → input $2.50 / output $10.
+                // the TokenCostMeter renders. `openai/gpt-4o` has a
+                // cost-rate entry in config/ai.php so the meter also
+                // computes a non-null USD figure, but the test only
+                // asserts on testid visibility — the tokens count alone
+                // is enough to drive the render.
+                metadata: {
+                    provider: 'openai',
+                    model: 'gpt-4o',
+                    prompt_tokens: 120,
+                    completion_tokens: 45,
+                    total_tokens: 165,
+                    citations: [],
+                },
             }),
         });
 

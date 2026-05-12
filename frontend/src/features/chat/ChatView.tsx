@@ -299,10 +299,39 @@ export function ChatView(): ReactNode {
 
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
 
-    // The SDK returns `messages: UIMessage[]`. MessageThread accepts
-    // RenderableMessage[] (= AppMessage | UIMessage); the cast widens
-    // the array element type so both shapes flow through.
-    const threadMessages: RenderableMessage[] = chat.messages;
+    // The SDK returns `messages: UIMessage[]` (string ids, no metadata).
+    // The TanStack history query returns `AppMessage[]` (numeric ids,
+    // full MessageMetadata).
+    //
+    // v4.5/W7 Tier 1 #3 + #5 — the branch button and the token-cost
+    // meter are both gated on data the SDK UIMessage doesn't carry
+    // (numeric id + token telemetry). Once the stream settles and
+    // `onFinish` invalidates the messages query, the refetched
+    // AppMessages cover the turns the SDK knows about — overlay them
+    // onto the SDK message tail by index-from-end so each assistant
+    // bubble surfaces the canonical persisted shape (numeric id +
+    // metadata) without losing any user turns the SDK still tracks
+    // but the GET stub / partial-history endpoint omitted. During
+    // the streaming window the SDK's live UIMessages remain
+    // exclusively in charge — they carry the in-flight tokens the
+    // user is watching accrue.
+    const persistedMessages = initialQuery.data;
+    const threadMessages: RenderableMessage[] = (() => {
+        if (isStreaming || !persistedMessages || persistedMessages.length === 0) {
+            return chat.messages;
+        }
+        // Merge: keep SDK-only head turns, overlay persisted tail.
+        // The persisted list aligns to the END of the SDK list (the
+        // BE returns the most recent N messages; the SDK may hold
+        // optimistic user turns the BE hasn't yet persisted).
+        const sdkLen = chat.messages.length;
+        const persistedLen = persistedMessages.length;
+        if (persistedLen >= sdkLen) {
+            return persistedMessages;
+        }
+        const headFromSdk = chat.messages.slice(0, sdkLen - persistedLen);
+        return [...headFromSdk, ...persistedMessages];
+    })();
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
