@@ -511,14 +511,16 @@ Route::middleware([
 // Hoisted out of the main group so it can use the `auth.sse`
 // middleware (`App\Http\Middleware\AuthenticateForSse`) instead of
 // the default `auth:sanctum`. The default Sanctum middleware returns
-// 302 + HTML on session expiry, which an EventSource consumer cannot
-// parse; `auth.sse` returns a deterministic JSON 401 so the FE can
-// re-bootstrap auth and retry. Same Gate as the sync sibling
-// (`can:viewTabularReviews`) so RBAC stays identical; same tenant
-// scoping enforced in the controller. Emits `cell` events as the
-// extractor produces them so the FE grid (HTML table in v4.7 GA per
-// ADR 0010 D1; Glide canvas migration parked for v4.7.x) can paint
-// progressively.
+// 302 + HTML on session expiry, which a fetch-based SSE client
+// cannot parse; `auth.sse` returns a deterministic JSON 401 so the
+// FE can re-bootstrap auth and retry. The endpoint is POST (so the
+// FE consumer is fetch-based SSE — readable-stream + manual parsing;
+// the native browser `EventSource` is GET-only and not used here).
+// Same Gate as the sync sibling (`can:viewTabularReviews`) so RBAC
+// stays identical; same tenant scoping enforced in the controller.
+// Emits `cell` events as the extractor produces them so the FE grid
+// (HTML table in v4.7 GA per ADR 0010 D1; Glide canvas migration
+// parked for v4.7.x) can paint progressively.
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,

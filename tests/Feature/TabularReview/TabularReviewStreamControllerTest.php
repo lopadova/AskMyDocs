@@ -22,10 +22,14 @@ use Tests\TestCase;
  * v4.7/W3 — Coverage for the SSE streaming variant of
  * `TabularReviewController::generate()`.
  *
- * The extractor is stubbed via Mockery so we exercise the SSE framing
- * + auth + tenant-scope guard layer end-to-end without spinning a real
- * LLM. The streamed body is captured via `StreamedResponse::sendContent()`
- * and split into individual SSE frames.
+ * The extractor is stubbed via an anonymous subclass injected through
+ * `$this->app->instance(TabularReviewExtractor::class, new class extends
+ * TabularReviewExtractor { ... })`. Mockery is NOT used here — the
+ * subclass approach avoids Mockery's "cannot mock final/typed
+ * dependencies" restriction and gives precise control over the
+ * `$onCell` callback semantics. The streamed body is captured via
+ * `StreamedResponse::sendContent()` and split into individual SSE
+ * frames.
  */
 final class TabularReviewStreamControllerTest extends TestCase
 {

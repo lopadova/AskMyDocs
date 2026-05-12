@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { TabularReviewsList } from './TabularReviewsList';
 import { api } from '../../../lib/api';
+import { useAuthStore } from '../../../lib/auth-store';
 
 /**
  * v4.7/W3 — Vitest coverage for the Tabular Reviews list/show/create
@@ -24,10 +25,19 @@ beforeEach(() => {
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'post').mockImplementation(mockPost);
     vi.spyOn(api, 'delete').mockImplementation(mockDelete);
+
+    // Seed auth-store with admin so role-gated mutation buttons render.
+    useAuthStore.getState().setMe({
+        user: { id: 7, name: 'Tester', email: 't@demo.local' } as any,
+        roles: ['admin'],
+        permissions: [],
+        projects: [],
+    });
 });
 
 afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.getState().clear();
 });
 
 function wrapped(node: ReactNode): ReactNode {

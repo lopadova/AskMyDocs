@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '../../../lib/auth-store';
 import { adminTabularReviewsApi, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
 
 /**
@@ -19,6 +20,11 @@ export function TabularReviewsList(): ReactNode {
     const [createOpen, setCreateOpen] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
     const [activeId, setActiveId] = useState<number | null>(null);
+    // BE Gate `viewTabularReviews` admits viewer for READ-ONLY; mutation
+    // routes also enforce `denyMutationForViewer()`. Mirror that client-
+    // side so a viewer never sees a button that 403s.
+    const { roles } = useAuthStore();
+    const canMutate = roles.includes('admin') || roles.includes('super-admin');
 
     const reviewsQuery = useQuery({
         queryKey: ['admin-tabular-reviews'],
@@ -76,20 +82,22 @@ export function TabularReviewsList(): ReactNode {
         >
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <h2 style={{ fontSize: 18, margin: 0 }}>Tabular Reviews</h2>
-                <button
-                    type="button"
-                    data-testid="admin-tabular-reviews-create"
-                    onClick={() => setCreateOpen(true)}
-                    style={{
-                        padding: '7px 14px',
-                        borderRadius: 6,
-                        border: '1px solid var(--hairline)',
-                        background: 'var(--bg-2)',
-                        cursor: 'pointer',
-                    }}
-                >
-                    + New review
-                </button>
+                {canMutate && (
+                    <button
+                        type="button"
+                        data-testid="admin-tabular-reviews-create"
+                        onClick={() => setCreateOpen(true)}
+                        style={{
+                            padding: '7px 14px',
+                            borderRadius: 6,
+                            border: '1px solid var(--hairline)',
+                            background: 'var(--bg-2)',
+                            cursor: 'pointer',
+                        }}
+                    >
+                        + New review
+                    </button>
+                )}
             </header>
 
             {dataState === 'loading' && <p data-testid="admin-tabular-reviews-loading">Loading…</p>}
@@ -143,15 +151,17 @@ export function TabularReviewsList(): ReactNode {
                                 <td style={{ padding: '8px 10px' }}>{r.columns_config?.length ?? 0}</td>
                                 <td style={{ padding: '8px 10px' }}>{r.updated_at ?? '—'}</td>
                                 <td style={{ padding: '8px 10px' }}>
-                                    <button
-                                        type="button"
-                                        data-testid={`admin-tabular-review-row-${r.id}-delete`}
-                                        disabled={deleteMutation.isPending}
-                                        onClick={() => deleteMutation.mutate(r.id)}
-                                        style={{ background: 'none', border: 'none', color: 'var(--danger, #c00)', cursor: 'pointer' }}
-                                    >
-                                        Delete
-                                    </button>
+                                    {canMutate && (
+                                        <button
+                                            type="button"
+                                            data-testid={`admin-tabular-review-row-${r.id}-delete`}
+                                            disabled={deleteMutation.isPending}
+                                            onClick={() => deleteMutation.mutate(r.id)}
+                                            style={{ background: 'none', border: 'none', color: 'var(--danger, #c00)', cursor: 'pointer' }}
+                                        >
+                                            Delete
+                                        </button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
@@ -367,6 +377,8 @@ interface ShowProps {
 function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
     const qc = useQueryClient();
     const [showMutationError, setShowMutationError] = useState<string | null>(null);
+    const { roles } = useAuthStore();
+    const canMutate = roles.includes('admin') || roles.includes('super-admin');
     const showQuery = useQuery({
         queryKey: ['admin-tabular-review', id],
         queryFn: () => adminTabularReviewsApi.show(id),
@@ -428,24 +440,26 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                     <h2 style={{ display: 'inline-block', marginLeft: 12 }}>{review.title}</h2>
                     <span style={{ marginLeft: 12, color: 'var(--fg-3)' }}>project: {review.project_key}</span>
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    <button
-                        type="button"
-                        data-testid="admin-tabular-review-show-generate"
-                        onClick={() => generateMutation.mutate(undefined)}
-                        disabled={generateMutation.isPending}
-                    >
-                        {generateMutation.isPending ? 'Generating…' : 'Generate cells'}
-                    </button>
-                    <button
-                        type="button"
-                        data-testid="admin-tabular-review-show-clear"
-                        onClick={() => clearMutation.mutate()}
-                        disabled={clearMutation.isPending}
-                    >
-                        Clear cells
-                    </button>
-                </div>
+                {canMutate && (
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        <button
+                            type="button"
+                            data-testid="admin-tabular-review-show-generate"
+                            onClick={() => generateMutation.mutate(undefined)}
+                            disabled={generateMutation.isPending}
+                        >
+                            {generateMutation.isPending ? 'Generating…' : 'Generate cells'}
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="admin-tabular-review-show-clear"
+                            onClick={() => clearMutation.mutate()}
+                            disabled={clearMutation.isPending}
+                        >
+                            Clear cells
+                        </button>
+                    </div>
+                )}
             </header>
 
             {showMutationError && (

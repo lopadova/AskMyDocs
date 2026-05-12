@@ -243,7 +243,7 @@ export function WorkflowsList(): ReactNode {
                     isError={suggestQuery.isError}
                     onClose={() => setSuggestOpen(false)}
                     onSave={(p) => fromProposalMutation.mutate(p)}
-                    savingFor={fromProposalMutation.variables?.title ?? null}
+                    savingFor={fromProposalMutation.isPending ? fromProposalMutation.variables?.title ?? null : null}
                 />
             )}
         </div>
@@ -394,7 +394,7 @@ interface SuggestProps {
     savingFor: string | null;
 }
 
-function SuggestionsGallery({ data, isLoading, isError, onClose, onSave }: SuggestProps): ReactNode {
+function SuggestionsGallery({ data, isLoading, isError, onClose, onSave, savingFor }: SuggestProps): ReactNode {
     return (
         <div
             data-testid="admin-workflow-suggestions-gallery"
@@ -445,10 +445,11 @@ function SuggestionsGallery({ data, isLoading, isError, onClose, onSave }: Sugge
                                 <button
                                     type="button"
                                     data-testid={`admin-workflow-suggestion-${idx}-save`}
+                                    disabled={savingFor !== null}
                                     onClick={() => onSave(p)}
                                     style={{ marginTop: 6, padding: '4px 10px', borderRadius: 4, border: '1px solid var(--accent)' }}
                                 >
-                                    Save this
+                                    {savingFor === p.title ? 'Saving…' : 'Save this'}
                                 </button>
                             </li>
                         ))}

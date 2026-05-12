@@ -79,8 +79,13 @@ W3 (this rc3 / GA):
   `feedback_admin_ui_panel_alignment_per_release.md` (every cycle
   shipping domain capabilities also ships an admin SPA menu entry).
 - **TanStack Router** routes for the two new admin views, guarded by
-  `RequireRole(['admin', 'super-admin'])` matching the BE Gate
-  contract.
+  `RequireRole(['admin', 'super-admin', 'viewer'])` to mirror the BE
+  Gates `viewTabularReviews` / `viewWorkflows` (which admit `viewer`
+  for read-only access). Write controls (+ New review / + New
+  workflow / Delete / Generate / Clear / Get suggestions) are
+  role-gated client-side so a viewer sees the catalogue but never a
+  button that 403s; the BE controllers' `denyMutationForViewer()`
+  guard remains the authoritative defence.
 - **Tests (W3)**: 6 PHPUnit feature tests for the SSE controller
   (`TabularReviewStreamControllerTest` — happy stream + 404 + 401 +
   403 viewer + error event + max_documents cap), 13 Vitest react
