@@ -10,9 +10,11 @@ use App\Models\User;
 use App\Services\TabularReview\TabularReviewExtractor;
 use App\Support\TabularReview\CellFlag;
 use App\Support\TabularReview\CellStatus;
+use App\Support\TenantContext;
 use App\Models\TabularCell;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -37,7 +39,13 @@ final class TabularReviewStreamControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Cache::flush() avoids Spatie permission-cache artifacts leaking
+        // across test methods under Testbench; explicit tenant reset
+        // keeps the controller's `TenantContext::current()` deterministic
+        // even if a prior test mutated the singleton.
+        Cache::flush();
         $this->seed(RbacSeeder::class);
+        app(TenantContext::class)->set('default');
     }
 
     public function test_stream_emits_start_document_cell_done_events(): void

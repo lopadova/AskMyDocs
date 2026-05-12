@@ -39,9 +39,16 @@ export function TabularReviewsList(): ReactNode {
         },
     });
 
+    const [mutationError, setMutationError] = useState<string | null>(null);
     const deleteMutation = useMutation({
         mutationFn: (id: number) => adminTabularReviewsApi.destroy(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-tabular-reviews'] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['admin-tabular-reviews'] });
+            setMutationError(null);
+        },
+        onError: (err: unknown) => {
+            setMutationError(err instanceof Error ? err.message : 'Could not delete review.');
+        },
     });
 
     const reviews = reviewsQuery.data?.data ?? [];
@@ -92,6 +99,15 @@ export function TabularReviewsList(): ReactNode {
                 </p>
             )}
             {dataState === 'empty' && <p data-testid="admin-tabular-reviews-empty">No tabular reviews yet. Create one to get started.</p>}
+            {mutationError && (
+                <p
+                    data-testid="admin-tabular-reviews-mutation-error"
+                    role="alert"
+                    style={{ color: 'var(--danger, #c00)', marginBottom: 12 }}
+                >
+                    {mutationError}
+                </p>
+            )}
             {dataState === 'ready' && (
                 <table
                     data-testid="admin-tabular-reviews-table"
@@ -130,6 +146,7 @@ export function TabularReviewsList(): ReactNode {
                                     <button
                                         type="button"
                                         data-testid={`admin-tabular-review-row-${r.id}-delete`}
+                                        disabled={deleteMutation.isPending}
                                         onClick={() => deleteMutation.mutate(r.id)}
                                         style={{ background: 'none', border: 'none', color: 'var(--danger, #c00)', cursor: 'pointer' }}
                                     >
@@ -257,11 +274,28 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                                 onChange={(e) => updateColumn(i, { format: e.target.value as FormatType })}
                                 style={{ width: '100%', padding: 6 }}
                             >
+                                {/*
+                                 * Full FormatType domain — keep in sync with
+                                 * app/Support/TabularReview/FormatType.php
+                                 * (Copilot iter 3 caught a 7-of-17 subset
+                                 * that prevented creating most valid review
+                                 * configs from the admin UI). 17 cases as
+                                 * of v4.7 GA.
+                                 */}
                                 <option value="text">text</option>
+                                <option value="free_text">free_text</option>
                                 <option value="number">number</option>
+                                <option value="currency">currency</option>
+                                <option value="percent">percent</option>
                                 <option value="date">date</option>
+                                <option value="duration">duration</option>
                                 <option value="person">person</option>
+                                <option value="entity">entity</option>
                                 <option value="boolean">boolean</option>
+                                <option value="choice">choice</option>
+                                <option value="enum">enum</option>
+                                <option value="enum_status">enum_status</option>
+                                <option value="flag">flag</option>
                                 <option value="list">list</option>
                                 <option value="json_path">json_path</option>
                             </select>
@@ -332,6 +366,7 @@ interface ShowProps {
 
 function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
     const qc = useQueryClient();
+    const [showMutationError, setShowMutationError] = useState<string | null>(null);
     const showQuery = useQuery({
         queryKey: ['admin-tabular-review', id],
         queryFn: () => adminTabularReviewsApi.show(id),
@@ -339,12 +374,24 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
 
     const generateMutation = useMutation({
         mutationFn: (max?: number) => adminTabularReviewsApi.generate(id, max),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-tabular-review', id] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['admin-tabular-review', id] });
+            setShowMutationError(null);
+        },
+        onError: (err: unknown) => {
+            setShowMutationError(err instanceof Error ? err.message : 'Generation failed.');
+        },
     });
 
     const clearMutation = useMutation({
         mutationFn: () => adminTabularReviewsApi.clearCells(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-tabular-review', id] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['admin-tabular-review', id] });
+            setShowMutationError(null);
+        },
+        onError: (err: unknown) => {
+            setShowMutationError(err instanceof Error ? err.message : 'Clear failed.');
+        },
     });
 
     if (showQuery.isLoading) {
@@ -400,6 +447,16 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                     </button>
                 </div>
             </header>
+
+            {showMutationError && (
+                <p
+                    data-testid="admin-tabular-review-show-mutation-error"
+                    role="alert"
+                    style={{ color: 'var(--danger, #c00)', marginBottom: 12 }}
+                >
+                    {showMutationError}
+                </p>
+            )}
 
             {cells.length === 0 ? (
                 <p data-testid="admin-tabular-review-show-empty">

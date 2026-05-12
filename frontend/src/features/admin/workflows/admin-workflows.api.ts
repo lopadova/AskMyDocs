@@ -40,8 +40,25 @@ export interface WorkflowProposal {
 }
 
 export const adminWorkflowsApi = {
+    /**
+     * The BE accepts `include_shared` and `include_hidden` flags
+     * (NOT a free-form `scope` param). Tabs map to those flags:
+     *   - `mine`   → include_shared=false, include_hidden=false
+     *   - `shared` → include_shared=true,  include_hidden=false (caller filters)
+     *   - `system` → include_shared=true,  include_hidden=false (caller filters)
+     * Mine / Shared / System split is done client-side on the
+     * returned rows (`is_system` + `user_id === me`).
+     */
     async list(scope: 'mine' | 'shared' | 'system' = 'mine'): Promise<Workflow[]> {
-        const { data } = await api.get<{ data: Workflow[] }>(`/api/admin/workflows?scope=${scope}`);
+        const params = new URLSearchParams();
+        if (scope === 'mine') {
+            params.set('include_shared', '0');
+        } else {
+            params.set('include_shared', '1');
+        }
+        const { data } = await api.get<{ data: Workflow[] }>(
+            `/api/admin/workflows?${params.toString()}`
+        );
         return data.data;
     },
 

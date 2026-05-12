@@ -66,9 +66,14 @@ W3 (this rc3 / GA):
   / Clear actions).
 - **Admin SPA — Workflows** at `/app/admin/workflows`: scope tabs
   (Mine / Shared / System), card grid layout, create dialog
-  (assistant or tabular type, markdown prompt + practice), AI-suggest
-  gallery (clicks `/suggest`, renders proposals as save-able cards),
-  per-card hide action.
+  (**assistant type only in GA** — tabular create UI deferred to
+  v4.7.x because the columns-config builder is a v4.7.x deliverable;
+  tabular workflows ARE accepted by the JSON API and via the
+  AI-suggest gallery's save-this path), AI-suggest gallery (clicks
+  `/suggest`, renders proposals as save-able cards), per-card hide
+  action. The `+ New workflow` button and the AI-suggest button are
+  role-gated client-side (admin / super-admin only); viewers see a
+  read-only catalogue.
 - **Admin rail** entries for "Tabular Reviews" + "Workflows" wired
   into `AdminShell` per the standing rule
   `feedback_admin_ui_panel_alignment_per_release.md` (every cycle

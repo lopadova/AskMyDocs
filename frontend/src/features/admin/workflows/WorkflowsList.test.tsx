@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { WorkflowsList } from './WorkflowsList';
 import { api } from '../../../lib/api';
+import { useAuthStore } from '../../../lib/auth-store';
 
 const mockGet = vi.fn();
 const mockPost = vi.fn();
@@ -17,10 +18,21 @@ beforeEach(() => {
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'post').mockImplementation(mockPost);
     vi.spyOn(api, 'delete').mockImplementation(mockDelete);
+
+    // Seed auth-store with an admin user so the role-gated controls
+    // (create button + suggest button) render. Tests that need
+    // viewer-only role override this in-test.
+    useAuthStore.getState().setMe({
+        user: { id: 7, name: 'Tester', email: 't@demo.local' } as any,
+        roles: ['admin'],
+        permissions: [],
+        projects: [],
+    });
 });
 
 afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.getState().clear();
 });
 
 function wrapped(node: ReactNode): ReactNode {
@@ -52,12 +64,21 @@ describe('WorkflowsList', () => {
     });
 
     it('switches scope tabs and refetches', async () => {
+        // FE → BE call: include_shared=0 = mine, include_shared=1 =
+        // shared+system superset. The client-side filter splits
+        // is_system / user_id === me / other.
         mockGet.mockImplementation((url: string) => {
-            if (url.includes('scope=mine')) {
+            if (url.includes('include_shared=0')) {
                 return Promise.resolve({ data: { data: [{ id: 1, user_id: 7, title: 'Mine', type: 'assistant' }] } });
             }
-            if (url.includes('scope=system')) {
-                return Promise.resolve({ data: { data: [{ id: 99, user_id: null, title: 'Sys', type: 'assistant', is_system: true }] } });
+            if (url.includes('include_shared=1')) {
+                return Promise.resolve({
+                    data: {
+                        data: [
+                            { id: 99, user_id: null, title: 'Sys', type: 'assistant', is_system: true },
+                        ],
+                    },
+                });
             }
             return Promise.resolve({ data: { data: [] } });
         });
@@ -65,7 +86,8 @@ describe('WorkflowsList', () => {
         await screen.findByTestId('admin-workflow-card-1');
         await userEvent.click(screen.getByTestId('admin-workflows-scope-system'));
         await waitFor(() => expect(screen.getByTestId('admin-workflow-card-99')).toBeVisible());
-        // The Mine card is no longer rendered (scope changed).
+        // The Mine card is no longer rendered (scope changed; the
+        // client filter excludes non-system rows).
         expect(screen.queryByTestId('admin-workflow-card-1')).not.toBeInTheDocument();
     });
 
@@ -152,5 +174,20 @@ describe('WorkflowsList', () => {
         render(wrapped(<WorkflowsList />));
         const err = await screen.findByTestId('admin-workflows-error');
         expect(err).toBeVisible();
+    });
+
+    it('hides the create + suggest buttons when the auth role is viewer', async () => {
+        useAuthStore.getState().setMe({
+            user: { id: 9, name: 'V', email: 'v@demo.local' } as any,
+            roles: ['viewer'],
+            permissions: [],
+            projects: [],
+        });
+        mockGet.mockResolvedValue({ data: { data: [] } });
+        render(wrapped(<WorkflowsList />));
+        await screen.findByTestId('admin-workflows-empty');
+        // Read-only — neither role-gated button is rendered.
+        expect(screen.queryByTestId('admin-workflows-create')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('admin-workflows-suggest')).not.toBeInTheDocument();
     });
 });

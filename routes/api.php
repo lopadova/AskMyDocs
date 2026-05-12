@@ -499,13 +499,6 @@ Route::middleware([
         Route::post('/{id}/generate', [TabularReviewController::class, 'generate'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.generate');
-        // v4.7/W3 — SSE streaming variant. Same Gate, same tenant
-        // scoping; emits `cell` events as the extractor produces them
-        // so the FE grid (HTML table in v4.7 GA per ADR 0010 D1; Glide
-        // canvas migration parked for v4.7.x) can paint progressively.
-        Route::post('/{id}/generate-stream', [TabularReviewStreamController::class, 'stream'])
-            ->whereNumber('id')
-            ->name('api.admin.tabular-reviews.generate-stream');
         Route::post('/{id}/regenerate-cell', [TabularReviewController::class, 'regenerateCell'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.regenerate-cell');
@@ -513,6 +506,30 @@ Route::middleware([
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.clear-cells');
     });
+
+// v4.7/W3 — SSE streaming variant of `tabular-reviews/{id}/generate`.
+// Hoisted out of the main group so it can use the `auth.sse`
+// middleware (`App\Http\Middleware\AuthenticateForSse`) instead of
+// the default `auth:sanctum`. The default Sanctum middleware returns
+// 302 + HTML on session expiry, which an EventSource consumer cannot
+// parse; `auth.sse` returns a deterministic JSON 401 so the FE can
+// re-bootstrap auth and retry. Same Gate as the sync sibling
+// (`can:viewTabularReviews`) so RBAC stays identical; same tenant
+// scoping enforced in the controller. Emits `cell` events as the
+// extractor produces them so the FE grid (HTML table in v4.7 GA per
+// ADR 0010 D1; Glide canvas migration parked for v4.7.x) can paint
+// progressively.
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth.sse:sanctum',
+    'can:viewTabularReviews',
+])->post(
+    '/admin/tabular-reviews/{id}/generate-stream',
+    [TabularReviewStreamController::class, 'stream'],
+)
+    ->whereNumber('id')
+    ->name('api.admin.tabular-reviews.generate-stream');
 
 /*
 |--------------------------------------------------------------------------

@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuthStore } from '../../../lib/auth-store';
 import {
     adminWorkflowsApi,
     type CreateWorkflowPayload,
@@ -23,10 +24,22 @@ export function WorkflowsList(): ReactNode {
     const [scope, setScope] = useState<'mine' | 'shared' | 'system'>('mine');
     const [createOpen, setCreateOpen] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
+    const [mutationError, setMutationError] = useState<string | null>(null);
     const [suggestOpen, setSuggestOpen] = useState(false);
 
+    const { user, roles } = useAuthStore();
+    const myUserId = user?.id ?? null;
+    // The `suggest` endpoint is cost-protected server-side
+    // (`assertCanSuggest()` admits only admin/super-admin). We mirror
+    // that on the FE so a viewer never sees a misleading button.
+    const canSuggest = roles.includes('admin') || roles.includes('super-admin');
+    const canMutate = canSuggest; // viewers cannot mutate any workflow
+
     const wfQuery = useQuery({
-        queryKey: ['admin-workflows', scope],
+        // Fetch the same superset for shared+system (include_shared=1);
+        // the client splits Mine vs the rest below. Caching keyed on
+        // include_shared so the Mine tab gets its own cache entry.
+        queryKey: ['admin-workflows', scope === 'mine' ? 'mine' : 'shared-superset'],
         queryFn: () => adminWorkflowsApi.list(scope),
         staleTime: 30_000,
     });
@@ -34,18 +47,13 @@ export function WorkflowsList(): ReactNode {
     const suggestQuery = useQuery({
         queryKey: ['admin-workflows-suggestions'],
         queryFn: () => adminWorkflowsApi.suggest(),
-        enabled: suggestOpen,
+        enabled: suggestOpen && canSuggest,
         staleTime: 0,
     });
 
     const createMutation = useMutation({
         mutationFn: (p: CreateWorkflowPayload) => adminWorkflowsApi.create(p),
         onSuccess: () => {
-            // Created workflows live under the Mine scope. Invalidate
-            // every scope so a viewer on Shared/System sees the new
-            // row when they switch back. The exact-key variant
-            // (`['admin-workflows', scope]`) only invalidated the
-            // current tab and left the Mine tab cache stale.
             qc.invalidateQueries({ queryKey: ['admin-workflows'] });
             setCreateOpen(false);
             setCreateError(null);
@@ -61,15 +69,33 @@ export function WorkflowsList(): ReactNode {
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['admin-workflows'] });
             setScope('mine');
+            setMutationError(null);
+        },
+        onError: (err: unknown) => {
+            setMutationError(err instanceof Error ? err.message : 'Could not save proposal.');
         },
     });
 
     const hideMutation = useMutation({
         mutationFn: (id: number) => adminWorkflowsApi.hide(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-workflows'] }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['admin-workflows'] });
+            setMutationError(null);
+        },
+        onError: (err: unknown) => {
+            setMutationError(err instanceof Error ? err.message : 'Could not hide workflow.');
+        },
     });
 
-    const workflows = wfQuery.data ?? [];
+    const allWorkflows = wfQuery.data ?? [];
+    // Client-side split — see admin-workflows.api.ts list() rationale.
+    const workflows = useMemo(() => {
+        if (scope === 'mine') return allWorkflows;
+        if (scope === 'system') return allWorkflows.filter((w) => w.is_system === true);
+        // shared = NOT mine AND NOT system
+        return allWorkflows.filter((w) => w.is_system !== true && w.user_id !== myUserId);
+    }, [allWorkflows, scope, myUserId]);
+
     let dataState: 'loading' | 'ready' | 'error' | 'empty' = 'loading';
     if (wfQuery.isLoading) dataState = 'loading';
     else if (wfQuery.isError) dataState = 'error';
@@ -84,23 +110,37 @@ export function WorkflowsList(): ReactNode {
         >
             <header style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                 <h2 style={{ margin: 0, flex: 1 }}>Workflows</h2>
-                <button
-                    type="button"
-                    data-testid="admin-workflows-create"
-                    onClick={() => setCreateOpen(true)}
-                    style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--hairline)' }}
-                >
-                    + New workflow
-                </button>
-                <button
-                    type="button"
-                    data-testid="admin-workflows-suggest"
-                    onClick={() => setSuggestOpen(true)}
-                    style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--accent-soft, transparent)' }}
-                >
-                    Get suggestions from my data
-                </button>
+                {canMutate && (
+                    <button
+                        type="button"
+                        data-testid="admin-workflows-create"
+                        onClick={() => setCreateOpen(true)}
+                        style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--hairline)' }}
+                    >
+                        + New workflow
+                    </button>
+                )}
+                {canSuggest && (
+                    <button
+                        type="button"
+                        data-testid="admin-workflows-suggest"
+                        onClick={() => setSuggestOpen(true)}
+                        style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--accent-soft, transparent)' }}
+                    >
+                        Get suggestions from my data
+                    </button>
+                )}
             </header>
+
+            {mutationError && (
+                <p
+                    data-testid="admin-workflows-mutation-error"
+                    role="alert"
+                    style={{ color: 'var(--danger, #c00)', marginBottom: 12 }}
+                >
+                    {mutationError}
+                </p>
+            )}
 
             <nav aria-label="Workflow scope" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
                 {(['mine', 'shared', 'system'] as const).map((s) => (
@@ -168,16 +208,16 @@ export function WorkflowsList(): ReactNode {
                                 <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>practice: {w.practice}</span>
                             )}
                             <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                                {scope === 'mine' && (
-                                    <button
-                                        type="button"
-                                        data-testid={`admin-workflow-card-${w.id}-hide`}
-                                        onClick={() => hideMutation.mutate(w.id)}
-                                        style={{ fontSize: 12, background: 'none', border: '1px solid var(--hairline)', padding: '3px 8px', borderRadius: 4 }}
-                                    >
-                                        Hide
-                                    </button>
-                                )}
+                                {/* Hide hits a per-user preference table; BE admits any role for this action, so the button is always rendered. */}
+                                <button
+                                    type="button"
+                                    data-testid={`admin-workflow-card-${w.id}-hide`}
+                                    disabled={hideMutation.isPending}
+                                    onClick={() => hideMutation.mutate(w.id)}
+                                    style={{ fontSize: 12, background: 'none', border: '1px solid var(--hairline)', padding: '3px 8px', borderRadius: 4 }}
+                                >
+                                    Hide
+                                </button>
                             </div>
                         </li>
                     ))}
