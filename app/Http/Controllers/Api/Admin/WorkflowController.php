@@ -84,27 +84,27 @@ final class WorkflowController extends Controller
         $type = $validated['type'] ?? null;
         $includeShared = $this->boolFlag($validated, 'include_shared', true);
         $includeHidden = $this->boolFlag($validated, 'include_hidden', false);
-
-        $workflows = $this->service->list(
-            $request->user(),
-            $type,
-            $includeShared,
-            $includeHidden,
-        );
-
         $perPage = (int) ($validated['per_page'] ?? 25);
-        $page = (int) ($validated['page'] ?? 1);
-        $total = $workflows->count();
-        $offset = ($page - 1) * $perPage;
-        $slice = $workflows->slice($offset, $perPage)->values();
+
+        // Copilot iter 11: paginate at the SQL layer via the service's
+        // listQuery() Builder so a tenant with 10k workflows does not
+        // materialise the full result set just to slice it. The
+        // visibility predicates (own + shared + system − hidden) are
+        // applied in the SAME query, and `paginate()` issues a
+        // single COUNT(*) + LIMIT/OFFSET pair.
+        $paginator = $this->service
+            ->listQuery($request->user(), $type, $includeShared, $includeHidden)
+            ->orderByDesc('id')
+            ->paginate($perPage);
 
         return response()->json([
-            'data' => WorkflowResource::collection($slice)->resolve($request),
+            'data' => WorkflowResource::collection($paginator->getCollection())
+                ->resolve($request),
             'meta' => [
-                'current_page' => $page,
-                'last_page' => $total === 0 ? 1 : (int) ceil($total / $perPage),
-                'per_page' => $perPage,
-                'total' => $total,
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
             ],
         ]);
     }

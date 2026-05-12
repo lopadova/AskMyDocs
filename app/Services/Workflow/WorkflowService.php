@@ -51,6 +51,24 @@ final class WorkflowService
         bool $includeShared = true,
         bool $includeHidden = false,
     ): Collection {
+        return $this->listQuery($user, $type, $includeShared, $includeHidden)
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    /**
+     * Same visibility predicates as {@see list()} but returns the
+     * Eloquent Builder so the controller can drive
+     * `paginate()` / `simplePaginate()` directly. Copilot iter 11:
+     * pushes pagination into the SQL layer so large tenants do not
+     * load the full result set into memory just to slice it.
+     */
+    public function listQuery(
+        User $user,
+        ?string $type = null,
+        bool $includeShared = true,
+        bool $includeHidden = false,
+    ): \Illuminate\Database\Eloquent\Builder {
         $tenant = $this->ctx->current();
 
         $query = Workflow::query()->forTenant($tenant);
@@ -87,7 +105,7 @@ final class WorkflowService
             });
         }
 
-        return $query->orderByDesc('id')->get();
+        return $query;
     }
 
     /**
@@ -190,9 +208,17 @@ final class WorkflowService
             }
             return $columnsConfig;
         }
-        // Unknown type — pass through; the model column constraint
-        // will reject at the DB layer.
-        return is_array($columnsConfig) ? $columnsConfig : null;
+        // Copilot iter 11: previously this branch passed through and
+        // relied on a non-existent DB constraint to reject — but
+        // `workflows.type` is just a string column. Throw explicitly
+        // so non-HTTP callers (seeders, future API integrations,
+        // background imports) cannot persist a row with an unknown
+        // type + arbitrary columns_config combination.
+        throw new \InvalidArgumentException(sprintf(
+            'Unknown workflow type "%s". Must be one of: %s.',
+            $type,
+            implode(', ', \App\Support\Workflow\WorkflowType::values()),
+        ));
     }
 
     /**
