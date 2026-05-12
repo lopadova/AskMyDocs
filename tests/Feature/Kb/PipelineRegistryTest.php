@@ -78,7 +78,9 @@ final class PipelineRegistryTest extends TestCase
         $this->assertContains('confluence-page-chunker', $names);
         $this->assertContains('office-doc-chunker', $names);
         $this->assertContains('atomic-note-chunker', $names);
-        $this->assertCount(6, $names);
+        // v4.5/W6 — Jira issue chunker.
+        $this->assertContains('jira-issue-chunker', $names);
+        $this->assertCount(7, $names);
     }
 
     public function test_enrichers_list_is_empty_in_v3_0(): void

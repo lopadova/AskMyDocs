@@ -4,7 +4,7 @@
 
 **Goal**: get from zero to a working `.env.live` and a freshly recorded `tests/Fixtures/connectors/<provider>/recorded/` directory in under 30 minutes per provider.
 
-**Scope**: the six W1-W5 connectors — Google Drive, Notion, Evernote, Fabric, OneDrive, Confluence.
+**Scope**: the seven W1-W6 connectors — Google Drive, Notion, Evernote, Fabric, OneDrive, Confluence, **Jira**.
 
 **Out-of-band assumptions** (you have these already):
 - PHP 8.3 or 8.4 on PATH (`php --version` works).
@@ -249,6 +249,108 @@ php vendor/bin/phpunit tests/Live/Connectors/ConfluenceLiveTest.php --testdox
 
 - `404 Not Found` on `/wiki/api/v2/spaces` — Cloud ID wrong. Re-check step 3.3.
 - `401` with a body containing `OAUTH2_LOGIN_REQUIRED` — you're hitting the OAuth-only endpoint with a Basic token; some endpoints require OAuth. The live test only hits OAuth-compatible v2 endpoints — if you see this, file an issue.
+
+---
+
+## Provider 3b — Atlassian Jira Cloud
+
+Same Atlassian workspace as Confluence — Jira and Confluence share the OAuth 2.0 3LO surface and `cloudId`. If you already finished the Confluence setup, you can reuse the same workspace, but you must create a **new OAuth 2.0 (3LO) app** scoped to Jira (Atlassian's developer console scopes one app per product family) and re-run the recording step against the Jira endpoints.
+
+### 3b.1 Create the test workspace (skip if you finished Confluence)
+
+1. Open https://www.atlassian.com/try/cloud/signup?bundle=jira-software in your browser.
+2. Sign up with your test email. Pick a workspace URL (e.g. `askmydocs-test.atlassian.net`).
+3. Confirm via email, complete the setup wizard, create at least one **Project** (sidebar → "+ Project" → pick the "Scrum" template → name it `Sample Project`, key `PROJ`).
+4. Create **one Issue** inside that project (issue type Bug, any summary, any description).
+5. Add **one Comment** to that issue so the live recording captures the comments-appendix path.
+
+### 3b.2 Create an OAuth 2.0 (3LO) integration app
+
+1. Open https://developer.atlassian.com/console/myapps/ in your browser. Sign in with the same Atlassian id you used in step 3b.1.
+2. Click **"Create"** → **"OAuth 2.0 integration"**. Name: `askmydocs-jira-live-test`.
+3. In the left sidebar of the new app: click **"Permissions"** → next to **"Jira API"** click **"Add"**. After it appears, click **"Configure"** and enable these three scopes (each is a Jira API permission documented at https://developer.atlassian.com/cloud/jira/platform/scopes-for-oauth-2-3LO-and-forge-apps/):
+   - `read:jira-work` — read issues, projects, fields. This is the primary scope; without it, the live test gets 403 on every `/search` call.
+   - `read:jira-user` — read user display names + email (when not GDPR-hidden). Needed so the connector can populate the assignee/reporter slots in the frontmatter.
+   - `offline_access` — required for refresh tokens. Without it, every access token expires after 1h and the connector can't sync past the first ingest.
+4. In the left sidebar: **"Authorization"** → **"OAuth 2.0 (3LO)"** → set the callback URL to `https://localhost/callback` (or your AskMyDocs host's `APP_URL` + `/api/admin/connectors/jira/oauth/callback` if you're testing the full install flow). Click **"Save changes"**.
+5. In the left sidebar: **"Settings"** → copy the **"Client ID"** and **"Secret"**. Treat the Secret as a password.
+
+### 3b.3 Get an access token (OAuth 3LO interactive flow)
+
+Atlassian doesn't issue static API tokens for the OAuth 3LO path — you need to complete the authorisation handshake once and capture the resulting access token.
+
+1. Visit (replace `<CLIENT_ID>` and `<REDIRECT_URI>`):
+   ```
+   https://auth.atlassian.com/authorize?audience=api.atlassian.com&client_id=<CLIENT_ID>&scope=read:jira-work%20read:jira-user%20offline_access&redirect_uri=<REDIRECT_URI>&state=runbook&response_type=code&prompt=consent
+   ```
+2. Authorise the workspace from step 3b.1. You'll land on your `<REDIRECT_URI>` with `?code=<CODE>&state=runbook`. Copy the `<CODE>`.
+3. Exchange the code for tokens:
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+     -d '{"grant_type":"authorization_code","client_id":"<CLIENT_ID>","client_secret":"<CLIENT_SECRET>","code":"<CODE>","redirect_uri":"<REDIRECT_URI>"}' \
+     https://auth.atlassian.com/oauth/token
+   ```
+   Expected output: `{"access_token":"...","refresh_token":"...","expires_in":3600,"scope":"...","token_type":"Bearer"}`.
+4. Copy the `access_token` — this is your `CONNECTOR_JIRA_TOKEN`. (Auto-expires in 1h; for repeat recording sessions, save the refresh_token and exchange it before each run.)
+
+### 3b.4 Find your Cloud ID
+
+```bash
+curl -H "Authorization: Bearer $CONNECTOR_JIRA_TOKEN" \
+     -H "Accept: application/json" \
+     https://api.atlassian.com/oauth/token/accessible-resources
+```
+
+Expected output (excerpt):
+```json
+[{"id":"abc12345-...","url":"https://askmydocs-test.atlassian.net","scopes":["read:jira-work","read:jira-user","offline_access"]}]
+```
+
+Copy the `id` of the resource whose scopes include `read:jira-*`. That's `CONNECTOR_JIRA_CLOUD_ID`.
+
+### 3b.5 Write credentials
+
+`.env.live`:
+```
+CONNECTOR_JIRA_LIVE=1
+CONNECTOR_JIRA_TOKEN=eyJraWQiOiJh...
+CONNECTOR_JIRA_CLOUD_ID=abc12345-6789-0abc-defg-h0123456789a
+```
+
+### 3b.6 Verify
+
+```bash
+curl -H "Authorization: Bearer $CONNECTOR_JIRA_TOKEN" \
+     -H "Accept: application/json" \
+     "https://api.atlassian.com/ex/jira/$CONNECTOR_JIRA_CLOUD_ID/rest/api/3/myself"
+```
+
+Expected output: `{"accountId":"...","emailAddress":"you@example.test","displayName":"...","active":true,...}`.
+
+If `401`: access token expired (60-min default). Re-run step 3b.3, or use the saved refresh_token to mint a fresh access_token.
+
+If `403`: the OAuth app doesn't have the workspace installed on it. Visit `https://admin.atlassian.com/s/$CONNECTOR_JIRA_CLOUD_ID/connected-apps` and confirm your app appears in the list. If not, redo step 3b.3 (the authorize URL is what installs the app onto the workspace).
+
+### 3b.7 Record
+
+```bash
+set -a; source .env.live; set +a
+php vendor/bin/phpunit tests/Live/Connectors/JiraLiveTest.php --testdox
+```
+
+The five test methods record:
+- `/myself` — current user (cloud_id resolution sanity check)
+- `/project/search` — paginated project listing
+- `/search` — JQL-driven issue listing with `order by updated DESC`
+- `/search` again — incremental sync shape with `updated >= "YYYY-MM-DD HH:mm"`
+- `/oauth/token/accessible-resources` — workspace metadata
+
+### 3b.8 Common errors
+
+- `400 invalid_grant` on token exchange — code already consumed (single-use) or expired (10 min). Restart from step 3b.3.
+- `400 Unable to parse JQL` on `/search` — you passed an ISO-8601 timestamp (`2026-05-12T08:30:15Z`) instead of the Jira-specific `"YYYY-MM-DD HH:mm"` format. The connector handles the wire format automatically via `JqlBuilder::updatedSince()` — but operator-issued ad-hoc JQL via curl must follow the same rule.
+- `403 Forbidden` on a v3 endpoint that worked in v2 — some endpoints require an extra granular scope (e.g. `read:issue-details:jira`). Check the API doc page for the endpoint to confirm the exact granular scope, then add it to your app's permissions list and redo step 3b.3.
+- `429 Too Many Requests` — Atlassian rate-limits unauthenticated and lightly-authenticated callers. The live test makes only 5 requests; if you see 429s you likely have a runaway script somewhere. Wait 60s and retry.
 
 ---
 

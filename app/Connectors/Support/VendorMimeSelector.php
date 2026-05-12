@@ -18,6 +18,7 @@ final class VendorMimeSelector
     public const MIME_NOTION_PAGE       = 'application/vnd.notion.page+json';
     public const MIME_NOTION_NOTE       = 'application/vnd.notion.note+json';
     public const MIME_CONFLUENCE_PAGE   = 'application/vnd.confluence.page+json';
+    public const MIME_JIRA_ISSUE        = 'application/vnd.jira.issue+json';
     public const MIME_EVERNOTE_NOTE     = 'application/vnd.evernote.note+xml';
     public const MIME_FABRIC_NOTE       = 'application/vnd.fabric.note+json';
     public const MIME_DRIVE_GDOC        = 'application/vnd.google-apps.document';

@@ -1,0 +1,21 @@
+{
+    "__source": "hand-crafted-sample",
+    "__notes": "Baseline shape for GET /rest/api/3/project/search. Replace with recorded fixture after CONNECTOR_JIRA_LIVE=1 run.",
+    "body": {
+        "self": "https://acme.atlassian.net/rest/api/3/project/search?startAt=0&maxResults=50",
+        "nextPage": null,
+        "maxResults": 50,
+        "startAt": 0,
+        "total": 1,
+        "isLast": true,
+        "values": [
+            {
+                "id": "10000",
+                "key": "PROJ",
+                "name": "Sample Project",
+                "self": "https://acme.atlassian.net/rest/api/3/project/10000",
+                "projectTypeKey": "software"
+            }
+        ]
+    }
+}

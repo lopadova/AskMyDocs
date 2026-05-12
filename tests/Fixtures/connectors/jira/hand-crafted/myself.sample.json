@@ -1,0 +1,11 @@
+{
+    "__source": "hand-crafted-sample",
+    "__notes": "Baseline shape for GET /rest/api/3/myself. Replace with recorded fixture after CONNECTOR_JIRA_LIVE=1 run.",
+    "body": {
+        "accountId": "sha256-aaaa0001",
+        "emailAddress": "tester@example.test",
+        "displayName": "Test User",
+        "active": true,
+        "timeZone": "UTC"
+    }
+}
