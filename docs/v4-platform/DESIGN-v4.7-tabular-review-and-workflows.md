@@ -15,9 +15,11 @@ Two competitor-absent features are worth shipping:
 **AskMyDocs differentiator (NOT in Mike):**
 3. **AI-suggest workflows from user's own KB** — sample the tenant's documents, analyse frontmatter patterns captured by v4.5 W5.5 source-aware ingestion, ask the LLM to propose 5 workflow templates the user would actually want. Triggers: first-run banner / weekly periodic / on-demand button / recurring-chat-query detection.
 
-## 2 — Mike's implementation (verbatim from source code review)
+## 2 — Mike's design patterns (derived from open-source code review)
 
-### Tabular Review schema
+The following schema and pipeline patterns are derived from reviewing Mike's publicly available AGPL-3.0 codebase. The designs below are AskMyDocs's own independent interpretation and adaptation, generalised beyond the legal vertical.
+
+### Tabular Review schema (AskMyDocs adaptation)
 ```sql
 tabular_reviews (id, project_id, user_id, title, columns_config jsonb, workflow_id?, shared_with jsonb, created_at, updated_at)
 tabular_cells (id, review_id, document_id, column_index, content text, citations jsonb, status, created_at)
@@ -29,12 +31,12 @@ tabular_cells (id, review_id, document_id, column_index, content text, citations
 
 `citations` = inline `[[page:N||quote:excerpt]]` in summary + separate `<CITATIONS>` XML block for the agentic chat that can read cells.
 
-### Mike's extraction pipeline
+### Extraction pipeline pattern
 1. For each `(document, columns)` pair: build a single LLM prompt with ALL columns + their format suffixes.
 2. LLM streams a JSON line per column (multi-column extraction in single call → cost = 1 chiamata × N doc, not N×M).
 3. Each line parsed → upsert `tabular_cells.content` and stream SSE to the client.
 
-### Workflows schema
+### Workflows schema (reference)
 ```sql
 workflows (id, user_id, title, type, prompt_md, columns_config jsonb, practice, is_system, created_at)
 workflow_shares (workflow_id, shared_by_user_id, shared_with_email, allow_edit)

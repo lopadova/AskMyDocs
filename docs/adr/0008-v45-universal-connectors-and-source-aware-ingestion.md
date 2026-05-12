@@ -270,7 +270,7 @@ flag, every test inside the tree calls `markTestSkipped` immediately.
   per-installation metadata under `storage/app/connectors/`. Far
   below the day-one ingestion footprint.
 - **Test fixtures**: live-recorded fixtures land under
-  `tests/Live/Connectors/<provider>/fixtures/` with redaction
+  `tests/fixtures/connectors/<provider>/recorded/` with redaction
   filters applied (PII-scrubbed). Each provider adds ~150–500 KB
   of replay payloads; trivial.
 

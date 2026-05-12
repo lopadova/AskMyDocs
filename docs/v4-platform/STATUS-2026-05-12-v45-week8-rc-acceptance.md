@@ -84,7 +84,7 @@ it.
 
 ### C — Reranker Layer-4 signals + facets + GIN indexes
 
-- [x] `Reranker` reads four W5.5 weights (`tag_overlap_weight=0.05`, `preamble_match_weight=0.05`, `recency_weight=0.02`, `status_active_weight=0.02`). Layer-4 deltas are additive on top of the base `0.6·vec + 0.3·kw + 0.1·heading` so max score becomes ~1.44 (documented in code).
+- [x] `Reranker` reads four W5.5 weights (`tag_overlap_weight=0.05`, `preamble_match_weight=0.05`, `recency_weight=0.02`, `status_active_weight=0.02`). Layer-4 deltas are additive on top of the base `0.55·vec + 0.25·kw + 0.05·heading` so max score becomes ~1.44 (documented in `config/kb.php`).
 - [x] `KbSearchService::searchWithContext()` accepts optional `facets` and emits `facets[source]` + `facets[tag]` counts.
 - [x] Three new PostgreSQL-only indexes on `knowledge_chunks.metadata`: 2 GIN-on-`jsonb` for the `source_type` + `search_tags` paths and 1 B-tree for `recency_bucket` (text projection — fixed-set ordinal data warrants a B-tree, not a GIN). SQLite is a no-op.
 
