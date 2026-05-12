@@ -317,6 +317,91 @@ final class WorkflowControllerTest extends TestCase
         ])->assertStatus(403);
     }
 
+    public function test_viewer_can_hide_and_unhide_workflow(): void
+    {
+        // Copilot iter 20: lock in the intentional access policy
+        // documented in WorkflowController::hide()'s docblock and
+        // routes/api.php — viewers CAN hide/unhide because the only
+        // state they mutate is their own row in `hidden_workflows`.
+        $viewer = $this->makeUser('viewer');
+        $viewer->email = 'viewer-hide-'.uniqid().'@demo.local';
+        $viewer->save();
+
+        $other = $this->makeUser('admin');
+        $wf = Workflow::create([
+            'tenant_id' => 'default',
+            'user_id' => $other->id,
+            'title' => 'Shared with viewer',
+            'type' => 'assistant',
+            'prompt_md' => 'p',
+            'practice' => 'generic',
+        ]);
+        WorkflowShare::create([
+            'workflow_id' => $wf->id,
+            'shared_by_user_id' => $other->id,
+            'shared_with_email' => $viewer->email,
+            'allow_edit' => false,
+        ]);
+
+        $this->actingAs($viewer)
+            ->postJson("/api/admin/workflows/{$wf->id}/hide")
+            ->assertStatus(201);
+        $this->assertDatabaseHas('hidden_workflows', [
+            'user_id' => $viewer->id,
+            'workflow_id' => $wf->id,
+        ]);
+
+        $this->actingAs($viewer)
+            ->deleteJson("/api/admin/workflows/{$wf->id}/hide")
+            ->assertOk()
+            ->assertJsonPath('data.unhidden', true);
+        $this->assertDatabaseMissing('hidden_workflows', [
+            'user_id' => $viewer->id,
+            'workflow_id' => $wf->id,
+        ]);
+    }
+
+    public function test_non_owner_show_does_not_leak_share_emails(): void
+    {
+        // Copilot iter 20: lock in the iter 9 fix — show() must NOT
+        // disclose `shares[*].shared_with_email` to non-owners. A
+        // share recipient calling /show sees `shares: []` plus a
+        // `shares_count`, never the raw recipient list.
+        $owner = $this->makeUser('admin');
+        $recipient = $this->makeUser('admin');
+        $recipient->email = 'recipient-leak-'.uniqid().'@demo.local';
+        $recipient->save();
+
+        $wf = Workflow::create([
+            'tenant_id' => 'default',
+            'user_id' => $owner->id,
+            'title' => 'Private',
+            'type' => 'assistant',
+            'prompt_md' => 'p',
+            'practice' => 'generic',
+        ]);
+        $secretEmail = 'secret-'.uniqid().'@example.com';
+        WorkflowShare::create([
+            'workflow_id' => $wf->id,
+            'shared_by_user_id' => $owner->id,
+            'shared_with_email' => $recipient->email,
+            'allow_edit' => false,
+        ]);
+        WorkflowShare::create([
+            'workflow_id' => $wf->id,
+            'shared_by_user_id' => $owner->id,
+            'shared_with_email' => $secretEmail,
+            'allow_edit' => false,
+        ]);
+
+        $resp = $this->actingAs($recipient)->getJson("/api/admin/workflows/{$wf->id}");
+        $resp->assertOk();
+        $this->assertSame([], $resp->json('data.shares'));
+        $this->assertSame(2, $resp->json('data.shares_count'));
+        // Verify the leaked email is truly absent from the body.
+        $this->assertStringNotContainsString($secretEmail, $resp->getContent() ?: '');
+    }
+
     public function test_viewer_cannot_call_suggest(): void
     {
         $viewer = $this->makeUser('viewer');
