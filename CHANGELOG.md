@@ -11,6 +11,89 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v4.7.0-rc1 — 2026-05-12 (W1 closure — Tabular Review backend)
+
+**v4.7.0-rc1** marks the W1 milestone of the v4.7 cycle (Tabular Review +
+Workflows + AI-suggest). W1 ships the backend foundation for the
+spreadsheet-style document-extraction feature inspired by
+[github.com/willchen96/mike](https://github.com/willchen96/mike) and
+generalised beyond the legal vertical. **No UI surface yet** — the admin
+SPA + Glide Data Grid + citation popover + SSE streaming land in W3.
+
+**What's new in AskMyDocs v4.7.0-rc1:**
+
+- **2 new domain tables** — `tabular_reviews` + `tabular_cells`:
+  - `tabular_reviews` carries the review header + `columns_config` JSON
+    (the list of extraction columns + format + prompt + enum/json-path
+    config) + `workflow_id` (FK lands in W2 when the workflows table
+    appears) + `shared_with`.
+  - `tabular_cells` carries `(review, document, column)` extractions:
+    `content` JSON `{summary, flag, reasoning, citations[]}` + `flag`
+    enum (`green` / `grey` / `yellow` / `red`) + `status` enum
+    (`pending` / `generating` / `ready` / `failed`).
+  - Both tables: R31 tenant_id mandatory + standalone index +
+    composite unique `(tenant_id, review_id, document_id, column_index)`.
+  - FK cascade on review_id + document_id keeps the grid orphan-free.
+
+- **17 format types** (Mike has 9): text, bulleted_list, number,
+  percentage, monetary_amount, currency, yes_no, date, tag (Mike's 9),
+  plus **enum** (validated against the column's `enum_values`),
+  **enum_status** (semantic palette), **rating** (1-5), **url**,
+  **person**, **tags_multi**, **relation**, **json_path** (LLM-free
+  shortcut — reads directly from chunk metadata via JSON-path lookup,
+  free + instant, leveraging v4.5/W5.5 source-aware ingestion).
+
+- **`TabularReviewExtractor`** — batched multi-column LLM call per
+  document (Mike's pattern, cost `O(documents)` not `O(documents
+  × columns)`). Streaming hook (`$onCell` callback) ready for W3's
+  SSE transport. R14 loud refusal: red flag + reasoning when no
+  chunks above the relevance threshold, when the LLM omits a JSON
+  line, when JSON parse fails, when JSON encode fails on bad UTF-8.
+  Atomic upsert via `Model::upsert()` keyed on the composite UNIQUE
+  — concurrent generate/regenerate calls cannot race past each other.
+
+- **`ColumnPromptSuggester`** — `POST /api/admin/tabular-reviews/prompt`
+  drafts a 1-2 sentence extraction prompt from a column name + format.
+  Throws on empty completion (R14 — no silent empty prompt).
+
+- **Admin API surface** under `can:viewTabularReviews` (admits
+  super-admin, admin RW within tenant, viewer RO):
+  `GET / POST /api/admin/tabular-reviews`,
+  `GET / PATCH / DELETE /api/admin/tabular-reviews/{id}`,
+  `POST /{id}/generate` (sync, capped via `max_documents`, returns
+  `truncated` flag), `POST /{id}/regenerate-cell`,
+  `POST /{id}/clear-cells`, `POST /prompt`.
+
+- **41 new PHPUnit tests, all green** across:
+  - Controller (CRUD + validation + viewer ACL + cascade + json_path
+    required_if + suggest-prompt 403 for viewer + 401 guest + 403
+    unrole'd user).
+  - Extractor (batched single LLM call verified via call counter,
+    json_path shortcut + `assertNothingSent`, R14 refusal paths +
+    `assertNothingSent` on no-chunks, upsert idempotence, HTTP-error
+    → red, invalid-JSON-line skipping, empty columns_config no-op).
+  - Tenant isolation (cross-tenant 404 + auto-fill via TenantContext
+    via `X-Tenant-Id` header → ResolveTenant).
+  - ColumnPromptSuggester (happy path, wrapping-quote strip, empty
+    column → `InvalidArgumentException`, empty LLM completion →
+    `RuntimeException`).
+  - Architecture (`BelongsToTenant` trait + `tenant_id` in `$fillable`
+    on both models; TenantIdMandatoryTest enumeration extended).
+
+- **R36 Copilot loop** — 6 review iterations, every must-fix
+  addressed; final iteration generated 0 inline comments.
+
+**Deferred to W2/W3:**
+- `workflow_id` FK to `workflows.id` (W2).
+- SSE transport + per-cell `cell` events (W3 — wires onto the existing
+  `$onCell` extractor callback).
+- Admin SPA (TanStack route + Glide Data Grid + citation side-panel
+  + AI-suggest gallery + 15 built-in workflows seeder — W3).
+
+**Closure SHA**: `38c0dce` (PR #160 merged into `feature/v4.7`).
+
+---
+
 ### v4.6.0 — 2026-05-12 (GA — Connector package extraction + IoC bridge + composer-extra discovery)
 
 **v4.6.0 GA** is the architectural cleanup cycle on top of v4.5.0 GA.
