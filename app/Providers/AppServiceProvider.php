@@ -114,11 +114,24 @@ class AppServiceProvider extends ServiceProvider
      * surface.
      *
      *   - viewWorkflows     → admit super-admin + admin + viewer
-     *     (viewer is read-only, the controller enforces the write fence)
+     *     (viewer can browse the catalogue AND manage their OWN
+     *      `hidden_workflows` rows — a per-user cosmetic preference,
+     *      scoped per-user inside `WorkflowService::hide()` — but
+     *      cannot create/update/delete/share workflows or call the
+     *      LLM-backed suggester; the controller enforces those
+     *      writes via `assertCanCreate()` / `assertCanSuggest()`)
      *   - createWorkflows   → admit super-admin + admin only
-     *     (viewer cannot mutate)
-     *   - suggestWorkflows  → admit super-admin + admin only (cost-protected;
-     *     viewer cannot trigger LLM-backed suggestions)
+     *     (viewer cannot mutate template state)
+     *   - suggestWorkflows  → admit super-admin + admin only
+     *     (cost-protected; viewer cannot trigger LLM-backed
+     *      suggestions even though they're admitted by viewWorkflows
+     *      at the HTTP layer)
+     *
+     * Copilot iter 2: previously the docblock said "viewer is
+     * read-only" which was inaccurate — viewers CAN mutate
+     * `hidden_workflows` because that table only records their own
+     * personal hide-from-my-list markers. The contract above is now
+     * explicit.
      */
     private function registerWorkflowGates(): void
     {

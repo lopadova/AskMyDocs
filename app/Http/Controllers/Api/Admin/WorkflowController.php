@@ -195,7 +195,18 @@ final class WorkflowController extends Controller
         $workflow = $this->findOr404($id, $request->user());
         $row = $this->service->hide($workflow, $request->user());
 
-        return response()->json(['data' => $row], 201);
+        // Copilot iter 2: return an explicit small payload rather than
+        // the raw Eloquent model so future columns on `hidden_workflows`
+        // don't silently surface to the API. ISO-8601 hidden_at matches
+        // every other workflow response.
+        return response()->json([
+            'data' => [
+                'workflow_id' => (int) $row->workflow_id,
+                'user_id' => (int) $row->user_id,
+                'tenant_id' => (string) $row->tenant_id,
+                'hidden_at' => optional($row->hidden_at)?->toIso8601String(),
+            ],
+        ], 201);
     }
 
     /**

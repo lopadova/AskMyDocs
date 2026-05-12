@@ -7,6 +7,7 @@ namespace App\Services\Workflow;
 use App\Ai\AiManager;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
+use App\Support\TabularReview\FormatType;
 use App\Support\TenantContext;
 use App\Support\Workflow\WorkflowPractice;
 use App\Support\Workflow\WorkflowType;
@@ -121,44 +122,53 @@ final class WorkflowSuggester
 
     /**
      * Sample up to SAMPLE_SIZE documents stratified by project_key.
+     *
+     * Copilot iter 2: the previous shape ran one query per project_key
+     * which became N+1 as tenants accumulated projects. New shape:
+     * fetch up to `SAMPLE_SIZE * SAMPLE_OVERSAMPLE` recent rows in ONE
+     * query, then stratify in memory by project_key with a per-project
+     * cap. The oversample factor (3) is large enough that a tenant
+     * with up to ~SAMPLE_SIZE projects still gets at least one doc
+     * per project on average, while the SQL stays a single bounded
+     * SELECT regardless of project cardinality.
      */
     private function sampleDocuments(string $tenant): \Illuminate\Support\Collection
     {
-        $baseQuery = KnowledgeDocument::query()
+        $oversample = self::SAMPLE_SIZE * 3;
+
+        $rows = KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('status', 'indexed');
+            ->where('status', 'indexed')
+            ->latest('id')
+            ->limit($oversample)
+            ->get();
 
-        $projectKeys = (clone $baseQuery)
-            ->select('project_key')
-            ->distinct()
-            ->pluck('project_key')
-            ->filter()
-            ->values()
-            ->all();
-
-        if ($projectKeys === []) {
-            return $baseQuery->latest('id')->limit(self::SAMPLE_SIZE)->get();
+        if ($rows->isEmpty()) {
+            return $rows;
         }
 
-        $perProject = (int) max(1, (int) ceil(self::SAMPLE_SIZE / count($projectKeys)));
-        $collected = collect();
+        $groups = $rows->groupBy('project_key');
+        $projectCount = max(1, $groups->count());
+        $perProject = max(1, (int) ceil(self::SAMPLE_SIZE / $projectCount));
 
-        foreach ($projectKeys as $projectKey) {
-            $rows = KnowledgeDocument::query()
-                ->forTenant($tenant)
-                ->where('status', 'indexed')
-                ->where('project_key', $projectKey)
-                ->latest('id')
-                ->limit($perProject)
-                ->get();
-
-            $collected = $collected->concat($rows);
-            if ($collected->count() >= self::SAMPLE_SIZE) {
+        $stratified = collect();
+        foreach ($groups as $group) {
+            $stratified = $stratified->concat($group->take($perProject));
+            if ($stratified->count() >= self::SAMPLE_SIZE) {
                 break;
             }
         }
 
-        return $collected->take(self::SAMPLE_SIZE);
+        // If we still have room (single-project tenant + small per-project
+        // cap), backfill from the leftover pool.
+        if ($stratified->count() < self::SAMPLE_SIZE) {
+            $seen = $stratified->pluck('id')->all();
+            $extra = $rows->reject(fn ($r) => in_array($r->id, $seen, true))
+                ->take(self::SAMPLE_SIZE - $stratified->count());
+            $stratified = $stratified->concat($extra);
+        }
+
+        return $stratified->take(self::SAMPLE_SIZE)->values();
     }
 
     /**
@@ -253,13 +263,22 @@ SYS;
             if (! is_array($columnsConfig) || $columnsConfig === []) {
                 return null;
             }
+            // Copilot iter 2: enforce per-column `format` against the
+            // FormatType registry so `/suggest` proposals validate
+            // against the same schema as StoreWorkflowRequest /
+            // FromProposalRequest. Without this, a proposal could
+            // look selectable in the FE catalogue then 422 on save.
+            // Columns that miss `name` OR `format` OR carry an
+            // unknown `format` are dropped from the normalised list.
+            $formats = FormatType::values();
             $normalised = [];
             foreach ($columnsConfig as $col) {
                 if (! is_array($col)) {
                     continue;
                 }
                 $name = (string) ($col['name'] ?? '');
-                if ($name === '') {
+                $format = (string) ($col['format'] ?? '');
+                if ($name === '' || $format === '' || ! in_array($format, $formats, true)) {
                     continue;
                 }
                 $normalised[] = $col;
