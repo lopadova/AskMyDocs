@@ -37,19 +37,19 @@
 
 ### v4.5 acceptance gates
 - [x] 7 connectors registered (Google Drive, Notion, Evernote, Fabric, OneDrive, Confluence, Jira) + Vercel SDK UI Tier 1+2 + admin SPA
-- [x] Each connector ships rich frontmatter + source-aware chunker (per `feedback_ingestion_per_source_chunker_rule.md`)
-- [x] Per-provider runbook section junior-proof (per `feedback_runbook_junior_proof.md`)
+- [x] Each connector ships rich frontmatter + source-aware chunker (per `docs/v4-platform/DESIGN-v4.5-W5.5-source-aware-ingestion.md` + ADR 0008 D3)
+- [x] Per-provider runbook section junior-proof (per [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](RUNBOOK-live-fixture-recording.md))
 - [x] Live-test recording pipeline ready for credential drop (PII-scrubbed, fixture-replay)
 - [x] Test count ≥ 1900 PHPUnit + ≥ 350 Vitest scenarios — **actual: 1885 PHPUnit + 384 Vitest react + 18 Vitest legacy** (PHPUnit landed 15 short of stretch target; Vitest react cleared by 34. ADR 0008 records the ratio is healthy for a connector-heavy cycle.)
 - [x] R36 Copilot loop green on every sub-PR; R39 RC tag at every Wn closure
-- [x] README hero refreshed with "Universal Connectors" + "Modern Chat Surface (Vercel AI SDK UI)" sections per `feedback_readme_refresh_per_wave.md`
+- [x] README hero refreshed with "Universal Connectors" + "Modern Chat Surface (Vercel AI SDK UI)" sections per the per-wave README-refresh convention (see the "Per-wave README + dedicated killer-feature sections" entry under "Cross-cycle conventions" below)
 
 ## v4.6 — "Package Extraction" (post-v4.5 GA, ~4 weeks)
 
 **Branch:** `feature/v4.6` cut from main once v4.5.0 ships
 **GA target:** ~2026-06-15
 
-Extract the 7 inline connectors into standalone `padosoft/askmydocs-connector-*` packages with a shared `-base` package. **8 new repos already created on GitHub + cloned locally** (folder convention: `Ai/askmydocs-connector-*/`, no `padosoft-` prefix — NEW convention specific to this family per `project_v46_local_repos_layout.md`).
+Extract the 7 inline connectors into standalone `padosoft/askmydocs-connector-*` packages with a shared `-base` package. **8 new repos created on GitHub + cloned locally** under the folder convention `Ai/askmydocs-connector-*/` (no `padosoft-` prefix — NEW convention specific to this connector-package family, documented in this section as the source of truth).
 
 ### Wn breakdown
 
@@ -96,7 +96,7 @@ Inspired by github.com/willchen96/mike — adopts the two killer features absent
 - [ ] Per-cell citation popover opens KB doc viewer side-panel scroll-to-chunk
 - [ ] Real-time collab cursors PARKED for v4.8 (the only "won't" in MoSCoW)
 - [ ] Test count +120
-- [ ] README hero refreshed with "Tabular Review" + "Workflows" sections per `feedback_readme_refresh_per_wave.md`
+- [ ] README hero refreshed with "Tabular Review" + "Workflows" sections per the per-wave README-refresh convention (see "Cross-cycle conventions" below)
 
 ## v5.0 — "Agentic Platform" (paradigm shift, ~8 weeks)
 
@@ -172,20 +172,24 @@ Every credential/OAuth runbook section + every extracted-package README MUST be 
 ### Per-wave README + dedicated killer-feature sections (locked-in 2026-05-12)
 Every Wn closure refreshes README feature tables + ticks the roadmap checklist + appends to `## Changelog`. Wave deliverables that ship a killer feature (genuinely competitor-absent — Tabular Review, Workflows, AI-suggest, MCP agentic, EU AI-Act dashboard) get a dedicated `## ✨ <Name>` section ABOVE the feature tables.
 
-## Memories backing each decision
+## In-repo authoritative sources
 
-| Memory file | What it backs |
+Every cycle decision above is backed by an in-repo artefact. The
+table maps each rule / cycle scope to the doc that ships in this
+repo so contributors don't need access to the maintainer's private
+notes to audit a decision.
+
+| Topic | In-repo source of truth |
 |---|---|
-| `project_v45_strategic_roadmap.md` (planned) | v4.5+ direction + agentic + connector priority |
-| `project_v46_connector_package_extraction.md` | v4.6 cycle scope + 8 repos to extract |
-| `project_v46_local_repos_layout.md` | Local clone convention (Ai/askmydocs-connector-*/) |
-| `project_v47_tabular_review_workflows.md` | v4.7 cycle + 16 formats + 12 differentiators |
-| `feedback_ingestion_per_source_chunker_rule.md` | Per-source chunker mandatory |
-| `feedback_runbook_junior_proof.md` | Junior-proof runbook standard |
-| `feedback_readme_refresh_per_wave.md` | README refresh per wave + killer sections |
-| `feedback_packages_standalone_agnostic.md` | padosoft/* must be standalone — drives v4.6 extraction |
-| `feedback_copilot_pr_review_loop.md` | R36 mandatory loop |
-| `feedback_rc_tag_per_week_milestone.md` | R39 RC tag per Wn |
+| v4.5 cycle scope (universal connectors + source-aware ingestion + modern chat surface) | ADR 0008 + `docs/v4-platform/STATUS-2026-05-12-v45-week8-rc-acceptance.md` + `docs/v4-platform/DESIGN-v4.5-W5.5-source-aware-ingestion.md` |
+| v4.6 cycle scope (connector package extraction + local clone convention) | This section of the ROADMAP (the v4.6 Wn breakdown + acceptance gates) |
+| v4.7 cycle scope (Tabular Review + Workflows + AI-suggest) | This section of the ROADMAP + `docs/v4-platform/DESIGN-v4.7-tabular-review-and-workflows.md` |
+| Per-source chunker rule | ADR 0008 D3 + `docs/v4-platform/DESIGN-v4.5-W5.5-source-aware-ingestion.md` |
+| Junior-proof runbook standard | [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](RUNBOOK-live-fixture-recording.md) |
+| Per-wave README + dedicated killer-feature sections | The "Cross-cycle conventions" section above of this ROADMAP doc |
+| padosoft/* standalone-agnostic rule | `docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md` |
+| R36 mandatory Copilot review loop | `CLAUDE.md` §7 R36 + `.claude/skills/copilot-pr-review-loop/SKILL.md` |
+| R39 RC tag per Wn | `CLAUDE.md` §7 R39 + `.claude/skills/rc-tag-per-week-milestone/SKILL.md` |
 
 ## When this doc gets refreshed
 

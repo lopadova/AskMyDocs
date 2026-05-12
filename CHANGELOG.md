@@ -60,7 +60,7 @@ moats and roadmap, see [README.md](README.md).
 
 - Extract 7 connectors + shared base into 8 `padosoft/askmydocs-connector-*` packages.
 - Delete inline `app/Connectors/BuiltIn/*` code; `ConnectorRegistry` discovers exclusively via composer-lock `extra.askmydocs.connectors`.
-- 8 packages tagged `v1.0.0` on Packagist with junior-proof READMEs (per `feedback_runbook_junior_proof.md`).
+- 8 packages tagged `v1.0.0` on Packagist with junior-proof READMEs (same standard as [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](docs/v4-platform/RUNBOOK-live-fixture-recording.md) — exact URLs, sidebar paths, button labels, scopes + rationale per scope, env var names produced, verification one-liner with expected output, common errors + fixes).
 - `padosoft/askmydocs-connector-template` repo as scaffold for community contributors.
 
 ---

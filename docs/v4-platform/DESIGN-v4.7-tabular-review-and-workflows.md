@@ -2,7 +2,7 @@
 
 **Author:** Lorenzo Padovani + Claude (assisted)
 **Date:** 2026-05-12
-**Status:** Proposed — pending Lorenzo's explicit confirm. Inserts a NEW cycle between v4.6 (package extraction) and v5.0 (agentic).
+**Status:** Accepted (2026-05-12) — locked-in per `docs/v4-platform/ROADMAP-v4-v5-v6.md` "v4.7" section. Inserts a NEW cycle between v4.6 (package extraction) and v5.0 (agentic).
 **Inspiration:** github.com/willchen96/mike (Mike, AGPL-3.0, 2.8k stars on GitHub, mikeoss.com), a legal-domain document assistant with two killer features absent from Glean / Notion AI / ChatGPT Enterprise / M365 Copilot / Mendable / Vectara. We import the two features, generalise them beyond legal, and add an AI-suggest layer Mike does NOT have.
 
 ## 1 — Why this cycle exists

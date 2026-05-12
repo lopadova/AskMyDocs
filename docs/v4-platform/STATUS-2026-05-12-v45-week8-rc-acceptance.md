@@ -75,7 +75,7 @@ it.
 - [x] Vercel AI SDK UI **Tier 1** complete (stop-streaming, regenerate-last-assistant, branch-from-message endpoint, inline-edit user message, token+cost meter, per-message provider+model+timestamp badge, copy-code-block).
 - [x] Vercel AI SDK UI **Tier 2** partial (`SuggestedFollowupGenerator` ships; tool-result rendering / streaming source-document parts / conversation export / image attachments / artifact panel **deferred to v5.0** per ADR 0008 D4 — see "Notable parking-lot items").
 
-### B — Per-source rich frontmatter + chunker (per `feedback_ingestion_per_source_chunker_rule.md`)
+### B — Per-source rich frontmatter + chunker (per the W5.5 design doc + ADR 0008 D3)
 
 - [x] W5.5 added rich frontmatter to each of the 6 W1..W5 connectors (`source`, `connector_key`, native ID, native URL, native timestamps, ACL hint, `tags[]`, `status`, `preamble_path`).
 - [x] W6 Jira added rich frontmatter (`issue_key`, `project_key`, `issue_type`, `status`, `priority`, `assignee`, `reporter`, `parent_issue_key`).
@@ -88,7 +88,7 @@ it.
 - [x] `KbSearchService::searchWithContext()` accepts optional `facets` and emits `facets[source]` + `facets[tag]` counts.
 - [x] Three new PostgreSQL-only indexes on `knowledge_chunks.metadata`: 2 GIN-on-`jsonb` for the `source_type` + `search_tags` paths and 1 B-tree for `recency_bucket` (text projection — fixed-set ordinal data warrants a B-tree, not a GIN). SQLite is a no-op.
 
-### D — Live-test recording infrastructure ready (per `feedback_runbook_junior_proof.md`)
+### D — Live-test recording infrastructure ready (per [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](RUNBOOK-live-fixture-recording.md))
 
 - [x] `tests/Live/Connectors/` skeleton + `tests/Live/Support/` helpers (fixture record/replay, redaction filter, ARG_MAX-safe payload split) shipped under `markTestSkipped` guard on missing env var.
 - [x] `docs/v4-platform/RUNBOOK-live-fixture-recording.md` ships junior-proof per-provider sections for all 6 W5.5 providers + W6 Jira: exact dev-console URLs, sidebar paths, button labels, scopes + rationale per scope, env var names produced, verification one-liner with expected output, common errors + fixes.
