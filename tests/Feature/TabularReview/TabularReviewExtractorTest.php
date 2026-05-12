@@ -354,7 +354,7 @@ final class TabularReviewExtractorTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function aiPayload(string $content, string $summary = 'first'): array
+    private function aiPayload(string $content): array
     {
         return [
             'choices' => [[

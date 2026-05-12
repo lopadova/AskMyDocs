@@ -311,7 +311,7 @@ final class TabularReviewExtractor
         foreach ($chunks as $chunk) {
             $value = $this->descend($chunk->metadata ?? [], $segments);
             if ($value !== null) {
-                return is_scalar($value) ? (string) $value : json_encode($value);
+                return $this->stringifyValue($value);
             }
         }
 
@@ -323,7 +323,30 @@ final class TabularReviewExtractor
             return null;
         }
 
-        return is_scalar($value) ? (string) $value : json_encode($value);
+        return $this->stringifyValue($value);
+    }
+
+    /**
+     * Convert a JSON-path lookup result into a string. Non-scalars go
+     * through `json_encode` with `JSON_THROW_ON_ERROR` so an encoding
+     * failure raises rather than returning the literal string "false"
+     * — which would otherwise leak as a cell value.
+     */
+    private function stringifyValue(mixed $value): ?string
+    {
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        try {
+            $encoded = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+            return $encoded === false ? null : $encoded;
+        } catch (\JsonException $e) {
+            Log::warning('TabularReviewExtractor json_path encode failed', [
+                'message' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     /**
@@ -535,6 +558,14 @@ final class TabularReviewExtractor
     }
 
     /**
+     * Persist a cell idempotently. Uses Eloquent `updateOrCreate` so the
+     * lookup+write hits the DB as a single transactional sequence —
+     * concurrent `generate` / `regenerate-cell` calls on the same
+     * (tenant, review, doc, column) tuple can't race past each other
+     * into a unique-constraint violation, because the composite UNIQUE
+     * `(tenant_id, review_id, document_id, column_index)` makes the
+     * second writer's CREATE collapse into an UPDATE.
+     *
      * @param  array<string, mixed>  $content
      */
     private function persistCell(
@@ -546,30 +577,20 @@ final class TabularReviewExtractor
         array $content,
         ?CellFlag $flag,
     ): TabularCell {
-        $cell = TabularCell::query()
-            ->forTenant($tenant)
-            ->where('review_id', $review->id)
-            ->where('document_id', $doc->id)
-            ->where('column_index', $columnIndex)
-            ->first();
-
-        $attrs = [
-            'tenant_id' => $tenant,
-            'review_id' => $review->id,
-            'document_id' => $doc->id,
-            'column_index' => $columnIndex,
-            'content' => $content,
-            'status' => $status->value,
-            'flag' => $flag?->value,
-            'generated_at' => Carbon::now(),
-        ];
-
-        if ($cell === null) {
-            return TabularCell::create($attrs);
-        }
-        $cell->fill($attrs);
-        $cell->save();
-        return $cell;
+        return TabularCell::updateOrCreate(
+            [
+                'tenant_id' => $tenant,
+                'review_id' => $review->id,
+                'document_id' => $doc->id,
+                'column_index' => $columnIndex,
+            ],
+            [
+                'content' => $content,
+                'status' => $status->value,
+                'flag' => $flag?->value,
+                'generated_at' => Carbon::now(),
+            ],
+        );
     }
 
     private function persistFailure(

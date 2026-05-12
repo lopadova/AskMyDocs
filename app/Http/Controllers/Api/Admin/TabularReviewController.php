@@ -194,20 +194,35 @@ final class TabularReviewController extends Controller
             ->where('project_key', $review->project_key);
 
         $totalAvailable = (int) $baseQuery->count();
-        $docs = $baseQuery->orderBy('id')->limit($cap)->get();
 
-        $cells = [];
-        foreach ($docs as $doc) {
-            $cells = array_merge($cells, $this->extractor->extract($review, $doc));
-        }
+        // Memory-safe iteration (R3): a project can hold thousands of
+        // documents and the previous `$baseQuery->get()` materialised
+        // every Eloquent row at once. `chunkById` keeps the loaded
+        // window bounded; `$processed` enforces the `max_documents`
+        // ceiling across chunks; `$cellsTotal` accumulates a scalar
+        // count rather than the full cell list so memory stays flat
+        // regardless of the column count.
+        $cellsTotal = 0;
+        $processed = 0;
+        $baseQuery->orderBy('id')->chunkById(50, function ($docs) use ($review, $cap, &$cellsTotal, &$processed): bool {
+            foreach ($docs as $doc) {
+                if ($processed >= $cap) {
+                    return false;
+                }
+                $cells = $this->extractor->extract($review, $doc);
+                $cellsTotal += count($cells);
+                $processed++;
+            }
+            return true;
+        });
 
         return response()->json([
             'data' => [
                 'review_id' => $review->id,
-                'documents_processed' => $docs->count(),
+                'documents_processed' => $processed,
                 'documents_total_available' => $totalAvailable,
-                'cells_total' => count($cells),
-                'truncated' => $totalAvailable > $docs->count(),
+                'cells_total' => $cellsTotal,
+                'truncated' => $totalAvailable > $processed,
                 'max_documents' => $cap,
             ],
         ]);
