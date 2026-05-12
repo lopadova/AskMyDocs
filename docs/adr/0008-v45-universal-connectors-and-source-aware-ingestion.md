@@ -27,7 +27,7 @@ host platform:
    prompt, per-message provider+model badge, token+cost meter, copy
    code blocks). Both audits flagged this gap.
 
-The cycle landed four architectural decisions documented below.
+The cycle landed five architectural decisions documented below (D1–D5).
 
 ## Decision D1 — Seven connectors ship INLINE in v4.5; package extraction in v4.6
 
@@ -128,7 +128,10 @@ contract.
 Concrete impl:
 
 - `PipelineRegistry::__construct()` reads `config/kb-pipeline.php::chunkers`
-  + booted instances of every connector's preferred chunker (see D4 below).
+  (the chunker FQCN list shipped with AskMyDocs core, e.g.
+  `NotionBlockChunker`, `ConfluencePageChunker`, `JiraIssueChunker`,
+  `OfficeDocChunker`, `AtomicNoteChunker`, `PdfPageChunker`,
+  `MarkdownChunker`).
 - For each FQCN: must `implements ChunkerInterface` (R23 first invariant).
 - For each pair of chunkers: their `supports($sourceType)` predicates
   MUST NOT overlap (R23 second invariant). First-match-wins dispatch

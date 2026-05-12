@@ -21,10 +21,10 @@ the GA tag itself land in a follow-up parent-session step.
 |---|---|---|---|---|
 | W1 | Connector framework core + Google Drive reference connector | #149 | `d2b83c2` | Inline release notes — v4.5 cycle opener; RC tag deferred to subsequent Wn per the v4.5 cadence |
 | W2 | Notion connector + framework helper refinements | #150 | `9c6f510` | Inline release notes |
-| W3 | Admin React SPA `/admin/connectors` + OAuth callback + Spatie gate coverage | #151 | `87a81c6` | Inline release notes |
+| W3 | Admin React SPA `/app/admin/connectors` + OAuth callback + Spatie gate coverage | #151 | `87a81c6` | Inline release notes |
 | W4 | Evernote (dual-mode OAuth + ENEX bulk import) + Fabric (API-key + OAuth stub) | #152 | `02e7ad2` | Inline release notes |
 | W5 | OneDrive (Microsoft Graph delta query) + Confluence (Atlassian 3LO + storage-format converter) | #153 | `f2c1967` | Inline release notes |
-| W5.5 | Source-aware ingestion + 5 new chunkers + Reranker Layer-4 + live-test recording | #154 | `7ea9d47` | `docs/v4-platform/DESIGN-v4.5-W5.5-source-aware-ingestion.md` + `docs/v4-platform/RUNBOOK-live-fixture-recording.md` |
+| W5.5 | Source-aware ingestion — 4 new chunkers (`NotionBlockChunker`, `ConfluencePageChunker`, `OfficeDocChunker`, `AtomicNoteChunker`) + `PdfPageChunker` (pre-existing) routed through the registry + Reranker Layer-4 + live-test recording | #154 | `7ea9d47` | `docs/v4-platform/DESIGN-v4.5-W5.5-source-aware-ingestion.md` + `docs/v4-platform/RUNBOOK-live-fixture-recording.md` |
 | W6 | Jira Cloud connector + ADF-to-markdown + JqlBuilder + JiraIssueChunker | #155 | `c60047c` | Inline release notes |
 | W7 | Vercel AI SDK UI Tier 1 + partial Tier 2 — stop/regenerate/branch/edit/token-meter/copy-code/suggested-followups | #156 | `c8a25c6` | Inline release notes; stretch Tier 2 items (tool-result render, streaming source parts, export, image attachments, artifact panel) **deferred to v5.0** per ADR 0008 D4 |
 | W8 — closure | RC acceptance gates audit + closure status doc (this document) + README hero refresh + Changelog entry + ADR 0008 + ROADMAP refresh | this PR | filled in on merge | `docs/v4-platform/STATUS-2026-05-12-v45-week8-rc-acceptance.md` (this) + `docs/adr/0008-v45-universal-connectors-and-source-aware-ingestion.md` |
@@ -43,12 +43,12 @@ without further core changes.
 | Connector key | FQCN | Auth mode | Source-aware chunker | Format converter |
 |---|---|---|---|---|
 | `google-drive` | `App\Connectors\BuiltIn\GoogleDriveConnector` | OAuth2 (Google) + delta-query incremental sync | falls through to `MarkdownChunker` (Drive docs export as `.md`) | Google native export to markdown |
-| `notion` | `App\Connectors\BuiltIn\NotionConnector` | OAuth2 (Notion) | `NotionBlockChunker` | `Notion\NotionBlockChunker` block-to-markdown + `Notion\NotionPaginator` |
-| `evernote` | `App\Connectors\BuiltIn\EvernoteConnector` | OAuth (Evernote API) **or** `.enex` bulk import (offline) | `AtomicNoteChunker` (one-note-per-chunk preamble strategy) | `Evernote\EnmlToMarkdown` + `Evernote\EnexImporter` |
-| `fabric` | `App\Connectors\BuiltIn\FabricConnector` | API key (OAuth pending upstream) | falls through to source-type default | n/a (Fabric exposes pre-rendered text) |
-| `onedrive` | `App\Connectors\BuiltIn\OneDriveConnector` | OAuth2 (Microsoft Graph) + delta-query | `OfficeDocChunker` for `.docx` / `.pptx` / `.xlsx` | Existing `phpoffice/phpword` + Office converters |
-| `confluence` | `App\Connectors\BuiltIn\ConfluenceConnector` | OAuth 2.0 3LO (Atlassian) + cross-tenant `cloud_id` | `ConfluencePageChunker` | Confluence storage-format-to-markdown |
-| `jira` | `App\Connectors\BuiltIn\JiraConnector` | OAuth 2.0 3LO (Atlassian) | `JiraIssueChunker` (issue + comments aggregated) | `Jira\JiraAdfToMarkdown` + `Jira\JqlBuilder` (injection-safe) + `Jira\JiraPaginator` (auto-detects `startAt+total` vs `nextPageToken` modes) |
+| `notion` | `App\Connectors\BuiltIn\NotionConnector` | OAuth2 (Notion) | `App\Services\Kb\Chunkers\NotionBlockChunker` | `App\Connectors\BuiltIn\Notion\NotionBlockToMarkdown` + `App\Connectors\BuiltIn\Notion\NotionPaginator` |
+| `evernote` | `App\Connectors\BuiltIn\EvernoteConnector` | OAuth (Evernote API) **or** `.enex` bulk import (offline) | `App\Services\Kb\Chunkers\AtomicNoteChunker` (one-note-per-chunk preamble strategy) | `App\Connectors\BuiltIn\Evernote\EnmlToMarkdown` + `App\Connectors\BuiltIn\Evernote\EnexImporter` |
+| `fabric` | `App\Connectors\BuiltIn\FabricConnector` | API key (OAuth pending upstream) | `App\Services\Kb\Chunkers\AtomicNoteChunker` (declares `supports('fabric') = true`) | n/a (Fabric exposes pre-rendered text) |
+| `onedrive` | `App\Connectors\BuiltIn\OneDriveConnector` | OAuth2 (Microsoft Graph) + delta-query | `App\Services\Kb\Chunkers\OfficeDocChunker` for `.docx` / `.pptx` / `.xlsx` | Existing `phpoffice/phpword` + Office converters |
+| `confluence` | `App\Connectors\BuiltIn\ConfluenceConnector` | OAuth 2.0 3LO (Atlassian) + cross-tenant `cloud_id` | `App\Services\Kb\Chunkers\ConfluencePageChunker` | Confluence storage-format-to-markdown (under `App\Connectors\BuiltIn\Confluence\`) |
+| `jira` | `App\Connectors\BuiltIn\JiraConnector` | OAuth 2.0 3LO (Atlassian) | `App\Services\Kb\Chunkers\JiraIssueChunker` (issue + comments aggregated) | `App\Connectors\BuiltIn\Jira\JiraAdfToMarkdown` + `App\Connectors\BuiltIn\Jira\JqlBuilder` (injection-safe) + `App\Connectors\BuiltIn\Jira\JiraPaginator` (auto-detects `startAt+total` vs `nextPageToken` modes) |
 
 PDF ingestion continues to dispatch to `PdfPageChunker` via the
 `PipelineRegistry`; W5.5 made that explicit instead of relying on the
@@ -71,7 +71,7 @@ it.
 ### A — 7 connectors registered + admin SPA + Vercel SDK UI Tier 1+2 (modulo stretch)
 
 - [x] All seven connector FQCNs listed under `config/connectors.php::built_in` and resolved by `ConnectorRegistry` at boot.
-- [x] `/admin/connectors` route renders the connectors DataTable (W3, R11 testid contract preserved).
+- [x] `/app/admin/connectors` route renders the connectors DataTable (W3, R11 testid contract preserved).
 - [x] Vercel AI SDK UI **Tier 1** complete (stop-streaming, regenerate-last-assistant, branch-from-message endpoint, inline-edit user message, token+cost meter, per-message provider+model+timestamp badge, copy-code-block).
 - [x] Vercel AI SDK UI **Tier 2** partial (`SuggestedFollowupGenerator` ships; tool-result rendering / streaming source-document parts / conversation export / image attachments / artifact panel **deferred to v5.0** per ADR 0008 D4 — see "Notable parking-lot items").
 
@@ -80,7 +80,7 @@ it.
 - [x] W5.5 added rich frontmatter to each of the 6 W1..W5 connectors (`source`, `connector_key`, native ID, native URL, native timestamps, ACL hint, `tags[]`, `status`, `preamble_path`).
 - [x] W6 Jira added rich frontmatter (`issue_key`, `project_key`, `issue_type`, `status`, `priority`, `assignee`, `reporter`, `parent_issue_key`).
 - [x] `PipelineRegistry::resolveChunker($sourceType)` dispatches per connector to the matching ad-hoc chunker; first-match-wins + R23 `supports()` mutex enforced at boot.
-- [x] Five new chunkers landed under `app/Services/Kb/Chunkers/`: `NotionBlockChunker`, `ConfluencePageChunker`, `OfficeDocChunker`, `AtomicNoteChunker`, `JiraIssueChunker`. `PdfPageChunker` already existed; W5.5 routed it through the registry.
+- [x] Five new chunkers shipped across the cycle under `app/Services/Kb/Chunkers/`: four in W5.5 (`NotionBlockChunker`, `ConfluencePageChunker`, `OfficeDocChunker`, `AtomicNoteChunker`) + one in W6 (`JiraIssueChunker`). `PdfPageChunker` already existed in v3.0; W5.5 lifted it from a direct call in `DocumentIngestor` into the registry.
 
 ### C — Reranker Layer-4 signals + facets + GIN indexes
 
@@ -147,7 +147,7 @@ tags `v4.5.0` at the merge SHA per R39.
 - **Vercel AI SDK UI Tier 2 stretch deferred to v5.0** — tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel. Rationale (ADR 0008 D4): the persistence shape for message-parts (canonical SDK v6 frames vs simplified rows) should be designed alongside the v5.0 MCP tool dispatcher so the artifact panel and the tool-result panel share one storage contract.
 - **Connector package extraction deferred to v4.6** — all seven connectors currently ship inline under `app/Connectors/BuiltIn/`. ADR 0008 D2 records why composer-lock-driven discovery (not root `extra`) is the chosen extraction strategy. The auto-discovery hook is in place; v4.6 just lifts each connector into its own `padosoft/askmydocs-connector-*` package + a shared `-base` package without touching `ConnectorRegistry`.
 - **Tabular Review + Workflows + AI-suggest parked for v4.7** — locked-in 2026-05-12. The v4.7 cycle adds a competitor-absent surface inspired by mike (https://github.com/willchen96/mike) but goes further with 16 format types + 12 UX differentiators + AI-suggest layer. Out of scope for v4.5.
-- **`AskMyDocs - Connectors.png` screenshot** — the screenshots gallery in the README is not refreshed in this PR. Operators of v4.5.0 GA hosts can capture the `/admin/connectors` page once they install the first connector; the gallery refresh ships in the v4.6 cycle alongside the package extraction docs.
+- **`AskMyDocs - Connectors.png` screenshot** — the screenshots gallery in the README is not refreshed in this PR. Operators of v4.5.0 GA hosts can capture the `/app/admin/connectors` page once they install the first connector; the gallery refresh ships in the v4.6 cycle alongside the package extraction docs.
 
 ## What's next — v4.6 backlog
 
@@ -165,5 +165,5 @@ gh release create v4.5.0 \
   --repo lopadova/AskMyDocs \
   --target "$GA_SHA" \
   --title "v4.5.0 — Universal Connectors + Source-Aware Ingestion + Modern Chat Surface GA" \
-  --notes "v4.5.0 GA — 7 native connectors (Google Drive / Notion / Evernote / Fabric / OneDrive / Confluence / Jira) + admin OAuth SPA at /admin/connectors + source-aware ingestion (per-source chunker dispatch via PipelineRegistry::resolveChunker + 5 new chunkers + Reranker Layer-4 signals + KbSearchService facets) + Vercel AI SDK UI Tier 1 + partial Tier 2 (stop / regenerate / branch / edit / token-cost meter / copy-code / suggested-followups). Tier 2 stretch (tool-result rendering, streaming source parts, export, image attachments, artifact panel) deferred to v5.0 per ADR 0008 D4. Live-fixture recording infrastructure + junior-proof runbook for 6 providers. +462 PHPUnit tests (1423 → 1885), +63 react vitest scenarios (321 → 384). ADR 0008. 7 sub-PRs (#149 #150 #151 #152 #153 #154 #155 #156) + 1 closure docs PR (this) + 1 GA merge PR (W8 GA merge). Closure: docs/v4-platform/STATUS-2026-05-12-v45-week8-rc-acceptance.md."
+  --notes "v4.5.0 GA — 7 native connectors (Google Drive / Notion / Evernote / Fabric / OneDrive / Confluence / Jira) + admin OAuth SPA at /app/admin/connectors + source-aware ingestion (per-source chunker dispatch via PipelineRegistry::resolveChunker + 5 new chunkers across W5.5+W6 + PdfPageChunker pre-existing now routed through the registry + Reranker Layer-4 signals + KbSearchService facets) + Vercel AI SDK UI Tier 1 + partial Tier 2 (stop / regenerate / branch / edit / token-cost meter / copy-code / suggested-followups). Tier 2 stretch (tool-result rendering, streaming source parts, export, image attachments, artifact panel) deferred to v5.0 per ADR 0008 D4. Live-fixture recording infrastructure + junior-proof runbook for 6 providers. +462 PHPUnit tests (1423 → 1885), +63 react vitest scenarios (321 → 384). ADR 0008. 7 sub-PRs (#149 #150 #151 #152 #153 #154 #155 #156) + 1 closure docs PR (this) + 1 GA merge PR (W8 GA merge). Closure: docs/v4-platform/STATUS-2026-05-12-v45-week8-rc-acceptance.md."
 ```

@@ -11,8 +11,8 @@ import {
  *
  * R12: every user-visible feature ships at least one happy + one
  * failure path. R13: only the external AI provider call
- * (`/conversations/*\/messages` route family) is stubbed; everything
- * else exercises the real Laravel back-end.
+ * (the POST /conversations/{id}/messages route family) is stubbed;
+ * everything else exercises the real Laravel back-end.
  *
  * Tier 1 features under test:
  *   - Regenerate button visible on the LAST assistant turn (the SDK
@@ -27,10 +27,11 @@ import {
  *   - SuggestedFollowups bar renders after an assistant turn settles;
  *     clicking a pill dispatches a new message.
  *
- * The base scenarios all use `stubChatAssistantReply()` so the AI
- * provider is mocked exactly as the rest of the `chat*.spec.ts`
- * family does. The `/conversations/*/suggested-followups` endpoint
- * is NOT stubbed here — it hits the real Laravel back-end (R13).
+ * The base scenarios all use stubChatAssistantReply() so the AI
+ * provider is mocked exactly as the rest of the chat*.spec.ts
+ * family does. The POST /conversations/{id}/suggested-followups
+ * endpoint is NOT stubbed here — it hits the real Laravel back-end
+ * (R13).
  * It is therefore NOT in EXTERNAL_PROXY_PATTERNS and does not need
  * to be allowlisted; `scripts/verify-e2e-real-data.sh` will pass
  * without any changes to that file.

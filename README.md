@@ -29,7 +29,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v4.5.0-blueviolet?style=flat-square" alt="Release v4.5.0"></a>
-  <a href="#-universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
+  <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
   <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1885%20PHPUnit%20%2B%20384%20Vitest-brightgreen?style=flat-square" alt="1885 PHPUnit + 384 Vitest"></a>
 </p>
 
@@ -50,8 +50,8 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 
 - [What it is](#what-it-is)
 - [Why AskMyDocs — the 5 moats](#why-askmydocs--the-5-moats)
-- [✨ Universal Connectors](#-universal-connectors)
-- [✨ Modern Chat Surface (Vercel AI SDK UI)](#-modern-chat-surface-vercel-ai-sdk-ui)
+- [✨ Universal Connectors](#universal-connectors)
+- [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
 - [Features by area](#features-by-area)
   - [Retrieval & Knowledge](#retrieval--knowledge)
   - [Chat & Conversation](#chat--conversation)
@@ -136,7 +136,7 @@ to be chunked.
 - **7 native connectors live in v4.5** — `google-drive` (OAuth2 + delta-query), `notion` (OAuth2 + block paginator), `evernote` (OAuth + `.enex` bulk import), `fabric` (API-key, OAuth pending upstream), `onedrive` (Microsoft Graph delta-query), `confluence` (Atlassian OAuth 2.0 3LO + cross-tenant `cloud_id`), `jira` (Atlassian OAuth 2.0 3LO + ADF-to-markdown + injection-safe JQL builder).
 - **Per-source chunkers** — `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` dispatched via `PipelineRegistry::resolveChunker()` (R23 FQCN-validated + `supports()` mutex-checked at boot).
 - **Rich frontmatter capture** — every connector populates `source`, `connector_key`, native ID, native URL, native timestamps, ACL hints, tags, status, preamble-path on every chunk's metadata. Drives `KbSearchService` facets + `Reranker` Layer-4 signals (tag overlap + recency + status-active + preamble-match).
-- **Admin OAuth flow at `/admin/connectors`** — React SPA + Spatie super-admin gate + signed OAuth callback + per-installation `connector_installations` + `connector_credentials` rows + scheduler-driven incremental sync via `App\Jobs\ConnectorSyncJob`.
+- **Admin OAuth flow at `/app/admin/connectors`** — React SPA + Spatie super-admin gate + signed OAuth callback + per-installation `connector_installations` + `connector_credentials` rows + scheduler-driven incremental sync via `App\Jobs\ConnectorSyncJob`.
 - **Opt-in live-test recording infrastructure** — `tests/Live/Connectors/` skeleton + per-provider env-var guard + `docs/v4-platform/RUNBOOK-live-fixture-recording.md` junior-proof setup guide. CI runs only `Unit` + `Feature`; operators refresh fixtures explicitly when provider APIs drift.
 
 ### How it compares
@@ -156,7 +156,7 @@ to be chunked.
 **Try it.** Read [`docs/connectors/README.md`](docs/connectors/README.md)
 for the developer guide (10-method `ConnectorInterface` contract +
 auto-discovery + framework reuse pattern), then log in as a
-super-admin and navigate to `/admin/connectors` to install the first
+super-admin and navigate to `/app/admin/connectors` to install the first
 connector.
 
 ---
@@ -268,7 +268,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Cross-mounted admin SPAs (3 packages) | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (cross-mount since v4.4/W2) + `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` (iframe — Blade+Alpine, will remain iframed per ADR 0005) + `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (cross-mount since v4.4/W3, 3 fail-closed fences preserved) | v4.2 |
 | Laravel scheduler (10+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF); all `onOneServer()->withoutOverlapping()` | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
-| Connector admin SPA (`/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
+| Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
 
 ### Integrations & Extensibility
 
