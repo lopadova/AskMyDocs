@@ -29,18 +29,23 @@ class UpdateWorkflowRequest extends FormRequest
             // when `fill() + save()` propagates NULL.
             'practice' => ['sometimes', 'string', Rule::in(WorkflowPractice::values())],
 
-            // Copilot iter 5: `columns_config` is required and
-            // non-empty when the request body sets `type=tabular`
-            // (mirrors the StoreWorkflowRequest contract). For
-            // assistant workflows the field is omitted; for tabular
-            // workflows it cannot be NULL even on patch — that would
-            // mint an invalid tabular row with no columns. When the
-            // request omits `type` and only patches the columns, the
-            // service-side update path keeps the existing column set;
-            // an explicit null on tabular goes to 422 here.
+            // Copilot iter 5/13: `columns_config` is required when
+            // the request sets `type=tabular`. Copilot iter 13
+            // flagged that combining `sometimes` + `required_if` is
+            // contradictory — `sometimes` skips validation when the
+            // field is absent, which would let
+            // `{type: 'tabular'}` (no columns_config) pass and then
+            // trigger the service-layer InvalidArgumentException at
+            // 500. Dropping `sometimes` so `required_if` fires
+            // whenever `type=tabular` is present; the field is
+            // ABSENT iff the caller is patching only `type=assistant`
+            // or unrelated fields, in which case `required_if` does
+            // not apply and the rule chain is a no-op (no `sometimes`
+            // bypass needed — the absence itself satisfies the
+            // optional-conditional contract).
             'columns_config' => [
-                'sometimes',
                 'required_if:type,tabular',
+                'nullable',
                 'array',
                 'min:1',
                 'max:50',
