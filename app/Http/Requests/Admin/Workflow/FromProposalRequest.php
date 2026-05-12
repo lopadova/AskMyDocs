@@ -40,6 +40,18 @@ class FromProposalRequest extends FormRequest
                 Rule::in(FormatType::values()),
             ],
             'proposal.columns_config.*.enum_values' => ['nullable', 'array', 'max:100'],
+            'proposal.columns_config.*.enum_values.*' => ['string', 'max:120'],
+            // Copilot iter 1: align with Store/UpdateWorkflowRequest —
+            // json_path is required when the column format is the
+            // LLM-free `json_path` shortcut; otherwise the extractor
+            // has nothing to look up and every cell silently falls
+            // back to red (R14).
+            'proposal.columns_config.*.json_path' => [
+                'required_if:proposal.columns_config.*.format,json_path',
+                'nullable',
+                'string',
+                'max:200',
+            ],
         ];
     }
 }

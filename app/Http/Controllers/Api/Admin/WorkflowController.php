@@ -10,6 +10,7 @@ use App\Http\Requests\Admin\Workflow\StoreWorkflowRequest;
 use App\Http\Requests\Admin\Workflow\SuggestWorkflowsRequest;
 use App\Http\Requests\Admin\Workflow\UpdateWorkflowRequest;
 use App\Http\Resources\Admin\WorkflowResource;
+use App\Http\Resources\Admin\WorkflowShareResource;
 use App\Models\Workflow;
 use App\Models\WorkflowShare;
 use App\Services\Workflow\WorkflowService;
@@ -147,7 +148,13 @@ final class WorkflowController extends Controller
             (bool) ($validated['allow_edit'] ?? false),
         );
 
-        return response()->json(['data' => $share], 201);
+        // Copilot iter 1: route through WorkflowShareResource so the
+        // payload shape (and ISO-8601 timestamps) matches every other
+        // workflow endpoint — returning the raw Eloquent model could
+        // leak unintended fields if the Model later grows columns.
+        return response()->json([
+            'data' => (new WorkflowShareResource($share))->resolve(),
+        ], 201);
     }
 
     /**
@@ -174,6 +181,14 @@ final class WorkflowController extends Controller
 
     /**
      * POST /api/admin/workflows/{id}/hide
+     *
+     * Intentionally NOT gated by `assertCanCreate()` — the only state
+     * a hide mutates is the caller's OWN row in `hidden_workflows`,
+     * scoped by `WorkflowService::hide()` to `(tenant_id, user_id,
+     * workflow_id)`. This is a cosmetic personal preference, not a
+     * shared template mutation, so viewers are admitted on purpose.
+     * Copilot iter 1 surfaced the ambiguity in the route docstring;
+     * the route comment is now explicit about this contract.
      */
     public function hide(Request $request, int $id): JsonResponse
     {
@@ -288,14 +303,20 @@ final class WorkflowController extends Controller
         throw new NotFoundHttpException('Workflow not found.');
     }
 
+    /**
+     * Fail-closed authorisation helper for write actions. Copilot iter 1
+     * flagged the previous fail-open shape: returning early when `$user`
+     * was null or did not implement the Spatie role API would silently
+     * authorise writes if the auth stack was reconfigured. The route
+     * group already enforces `auth:sanctum`, so a null user here is
+     * structurally impossible — but throwing keeps the surface
+     * fail-closed against future regressions.
+     */
     private function assertCanCreate(Request $request): void
     {
         $user = $request->user();
-        if ($user === null) {
-            return;
-        }
-        if (! method_exists($user, 'hasAnyRole')) {
-            return;
+        if ($user === null || ! method_exists($user, 'hasAnyRole')) {
+            throw new AccessDeniedHttpException('Authentication required.');
         }
         if (! $user->hasAnyRole(['admin', 'super-admin'])) {
             throw new AccessDeniedHttpException('Only admin / super-admin can mutate workflows.');
@@ -305,11 +326,8 @@ final class WorkflowController extends Controller
     private function assertCanSuggest(Request $request): void
     {
         $user = $request->user();
-        if ($user === null) {
-            return;
-        }
-        if (! method_exists($user, 'hasAnyRole')) {
-            return;
+        if ($user === null || ! method_exists($user, 'hasAnyRole')) {
+            throw new AccessDeniedHttpException('Authentication required.');
         }
         if (! $user->hasAnyRole(['admin', 'super-admin'])) {
             throw new AccessDeniedHttpException('Only admin / super-admin can request workflow suggestions.');

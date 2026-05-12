@@ -513,9 +513,19 @@ Route::middleware([
 |
 | Reusable prompt templates (assistant or tabular) + AI-suggested
 | workflows from the tenant's KB. Mounted under `can:viewWorkflows`
-| so `viewer` can browse + see suggestions (read-only); `admin` +
-| `super-admin` can mutate. The controller enforces the write fence
-| at the action layer.
+| so `viewer` can browse the catalogue (read-only); `admin` +
+| `super-admin` can mutate templates AND request LLM-backed
+| suggestions (controller enforces these via `assertCanCreate()` /
+| `assertCanSuggest()`).
+|
+| `viewer` is intentionally allowed to call `/{id}/hide` and
+| `/{id}/hide` DELETE — those endpoints only mutate the per-user
+| `hidden_workflows` table (cosmetic personal preference, not the
+| underlying template) and the policy at
+| `WorkflowService::hide() / unhide()` scopes every row to the
+| caller's own user_id. Copilot iter 1 correctly flagged that the
+| previous "viewer is read-only across the surface" comment was
+| inaccurate; this is the corrected contract.
 |
 | Literal sub-paths (`/suggest`, `/from-proposal`) MUST come before
 | the `/{id}` catch-all so the literal route is matched first. The

@@ -25,6 +25,21 @@ use Illuminate\Support\Facades\Schema;
  * without FK) is kept as an application-enforced reference — no DB-level
  * FK is added here because the W1 column might already contain legacy
  * values from W1's pre-W2 lifecycle.
+ *
+ * Copilot iter 1 — system-template uniqueness: `BuiltInWorkflowSeeder`
+ * uses `(tenant_id, title, is_system=true)` as the natural key but no
+ * DB-level partial unique enforces it. The trade-off is intentional:
+ * (a) the seeder runs single-threaded inside `php artisan migrate
+ * --seed` / `db:seed`, so concurrent seed races cannot occur in any
+ * supported deployment; (b) PostgreSQL supports partial unique
+ * indexes (`UNIQUE(...) WHERE is_system`) but MySQL ≤8.0 and SQLite
+ * (used in tests) do not, so adding the partial would require
+ * conditional schema branches that diverge between production and
+ * test migrations. The application-level guarantee
+ * (`Workflow::updateOrCreate(...)` keyed on the triple) is sufficient
+ * for the operational pattern. If a future PR introduces
+ * parallel-tenant seed jobs, revisit with a Postgres-only partial
+ * unique + a UniqueConstraintViolationException catch in the seeder.
  */
 return new class extends Migration {
     public function up(): void

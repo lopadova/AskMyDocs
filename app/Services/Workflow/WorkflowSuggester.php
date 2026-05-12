@@ -32,6 +32,14 @@ final class WorkflowSuggester
     /** Stratified-sample size. */
     private const SAMPLE_SIZE = 50;
 
+    /**
+     * Title char cap. Mirrored in the system prompt and enforced in
+     * {@see validateProposal()}. Copilot iter 1 flagged the drift
+     * between "max 80 chars" in the prompt vs `mb_substr(..., 200)`
+     * in validation — both surfaces now reference this constant.
+     */
+    private const TITLE_MAX_CHARS = 80;
+
     public function __construct(
         private readonly AiManager $ai,
         private readonly MetadataPatternAnalyzer $analyzer,
@@ -171,12 +179,13 @@ final class WorkflowSuggester
         $assistantValue = WorkflowType::Assistant->value;
         $tabularValue = WorkflowType::Tabular->value;
         $practiceList = implode(', ', WorkflowPractice::values());
+        $titleCap = self::TITLE_MAX_CHARS;
 
         return <<<SYS
 You are an assistant that proposes reusable workflow templates for a
 knowledge-management tool, given a compact signature of the tenant's
 documents. Each proposal carries:
-  - title (max 80 chars)
+  - title (max {$titleCap} chars)
   - type ("{$assistantValue}" or "{$tabularValue}")
   - prompt_md (the system prompt the workflow will run)
   - columns_config (array of {name, prompt, format} — required when type
@@ -264,7 +273,7 @@ SYS;
         }
 
         return [
-            'title' => mb_substr($title, 0, 200),
+            'title' => mb_substr($title, 0, self::TITLE_MAX_CHARS),
             'type' => $type,
             'prompt_md' => $promptMd,
             'columns_config' => $columnsConfig,

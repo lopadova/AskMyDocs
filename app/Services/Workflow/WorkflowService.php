@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowShare;
 use App\Support\TenantContext;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -173,6 +174,13 @@ final class WorkflowService
             throw new \InvalidArgumentException('shared_with_email is required.');
         }
 
+        // Copilot iter 1: the previous shape only protected the
+        // UPDATE branch via lockForUpdate(); two concurrent requests
+        // that both saw `existing=null` would race to `create()` and
+        // one would hit the composite UNIQUE. Now we attempt the
+        // upsert directly and, if the unique constraint fires, we
+        // re-fetch and apply the new flags to the winning row so the
+        // operation stays idempotent under concurrency.
         return DB::transaction(function () use ($workflow, $owner, $email, $allowEdit): WorkflowShare {
             $existing = WorkflowShare::query()
                 ->where('workflow_id', $workflow->id)
@@ -189,12 +197,29 @@ final class WorkflowService
                 return $existing;
             }
 
-            return WorkflowShare::create([
-                'workflow_id' => $workflow->id,
-                'shared_by_user_id' => $owner->id,
-                'shared_with_email' => $email,
-                'allow_edit' => $allowEdit,
-            ]);
+            try {
+                return WorkflowShare::create([
+                    'workflow_id' => $workflow->id,
+                    'shared_by_user_id' => $owner->id,
+                    'shared_with_email' => $email,
+                    'allow_edit' => $allowEdit,
+                ]);
+            } catch (UniqueConstraintViolationException $e) {
+                // Lost the race — another transaction inserted the same
+                // (workflow_id, email) pair first. Re-fetch and apply
+                // the caller's flags so semantics still match
+                // "this email is shared with these privileges".
+                $winner = WorkflowShare::query()
+                    ->where('workflow_id', $workflow->id)
+                    ->where('shared_with_email', $email)
+                    ->firstOrFail();
+                $winner->update([
+                    'allow_edit' => $allowEdit,
+                    'shared_by_user_id' => $owner->id,
+                ]);
+
+                return $winner;
+            }
         });
     }
 
@@ -216,6 +241,14 @@ final class WorkflowService
         return $deleted > 0;
     }
 
+    /**
+     * Idempotent hide. Copilot iter 1: a plain "read then create"
+     * shape would let two concurrent hide requests both pass the
+     * `first()` check and race to `create()`, the loser hitting the
+     * composite UNIQUE `(tenant_id, user_id, workflow_id)`. We catch
+     * the unique violation and re-fetch so the caller always gets the
+     * winning row.
+     */
     public function hide(Workflow $workflow, User $user): HiddenWorkflow
     {
         $this->assertSameTenant($workflow);
@@ -232,12 +265,20 @@ final class WorkflowService
             return $row;
         }
 
-        return HiddenWorkflow::create([
-            'tenant_id' => $tenant,
-            'user_id' => $user->id,
-            'workflow_id' => $workflow->id,
-            'hidden_at' => now(),
-        ]);
+        try {
+            return HiddenWorkflow::create([
+                'tenant_id' => $tenant,
+                'user_id' => $user->id,
+                'workflow_id' => $workflow->id,
+                'hidden_at' => now(),
+            ]);
+        } catch (UniqueConstraintViolationException $e) {
+            return HiddenWorkflow::query()
+                ->where('tenant_id', $tenant)
+                ->where('user_id', $user->id)
+                ->where('workflow_id', $workflow->id)
+                ->firstOrFail();
+        }
     }
 
     public function unhide(Workflow $workflow, User $user): bool
