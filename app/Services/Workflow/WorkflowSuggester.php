@@ -280,6 +280,7 @@ SYS;
             // Columns that miss `name` OR `format` OR carry an
             // unknown `format` are dropped from the normalised list.
             $formats = FormatType::values();
+            $jsonPathFormat = FormatType::JSON_PATH->value;
             $normalised = [];
             foreach ($columnsConfig as $col) {
                 if (! is_array($col)) {
@@ -289,6 +290,17 @@ SYS;
                 $format = (string) ($col['format'] ?? '');
                 if ($name === '' || $format === '' || ! in_array($format, $formats, true)) {
                     continue;
+                }
+                // Copilot iter 4: `format=json_path` MUST carry a
+                // non-empty `json_path`. The downstream
+                // FromProposalRequest enforces this with
+                // `required_if` and would otherwise 422 a proposal
+                // that looked selectable here.
+                if ($format === $jsonPathFormat) {
+                    $jsonPath = trim((string) ($col['json_path'] ?? ''));
+                    if ($jsonPath === '') {
+                        continue;
+                    }
                 }
                 $normalised[] = $col;
             }

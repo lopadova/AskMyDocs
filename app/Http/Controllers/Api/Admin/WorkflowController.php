@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\Workflow\SuggestWorkflowsRequest;
 use App\Http\Requests\Admin\Workflow\UpdateWorkflowRequest;
 use App\Http\Resources\Admin\WorkflowResource;
 use App\Http\Resources\Admin\WorkflowShareResource;
+use App\Models\User;
 use App\Models\Workflow;
 use App\Models\WorkflowShare;
 use App\Services\Workflow\WorkflowService;
@@ -284,8 +285,20 @@ final class WorkflowController extends Controller
         return filter_var($validated[$key], FILTER_VALIDATE_BOOLEAN);
     }
 
-    private function findOr404(int $id, $user): Workflow
+    /**
+     * Locate a workflow scoped to the active tenant + the caller's
+     * access rights. Copilot iter 4: type-hinted `?User` (and
+     * fail-closes on null even though the route group's
+     * `auth:sanctum` makes null structurally impossible); normalises
+     * the email via `WorkflowService::normaliseEmail()` so the share
+     * lookup matches the canonical form used everywhere else.
+     */
+    private function findOr404(int $id, ?User $user): Workflow
     {
+        if ($user === null) {
+            throw new NotFoundHttpException('Workflow not found.');
+        }
+
         $workflow = Workflow::query()
             ->forTenant($this->ctx->current())
             ->where('id', $id)
@@ -308,7 +321,7 @@ final class WorkflowController extends Controller
             return $workflow;
         }
 
-        $email = mb_strtolower((string) ($user?->email ?? ''));
+        $email = WorkflowService::normaliseEmail((string) ($user->email ?? ''));
         if ($email !== '') {
             $sharedExists = WorkflowShare::query()
                 ->where('workflow_id', $workflow->id)

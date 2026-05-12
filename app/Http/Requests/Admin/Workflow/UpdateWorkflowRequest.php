@@ -23,7 +23,11 @@ class UpdateWorkflowRequest extends FormRequest
             'title' => ['sometimes', 'string', 'max:200'],
             'type' => ['sometimes', 'string', Rule::in(WorkflowType::values())],
             'prompt_md' => ['sometimes', 'string', 'max:20000'],
-            'practice' => ['sometimes', 'nullable', 'string', Rule::in(WorkflowPractice::values())],
+            // Copilot iter 4: `workflows.practice` is a NOT NULL column
+            // with default 'generic'. Removing `nullable` here so a
+            // client cannot send `practice: null` and 500 the request
+            // when `fill() + save()` propagates NULL.
+            'practice' => ['sometimes', 'string', Rule::in(WorkflowPractice::values())],
 
             'columns_config' => ['sometimes', 'nullable', 'array', 'min:1', 'max:50'],
             'columns_config.*.name' => ['required_with:columns_config', 'string', 'max:120'],

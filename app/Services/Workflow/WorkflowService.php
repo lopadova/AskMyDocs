@@ -62,14 +62,12 @@ final class WorkflowService
             $q->where('user_id', $user->id);
             if ($includeShared) {
                 $q->orWhere('is_system', true);
-                // Copilot iter 3: normalise the caller's email to
-                // lower-case before matching `workflow_shares`. The
-                // share() / userCanEdit / findOr404 paths already
-                // lowercase on write; this keeps the read path
-                // symmetric so a User row with a stray-uppercase or
-                // whitespace email never misses their own shared
-                // workflows.
-                $email = mb_strtolower(trim((string) $user->getAttribute('email')));
+                // Copilot iter 3/4: route through the central
+                // normaliser (lowercase + trim) so list / userCanEdit
+                // / share / unshare / findOr404 see the same email
+                // shape. A User row with stray uppercase or whitespace
+                // never misses their own shared workflows.
+                $email = self::normaliseEmail((string) $user->getAttribute('email'));
                 if ($email !== '') {
                     $q->orWhereIn('id', function ($sub) use ($email): void {
                         $sub->select('workflow_id')
@@ -176,7 +174,7 @@ final class WorkflowService
         $this->assertSameTenant($workflow);
         $this->assertOwnerOrSuperAdmin($workflow, $owner);
 
-        $email = mb_strtolower(trim($email));
+        $email = self::normaliseEmail($email);
         if ($email === '') {
             throw new \InvalidArgumentException('shared_with_email is required.');
         }
@@ -235,7 +233,7 @@ final class WorkflowService
         $this->assertSameTenant($workflow);
         $this->assertOwnerOrSuperAdmin($workflow, $owner);
 
-        $email = mb_strtolower(trim($email));
+        $email = self::normaliseEmail($email);
         if ($email === '') {
             return false;
         }
@@ -307,7 +305,13 @@ final class WorkflowService
             return true;
         }
 
-        $email = mb_strtolower((string) $user->getAttribute('email'));
+        // Copilot iter 4: route through the central normaliser so
+        // list / userCanEdit / share / unshare see the same email
+        // shape (lowercase + trim). The previous shape lower-cased
+        // here but DID NOT trim, which would diverge from list() and
+        // allow a workflow to appear in the list yet be denied an
+        // edit.
+        $email = self::normaliseEmail((string) $user->getAttribute('email'));
         if ($email === '') {
             return false;
         }
@@ -317,6 +321,16 @@ final class WorkflowService
             ->where('shared_with_email', $email)
             ->where('allow_edit', true)
             ->exists();
+    }
+
+    /**
+     * Central email normaliser. Lowercase + trim — mirrors the write
+     * paths (share / unshare) so every read predicate looks up the
+     * same canonical form.
+     */
+    public static function normaliseEmail(string $email): string
+    {
+        return mb_strtolower(trim($email));
     }
 
     private function assertSameTenant(Workflow $workflow): void
