@@ -590,13 +590,44 @@ final class TabularReviewExtractor
         ?CellFlag $flag,
     ): TabularCell {
         $now = Carbon::now();
+
+        // Encode the content explicitly with JSON_THROW_ON_ERROR so a
+        // bad UTF-8 sequence in chunk_text / LLM output cannot silently
+        // persist as `false` (Postgres would then refuse the row with a
+        // JSON-validity error; SQLite would happily store the literal
+        // string "" on `(string) false`). On encode failure we degrade
+        // the cell to a red-flag refusal so the failure is visible.
+        try {
+            $encoded = json_encode(
+                $content,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+            );
+        } catch (\JsonException $e) {
+            Log::warning('TabularReviewExtractor cell content encode failed', [
+                'review_id' => $review->id,
+                'document_id' => $doc->id,
+                'column_index' => $columnIndex,
+                'message' => $e->getMessage(),
+            ]);
+            // Fall back to a minimal, encode-safe red payload.
+            $content = [
+                'summary' => null,
+                'flag' => CellFlag::RED->value,
+                'reasoning' => 'Extracted content failed JSON encoding.',
+                'citations' => [],
+            ];
+            $encoded = json_encode($content, JSON_UNESCAPED_UNICODE);
+            $status = CellStatus::FAILED;
+            $flag = CellFlag::RED;
+        }
+
         TabularCell::query()->upsert(
             [[
                 'tenant_id' => $tenant,
                 'review_id' => $review->id,
                 'document_id' => $doc->id,
                 'column_index' => $columnIndex,
-                'content' => json_encode($content),
+                'content' => $encoded,
                 'status' => $status->value,
                 'flag' => $flag?->value,
                 'generated_at' => $now,

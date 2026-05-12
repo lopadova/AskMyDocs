@@ -63,10 +63,16 @@ final class TabularReviewController extends Controller
 
         $page = $query->paginate($perPage);
 
+        // Mirror Laravel's standard paginator meta shape (current_page,
+        // last_page, per_page, total) so the W3 SPA can reuse the same
+        // pagination helpers already wired for kb/tags, users, roles,
+        // and connectors. Diverging here would force a special-case
+        // adapter in the FE.
         return response()->json([
             'data' => $page->items(),
             'meta' => [
-                'page' => $page->currentPage(),
+                'current_page' => $page->currentPage(),
+                'last_page' => $page->lastPage(),
                 'per_page' => $page->perPage(),
                 'total' => $page->total(),
             ],
@@ -263,7 +269,14 @@ final class TabularReviewController extends Controller
         $documentId = (int) $request->validated()['document_id'];
         $columnIndex = (int) $request->validated()['column_index'];
 
-        $columns = $review->columns_config ?? [];
+        // Normalise to a 0-indexed list so the controller's index check
+        // matches `TabularReviewExtractor::normaliseColumns()`. Without
+        // `array_values`, a `columns_config` with non-sequential keys
+        // (e.g. crafted JSON like `{"5": {...}}`) could accept a value
+        // here that the extractor would never emit, leaving the
+        // response with `data: null` — violates R14 (200 with empty
+        // body).
+        $columns = array_values($review->columns_config ?? []);
         if (! isset($columns[$columnIndex])) {
             throw new \Illuminate\Validation\ValidationException(
                 validator(
