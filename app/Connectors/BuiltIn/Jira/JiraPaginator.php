@@ -102,7 +102,7 @@ final class JiraPaginator
             $response = $fetch($cursor);
             if (! $response instanceof Response) {
                 throw new \RuntimeException(
-                    'JiraPaginator: fetch closure must return an Illuminate Http Response instance.'
+                    'JiraPaginator: fetch closure must return an Illuminate\\Http\\Client\\Response instance.'
                 );
             }
 
@@ -193,13 +193,17 @@ final class JiraPaginator
 
     /**
      * Offset-mode "is this the last page?" detector. The Cloud REST
-     * API exposes three signals depending on the endpoint:
+     * API exposes two reliable signals depending on the endpoint:
      *
      *   - `isLast` (true/false) — preferred
      *   - `total` + `startAt` — second-best
-     *   - neither — assume done when the batch is shorter than the
-     *     requested `maxResults` (the closure's responsibility to set
-     *     this correctly via the URL query; we just observe the result)
+     *
+     * When neither signal is present we conservatively return false
+     * and let the empty-batch check in the outer loop terminate the
+     * walk. The "batch shorter than requested maxResults" heuristic
+     * would require us to know the requested page size — which the
+     * closure owns, not the paginator — so we deliberately don't try
+     * to infer it.
      *
      * @param  array<string,mixed>  $payload
      * @param  list<array<string,mixed>>  $batch
@@ -216,11 +220,10 @@ final class JiraPaginator
             return ($startAt + count($batch)) >= $total;
         }
 
-        // Without a definitive signal: stop when the batch is empty
-        // (handled by the caller) OR shorter than the page size we
-        // would have liked. We can't see the requested page size from
-        // here, so assume the upstream returns full pages until the
-        // very last one — i.e. don't stop early.
+        // Without a definitive signal: the empty-batch check in the
+        // outer walk loop is the only safe stop condition. Return
+        // false so the walker keeps fetching until the upstream
+        // returns an empty `results` array.
         return false;
     }
 }

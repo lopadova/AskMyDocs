@@ -25,9 +25,12 @@ namespace App\Connectors\BuiltIn\Jira;
  *   - inlineCard (rendered as the bare URL)
  *   - hardBreak
  *   - mediaSingle / mediaGroup / media (rendered as `![alt](src)` when
- *     the attrs include an external URL, otherwise dropped — Jira's
- *     internal media references are not URL-resolvable without an
- *     extra signed-URL fetch)
+ *     the attrs include an external URL, otherwise emitted as a stable
+ *     placeholder — `[adf-media: <id>]` when the media has a Jira id,
+ *     `[adf-node: media]` otherwise. The placeholder strategy matches
+ *     the R14 audit-trail intent: internal Jira media references
+ *     aren't URL-resolvable without an extra signed-URL fetch, but
+ *     the operator can still see them in the ingested markdown.)
  *   - table, tableRow, tableHeader, tableCell (rendered as a GitHub-
  *     Flavored Markdown table; nested-block content inside a cell
  *     flattens to a single text line so the table stays renderable)

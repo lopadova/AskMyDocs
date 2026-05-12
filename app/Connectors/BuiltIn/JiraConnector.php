@@ -52,8 +52,11 @@ use Illuminate\Support\Str;
  *   - Full sync — walk every accessible project via
  *     `/rest/api/3/project/search`, then walk every issue per project
  *     via JQL `project = "{key}" ORDER BY updated DESC`. Each issue is
- *     fetched with `expand=renderedFields,changelog,comments` and
- *     `fields=*all,-attachment`.
+ *     fetched with `expand=renderedFields` and `fields=*all,-attachment`.
+ *     (`*all` already returns the comment + description fields; we
+ *     intentionally do NOT request `changelog` — the connector doesn't
+ *     consume changelog data and pulling it inflates payloads on
+ *     high-traffic projects.)
  *   - Incremental sync — workspace-wide JQL
  *     `updated >= "YYYY-MM-DD HH:mm" ORDER BY updated DESC`, paginated.
  *     JQL's date format is Jira-specific (NOT ISO-8601); the connector
@@ -270,7 +273,7 @@ class JiraConnector extends BaseConnector
                 try {
                     foreach ($this->iterateIssuesForProject($accessToken, $cloudId, $jiraProjectKey) as $issue) {
                         try {
-                            $this->ingestIssue($installation, $projectKey, $accessToken, $cloudId, $issue, $project);
+                            $this->ingestIssue($installation, $projectKey, $cloudId, $issue, $project);
                             $added++;
                         } catch (\Throwable $e) {
                             $errors[] = sprintf(
@@ -355,7 +358,7 @@ class JiraConnector extends BaseConnector
         try {
             foreach ($this->iterateIssuesByJql($accessToken, $cloudId, $jql) as $issue) {
                 try {
-                    $this->ingestIssue($installation, $projectKey, $accessToken, $cloudId, $issue, null);
+                    $this->ingestIssue($installation, $projectKey, $cloudId, $issue, null);
                     $updated++;
                 } catch (\Throwable $e) {
                     $errors[] = sprintf('issue %s: %s', $issue['key'] ?? '?', $e->getMessage());
@@ -582,7 +585,6 @@ class JiraConnector extends BaseConnector
     private function ingestIssue(
         \App\Models\ConnectorInstallation $installation,
         string $projectKey,
-        string $accessToken,
         string $cloudId,
         array $issue,
         ?array $project,
@@ -604,9 +606,10 @@ class JiraConnector extends BaseConnector
         $converter = new JiraAdfToMarkdown();
         $descriptionMd = $converter->convert($fields['description'] ?? null);
 
-        // Comments live under `fields.comment.comments` when the issue
-        // was fetched with `expand=renderedFields,changelog` (Jira
-        // returns the comment field by default for `*all`).
+        // Comments live under `fields.comment.comments`. Jira returns
+        // the comment field by default when `fields=*all` is requested
+        // (which the connector's `/search` call always does), so no
+        // additional `expand` flag is needed.
         $commentMd = $this->renderCommentsSection($converter, $fields['comment']['comments'] ?? []);
 
         $markdown = $descriptionMd;
