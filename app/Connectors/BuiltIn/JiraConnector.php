@@ -68,9 +68,9 @@ use Illuminate\Support\Str;
  * is out of scope for v4.5/W6.
  *
  * Required env (config/connectors.php::providers.jira):
- *   - JIRA_OAUTH_CLIENT_ID
- *   - JIRA_OAUTH_CLIENT_SECRET
- *   - JIRA_OAUTH_REDIRECT_URI
+ *   - CONNECTOR_JIRA_CLIENT_ID
+ *   - CONNECTOR_JIRA_CLIENT_SECRET
+ *   - CONNECTOR_JIRA_REDIRECT_URI
  */
 class JiraConnector extends BaseConnector
 {
@@ -400,14 +400,27 @@ class JiraConnector extends BaseConnector
     public function disconnect(int $installationId): void
     {
         // Atlassian DOES expose a revoke endpoint for OAuth 2.0 3LO.
-        // Try it best-effort — a failure must not block the local
-        // disconnect (operators must always be able to disconnect
-        // regardless of upstream availability).
+        // Revoke BOTH access AND refresh tokens (Copilot iter1
+        // finding #1) — revoking only the short-lived access token
+        // would leave the refresh token valid upstream so a
+        // mis-restored credential row could re-authenticate against
+        // the user's workspace. Best-effort: any failure must not
+        // block local cleanup (operators must always be able to
+        // disconnect regardless of upstream availability).
         $access = $this->vault->getAccessToken($installationId);
-        if ($access !== null) {
-            $provider = $this->providerConfig();
-            $revokeUrl = (string) ($provider['oauth_revoke_url'] ?? 'https://auth.atlassian.com/oauth/token/revoke');
+        $refresh = $this->vault->getRefreshToken($installationId);
+        $provider = $this->providerConfig();
+        $revokeUrl = (string) ($provider['oauth_revoke_url'] ?? 'https://auth.atlassian.com/oauth/token/revoke');
 
+        foreach (
+            [
+                ['token' => $access, 'hint' => 'access_token'],
+                ['token' => $refresh, 'hint' => 'refresh_token'],
+            ] as $candidate
+        ) {
+            if ($candidate['token'] === null) {
+                continue;
+            }
             try {
                 Http::asJson()
                     ->acceptJson()
@@ -415,11 +428,13 @@ class JiraConnector extends BaseConnector
                     ->post($revokeUrl, [
                         'client_id' => $provider['client_id'] ?? '',
                         'client_secret' => $provider['client_secret'] ?? '',
-                        'token' => $access,
+                        'token' => $candidate['token'],
+                        'token_type_hint' => $candidate['hint'],
                     ]);
             } catch (\Throwable $e) {
                 Log::warning('JiraConnector::disconnect token revoke failed (continuing with local cleanup)', [
                     'installation_id' => $installationId,
+                    'token_type' => $candidate['hint'],
                     'error' => $e->getMessage(),
                 ]);
             }
@@ -525,13 +540,21 @@ class JiraConnector extends BaseConnector
         $fetch = function (?string $cursor) use ($accessToken, $base, $jql, $maxResults): Response {
             $startAt = is_string($cursor) && $cursor !== '' ? (int) $cursor : 0;
 
+            // Copilot iter1 finding #2: drop `changelog` from
+            // `expand`. The connector doesn't consume changelog
+            // data; pulling it inflates response payloads
+            // significantly (one entry per status transition in
+            // every issue history) and slows syncs against high-
+            // traffic projects. `renderedFields` stays — comments
+            // and description carry the ADF body the chunker
+            // needs.
             return Http::withToken($accessToken)
                 ->acceptJson()
                 ->get($base, [
                     'jql' => $jql,
                     'startAt' => $startAt,
                     'maxResults' => $maxResults,
-                    'expand' => 'renderedFields,changelog',
+                    'expand' => 'renderedFields',
                     'fields' => '*all,-attachment',
                 ]);
         };
@@ -633,7 +656,7 @@ class JiraConnector extends BaseConnector
         $sprint = $this->extractActiveSprint($fields);
         $statusActive = $this->isStatusActive($status);
 
-        $issueUrl = $this->browseUrl($issueProject, $issueKey);
+        $issueUrl = $this->browseUrl($issueProject, $issueKey, $cloudId);
 
         $jiraFields = [
             'project_key'    => $jiraProjectKey,
@@ -884,13 +907,22 @@ class JiraConnector extends BaseConnector
      * Compose the browse URL for the issue. Jira returns the
      * project's `self` URL but no canonical browse URL — we
      * reconstruct it from the cloud's `<site>.atlassian.net` host.
-     * Falls back to the API path when the host is unknown.
+     *
+     * Falls back to the API path
+     * `https://api.atlassian.com/ex/jira/{cloud_id}/browse/{issue_key}`
+     * when the cloud-id-to-host lookup fails (project carries no
+     * `self` URL or parse_url fails). Atlassian's API host redirects
+     * `/browse/{key}` to the canonical workspace URL, so the link
+     * resolves end-to-end even from the fallback path — Copilot iter2
+     * finding #3, option (a). A working-but-pretty URL beats an empty
+     * `source_url` in citation rendering.
      *
      * @param  array<string,mixed>  $project
      */
-    private function browseUrl(array $project, string $issueKey): string
+    private function browseUrl(array $project, string $issueKey, string $cloudId = ''): string
     {
-        // `project.self` is `https://<site>.atlassian.net/rest/api/3/project/<id>`.
+        // Preferred path: `project.self` is
+        // `https://<site>.atlassian.net/rest/api/3/project/<id>`.
         // Strip the path to reach the host root.
         $self = $project['self'] ?? null;
         if (is_string($self) && $self !== '') {
@@ -898,6 +930,16 @@ class JiraConnector extends BaseConnector
             if (is_array($parts) && isset($parts['scheme'], $parts['host'])) {
                 return sprintf('%s://%s/browse/%s', $parts['scheme'], $parts['host'], $issueKey);
             }
+        }
+
+        // Fallback: API path. Atlassian redirects this to the
+        // canonical workspace URL when followed in a browser.
+        if ($cloudId !== '' && $issueKey !== '') {
+            return sprintf(
+                'https://api.atlassian.com/ex/jira/%s/browse/%s',
+                $cloudId,
+                $issueKey,
+            );
         }
 
         return '';

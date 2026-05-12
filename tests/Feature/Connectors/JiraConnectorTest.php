@@ -507,6 +507,47 @@ final class JiraConnectorTest extends TestCase
         ]);
     }
 
+    public function test_disconnect_revokes_both_access_and_refresh_tokens(): void
+    {
+        // Copilot iter1 finding #1 — revoking only the short-lived
+        // access token leaves the refresh token valid upstream. The
+        // connector must revoke BOTH, with `token_type_hint` set so
+        // Atlassian's revoke endpoint doesn't have to guess.
+        $installation = $this->makeInstallation();
+        $this->seedActiveCredential(
+            $installation->id,
+            access: 'AT-real',
+            refresh: 'RT-real',
+        );
+
+        Http::fake([
+            'auth.atlassian.com/oauth/token/revoke' => Http::response([], 200),
+        ]);
+
+        $this->connector()->disconnect($installation->id);
+
+        $accessRevoked = false;
+        $refreshRevoked = false;
+        Http::assertSent(function ($req) use (&$accessRevoked, &$refreshRevoked) {
+            if (! str_contains((string) $req->url(), 'auth.atlassian.com/oauth/token/revoke')) {
+                return false;
+            }
+            $data = $req->data();
+            $token = $data['token'] ?? null;
+            $hint = $data['token_type_hint'] ?? null;
+            if ($token === 'AT-real' && $hint === 'access_token') {
+                $accessRevoked = true;
+            }
+            if ($token === 'RT-real' && $hint === 'refresh_token') {
+                $refreshRevoked = true;
+            }
+
+            return true;
+        });
+        $this->assertTrue($accessRevoked, 'Access token must be revoked.');
+        $this->assertTrue($refreshRevoked, 'Refresh token must be revoked.');
+    }
+
     public function test_disconnect_clears_local_creds_even_when_revoke_fails(): void
     {
         $installation = $this->makeInstallation();

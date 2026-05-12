@@ -125,9 +125,14 @@ final class JiraPaginator
             $batch = $this->extractBatch($payload);
 
             // Auto-detect mode on first response. `nextPageToken` is
-            // the modern shape; anything else falls back to offset.
+            // the modern shape; we only commit to token-mode when the
+            // value is a non-empty string (Copilot iter1 finding #4 —
+            // a present-but-null `nextPageToken` would otherwise
+            // terminate the walk prematurely even when more pages
+            // remain via offset signals).
             if ($mode === null) {
-                $mode = array_key_exists('nextPageToken', $payload)
+                $tokenCandidate = $payload['nextPageToken'] ?? null;
+                $mode = (is_string($tokenCandidate) && $tokenCandidate !== '')
                     ? self::MODE_TOKEN
                     : self::MODE_OFFSET;
             }

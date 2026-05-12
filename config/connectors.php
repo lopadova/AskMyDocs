@@ -239,25 +239,29 @@ return [
             // ConfluenceConnector + one JiraConnector row) against
             // the same `cloud_id`; the connector keys are distinct so
             // installation rows don't collide.
-            'client_id' => env('JIRA_OAUTH_CLIENT_ID'),
-            'client_secret' => env('JIRA_OAUTH_CLIENT_SECRET'),
+            //
+            // Env vars follow the project-wide `CONNECTOR_<PROVIDER>_*`
+            // convention so all seven connectors share one discovery
+            // shape (Copilot iter1 finding #5).
+            'client_id' => env('CONNECTOR_JIRA_CLIENT_ID'),
+            'client_secret' => env('CONNECTOR_JIRA_CLIENT_SECRET'),
             'redirect_uri' => env(
-                'JIRA_OAUTH_REDIRECT_URI',
+                'CONNECTOR_JIRA_REDIRECT_URI',
                 env('APP_URL', 'http://localhost').'/api/admin/connectors/jira/oauth/callback'
             ),
-            'oauth_authorize_url' => env('JIRA_OAUTH_AUTHORIZE', 'https://auth.atlassian.com/authorize'),
-            'oauth_token_url' => env('JIRA_OAUTH_TOKEN', 'https://auth.atlassian.com/oauth/token'),
+            'oauth_authorize_url' => env('CONNECTOR_JIRA_OAUTH_AUTHORIZE_URL', 'https://auth.atlassian.com/authorize'),
+            'oauth_token_url' => env('CONNECTOR_JIRA_OAUTH_TOKEN_URL', 'https://auth.atlassian.com/oauth/token'),
             // Atlassian DOES expose a programmatic revoke endpoint
             // for OAuth 2.0 3LO; `disconnect()` calls it best-effort.
-            'oauth_revoke_url' => env('JIRA_OAUTH_REVOKE', 'https://auth.atlassian.com/oauth/token/revoke'),
+            'oauth_revoke_url' => env('CONNECTOR_JIRA_OAUTH_REVOKE_URL', 'https://auth.atlassian.com/oauth/token/revoke'),
             'accessible_resources_url' => env(
-                'JIRA_ACCESSIBLE_RESOURCES',
+                'CONNECTOR_JIRA_ACCESSIBLE_RESOURCES_URL',
                 'https://api.atlassian.com/oauth/token/accessible-resources',
             ),
             // API base template with `{cloud_id}` placeholder. The
             // connector substitutes it at call time.
             'api_base_template' => env(
-                'JIRA_API_BASE_TEMPLATE',
+                'CONNECTOR_JIRA_API_BASE_TEMPLATE',
                 'https://api.atlassian.com/ex/jira/{cloud_id}/rest/api/3',
             ),
         ],

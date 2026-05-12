@@ -8,9 +8,7 @@ use App\Connectors\BuiltIn\Jira\JiraPaginator;
 use App\Connectors\Exceptions\ConnectorApiException;
 use App\Connectors\Exceptions\ConnectorAuthException;
 use App\Connectors\Exceptions\ConnectorPaginationLimitException;
-use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
-use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -25,7 +23,6 @@ final class JiraPaginatorTest extends TestCase
         // Build a real Http\Client\Response without going through any
         // fake middleware so each closure invocation produces one
         // independent Response object.
-        $factory = new HttpFactory();
         $psr = new \GuzzleHttp\Psr7\Response(
             $status,
             ['Content-Type' => 'application/json'],
@@ -189,6 +186,28 @@ final class JiraPaginatorTest extends TestCase
     }
 
     #[Test]
+    public function auto_mode_falls_back_to_offset_when_next_page_token_is_present_but_null(): void
+    {
+        // Copilot iter1 finding #4 — when the first payload carries
+        // `nextPageToken: null` (a key present but with null value),
+        // auto-mode must NOT commit to token-mode; otherwise the
+        // walk terminates after the first page even when offset
+        // pagination still has more results.
+        $batches = [
+            ['issues' => [['id' => 'A']], 'nextPageToken' => null, 'startAt' => 0, 'maxResults' => 1, 'total' => 2, 'isLast' => false],
+            ['issues' => [['id' => 'B']], 'nextPageToken' => null, 'startAt' => 1, 'maxResults' => 1, 'total' => 2, 'isLast' => true],
+        ];
+        $paginator = new JiraPaginator(resultsKey: 'issues', mode: JiraPaginator::MODE_AUTO);
+        $fetch = function (?string $cursor) use (&$batches) {
+            return $this->makeResponse(array_shift($batches));
+        };
+
+        $rows = $paginator->walk($fetch);
+        $this->assertCount(2, $rows, 'Walker must continue past null nextPageToken via offset mode.');
+        $this->assertSame(['A', 'B'], array_column($rows, 'id'));
+    }
+
+    #[Test]
     public function forced_offset_mode_ignores_next_page_token(): void
     {
         // If a response carries both `nextPageToken` AND `isLast=true`,
@@ -229,5 +248,68 @@ final class JiraPaginatorTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $paginator->walk($fetch);
+    }
+
+    /**
+     * Copilot iter2 finding #4 — a first response that carries
+     * `nextPageToken => null` MUST NOT lock the walker into token-mode.
+     * Token-mode auto-detect commits only on a non-null, non-empty
+     * string. With `nextPageToken => null` AND `isLast => false`, the
+     * walker falls back to offset-mode via `startAt` + `total`.
+     */
+    #[Test]
+    public function auto_detect_skips_token_mode_when_next_page_token_is_null_on_first_response(): void
+    {
+        $batches = [
+            // First response: nextPageToken present but null AND
+            // isLast=false. Walker must NOT treat this as token-mode;
+            // it should fall back to offset via startAt+total.
+            ['issues' => [['id' => 'A'], ['id' => 'B']], 'nextPageToken' => null, 'startAt' => 0, 'maxResults' => 2, 'total' => 3, 'isLast' => false],
+            ['issues' => [['id' => 'C']],               'nextPageToken' => null, 'startAt' => 2, 'maxResults' => 2, 'total' => 3, 'isLast' => true],
+        ];
+        $calls = [];
+
+        $paginator = new JiraPaginator(resultsKey: 'issues', mode: JiraPaginator::MODE_AUTO);
+        $fetch = function (?string $cursor) use (&$calls, &$batches) {
+            $calls[] = $cursor;
+
+            return $this->makeResponse(array_shift($batches));
+        };
+
+        $rows = $paginator->walk($fetch);
+
+        $this->assertCount(3, $rows);
+        $this->assertSame(['A', 'B', 'C'], array_column($rows, 'id'));
+        // Walker advanced via startAt (offset-mode), not via token.
+        $this->assertSame([null, '2'], $calls);
+    }
+
+    /**
+     * Companion to the above — a sequence where `nextPageToken` is
+     * always null but `isLast` flips on the last page must walk to
+     * completion via offset signals, not stop after the first page.
+     */
+    #[Test]
+    public function always_null_next_page_token_walks_via_start_at_until_is_last(): void
+    {
+        $batches = [
+            ['issues' => [['id' => 'A']], 'nextPageToken' => null, 'startAt' => 0, 'maxResults' => 1, 'total' => 3, 'isLast' => false],
+            ['issues' => [['id' => 'B']], 'nextPageToken' => null, 'startAt' => 1, 'maxResults' => 1, 'total' => 3, 'isLast' => false],
+            ['issues' => [['id' => 'C']], 'nextPageToken' => null, 'startAt' => 2, 'maxResults' => 1, 'total' => 3, 'isLast' => true],
+        ];
+        $calls = [];
+
+        $paginator = new JiraPaginator(resultsKey: 'issues', mode: JiraPaginator::MODE_AUTO);
+        $fetch = function (?string $cursor) use (&$calls, &$batches) {
+            $calls[] = $cursor;
+
+            return $this->makeResponse(array_shift($batches));
+        };
+
+        $rows = $paginator->walk($fetch);
+
+        $this->assertCount(3, $rows);
+        $this->assertSame(['A', 'B', 'C'], array_column($rows, 'id'));
+        $this->assertSame([null, '1', '2'], $calls);
     }
 }

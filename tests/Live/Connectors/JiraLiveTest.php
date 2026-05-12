@@ -99,8 +99,12 @@ final class JiraLiveTest extends LiveConnectorTestCase
     public function incremental_jql_with_updated_date_returns_results(): void
     {
         // JQL's date format is Jira-specific ("YYYY-MM-DD HH:mm") —
-        // ISO-8601 with `Z` is rejected by the search endpoint.
-        $since = date('Y-m-d H:i', strtotime('-30 days'));
+        // ISO-8601 with `Z` is rejected by the search endpoint. Use
+        // `gmdate()` so the timestamp is UTC regardless of the
+        // operator's local timezone (Copilot iter1 finding #6 —
+        // `date()` would otherwise format in the server's local
+        // timezone and false-negative for operators outside UTC).
+        $since = gmdate('Y-m-d H:i', strtotime('-30 days'));
         $response = Http::withToken($this->token())
             ->withHeaders(['Accept' => 'application/json'])
             ->timeout(10)
