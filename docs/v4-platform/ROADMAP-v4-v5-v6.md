@@ -76,12 +76,15 @@ Bonus: `padosoft/askmydocs-connector-template` repo (already created) — scaffo
 - [x] Each package's README includes step-by-step credential setup + installation + activation.
 - [x] Community contributor path documented in ADR 0009 — third-party Laravel apps can `composer require padosoft/askmydocs-connector-<x>` + bind a `ConnectorIngestionContract` implementation to ingest the source.
 
-## v4.7 — "Tabular Review + Workflows + AI-suggest" (~3 weeks)
+## v4.7 — "Tabular Review + Workflows + AI-suggest" ✅ SHIPPED 2026-05-12
 
-**Branch:** `feature/v4.7` cut from main after v4.6.0
-**GA target:** ~2026-07-10
+**Branch:** `feature/v4.7` (merged to main as v4.7.0 GA on 2026-05-12)
+**Original GA target:** ~2026-07-10 — shipped ~2 months ahead of plan.
 
 LOCKED-IN 2026-05-12 — Lorenzo "per tabella batte mike ok procedi".
+GA closure also dated 2026-05-12.
+
+**Status row in README roadmap table is** ✅ shipped 2026-05-12.
 
 Inspired by github.com/willchen96/mike — adopts the two killer features absent from competitors (Tabular Review + Workflows), adds the AI-suggest layer Mike doesn't have, ships **16 format types vs Mike's 9 + 12 UX differentiators MoSCoW-prioritised + Glide Data Grid (MIT, canvas-based)**.
 

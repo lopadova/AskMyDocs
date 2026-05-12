@@ -24,6 +24,8 @@ import { FlowsView } from '../features/admin/flows/FlowsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
+import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -435,6 +437,40 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
+// v4.7/W3 — Tabular Reviews + Workflows admin SPA routes. Same
+// flat-RBAC pattern as adminConnectorsRoute / adminKbRoute: the
+// RequireRole gate lives inside the component so a viewer hitting the
+// URL directly sees <AdminForbidden /> instead of a crash. Visibility
+// of writes is enforced separately by the BE gates
+// `viewTabularReviews` / `viewWorkflows`.
+function AdminTabularReviewsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <TabularReviewsList />
+        </RequireRole>
+    );
+}
+
+function AdminWorkflowsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <WorkflowsList />
+        </RequireRole>
+    );
+}
+
+const adminTabularReviewsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/tabular-reviews',
+    component: AdminTabularReviewsRoute,
+});
+
+const adminWorkflowsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/workflows',
+    component: AdminWorkflowsRoute,
+});
+
 const adminConnectorCallbackRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/connectors/$key/callback',
@@ -483,6 +519,8 @@ const routeTree = rootRoute.addChildren([
         adminEvalHarnessSplatRoute,
         adminConnectorsRoute,
         adminConnectorCallbackRoute,
+        adminTabularReviewsRoute,
+        adminWorkflowsRoute,
     ]),
 ]);
 

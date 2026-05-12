@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
+use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -498,6 +499,12 @@ Route::middleware([
         Route::post('/{id}/generate', [TabularReviewController::class, 'generate'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.generate');
+        // v4.7/W3 — SSE streaming variant. Same Gate, same tenant
+        // scoping; emits `cell` events as the extractor produces them
+        // so the Glide-style grid in the FE can paint progressively.
+        Route::post('/{id}/generate-stream', [TabularReviewStreamController::class, 'stream'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.generate-stream');
         Route::post('/{id}/regenerate-cell', [TabularReviewController::class, 'regenerateCell'])
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.regenerate-cell');

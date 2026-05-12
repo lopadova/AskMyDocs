@@ -51,7 +51,7 @@ use Illuminate\Support\Facades\Log;
  * R23: format dispatch lives in the FormatType enum — single source of
  * truth, no overlapping `supports()` predicate to worry about.
  */
-final class TabularReviewExtractor
+class TabularReviewExtractor
 {
     private const TOP_K_CHUNKS = 8;
     private const MIN_SIMILARITY = 0.30;
