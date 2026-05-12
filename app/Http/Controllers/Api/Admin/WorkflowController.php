@@ -127,10 +127,31 @@ final class WorkflowController extends Controller
      */
     public function show(Request $request, int $id): JsonResponse
     {
-        $workflow = $this->findOr404($id, $request->user());
-        $workflow->load('shares');
+        $user = $request->user();
+        $workflow = $this->findOr404($id, $user);
 
-        return response()->json(['data' => (new WorkflowResource($workflow))->resolve()]);
+        // Copilot iter 9: ONLY load `shares` when the caller owns the
+        // workflow or is super-admin. Eager-loading shares for every
+        // viewer (a share recipient calls /show) leaks the full
+        // recipient email list across the team. Non-owners get a
+        // `shares_count` instead — enough for UI affordances ("This
+        // workflow is shared with N people") without disclosing
+        // identities.
+        $isOwner = $user !== null && (int) $workflow->user_id === (int) $user->id;
+        $isSuperAdmin = $user !== null && method_exists($user, 'hasRole') && $user->hasRole('super-admin');
+
+        if ($isOwner || $isSuperAdmin) {
+            $workflow->load('shares');
+            return response()->json(['data' => (new WorkflowResource($workflow))->resolve()]);
+        }
+
+        $payload = (new WorkflowResource($workflow))->resolve();
+        $payload['shares_count'] = $workflow->shares()->count();
+        // Force the `shares` field to an empty array so the FE shape
+        // never includes recipient emails for non-owners.
+        $payload['shares'] = [];
+
+        return response()->json(['data' => $payload]);
     }
 
     /**

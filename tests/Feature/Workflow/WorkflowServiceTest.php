@@ -12,6 +12,7 @@ use App\Services\Workflow\WorkflowService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -31,6 +32,10 @@ final class WorkflowServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Copilot iter 9: flush the cache before seeding so Spatie's
+        // permission cache from a previous RefreshDatabase rollback
+        // does not survive into this suite under Testbench.
+        Cache::flush();
         $this->seed(RbacSeeder::class);
     }
 

@@ -86,6 +86,18 @@ final class WorkflowSuggester
         $tenant = $this->ctx->current();
         $limit = max(1, min(10, $limit));
 
+        // Copilot iter 9: the cache key is intentionally tenant-scoped
+        // (not user-scoped) so suggestions are shared across every
+        // user in the tenant — same KB, same proposals, ONE LLM call
+        // per 24h. `$user` is kept on the signature for two reasons:
+        // (a) audit trails / future per-user filtering can be added
+        // without a breaking change to call sites; (b) the controller
+        // already type-hints the User so dropping the param would
+        // force ugly casts in every consumer. The unused-local
+        // pattern matches `AdminMetricsService::overview()` and is
+        // accepted by Pint + static analysis.
+        unset($user);
+
         $cacheKey = sprintf('workflow_suggester:%s:%d', $tenant, $limit);
 
         if (! $forceRefresh) {
