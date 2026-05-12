@@ -5,6 +5,7 @@ import {
     Outlet,
     redirect,
     useNavigate,
+    useParams,
     useSearch,
 } from '@tanstack/react-router';
 import { z } from 'zod';
@@ -21,6 +22,8 @@ import { InsightsView } from '../features/admin/insights/InsightsView';
 import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
 import { FlowsView } from '../features/admin/flows/FlowsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
+import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
+import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -400,6 +403,44 @@ const adminEvalHarnessRoute = createRoute({
     component: AdminEvalHarnessRoute,
 });
 
+// v4.5/W3 — Connector admin routes. Two routes:
+//   /app/admin/connectors                       → list view
+//   /app/admin/connectors/$key/callback         → OAuth callback handler
+//
+// Same flat-RBAC pattern: the BE Gate `manageConnectors` is the
+// authoritative defence (super-admin only); the FE <RequireRole>
+// guard short-circuits to <AdminForbidden /> for unprivileged roles so
+// a viewer hitting /app/admin/connectors directly never sees a 403
+// fetch storm.
+function AdminConnectorsRoute() {
+    return (
+        <RequireRole roles={['super-admin']}>
+            <ConnectorsView />
+        </RequireRole>
+    );
+}
+
+function AdminConnectorCallbackRoute() {
+    const params = useParams({ strict: false }) as { key?: string };
+    return (
+        <RequireRole roles={['super-admin']}>
+            <ConnectorCallback connectorKey={params.key ?? ''} />
+        </RequireRole>
+    );
+}
+
+const adminConnectorsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/connectors',
+    component: AdminConnectorsRoute,
+});
+
+const adminConnectorCallbackRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/connectors/$key/callback',
+    component: AdminConnectorCallbackRoute,
+});
+
 // Splat sibling route: handles direct hits on every BrowserRouter
 // sub-path (/app/admin/eval-harness/reports, /reports/<id>, /compare,
 // /trend, /adversarial, /adversarial/<name>, /live-batches). Without
@@ -440,6 +481,8 @@ const routeTree = rootRoute.addChildren([
         adminFlowsRoute,
         adminEvalHarnessRoute,
         adminEvalHarnessSplatRoute,
+        adminConnectorsRoute,
+        adminConnectorCallbackRoute,
     ]),
 ]);
 

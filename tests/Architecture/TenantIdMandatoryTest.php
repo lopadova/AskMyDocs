@@ -56,6 +56,9 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandNonce::class,
         \App\Models\AdminInsightsSnapshot::class,
         \App\Models\ChatFilterPreset::class,
+        // v4.5/W1 — connector framework
+        \App\Models\ConnectorInstallation::class,
+        \App\Models\ConnectorCredential::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

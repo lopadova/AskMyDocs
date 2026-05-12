@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
+use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
@@ -359,6 +361,55 @@ Route::middleware([
     ->group(function () {
         Route::get('/strategy', [PiiStrategyController::class, 'show'])
             ->name('api.admin.pii.strategy');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Connector framework (gate-protected, super-admin)
+|--------------------------------------------------------------------------
+|
+| v4.5/W1 — Mounts the connector admin surface. The `manageConnectors`
+| Gate (registered in `AppServiceProvider::registerConnectorGates()`)
+| restricts every action to super-admin only. Cross-tenant isolation
+| is enforced inside the controller via `TenantContext::current()`.
+|
+| The OAuth callback endpoint is mounted under the SAME group so
+| Sanctum's session + the active tenant scope are available when the
+| provider redirects back. Operators MUST initiate the install flow
+| from the admin UI; bare callbacks without a valid `pending` row in
+| the active tenant 404.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:manageConnectors',
+])
+    ->prefix('admin/connectors')
+    ->group(function () {
+        Route::get('/', [ConnectorAdminController::class, 'index'])
+            ->name('api.admin.connectors.index');
+        Route::get('/{name}/install', [ConnectorAdminController::class, 'startInstall'])
+            ->name('api.admin.connectors.install');
+        Route::get('/{name}/oauth/callback', [ConnectorAdminController::class, 'oauthCallback'])
+            ->name('api.admin.connectors.oauth.callback');
+        Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.sync-now');
+        Route::post('/{installationId}/disable', [ConnectorAdminController::class, 'disable'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.disable');
+        Route::delete('/{installationId}', [ConnectorAdminController::class, 'destroy'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.destroy');
+
+        // v4.5/W4 — Evernote-specific bulk import endpoint (.enex
+        // export upload). Lives inside the same gate group as the
+        // OAuth-driven endpoints so the `can:manageConnectors` ability
+        // applies uniformly.
+        Route::post('/evernote/import-enex', [EvernoteEnexController::class, 'importEnex'])
+            ->name('api.admin.connectors.evernote.import-enex');
     });
 
 /*

@@ -1,5 +1,28 @@
 # Sister packages integration roadmap
 
+> **Connector framework preamble (v4.5/W1)**
+>
+> v4.5 introduces a NEW integration shape on top of the sister-package
+> pattern: **external-source connectors**. The framework
+> (`app/Connectors/*`) lets connectors ship EITHER as built-in classes
+> registered in `config/connectors.php::built_in` OR as separate
+> Laravel packages declaring their FQCNs under
+> `composer.json::extra.askmydocs.connectors`. The `ConnectorRegistry`
+> auto-discovers both at boot and validates every FQCN implements
+> `App\Connectors\ConnectorInterface` (R23 — fail-loud at boot).
+>
+> Why this matters for the integration roadmap: future
+> `padosoft/askmydocs-connector-*` packages (`google-drive`, `notion`,
+> `evernote`, `fabric`, `onedrive`, `confluence`, `jira`) DO NOT
+> require a host-app integration sub-PR. The host just installs the
+> composer package; auto-discovery handles the rest. This is
+> intentionally different from the iframe / cross-mount pattern of
+> v4.1-v4.4 sister packages.
+>
+> See `docs/connectors/README.md` for the developer guide.
+
+---
+
 > **Honest status as of v4.4 RC / GA prep (2026-05-11)**
 >
 > v4.4 introduces NO new sister-package integrations or version bumps on

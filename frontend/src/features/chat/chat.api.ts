@@ -200,7 +200,106 @@ export const chatApi = {
         );
         return data;
     },
+
+    /**
+     * v4.5/W7 Tier 1 — fork the conversation at the given message id.
+     * The new conversation contains every message up to AND INCLUDING
+     * the named one. Returns the fresh conversation row so the FE can
+     * navigate to it immediately. The copied message ids are also
+     * returned in case the caller wants to highlight them.
+     */
+    async branchFromMessage(
+        conversationId: number,
+        messageId: number,
+    ): Promise<{ conversation: Conversation; copied_message_ids: number[] }> {
+        const { data } = await api.post<{
+            conversation: Conversation;
+            copied_message_ids: number[];
+        }>(`/conversations/${conversationId}/branch-from-message/${messageId}`);
+        return data;
+    },
+
+    /**
+     * v4.5/W7 Tier 1 #4 — inline user-message edit: delete the message
+     * being edited AND all subsequent messages from the DB so the BE
+     * history window re-runs from the edit point when `sendMessage()`
+     * fires next. Returns the count of deleted rows for diagnostics.
+     *
+     * R20: the BE is authoritative for conversation history; client-only
+     * cache truncation via `chat.setMessages()` is NOT sufficient because
+     * `MessageStreamController` / `MessageController` load history from
+     * `$conversation->messages()`, not from the client-sent payload.
+     */
+    async truncateMessagesFrom(
+        conversationId: number,
+        messageId: number,
+    ): Promise<{ deleted_count: number }> {
+        const { data } = await api.delete<{ deleted_count: number }>(
+            `/conversations/${conversationId}/messages-from/${messageId}`,
+        );
+        return data;
+    },
+
+    /**
+     * v4.5/W7 Tier 2 — 3 follow-up question suggestions for the most
+     * recent assistant turn. Best-effort — the BE returns
+     * `{suggestions: []}` on any provider failure so the FE pill bar
+     * simply doesn't render.
+     */
+    async suggestedFollowups(conversationId: number): Promise<string[]> {
+        const { data } = await api.post<{ suggestions: string[] }>(
+            `/conversations/${conversationId}/suggested-followups`,
+        );
+        return Array.isArray(data?.suggestions) ? data.suggestions : [];
+    },
 };
+
+/**
+ * v4.5/W7 Tier 1 — cost-rate lookup table. Fetched once per session
+ * via TanStack Query and consumed by the token/cost meter on every
+ * assistant bubble. Shape mirrors `config/ai.php::cost_rates`.
+ */
+export interface CostRate {
+    input: number;
+    output: number;
+}
+
+export type CostRateTable = Record<string, Record<string, CostRate>>;
+
+export const chatCostApi = {
+    async fetchRates(): Promise<CostRateTable> {
+        const { data } = await api.get<{ rates: CostRateTable }>('/api/chat/cost-rates');
+        return data?.rates ?? {};
+    },
+};
+
+/**
+ * Compute the per-turn USD cost from the persisted token counts +
+ * the rate table. Returns `null` when the provider/model has no rate
+ * (or the tokens are missing) so the FE can render `—` instead of `$0`.
+ */
+export function computeMessageCost(
+    rates: CostRateTable,
+    provider: string | undefined,
+    model: string | undefined,
+    promptTokens: number | undefined,
+    completionTokens: number | undefined,
+): number | null {
+    if (!provider || !model) {
+        return null;
+    }
+    const providerRates = rates[provider];
+    if (!providerRates) {
+        return null;
+    }
+    const rate = providerRates[model] ?? providerRates.default;
+    if (!rate) {
+        return null;
+    }
+    const inputCost = ((promptTokens ?? 0) / 1_000_000) * rate.input;
+    const outputCost = ((completionTokens ?? 0) / 1_000_000) * rate.output;
+    return inputCost + outputCost;
+}
 
 /**
  * T2.9-FE — saved filter presets CRUD.

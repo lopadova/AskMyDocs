@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Confluence">
+  <title>Confluence</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <defs>
+    <linearGradient id="conflTop" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0052cc"/>
+      <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    <linearGradient id="conflBot" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2684ff"/>
+      <stop offset="100%" stop-color="#0052cc"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(8, 14)">
+    <path d="M2 30 C8 20 16 14 24 16 C32 18 40 26 46 30 L46 36 C40 32 32 26 24 24 C16 22 8 26 2 36 Z"
+          fill="url(#conflBot)"/>
+    <path d="M2 6 C8 16 16 22 24 20 C32 18 40 10 46 6 L46 0 C40 4 32 10 24 12 C16 14 8 10 2 0 Z"
+          fill="url(#conflTop)"/>
+  </g>
+</svg>

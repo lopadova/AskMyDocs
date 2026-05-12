@@ -8,16 +8,24 @@ export interface MessageActionsProps {
 }
 
 /**
- * Inline action row for assistant messages: copy, regenerate, branch.
- * Regenerate + branch are hooks the host wires up; they become
- * full-feature in later phases (PR9 adds branching UI).
+ * Inline action row for messages: copy, regenerate (assistant only),
+ * branch (assistant only).
+ *
+ * v4.5/W7 Tier 1: regenerate + branch are wired through MessageBubble.
+ * User-message editing is handled directly in MessageBubble (the edit
+ * button lives on the bubble itself, not in this shared actions row).
  */
 export function MessageActions({ content, onRegenerate, onBranch }: MessageActionsProps): ReactNode {
     const [copied, setCopied] = useState(false);
 
     const onCopy = async () => {
+        // Guard: if the Clipboard API is unavailable, `navigator.clipboard?.writeText`
+        // resolves to `undefined` (no throw) — never set copied=true in that case.
+        if (!navigator.clipboard?.writeText) {
+            return;
+        }
         try {
-            await navigator.clipboard?.writeText(content);
+            await navigator.clipboard.writeText(content);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
         } catch {

@@ -67,16 +67,67 @@ return [
     | and the Reranker fuses vector similarity with keyword/heading relevance
     | before returning the final top-K results.
     |
-    | Weights must sum to 1.0. Adjust to tune precision vs. recall trade-off.
+    | Score composition (intentional, NOT a single normalised sum):
+    |
+    |   base_score   = vector_weight × cos_sim                  // 0..1
+    |                + keyword_weight × kw_score                // 0..1
+    |                + heading_weight × heading_score           // 0..1
+    |                + canonical_base × canonical_signal        // 0..1
+    |
+    |   The four base signals are WEIGHTED to sum to 1.0 with the
+    |   shipped defaults (0.55 + 0.25 + 0.05 + 0.15 implicit on the
+    |   canonical_base of (1 - vec - kw - heading)). That sub-score is
+    |   normalised and represents the comparative dimension.
+    |
+    |   additive_layer
+    |                = tag_overlap_weight        × tag_overlap     // 0..1
+    |                + preamble_match_weight     × preamble_match  // 0..1
+    |                + recency_weight            × recency         // 0..1
+    |                + status_active_weight      × status_active   // 0/1
+    |                + canonical_priority_boost (~0..0.30)
+    |                - canonical_status_penalty (~0..0.60)
+    |
+    |   rerank_score = base_score + additive_layer
+    |
+    | The additive Layer-4 signals are NOT part of the normalised
+    | sub-score — they are intentionally additive boosters / penalties
+    | on top of it. With shipped defaults their MAX positive
+    | contribution is 0.14 (= 0.05 + 0.05 + 0.02 + 0.02) and the
+    | canonical priority boost adds up to another ~0.30, so
+    | `rerank_score` CAN exceed 1.0 — the pathological ceiling is
+    | ~1.44 when every signal fires at max. This is by design: the
+    | additive layer is a separate dimension that says "this chunk
+    | gets a thumb on the scale", not "this chunk's normalised score
+    | is higher". Sorting still works (relative order is preserved)
+    | and downstream consumers MUST treat `rerank_score` as
+    | comparable-within-result-set, not as a probability.
+    |
+    | Tune via env at deploy time when shipping a regression-tested
+    | weight refresh.
     |
     */
 
     'reranking' => [
         'enabled' => env('KB_RERANKING_ENABLED', true),
         'candidate_multiplier' => env('KB_RERANK_CANDIDATE_MULTIPLIER', 3),
-        'vector_weight' => env('KB_RERANK_VECTOR_WEIGHT', 0.60),
-        'keyword_weight' => env('KB_RERANK_KEYWORD_WEIGHT', 0.30),
-        'heading_weight' => env('KB_RERANK_HEADING_WEIGHT', 0.10),
+
+        // Base 4 signals — these (plus the implicit canonical_base
+        // remainder) are the normalised sub-score that sums to 1.0.
+        'vector_weight' => env('KB_RERANK_VECTOR_WEIGHT', 0.55),
+        'keyword_weight' => env('KB_RERANK_KEYWORD_WEIGHT', 0.25),
+        'heading_weight' => env('KB_RERANK_HEADING_WEIGHT', 0.05),
+
+        // v4.5/W5.5 source-aware retrieval-boost signals. ADDITIVE on
+        // top of the normalised base score (NOT part of the 1.0 sum).
+        // Their max combined contribution is 0.14 with shipped
+        // defaults; combined with the canonical priority boost
+        // (~0..0.30, see `canonical.priority_weight` below) the
+        // pathological ceiling for `rerank_score` is ~1.44. Honest
+        // documentation: scores above 1.0 are expected and intentional.
+        'tag_overlap_weight'    => (float) env('KB_RERANK_TAG_OVERLAP_WEIGHT', 0.05),
+        'preamble_match_weight' => (float) env('KB_RERANK_PREAMBLE_WEIGHT', 0.05),
+        'recency_weight'        => (float) env('KB_RERANK_RECENCY_WEIGHT', 0.02),
+        'status_active_weight'  => (float) env('KB_RERANK_STATUS_WEIGHT', 0.02),
     ],
 
     'chunking' => [

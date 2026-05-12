@@ -35,6 +35,19 @@ enum SourceType: string
     case TEXT = 'text';
     case PDF = 'pdf';
     case DOCX = 'docx';
+    // v4.5/W5.5 — source-aware connector tokens. Aligned with
+    // `config/kb-pipeline.php::mime_to_source_type` so log lines,
+    // admin filters, and `knowledge_documents.source_type` rows all
+    // agree on the wire string.
+    case NOTION = 'notion';
+    case NOTION_NOTE = 'notion_note';
+    case CONFLUENCE = 'confluence';
+    case EVERNOTE = 'evernote';
+    case FABRIC = 'fabric';
+    case DRIVE_GDOC = 'drive_gdoc';
+    case DRIVE_GSHEET = 'drive_gsheet';
+    case DRIVE_GSLIDE = 'drive_gslide';
+    case ONEDRIVE_OFFICE = 'onedrive_office';
     case UNKNOWN = 'unknown';
 
     /**
@@ -58,6 +71,16 @@ enum SourceType: string
             'text/plain' => self::TEXT,
             'application/pdf' => self::PDF,
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => self::DOCX,
+            // v4.5/W5.5 vendor MIMEs.
+            'application/vnd.notion.page+json' => self::NOTION,
+            'application/vnd.notion.note+json' => self::NOTION_NOTE,
+            'application/vnd.confluence.page+json' => self::CONFLUENCE,
+            'application/vnd.evernote.note+xml' => self::EVERNOTE,
+            'application/vnd.fabric.note+json' => self::FABRIC,
+            'application/vnd.google-apps.document' => self::DRIVE_GDOC,
+            'application/vnd.google-apps.spreadsheet' => self::DRIVE_GSHEET,
+            'application/vnd.google-apps.presentation' => self::DRIVE_GSLIDE,
+            'application/vnd.onedrive.office+json' => self::ONEDRIVE_OFFICE,
             default => self::UNKNOWN,
         };
     }

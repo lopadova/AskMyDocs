@@ -61,7 +61,9 @@ final class PipelineRegistryTest extends TestCase
         $this->assertContains('text-passthrough', $names);
         $this->assertContains('pdf-converter', $names);
         $this->assertContains('docx-converter', $names);
-        $this->assertCount(4, $names);
+        // v4.5/W5.5 — vendor markdown passthrough for the six connectors.
+        $this->assertContains('vendor-markdown-passthrough', $names);
+        $this->assertCount(5, $names);
     }
 
     public function test_lists_all_registered_chunkers_for_admin_ui(): void
@@ -71,7 +73,14 @@ final class PipelineRegistryTest extends TestCase
 
         $this->assertContains('pdf-page-chunker', $names);
         $this->assertContains('markdown-section-aware', $names);
-        $this->assertCount(2, $names);
+        // v4.5/W5.5 — four new source-aware chunkers.
+        $this->assertContains('notion-block-chunker', $names);
+        $this->assertContains('confluence-page-chunker', $names);
+        $this->assertContains('office-doc-chunker', $names);
+        $this->assertContains('atomic-note-chunker', $names);
+        // v4.5/W6 — Jira issue chunker.
+        $this->assertContains('jira-issue-chunker', $names);
+        $this->assertCount(7, $names);
     }
 
     public function test_enrichers_list_is_empty_in_v3_0(): void

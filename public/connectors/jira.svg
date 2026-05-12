@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-label="Jira">
+  <title>Jira</title>
+  <rect width="64" height="64" rx="8" fill="#ffffff" stroke="#e1e1e0" stroke-width="1"/>
+  <defs>
+    <linearGradient id="jiraTopRight" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0052cc"/>
+      <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+    <linearGradient id="jiraBottomLeft" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0052cc"/>
+      <stop offset="100%" stop-color="#2684ff"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(10, 10)">
+    <path d="M22 0 L44 22 L33 22 L11 0 Z" fill="#2684ff"/>
+    <path d="M44 22 L22 44 L22 33 L33 22 Z" fill="url(#jiraTopRight)"/>
+    <path d="M0 22 L22 0 L22 11 L11 22 Z" fill="url(#jiraBottomLeft)"/>
+    <path d="M22 44 L0 22 L11 22 L33 44 Z" fill="#0052cc"/>
+  </g>
+</svg>

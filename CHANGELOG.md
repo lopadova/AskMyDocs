@@ -11,6 +11,60 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v4.5.0 — 2026-05-12 (GA — Universal Connectors + Source-Aware Ingestion + Modern Chat Surface)
+
+**v4.5.0 GA** closes the v4.5 cycle. Seven new external-source connectors + per-source chunking framework + Vercel AI SDK UI Tier 1 + partial Tier 2 ship on top of v4.4.0 GA. NO new sister packages or sister-package version bumps in the host this cycle (host-side); two side-quest releases shipped in the upstream `padosoft/*` ecosystem.
+
+**What's new in AskMyDocs v4.5.0 GA:**
+
+- **W1 — Connector framework core + Google Drive reference** (PR #149 → `d2b83c2`). `App\Connectors\ConnectorInterface` (10-method contract) + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` (R23 FQCN-validated, dual-channel discovery: built-in array OR composer-package `extra.askmydocs.connectors`) + `ConnectorSyncJob` (scheduler-driven incremental sync) + `App\Connectors\BuiltIn\GoogleDriveConnector` (OAuth2 + delta-query). New migrations: `connector_installations` + `connector_credentials` (OAuth state tokens live in the application cache with TTL `oauth_state_ttl_seconds` default 600s — no DB table).
+- **W2 — Notion connector** (PR #150 → `9c6f510`). `App\Connectors\BuiltIn\NotionConnector` + `App\Connectors\BuiltIn\Notion\NotionBlockToMarkdown` (block-to-markdown converter) + `App\Connectors\BuiltIn\Notion\NotionPaginator` + `App\Services\Kb\Chunkers\NotionBlockChunker` (W5.5 source-aware chunker). OAuth2. Framework helper refinements extracted from the second-connector experience.
+- **W3 — Admin React SPA `/app/admin/connectors`** (PR #151 → `87a81c6`). React DataTable (shadcn) + OAuth callback handler at `/app/admin/connectors/$key/callback` + per-installation install/uninstall flow + Spatie `manageConnectors` super-admin gate at controller + route layer + Playwright E2E (`admin-connectors-super-admin.spec.ts`).
+- **W4 — Evernote + Fabric reference connectors** (PR #152 → `02e7ad2`). `EvernoteConnector` ships dual-mode (OAuth Evernote API **or** `.enex` bulk-import for offline migration; `Evernote\EnmlToMarkdown` + `Evernote\EnexImporter`). `FabricConnector` ships API-key auth (OAuth pending upstream provider availability).
+- **W5 — OneDrive + Confluence connectors** (PR #153 → `f2c1967`). `OneDriveConnector` (Microsoft Graph delta-query — supports `text/markdown` / `text/plain` / `application/pdf`; MS Office formats `.docx`/`.xlsx`/`.pptx` ingestion deferred to a future cycle once the Office extractors ship). `ConfluenceConnector` (Atlassian OAuth 2.0 3LO; `cloud_id` persisted in tenant-scoped `connector_credentials.extra_json.cloud_id`, may be shared between Confluence + Jira installs within the same tenant/workspace + storage-format-to-markdown converter). +83 PHPUnit tests.
+- **W5.5 — Source-aware ingestion + live-test recording** (PR #154 → `7ea9d47`). `PipelineRegistry::resolveChunker($sourceType)` (R23 FQCN + `supports()` mutex) dispatches per source to **4 new chunkers** + `PdfPageChunker` now routed through the registry: `Chunkers\NotionBlockChunker`, `Chunkers\ConfluencePageChunker`, `Chunkers\OfficeDocChunker`, `Chunkers\AtomicNoteChunker` (new in v4.5); `Chunkers\PdfPageChunker` (existed in v3.0; W5.5 lifted it from a direct call in `DocumentIngestor` into the registry). 6 connector rich-frontmatter capture (`source`, `connector_key`, native ID + URL + timestamps, ACL hint, tags, status, preamble-path). `Reranker` Layer-4 signals: `tag_overlap_weight=0.05` + `preamble_match_weight=0.05` + `recency_weight=0.02` + `status_active_weight=0.02` additive on top of base `0.55·vec + 0.25·kw + 0.05·heading` (max score ~1.44). `KbSearchService::searchWithContext()` now accepts optional `facets` param + emits `facets[source]` + `facets[tag]` counts. New PostgreSQL-only `knowledge_chunks.metadata` indexes: 2 GIN-on-`jsonb` (`source_type`, `search_tags`) + 1 B-tree (`recency_bucket` text projection — fixed-set ordinal data warrants B-tree, not GIN). SQLite is a no-op. Opt-in live-test recording infrastructure under `tests/Live/Connectors/` + `tests/Live/Support/` (env-var guard skips entire tree in default CI) + junior-proof per-provider runbook (`docs/v4-platform/RUNBOOK-live-fixture-recording.md`) for all 6 W5.5 providers.
+- **W6 — Jira Cloud connector + ADF-to-markdown + JqlBuilder + JiraIssueChunker** (PR #155 → `c60047c`). `JiraConnector` (Atlassian OAuth 2.0 3LO) + `Jira\JiraAdfToMarkdown` (Atlassian Document Format → markdown) + `Jira\JqlBuilder` (injection-safe fluent JQL builder) + `Jira\JiraPaginator` (auto-detects `startAt+total` vs `nextPageToken` modes). `Chunkers\JiraIssueChunker` with property preamble + comment aggregation per issue.
+- **W7 — Vercel AI SDK UI Tier 1 + partial Tier 2** (PR #156 → `c8a25c6`). Tier 1 complete: stop-streaming button (`AbortController`-backed), regenerate-last-assistant, branch-from-message endpoint, inline-edit user message, token+cost meter (BE `config('ai.cost_rates')`), enhanced per-message provider+model+timestamp badge, copy-code-block. Tier 2 partial: `App\Services\Chat\SuggestedFollowupGenerator` ships follow-up pill chips. Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) **deferred to v5.0** per ADR 0008 D4 — designed alongside the v5.0 MCP **client** dispatcher to share one persistence contract.
+- **W8 — RC acceptance + GA prep (this PR).** README hero refresh with two killer-feature sections ("Universal Connectors" + "Modern Chat Surface"), feature-table rows under five categories, roadmap checklist tick, ADR 0008, closure status doc `docs/v4-platform/STATUS-2026-05-12-v45-week8-rc-acceptance.md`, ROADMAP refresh.
+
+**Side-quests (released upstream during the v4.5 window):**
+
+- `padosoft/laravel-ai-regolo` **v1.0.1** — caught up to `laravel/ai` v0.6.8 `EmbeddingGateway` 6-param contract change.
+- `padosoft/laravel-ai-chat` **v1.0.0** — bumped regolo dep to v1.0.1, raised PHP min to 8.4, added new CI matrix.
+
+**Pull requests merged on `feature/v4.5` for v4.5.0 GA:**
+- #149 v4.5/W1 — Connector framework core + Google Drive reference (`d2b83c2`)
+- #150 v4.5/W2 — Notion connector + framework refinements (`9c6f510`)
+- #151 v4.5/W3 — Admin React SPA + OAuth callback (`87a81c6`)
+- #152 v4.5/W4 — Evernote + Fabric reference connectors (`02e7ad2`)
+- #153 v4.5/W5 — OneDrive + Confluence connectors (`f2c1967`)
+- #154 v4.5/W5.5 — Source-aware ingestion + chunking + retrieval boost + live-test recording (`7ea9d47`)
+- #155 v4.5/W6 — Jira Cloud connector + ADF-to-markdown + JqlBuilder + JiraIssueChunker (`c60047c`)
+- #156 v4.5/W7 — Vercel AI SDK UI Tier 1 + Tier 2 — stop/regenerate/branch/edit/token-meter/message-parts/suggested-followups (`c8a25c6`)
+- (this PR) v4.5/W8 closure — README hero + CHANGELOG + ADR 0008 + closure status doc + ROADMAP refresh
+- (W8 GA-merge follow-up PR) `feature/v4.5` → `main` GA merge per R37 + `v4.5.0` GA tag at the merge SHA
+
+**Changed**
+
+- `KbSearchService::searchWithContext()` now accepts optional `facets` parameter (additive — no breaking change). Existing callers continue to receive the same shape.
+- Chunking dispatch is now routed through `PipelineRegistry::resolveChunker($sourceType)` instead of direct `MarkdownChunker` instantiation in `DocumentIngestor`. The fallback for un-typed sources remains `MarkdownChunker` so v4.4 hosts ingesting plain markdown see byte-identical behaviour.
+- `Reranker` formula extended with four additive Layer-4 deltas (`tag_overlap` + `preamble_match` + `recency` + `status_active`). Base 4 signals still sum to 1.0; Layer-4 adds up to ~0.14 ceiling on top, so max score is ~1.44 — documented in `config/kb.php`.
+
+**Deferred to v5.0+ (per ADR 0008 D4)**
+
+- Vercel SDK UI Tier 2 stretch: tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel. Parked because the message-parts persistence shape should be designed alongside the v5.0 MCP **client** dispatcher so the artifact panel and the tool-result panel share one storage contract.
+
+**v4.5 cycle test count delta:** PHPUnit 1423 (start of v4.5 from v4.4.0 GA) → **1885** (end of W7) — **+462 BE tests** (W1: +112 framework + Google Drive; W2: +35 Notion; W3: +12 admin controllers; W4: +56 Evernote + Fabric; W5: +83 OneDrive + Confluence; W5.5: +52 chunkers + reranker + live-test infra; W6: +60 Jira + ADF + JqlBuilder; W7: +52 SDK UI BE — token meter, branch endpoint, suggested-followup, refusal contracts). Vitest react 321 → **384** (+63 react scenarios). Vitest legacy unchanged at 18. Playwright spec file count grew to 36. All green across PHPUnit (PHP 8.3 / 8.4 / 8.5) + Vitest (react + legacy) + Playwright E2E + the RAG regression workflow.
+
+**Forward-looking — v4.6 backlog (parked, NOT v4.5 blockers):**
+
+- Extract 7 connectors + shared base into 8 `padosoft/askmydocs-connector-*` packages.
+- Delete inline `app/Connectors/BuiltIn/*` code; `ConnectorRegistry` discovers exclusively via composer-lock `extra.askmydocs.connectors`.
+- 8 packages tagged `v1.0.0` on Packagist with junior-proof READMEs (same standard as [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](docs/v4-platform/RUNBOOK-live-fixture-recording.md) — exact URLs, sidebar paths, button labels, scopes + rationale per scope, env var names produced, verification one-liner with expected output, common errors + fixes).
+- `padosoft/askmydocs-connector-template` repo as scaffold for community contributors.
+
+---
+
 ### v4.4.0 — 2026-05-11 (GA — Tailwind v4 + admin SPA cross-mount + adversarial nightly opt-in)
 
 **v4.4.0 GA** closes the v4.4 cycle. Three host-side mount-mode migrations + one operational opt-in shipped on top of v4.3.0 GA. NO new sister packages, NO sister-package version bumps — only `react-router-dom` + `lucide-react` + Tailwind v4 + `@tailwindcss/vite` added on the FE. Default-off invariant preserved across both new env knobs.

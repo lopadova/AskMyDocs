@@ -10,6 +10,7 @@ import { PROJECTS } from '../../lib/seed';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
+import { SuggestedFollowups } from './SuggestedFollowups';
 
 /**
  * Chat feature root. Three columns:
@@ -109,6 +110,10 @@ export function ChatView(): ReactNode {
         [initialQuery.data],
     );
 
+    // v4.5/W7 Tier 2 #10 — bumped each time an assistant turn settles.
+    // Drives the SuggestedFollowups refetch — never on every render.
+    const [turnSettleId, setTurnSettleId] = useState(0);
+
     const chat = useChatStream({
         conversationId: activeId,
         filters,
@@ -131,6 +136,8 @@ export function ChatView(): ReactNode {
             if (activeId !== null) {
                 void qc.invalidateQueries({ queryKey: ['messages', activeId] });
             }
+            // v4.5/W7 — trigger suggested-followups refetch.
+            setTurnSettleId((n) => n + 1);
         },
     });
 
@@ -246,12 +253,96 @@ export function ChatView(): ReactNode {
         }
     };
 
+    // v4.5/W7 Tier 1 #2 — regenerate the LAST assistant turn.
+    const handleRegenerate = () => {
+        chat.regenerate();
+    };
+
+    // v4.5/W7 Tier 1 #3 — fork the conversation at a chosen
+    // assistant message. The BE persists every message up to AND
+    // INCLUDING the named one into a fresh conversation; we then
+    // navigate to it so the user can branch the discussion without
+    // touching the source thread.
+    const handleBranchAt = async (messageId: number) => {
+        if (activeId === null) {
+            return;
+        }
+        try {
+            const result = await chatApi.branchFromMessage(activeId, messageId);
+            // Optimistically prepend the new conversation row to the
+            // sidebar list so the user sees it immediately; the next
+            // invalidate refreshes ordering.
+            qc.setQueryData<Conversation[]>(['conversations'], (old) =>
+                old ? [result.conversation, ...old] : [result.conversation],
+            );
+            setActive(result.conversation.id);
+            navigate({ to: `/app/chat/${result.conversation.id}` });
+        } catch (err) {
+            // Branch is a non-critical action — log and let the user
+            // retry. We don't surface a separate error banner; the
+            // existing chat-composer-error path handles transport
+            // errors for now.
+            console.error('Branch failed:', err);
+        }
+    };
+
+    // v4.5/W7 Tier 1 #4 — inline edit a user message and re-submit.
+    // The edit flow requires a backend truncation FIRST (R20 — the BE
+    // loads history from DB, not from client-sent messages) so the
+    // next turn's context window starts from the edit point:
+    //   1. DELETE /conversations/{id}/messages-from/{messageId} — removes
+    //      the edited message + everything after it from the DB.
+    //   2. chat.setMessages() truncates the SDK's in-memory cache to match.
+    //   3. sendMessage({ text: newContent }) sends the replacement text.
+    // On onFinish the TanStack invalidation refetches the trimmed history
+    // + new user + assistant pair, so the thread looks exactly as if
+    // the user had typed the new content from the start.
+    const handleEditUserMessage = async (messageIndex: number, messageId: number | null, newContent: string) => {
+        if (activeId !== null && messageId !== null) {
+            // Truncate DB history from the edited message onwards.
+            await chatApi.truncateMessagesFrom(activeId, messageId);
+        }
+        // Truncate the SDK in-memory cache to keep the UI consistent
+        // with the DB state during the in-flight request window.
+        chat.setMessages((prev) => prev.slice(0, messageIndex));
+        await chat.sendMessage({ text: newContent });
+    };
+
     const isStreaming = chat.status === 'submitted' || chat.status === 'streaming';
 
-    // The SDK returns `messages: UIMessage[]`. MessageThread accepts
-    // RenderableMessage[] (= AppMessage | UIMessage); the cast widens
-    // the array element type so both shapes flow through.
-    const threadMessages: RenderableMessage[] = chat.messages;
+    // The SDK returns `messages: UIMessage[]` (string ids, no metadata).
+    // The TanStack history query returns `AppMessage[]` (numeric ids,
+    // full MessageMetadata).
+    //
+    // v4.5/W7 Tier 1 #3 + #5 — the branch button and the token-cost
+    // meter are both gated on data the SDK UIMessage doesn't carry
+    // (numeric id + token telemetry). Once the stream settles and
+    // `onFinish` invalidates the messages query, the refetched
+    // AppMessages cover the turns the SDK knows about — overlay them
+    // onto the SDK message tail by index-from-end so each assistant
+    // bubble surfaces the canonical persisted shape (numeric id +
+    // metadata) without losing any user turns the SDK still tracks
+    // but the GET stub / partial-history endpoint omitted. During
+    // the streaming window the SDK's live UIMessages remain
+    // exclusively in charge — they carry the in-flight tokens the
+    // user is watching accrue.
+    const persistedMessages = initialQuery.data;
+    const threadMessages: RenderableMessage[] = (() => {
+        if (isStreaming || !persistedMessages || persistedMessages.length === 0) {
+            return chat.messages;
+        }
+        // Merge: keep SDK-only head turns, overlay persisted tail.
+        // The persisted list aligns to the END of the SDK list (the
+        // BE returns the most recent N messages; the SDK may hold
+        // optimistic user turns the BE hasn't yet persisted).
+        const sdkLen = chat.messages.length;
+        const persistedLen = persistedMessages.length;
+        if (persistedLen >= sdkLen) {
+            return persistedMessages;
+        }
+        const headFromSdk = chat.messages.slice(0, sdkLen - persistedLen);
+        return [...headFromSdk, ...persistedMessages];
+    })();
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
@@ -311,6 +402,16 @@ export function ChatView(): ReactNode {
                     sdkStatus={chat.status}
                     isLoadingHistory={initialQuery.isLoading}
                     error={chat.error ?? toError(initialQuery.error)}
+                    onRegenerate={handleRegenerate}
+                    onBranchAt={handleBranchAt}
+                    onEditUserMessage={handleEditUserMessage}
+                />
+
+                <SuggestedFollowups
+                    conversationId={activeId}
+                    turnId={turnSettleId}
+                    isStreaming={isStreaming}
+                    onPick={(prompt) => void handleSend(prompt)}
                 />
 
                 <Composer

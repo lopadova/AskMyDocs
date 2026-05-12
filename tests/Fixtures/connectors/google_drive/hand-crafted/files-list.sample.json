@@ -1,0 +1,17 @@
+{
+    "__source": "hand-crafted-sample",
+    "body": {
+        "files": [
+            {
+                "id": "sha256-gd000001",
+                "name": "Q2 Roadmap.gdoc",
+                "mimeType": "application/vnd.google-apps.document",
+                "modifiedTime": "2026-05-09T12:00:00.000Z",
+                "owners": [
+                    {"emailAddress": "user@example.com", "displayName": "Example User"}
+                ],
+                "parents": ["sha256-gd000002"]
+            }
+        ]
+    }
+}

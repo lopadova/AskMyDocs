@@ -1,0 +1,13 @@
+{
+    "__source": "hand-crafted-sample",
+    "body": {
+        "guid": "sha256-ev000001",
+        "title": "Quick note",
+        "content": "<en-note>Short Evernote capture.</en-note>",
+        "tagNames": ["inbox", "capture"],
+        "notebookGuid": "sha256-ev000002",
+        "created": 1747756800000,
+        "updated": 1747843200000,
+        "attributes": {"sourceURL": "https://example.com/source"}
+    }
+}

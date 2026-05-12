@@ -1,0 +1,43 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Jira REST API v3 — /search response (subset used by AskMyDocs)",
+    "type": "object",
+    "required": ["issues"],
+    "properties": {
+        "issues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["id", "key", "fields"],
+                "properties": {
+                    "id": {"type": "string"},
+                    "key": {"type": "string", "minLength": 1},
+                    "fields": {
+                        "type": "object",
+                        "properties": {
+                            "summary": {"type": ["string", "null"]},
+                            "description": {},
+                            "issuetype": {"type": ["object", "null"]},
+                            "status": {"type": ["object", "null"]},
+                            "priority": {"type": ["object", "null"]},
+                            "project": {"type": ["object", "null"]},
+                            "assignee": {"type": ["object", "null"]},
+                            "reporter": {"type": ["object", "null"]},
+                            "labels": {"type": ["array", "null"]},
+                            "components": {"type": ["array", "null"]},
+                            "fixVersions": {"type": ["array", "null"]},
+                            "created": {"type": ["string", "null"]},
+                            "updated": {"type": ["string", "null"]},
+                            "comment": {"type": ["object", "null"]}
+                        }
+                    }
+                }
+            }
+        },
+        "startAt": {"type": ["integer", "null"]},
+        "maxResults": {"type": ["integer", "null"]},
+        "total": {"type": ["integer", "null"]},
+        "isLast": {"type": ["boolean", "null"]},
+        "nextPageToken": {"type": ["string", "null"]}
+    }
+}

@@ -1,0 +1,25 @@
+{
+    "__source": "hand-crafted-sample",
+    "__notes": "Baseline shape for GET /wiki/api/v2/pages/{id}. Replace with recorded fixture after CONNECTOR_CONFLUENCE_LIVE=1 run.",
+    "body": {
+        "id": "sha256-eeee0001",
+        "title": "Architecture decision: cache eviction",
+        "spaceId": "sha256-eeee0002",
+        "space": {"key": "ENGINEERING", "name": "Engineering"},
+        "ancestors": [
+            {"id": "sha256-eeee0003", "title": "Engineering"},
+            {"id": "sha256-eeee0004", "title": "Architecture"}
+        ],
+        "metadata": {
+            "labels": {
+                "results": [
+                    {"name": "architecture-decision"},
+                    {"name": "caching"}
+                ]
+            }
+        },
+        "version": {"number": 4, "when": "2026-05-09T12:00:00.000Z"},
+        "body": {"storage": {"value": "<h1>Decision</h1><p>Use Redis.</p>"}},
+        "status": "current"
+    }
+}
