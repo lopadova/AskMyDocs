@@ -270,7 +270,7 @@ export function WorkflowsList(): ReactNode {
             {suggestOpen && (
                 <SuggestionsGallery
                     data={suggestQuery.data ?? []}
-                    isLoading={suggestQuery.isLoading}
+                    isLoading={suggestQuery.isFetching}
                     isError={suggestQuery.isError}
                     onClose={() => setSuggestOpen(false)}
                     onSave={(proposal, idx) => fromProposalMutation.mutate({ proposal, idx })}
@@ -301,7 +301,8 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-wf-title"
-            data-state={error ? 'error' : submitting ? 'submitting' : 'idle'}
+            data-state={error ? 'error' : submitting ? 'loading' : 'idle'}
+            aria-busy={submitting}
             style={{
                 position: 'fixed',
                 inset: 0,
