@@ -17,6 +17,7 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Mockery;
@@ -99,27 +100,16 @@ final class McpToolCallingServiceTest extends TestCase
         config()->set('mcp.enabled', true);
         config()->set('mcp.tool_calling.max_iterations', 2);
 
-        McpServer::create([
-            'tenant_id' => 'default',
-            'name' => 'kb-sidecar',
-            'transport' => McpServer::TRANSPORT_HTTP,
-            'endpoint' => 'http://127.0.0.1:3535',
-            'enabled_tools_json' => ['search_docs'],
-            'status' => McpServer::STATUS_ACTIVE,
-            'created_by' => $this->admin->id,
-            'handshake_response_json' => [
-                'tools' => [
-                    [
-                        'name' => 'search_docs',
-                        'description' => 'Search documents',
-                        'inputSchema' => [
-                            'type' => 'object',
-                            'properties' => ['query' => ['type' => 'string']],
-                        ],
-                    ],
+        $this->createServerWithHandshakeTools([
+            [
+                'name' => 'search_docs',
+                'description' => 'Search documents',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['query' => ['type' => 'string']],
                 ],
             ],
-        ]);
+        ], ['search_docs']);
 
         Http::fake([
             'http://127.0.0.1:3535/invoke-tool' => Http::response(['hits' => [['id' => 1]]], 200),
@@ -156,6 +146,280 @@ final class McpToolCallingServiceTest extends TestCase
         );
 
         $this->assertSame('final answer', $result->content);
+        $this->assertCount(1, $result->toolCalls);
+        $this->assertSame('ok', $result->toolCalls[0]['status']);
+        $this->assertSame('search_docs', $result->toolCalls[0]['name']);
+        Http::assertSent(static function (\Illuminate\Http\Client\Request $request): bool {
+            return $request->url() === 'http://127.0.0.1:3535/invoke-tool'
+                && $request['tool_name'] === 'search_docs'
+                && $request['input'] === ['query' => 'release notes'];
+        });
+    }
+
+    public function test_chat_with_tools_continues_after_unconfigured_tool_in_same_turn(): void
+    {
+        config()->set('mcp.enabled', true);
+        config()->set('mcp.tool_calling.max_iterations', 2);
+
+        $this->createServerWithHandshakeTools([
+            [
+                'name' => 'search_docs',
+                'description' => 'Search documents',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['query' => ['type' => 'string']],
+                ],
+            ],
+            [
+                'name' => 'graph',
+                'description' => 'Graph lookup',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['slug' => ['type' => 'string']],
+                ],
+            ],
+        ], ['search_docs']);
+
+        Http::fake([
+            'http://127.0.0.1:3535/invoke-tool' => Http::response(['hits' => [['id' => 1]]], 200),
+        ]);
+
+        $ai = $this->makeAiManager('openai');
+        $turns = [];
+        $turn1 = new AiResponse(
+            content: '',
+            provider: 'openai',
+            model: 'gpt-4o',
+            toolCalls: [
+                [
+                    'id' => 'call_1',
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'search_docs',
+                        'arguments' => '{"query":"release notes"}',
+                    ],
+                ],
+                [
+                    'id' => 'call_2',
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'graph',
+                        'arguments' => '{"slug":"release-notes"}',
+                    ],
+                ],
+            ],
+        );
+        $turn2 = new AiResponse(content: 'final answer', provider: 'openai', model: 'gpt-4o');
+        $ai->shouldReceive('chatWithHistory')
+            ->twice()
+            ->andReturnUsing(function (string $systemPrompt, array $messages, array $options) use (&$turns, $turn1, $turn2) {
+                $turns[] = ['messages' => $messages, 'options' => $options];
+
+                return count($turns) === 1 ? $turn1 : $turn2;
+            });
+
+        $service = new McpToolCallingService(
+            ai: $ai,
+            registry: new McpServerRegistry(app(TenantContext::class)),
+            invoker: new ToolInvoker(new McpClientBridge()),
+            authorizer: new McpToolAuthorizer(),
+        );
+
+        $result = $service->chatWithTools(
+            systemPrompt: 'sys',
+            messages: [['role' => 'user', 'content' => 'summarize releases']],
+            user: $this->admin,
+        );
+
+        $this->assertSame('final answer', $result->content);
+        $this->assertCount(2, $result->toolCalls);
+
+        $toolCallsByName = collect($result->toolCalls)->keyBy('name');
+        $this->assertSame('ok', $toolCallsByName['search_docs']['status']);
+        $this->assertSame('error', $toolCallsByName['graph']['status']);
+        $this->assertStringContainsString('not configured for the current tenant', $toolCallsByName['graph']['error']);
+
+        $secondTurnMessages = $turns[1]['messages'];
+        $toolMessages = array_values(array_filter($secondTurnMessages, static fn (array $message): bool => ($message['role'] ?? null) === 'tool'));
+        $this->assertCount(2, $toolMessages);
+        $this->assertSame(['search_docs', 'graph'], array_column($toolMessages, 'name'));
+        $this->assertStringContainsString('"hits":[{"id":1}]', $toolMessages[0]['content']);
+        $this->assertStringContainsString('not configured for the current tenant', $toolMessages[1]['content']);
+        Http::assertSentCount(1);
+    }
+
+    public function test_chat_with_tools_carries_last_iteration_results_into_final_turn(): void
+    {
+        config()->set('mcp.enabled', true);
+        config()->set('mcp.tool_calling.max_iterations', 2);
+
+        $this->createServerWithHandshakeTools([
+            [
+                'name' => 'search_docs',
+                'description' => 'Search documents',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['query' => ['type' => 'string']],
+                ],
+            ],
+        ], ['search_docs']);
+
+        Http::fake([
+            'http://127.0.0.1:3535/invoke-tool' => Http::sequence()
+                ->push(['hits' => [['id' => 1]]], 200)
+                ->push(['hits' => [['id' => 2]]], 200),
+        ]);
+
+        $ai = $this->makeAiManager('openai');
+        $turns = [];
+        $turn1 = new AiResponse(
+            content: '',
+            provider: 'openai',
+            model: 'gpt-4o',
+            toolCalls: [[
+                'id' => 'call_1',
+                'type' => 'function',
+                'function' => [
+                    'name' => 'search_docs',
+                    'arguments' => '{"query":"alpha"}',
+                ],
+            ]],
+        );
+        $turn2 = new AiResponse(
+            content: '',
+            provider: 'openai',
+            model: 'gpt-4o',
+            toolCalls: [[
+                'id' => 'call_2',
+                'type' => 'function',
+                'function' => [
+                    'name' => 'search_docs',
+                    'arguments' => '{"query":"beta"}',
+                ],
+            ]],
+        );
+        $turn3 = new AiResponse(content: 'final answer', provider: 'openai', model: 'gpt-4o');
+        $ai->shouldReceive('chatWithHistory')
+            ->times(3)
+            ->andReturnUsing(function (string $systemPrompt, array $messages, array $options) use (&$turns, $turn1, $turn2, $turn3) {
+                $turns[] = ['messages' => $messages, 'options' => $options];
+
+                return match (count($turns)) {
+                    1 => $turn1,
+                    2 => $turn2,
+                    default => $turn3,
+                };
+            });
+
+        $service = new McpToolCallingService(
+            ai: $ai,
+            registry: new McpServerRegistry(app(TenantContext::class)),
+            invoker: new ToolInvoker(new McpClientBridge()),
+            authorizer: new McpToolAuthorizer(),
+        );
+
+        $result = $service->chatWithTools(
+            systemPrompt: 'sys',
+            messages: [['role' => 'user', 'content' => 'summarize releases']],
+            user: $this->admin,
+        );
+
+        $this->assertSame('final answer', $result->content);
+        $this->assertCount(2, $result->toolCalls);
+        $this->assertSame(['call_1', 'call_2'], array_column($result->toolCalls, 'id'));
+        $this->assertSame(['ok', 'ok'], array_column($result->toolCalls, 'status'));
+
+        $finalTurnMessages = $turns[2]['messages'];
+        $toolMessages = array_values(array_filter($finalTurnMessages, static fn (array $message): bool => ($message['role'] ?? null) === 'tool'));
+        $this->assertCount(2, $toolMessages);
+        $this->assertSame(['call_1', 'call_2'], array_column($toolMessages, 'tool_call_id'));
+        Http::assertSentCount(2);
+    }
+
+    public function test_can_handle_tool_calling_returns_false_when_handshake_advertises_only_malformed_tools(): void
+    {
+        config()->set('mcp.enabled', true);
+
+        $this->createServerWithHandshakeTools([
+            [
+                'description' => 'Missing a name field',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['query' => ['type' => 'string']],
+                ],
+            ],
+        ], ['*']);
+
+        $service = new McpToolCallingService(
+            ai: $this->makeAiManager('openai'),
+            registry: new McpServerRegistry(app(TenantContext::class)),
+            invoker: new ToolInvoker(new McpClientBridge()),
+            authorizer: new McpToolAuthorizer(),
+        );
+
+        $this->assertFalse($service->canHandleToolCalling($this->admin));
+    }
+
+    public function test_chat_with_tools_queries_mcp_servers_once_per_request(): void
+    {
+        config()->set('mcp.enabled', true);
+        config()->set('mcp.tool_calling.max_iterations', 1);
+
+        $this->createServerWithHandshakeTools([
+            [
+                'name' => 'search_docs',
+                'description' => 'Search documents',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => ['query' => ['type' => 'string']],
+                ],
+            ],
+        ], ['search_docs']);
+
+        Http::fake([
+            'http://127.0.0.1:3535/invoke-tool' => Http::response(['hits' => [['id' => 1]]], 200),
+        ]);
+
+        $ai = $this->makeAiManager('openai');
+        $ai->shouldReceive('chatWithHistory')->twice()->andReturn(
+            new AiResponse(
+                content: '',
+                provider: 'openai',
+                model: 'gpt-4o',
+                toolCalls: [[
+                    'id' => 'call_1',
+                    'type' => 'function',
+                    'function' => [
+                        'name' => 'search_docs',
+                        'arguments' => '{"query":"release notes"}',
+                    ],
+                ]],
+            ),
+            new AiResponse(content: 'final answer', provider: 'openai', model: 'gpt-4o'),
+        );
+
+        $service = new McpToolCallingService(
+            ai: $ai,
+            registry: new McpServerRegistry(app(TenantContext::class)),
+            invoker: new ToolInvoker(new McpClientBridge()),
+            authorizer: new McpToolAuthorizer(),
+        );
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $service->chatWithTools(
+            systemPrompt: 'sys',
+            messages: [['role' => 'user', 'content' => 'summarize releases']],
+            user: $this->admin,
+        );
+
+        $mcpServerQueries = array_values(array_filter(
+            DB::getQueryLog(),
+            static fn (array $query): bool => str_contains(strtolower((string) ($query['query'] ?? '')), 'mcp_servers')
+        ));
+
+        $this->assertCount(1, $mcpServerQueries);
     }
 
     private function makeAiManager(string $providerName): AiManager
@@ -195,5 +459,24 @@ final class McpToolCallingServiceTest extends TestCase
 
         return $ai;
     }
-}
 
+    /**
+     * @param  list<array<string, mixed>>  $tools
+     * @param  list<string>  $enabledTools
+     */
+    private function createServerWithHandshakeTools(array $tools, array $enabledTools): McpServer
+    {
+        return McpServer::create([
+            'tenant_id' => 'default',
+            'name' => 'kb-sidecar',
+            'transport' => McpServer::TRANSPORT_HTTP,
+            'endpoint' => 'http://127.0.0.1:3535',
+            'enabled_tools_json' => $enabledTools,
+            'status' => McpServer::STATUS_ACTIVE,
+            'created_by' => $this->admin->id,
+            'handshake_response_json' => [
+                'tools' => $tools,
+            ],
+        ]);
+    }
+}

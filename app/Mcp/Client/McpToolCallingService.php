@@ -27,15 +27,7 @@ final class McpToolCallingService
 
     public function canHandleToolCalling(?User $user): bool
     {
-        if (! $user instanceof User) {
-            return false;
-        }
-
-        if (! config('mcp.enabled', false)) {
-            return false;
-        }
-
-        if (! in_array($this->providerName(), self::TOOL_CAPABLE_PROVIDERS, true)) {
+        if (! $this->meetsToolCallingPrerequisites($user)) {
             return false;
         }
 
@@ -56,7 +48,7 @@ final class McpToolCallingService
         ?User $user = null,
         array $context = [],
     ): AiResponse {
-        if (! $this->canHandleToolCalling($user)) {
+        if (! $this->meetsToolCallingPrerequisites($user)) {
             return $this->ai->chatWithHistory($systemPrompt, $messages, $options);
         }
 
@@ -151,6 +143,19 @@ final class McpToolCallingService
             $finalTurn,
             array_merge($toolCallsSummary, $this->normalizeProviderToolCalls($finalTurn->toolCalls)),
         );
+    }
+
+    private function meetsToolCallingPrerequisites(?User $user): bool
+    {
+        if (! $user instanceof User) {
+            return false;
+        }
+
+        if (! config('mcp.enabled', false)) {
+            return false;
+        }
+
+        return in_array($this->providerName(), self::TOOL_CAPABLE_PROVIDERS, true);
     }
 
     private function providerName(): string
@@ -370,7 +375,7 @@ final class McpToolCallingService
             return $rawArguments;
         }
 
-        if (is_scalar($rawArguments)) {
+        if (is_bool($rawArguments) || is_int($rawArguments) || is_float($rawArguments)) {
             return ['value' => (string) $rawArguments];
         }
 

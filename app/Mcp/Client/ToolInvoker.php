@@ -7,6 +7,7 @@ namespace App\Mcp\Client;
 use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 
 /**
  * v5.0/W1 — tool invocation orchestration.
@@ -40,14 +41,15 @@ final class ToolInvoker
                 'tool_name' => $toolName,
                 'input' => $toolInput,
             ]);
+        } catch (ConnectionException $exception) {
+            $status = McpToolCallAudit::STATUS_TIMEOUT;
+            $errorPayload = [
+                'message' => 'MCP tool invocation failed.',
+                'error' => $exception->getMessage(),
+            ];
         } catch (\Throwable $exception) {
             $message = $exception->getMessage();
-            if ($exception instanceof \RuntimeException && str_contains(strtolower($message), 'timeout')) {
-                $status = McpToolCallAudit::STATUS_TIMEOUT;
-            } else {
-                $status = McpToolCallAudit::STATUS_ERROR;
-            }
-
+            $status = McpToolCallAudit::STATUS_ERROR;
             $errorPayload = [
                 'message' => 'MCP tool invocation failed.',
                 'error' => $message,

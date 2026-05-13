@@ -87,5 +87,35 @@ final class McpClientBridgeTest extends TestCase
         $this->expectExceptionMessage('MCP sidecar request failed');
         $bridge->invokeTool(['server_id' => 12]);
     }
-}
 
+    public function test_invoke_tool_throws_runtime_exception_on_non_array_json_payload(): void
+    {
+        Http::fake([
+            'http://127.0.0.1:3535/invoke-tool' => Http::response('"boom"', 200),
+        ]);
+
+        $bridge = new McpClientBridge();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('MCP sidecar returned invalid JSON payload.');
+        $bridge->invokeTool(['server_id' => 12]);
+    }
+
+    public function test_handshake_throws_runtime_exception_on_non_array_json_payload(): void
+    {
+        Http::fake([
+            'http://127.0.0.1:3535/handshake' => Http::response('"boom"', 200),
+        ]);
+
+        $bridge = new McpClientBridge();
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('MCP sidecar returned invalid JSON payload.');
+        $bridge->handshake([
+            'server_id' => 12,
+            'name' => 'kb',
+            'transport' => 'http',
+            'endpoint' => 'http://127.0.0.1:3535',
+        ]);
+    }
+}

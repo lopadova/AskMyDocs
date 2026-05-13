@@ -11,6 +11,7 @@ use App\Models\McpToolCallAudit;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -64,9 +65,7 @@ final class ToolInvokerTest extends TestCase
     {
         $server = $this->createServer();
 
-        Http::fake([
-            'http://127.0.0.1:3535/invoke-tool' => Http::response('timeout', 504),
-        ]);
+        Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
 
         $bridge = new McpClientBridge();
         $service = new ToolInvoker($bridge);
@@ -81,6 +80,29 @@ final class ToolInvokerTest extends TestCase
         $row = McpToolCallAudit::query()->first();
         $this->assertNotNull($row);
         $this->assertSame('timeout', $row->status);
+    }
+
+    public function test_invoke_gateway_error_throws_and_persists_error_status(): void
+    {
+        $server = $this->createServer();
+
+        Http::fake([
+            'http://127.0.0.1:3535/invoke-tool' => Http::response('gateway timeout', 504),
+        ]);
+
+        $bridge = new McpClientBridge();
+        $service = new ToolInvoker($bridge);
+
+        try {
+            $service->invoke($this->user, $server, 'search_docs', ['query' => 'abc']);
+            $this->fail('Expected runtime exception was not thrown.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('MCP tool invocation failed.', $e->getMessage());
+        }
+
+        $row = McpToolCallAudit::query()->first();
+        $this->assertNotNull($row);
+        $this->assertSame('error', $row->status);
     }
 
     /**
