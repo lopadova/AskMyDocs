@@ -171,9 +171,9 @@ final class TabularReviewStreamControllerTest extends TestCase
 
         // SSE clients send `Accept: text/event-stream`. The pre-stream
         // guard must STILL respond with JSON 403 (not an HTML page /
-        // 302) so the fetch-based SSE client can parse the failure
-        // before unwrapping the stream (native EventSource is GET-only
-        // and is not used here).
+        // 302) so the fetch-based SSE client (this endpoint is POST;
+        // no browser EventSource) can parse the failure before
+        // unwrapping the stream.
         $resp = $this->actingAs($viewer)->withHeaders([
             'Accept' => 'text/event-stream',
         ])->post('/api/admin/tabular-reviews/'.$review->id.'/generate-stream');
