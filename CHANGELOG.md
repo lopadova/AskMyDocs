@@ -11,6 +11,51 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v5.0.0 — 2026-05-13 (GA — Agentic Platform: MCP Client Framework)
+
+**v5.0.0** ships AskMyDocs as an MCP **client** — AskMyDocs can now call
+external tools registered by operators, closing the loop between the
+existing MCP server surface (KB retrieval tools) and outward agentic
+tool-calling.
+
+**What's new in AskMyDocs v5.0.0 GA:**
+
+- **`McpToolCallingService`** — multi-turn orchestration loop (default max
+  3 iterations, `AI_MCP_TOOL_CALL_MAX_ITERATIONS`); builds a per-request
+  tool index from active servers, routes each tool call through the
+  authorizer, accumulates results in chat history, injects stream metadata
+  into the final `AiResponse`.
+- **`McpServerRegistry`** — tenant-scoped active-server lookup; snapshots
+  the tool index before the loop so mid-turn config changes are isolated.
+- **`McpToolAuthorizer`** — per-user RBAC gate (admin/super-admin in W1;
+  per-user override table lands in W4); validates against each server's
+  `enabled_tools_json`.
+- **`McpClientBridge`** — thin HTTP wrapper to the Node sidecar
+  (`/healthz`, `/handshake`, `/invoke-tool`); configurable timeout via
+  `MCP_CLIENT_TIMEOUT_MS`.
+- **`McpHandshakeService`** — triggers capability discovery; persists
+  `handshake_response_json` + status; throws on failed DB write (R4).
+- **`ToolInvoker`** — executes the tool, measures `duration_ms`, writes
+  immutable audit row to `mcp_tool_call_audit`; classifies `ok` /
+  `error` / `timeout` / `denied`.
+- **`McpInternalAuthController`** — sidecar callback endpoints
+  (`/api/mcp/internal-auth` + `/api/mcp/credentials`); pre-shared token
+  via header-only `X-MCP-Internal-Token`.
+- **Admin API** — full CRUD for MCP server registrations
+  (`/api/admin/mcp-servers`); handshake trigger; tool-list management;
+  read-only audit viewer (`/api/admin/mcp-tool-call-audit`).
+- **Provider wiring** — OpenAI + OpenRouter providers automatically
+  extract tool schemas from the registry and attach them to the chat
+  request; `AI_MCP_TOOL_CALL_DEFAULT_CHOICE=auto`.
+- **`AI_AGENTIC_ENABLED`** master switch (default `false`).
+- **Test delta** — +147 PHPUnit (1548 → 1695) + 1 Playwright spec
+  (`admin-mcp-super-admin.spec.ts`); PHP 8.3 / 8.4 / 8.5 + Playwright
+  all green.
+
+**Merge SHA:** `3a8d6f593db2f66b4378054a4bf982d284448197`
+
+---
+
 ### v4.7.0 — 2026-05-12 (GA — Tabular Review + Workflows + AI-suggest)
 
 **v4.7.0** is the integration of three weekly milestones — W1 (Tabular
