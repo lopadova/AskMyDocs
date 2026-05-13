@@ -22,7 +22,7 @@ final class ColumnPromptSuggesterTest extends TestCase
         parent::setUp();
         config()->set('ai.default', 'openai');
         config()->set('ai.providers.openai.api_key', 'test-key');
-        config()->set('ai.providers.openai.chat.model', 'gpt-4o-mini');
+        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
     }
 
     public function test_suggest_returns_llm_prompt(): void

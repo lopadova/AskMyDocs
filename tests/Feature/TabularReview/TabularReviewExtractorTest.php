@@ -41,7 +41,7 @@ final class TabularReviewExtractorTest extends TestCase
         parent::setUp();
         config()->set('ai.default', 'openai');
         config()->set('ai.providers.openai.api_key', 'test-key');
-        config()->set('ai.providers.openai.chat.model', 'gpt-4o-mini');
+        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
 
         // Seed a user up-front so review.user_id FK is satisfied.
         $this->userId = User::create([
