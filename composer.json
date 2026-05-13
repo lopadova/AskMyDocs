@@ -114,18 +114,14 @@
             "comment": "v4.6 connector package extraction — pending Packagist submission, resolved via Git tags v1.x."
         },
         {
-            "type": "path",
-            "url": "../laravel-ai-act-compliance",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/padosoft/laravel-ai-act-compliance",
+            "comment": "v6.0 AI Act compliance extracted package — resolved via Git tags v1.x until Packagist publish."
         },
         {
-            "type": "path",
-            "url": "../laravel-ai-act-compliance-admin",
-            "options": {
-                "symlink": true
-            }
+            "type": "vcs",
+            "url": "https://github.com/padosoft/laravel-ai-act-compliance-admin",
+            "comment": "v6.0 AI Act compliance admin extracted package — resolved via Git tags v1.x until Packagist publish."
         }
     ]
 }
