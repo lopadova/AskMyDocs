@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\Mcp\Client\McpToolCallingService;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
@@ -47,6 +48,7 @@ class MessageController extends Controller
         Request $request,
         Conversation $conversation,
         AiManager $ai,
+        McpToolCallingService $toolCallingService,
         KbSearchService $search,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
@@ -75,7 +77,7 @@ class MessageController extends Controller
         $filters = $this->buildRetrievalFilters($request, $projectKey);
 
         // 1. Save user message
-        $conversation->messages()->create([
+        $userMessage = $conversation->messages()->create([
             'role' => 'user',
             'content' => $question,
         ]);
@@ -136,7 +138,17 @@ class MessageController extends Controller
         ])->render();
 
         // 6. Send full history to AI provider
-        $aiResponse = $ai->chatWithHistory($systemPrompt, $history);
+        $aiResponse = $toolCallingService->chatWithTools(
+            systemPrompt: $systemPrompt,
+            messages: $history,
+            options: [],
+            user: $request->user(),
+            context: [
+                'conversation_id' => $conversation->id,
+                'message_id' => $userMessage->id,
+            ],
+        );
+        $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
@@ -194,6 +206,8 @@ class MessageController extends Controller
                 'latency_ms' => $latencyMs,
                 'citations' => $citations,
                 'few_shot_count' => count($fewShotExamples),
+                'tool_calls_count' => count($toolCalls),
+                'tool_calls' => $toolCalls,
                 // T3.5 — confidence mirrored in metadata so the FE can
                 // render the badge from a single read of the message
                 // payload (no separate /confidence endpoint needed).
@@ -224,6 +238,8 @@ class MessageController extends Controller
             extra: [
                 'few_shot_count' => count($fewShotExamples),
                 'citations_count' => count($citations),
+                'tool_calls_count' => count($toolCalls),
+                'tool_calls' => $toolCalls,
             ],
         ));
 
@@ -277,6 +293,8 @@ class MessageController extends Controller
                 'latency_ms' => $latencyMs,
                 'citations' => [],
                 'refusal_reason' => $reason,
+                'tool_calls_count' => 0,
+                'tool_calls' => [],
                 'confidence' => 0,
             ],
         ]);
@@ -302,6 +320,8 @@ class MessageController extends Controller
             extra: [
                 'refusal_reason' => $reason,
                 'confidence' => 0,
+                'tool_calls_count' => 0,
+                'tool_calls' => [],
             ],
         ));
 
@@ -392,6 +412,8 @@ class MessageController extends Controller
                 'chunks_count' => $chunks->count(),
                 'latency_ms' => $latencyMs,
                 'citations' => [],
+                'tool_calls_count' => 0,
+                'tool_calls' => [],
                 'refusal_reason' => $reason,
                 'confidence' => 0,
             ],
@@ -417,6 +439,8 @@ class MessageController extends Controller
             userAgent: $request->userAgent(),
             extra: [
                 'refusal_reason' => $reason,
+                'tool_calls_count' => 0,
+                'tool_calls' => [],
                 'confidence' => 0,
             ],
         ));
@@ -541,5 +565,24 @@ class MessageController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $toolCalls
+     * @return list<array<string, mixed>>
+     */
+    private function summarizeToolCallsForMetadata(array $toolCalls): array
+    {
+        return array_map(
+            static fn(array $toolCall): array => [
+                'id' => (string) ($toolCall['id'] ?? ''),
+                'name' => (string) ($toolCall['name'] ?? ''),
+                'status' => (string) ($toolCall['status'] ?? 'completed'),
+                'server_id' => $toolCall['server_id'] ?? null,
+                'server_name' => $toolCall['server_name'] ?? null,
+                'error' => $toolCall['error'] ?? null,
+            ],
+            $toolCalls,
+        );
     }
 }

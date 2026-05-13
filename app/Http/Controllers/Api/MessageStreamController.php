@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Ai\StreamChunk;
+use App\Ai\AiResponse;
+use App\Mcp\Client\McpToolCallingService;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
@@ -93,6 +95,7 @@ class MessageStreamController extends Controller
         Request $request,
         Conversation $conversation,
         AiManager $ai,
+        McpToolCallingService $toolCallingService,
         KbSearchService $search,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
@@ -134,7 +137,7 @@ class MessageStreamController extends Controller
         // Persist user message BEFORE the stream starts. If the client
         // disconnects mid-stream the user turn is still saved and the
         // next request can replay the conversation.
-        $conversation->messages()->create([
+        $userMessage = $conversation->messages()->create([
             'role' => 'user',
             'content' => $question,
         ]);
@@ -203,6 +206,19 @@ class MessageStreamController extends Controller
         ])->render();
 
         $citations = $this->buildCitations($chunks);
+        $toolResponse = null;
+        if ($toolCallingService->canHandleToolCalling($request->user())) {
+            $toolResponse = $toolCallingService->chatWithTools(
+                systemPrompt: $systemPrompt,
+                messages: $history,
+                options: [],
+                user: $request->user(),
+                context: [
+                    'conversation_id' => $conversation->id,
+                    'message_id' => $userMessage->id,
+                ],
+            );
+        }
 
         return $this->streamHappyPath(
             request: $request,
@@ -222,6 +238,7 @@ class MessageStreamController extends Controller
             sessionId: $sessionId,
             clientIp: $clientIp,
             userAgent: $userAgent,
+            aiResponse: $toolResponse,
         );
     }
 
@@ -289,6 +306,8 @@ class MessageStreamController extends Controller
                     'chunks_count' => 0,
                     'latency_ms' => $latencyMs,
                     'citations' => [],
+                    'tool_calls_count' => 0,
+                    'tool_calls' => [],
                     'refusal_reason' => $reason,
                     'confidence' => 0,
                     'streamed' => true,
@@ -316,6 +335,8 @@ class MessageStreamController extends Controller
                 extra: [
                     'refusal_reason' => $reason,
                     'confidence' => 0,
+                    'tool_calls_count' => 0,
+                    'tool_calls' => [],
                     'streamed' => true,
                 ],
             ));
@@ -376,11 +397,12 @@ class MessageStreamController extends Controller
         string $sessionId,
         ?string $clientIp,
         ?string $userAgent,
+        ?AiResponse $aiResponse = null,
     ): StreamedResponse {
         return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
             $chunks, $citations, $question, $projectKey, $userId, $startTime,
-            $fewShotCount, $sessionId, $clientIp, $userAgent
+            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse
         ): void {
             // SDK v6 envelope opener — every UIMessage stream MUST
             // begin with a `start` chunk before any text/data parts.
@@ -409,28 +431,39 @@ class MessageStreamController extends Controller
                 ));
             }
 
-            // Stream the LLM response. Providers (via FallbackStreaming
-            // or a native chatStream() override) yield the SDK v6
-            // text envelope: `text-start` → 1+ `text-delta` →
-            // `text-end` → `finish`. We re-emit each non-finish chunk
-            // as an SSE frame AND collect the `delta` payloads into a
-            // buffer for post-stream persistence. The `finish` chunk
-            // is captured (not forwarded) — we emit our own terminal
-            // `finish` after persistence + `data-confidence`.
             $assistantContent = '';
             $finishChunk = null;
-            foreach ($ai->chatStream($systemPrompt, $history) as $chunk) {
-                if ($chunk->type === StreamChunk::TYPE_TEXT_DELTA) {
-                    $assistantContent .= (string) ($chunk->payload['delta'] ?? '');
+            if ($aiResponse === null) {
+                // Stream the LLM response. Providers (via FallbackStreaming
+                // or a native chatStream() override) yield the SDK v6
+                // text envelope: `text-start` → 1+ `text-delta` →
+                // `text-end` → `finish`. We re-emit each non-finish chunk
+                // as an SSE frame AND collect the `delta` payloads into a
+                // buffer for post-stream persistence. The `finish` chunk
+                // is captured (not forwarded) — we emit our own terminal
+                // `finish` after persistence + `data-confidence`.
+                foreach ($ai->chatStream($systemPrompt, $history) as $chunk) {
+                    if ($chunk->type === StreamChunk::TYPE_TEXT_DELTA) {
+                        $assistantContent .= (string) ($chunk->payload['delta'] ?? '');
+                    }
+                    if ($chunk->type === StreamChunk::TYPE_FINISH) {
+                        // Capture the finish chunk but DON'T re-emit it yet
+                        // — we still need to emit the data-confidence chunk
+                        // first (computed once we have the full content).
+                        $finishChunk = $chunk;
+                        continue;
+                    }
+                    $this->emit($chunk);
                 }
-                if ($chunk->type === StreamChunk::TYPE_FINISH) {
-                    // Capture the finish chunk but DON'T re-emit it yet
-                    // — we still need to emit the data-confidence chunk
-                    // first (computed once we have the full content).
-                    $finishChunk = $chunk;
-                    continue;
+            } else {
+                $assistantContent = (string) $aiResponse->content;
+
+                if ($assistantContent !== '') {
+                    $textId = 'text_' . bin2hex(random_bytes(8));
+                    $this->emit(StreamChunk::textStart($textId));
+                    $this->emit(StreamChunk::textDelta($textId, $assistantContent));
+                    $this->emit(StreamChunk::textEnd($textId));
                 }
-                $this->emit($chunk);
             }
 
             $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -458,10 +491,19 @@ class MessageStreamController extends Controller
                 $promptTokens = data_get($finishChunk->payload, 'usage.promptTokens');
                 $completionTokens = data_get($finishChunk->payload, 'usage.completionTokens');
                 $finishReason = data_get($finishChunk->payload, 'finishReason') ?? 'stop';
+            } elseif ($aiResponse !== null) {
+                $promptTokens = $aiResponse->promptTokens;
+                $completionTokens = $aiResponse->completionTokens;
+                $finishReason = $aiResponse->finishReason ?? 'stop';
             }
-            $providerName = config('ai.default', 'openai');
-            $providerInstance = $ai->provider();
-            $modelName = $this->resolveStreamingModel($providerInstance);
+            if ($aiResponse === null) {
+                $providerName = config('ai.default', 'openai');
+                $providerInstance = $ai->provider();
+                $modelName = $this->resolveStreamingModel($providerInstance);
+            } else {
+                $providerName = $aiResponse->provider;
+                $modelName = $aiResponse->model;
+            }
 
             // Total-tokens computation: null when BOTH counts are null
             // (provider didn't return usage); otherwise the sum, which
@@ -480,6 +522,9 @@ class MessageStreamController extends Controller
                 citationsCount: count($citations),
             );
             $tier = $this->confidenceTier($isSelfRefusal ? null : $confidenceScore);
+            $toolCallsSummary = $this->summarizeToolCallsForMetadata(
+                $aiResponse === null ? [] : $aiResponse->toolCalls,
+            );
 
             // Emit data-confidence first (the FE renders the badge
             // as soon as the score is known) — but DELAY the
@@ -518,6 +563,8 @@ class MessageStreamController extends Controller
                     'latency_ms' => $latencyMs,
                     'citations' => $isSelfRefusal ? [] : $citations,
                     'few_shot_count' => $fewShotCount,
+                    'tool_calls_count' => count($toolCallsSummary),
+                    'tool_calls' => $toolCallsSummary,
                     'confidence' => $confidenceScore,
                     'refusal_reason' => $refusalReason,
                     'streamed' => true,
@@ -545,6 +592,8 @@ class MessageStreamController extends Controller
                 extra: [
                     'few_shot_count' => $fewShotCount,
                     'citations_count' => $isSelfRefusal ? 0 : count($citations),
+                    'tool_calls_count' => count($toolCallsSummary),
+                    'tool_calls' => $toolCallsSummary,
                     'refusal_reason' => $refusalReason,
                     'confidence' => $confidenceScore,
                     'streamed' => true,
@@ -715,6 +764,25 @@ class MessageStreamController extends Controller
             return null;
         }
         return "/app/admin/kb/{$projectKey}/" . trim($sourcePath, '/');
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $toolCalls
+     * @return list<array<string, mixed>>
+     */
+    private function summarizeToolCallsForMetadata(array $toolCalls): array
+    {
+        return array_map(
+            static fn(array $toolCall): array => [
+                'id' => (string) ($toolCall['id'] ?? ''),
+                'name' => (string) ($toolCall['name'] ?? ''),
+                'status' => (string) ($toolCall['status'] ?? 'completed'),
+                'server_id' => $toolCall['server_id'] ?? null,
+                'server_name' => $toolCall['server_name'] ?? null,
+                'error' => $toolCall['error'] ?? null,
+            ],
+            $toolCalls,
+        );
     }
 
     private function isSelfRefusalSentinel(string $content): bool

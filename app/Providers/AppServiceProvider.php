@@ -105,6 +105,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPiiRedactorAdminTenantStamping();
         $this->registerEvalHarnessUiGates();
         $this->registerConnectorGates();
+        $this->registerMcpGates();
         $this->registerTabularReviewGates();
         $this->registerWorkflowGates();
     }
@@ -188,6 +189,40 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $user->hasRole('super-admin');
+        });
+    }
+
+    /**
+     * v5.0/W1 — Gate scaffold for MCP registry + audit reads.
+     *
+     * - manageMcpTools: super-admin only
+     * - invokeMcpTools: admin + super-admin
+     * - viewMcpAudit: admin + super-admin
+     */
+    private function registerMcpGates(): void
+    {
+        Gate::define('manageMcpTools', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
+        });
+
+        Gate::define('invokeMcpTools', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['admin', 'super-admin']);
+        });
+
+        Gate::define('viewMcpAudit', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['admin', 'super-admin']);
         });
     }
 

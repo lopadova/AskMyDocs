@@ -338,10 +338,10 @@ final class TabularReviewExtractorTest extends TestCase
             meta: [],
         );
 
-        $mock = $this->createMock(KbSearchService::class);
-        $mock->method('searchWithContext')->willReturn($result);
+        $stub = $this->createStub(KbSearchService::class);
+        $stub->method('searchWithContext')->willReturn($result);
 
-        $this->app->instance(KbSearchService::class, $mock);
+        $this->app->instance(KbSearchService::class, $stub);
     }
 
     private function stubAi(string $content): void
