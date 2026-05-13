@@ -127,6 +127,7 @@ export function TweaksPanel({
                         <option value="kb">Knowledge Base</option>
                         <option value="insights">AI Insights</option>
                         <option value="users">Users &amp; Roles</option>
+                        <option value="ai-act-compliance">AI Act Compliance</option>
                         <option value="logs">Logs</option>
                         <option value="maintenance">Maintenance</option>
                     </select>

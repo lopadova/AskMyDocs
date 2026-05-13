@@ -14,6 +14,7 @@ const SECTION_ROUTES: Record<SidebarSection, string> = {
     kb: '/app/kb',
     insights: '/app/insights',
     users: '/app/users',
+    'ai-act-compliance': '/app/admin/ai-act-compliance',
     connectors: '/app/admin/connectors',
     logs: '/app/logs',
     maintenance: '/app/maintenance',

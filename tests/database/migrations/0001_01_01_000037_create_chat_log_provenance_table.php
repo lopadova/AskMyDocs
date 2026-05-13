@@ -1,10 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('chat_log_provenance', function (Blueprint $table): void {
@@ -18,7 +21,11 @@ return new class extends Migration {
             $table->string('source_path');
             $table->decimal('contribution_score', 5, 4)->default(0);
             $table->timestamps();
-            $table->index(['tenant_id', 'chat_log_id', 'answer_token_start'], 'idx_chat_log_provenance_tenant_chat_token');
+
+            $table->index(
+                ['tenant_id', 'chat_log_id', 'answer_token_start'],
+                'idx_chat_log_provenance_tenant_chat_token'
+            );
         });
     }
 

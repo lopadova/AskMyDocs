@@ -2,9 +2,7 @@
 
 namespace App\Compliance;
 
-use Padosoft\AiActCompliance\BiasMonitoring\Contracts\CohortParityMetric;
-
-class RagRefusalQualityMetric implements CohortParityMetric
+class RagRefusalQualityMetric
 {
     public function compute(array $context = []): array
     {

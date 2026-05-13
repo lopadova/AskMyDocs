@@ -56,6 +56,7 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandNonce::class,
         \App\Models\AdminInsightsSnapshot::class,
         \App\Models\ChatFilterPreset::class,
+        \App\Models\ChatLogProvenance::class,
         // v4.7/W1 — tabular review backend tables.
         \App\Models\TabularReview::class,
         \App\Models\TabularCell::class,

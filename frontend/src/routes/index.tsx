@@ -24,6 +24,7 @@ import { FlowsView } from '../features/admin/flows/FlowsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
@@ -405,6 +406,26 @@ const adminEvalHarnessRoute = createRoute({
     component: AdminEvalHarnessRoute,
 });
 
+function AdminAiActComplianceRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <AiActComplianceView />
+        </RequireRole>
+    );
+}
+
+const adminAiActComplianceRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/ai-act-compliance',
+    component: AdminAiActComplianceRoute,
+});
+
+const adminAiActComplianceSplatRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/ai-act-compliance/$',
+    component: AdminAiActComplianceRoute,
+});
+
 // v4.5/W3 — Connector admin routes. Two routes:
 //   /app/admin/connectors                       → list view
 //   /app/admin/connectors/$key/callback         → OAuth callback handler
@@ -518,6 +539,8 @@ const routeTree = rootRoute.addChildren([
         adminFlowsRoute,
         adminEvalHarnessRoute,
         adminEvalHarnessSplatRoute,
+        adminAiActComplianceRoute,
+        adminAiActComplianceSplatRoute,
         adminConnectorsRoute,
         adminConnectorCallbackRoute,
         adminTabularReviewsRoute,

@@ -5,9 +5,18 @@ import { Sidebar } from './Sidebar';
 import { USERS } from '../../lib/seed';
 
 describe('Sidebar', () => {
-    it('renders all 7 nav items', () => {
+    it('renders the primary navigation entries including AI Act', () => {
         render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
-        for (const label of ['Chat', 'Dashboard', 'Knowledge', 'AI Insights', 'Users & Roles', 'Logs', 'Maintenance']) {
+        for (const label of [
+            'Chat',
+            'Dashboard',
+            'Knowledge',
+            'AI Insights',
+            'Users & Roles',
+            'AI Act',
+            'Logs',
+            'Maintenance',
+        ]) {
             expect(screen.getByRole('button', { name: new RegExp(label, 'i') })).toBeInTheDocument();
         }
     });

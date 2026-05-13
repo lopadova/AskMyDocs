@@ -100,10 +100,20 @@ class AppServiceProvider extends ServiceProvider
             HostIngestionBridge::class,
         );
 
-        // v6.0 — AI Act compliance package host contracts.
-        $this->app->singleton(UserDataExporter::class, AskMyDocsUserDataExporter::class);
-        $this->app->singleton(UserDataDeleter::class, AskMyDocsUserDataDeleter::class);
-        $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
+        // v6.0 — AI Act compliance host scaffold. Bind the upstream
+        // contracts only when the optional packages are actually installed;
+        // this keeps Laravel 13 CI green while the v1 packages catch up.
+        if (interface_exists(UserDataExporter::class)) {
+            $this->app->singleton(UserDataExporter::class, AskMyDocsUserDataExporter::class);
+        }
+
+        if (interface_exists(UserDataDeleter::class)) {
+            $this->app->singleton(UserDataDeleter::class, AskMyDocsUserDataDeleter::class);
+        }
+
+        if (interface_exists(CohortParityMetric::class)) {
+            $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
+        }
     }
 
     public function boot(): void

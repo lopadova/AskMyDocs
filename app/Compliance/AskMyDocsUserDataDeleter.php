@@ -3,18 +3,50 @@
 namespace App\Compliance;
 
 use App\Models\Conversation;
-use App\Models\Message;
 use App\Models\ChatLog;
-use Padosoft\AiActCompliance\DSAR\Contracts\UserDataDeleter;
+use App\Models\McpToolCallAudit;
+use App\Support\TenantContext;
+use InvalidArgumentException;
 
-class AskMyDocsUserDataDeleter implements UserDataDeleter
+class AskMyDocsUserDataDeleter
 {
+    public function __construct(
+        private readonly TenantContext $tenantContext,
+    ) {}
+
     public function delete(object $user): void
     {
-        $userId = (string) ($user->id ?? '');
+        $userId = $this->resolveUserId($user);
+        $tenantId = $this->tenantContext->current();
 
-        Message::query()->where('user_id', $userId)->delete();
-        ChatLog::query()->where('user_id', $userId)->delete();
-        Conversation::query()->where('user_id', $userId)->delete();
+        McpToolCallAudit::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->delete();
+
+        ChatLog::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->delete();
+
+        Conversation::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->delete();
+    }
+
+    private function resolveUserId(object $user): int
+    {
+        $value = $user->id ?? null;
+
+        if (is_int($value) && $value > 0) {
+            return $value;
+        }
+
+        if (is_string($value) && ctype_digit($value) && (int) $value > 0) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException('AskMyDocsUserDataDeleter requires a user object with a positive integer id.');
     }
 }
