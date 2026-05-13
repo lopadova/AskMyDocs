@@ -13,8 +13,8 @@ import axios from 'axios';
  *
  * Copilot iter 10 flagged that the admin SPA's create dialogs flattened
  * 422s to a single generic message, dropping field-level feedback.
- * This module is the shared parser for every create / update / delete
- * mutation in the admin SPA.
+ * This module is the shared parser for admin SPA mutations; currently
+ * consumed by the Tabular Reviews and Workflows surfaces.
  */
 
 export interface ParsedLaravelError {

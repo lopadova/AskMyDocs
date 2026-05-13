@@ -301,6 +301,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
             role="dialog"
             aria-modal="true"
             aria-labelledby="create-wf-title"
+            data-state={error ? 'error' : submitting ? 'submitting' : 'idle'}
             style={{
                 position: 'fixed',
                 inset: 0,
