@@ -174,7 +174,7 @@ top of the v4.0 Vercel AI SDK v6 `UIMessageChunk` streaming foundation.
 - **7 Tier 1 features** — stop-streaming button (`AbortController`-backed), regenerate-last-assistant, branch-from-message endpoint (forks the conversation tree), inline-edit user message, token+cost meter (BE `config('ai.cost_rates')`), enhanced per-message provider+model+timestamp badge, copy-code-block.
 - **Suggested follow-up pills** — `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply; renders as clickable pill chips under the message; submits via the streaming endpoint when clicked.
 - **Full Vercel AI SDK v6 message-parts integration** — `MessageStreamController` emits canonical `start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish` frames over SSE; `useChatStream()` exposes `data-state="idle|loading|ready|empty|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both map to `loading` via `mapStatusToDataState()` — see `frontend/src/features/chat/map-status-to-data-state.test.ts`).
-- **Canvas-ready architecture (artifact panel ships in v5.0)** — Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) is deliberately deferred to v5.0 so it can be designed alongside the MCP **client** tool dispatcher and share one storage contract. See ADR 0008 D4.
+- **Canvas-ready architecture (artifact panel deferred to v5.x)** — Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) is deliberately deferred to a v5.x milestone so it can be designed alongside the MCP **client** tool-result surface and share one storage contract. See ADR 0008 D4.
 - **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — every provider is called via raw `Http::` (no SDK); `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
 
 **Try it.** Open `/app/chat` in the React SPA. Start a long answer
@@ -396,7 +396,7 @@ Every environment variable is documented inline in
 
 ## Architecture
 
-The v4.x platform routes every request through `ResolveTenant`
+The v5.x platform routes every request through `ResolveTenant`
 middleware that populates the `TenantContext` singleton, so every
 Eloquent query that follows is tenant-scoped (R30 / R31). The chat
 surface ships **two interchangeable transports** — the v3 synchronous
@@ -404,7 +404,11 @@ JSON path on `KbChatController` (backward-compat fallback) and the v4
 SSE streaming path on `MessageStreamController` (default for the React
 SPA, emits SDK v6 `UIMessageChunk` frames). Both converge on the same
 hybrid retrieval pipeline (vector + FTS + reranker + canonical graph
-expansion + rejected-approach injection).
+expansion + rejected-approach injection). When `AI_AGENTIC_ENABLED=true`,
+`McpToolCallingService` intercepts after the first provider response and
+runs a multi-turn tool-calling loop (max `AI_MCP_TOOL_CALL_MAX_ITERATIONS`
+iterations) — invoking registered MCP servers via `McpClientBridge` (Node
+sidecar) and accumulating results before returning the final answer.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -429,9 +433,12 @@ expansion + rejected-approach injection).
 │  │ • Refusal short-circuit R26  │   │ • Refusal short-circuit R26      │     │
 │  │ • KbSearchService            │   │ • KbSearchService                │     │
 │  │ • AiManager::chat()          │   │ • AiManager::chatStream()        │     │
-│  │ → { answer, citations,       │   │ → UIMessageChunk frames          │     │
-│  │     refusal_reason,          │   │   (start/text-delta/source-url/  │     │
-│  │     confidence, meta }       │   │    data-confidence/data-refusal/ │     │
+│  │ • McpToolCallingService       │   │ • McpToolCallingService (v5)     │     │
+│  │   (v5, if AI_AGENTIC_ENABLED) │   │   multi-turn tool loop →        │     │
+│  │ → { answer, citations,       │   │   McpClientBridge → Node sidecar │     │
+│  │     refusal_reason,          │   │ → UIMessageChunk frames          │     │
+│  │     confidence, meta,        │   │   (start/text-delta/source-url/  │     │
+│  │     tool_calls }             │   │    data-confidence/data-refusal/ │     │
 │  │                              │   │    finish)                       │     │
 │  └──────────────────────────────┘   └──────────────────────────────────┘     │
 │           │                                   │                              │
@@ -460,7 +467,9 @@ expansion + rejected-approach injection).
 │     expanded,     │  │                   │  │   flow_audit / approvals /   │
 │     rejected,     │  │                   │  │   webhook_outbox             │
 │     meta }        │  │                   │  │ • pii_token_maps (v4.1)      │
-└───────────────────┘  └───────────────────┘  └──────────────────────────────┘
+└───────────────────┘  └───────────────────┘  │ • mcp_servers /              │
+                                               │   mcp_tool_call_audit (v5.0) │
+                                               └──────────────────────────────┘
 ```
 
 **Ingestion** has two entrypoints (CLI `kb:ingest-folder` + HTTP
