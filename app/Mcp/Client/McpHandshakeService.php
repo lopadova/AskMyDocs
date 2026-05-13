@@ -26,11 +26,15 @@ final class McpHandshakeService
 
         $response = $this->bridge->handshake($payload);
 
-        $server->forceFill([
+        $saved = $server->forceFill([
             'status' => McpServer::STATUS_ACTIVE,
             'last_handshake_at' => now(),
             'handshake_response_json' => $response,
         ])->save();
+
+        if (! $saved) {
+            throw new \RuntimeException("Failed to persist handshake result for MCP server {$server->id}.");
+        }
 
         return $response;
     }

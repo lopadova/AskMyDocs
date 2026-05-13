@@ -96,7 +96,7 @@ final class McpInternalAuthController extends Controller
             return;
         }
 
-        $providedToken = (string) $request->header('X-MCP-Internal-Token', (string) $request->query('token', ''));
+        $providedToken = (string) $request->header('X-MCP-Internal-Token', '');
         if (! hash_equals($expectedToken, $providedToken)) {
             throw new AccessDeniedHttpException('Invalid MCP internal token.');
         }

@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -66,19 +65,4 @@ class McpServer extends Model
         return $this->hasMany(McpToolCallAudit::class);
     }
 
-    /**
-     * Decrypt-safe accessor alias used by internal services.
-     */
-    public function authConfigDecrypted(): Attribute
-    {
-        return Attribute::make(
-            get: function (?string $value): ?string {
-                if ($value === null || $value === '') {
-                    return null;
-                }
-
-                return \Illuminate\Support\Facades\Crypt::decryptString($value);
-            },
-        );
-    }
 }

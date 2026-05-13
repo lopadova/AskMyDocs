@@ -84,7 +84,7 @@ final class McpServersAdminController extends Controller
             $this->handshakeService->refresh($server);
             $server->refresh();
         } catch (\Throwable $exception) {
-            $server->forceFill([
+            $persisted = $server->forceFill([
                 'status' => McpServer::STATUS_ERRORED,
                 'last_handshake_at' => now(),
                 'handshake_response_json' => [
@@ -94,8 +94,12 @@ final class McpServersAdminController extends Controller
                 ],
             ])->save();
 
+            if (! $persisted) {
+                return response()->json(['error' => 'Failed to persist handshake error state.'], 500);
+            }
+
             return response()->json([
-                'data' => $this->serialize($server),
+                'data' => $this->serialize($server->fresh()),
                 'error' => 'MCP handshake failed.',
             ], 502);
         }
@@ -113,9 +117,9 @@ final class McpServersAdminController extends Controller
         ]);
 
         $server = $this->findForTenant($id);
-        $server->forceFill([
-            'enabled_tools_json' => $validated['enabled_tools'],
-        ])->save();
+        if (! $server->forceFill(['enabled_tools_json' => $validated['enabled_tools']])->save()) {
+            abort(500, 'Failed to persist enabled tools update.');
+        }
 
         return response()->json([
             'data' => $this->serialize($server),
@@ -125,7 +129,9 @@ final class McpServersAdminController extends Controller
     public function disable(int $id): JsonResponse
     {
         $server = $this->findForTenant($id);
-        $server->forceFill(['status' => McpServer::STATUS_DISABLED])->save();
+        if (! $server->forceFill(['status' => McpServer::STATUS_DISABLED])->save()) {
+            abort(500, 'Failed to persist server disable.');
+        }
 
         return response()->json([
             'data' => $this->serialize($server),
