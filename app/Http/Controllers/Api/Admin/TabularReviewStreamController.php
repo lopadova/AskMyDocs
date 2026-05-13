@@ -274,9 +274,13 @@ final class TabularReviewStreamController extends Controller
             // On encode failure we MUST switch the event name to
             // `error` so SSE consumers handling a `cell` frame don't
             // try to render a structurally-different payload as a
-            // cell update. Log the original failure for forensics.
+            // cell update. Log with correlation_id so operators can
+            // pivot from the SSE payload to the log line (wire format
+            // spec requires correlation_id on every error frame).
+            $encodeErrorId = (string) Str::uuid();
             Log::error('tabular-review.stream.encode_error', [
                 'event' => $event,
+                'correlation_id' => $encodeErrorId,
                 'exception' => $e,
             ]);
             $emitEvent = 'error';
@@ -288,11 +292,14 @@ final class TabularReviewStreamController extends Controller
             // literal so the SSE frame is never empty (Copilot
             // iter 9).
             $json = json_encode(
-                ['message' => 'Cell payload could not be encoded; skipped.'],
+                [
+                    'message' => 'Cell payload could not be encoded; skipped.',
+                    'correlation_id' => $encodeErrorId,
+                ],
                 JSON_UNESCAPED_SLASHES,
             );
             if ($json === false) {
-                $json = '{"message":"Cell payload could not be encoded; skipped."}';
+                $json = '{"message":"Cell payload could not be encoded; skipped.","correlation_id":"encode-error"}';
             }
         }
 
