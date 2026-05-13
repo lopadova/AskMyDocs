@@ -40,7 +40,7 @@ trait DeniesViewerMutations
      * The `viewTabularReviews` / `viewWorkflows` Gates admit ALL three
      * roles (`viewer`, `admin`, `super-admin`) so they can reach any route
      * under these controllers. This trait is the layer that enforces the
-     * write-only denial specifically for the `viewer` role; callers with
+     * mutation denial specifically for the `viewer` role; callers with
      * `admin` or `super-admin` pass this check unconditionally.
      *
      * Fail-closed: if the authenticated user model doesn't expose the
