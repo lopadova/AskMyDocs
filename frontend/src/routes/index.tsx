@@ -24,6 +24,8 @@ import { FlowsView } from '../features/admin/flows/FlowsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
+import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
+import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -435,6 +437,41 @@ const adminConnectorsRoute = createRoute({
     component: AdminConnectorsRoute,
 });
 
+// v4.7/W3 — Tabular Reviews + Workflows admin SPA routes.
+// `viewTabularReviews` / `viewWorkflows` BE Gates admit the `viewer`
+// role for READ-ONLY access (the BE controllers' denyMutationForViewer()
+// guards individual write actions). The FE rail entry must mirror that
+// admission set so a viewer hitting the URL sees the list page rather
+// than <AdminForbidden />; the components themselves treat write attempts
+// as 403 from the BE response.
+function AdminTabularReviewsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'viewer']}>
+            <TabularReviewsList />
+        </RequireRole>
+    );
+}
+
+function AdminWorkflowsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'viewer']}>
+            <WorkflowsList />
+        </RequireRole>
+    );
+}
+
+const adminTabularReviewsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/tabular-reviews',
+    component: AdminTabularReviewsRoute,
+});
+
+const adminWorkflowsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/workflows',
+    component: AdminWorkflowsRoute,
+});
+
 const adminConnectorCallbackRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/connectors/$key/callback',
@@ -483,6 +520,8 @@ const routeTree = rootRoute.addChildren([
         adminEvalHarnessSplatRoute,
         adminConnectorsRoute,
         adminConnectorCallbackRoute,
+        adminTabularReviewsRoute,
+        adminWorkflowsRoute,
     ]),
 ]);
 

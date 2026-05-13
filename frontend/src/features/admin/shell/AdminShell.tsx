@@ -22,7 +22,9 @@ export type AdminSection =
     | 'logs'
     | 'maintenance'
     | 'insights'
-    | 'connectors';
+    | 'connectors'
+    | 'tabular-reviews'
+    | 'workflows';
 
 interface RailEntry {
     id: AdminSection;
@@ -47,6 +49,15 @@ const RAIL: RailEntry[] = [
     // visible and the route component renders <AdminForbidden /> on
     // role miss via <RequireRole>.
     { id: 'connectors', label: 'Connectors', icon: 'Link', to: '/app/admin/connectors' },
+    // v4.7/W3 — Tabular Reviews + Workflows admin landings. Per the
+    // standing convention `feedback_admin_ui_panel_alignment_per_release.md`,
+    // every cycle that ships new domain capabilities also ships an
+    // admin SPA menu entry. BE Gates `viewTabularReviews` /
+    // `viewWorkflows` enforce read/write; the FE entries are always
+    // visible and the route components render <AdminForbidden /> on
+    // miss via <RequireRole>.
+    { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', to: '/app/admin/tabular-reviews' },
+    { id: 'workflows', label: 'Workflows', icon: 'Activity', to: '/app/admin/workflows' },
 ];
 
 export interface AdminShellProps {

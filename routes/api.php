@@ -13,7 +13,10 @@ use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
+use App\Http\Controllers\Api\Admin\TabularReviewController;
+use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
+use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
@@ -455,4 +458,177 @@ Route::middleware([
     ->group(function () {
         Route::get('/bootstrap-config', [EvalHarnessUiBootstrapController::class, 'show'])
             ->name('api.admin.eval-harness.bootstrap-config');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Tabular Reviews (v4.7/W1)
+|--------------------------------------------------------------------------
+|
+| Spreadsheet-style document extraction. Mounted under
+| `can:viewTabularReviews` so the `viewer` Spatie role can browse
+| (read-only) alongside `admin` + `super-admin`. The controller enforces
+| the read-only constraint for viewer at the action layer.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewTabularReviews',
+])
+    ->prefix('admin/tabular-reviews')
+    ->group(function () {
+        Route::get('/', [TabularReviewController::class, 'index'])
+            ->name('api.admin.tabular-reviews.index');
+        Route::post('/', [TabularReviewController::class, 'store'])
+            ->name('api.admin.tabular-reviews.store');
+        // `/prompt` MUST come before `/{id}` so the literal path is
+        // matched first (otherwise "prompt" parses as an id and 404s).
+        Route::post('/prompt', [TabularReviewController::class, 'suggestPrompt'])
+            ->name('api.admin.tabular-reviews.prompt');
+        Route::get('/{id}', [TabularReviewController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.show');
+        Route::patch('/{id}', [TabularReviewController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.update');
+        Route::delete('/{id}', [TabularReviewController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.destroy');
+        Route::post('/{id}/generate', [TabularReviewController::class, 'generate'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.generate');
+        Route::post('/{id}/regenerate-cell', [TabularReviewController::class, 'regenerateCell'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.regenerate-cell');
+        Route::post('/{id}/clear-cells', [TabularReviewController::class, 'clearCells'])
+            ->whereNumber('id')
+            ->name('api.admin.tabular-reviews.clear-cells');
+    });
+
+// v4.7/W3 — SSE streaming variant of `tabular-reviews/{id}/generate`.
+// Hoisted out of the main group so it can use the `auth.sse`
+// middleware (`App\Http\Middleware\AuthenticateForSse`) instead of
+// the default `auth:sanctum`. NOTE: for /api/* requests the global
+// `Exceptions::shouldRenderJsonWhen(...)` in bootstrap/app.php
+// already forces JSON-401 on auth failure, so the practical
+// difference between the two for THIS route is small. We still use
+// `auth.sse` here for two reasons: (a) defence in depth — if a
+// future bootstrap change narrows the global JSON-render rule, the
+// dedicated middleware keeps streaming auth failures parseable; and
+// (b) consistency with `MessageStreamController`'s route which lives
+// under the web group where the global renderer does NOT apply and
+// the default `auth` would actually emit 302+HTML. Same Gate as the
+// sync sibling (`can:viewTabularReviews`) so RBAC stays identical;
+// same tenant scoping enforced in the controller. The endpoint is
+// POST (so the FE consumer is fetch-based SSE — readable-stream +
+// manual parsing; the native browser `EventSource` is GET-only and
+// not used here). Emits `cell` events as the extractor produces
+// them. NOTE: the v4.7 GA SPA's TabularReviewShow page DOES NOT
+// yet consume this route — its Generate button calls the
+// synchronous `/generate` sibling. The SSE route is fully
+// implemented + tested (`TabularReviewStreamControllerTest`
+// covers happy stream + 4xx + error-event + cap), and the
+// progressive-paint FE consumer ships in v4.7.x alongside the
+// Glide Data Grid migration (ADR 0010 D1). External SSE consumers
+// (custom UIs, notebooks, integrations) can already use this
+// route today. Copilot iter 8 caught the previous comment's drift
+// about 302+HTML which only applies to web routes; iter 9 caught
+// the implication that the v4.7 GA UI already paints
+// progressively (it does not).
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth.sse:sanctum',
+    'can:viewTabularReviews',
+])->post(
+    '/admin/tabular-reviews/{id}/generate-stream',
+    [TabularReviewStreamController::class, 'stream'],
+)
+    ->whereNumber('id')
+    ->name('api.admin.tabular-reviews.generate-stream');
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Workflows (v4.7/W2)
+|--------------------------------------------------------------------------
+|
+| Reusable prompt templates (assistant or tabular) + AI-suggested
+| workflows from the tenant's KB. Mounted under `can:viewWorkflows`
+| so `viewer` can browse the catalogue (read-only); `admin` +
+| `super-admin` can mutate templates AND request LLM-backed
+| suggestions (controller enforces these via `assertCanCreate()` /
+| `assertCanSuggest()`).
+|
+| `viewer` is intentionally allowed to call `/{id}/hide` and
+| `/{id}/hide` DELETE — those endpoints only mutate the per-user
+| `hidden_workflows` table (cosmetic personal preference, not the
+| underlying template) and the policy at
+| `WorkflowService::hide() / unhide()` scopes every row to the
+| caller's own user_id. Copilot iter 1 correctly flagged that the
+| previous "viewer is read-only across the surface" comment was
+| inaccurate; this is the corrected contract.
+|
+| Literal sub-paths (`/suggest`, `/from-proposal`) MUST come before
+| the `/{id}` catch-all so the literal route is matched first. The
+| `/share` and `/hide` routes are nested under `/{id}` and rely on
+| `whereNumber('id')` to keep the dispatch unambiguous.
+|
+| Middleware (`EncryptCookies` + `StartSession`) mirrors every other
+| admin route group in this file: AskMyDocs is a Sanctum-SPA + API
+| hybrid where the React shell at `/admin/*` authenticates via a
+| stateful session cookie. The whole admin surface — Dashboard
+| metrics, Users, Roles, KB tree/explorer, Tabular Reviews, PII admin,
+| Eval Harness, Connectors — uses the same triple
+| (`EncryptCookies` + `StartSession` + `auth:sanctum`), and
+| diverging here would force the FE to issue token-bearer auth on
+| this surface alone. Copilot iter 5 flagged the stateful overhead;
+| the consistency with the rest of the admin surface outweighs the
+| overhead — the FE would otherwise need bespoke fetch wiring.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewWorkflows',
+])
+    ->prefix('admin/workflows')
+    ->group(function () {
+        Route::get('/', [WorkflowController::class, 'index'])
+            ->name('api.admin.workflows.index');
+        Route::post('/', [WorkflowController::class, 'store'])
+            ->name('api.admin.workflows.store');
+
+        // Literal sub-paths before /{id}.
+        Route::post('/suggest', [WorkflowController::class, 'suggest'])
+            ->middleware('throttle:30,1')
+            ->name('api.admin.workflows.suggest');
+        Route::post('/from-proposal', [WorkflowController::class, 'fromProposal'])
+            ->name('api.admin.workflows.from-proposal');
+
+        Route::get('/{id}', [WorkflowController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.show');
+        Route::patch('/{id}', [WorkflowController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.update');
+        Route::delete('/{id}', [WorkflowController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.destroy');
+
+        Route::post('/{id}/share', [WorkflowController::class, 'share'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.share');
+        Route::delete('/{id}/share', [WorkflowController::class, 'unshare'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unshare');
+
+        Route::post('/{id}/hide', [WorkflowController::class, 'hide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.hide');
+        Route::delete('/{id}/hide', [WorkflowController::class, 'unhide'])
+            ->whereNumber('id')
+            ->name('api.admin.workflows.unhide');
     });

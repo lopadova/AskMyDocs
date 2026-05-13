@@ -105,6 +105,72 @@ class AppServiceProvider extends ServiceProvider
         $this->registerPiiRedactorAdminTenantStamping();
         $this->registerEvalHarnessUiGates();
         $this->registerConnectorGates();
+        $this->registerTabularReviewGates();
+        $this->registerWorkflowGates();
+    }
+
+    /**
+     * v4.7/W2 — Wires the Gates that protect the workflows admin
+     * surface.
+     *
+     *   - viewWorkflows     → admit super-admin + admin + viewer
+     *     (viewer can browse the catalogue AND manage their OWN
+     *      `hidden_workflows` rows — a per-user cosmetic preference,
+     *      scoped per-user inside `WorkflowService::hide()` — but
+     *      cannot create/update/delete/share workflows or call the
+     *      LLM-backed suggester; the controller enforces those
+     *      writes via `assertCanCreate()` / `assertCanSuggest()`)
+     *   - createWorkflows   → admit super-admin + admin only
+     *     (viewer cannot mutate template state)
+     *   - suggestWorkflows  → admit super-admin + admin only
+     *     (cost-protected; viewer cannot trigger LLM-backed
+     *      suggestions even though they're admitted by viewWorkflows
+     *      at the HTTP layer)
+     *
+     * Copilot iter 2: previously the docblock said "viewer is
+     * read-only" which was inaccurate — viewers CAN mutate
+     * `hidden_workflows` because that table only records their own
+     * personal hide-from-my-list markers. The contract above is now
+     * explicit.
+     */
+    private function registerWorkflowGates(): void
+    {
+        Gate::define('viewWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin', 'viewer']);
+        });
+
+        Gate::define('createWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+
+        Gate::define('suggestWorkflows', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+    }
+
+    /**
+     * v4.7/W1 — Wires the Gate that protects the tabular-review admin
+     * surface. Admits super-admin + admin (full RW within tenant) and
+     * viewer (read-only). The controller enforces the read-only side
+     * of viewer at the action layer.
+     */
+    private function registerTabularReviewGates(): void
+    {
+        Gate::define('viewTabularReviews', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+            return $user->hasAnyRole(['super-admin', 'admin', 'viewer']);
+        });
     }
 
     /**
