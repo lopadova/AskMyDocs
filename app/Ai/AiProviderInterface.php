@@ -12,7 +12,15 @@ interface AiProviderInterface
     /**
      * Multi-turn chat completion with conversation history.
      *
-     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * @param  list<array{
+     *   role: 'user'|'assistant'|'tool',
+     *   content: string,
+     *   tool_calls?: mixed,
+     *   tool_call_id?: mixed,
+     *   name?: mixed,
+     *   id?: mixed,
+     * }>  $messages
+     * @param  array<string, mixed>  $options
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse;
 
@@ -34,7 +42,15 @@ interface AiProviderInterface
      * result), NOT inside this interface — the provider only sees a
      * normal turn.
      *
-     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * @param  list<array{
+     *   role: 'user'|'assistant'|'tool',
+     *   content: string,
+     *   tool_calls?: mixed,
+     *   tool_call_id?: mixed,
+     *   name?: mixed,
+     *   id?: mixed,
+     * }>  $messages
+     * @param  array<string, mixed>  $options
      * @return \Generator<int, StreamChunk, void, void>
      */
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator;
@@ -50,3 +66,4 @@ interface AiProviderInterface
 
     public function supportsEmbeddings(): bool;
 }
+

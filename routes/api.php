@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
 use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
+use App\Http\Controllers\Api\Admin\McpServersAdminController;
+use App\Http\Controllers\Api\Admin\McpToolCallAuditController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
 use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
+use App\Http\Controllers\Api\McpInternalAuthController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
@@ -416,6 +419,51 @@ Route::middleware([
     });
 
 /*
+|---------------------------------------------------------------------------
+| Admin — MCP servers (v5.0/W1-W2)
+|--------------------------------------------------------------------------
+|
+| Register external MCP servers and tune tools per tenant. Admin access
+| is still locked behind the same SPA session + `auth:sanctum` surface.
+| `manageMcpTools` remains super-admin by default (strictest blast radius
+| until W4 adds per-user matrix + per-conversation overrides).
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:manageMcpTools',
+])
+    ->prefix('admin/mcp-servers')
+    ->group(function () {
+        Route::get('/', [McpServersAdminController::class, 'index'])
+            ->name('api.admin.mcp-servers.index');
+        Route::post('/', [McpServersAdminController::class, 'store'])
+            ->name('api.admin.mcp-servers.store');
+        Route::post('/{id}/handshake', [McpServersAdminController::class, 'handshake'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp-servers.handshake');
+        Route::patch('/{id}/tools', [McpServersAdminController::class, 'updateEnabledTools'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp-servers.update-tools');
+        Route::post('/{id}/disable', [McpServersAdminController::class, 'disable'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp-servers.disable');
+        Route::delete('/{id}', [McpServersAdminController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp-servers.destroy');
+    });
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:viewMcpAudit',
+])
+    ->get('/admin/mcp-tool-call-audit', [McpToolCallAuditController::class, 'index'])
+    ->name('api.admin.mcp-tool-call-audit.index');
+
+/*
 |--------------------------------------------------------------------------
 | Admin — Eval Harness UI bootstrap config (gate-protected)
 |--------------------------------------------------------------------------
@@ -632,3 +680,13 @@ Route::middleware([
             ->whereNumber('id')
             ->name('api.admin.workflows.unhide');
     });
+
+/*
+|--------------------------------------------------------------------------
+| MCP internal callbacks for the Node sidecar (W1.2+)
+|--------------------------------------------------------------------------
+*/
+Route::post('/mcp/internal-auth', [McpInternalAuthController::class, 'verify'])
+    ->name('api.mcp.internal-auth');
+Route::post('/mcp/credentials', [McpInternalAuthController::class, 'credentials'])
+    ->name('api.mcp.credentials');

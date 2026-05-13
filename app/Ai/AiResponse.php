@@ -12,5 +12,7 @@ final readonly class AiResponse
         public ?int $completionTokens = null,
         public ?int $totalTokens = null,
         public ?string $finishReason = null,
+        public array $toolCalls = [],
     ) {}
 }
+

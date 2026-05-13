@@ -195,7 +195,10 @@ final class JiraIssueChunker implements ChunkerInterface
      */
     private function splitDescriptionAndComments(string $body): array
     {
-        $body = trim($body);
+        // Normalize line endings so the chunker behaves the same on
+        // Linux/Windows CI runners and does not miss the optional
+        // comments block due newline encoding differences.
+        $body = str_replace("\r", '', trim($body));
         if ($body === '') {
             return ['', ''];
         }
@@ -205,19 +208,12 @@ final class JiraIssueChunker implements ChunkerInterface
         // include the title twice.
         $body = preg_replace('/^#\s+[^\n]+\n+/', '', $body, 1) ?? $body;
 
-        $pos = strpos($body, "\n## Comments\n");
-        if ($pos === false) {
-            if (str_starts_with($body, '## Comments')) {
-                return ['', trim(substr($body, strlen('## Comments')))];
-            }
-
+        $parts = preg_split('/^##\s*Comments\s*$/m', $body, 2);
+        if (count($parts) !== 2) {
             return [trim($body), ''];
         }
 
-        $description = trim(substr($body, 0, $pos));
-        $commentBody = substr($body, $pos + strlen("\n## Comments\n"));
-
-        return [$description, trim($commentBody)];
+        return [trim($parts[0]), trim($parts[1])];
     }
 
     /**
