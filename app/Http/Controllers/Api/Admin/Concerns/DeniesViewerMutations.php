@@ -37,10 +37,11 @@ trait DeniesViewerMutations
     /**
      * Reject write actions when the caller has only `viewer` role.
      *
-     * The `viewTabularReviews` / `viewWorkflows` Gates admit the `viewer`
-     * role for READ-ONLY access, so this trait is the layer that prevents
-     * viewers from reaching mutation methods. Callers with `admin` or
-     * `super-admin` pass through.
+     * The `viewTabularReviews` / `viewWorkflows` Gates admit ALL three
+     * roles (`viewer`, `admin`, `super-admin`) so they can reach any route
+     * under these controllers. This trait is the layer that enforces the
+     * write-only denial specifically for the `viewer` role; callers with
+     * `admin` or `super-admin` pass this check unconditionally.
      *
      * Fail-closed: if the authenticated user model doesn't expose the
      * Spatie role helpers (`hasRole` + `hasAnyRole`), throw 403 rather
