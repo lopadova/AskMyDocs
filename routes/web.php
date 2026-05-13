@@ -106,6 +106,11 @@ Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
     ->name('spa');
 
+// v6.0 — AI Act compliance admin cross-mount surface.
+Route::middleware('auth')->get('/admin/ai-act-compliance/{any?}', SpaController::class)
+    ->where('any', '.*')
+    ->name('ai-act-compliance.spa');
+
 /*
 |--------------------------------------------------------------------------
 | Testing-only endpoints (Playwright E2E)

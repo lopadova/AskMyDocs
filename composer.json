@@ -19,6 +19,8 @@
         "padosoft/laravel-ai-regolo": "^1.0",
         "padosoft/laravel-flow": "^1.0",
         "padosoft/laravel-flow-admin": "^1.0",
+        "padosoft/laravel-ai-act-compliance": "^1.0",
+        "padosoft/laravel-ai-act-compliance-admin": "^1.0",
         "padosoft/laravel-pii-redactor": "^1.2",
         "padosoft/laravel-pii-redactor-admin": "^1.0.2",
         "phpoffice/phpword": "^1.3",
@@ -110,6 +112,20 @@
             "type": "vcs",
             "url": "https://github.com/padosoft/askmydocs-connector-jira",
             "comment": "v4.6 connector package extraction — pending Packagist submission, resolved via Git tags v1.x."
+        },
+        {
+            "type": "path",
+            "url": "../laravel-ai-act-compliance",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "type": "path",
+            "url": "../laravel-ai-act-compliance-admin",
+            "options": {
+                "symlink": true
+            }
         }
     ]
 }
