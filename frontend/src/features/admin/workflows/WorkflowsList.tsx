@@ -390,7 +390,7 @@ function CreateWorkflowDialog({ onClose, onSubmit, submitting, error }: CreatePr
                                 title: title.trim(),
                                 type,
                                 prompt_md: promptMd,
-                                practice: practice || undefined,
+                                practice: practice.trim() || undefined,
                                 // Tabular workflows need a
                                 // columns-config builder — disabled
                                 // in this GA shell. The radio above

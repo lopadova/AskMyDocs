@@ -24,9 +24,10 @@ use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
  * v4.7/W3 — SSE streaming variant of TabularReviewController::generate().
  *
  * Wires {@see TabularReviewExtractor::extract($review, $doc, $onCell)} to a
- * `text/event-stream` response so the Glide-style grid in the W3 admin
- * SPA can paint cells as soon as the extractor emits them, instead of
- * waiting for the whole batch to finish.
+ * `text/event-stream` response. The wire format is complete and tested;
+ * the v4.7 GA SPA consumes the synchronous `TabularReviewController::generate()`
+ * endpoint instead. A progressive-paint SSE consumer is planned for v4.7.x
+ * (ADR 0010 D1 — Glide Data Grid migration deferred).
  *
  * Wire format — one SSE message per event. The `status` field on
  * `cell` frames carries the `CellStatus` enum value
