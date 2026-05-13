@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Controllers\Api\Admin\Concerns\DeniesViewerMutations;
 use App\Http\Requests\Admin\TabularReview\GenerateCellRequest;
 use App\Http\Requests\Admin\TabularReview\StoreTabularReviewRequest;
 use App\Http\Requests\Admin\TabularReview\SuggestPromptRequest;
@@ -19,7 +20,6 @@ use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -35,6 +35,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class TabularReviewController extends Controller
 {
+    use DeniesViewerMutations;
+
     public function __construct(
         private readonly TabularReviewExtractor $extractor,
         private readonly ColumnPromptSuggester $promptSuggester,
@@ -385,19 +387,4 @@ final class TabularReviewController extends Controller
         return $review;
     }
 
-    /**
-     * Reject write actions when the caller has only `viewer` role.
-     * super-admin / admin are admitted upstream by the Gate.
-     */
-    private function denyMutationForViewer(Request $request): void
-    {
-        $user = $request->user();
-        if ($user === null) {
-            return;
-        }
-        if (method_exists($user, 'hasRole') && $user->hasRole('viewer')
-            && ! $user->hasAnyRole(['admin', 'super-admin'])) {
-            throw new AccessDeniedHttpException('Viewers cannot mutate tabular reviews.');
-        }
-    }
 }

@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
+use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
@@ -505,6 +506,48 @@ Route::middleware([
             ->whereNumber('id')
             ->name('api.admin.tabular-reviews.clear-cells');
     });
+
+// v4.7/W3 — SSE streaming variant of `tabular-reviews/{id}/generate`.
+// Hoisted out of the main group so it can use the `auth.sse`
+// middleware (`App\Http\Middleware\AuthenticateForSse`) instead of
+// the default `auth:sanctum`. NOTE: for /api/* requests the global
+// `Exceptions::shouldRenderJsonWhen(...)` in bootstrap/app.php
+// already forces JSON-401 on auth failure, so the practical
+// difference between the two for THIS route is small. We still use
+// `auth.sse` here for two reasons: (a) defence in depth — if a
+// future bootstrap change narrows the global JSON-render rule, the
+// dedicated middleware keeps streaming auth failures parseable; and
+// (b) consistency with `MessageStreamController`'s route which lives
+// under the web group where the global renderer does NOT apply and
+// the default `auth` would actually emit 302+HTML. Same Gate as the
+// sync sibling (`can:viewTabularReviews`) so RBAC stays identical;
+// same tenant scoping enforced in the controller. The endpoint is
+// POST (so the FE consumer is fetch-based SSE — readable-stream +
+// manual parsing; the native browser `EventSource` is GET-only and
+// not used here). Emits `cell` events as the extractor produces
+// them. NOTE: the v4.7 GA SPA's TabularReviewShow page DOES NOT
+// yet consume this route — its Generate button calls the
+// synchronous `/generate` sibling. The SSE route is fully
+// implemented + tested (`TabularReviewStreamControllerTest`
+// covers happy stream + 4xx + error-event + cap), and the
+// progressive-paint FE consumer ships in v4.7.x alongside the
+// Glide Data Grid migration (ADR 0010 D1). External SSE consumers
+// (custom UIs, notebooks, integrations) can already use this
+// route today. Copilot iter 8 caught the previous comment's drift
+// about 302+HTML which only applies to web routes; iter 9 caught
+// the implication that the v4.7 GA UI already paints
+// progressively (it does not).
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth.sse:sanctum',
+    'can:viewTabularReviews',
+])->post(
+    '/admin/tabular-reviews/{id}/generate-stream',
+    [TabularReviewStreamController::class, 'stream'],
+)
+    ->whereNumber('id')
+    ->name('api.admin.tabular-reviews.generate-stream');
 
 /*
 |--------------------------------------------------------------------------

@@ -11,6 +11,132 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v4.7.0 — 2026-05-12 (GA — Tabular Review + Workflows + AI-suggest)
+
+**v4.7.0** is the integration of three weekly milestones — W1 (Tabular
+Review backend), W2 (Workflows backend + AI-suggester), and W3 (Admin
+SPA + SSE streaming + GA prep). The combined surface is a
+spreadsheet-style document-extraction feature plus a reusable
+prompt-template catalogue with KB-aware AI-suggested workflows.
+
+**What's new in AskMyDocs v4.7.0 GA (cycle summary):**
+
+W1 (rc1, see below for full detail):
+- 2 new domain tables — `tabular_reviews` + `tabular_cells` — with
+  tenant_id mandatory + composite unique
+  `(tenant_id, review_id, document_id, column_index)` + FK cascade on
+  review_id + document_id.
+- 17 format types (Mike's 9 + 8 AskMyDocs-new), `enum` validated
+  against `enum_values`, plus the LLM-free `json_path` shortcut.
+- `TabularReviewExtractor` — batched multi-column LLM call per
+  document, cost `O(documents)` not `O(documents × columns)`.
+- 41 PHPUnit feature tests.
+
+W2 (rc2):
+- 3 new domain tables — `workflows` + `workflow_shares` +
+  `hidden_workflows` — tenant-aware with R30/R31 isolation.
+- `WorkflowService` for CRUD + share + hide; `WorkflowSuggester` +
+  `MetadataPatternAnalyzer` for AI-driven proposals against the
+  tenant's KB metadata distribution.
+- 15 system-shipped templates spanning legal review, GDPR DPIA, DPA,
+  commercial agreement triage, privacy policy audit, vendor due
+  diligence, employment policy review, regulatory mapping, risk
+  register, litigation timeline, NDA review, IP-licensing review,
+  consent record audit, processor-list extraction, contract-clause
+  comparison.
+- 39 PHPUnit feature tests.
+
+W3 (this rc3 / GA):
+
+- **SSE streaming extractor** — `POST /api/admin/tabular-reviews/{id}/generate-stream`
+  wraps `TabularReviewExtractor::extract($onCell)` in a
+  `text/event-stream` response so the admin grid paints cells as they
+  land instead of waiting for the whole batch to finish. Wire format:
+  one SSE message per event (`start` / `document` / `cell` / `done` /
+  `error`). The synchronous `/generate` endpoint stays in place as
+  the test + CLI path. Per-cell payload carries
+  `{document_id, column_index, summary, reasoning, citations, flag, status}`.
+- **Admin SPA — Tabular Reviews** at `/app/admin/tabular-reviews`:
+  list view (paginated; project filter is BE-supported but the FE
+  surface is free-text in this GA — `/api/admin/projects/keys`
+  dropdown lands in v4.7.x per R18), create dialog (title +
+  project_key + columns config builder with per-column name/prompt/
+  format dropdown + add/remove rows), show page (grid view with
+  flag-tinted cells + a per-cell flag glyph + inline reasoning text +
+  Generate / Clear actions; the cell carries an `aria-label`
+  combining summary + flag + reasoning so AT users get the same
+  context as sighted users — R15). The Generate button still calls
+  the synchronous `/generate` endpoint in v4.7 GA; the progressive-
+  paint consumer of `/generate-stream` ships in v4.7.x alongside the
+  Glide Data Grid migration (ADR 0010 D1).
+- **Admin SPA — Workflows** at `/app/admin/workflows`: scope tabs
+  (Mine / Shared / System), card grid layout, create dialog
+  (**assistant type only in GA** — tabular create UI deferred to
+  v4.7.x because the columns-config builder is a v4.7.x deliverable;
+  tabular workflows ARE accepted by the JSON API and via the
+  AI-suggest gallery's save-this path), AI-suggest gallery (clicks
+  `/suggest`, renders proposals as save-able cards), per-card hide
+  action. The `+ New workflow` button and the AI-suggest button are
+  role-gated client-side (admin / super-admin only); viewers see a
+  read-only catalogue.
+- **Admin rail** entries for "Tabular Reviews" + "Workflows" wired
+  into `AdminShell` per the standing rule
+  `feedback_admin_ui_panel_alignment_per_release.md` (every cycle
+  shipping domain capabilities also ships an admin SPA menu entry).
+- **TanStack Router** routes for the two new admin views, guarded by
+  `RequireRole(['admin', 'super-admin', 'viewer'])` to mirror the BE
+  Gates `viewTabularReviews` / `viewWorkflows` (which admit `viewer`
+  for read-only access). Write controls (+ New review / + New
+  workflow / Delete / Generate / Clear / Get suggestions) are
+  role-gated client-side so a viewer sees the catalogue but never a
+  button that 403s; the BE controllers' `denyMutationForViewer()`
+  guard remains the authoritative defence.
+- **Tests (W3)**: 6 PHPUnit feature tests for the SSE controller
+  (`TabularReviewStreamControllerTest` — happy stream + 404 + 401 +
+  403 viewer + error event + max_documents cap), 13 Vitest react
+  tests (6 + 7 across the two list components covering loading /
+  empty / ready / error states + create dialog happy + failure +
+  AI-suggest gallery save-this), 8 Playwright specs (4 + 4 across
+  Tabular Reviews + Workflows covering the list shell + create
+  dialog ARIA + full CRUD round-trip + FE submit-disabled guard on
+  empty required fields). The real BE 422 validation E2E coverage
+  is deferred to v4.7.x alongside the `/api/admin/projects/keys`
+  dropdown work (R18).
+
+**Test count delta**:
+- PHPUnit: 1885 → 1891 (+6 W3 SSE controller).
+- Vitest react: 384 → 397 (+13 W3 admin SPA).
+- Playwright: +8 (4 tabular + 4 workflows specs).
+- W1 ships +41 PHPUnit, W2 ships +39 PHPUnit (already in main as rc1
+  + rc2). Total cycle delta ≈ +94 PHPUnit + 13 Vitest + 8 Playwright
+  ≈ **+115 tests**.
+
+**R37 once-per-major** — `feature/v4.7` merges to `main` as a single
+GA event after all three W milestones close. The integration branch
+is preserved for v4.7.x patches.
+
+**R39 RC tag pinned at the W3 closure SHA** — `v4.7.0-rc3` tagged on
+the W3 merge commit; the GA `v4.7.0` tag pins on the integration→main
+merge commit.
+
+**Honesty pass**:
+- The Glide Data Grid canvas integration referenced in the v4.7
+  design doc is shipped as a plain HTML table in the W3 GA. The
+  cell-tint + tooltip + reasoning side-panel UX is identical; the
+  canvas-backed performance lift was deferred to a v4.7.x polish in
+  exchange for ship velocity and reduced JS bundle weight. See ADR
+  0010 D1 for the rationale.
+- The Tabular Reviews show page renders a simple HTML grid; column
+  reordering / row pagination / column-resize handles are deferred.
+- Workflow edit + share modal + use-as-template path are scaffolded
+  in the W2 backend but not surfaced in the W3 admin SPA shell; they
+  are reachable through the JSON API and ship in v4.7.x.
+- One pre-existing test failure
+  (`Tests\Feature\Kb\Chunking\JiraIssueChunkerTest::comments_section_aggregates_into_separate_chunk`)
+  on the `feature/v4.7` baseline — unrelated to W3, parked for v4.7.1.
+
+---
+
 ### v4.7.0-rc1 — 2026-05-12 (W1 closure — Tabular Review backend)
 
 **v4.7.0-rc1** marks the W1 milestone of the v4.7 cycle (Tabular Review +
