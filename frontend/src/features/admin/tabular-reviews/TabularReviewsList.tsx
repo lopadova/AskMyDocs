@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
 import { parseLaravelError, flattenLaravelError } from '../../../lib/laravel-errors';
 import { adminTabularReviewsApi, FORMAT_TYPES, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
+import { AdminShell } from '../shell/AdminShell';
 
 /**
  * v4.7/W3 — Admin Tabular Reviews list view.
@@ -71,14 +72,17 @@ export function TabularReviewsList(): ReactNode {
 
     if (activeId !== null) {
         return (
-            <TabularReviewShow
-                id={activeId}
-                onBack={() => setActiveId(null)}
-            />
+            <AdminShell section="tabular-reviews">
+                <TabularReviewShow
+                    id={activeId}
+                    onBack={() => setActiveId(null)}
+                />
+            </AdminShell>
         );
     }
 
     return (
+        <AdminShell section="tabular-reviews">
         <div
             data-testid="admin-tabular-reviews"
             data-state={dataState}
@@ -185,6 +189,7 @@ export function TabularReviewsList(): ReactNode {
                 />
             )}
         </div>
+        </AdminShell>
     );
 }
 

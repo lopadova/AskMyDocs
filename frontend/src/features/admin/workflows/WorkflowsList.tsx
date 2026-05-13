@@ -8,6 +8,7 @@ import {
     type Workflow,
     type WorkflowProposal,
 } from './admin-workflows.api';
+import { AdminShell } from '../shell/AdminShell';
 
 /**
  * v4.7/W3 — Admin Workflows list view.
@@ -132,6 +133,7 @@ export function WorkflowsList(): ReactNode {
     else dataState = 'ready';
 
     return (
+        <AdminShell section="workflows">
         <div
             data-testid="admin-workflows"
             data-state={dataState}
@@ -276,6 +278,7 @@ export function WorkflowsList(): ReactNode {
                 />
             )}
         </div>
+        </AdminShell>
     );
 }
 
