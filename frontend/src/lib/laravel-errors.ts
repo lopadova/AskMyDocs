@@ -50,7 +50,14 @@ export function parseLaravelError(err: unknown, fallback = 'Request failed.'): P
             }
             return { message, fields, status };
         }
-        return { message: err.message || fallback, fields: {}, status };
+        // data is not a JSON object (e.g. HTML/text body) — prefer the
+        // caller-supplied fallback over the generic Axios "Request failed
+        // with status code N" message; use data as-is when it is a short
+        // non-HTML string that may carry a useful server message.
+        const raw = typeof data === 'string' && data.length < 200 && !data.trimStart().startsWith('<')
+            ? data
+            : fallback || err.message;
+        return { message: raw, fields: {}, status };
     }
     if (err instanceof Error) {
         return { message: err.message || fallback, fields: {}, status: 0 };

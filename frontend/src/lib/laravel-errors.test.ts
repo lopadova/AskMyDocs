@@ -48,6 +48,20 @@ describe('parseLaravelError', () => {
         expect(parsed.fields).toEqual({});
     });
 
+    it('prefers fallback over generic Axios message when data is an HTML body', () => {
+        const err = makeAxiosError(500, '<!DOCTYPE html><html><body>Server Error</body></html>');
+        const parsed = parseLaravelError(err, 'Could not save.');
+        expect(parsed.message).toBe('Could not save.');
+        expect(parsed.fields).toEqual({});
+    });
+
+    it('uses a short non-HTML string data as the message', () => {
+        const err = makeAxiosError(503, 'Service temporarily unavailable');
+        const parsed = parseLaravelError(err, 'Fallback message.');
+        expect(parsed.message).toBe('Service temporarily unavailable');
+        expect(parsed.fields).toEqual({});
+    });
+
     it('handles a plain Error', () => {
         const parsed = parseLaravelError(new Error('Network down'), 'fallback');
         expect(parsed.status).toBe(0);
