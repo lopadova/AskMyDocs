@@ -126,6 +126,12 @@ export interface MessageMetadata {
     // user locale (machine-readable identifier the dashboard rolls up).
     // Possible values: 'no_relevant_context' | 'llm_self_refusal' | null.
     refusal_reason?: string | null;
+    // v5.0/W2 — legacy AppMessage tool-call array (pre-SDK v6 wire
+    // format). `message-shape-adapters.ts::getToolCalls()` normalises
+    // these into `RenderableToolCall[]` for the chat UI. Items have an
+    // open shape (LLM-providers diverge on field naming), so `unknown`
+    // forces every reader through the normaliser.
+    tool_calls?: unknown[];
 }
 
 export interface Message {

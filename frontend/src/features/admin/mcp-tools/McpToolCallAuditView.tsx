@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useMcpAudit, useMcpServers } from './mcp-tools-hooks';
-import type { McpAuditFilters, McpAuditStatus } from './mcp-tools.api';
+import type { McpAuditEntry, McpAuditFilters, McpAuditStatus } from './mcp-tools.api';
 
 /*
  * v5.0/W2 — Audit log browser for MCP tool calls. Backed by
@@ -161,7 +161,7 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
 }
 
 interface AuditTableProps {
-    rows: ReturnType<typeof useMcpAudit>['data'] extends { data: infer R } ? R : never;
+    rows: McpAuditEntry[];
 }
 
 function AuditTable({ rows }: AuditTableProps) {
