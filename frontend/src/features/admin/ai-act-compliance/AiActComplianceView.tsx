@@ -3,11 +3,11 @@ import { AdminShell } from '../shell/AdminShell';
 export function AiActComplianceView() {
     return (
         <AdminShell section="ai-act-compliance">
-            <main
+            <section
                 data-testid="admin-ai-act-compliance"
                 data-state="ready"
                 aria-busy="false"
-                aria-label="AI Act compliance"
+                aria-labelledby="admin-ai-act-compliance-title"
                 style={{
                     flex: 1,
                     display: 'flex',
@@ -17,9 +17,8 @@ export function AiActComplianceView() {
                     fontFamily: 'var(--font-sans)',
                 }}
             >
-                <section
+                <div
                     className="panel popin"
-                    aria-labelledby="admin-ai-act-compliance-title"
                     style={{
                         maxWidth: 560,
                         padding: '28px 28px 24px',
@@ -85,8 +84,8 @@ export function AiActComplianceView() {
                     >
                         v6 scaffold ready
                     </div>
-                </section>
-            </main>
+                </div>
+            </section>
         </AdminShell>
     );
 }
