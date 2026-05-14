@@ -17,9 +17,11 @@ import {
     getRefusalBody,
     getRefusalReason,
     getTextContent,
+    getToolCalls,
     isUiMessage,
     type RenderableMessage,
 } from './message-shape-adapters';
+import { ToolCallBubble } from './tool-call-renderer/ToolCallBubble';
 
 export interface MessageBubbleProps {
     conversationId: number;
@@ -161,6 +163,7 @@ export function MessageBubble({
     const refusalReason = getRefusalReason(message);
     const confidence = getConfidence(message);
     const isRefusal = refusalReason != null;
+    const toolCalls = getToolCalls(message);
 
     return (
         <div
@@ -186,6 +189,13 @@ export function MessageBubble({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 {thinking && <ThinkingTrace steps={thinking} />}
+                {toolCalls.length > 0 && (
+                    <div data-testid={`chat-message-${messageId}-tool-calls`}>
+                        {toolCalls.map((toolCall) => (
+                            <ToolCallBubble key={toolCall.id} toolCall={toolCall} />
+                        ))}
+                    </div>
+                )}
                 {isRefusal ? (
                     // For UIMessage refusals, the body is in the
                     // `data-refusal` payload (NO text-delta on the

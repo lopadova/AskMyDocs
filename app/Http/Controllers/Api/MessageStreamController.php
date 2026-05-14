@@ -458,6 +458,18 @@ class MessageStreamController extends Controller
             } else {
                 $assistantContent = (string) $aiResponse->content;
 
+                // v5.0/W3 — Emit a data-tool-call chunk per resolved MCP tool
+                // call BEFORE the text deltas. The FE ToolCallBubble renders
+                // these inline above the assistant's narrative reply so the
+                // user sees what the model invoked (tool name, server,
+                // arguments, redacted result preview) without scrolling
+                // back through the chain.
+                foreach ($aiResponse->toolCalls ?? [] as $toolCall) {
+                    if (is_array($toolCall) && ($toolCall['name'] ?? '') !== '') {
+                        $this->emit(StreamChunk::dataToolCall($toolCall));
+                    }
+                }
+
                 if ($assistantContent !== '') {
                     $textId = 'text_' . bin2hex(random_bytes(8));
                     $this->emit(StreamChunk::textStart($textId));

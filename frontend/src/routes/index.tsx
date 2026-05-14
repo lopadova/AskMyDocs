@@ -26,6 +26,7 @@ import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
+import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
@@ -493,6 +494,25 @@ const adminWorkflowsRoute = createRoute({
     component: AdminWorkflowsRoute,
 });
 
+// v5.0/W2 — MCP tools admin route. The BE Gate `manageMcpTools`
+// (super-admin only) is the authoritative defence; the FE <RequireRole>
+// guard short-circuits to <AdminForbidden /> for unprivileged roles so
+// a viewer hitting /app/admin/mcp-tools directly never sees a 403
+// fetch storm.
+function AdminMcpToolsRoute() {
+    return (
+        <RequireRole roles={['super-admin']}>
+            <McpToolsView />
+        </RequireRole>
+    );
+}
+
+const adminMcpToolsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/mcp-tools',
+    component: AdminMcpToolsRoute,
+});
+
 const adminConnectorCallbackRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/connectors/$key/callback',
@@ -545,6 +565,7 @@ const routeTree = rootRoute.addChildren([
         adminConnectorCallbackRoute,
         adminTabularReviewsRoute,
         adminWorkflowsRoute,
+        adminMcpToolsRoute,
     ]),
 ]);
 

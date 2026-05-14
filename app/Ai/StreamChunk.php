@@ -55,6 +55,7 @@ final readonly class StreamChunk
     public const TYPE_SOURCE_URL = 'source-url';
     public const TYPE_DATA_CONFIDENCE = 'data-confidence';
     public const TYPE_DATA_REFUSAL = 'data-refusal';
+    public const TYPE_DATA_TOOL_CALL = 'data-tool-call';
     public const TYPE_FINISH = 'finish';
 
     /**
@@ -225,6 +226,57 @@ final readonly class StreamChunk
                 'body' => $body,
                 'hint' => $hint,
             ],
+        ]);
+    }
+
+    /**
+     * v5.0/W3 — Emit one tool-call descriptor onto the wire.
+     *
+     * Shape mirrors the SDK v6 `tool-call` part:
+     *   {
+     *     type: 'data-tool-call',
+     *     data: {
+     *       id: string,
+     *       name: string,
+     *       status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied',
+     *       server_name: string|null,
+     *       server_id: int|null,
+     *       arguments: object,
+     *       result?: object,
+     *       error?: string
+     *     }
+     *   }
+     *
+     * The FE `ToolCallBubble` consumes this chunk to render the
+     * tool-call state machine bubble (input-streaming →
+     * input-available → output-available / output-error).
+     *
+     * @param  array{
+     *   id: string,
+     *   name: string,
+     *   status: string,
+     *   server_name?: ?string,
+     *   server_id?: ?int,
+     *   arguments?: array<string, mixed>,
+     *   result?: ?array,
+     *   error?: ?string
+     * }  $toolCall
+     */
+    public static function dataToolCall(array $toolCall): self
+    {
+        $data = [
+            'id' => (string) ($toolCall['id'] ?? 'tool_' . bin2hex(random_bytes(6))),
+            'name' => (string) ($toolCall['name'] ?? ''),
+            'status' => (string) ($toolCall['status'] ?? 'pending'),
+            'server_name' => $toolCall['server_name'] ?? null,
+            'server_id' => $toolCall['server_id'] ?? null,
+            'arguments' => is_array($toolCall['arguments'] ?? null) ? $toolCall['arguments'] : [],
+            'result' => $toolCall['result'] ?? null,
+            'error' => $toolCall['error'] ?? null,
+        ];
+
+        return new self(self::TYPE_DATA_TOOL_CALL, [
+            'data' => $data,
         ]);
     }
 

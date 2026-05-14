@@ -276,6 +276,81 @@ export function getConfidence(m: RenderableMessage): number | null {
     return null;
 }
 
+/**
+ * v5.0/W3 — Returns the MCP tool calls associated with this assistant
+ * message. UIMessage stream: walks `parts[]` looking for
+ * `data-tool-call` chunks; legacy AppMessage: reads `metadata.tool_calls`
+ * (the persistence path sets that key from
+ * `McpToolCallingService::injectToolCalls()` output).
+ */
+export interface RenderableToolCall {
+    id: string;
+    name: string;
+    status: 'pending' | 'ok' | 'error' | 'timeout' | 'denied';
+    server_name?: string | null;
+    server_id?: number | null;
+    arguments?: Record<string, unknown> | null;
+    result?: Record<string, unknown> | null;
+    error?: string | null;
+}
+
+export function getToolCalls(m: RenderableMessage): RenderableToolCall[] {
+    if (!isUiMessage(m)) {
+        const metaToolCalls = m.metadata?.tool_calls;
+        if (Array.isArray(metaToolCalls)) {
+            return metaToolCalls.map(normalizeToolCall).filter(isValidToolCall);
+        }
+        return [];
+    }
+
+    const toolCalls: RenderableToolCall[] = [];
+    for (const part of m.parts) {
+        if (part.type !== 'data-tool-call') {
+            continue;
+        }
+        const raw = readDataPartField<Record<string, unknown> | unknown>(
+            part as unknown as { type: string; [key: string]: unknown },
+            'id',
+        )
+            ? part
+            : (part as { data?: Record<string, unknown> }).data ?? part;
+        const data = (part as { data?: Record<string, unknown> }).data ?? (part as unknown as Record<string, unknown>);
+        const candidate = normalizeToolCall(data ?? raw);
+        if (isValidToolCall(candidate)) {
+            toolCalls.push(candidate);
+        }
+    }
+    return toolCalls;
+}
+
+function normalizeToolCall(raw: unknown): RenderableToolCall {
+    const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+    const status = String(record.status ?? 'ok');
+    const validStatus: RenderableToolCall['status'] = ['pending', 'ok', 'error', 'timeout', 'denied'].includes(status)
+        ? (status as RenderableToolCall['status'])
+        : 'ok';
+    return {
+        id: String(record.id ?? ''),
+        name: String(record.name ?? ''),
+        status: validStatus,
+        server_name: typeof record.server_name === 'string' ? record.server_name : null,
+        server_id: typeof record.server_id === 'number' ? record.server_id : null,
+        arguments:
+            record.arguments && typeof record.arguments === 'object' && !Array.isArray(record.arguments)
+                ? (record.arguments as Record<string, unknown>)
+                : null,
+        result:
+            record.result && typeof record.result === 'object' && !Array.isArray(record.result)
+                ? (record.result as Record<string, unknown>)
+                : null,
+        error: typeof record.error === 'string' ? record.error : null,
+    };
+}
+
+function isValidToolCall(toolCall: RenderableToolCall): boolean {
+    return toolCall.id.length > 0 && toolCall.name.length > 0;
+}
+
 export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
     if (!isUiMessage(m)) {
         const steps = m.metadata?.reasoning_steps;
