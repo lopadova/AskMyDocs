@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { resetAndSeed } from './setup-helpers';
 
 /*
  * v5.0/W2 — Admin MCP Tools — super-admin scenarios.
@@ -9,11 +8,16 @@ import { resetAndSeed } from './setup-helpers';
  * playwright/.auth/super-admin.json is materialised by
  * super-admin.setup.ts BEFORE this spec runs. R13: real Laravel + real
  * DB seed, no internal page.route stubs.
+ *
+ * Seeding posture: super-admin.setup.ts seeds DemoSeeder (which
+ * creates the super@demo.local user with the manageMcpTools
+ * permission) before any *-super-admin.spec.ts file runs. No
+ * per-test resetAndSeed is needed and would in any case fail because
+ * 'super-admin' is not a registered seeder name (only DemoSeeder,
+ * RbacSeeder, EmptyAdminSeeder, AdminDegradedSeeder,
+ * AdminInsightsSeeder are valid).
  */
 test.describe('Admin MCP Tools — super-admin', () => {
-    test.beforeEach(async ({ request }) => {
-        await resetAndSeed(request, 'super-admin');
-    });
 
     test('super-admin sees the MCP Tools rail entry and lands on the page', async ({ page }) => {
         await page.goto('/app/admin/mcp-tools');
