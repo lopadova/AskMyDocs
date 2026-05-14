@@ -8,6 +8,7 @@ export type SidebarSection =
     | 'kb'
     | 'insights'
     | 'users'
+    | 'ai-act-compliance'
     | 'connectors'
     | 'logs'
     | 'maintenance'
@@ -37,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
     { id: 'kb', label: 'Knowledge', icon: 'Book', section: 'admin' },
     { id: 'insights', label: 'AI Insights', icon: 'Sparkles', section: 'admin', badge: 5 },
     { id: 'users', label: 'Users & Roles', icon: 'Users', section: 'admin' },
+    { id: 'ai-act-compliance', label: 'AI Act', icon: 'Shield', section: 'admin' },
     // v4.5/W3 — Connectors admin landing. Sits in the Administration
     // section between Users and PII Redactor. BE Gate
     // `manageConnectors` restricts to super-admin only; the entry
@@ -80,6 +82,7 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
     return (
         <aside
             aria-label="Primary navigation"
+            data-testid="sidebar-nav"
             style={{
                 width: collapsed ? 60 : 232,
                 minWidth: collapsed ? 60 : 232,
@@ -112,6 +115,7 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
             <div style={{ padding: collapsed ? '4px 8px 8px' : '4px 10px 8px' }}>
                 <button
                     type="button"
+                    data-testid="sidebar-command-palette"
                     className="focus-ring"
                     aria-label="Open command palette"
                     onClick={() => window.dispatchEvent(new CustomEvent('amd:palette'))}
@@ -163,8 +167,10 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
                                 <button
                                     key={it.id}
                                     type="button"
+                                    data-testid={`sidebar-nav-${it.id}`}
                                     onClick={() => onNav(it.id)}
                                     className="focus-ring"
+                                    aria-label={it.label}
                                     aria-current={isActive ? 'page' : undefined}
                                     style={{
                                         width: '100%',

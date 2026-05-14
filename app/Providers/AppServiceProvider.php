@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Compliance\AskMyDocsUserDataDeleter;
+use App\Compliance\AskMyDocsUserDataExporter;
+use App\Compliance\RagRefusalQualityMetric;
 use App\Console\Commands\AuthGrantCommand;
 use App\Console\Commands\EvalNightlyCommand;
 use App\Console\Commands\InsightsComputeCommand;
@@ -32,6 +35,9 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Padosoft\PiiRedactorAdmin\Models\PiiRedactorAdminAuditEvent;
+use Padosoft\AiActCompliance\BiasMonitoring\Contracts\CohortParityMetric;
+use Padosoft\AiActCompliance\DSAR\Contracts\UserDataDeleter;
+use Padosoft\AiActCompliance\DSAR\Contracts\UserDataExporter;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -93,6 +99,21 @@ class AppServiceProvider extends ServiceProvider
             ConnectorIngestionContract::class,
             HostIngestionBridge::class,
         );
+
+        // v6.0 — AI Act compliance host scaffold. Bind the upstream
+        // contracts only when the optional packages are actually installed;
+        // this keeps Laravel 13 CI green while the v1 packages catch up.
+        if (interface_exists(UserDataExporter::class)) {
+            $this->app->singleton(UserDataExporter::class, AskMyDocsUserDataExporter::class);
+        }
+
+        if (interface_exists(UserDataDeleter::class)) {
+            $this->app->singleton(UserDataDeleter::class, AskMyDocsUserDataDeleter::class);
+        }
+
+        if (interface_exists(CohortParityMetric::class)) {
+            $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
+        }
     }
 
     public function boot(): void
@@ -106,8 +127,31 @@ class AppServiceProvider extends ServiceProvider
         $this->registerEvalHarnessUiGates();
         $this->registerConnectorGates();
         $this->registerMcpGates();
+        $this->registerAiActComplianceGates();
         $this->registerTabularReviewGates();
         $this->registerWorkflowGates();
+    }
+
+    /**
+     * v6.0 — AI Act compliance admin surface gates.
+     */
+    private function registerAiActComplianceGates(): void
+    {
+        Gate::define('viewAiActCompliance', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin', 'dpo']);
+        });
+
+        Gate::define('manageAiActCompliance', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo']);
+        });
     }
 
     /**

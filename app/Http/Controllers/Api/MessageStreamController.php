@@ -6,6 +6,7 @@ use App\Ai\AiManager;
 use App\Ai\StreamChunk;
 use App\Ai\AiResponse;
 use App\Mcp\Client\McpToolCallingService;
+use App\Models\ChatLog;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
@@ -458,6 +459,18 @@ class MessageStreamController extends Controller
             } else {
                 $assistantContent = (string) $aiResponse->content;
 
+                // v5.0/W3 — Emit a data-tool-call chunk per resolved MCP tool
+                // call BEFORE the text deltas. The FE ToolCallBubble renders
+                // these inline above the assistant's narrative reply so the
+                // user sees what the model invoked (tool name, server,
+                // arguments, redacted result preview) without scrolling
+                // back through the chain.
+                foreach ($aiResponse->toolCalls ?? [] as $toolCall) {
+                    if (is_array($toolCall) && ($toolCall['name'] ?? '') !== '') {
+                        $this->emit(StreamChunk::dataToolCall($toolCall));
+                    }
+                }
+
                 if ($assistantContent !== '') {
                     $textId = 'text_' . bin2hex(random_bytes(8));
                     $this->emit(StreamChunk::textStart($textId));
@@ -548,7 +561,7 @@ class MessageStreamController extends Controller
                 ? $this->localizedRefusalMessage('llm_self_refusal')
                 : $assistantContent;
 
-            $conversation->messages()->create([
+            $assistantMessage = $conversation->messages()->create([
                 'role' => 'assistant',
                 'content' => $persistedContent,
                 'confidence' => $confidenceScore,
@@ -572,6 +585,40 @@ class MessageStreamController extends Controller
             ]);
 
             $conversation->touch();
+
+            // v6.0/W7 — record token-level provenance for the assistant
+            // turn (best-effort; logged on failure, never propagates).
+            // The chat_log row is persisted by $chatLog->log() further
+            // down; the provenance recorder takes a transient ChatLog
+            // model wrapping the same data so the decorator stays
+            // independent of the ChatLogManager driver.
+            $chatLogShim = new ChatLog([
+                'tenant_id' => $assistantMessage->getAttribute('tenant_id'),
+                'session_id' => $sessionId,
+                'user_id' => $userId,
+                'question' => $question,
+                'answer' => $persistedContent,
+                'project_key' => $projectKey,
+                'ai_provider' => $providerName,
+                'ai_model' => $modelName,
+                'chunks_count' => $chunks->count(),
+                'refusal_reason' => $refusalReason,
+            ]);
+            $chatLogShim->setAttribute('id', $assistantMessage->getKey());
+            if (! $isSelfRefusal && $refusalReason === null) {
+                app(\App\Compliance\TokenLevelExplainability::class)->record(
+                    chatLog: $chatLogShim,
+                    message: $assistantMessage,
+                    chunks: $chunks
+                        ->map(static fn ($chunk) => [
+                            'knowledge_chunk_id' => $chunk->id ?? null,
+                            'source_path' => $chunk->document->source_path ?? null,
+                            'chunk_text' => $chunk->chunk_text ?? null,
+                        ])
+                        ->all(),
+                    answer: $persistedContent,
+                );
+            }
 
             $chatLog->log(new ChatLogEntry(
                 sessionId: $sessionId,

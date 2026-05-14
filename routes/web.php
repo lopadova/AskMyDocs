@@ -106,6 +106,20 @@ Route::get('/app/{any?}', SpaController::class)
     ->where('any', '.*')
     ->name('spa');
 
+// v6.0 — AI Act compliance scaffold. Until the external admin package
+// ships a Laravel-13-compatible release, the direct mount URL redirects
+// into the host SPA placeholder route under /app/admin/ai-act-compliance.
+Route::middleware(['auth', 'can:viewAiActCompliance'])->get('/admin/ai-act-compliance/{any?}', function (?string $any = null) {
+    $suffix = trim((string) $any, '/');
+    $target = '/app/admin/ai-act-compliance';
+
+    if ($suffix !== '') {
+        $target .= '/'.$suffix;
+    }
+
+    return redirect($target);
+})->where('any', '.*')->name('ai-act-compliance.spa');
+
 /*
 |--------------------------------------------------------------------------
 | Testing-only endpoints (Playwright E2E)

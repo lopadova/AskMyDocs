@@ -22,9 +22,11 @@ export type AdminSection =
     | 'logs'
     | 'maintenance'
     | 'insights'
+    | 'ai-act-compliance'
     | 'connectors'
     | 'tabular-reviews'
-    | 'workflows';
+    | 'workflows'
+    | 'mcp-tools';
 
 interface RailEntry {
     id: AdminSection;
@@ -43,6 +45,7 @@ const RAIL: RailEntry[] = [
     { id: 'logs', label: 'Logs', icon: 'Activity', to: '/app/admin/logs' },
     { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', to: '/app/admin/maintenance' },
     { id: 'insights', label: 'Insights', icon: 'Sparkles', to: '/app/admin/insights' },
+    { id: 'ai-act-compliance', label: 'AI Act', icon: 'Shield', to: '/app/admin/ai-act-compliance' },
     // v4.5/W3 — connector framework admin landing. Same flat-RBAC
     // pattern as the rest of /app/admin/*: BE Gate `manageConnectors`
     // (super-admin only) enforces; the FE rail entry is always
@@ -58,6 +61,11 @@ const RAIL: RailEntry[] = [
     // miss via <RequireRole>.
     { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', to: '/app/admin/tabular-reviews' },
     { id: 'workflows', label: 'Workflows', icon: 'Activity', to: '/app/admin/workflows' },
+    // v5.0/W2 — MCP tools admin landing. Same flat-RBAC pattern as the
+    // rest of /app/admin/*: BE Gate `manageMcpTools` (super-admin only)
+    // enforces; the FE rail entry is always visible and the route
+    // component renders <AdminForbidden /> on miss via <RequireRole>.
+    { id: 'mcp-tools', label: 'MCP Tools', icon: 'Wrench', to: '/app/admin/mcp-tools' },
 ];
 
 export interface AdminShellProps {

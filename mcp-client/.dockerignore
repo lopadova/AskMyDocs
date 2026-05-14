@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+tests
+.git
+.github
+*.md
+.eslintrc*
+.editorconfig
