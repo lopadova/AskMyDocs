@@ -73,7 +73,7 @@ class RagRefusalQualityMetricTest extends TestCase
             'password' => Hash::make('secret-pass'),
         ]);
 
-        TenantContext::instance()->set('default');
+        app(TenantContext::class)->set('default');
 
         // Seed: 6 turns in project A (1 refusal), 4 turns in project B (3 refusals)
         $this->seedLog($user, 'project-a', false);
@@ -88,7 +88,7 @@ class RagRefusalQualityMetricTest extends TestCase
         $this->seedLog($user, 'project-b', true);
         $this->seedLog($user, 'project-b', false);
 
-        $results = (new RagRefusalQualityMetric(TenantContext::instance()))
+        $results = (new RagRefusalQualityMetric(app(TenantContext::class)))
             ->computeAll('project', 7);
 
         $byCohort = [];
@@ -107,7 +107,11 @@ class RagRefusalQualityMetricTest extends TestCase
 
     private function seedLog(User $user, string $project, bool $refused): void
     {
-        ChatLog::create([
+        // refusal_reason is a non-fillable column on App\Models\ChatLog
+        // (the host model treats it as an internally-managed grounding
+        // field). Use forceCreate() so the seeded refusal flag actually
+        // lands on the row that the metric query reads.
+        ChatLog::query()->forceCreate([
             'tenant_id' => 'default',
             'session_id' => 'sess-'.uniqid(),
             'user_id' => $user->id,

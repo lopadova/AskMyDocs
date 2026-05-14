@@ -8,6 +8,8 @@ use App\Compliance\TokenLevelExplainability;
 use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\Conversation;
+use App\Models\KnowledgeChunk;
+use App\Models\KnowledgeDocument;
 use App\Models\Message;
 use App\Models\User;
 use App\Support\TenantContext;
@@ -25,18 +27,10 @@ class TokenLevelExplainabilityRecordTest extends TestCase
         [$chatLog, $message] = $this->seedTurn();
 
         $chunks = [
-            [
-                'knowledge_chunk_id' => 101,
-                'source_path' => 'kb/dec-cache-v2.md',
-                'chunk_text' => 'Cache TTL defaults to 10 minutes; flushing is manual.',
-            ],
-            [
-                'knowledge_chunk_id' => 102,
-                'source_path' => 'kb/dec-cache-v3.md',
-                'chunk_text' => 'Replication topology requires Redis cluster mode.',
-            ],
+            $this->seedChunk('kb/dec-cache-v2.md', 'Cache TTL defaults to ten minutes; flushing is manual.'),
+            $this->seedChunk('kb/dec-cache-v3.md', 'Replication topology requires Redis cluster mode.'),
         ];
-        $answer = 'Cache TTL defaults to 10 minutes. Replication uses cluster mode.';
+        $answer = 'Cache TTL defaults to ten minutes. Replication uses cluster mode.';
 
         $persisted = (new TokenLevelExplainability())->record($chatLog, $message, $chunks, $answer);
 
@@ -97,17 +91,16 @@ class TokenLevelExplainabilityRecordTest extends TestCase
         // but we CAN assert that the implementation wraps the insert in
         // DB::transaction (smoke test: no exception, all rows landed).
         [$chatLog, $message] = $this->seedTurn();
-        $chunks = collect(range(1, 5))->map(fn ($i) => [
-            'knowledge_chunk_id' => 100 + $i,
-            'source_path' => "kb/chunk-{$i}.md",
-            'chunk_text' => "Cache TTL is 10 minutes default policy v{$i}.",
-        ])->all();
+        $chunks = collect(range(1, 5))->map(fn ($i) => $this->seedChunk(
+            "kb/chunk-{$i}.md",
+            "Cache TTL is ten minutes default policy version {$i}.",
+        ))->all();
 
         $persisted = (new TokenLevelExplainability())->record(
             $chatLog,
             $message,
             $chunks,
-            'Cache TTL is 10 minutes default policy.',
+            'Cache TTL is ten minutes default policy.',
         );
 
         self::assertGreaterThanOrEqual(1, $persisted);
@@ -118,11 +111,17 @@ class TokenLevelExplainabilityRecordTest extends TestCase
     {
         [$chatLog, $message] = $this->seedTurn();
         $chunks = [
-            ['knowledge_chunk_id' => 1, 'source_path' => 'kb/a.md', 'chunk_text' => 'Cache TTL defaults to ten minutes.'],
+            $this->seedChunk('kb/a.md', 'Cache TTL defaults to ten minutes for documentation.'),
         ];
 
-        (new TokenLevelExplainability())->record($chatLog, $message, $chunks, 'Cache TTL defaults to ten minutes.');
+        $persisted = (new TokenLevelExplainability())->record(
+            $chatLog,
+            $message,
+            $chunks,
+            'Cache TTL defaults to ten minutes for documentation.',
+        );
 
+        self::assertGreaterThan(0, $persisted, 'Expected at least one provenance row to assert against');
         foreach (ChatLogProvenance::query()->get() as $row) {
             self::assertGreaterThanOrEqual(0.0, (float) $row->contribution_score);
             self::assertLessThanOrEqual(1.0, (float) $row->contribution_score);
@@ -131,25 +130,25 @@ class TokenLevelExplainabilityRecordTest extends TestCase
 
     public function test_record_falls_back_to_active_tenant_context_when_chatlog_lacks_tenant_id(): void
     {
-        TenantContext::instance()->set('explicit-tenant');
+        // 1. Seed rows in the default tenant first (so BelongsToTenant's
+        //    auto-fill doesn't fight us during ChatLog::create).
+        [$chatLog, $message] = $this->seedTurn();
+        $chunk = $this->seedChunk('kb/a.md', 'Cache TTL ten minutes for documentation.');
 
-        [$chatLog, $message] = $this->seedTurn(tenantId: null);
-        // Make sure chatlog has no tenant_id
+        // 2. NOW switch the active tenant + null out chat_log.tenant_id
+        //    so resolveTenantId() must fall back to the active context.
+        app(TenantContext::class)->set('explicit-tenant');
         $chatLog->setAttribute('tenant_id', null);
 
-        $persisted = (new TokenLevelExplainability(TenantContext::instance()))->record(
+        $persisted = (new TokenLevelExplainability(app(TenantContext::class)))->record(
             $chatLog,
             $message,
-            [['knowledge_chunk_id' => 9, 'source_path' => 'kb/a.md', 'chunk_text' => 'Cache TTL ten minutes.']],
-            'Cache TTL is ten minutes.',
+            [$chunk],
+            'Cache TTL is ten minutes for documentation.',
         );
 
-        if ($persisted > 0) {
-            self::assertSame('explicit-tenant', ChatLogProvenance::query()->first()->tenant_id);
-        }
-        // If the attribution heuristic produces 0 rows for this micro fixture,
-        // the test still verified the no-throw fallback path.
-        self::assertTrue(true);
+        self::assertGreaterThan(0, $persisted, 'Heuristic must persist at least one provenance row');
+        self::assertSame('explicit-tenant', ChatLogProvenance::query()->first()->tenant_id);
     }
 
     /**
@@ -157,7 +156,7 @@ class TokenLevelExplainabilityRecordTest extends TestCase
      */
     private function seedTurn(?string $tenantId = 'default'): array
     {
-        TenantContext::instance()->set($tenantId ?? 'default');
+        app(TenantContext::class)->set($tenantId ?? 'default');
         $user = User::create([
             'name' => 'Provenance User',
             'email' => 'prov-record-'.uniqid().'@example.test',
@@ -186,5 +185,43 @@ class TokenLevelExplainabilityRecordTest extends TestCase
             'chunks_count' => 1,
         ]);
         return [$chatLog, $message];
+    }
+
+    /**
+     * Seed a real KnowledgeDocument + KnowledgeChunk pair (the
+     * `chat_log_provenance` FK on `knowledge_chunk_id` is strict —
+     * mock chunk IDs would trigger FK violations + DB::transaction
+     * rollback inside record()).
+     *
+     * @return array{knowledge_chunk_id:int,source_path:string,chunk_text:string}
+     */
+    private function seedChunk(string $sourcePath, string $chunkText): array
+    {
+        static $counter = 0;
+        $counter++;
+        $document = KnowledgeDocument::query()->forceCreate([
+            'tenant_id' => 'default',
+            'project_key' => 'docs',
+            'source_type' => 'markdown',
+            'title' => "Doc {$counter}",
+            'source_path' => $sourcePath,
+            'document_hash' => str_pad(dechex($counter), 64, 'a', STR_PAD_RIGHT),
+            'version_hash' => str_pad(dechex($counter), 64, 'b', STR_PAD_RIGHT),
+            'status' => 'indexed',
+        ]);
+        $chunk = KnowledgeChunk::query()->forceCreate([
+            'tenant_id' => 'default',
+            'knowledge_document_id' => $document->id,
+            'project_key' => 'docs',
+            'chunk_order' => 0,
+            'chunk_hash' => str_pad(dechex($counter), 64, 'c', STR_PAD_RIGHT),
+            'chunk_text' => $chunkText,
+        ]);
+
+        return [
+            'knowledge_chunk_id' => $chunk->id,
+            'source_path' => $sourcePath,
+            'chunk_text' => $chunkText,
+        ];
     }
 }

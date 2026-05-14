@@ -41,7 +41,7 @@ class ProvenanceChainTest extends TestCase
 
     public function test_for_chat_log_joins_chunks_and_documents(): void
     {
-        TenantContext::instance()->set('default');
+        app(TenantContext::class)->set('default');
 
         $user = User::create([
             'name' => 'Auditor',
@@ -125,7 +125,7 @@ class ProvenanceChainTest extends TestCase
 
     public function test_for_chat_log_returns_empty_spans_when_no_provenance_recorded(): void
     {
-        TenantContext::instance()->set('default');
+        app(TenantContext::class)->set('default');
 
         $user = User::create([
             'name' => 'Auditor',

@@ -179,9 +179,14 @@ final class TokenLevelExplainability
         $bestStart = 0;
         $bestEnd = 0;
         $bestOverlap = 0;
-        $windowSize = max(8, (int) ceil(count($tokens) / 4));
+        $tokenCount = count($tokens);
+        // Window size is clamped to the available token count so very
+        // short answers (typical for chat openers / DSAR confirmations)
+        // still produce an attribution span instead of silently
+        // returning zero.
+        $windowSize = max(1, min($tokenCount, max(4, (int) ceil($tokenCount / 4))));
 
-        for ($i = 0; $i + $windowSize <= count($tokens); $i++) {
+        for ($i = 0; $i + $windowSize <= $tokenCount; $i++) {
             $window = array_slice($tokens, $i, $windowSize);
             $overlap = count(array_intersect($window, $chunkVocabulary));
             if ($overlap > $bestOverlap) {
@@ -227,13 +232,19 @@ final class TokenLevelExplainability
         if ($chatLog instanceof ChatLog && ! empty($chatLog->getAttribute('tenant_id'))) {
             return (string) $chatLog->getAttribute('tenant_id');
         }
-        if ($this->tenantContext !== null) {
+        $context = $this->tenantContext;
+        if ($context === null) {
             try {
-                return $this->tenantContext->current();
+                $context = app(TenantContext::class);
             } catch (\Throwable) {
                 return null;
             }
         }
-        return null;
+        try {
+            $current = $context->current();
+            return $current !== '' ? $current : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
