@@ -70,6 +70,21 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\EvalHarnessUi\EvalHarnessUiServiceProvider::class);
         $app->register(\App\Providers\EvalHarnessUiIntegrationServiceProvider::class);
 
+        // v6.0 — padosoft/laravel-ai-act-compliance service provider.
+        // Manual registration parallels every other vendor package above
+        // because Testbench skips Laravel's package-discovery cache. The
+        // SP calls loadMigrationsFrom() (consent_records,
+        // risk_register_entries, dsar_requests, etc.) and aliases the
+        // `ai-act.*` middleware on the router. The host wires the host-
+        // facing `ai.disclosure` / `ai.consent` aliases in
+        // bootstrap/app.php (mirrored further down this method for
+        // Testbench).
+        $app->register(\Padosoft\AiActCompliance\AiActComplianceServiceProvider::class);
+        // v6.0 — companion admin SPA SP. Registered here because the
+        // admin route group depends on the parent SP's middleware aliases
+        // already being on the router.
+        $app->register(\Padosoft\AiActComplianceAdmin\AiActComplianceAdminServiceProvider::class);
+
         // v4.6 — connector framework + 7 standalone connector packages.
         // Manual registration parallels every other vendor package above
         // because Testbench skips Laravel's package-discovery cache. The
@@ -246,6 +261,12 @@ abstract class TestCase extends OrchestraTestCase
         // sync with the bootstrap/app.php aliases.
         $router->aliasMiddleware('redact-chat-pii', \App\Http\Middleware\RedactChatPii::class);
         $router->aliasMiddleware('auth.sse', \App\Http\Middleware\AuthenticateForSse::class);
+        // v6.0 — host-facing AI Act middleware aliases mirroring
+        // bootstrap/app.php. The sister package aliases its own
+        // `ai-act.*` variants in boot(); we expose them under the
+        // `ai.*` shortcut the host routes use.
+        $router->aliasMiddleware('ai.disclosure', \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class);
+        $router->aliasMiddleware('ai.consent', \Padosoft\AiActCompliance\Consent\RequireConsentMiddleware::class);
     }
 
     /**

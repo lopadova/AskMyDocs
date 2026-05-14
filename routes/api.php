@@ -84,7 +84,21 @@ Route::middleware([
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
 ])->group(function () {
-    Route::post('/kb/chat', KbChatController::class);
+    // v6.0 — AI Act compliance gates on the chat path:
+    //  • `ai.disclosure` appends an X-AI-Disclosure response header
+    //    (AI Act Art. 50). Always-on; opt-out via the package's
+    //    `disclosure.enabled` config flag.
+    //  • `ai.consent:<feature>` denies with 403 when no granted
+    //    ConsentRecord exists for the named feature. Mounted only when
+    //    the host opts in via `ai-act-compliance.consent.gate_chat_feature`
+    //    (default null → middleware no-ops, preserving backward compat).
+    $consentFeature = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
+    $chatMiddleware = ['ai.disclosure'];
+    if ($consentFeature !== '') {
+        $chatMiddleware[] = 'ai.consent:' . $consentFeature;
+    }
+    Route::post('/kb/chat', KbChatController::class)
+        ->middleware($chatMiddleware);
     Route::post('/kb/ingest', KbIngestController::class);
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).

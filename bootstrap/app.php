@@ -49,6 +49,16 @@ return Application::configure(basePath: dirname(__DIR__))
             // Architecture-tested to be bound ONLY to those two routes
             // (admin / insights / kb ingest+delete routes are excluded).
             'redact-chat-pii' => \App\Http\Middleware\RedactChatPii::class,
+            // v6.0 — EU AI Act compliance middleware. `ai.disclosure`
+            // appends the Art. 50 disclosure response header on every
+            // chat response (opt-out via the package's
+            // `disclosure.enabled` config). `ai.consent:<feature>` gates
+            // the route on a granted ConsentRecord for the given feature
+            // key — host opts in by setting
+            // `ai-act-compliance.consent.gate_chat_feature=chat` (off by
+            // default to keep existing AskMyDocs users non-breaking).
+            'ai.disclosure' => \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
+            'ai.consent' => \Padosoft\AiActCompliance\Consent\RequireConsentMiddleware::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated
