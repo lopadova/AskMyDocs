@@ -2,21 +2,15 @@ import { test, expect } from '@playwright/test';
 import { resetAndSeed } from './setup-helpers';
 
 /*
- * v5.0/W2 — Admin MCP Tools landing E2E. Covers:
- *   - super-admin sees the rail entry + lands on the page
- *   - register dialog opens + validates required fields
- *   - audit tab toggles + filter widgets render
+ * v5.0/W2 — Admin MCP Tools — super-admin scenarios.
  *
- * R13 — runs against real Laravel + real DB seed (no internal page.route
- * stubs). The seeder creates a super-admin user with the
- * `manageMcpTools` permission. Tool invocations would call the Node
- * sidecar — those are exercised by the integration tests under
- * mcp-client/tests/integration/, not here.
+ * Routed via the playwright.config.ts `chromium-super-admin` project
+ * (testMatch /.*-super-admin\.spec\.ts/) so the storageState
+ * playwright/.auth/super-admin.json is materialised by
+ * super-admin.setup.ts BEFORE this spec runs. R13: real Laravel + real
+ * DB seed, no internal page.route stubs.
  */
-
-test.describe('Admin MCP Tools', () => {
-    test.use({ storageState: 'playwright/.auth/super-admin.json' });
-
+test.describe('Admin MCP Tools — super-admin', () => {
     test.beforeEach(async ({ request }) => {
         await resetAndSeed(request, 'super-admin');
     });
@@ -60,19 +54,5 @@ test.describe('Admin MCP Tools', () => {
             'data-state',
             /empty|ready|loading/,
         );
-    });
-});
-
-test.describe('Admin MCP Tools (viewer role)', () => {
-    test.use({ storageState: 'playwright/.auth/viewer.json' });
-
-    test.beforeEach(async ({ request }) => {
-        await resetAndSeed(request, 'viewer');
-    });
-
-    test('viewer hitting /app/admin/mcp-tools sees the Forbidden surface', async ({ page }) => {
-        await page.goto('/app/admin/mcp-tools');
-        // RequireRole short-circuits to <AdminForbidden /> for non-super-admin
-        await expect(page.getByTestId('admin-forbidden')).toBeVisible();
     });
 });
