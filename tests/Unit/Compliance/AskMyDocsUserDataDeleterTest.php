@@ -14,6 +14,8 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorCredential;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Tests\TestCase;
 
 class AskMyDocsUserDataDeleterTest extends TestCase
@@ -122,17 +124,49 @@ class AskMyDocsUserDataDeleterTest extends TestCase
             'status' => McpToolCallAudit::STATUS_OK,
         ]);
 
+        $tenantAInstallation = ConnectorInstallation::query()->create([
+            'tenant_id' => 'tenant-a',
+            'connector_name' => 'google-drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $user->id,
+        ]);
+
+        $tenantBInstallation = ConnectorInstallation::query()->create([
+            'tenant_id' => 'tenant-b',
+            'connector_name' => 'notion',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $user->id,
+        ]);
+
+        $tenantACredential = ConnectorCredential::query()->create([
+            'tenant_id' => 'tenant-a',
+            'connector_installation_id' => $tenantAInstallation->id,
+            'encrypted_access_token' => 'token-a',
+            'encrypted_refresh_token' => 'refresh-a',
+        ]);
+
+        $tenantBCredential = ConnectorCredential::query()->create([
+            'tenant_id' => 'tenant-b',
+            'connector_installation_id' => $tenantBInstallation->id,
+            'encrypted_access_token' => 'token-b',
+            'encrypted_refresh_token' => 'refresh-b',
+        ]);
+
         app(AskMyDocsUserDataDeleter::class)->delete($user);
 
         $this->assertDatabaseMissing('conversations', ['id' => $tenantAConversation->id]);
         $this->assertDatabaseMissing('messages', ['id' => $tenantAMessage->id]);
         $this->assertDatabaseMissing('chat_logs', ['id' => $tenantALog->id]);
         $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $tenantAAudit->id]);
+        $this->assertDatabaseMissing('connector_installations', ['id' => $tenantAInstallation->id]);
+        $this->assertDatabaseMissing('connector_credentials', ['id' => $tenantACredential->id]);
 
         $this->assertDatabaseHas('conversations', ['id' => $tenantBConversation->id, 'tenant_id' => 'tenant-b']);
         $this->assertDatabaseHas('messages', ['id' => $tenantBMessage->id, 'tenant_id' => 'tenant-b']);
         $this->assertDatabaseHas('chat_logs', ['id' => $tenantBLog->id, 'tenant_id' => 'tenant-b']);
         $this->assertDatabaseHas('mcp_tool_call_audit', ['id' => $tenantBAudit->id, 'tenant_id' => 'tenant-b']);
+        $this->assertDatabaseHas('connector_installations', ['id' => $tenantBInstallation->id, 'tenant_id' => 'tenant-b']);
+        $this->assertDatabaseHas('connector_credentials', ['id' => $tenantBCredential->id, 'tenant_id' => 'tenant-b']);
     }
 
     public function test_it_rejects_objects_without_a_positive_integer_id(): void

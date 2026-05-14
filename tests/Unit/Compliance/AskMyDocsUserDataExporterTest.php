@@ -8,6 +8,7 @@ use App\Compliance\AskMyDocsUserDataExporter;
 use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\Conversation;
+use App\Models\KbCanonicalAudit;
 use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\Message;
@@ -16,6 +17,7 @@ use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Tests\TestCase;
 
 class AskMyDocsUserDataExporterTest extends TestCase
@@ -93,6 +95,60 @@ class AskMyDocsUserDataExporterTest extends TestCase
             'contribution_score' => 0.75,
         ]);
 
+        $tenantAInstallation = ConnectorInstallation::query()->create([
+            'tenant_id' => 'tenant-a',
+            'connector_name' => 'google-drive',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $user->id,
+        ]);
+
+        ConnectorInstallation::query()->create([
+            'tenant_id' => 'tenant-b',
+            'connector_name' => 'notion',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $user->id,
+        ]);
+
+        KbCanonicalAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'alpha',
+            'doc_id' => 'doc-alpha',
+            'slug' => 'doc-alpha',
+            'event_type' => 'updated',
+            'actor' => $user->email,
+            'created_at' => now(),
+        ]);
+
+        KbCanonicalAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'alpha',
+            'doc_id' => 'doc-alpha-2',
+            'slug' => 'doc-alpha-2',
+            'event_type' => 'updated',
+            'actor' => (string) $user->id,
+            'created_at' => now(),
+        ]);
+
+        KbCanonicalAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'alpha',
+            'doc_id' => 'doc-system',
+            'slug' => 'doc-system',
+            'event_type' => 'updated',
+            'actor' => 'system',
+            'created_at' => now(),
+        ]);
+
+        KbCanonicalAudit::query()->create([
+            'tenant_id' => 'tenant-b',
+            'project_key' => 'beta',
+            'doc_id' => 'doc-beta',
+            'slug' => 'doc-beta',
+            'event_type' => 'updated',
+            'actor' => $user->email,
+            'created_at' => now(),
+        ]);
+
         $serverA = McpServer::query()->create([
             'tenant_id' => 'tenant-a',
             'name' => 'tenant-a-server',
@@ -143,6 +199,11 @@ class AskMyDocsUserDataExporterTest extends TestCase
         $this->assertSame([$tenantAMessage->id], array_values(array_column($export['messages'], 'id')));
         $this->assertSame([$tenantALog->id], array_values(array_column($export['chat_logs'], 'id')));
         $this->assertCount(1, $export['chat_log_provenance']);
+        $this->assertSame([$tenantAInstallation->id], array_values(array_column($export['connector_installations'], 'id')));
+        $this->assertEqualsCanonicalizing(
+            [$user->email, (string) $user->id],
+            array_values(array_column($export['kb_canonical_audit'], 'actor')),
+        );
         $this->assertSame([$serverA->id], array_values(array_column($export['mcp_tool_call_audit'], 'mcp_server_id')));
     }
 

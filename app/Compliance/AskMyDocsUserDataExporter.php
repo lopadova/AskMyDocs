@@ -6,9 +6,11 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
+use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
 use App\Support\TenantContext;
 use InvalidArgumentException;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 class AskMyDocsUserDataExporter
 {
@@ -19,6 +21,7 @@ class AskMyDocsUserDataExporter
     public function export(object $user): array
     {
         $userId = $this->resolveUserId($user);
+        $auditActors = $this->resolveAuditActors($user, $userId);
         $tenantId = $this->tenantContext->current();
 
         $conversationIds = Conversation::query()
@@ -52,6 +55,16 @@ class AskMyDocsUserDataExporter
                 ->whereIn('chat_log_id', $chatLogIds)
                 ->get()
                 ->toArray(),
+            'kb_canonical_audit' => KbCanonicalAudit::query()
+                ->forTenant($tenantId)
+                ->whereIn('actor', $auditActors)
+                ->get()
+                ->toArray(),
+            'connector_installations' => ConnectorInstallation::query()
+                ->forTenant($tenantId)
+                ->where('created_by', $userId)
+                ->get()
+                ->toArray(),
             'mcp_tool_call_audit' => McpToolCallAudit::query()
                 ->forTenant($tenantId)
                 ->where('user_id', $userId)
@@ -73,5 +86,20 @@ class AskMyDocsUserDataExporter
         }
 
         throw new InvalidArgumentException('AskMyDocsUserDataExporter requires a user object with a positive integer id.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveAuditActors(object $user, int $userId): array
+    {
+        $actors = [(string) $userId];
+        $email = $user->email ?? null;
+
+        if (is_string($email) && $email !== '') {
+            $actors[] = $email;
+        }
+
+        return array_values(array_unique($actors));
     }
 }

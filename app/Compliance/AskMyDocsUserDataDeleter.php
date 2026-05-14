@@ -6,7 +6,9 @@ use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
 use App\Support\TenantContext;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 class AskMyDocsUserDataDeleter
 {
@@ -19,20 +21,27 @@ class AskMyDocsUserDataDeleter
         $userId = $this->resolveUserId($user);
         $tenantId = $this->tenantContext->current();
 
-        McpToolCallAudit::query()
-            ->forTenant($tenantId)
-            ->where('user_id', $userId)
-            ->delete();
+        DB::transaction(function () use ($tenantId, $userId): void {
+            McpToolCallAudit::query()
+                ->forTenant($tenantId)
+                ->where('user_id', $userId)
+                ->delete();
 
-        ChatLog::query()
-            ->forTenant($tenantId)
-            ->where('user_id', $userId)
-            ->delete();
+            ConnectorInstallation::query()
+                ->forTenant($tenantId)
+                ->where('created_by', $userId)
+                ->delete();
 
-        Conversation::query()
-            ->forTenant($tenantId)
-            ->where('user_id', $userId)
-            ->delete();
+            ChatLog::query()
+                ->forTenant($tenantId)
+                ->where('user_id', $userId)
+                ->delete();
+
+            Conversation::query()
+                ->forTenant($tenantId)
+                ->where('user_id', $userId)
+                ->delete();
+        });
     }
 
     private function resolveUserId(object $user): int
