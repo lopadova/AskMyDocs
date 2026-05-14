@@ -11,6 +11,111 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v6.0.0 — 2026-05-14 (GA — AI Act Compliance Bundle)
+
+**v6.0.0** ships AskMyDocs as the **first Laravel platform AI-Act-ready
+out of the box**, AND releases the underlying compliance toolkit as two
+standalone Padosoft packages usable by ANY Laravel AI app
+(`padosoft/laravel-ai-act-compliance` v1.1.0 + `-admin` v1.1.0). Closes
+PLAN-v6.0 acceptance criteria; supersedes ADR 0009 with ADR 0011.
+
+**Sister packages shipped:**
+
+- **`padosoft/laravel-ai-act-compliance` v1.1.0** — 9 backend modules
+  (Disclosure / RiskRegister / DSAR / BiasMonitoring / HumanReviewTracker /
+  Incident / Consent / Cybersecurity / ComplianceAttestation) + migrations
+  + service provider + HTTP API surface (16 endpoints) + 6 tests + WOW
+  README pass (14 sections, killer modules walkthrough, jr-proof setup,
+  AI Act + GDPR article mapping).
+- **`padosoft/laravel-ai-act-compliance-admin` v1.1.0** — React 19 +
+  TypeScript admin SPA, pixel-ported from the Claude Design handoff
+  (~7000 LoC JSX+CSS prototype → 8 fully-featured screens):
+  1. **Compliance Overview** — 4 KPI tiles + alert banner + activity feed
+     + DSAR depth SVG chart + Article 30 attestation card
+  2. **DSAR Queue** — filterable table + bulk actions + drawer with
+     subject / scope / timeline + GDPR Art. 15/16/17 article pills
+  3. **Consent Overview** — per-feature card grid (consent bar
+     granted/revoked/never + sparkline) + per-user matrix
+  4. **Risk Register** — category summary tiles (unacceptable / high /
+     limited / low) + filter sidebar + card grid + drawer
+  5. **Incident Manager** — 4-lane kanban (open / triage / mitigating /
+     closed) + severity-coloured cards + drawer with timeline +
+     mitigations + escalation tree
+  6. **Bias Monitor** — cohort dimension selector + accuracy parity SVG
+     chart with CI bands + 13-week drift multi-line chart + flagged
+     samples table
+  7. **DPO Console** — sankey-style data flow diagram + retention table +
+     deletion log + Article 30 attestation modal
+  8. **Settings** — feature flag switches + env vars (with show/hide
+     secrets) + webhook destination cards
+  Plus ⌘K command palette + sidebar with badges + topbar live pulse +
+  theme toggle + toast / drawer / modal primitives + WCAG 2.1 AA
+  baseline.
+
+**AskMyDocs host depth (v6 RAG-specific 20%):**
+
+- **`App\Compliance\TokenLevelExplainability`** — decorator over
+  `MessageStreamController::streamHappyPath()` that records the
+  chunk-to-answer-token mapping for every assistant turn into
+  `chat_log_provenance`. Heuristic: chunk-keyword overlap on a sliding
+  window of the answer; returns the best (start, end, score) span per
+  chunk. Best-effort: wrapped in a transaction, logged + swallowed on
+  failure (chat path stays hot). Config-gated via
+  `COMPLIANCE_TOKEN_EXPLAINABILITY_ENABLED`.
+- **`App\Compliance\RagRefusalQualityMetric`** — implements
+  `Padosoft\AiActCompliance\BiasMonitoring\Contracts\CohortParityMetric`.
+  `compute()` returns score + delta + flagged + total + refusals;
+  `computeAll()` groups `chat_logs` by project / provider / model in one
+  query. Plugs directly into the package's `BiasMonitorService`.
+- **`App\Compliance\ProvenanceChain::forChatLog()`** — reads
+  `chat_log_provenance` + joins `knowledge_chunks` + `knowledge_documents`
+  (withTrashed for forensic survival across hard deletes). Returns the
+  full reverse-trace JSON envelope an auditor can replay back to source.
+- **Cross-mount** — `frontend/src/features/admin/ai-act-compliance/AiActComplianceView`
+  replaces the prior "scaffold ready" placeholder with the real iframe
+  cross-mount at `/admin/ai-act-compliance/embed`. Same isolation
+  pattern as the pii-redactor / eval-harness cross-mounts shipped in
+  v4.4.
+- **Configuration** — new `config/compliance.php` (token explainability
+  switch, bias baseline parity, DSAR SLA knobs, admin mount prefix).
+- **Tests** — `tests/Unit/Compliance/RagRefusalQualityMetricTest.php`
+  (4 methods: precomputed compute, flagged branch, zero refusals,
+  computeAll grouping) + `tests/Unit/Compliance/ProvenanceChainTest.php`
+  (3 methods: trace pass-through, forChatLog join, empty spans).
+- **ADR 0011** — records the three-artefact extract-then-integrate
+  architecture decision. Supersedes ADR 0009 (which covered v4.6
+  connector extraction, not v6.0 compliance).
+
+**Provenance migration** (`chat_log_provenance`):
+
+```sql
+chat_log_id        FK → chat_logs   ON DELETE CASCADE
+message_id         FK → messages    ON DELETE CASCADE
+answer_token_start INT              -- byte offset in answer
+answer_token_end   INT
+knowledge_chunk_id FK → knowledge_chunks ON DELETE SET NULL
+source_path        VARCHAR(255)     -- denormalised, survives hard deletes
+contribution_score DECIMAL(5,4)     -- 0..1
+tenant_id          VARCHAR(50)      -- BelongsToTenant
+created_at, updated_at
+INDEX (chat_log_id, answer_token_start)
+INDEX (tenant_id, created_at)
+```
+
+**Stats:**
+
+- AskMyDocs host: +3 production-grade compliance classes + 7 test methods
+  + 1 migration + 1 config file + 1 ADR + cross-mount view + ~+250 LoC
+- `laravel-ai-act-compliance`: WOW README pass (+728 LoC)
+- `laravel-ai-act-compliance-admin`: 8 real screens (~+6000 LoC TS+CSS)
+  replacing 3-line scaffolds + WOW README pass (+511 LoC) + Vitest
+  screens-render.test.tsx pack
+- v6.0 cumulative test delta: +11 test methods on host + 8 vitest
+  screen-render assertions on admin SPA + 6 backend package tests
+  carried forward
+
+---
+
 ### v5.0.0 — 2026-05-13 (GA — Agentic Platform: MCP Client Framework)
 
 **v5.0.0** ships AskMyDocs as an MCP **client** — AskMyDocs can now call
