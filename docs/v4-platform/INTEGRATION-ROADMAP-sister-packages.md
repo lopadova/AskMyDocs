@@ -411,6 +411,80 @@ metric + Artisan command + CI workflow). Total ~10-15 R36 cycles.
 
 ---
 
+### `padosoft/askmydocs-mcp-pack` (v7.0/W1) — STATUS: ✅ v1.0.0 shipped 2026-05-15 (W1.A); host integration W1.B in-flight
+
+Framework-agnostic Model Context Protocol plumbing for Laravel. Extracted
+from the inline `app/Mcp/Client/*` services that AskMyDocs grew in v5.0,
+so any Laravel AI app can drive a multi-turn tool-calling loop against
+upstream MCP servers without re-inventing the orchestrator, transports,
+or audit trail.
+
+#### v7.0/W1.A — package extraction (shipped)
+
+PR #1 → tag v1.0.0 → GitHub Release + Packagist live. What's in it:
+
+- **6 contracts** (`McpToolContract`, `McpServerContract`,
+  `McpServerRegistryContract`, `McpToolAuthorizerContract`,
+  `McpHostBridgeContract`, `McpTransportContract`).
+- **Multi-turn tool-calling orchestrator** (`McpToolCallingService`) —
+  bounded by `mcp-pack.tool_calling.max_iterations`, kill-switch gated
+  via `MCP_PACK_TOOL_CALLING_ENABLED`.
+- **Cached handshake service** — `initialize` + `tools/list` cached
+  per (tenant, server) for 5 min default.
+- **Hash-only audit trail** — `mcp_tool_call_audit` migration stores
+  SHA-256 of input + result, NOT raw payloads; honors
+  `mcp-pack.audit_model` override for host subclassing.
+- **Two transports** — `HttpJsonRpcTransport` (Laravel HTTP client)
+  and `StdioJsonRpcTransport` (Symfony Process; single-shot per
+  request, persistent stdio sessions planned for v1.1).
+- **Safe-by-default defaults** — `NullMcpHostBridge` throws loudly,
+  `NullMcpToolAuthorizer` allows everything (replace in prod),
+  `InMemoryMcpServerRegistry` for tests + config-driven hosts.
+- **Console** — `php artisan mcp-pack:ping {server-id?} --tenant=acme`
+  walks the registry and prints a per-server status table.
+- **42 tests** across PHP 8.3/8.4/8.5 × Laravel 11/12/13 (7 matrix combinations).
+
+#### v7.0/W1.B — AskMyDocs host integration (in-flight)
+
+The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
+"depends on `padosoft/askmydocs-mcp-pack ^1.0`":
+
+1. `composer require padosoft/askmydocs-mcp-pack:^1.0` — declare the dependency.
+2. **Delete inline** `app/Mcp/Client/{McpClientBridge, McpHandshakeService,
+   McpToolAuthorizer, McpToolCallingService, ToolInvoker, Registry/McpServerRegistry}.php`.
+   The `Kb*Tool` classes under `app/Mcp/Tools/*` and
+   `app/Mcp/Servers/KnowledgeBaseServer.php` STAY in the host because
+   they depend on `App\Services\Kb\*` and `App\Models\*`.
+3. **Host bridge** — implement `App\Mcp\MyHostBridge` against
+   `App\Ai\AiManager` (~30 lines, recipe in the package README).
+   Bind it to `McpHostBridgeContract` in `AppServiceProvider`.
+4. **Registry adapter** — port `McpServerRegistry` to implement
+   the package's `McpServerRegistryContract` on top of the existing
+   `mcp_servers` Eloquent model. Bind it.
+5. **Authorizer adapter** — port `McpToolAuthorizer` to implement
+   `McpToolAuthorizerContract`. Bind it.
+6. **Migration coexistence** — keep the host's `mcp_tool_call_audit`
+   schema; configure `mcp-pack.audit_model` to point at the host's
+   `App\Models\McpToolCallAudit` subclass (no column churn).
+7. **Container rewiring** — every controller / chat handler that
+   currently resolves `App\Mcp\Client\McpToolCallingService` should
+   resolve `Padosoft\AskMyDocsMcpPack\Services\McpToolCallingService`
+   instead.
+8. **Regression tests** — every existing test under
+   `tests/Feature/Mcp/*` MUST stay green; new tests in
+   `tests/Feature/V7/HostBridgeTest.php` cover the bridge translation
+   layer.
+9. **Playwright** — `frontend/e2e/admin-mcp-servers.spec.ts` already
+   asserts CRUD on the admin SPA; the contract is preserved, no
+   changes expected. Smoke-test the chat-with-tools flow under the
+   new orchestrator path.
+
+Acceptance gate: full PHPUnit + Vitest + Playwright green AND zero
+diffs in `app/Mcp/Tools/*` / `app/Mcp/Servers/KnowledgeBaseServer.php`
+(they ride on top of the package without rewriting).
+
+---
+
 ### `padosoft/laravel-patent-box-tracker` (W4) — STATUS: ✅ External runner by design
 
 **No AskMyDocs `app/` integration is planned, ever.** The standalone-agnostic
