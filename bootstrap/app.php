@@ -59,6 +59,21 @@ return Application::configure(basePath: dirname(__DIR__))
             // default to keep existing AskMyDocs users non-breaking).
             'ai.disclosure' => \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
             'ai.consent' => \Padosoft\AiActCompliance\Consent\RequireConsentMiddleware::class,
+            // v6.1.1 — package v1.5 multi-tenancy. Resolves the active
+            // sister-package Tenant from `X-Tenant-Id` header (or
+            // `?tenant=` fallback) and binds it on the package's
+            // `Padosoft\AiActCompliance\MultiTenancy\Services\TenantContext`
+            // request-scoped singleton. Suspended → 423 Locked,
+            // archived → 410 Gone, unknown → 404. No header passes
+            // through with the package context unset — host's own
+            // `App\Support\TenantContext` (which always has a value)
+            // remains the source of truth for non-AI-Act tenant
+            // scoping. The two contexts live in parallel; the
+            // `App\Compliance\TenantContextBridge` listens to the
+            // host `ResolveTenant` middleware and propagates into the
+            // sister-package context so config overrides resolve under
+            // the same tenant the rest of AskMyDocs is using.
+            'ai-act.tenant-context' => \Padosoft\AiActCompliance\MultiTenancy\Http\Middleware\TenantContextMiddleware::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated
@@ -199,6 +214,22 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->onOneServer()
                 ->withoutOverlapping()
                 ->runInBackground();
+        }
+
+        // v6.1.1 — EU AI Act regulatory-feed daily poll. Off by
+        // default; the package command itself early-returns when
+        // `ai-act-compliance.regulatory_feed.enabled` is false, so
+        // even an accidentally-running schedule is a no-op until
+        // the operator sets AI_ACT_REGULATORY_FEED_ENABLED=true AND
+        // configures at least one feed URL in
+        // `regulatory_feed.sources.*.feed_url`. Routed at 04:10
+        // (BEFORE 04:30 admin-audit prune) so the day's amendment
+        // ingest lands before the audit-rotation window starts.
+        if ((bool) env('AI_ACT_REGULATORY_FEED_ENABLED', false)) {
+            $schedule->command('ai-act:regulatory-poll')
+                ->dailyAt('04:10')
+                ->onOneServer()
+                ->withoutOverlapping();
         }
     })
     ->create();

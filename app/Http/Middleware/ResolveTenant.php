@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Compliance\TenantContextBridge;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * ResolveTenant — sets the active tenant_id on the request-scoped
@@ -39,6 +41,19 @@ final class ResolveTenant
                 'error' => 'invalid_tenant_id',
                 'message' => $e->getMessage(),
             ], 400);
+        }
+
+        // v6.1.1 — propagate the resolved tenant id into the
+        // sister-package's v1.5 TenantContext (if a matching
+        // `tenants` row exists). Best-effort: any error here is
+        // swallowed so a misconfigured DB / missing package binding
+        // does not break the request — the host tenant scoping
+        // continues to work, the package-side just falls back to
+        // the host config block as if multi-tenancy were unconfigured.
+        try {
+            app(TenantContextBridge::class)->syncFromHost();
+        } catch (Throwable) {
+            // intentionally swallow — bridge is best-effort
         }
 
         return $next($request);
