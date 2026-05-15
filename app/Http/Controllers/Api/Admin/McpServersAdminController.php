@@ -6,7 +6,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\McpServer;
 use App\Support\TenantContext;
-use App\Mcp\Client\McpHandshakeService;
+use App\Mcp\HostHandshakeService as McpHandshakeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;

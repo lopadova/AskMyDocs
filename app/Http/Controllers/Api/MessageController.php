@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
-use App\Mcp\Client\McpToolCallingService;
+use App\Mcp\HostToolCallingService as McpToolCallingService;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;

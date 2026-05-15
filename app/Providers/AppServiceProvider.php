@@ -114,6 +114,30 @@ class AppServiceProvider extends ServiceProvider
         if (interface_exists(CohortParityMetric::class)) {
             $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
         }
+
+        $this->registerMcpPackBindings();
+    }
+
+    /**
+     * v7.0/W1.B — bind the `padosoft/askmydocs-mcp-pack` contracts to
+     * AskMyDocs's adapters. The package's safe-by-default singletons
+     * (Null bridge throws, allow-all authorizer, in-memory registry)
+     * are unfit for production; this is where the host swaps them.
+     */
+    private function registerMcpPackBindings(): void
+    {
+        $this->app->singleton(
+            \Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract::class,
+            \App\Mcp\Bridge\AiManagerHostBridge::class,
+        );
+        $this->app->singleton(
+            \Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract::class,
+            \App\Mcp\Bridge\EloquentMcpServerRegistry::class,
+        );
+        $this->app->singleton(
+            \Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract::class,
+            \App\Mcp\Bridge\SpatieMcpToolAuthorizer::class,
+        );
     }
 
     public function boot(): void
