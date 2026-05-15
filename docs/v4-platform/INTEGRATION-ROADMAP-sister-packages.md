@@ -411,7 +411,7 @@ metric + Artisan command + CI workflow). Total ~10-15 R36 cycles.
 
 ---
 
-### `padosoft/askmydocs-mcp-pack` (v7.0) — STATUS: ✅ v1.0.1 shipped 2026-05-15 (W1.A); package v1.1-v1.3 in flight (W2-W4); host integration deferred to W5
+### `padosoft/askmydocs-mcp-pack` (v7.0) — STATUS: ✅ v1.0.1 shipped 2026-05-15 (W1.A); package v1.1-v1.4 in flight (W2-W5); host integration deferred to W6
 
 Framework-agnostic Model Context Protocol plumbing for Laravel. Extracted
 from the inline `app/Mcp/Client/*` services that AskMyDocs grew in v5.0,
@@ -501,12 +501,53 @@ PR #172 was closed without merge per this strategy update.
 - New config keys (`mcp-pack.circuit_breaker.*` + `mcp-pack.retry.*`)
   and telemetry events for observability stacks. Tag `v1.3.0`.
 
-#### v7.0/W5 — AskMyDocs host integration over the FULL v1.3 package
+#### v7.0/W5 — mcp-pack v1.4.0 (admin backend surface — REST API)
+
+The MISSING step from the original roadmap: AskMyDocs already
+exposes admin React screens at `/admin/mcp/*` against the inline
+`McpServersAdminController` + `McpToolCallAuditController`. For the
+host integration in W6 to retire those inline controllers without
+losing functionality, the PACKAGE must expose equivalent REST routes.
+
+- Package SP registers routes under a configurable prefix (default
+  `/api/admin/mcp-pack/`) — host can opt out + remount under its own
+  prefix.
+- Resource endpoints:
+  - `GET    /servers` — paginated list, tenant-scoped via the
+    registry contract
+  - `POST   /servers` — create (validates against
+    `McpServerContract::transportConfig()` shape)
+  - `GET    /servers/{id}` — single
+  - `PATCH  /servers/{id}` — update (transport / enabled tools /
+    auth config)
+  - `DELETE /servers/{id}` — soft-disable (status → disabled, not a
+    hard delete — preserves audit linkage)
+  - `POST   /servers/{id}/handshake` — drives
+    `McpHandshakeService::refresh()`
+  - `POST   /servers/{id}/disable` / `/enable`
+  - `GET    /servers/{id}/tools` — current handshake tool catalog
+  - `GET    /audit` — paginated audit log, filters by tenant /
+    server / tool / status / date range
+  - `GET    /audit/{id}` — single audit row
+  - `GET    /circuit-breakers` — current state per (tenant, server,
+    tool) — feeds the future admin dashboard
+- Auth: middleware-driven. The package SP registers the routes WITH
+  the host's named middleware group (`config('mcp-pack.admin.middleware')`
+  → default `['api', 'auth:sanctum']`). Host wires RBAC via the same
+  `McpToolAuthorizerContract` already bound for tool gating.
+- OpenAPI 3.1 spec ships in `docs/openapi.yaml`; tested against the
+  routes via `darkaonline/l5-swagger` validator. Postman collection
+  + Insomnia export ship alongside.
+- NO React/Vue code — this is the backend the standalone
+  `-admin` SPA will consume.
+- Tag `v1.4.0`.
+
+#### v7.0/W6 — AskMyDocs host integration over the FULL v1.4 package
 
 The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
-"depends on `padosoft/askmydocs-mcp-pack ^1.3`":
+"depends on `padosoft/askmydocs-mcp-pack ^1.4`":
 
-1. `composer require padosoft/askmydocs-mcp-pack:^1.3` — declare the dependency at the v1.3 surface (SSE + resources/prompts + server-side + circuit breaker all available).
+1. `composer require padosoft/askmydocs-mcp-pack:^1.4` — declare the dependency at the v1.4 surface (SSE + resources/prompts + server-side + circuit breaker + admin REST routes all available).
 2. **Delete inline** `app/Mcp/Client/{McpClientBridge, McpHandshakeService,
    McpToolAuthorizer, McpToolCallingService, ToolInvoker, Registry/McpServerRegistry}.php`.
    The `Kb*Tool` classes under `app/Mcp/Tools/*` and
