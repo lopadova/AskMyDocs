@@ -178,6 +178,24 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
         $this->assertNotSame($sortedFirst, $sortedSecond);
     }
 
+    public function test_canonical_hash_does_not_collide_on_invalid_utf8(): void
+    {
+        // Two distinct payloads containing invalid UTF-8 bytes must
+        // still produce distinct hashes — the previous (buggy)
+        // implementation collapsed both to `sha256('')` because
+        // `json_encode()` returned `false` and was string-cast to
+        // an empty string. The `JSON_INVALID_UTF8_SUBSTITUTE` flag
+        // (codepoint U+FFFD) keeps the encoder honest.
+        $payloadA = ['blob' => "valid \x80 bytes A"];
+        $payloadB = ['blob' => "valid \x80 bytes B"];
+
+        $hashA = McpToolCallAudit::canonicalHash($payloadA);
+        $hashB = McpToolCallAudit::canonicalHash($payloadB);
+
+        $this->assertNotSame($hashA, $hashB, 'invalid-UTF-8 payloads must NOT collide');
+        $this->assertNotSame(hash('sha256', ''), $hashA, 'hash must not be sha256(empty string)');
+    }
+
     public function test_empty_payload_hashes_to_canonical_empty_array(): void
     {
         // Package writes commonly have an empty `[]` payload (the

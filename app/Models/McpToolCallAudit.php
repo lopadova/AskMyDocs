@@ -114,9 +114,27 @@ class McpToolCallAudit extends Model
         if (is_array($payload)) {
             self::recursivelySortKeys($payload);
         }
-        $canonical = is_string($payload)
-            ? $payload
-            : (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (is_string($payload)) {
+            return hash('sha256', $payload);
+        }
+        // `JSON_INVALID_UTF8_SUBSTITUTE` keeps `json_encode()` from
+        // returning `false` on payloads with invalid UTF-8 byte
+        // sequences (legacy ingest, raw-binary inputs). Without it
+        // a casting-to-string would turn `false` into `""` and every
+        // such payload would collide on `sha256('')`. The substitute
+        // codepoint (U+FFFD) is deterministic so the hash stays
+        // stable across re-encodes of the same logical payload.
+        $canonical = json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
+        );
+        if ($canonical === false) {
+            // Hard failure (e.g. circular references). Fall back to a
+            // deterministic non-empty representation that includes the
+            // last json_encode error code so distinct failure modes do
+            // not collide.
+            $canonical = '__canonical_hash_encode_failed__:' . json_last_error();
+        }
         return hash('sha256', $canonical);
     }
 
@@ -138,6 +156,10 @@ class McpToolCallAudit extends Model
                 self::recursivelySortKeys($value);
             }
         }
+        // `foreach ... as &$value` leaves $value pointing at the last
+        // element after the loop ends; subsequent assignments to
+        // $value elsewhere would mutate the array. Always unset.
+        unset($value);
     }
 
     public function user(): BelongsTo

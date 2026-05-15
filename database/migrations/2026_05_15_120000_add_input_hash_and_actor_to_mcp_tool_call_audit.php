@@ -138,9 +138,18 @@ return new class extends Migration
         }
         $caseSql = implode(' ', $cases);
         $idList = implode(',', array_map('intval', $ids));
+        // The `AND input_hash IS NULL` guard makes the bulk update
+        // safe to run against a live host: between the `chunkById`
+        // SELECT (rows with NULL input_hash) and this UPDATE, a
+        // concurrent writer COULD set `input_hash` on one of the
+        // selected ids (e.g. an MCP tool call landed during deploy).
+        // Without the guard we'd clobber the fresh hash with our
+        // backfilled value. The CASE expression still computes per-
+        // row but the WHERE prevents the write.
         $sql = "UPDATE mcp_tool_call_audit
                 SET input_hash = CASE id {$caseSql} END
-                WHERE id IN ({$idList})";
+                WHERE id IN ({$idList})
+                  AND input_hash IS NULL";
         DB::update($sql, $bindings);
     }
 
