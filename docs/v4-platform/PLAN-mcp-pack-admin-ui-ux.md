@@ -1195,8 +1195,8 @@ On mount, SPA calls `GET /api/admin/mcp-pack/me`:
 ```json
 {
     "id": 42,
-    "email": "lorenzo@padosoft.com",
-    "name": "Lorenzo Padovani",
+    "email": "admin@example.test",
+    "name": "Demo Admin",
     "tenant_id": "acme-corp",
     "tenants_accessible": ["acme-corp", "demo-corp"],
     "permissions": [
