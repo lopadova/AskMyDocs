@@ -41,7 +41,15 @@ final class AiManagerHostBridge implements McpHostBridgeContract
     {
         $providerTools = $this->translateTools($turn->tools);
 
-        $options = $turn->extras + ['tools' => $providerTools, 'tool_choice' => 'auto'];
+        $defaultToolChoice = (string) config(
+            'mcp.tool_calling.default_tool_choice',
+            (string) config('mcp-pack.tool_calling.default_tool_choice', 'auto'),
+        );
+
+        // Respect a caller-supplied `tool_choice` in $turn->extras;
+        // fall back to the host config (legacy v5.0 key) and only
+        // hard-default to 'auto' when neither is set.
+        $options = $turn->extras + ['tools' => $providerTools, 'tool_choice' => $defaultToolChoice];
 
         $systemPrompt = $this->extractSystemPrompt($turn->messages);
         $messages = $this->filterNonSystem($turn->messages);

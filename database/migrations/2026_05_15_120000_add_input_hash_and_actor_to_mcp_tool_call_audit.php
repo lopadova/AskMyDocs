@@ -59,10 +59,12 @@ return new class extends Migration
                 ->comment('First 500 chars of any throwable surfaced by the tool — package audit shape.');
         });
 
-        // The host's v5.0 schema required `input_json_redacted` and
-        // `user_id` on every audit row. The package's ToolInvoker
-        // writes the package-shape (input_hash + actor) only. Relax
-        // both columns so package-written rows can satisfy the table
+        // The host's v5.0 schema required `input_json_redacted`,
+        // `user_id`, and `result_hash` on every audit row. The
+        // package's ToolInvoker writes the package-shape (input_hash
+        // + actor + nullable result_hash) only — error/timeout rows
+        // come through with `result_hash` null. Relax all three
+        // columns so package-written rows can satisfy the table
         // constraint while pre-existing rows remain valid.
         if (Schema::getConnection()->getDriverName() !== 'sqlite') {
             // SQLite cannot ALTER COLUMN nullability without recreate;
@@ -72,6 +74,7 @@ return new class extends Migration
             Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
                 $table->json('input_json_redacted')->nullable()->change();
                 $table->foreignId('user_id')->nullable()->change();
+                $table->string('result_hash', 64)->nullable()->change();
             });
         }
 
@@ -110,6 +113,7 @@ return new class extends Migration
             Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
                 $table->json('input_json_redacted')->nullable(false)->change();
                 $table->foreignId('user_id')->nullable(false)->change();
+                $table->string('result_hash', 64)->nullable(false)->change();
             });
         }
     }

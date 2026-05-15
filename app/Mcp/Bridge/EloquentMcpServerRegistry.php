@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Bridge;
 
 use App\Models\McpServer;
+use App\Support\TenantContext;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
 
@@ -13,25 +14,26 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
  * {@see McpServerRegistryContract}, replacing the inline
  * `App\Mcp\Client\Registry\McpServerRegistry` shipped in v5.0/W1.
  *
- * Tenant scoping uses the host's `BelongsToTenant` trait via the
- * existing `mcp_servers.tenant_id` index. The package contract takes a
- * `?string $tenantId`; we honour `null` as "platform-global" by
- * matching it against `tenant_id = 'default'` (the host's default
- * sentinel) only when the host's TenantContext is also at default.
- * Production hosts that need stricter isolation can override this
- * binding.
+ * R30 — every read against `mcp_servers` is tenant-scoped. The package
+ * contract uses `?string $tenantId` with `null` meaning "platform-global";
+ * AskMyDocs has NO platform-global server concept (every row carries a
+ * tenant_id, defaulting to the `'default'` sentinel), so a null
+ * argument is interpreted as "scope to the host's active TenantContext".
+ * `find()` always carries the active tenant filter — no cross-tenant
+ * lookup by id is possible from this adapter.
  */
 final class EloquentMcpServerRegistry implements McpServerRegistryContract
 {
+    public function __construct(private readonly TenantContext $tenantContext) {}
+
     public function forTenant(?string $tenantId): array
     {
-        $query = McpServer::query()->where('status', McpServer::STATUS_ACTIVE);
+        $effectiveTenant = $tenantId ?? $this->tenantContext->current();
 
-        if ($tenantId !== null) {
-            $query->where('tenant_id', $tenantId);
-        }
-
-        return $query->get()
+        return McpServer::query()
+            ->where('status', McpServer::STATUS_ACTIVE)
+            ->where('tenant_id', $effectiveTenant)
+            ->get()
             ->map(static fn (McpServer $row): McpServerContract => new EloquentMcpServerAdapter($row))
             ->all();
     }
@@ -40,6 +42,7 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
     {
         $server = McpServer::query()
             ->where('id', $id)
+            ->where('tenant_id', $this->tenantContext->current())
             ->where('status', McpServer::STATUS_ACTIVE)
             ->first();
 

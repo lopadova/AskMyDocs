@@ -138,6 +138,18 @@ class AppServiceProvider extends ServiceProvider
             \Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract::class,
             \App\Mcp\Bridge\SpatieMcpToolAuthorizer::class,
         );
+
+        // The package's stock HttpJsonRpcTransport assumes a remote
+        // MCP gateway exposing a JSON-RPC `/rpc` endpoint. AskMyDocs's
+        // Node sidecar speaks a REST shape (`/handshake`,
+        // `/invoke-tool`) with Bearer auth instead. Bind the host's
+        // SidecarMcpTransport via the package's transport resolver so
+        // every McpClient::forServer() call routes through the
+        // existing sidecar contract — zero protocol changes on the
+        // Node side.
+        \Padosoft\AskMyDocsMcpPack\Services\McpClient::useTransportResolver(
+            static fn ($server) => new \App\Mcp\Bridge\SidecarMcpTransport($server),
+        );
     }
 
     public function boot(): void

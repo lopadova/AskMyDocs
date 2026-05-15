@@ -93,23 +93,17 @@ final class McpServersAdminControllerTest extends TestCase
         $super = $this->makeSuperAdmin();
         $server = $this->createServer($super, ['status' => McpServer::STATUS_PENDING]);
 
-        // v7.0/W1.B — the handshake now drives the package's JSON-RPC
-        // McpClient over the host's existing HTTP sidecar. Two separate
-        // calls land on /rpc: `initialize` and `tools/list`. We answer
-        // both with JSON-RPC response envelopes. Http::fake() returns
-        // each entry in order under the same URL pattern.
+        // v7.0/W1.B — the handshake drives the package's McpClient
+        // through the host's SidecarMcpTransport, which translates
+        // JSON-RPC into the sidecar's REST routes. Both `initialize`
+        // and `tools/list` are answered by a single cached POST to
+        // /handshake (the package's stock HttpJsonRpcTransport is
+        // NOT used; see app/Mcp/Bridge/SidecarMcpTransport.php).
         Http::fake([
-            'http://127.0.0.1:3535/rpc' => Http::sequence()
-                ->push([
-                    'jsonrpc' => '2.0',
-                    'id' => 'rpc_init',
-                    'result' => ['capabilities' => ['tools' => new \stdClass()]],
-                ], 200)
-                ->push([
-                    'jsonrpc' => '2.0',
-                    'id' => 'rpc_list',
-                    'result' => ['tools' => [['name' => 'doc'], ['name' => 'graph']]],
-                ], 200),
+            'http://127.0.0.1:3535/handshake' => Http::response([
+                'capabilities' => ['tools' => (object) []],
+                'tools' => [['name' => 'doc'], ['name' => 'graph']],
+            ], 200),
         ]);
 
         $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
@@ -129,7 +123,7 @@ final class McpServersAdminControllerTest extends TestCase
         $server = $this->createServer($super, ['status' => McpServer::STATUS_PENDING]);
 
         Http::fake([
-            'http://127.0.0.1:3535/rpc' => Http::response('upstream unavailable', 500),
+            'http://127.0.0.1:3535/handshake' => Http::response('sidecar unavailable', 500),
         ]);
 
         $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
@@ -138,10 +132,9 @@ final class McpServersAdminControllerTest extends TestCase
         $server->refresh();
         $this->assertSame(McpServer::STATUS_ERRORED, $server->status);
         $this->assertSame('error', $server->handshake_response_json['status']);
-        // v7.0/W1.B — error excerpt comes from the package transport
-        // (HttpJsonRpcTransport wraps the non-2xx body), so the test
-        // asserts against the package's wrapping prefix.
-        $this->assertStringContainsString('HTTP MCP transport', $server->handshake_response_json['message']);
+        // v7.0/W1.B — error excerpt comes through the host
+        // SidecarMcpTransport wrapper around the non-2xx body.
+        $this->assertStringContainsString('Sidecar /handshake', $server->handshake_response_json['message']);
     }
 
     public function test_update_enabled_tools_requires_validation_and_persists_allowed_tools(): void

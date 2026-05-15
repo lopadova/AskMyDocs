@@ -43,20 +43,18 @@ final class EloquentMcpServerAdapter implements McpServerContract
 
     public function transportConfig(): array
     {
-        // AskMyDocs talks to upstream MCP servers exclusively via the
-        // Node sidecar's HTTP front (see McpClientBridge in v5.0/v6.x).
-        // We expose ONE config shape — http endpoint of the sidecar's
-        // invoke-tool route — so the package's HttpJsonRpcTransport
-        // can drive a JSON-RPC request through the same channel.
-        $base = rtrim((string) config('mcp.sidecar.base_url', 'http://127.0.0.1:3535'), '/');
-        $headers = [
-            'X-MCP-Server-Id' => (string) $this->server->id,
-            'X-MCP-Tenant' => (string) ($this->server->tenant_id ?? ''),
-        ];
-
+        // AskMyDocs's Node sidecar exposes REST endpoints
+        // (`/handshake`, `/invoke-tool`) — NOT a JSON-RPC `/rpc` —
+        // and authenticates via `Authorization: Bearer <token>`
+        // (see mcp-client/src/auth.ts). The package's stock
+        // HttpJsonRpcTransport would POST a JSON-RPC envelope at
+        // `/rpc`, which the sidecar does not understand. The host
+        // therefore binds {@see SidecarMcpTransport} via
+        // McpClient::useTransportResolver() in AppServiceProvider,
+        // and this method only carries operational metadata that
+        // surfaces in the admin SPA + diagnostics.
         return [
-            'endpoint' => $base . '/rpc',
-            'headers' => $headers,
+            'base_url' => rtrim((string) config('mcp.sidecar.base_url', 'http://127.0.0.1:3535'), '/'),
             'timeout_ms' => (int) config('mcp.sidecar.timeout_ms', 5_000),
             'health_path' => (string) config('mcp.sidecar.health_endpoint', '/healthz'),
         ];
