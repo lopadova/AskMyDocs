@@ -437,12 +437,18 @@ PR #1 → tag v1.0.0 → GitHub Release + Packagist live. What's in it:
 - **Two transports** — `HttpJsonRpcTransport` (Laravel HTTP client)
   and `StdioJsonRpcTransport` (Symfony Process; single-shot per
   request, persistent stdio sessions planned for v1.1).
-- **Safe-by-default defaults** — `NullMcpHostBridge` throws loudly,
-  `NullMcpToolAuthorizer` allows everything (replace in prod),
-  `InMemoryMcpServerRegistry` for tests + config-driven hosts.
+- **Built-in defaults (development scaffolding — NOT for production)**:
+  `NullMcpHostBridge` throws loudly when not bound; `NullMcpToolAuthorizer`
+  allows every tool (the host MUST swap this in production — it is the
+  prototype-only authorizer); `InMemoryMcpServerRegistry` for tests +
+  config-driven hosts.
 - **Console** — `php artisan mcp-pack:ping {server-id?} --tenant=acme`
   walks the registry and prints a per-server status table.
-- **42 tests** across PHP 8.3/8.4/8.5 × Laravel 11/12/13 (7 matrix combinations).
+- **42 tests** across the (PHP 8.3 × {Laravel 11, 12, 13}) +
+  (PHP 8.4 × {Laravel 11, 12, 13}) + (PHP 8.5 × Laravel 13)
+  combinations — 7 cells. The PHP 8.5 row is restricted to Laravel 13
+  because earlier Laravel majors are not yet published as PHP 8.5
+  compatible at the time of release.
 
 #### v7.0/W1.B — AskMyDocs host integration (in-flight)
 
@@ -463,21 +469,34 @@ The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
    `mcp_servers` Eloquent model. Bind it.
 5. **Authorizer adapter** — port `McpToolAuthorizer` to implement
    `McpToolAuthorizerContract`. Bind it.
-6. **Migration coexistence** — keep the host's `mcp_tool_call_audit`
-   schema; configure `mcp-pack.audit_model` to point at the host's
-   `App\Models\McpToolCallAudit` subclass (no column churn).
+6. **Audit-model coexistence** — the host's `mcp_tool_call_audit`
+   schema retains `input_json_redacted` (full redacted-payload audit
+   for AskMyDocs's operator forensics) on top of the SHA-256
+   `input_hash` column the package writes. Configure
+   `mcp-pack.audit_model` to point at the host's
+   `App\Models\McpToolCallAudit` subclass, which fills BOTH columns
+   from within `creating()` so the package's hash-only contract is
+   preserved while the host's richer audit row is satisfied. No
+   migration churn — the redacted-payload column exists since v5.0
+   and stays.
 7. **Container rewiring** — every controller / chat handler that
    currently resolves `App\Mcp\Client\McpToolCallingService` should
    resolve `Padosoft\AskMyDocsMcpPack\Services\McpToolCallingService`
    instead.
-8. **Regression tests** — every existing test under
-   `tests/Feature/Mcp/*` MUST stay green; new tests in
-   `tests/Feature/V7/HostBridgeTest.php` cover the bridge translation
-   layer.
-9. **Playwright** — `frontend/e2e/admin-mcp-servers.spec.ts` already
-   asserts CRUD on the admin SPA; the contract is preserved, no
-   changes expected. Smoke-test the chat-with-tools flow under the
-   new orchestrator path.
+8. **Regression tests** — the existing MCP coverage MUST stay green:
+   `tests/Feature/Api/McpInternalAuthControllerTest.php` (sidecar
+   auth), `tests/Feature/Api/Admin/McpServersAdminControllerTest.php`
+   (server CRUD), and `tests/Feature/Api/Admin/McpToolCallAuditControllerTest.php`
+   (audit list). New tests added under `tests/Feature/V7/` cover the
+   host-bridge translation layer (provider → orchestrator → tool
+   round-trip) and the audit-model subclass behaviour.
+9. **Playwright** — three specs already assert the admin SPA contract
+   end-to-end: `frontend/e2e/admin-mcp-super-admin.spec.ts` (server
+   CRUD), `admin-mcp-tools-super-admin.spec.ts` (tool list +
+   handshake), `admin-mcp-tools-viewer.spec.ts` (read-only viewer
+   role). The contract is preserved across the package swap; smoke
+   the chat-with-tools flow under the new orchestrator path and
+   confirm zero diffs in these specs.
 
 Acceptance gate: full PHPUnit + Vitest + Playwright green AND zero
 diffs in `app/Mcp/Tools/*` / `app/Mcp/Servers/KnowledgeBaseServer.php`
