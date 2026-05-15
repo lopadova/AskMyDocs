@@ -14,10 +14,17 @@ return new class extends Migration
             $table->id();
             $table->string('tenant_id', 50)->default('default')->index();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->string('actor', 100)->nullable();
             $table->foreignId('mcp_server_id')->constrained('mcp_servers')->cascadeOnDelete();
             $table->foreignId('conversation_id')->nullable()->constrained('conversations')->nullOnDelete();
             $table->foreignId('message_id')->nullable()->constrained('messages')->nullOnDelete();
             $table->string('tool_name', 100);
+            // v7.0/W6.2 — package coexistence columns (nullable). The
+            // prod schema lands them via a follow-up additive
+            // migration; the test schema inlines them into the
+            // consolidated create so the suite doesn't need to apply
+            // the additive migration separately.
+            $table->char('input_hash', 64)->nullable();
             $table->json('input_json_redacted');
             $table->string('result_hash', 64);
             $table->unsignedInteger('duration_ms');
@@ -30,6 +37,7 @@ return new class extends Migration
                 ['tenant_id', 'mcp_server_id', 'tool_name'],
                 'idx_mcp_tool_call_audit_tenant_server_tool',
             );
+            $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
         });
     }
 
