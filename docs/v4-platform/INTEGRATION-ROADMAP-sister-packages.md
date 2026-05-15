@@ -421,7 +421,10 @@ or audit trail.
 
 #### v7.0/W1.A — package extraction (shipped)
 
-PR #1 → tag v1.0.0 → GitHub Release + Packagist live. What's in it:
+[padosoft/askmydocs-mcp-pack#1](https://github.com/padosoft/askmydocs-mcp-pack/pull/1)
+→ tag [v1.0.0](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.0)
+→ [Packagist](https://packagist.org/packages/padosoft/askmydocs-mcp-pack) live.
+What's in it:
 
 - **6 contracts** (`McpToolContract`, `McpServerContract`,
   `McpServerRegistryContract`, `McpToolAuthorizerContract`,
