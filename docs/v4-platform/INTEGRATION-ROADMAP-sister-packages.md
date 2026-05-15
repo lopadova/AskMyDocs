@@ -512,7 +512,7 @@ host integration in W6 to retire those inline controllers without
 losing functionality, the PACKAGE must expose equivalent REST routes.
 
 - Package SP registers routes under a configurable prefix (default
-  `/api/admin/mcp-pack/`) — host can opt out + remount under its own
+  `/api/admin/mcp-pack`) — host can opt out + remount under its own
   prefix.
 - Resource endpoints:
   - `GET    /servers` — paginated list, tenant-scoped via the
@@ -522,11 +522,14 @@ losing functionality, the PACKAGE must expose equivalent REST routes.
   - `GET    /servers/{id}` — single
   - `PATCH  /servers/{id}` — update (transport / enabled tools /
     auth config)
-  - `DELETE /servers/{id}` — soft-disable (status → disabled, not a
-    hard delete — preserves audit linkage)
+  - `DELETE /servers/{id}` — HARD delete the row (admin SPA confirms
+    with type-to-confirm; preserves audit rows via the
+    `cascadeOnDelete` snapshot of `mcp_server_name` in the
+    audit table — no audit-row loss)
   - `POST   /servers/{id}/handshake` — drives
     `McpHandshakeService::refresh()`
-  - `POST   /servers/{id}/disable` / `/enable`
+  - `POST   /servers/{id}/disable` / `/enable` — soft toggle for
+    operational pause/resume (status flips without removing the row)
   - `GET    /servers/{id}/tools` — current handshake tool catalog
   - `GET    /audit` — paginated audit log, filters by tenant /
     server / tool / status / date range
