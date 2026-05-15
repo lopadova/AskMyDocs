@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -30,6 +31,10 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        // Spatie's permission cache survives RefreshDatabase
+        // rollbacks because it lives in the Laravel cache, not the
+        // DB. Flush so each test sees a fresh permissions map.
+        Cache::flush();
         app(TenantContext::class)->set('default');
     }
 
@@ -122,13 +127,14 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
         }
     }
 
-    public function test_model_hook_canonicalises_payload_with_string_keys_consistently(): void
+    public function test_canonical_hash_is_key_order_independent(): void
     {
         // Two rows with the SAME logical payload written in
-        // different JSON key orders (e.g. a non-PHP client wrote one
-        // before the host's canonicalisation landed) MUST hash to
-        // the same value once the model hook runs, so retrospective
-        // hash queries return both.
+        // DIFFERENT key insertion orders (Python clients, browser
+        // clients, or just inconsistent host code) MUST hash to the
+        // same value so retrospective hash lookups join cleanly.
+        // `json_encode()` alone preserves insertion order, so the
+        // model hook recursively `ksort()`s before encoding.
         $user = $this->user();
         $server = $this->server();
 
@@ -137,7 +143,7 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'user_id' => $user->id,
             'mcp_server_id' => $server->id,
             'tool_name' => 'kb.search',
-            'input_json_redacted' => ['alpha' => 1, 'beta' => 2],
+            'input_json_redacted' => ['alpha' => 1, 'beta' => 2, 'nested' => ['x' => 1, 'y' => 2]],
             'result_hash' => hash('sha256', 'r1'),
             'duration_ms' => 1,
             'status' => McpToolCallAudit::STATUS_OK,
@@ -147,19 +153,29 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'user_id' => $user->id,
             'mcp_server_id' => $server->id,
             'tool_name' => 'kb.search',
-            'input_json_redacted' => ['alpha' => 1, 'beta' => 2],
+            // Top-level keys reversed + nested keys reversed.
+            'input_json_redacted' => ['nested' => ['y' => 2, 'x' => 1], 'beta' => 2, 'alpha' => 1],
             'result_hash' => hash('sha256', 'r2'),
             'duration_ms' => 1,
             'status' => McpToolCallAudit::STATUS_OK,
         ]);
 
-        // Same logical payload → same canonical hash → both rows
-        // surface from a single hash lookup.
-        $this->assertSame($a->input_hash, $b->input_hash);
+        $this->assertSame($a->input_hash, $b->input_hash, 'reordered keys must hash identically');
         $this->assertSame(
             2,
             McpToolCallAudit::where('input_hash', $a->input_hash)->count(),
         );
+    }
+
+    public function test_canonical_hash_preserves_list_order(): void
+    {
+        // List arrays carry positional meaning (e.g. function args)
+        // — reordering them changes the logical payload. Two
+        // payloads identical except for list order MUST hash
+        // differently.
+        $sortedFirst = McpToolCallAudit::canonicalHash(['args' => [1, 2, 3]]);
+        $sortedSecond = McpToolCallAudit::canonicalHash(['args' => [3, 2, 1]]);
+        $this->assertNotSame($sortedFirst, $sortedSecond);
     }
 
     public function test_empty_payload_hashes_to_canonical_empty_array(): void

@@ -62,37 +62,26 @@ return new class extends Migration
         //    `sha2()` exists on MySQL only, and Postgres needs
         //    `pgcrypto`.
         //
-        //    The hash MUST match what the host model's `creating()`
-        //    hook produces for the same payload, otherwise rows
-        //    backfilled here would never match against rows written
-        //    later by the package (or by host code post-hook). The
-        //    model hook canonicalises the payload via
-        //    `json_encode($payload, JSON_UNESCAPED_UNICODE |
-        //    JSON_UNESCAPED_SLASHES)`. We mirror that exactly: when
-        //    the driver hands us back a string (Postgres / MySQL),
-        //    `json_decode()` it first and re-encode with the same
-        //    flags so escaping / key ordering is identical.
+        //    Delegate the actual canonicalisation to
+        //    `\App\Models\McpToolCallAudit::canonicalHash()` so the
+        //    backfill and the model `creating()` hook produce
+        //    identical hashes for the same logical payload —
+        //    including the recursive `ksort()` that makes the hash
+        //    key-order-independent. Without this, rows seeded by
+        //    Python or browser-side clients (with arbitrary key
+        //    ordering) would never join hashes with rows written
+        //    later by the host hook.
         DB::table('mcp_tool_call_audit')
             ->whereNull('input_hash')
             ->orderBy('id')
             ->chunkById(500, function ($rows): void {
                 foreach ($rows as $row) {
                     $payload = $row->input_json_redacted ?? '';
-                    if (is_string($payload)) {
-                        $decoded = json_decode($payload, true);
-                        // Malformed JSON is treated as the literal
-                        // string — preserving the original stored
-                        // bytes is safer than skipping the row.
-                        $payload = $decoded === null && json_last_error() !== JSON_ERROR_NONE
-                            ? $payload
-                            : $decoded;
-                    }
-                    $canonical = is_string($payload)
-                        ? $payload
-                        : (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                     DB::table('mcp_tool_call_audit')
                         ->where('id', $row->id)
-                        ->update(['input_hash' => hash('sha256', $canonical)]);
+                        ->update([
+                            'input_hash' => \App\Models\McpToolCallAudit::canonicalHash($payload),
+                        ]);
                 }
             });
 

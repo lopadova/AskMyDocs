@@ -76,11 +76,63 @@ class McpToolCallAudit extends Model
             if ($payload === null) {
                 return;
             }
-            $canonical = is_string($payload)
-                ? $payload
-                : (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $audit->input_hash = hash('sha256', $canonical);
+            $audit->input_hash = self::canonicalHash($payload);
         });
+    }
+
+    /**
+     * Canonical SHA-256 of a redacted-input payload. Mirrors the
+     * migration backfill so cross-writer lookups by hash join
+     * cleanly even when the original writer emitted keys in a
+     * different order (Python clients, browser-side clients, etc.).
+     *
+     *   1. Decode if the driver handed us back the raw JSON string.
+     *   2. Recursively sort associative-array keys so two payloads
+     *      that differ ONLY in insertion order produce the same
+     *      hash. List indices stay positional — they're meaningful.
+     *   3. Re-encode with `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`
+     *      so the byte representation is identical regardless of
+     *      who serialised it.
+     *
+     * @param  array<mixed>|string  $payload
+     */
+    public static function canonicalHash(array|string $payload): string
+    {
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            // Malformed JSON: hash the literal bytes so a bad row
+            // is still queryable by its stored form.
+            $payload = $decoded === null && json_last_error() !== JSON_ERROR_NONE
+                ? $payload
+                : $decoded;
+        }
+        if (is_array($payload)) {
+            self::recursivelySortKeys($payload);
+        }
+        $canonical = is_string($payload)
+            ? $payload
+            : (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        return hash('sha256', $canonical);
+    }
+
+    /**
+     * Sort assoc-array keys in-place, recursively. List arrays
+     * (numeric, zero-indexed, contiguous) keep their positional
+     * order — reordering would break payloads where position is
+     * meaningful (e.g. function-argument lists).
+     *
+     * @param  array<mixed>  $payload
+     */
+    private static function recursivelySortKeys(array &$payload): void
+    {
+        if (! array_is_list($payload)) {
+            ksort($payload);
+        }
+        foreach ($payload as &$value) {
+            if (is_array($value)) {
+                self::recursivelySortKeys($value);
+            }
+        }
     }
 
     public function user(): BelongsTo
