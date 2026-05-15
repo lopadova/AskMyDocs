@@ -440,7 +440,8 @@ What's in it:
   `mcp-pack.audit_model` override for host subclassing.
 - **Two transports** — `HttpJsonRpcTransport` (Laravel HTTP client)
   and `StdioJsonRpcTransport` (Symfony Process; single-shot per
-  request, persistent stdio sessions planned for v1.1).
+  request — persistent stdio sessions are NOT in v1.1 scope, see
+  Open Questions / v2 roadmap).
 - **Built-in defaults (development scaffolding — NOT for production)**:
   `NullMcpHostBridge` throws loudly when not bound; `NullMcpToolAuthorizer`
   allows every tool (the host MUST swap this in production — it is the
