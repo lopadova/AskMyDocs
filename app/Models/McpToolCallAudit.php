@@ -92,12 +92,22 @@ class McpToolCallAudit extends Model
      * different order (Python clients, browser-side clients, etc.).
      *
      *   1. Decode if the driver handed us back the raw JSON string.
+     *      Malformed JSON falls through as the literal bytes so a
+     *      bad row is still queryable by its stored form.
      *   2. Recursively sort associative-array keys so two payloads
      *      that differ ONLY in insertion order produce the same
      *      hash. List indices stay positional — they're meaningful.
-     *   3. Re-encode with `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`
+     *   3. Re-encode with `JSON_UNESCAPED_UNICODE |
+     *      JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE`
      *      so the byte representation is identical regardless of
-     *      who serialised it.
+     *      who serialised it, and invalid UTF-8 sequences land as
+     *      U+FFFD instead of breaking the encoder (otherwise
+     *      `json_encode()` would return `false` and every such
+     *      payload would collide on `sha256('')`).
+     *   4. On the rare hard encode failure (circular references,
+     *      etc.), fall back to a deterministic non-empty marker
+     *      that embeds the `json_last_error()` code, so distinct
+     *      failure modes never collide either.
      *
      * @param  array<mixed>|string  $payload
      */

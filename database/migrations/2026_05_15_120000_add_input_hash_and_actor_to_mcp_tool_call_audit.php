@@ -88,9 +88,10 @@ return new class extends Migration
         //
         //    Each chunk issues ONE bulk update via a CASE WHEN
         //    expression instead of N per-row UPDATEs. On a 100k-row
-        //    table this collapses 200 round-trips into 200/$chunk =
-        //    400 individual SQL statements down to one statement per
-        //    chunk — orders of magnitude less lock contention.
+        //    table that turns ~100,000 per-row statements (one per
+        //    audit row) into 100,000 / 250 ≈ 400 bulk statements
+        //    (one per chunk) — orders of magnitude less lock
+        //    contention on the table.
         //
         //    Chunk size 250: each row contributes 2 bound parameters
         //    (`WHEN ? THEN ?`), so 250 rows = 500 bindings. That
