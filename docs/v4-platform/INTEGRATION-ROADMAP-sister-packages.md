@@ -453,19 +453,20 @@ What's in it:
   because earlier Laravel majors are not yet published as PHP 8.5
   compatible at the time of release.
 
-#### Strategy update (2026-05-15) — host integration deferred to W5
+#### Strategy update (2026-05-15) — host integration deferred to W6
 
 Lorenzo's call after the W1.B first integration pass surfaced
 multiple deep-integration touch-points (R30 tenant scoping, sidecar
 transport rewrite, audit-schema mismatch): finish the full
-`mcp-pack` v1.1 → v1.3 roadmap FIRST so AskMyDocs adopts the package
-ONCE over a complete surface instead of rewriting the host three
-times as each new package version lands.
+`mcp-pack` v1.1 → v1.4 roadmap FIRST (the v1.4 admin-backend step
+came out of a follow-up clarification — see W5 below) so AskMyDocs
+adopts the package ONCE over a complete surface instead of rewriting
+the host four times as each new package version lands.
 
 The W1.B branch `feature/v7.0/W1.B-host-integration` is preserved as
 a checkpoint (the host bridge + Eloquent adapters + sidecar transport
 + audit subclass + migration + container bindings + regression tests
-are all valid against v1.0.1). It is rebased + extended in W5.
+are all valid against v1.0.1). It is rebased + extended in W6.
 
 PR #172 was closed without merge per this strategy update.
 
