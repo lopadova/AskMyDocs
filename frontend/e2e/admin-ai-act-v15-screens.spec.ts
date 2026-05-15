@@ -13,7 +13,7 @@ import { test as seededTest } from './fixtures';
  * passthrough preserves auth, the URL resolves, and the screen renders
  * to `data-state="ready"`.
  *
- * Backend endpoints are stubbed via `page.route()` because (a) the
+ * Backend endpoints are stubbed via Playwright route handlers because (a) the
  * sister-package endpoints under `/api/admin/ai-act-compliance/*` are
  * only mounted when the sister-package SP boots correctly under the
  * test bootstrap, which depends on migration ordering — out of scope
