@@ -9,6 +9,7 @@
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
         "padosoft/askmydocs-connector-base": "^1.1",
+        "padosoft/askmydocs-mcp-pack": "^1.4",
         "padosoft/askmydocs-connector-confluence": "^1.0",
         "padosoft/askmydocs-connector-evernote": "^1.0",
         "padosoft/askmydocs-connector-fabric": "^1.0",
