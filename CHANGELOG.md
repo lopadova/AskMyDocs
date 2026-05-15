@@ -11,6 +11,90 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v6.1.0 — 2026-05-15 (GA — AI Act compliance v1.2 → v1.5 catch-up wave)
+
+**v6.1.0** bumps the two sister packages from `^1.1.3` (v6.0 GA pin)
+straight to `^1.5.0`, layering four substantive compliance enhancements
+onto the v6.0 foundation in one hop. No v6.0 contract changes; existing
+tenants see no behavioural change until they opt into the new features
+(every knob defaults OFF).
+
+**Sister-package pin bump**
+
+- `padosoft/laravel-ai-act-compliance`         `^1.1.3` → **`^1.5.0`**
+- `padosoft/laravel-ai-act-compliance-admin`   `^1.1.3` → **`^1.5.0`**
+
+**Four new capabilities**
+
+1. **v1.2 — Pluggable `CohortParityMetric` registry**: `DemographicParity`
+   (legacy default), `EqualizedOdds`, `Calibration` — chosen at capture
+   time via `$context['metric_name']`. Each metric persists its own
+   `metric_name` + `metric_version` + `article_evidence_json` onto
+   `bias_snapshots` so the audit trail tells which method produced the
+   disparity score.
+2. **v1.3 — Cohort-drift real-time alerting cascade**: per-tenant
+   `alert_routes` table with at-rest-encrypted webhook URLs.
+   Slack → Discord → always-CC email policy; cascade-level throttle
+   pre-check prevents Slack+Discord double-notification within the
+   cooldown window; severity-escalation bypass so a previously-delivered
+   `low` never silently suppresses a subsequent `critical`. The circuit
+   breaker clamps a misconfigured `failures_to_trip=0` to a safe minimum
+   and auto-resets `consecutive_failures` after the natural cooldown
+   elapses. `BiasDriftDetected` event uses `SerializesModels` so queued
+   listeners persist a model id, not the full payload. All v1.3 knobs
+   are documented in the upstream
+   [`padosoft/laravel-ai-act-compliance` config reference](https://github.com/padosoft/laravel-ai-act-compliance);
+   AskMyDocs does not own the env vars and `.env.example` deliberately
+   leaves them out so operators configure them via the published-vendor
+   `config/ai-act-compliance.php` (or the upstream env keys when
+   running unpublished).
+3. **v1.4 — Regulatory-feed auto-flagger**: subscribes to the EU AI Act
+   amendment feed (RSS 2.0 + Atom 1.0, XXE-safe via `LIBXML_NONET`),
+   maps each amendment to AI Act article references via a configurable
+   regex map (case-insensitive, accepts plural `Articles 5 and 9`),
+   derives severity (Art. 5/9 → critical; Art. 10/14/15/27 → high;
+   else medium). Per-tenant composite UNIQUE `(tenant_id, source_driver,
+   external_id)` enforces idempotency under concurrent polls. REST
+   surface + `ai-act:regulatory-poll` Artisan command (default OFF).
+4. **v1.5 — DPO multi-org tenant management**: first-class `tenants`
+   registry (slug-unique 50 chars matching smallest `tenant_id` column,
+   subscription tier + status enums, JSON config overrides,
+   `suspended_at` / `archived_at` first-transition audit stamps).
+   Request-scoped `TenantContext` (Octane-safe). `TenantConfigResolver`
+   layers per-tenant overrides on the host config block.
+   `ai-act.tenant-context` middleware: 404 / 423 / 410 / pass-through.
+   `CrossTenantOverviewService` uses ONE `GROUP BY tenant_id` query
+   per table (no N+1).
+
+**Companion admin SPA**
+
+The v6.0 GA already cross-mounts `padosoft/laravel-ai-act-compliance-admin`
+at `/admin/ai-act-compliance/` (host wiring + route group + bundle
+publishing). v6.1 ships **only** the package pin bump — the three new
+screens below ride into the host automatically via the existing
+cross-mount once `composer update` resolves the new package version.
+No new host route group, middleware, observer, scheduler, or host-side
+Playwright spec lands in this PR.
+
+- `/alerts` — sister-package screen exposing the dispatch audit trail
+  + transient-failure retry (backed by v1.3 REST endpoints under the
+  package-owned `/api/admin/ai-act-compliance/alerts/*` prefix)
+- `/regulatory` — sister-package screen exposing the amendment
+  dashboard + Poll-now + triage actions (backed by v1.4 REST under
+  `/regulatory-amendments/*`)
+- `/tenants` — sister-package screen exposing the platform KPI grid
+  + Suspend / Activate / Archive (backed by v1.5 REST under
+  `/tenants/*`)
+
+**Verification**
+
+- AskMyDocs PHPUnit: **1729/1729** green with the bumped sister-package
+  pins (no host-side regressions).
+- All four sister-package cycles converged through the R36 Copilot
+  review loop with zero outstanding must-fix at merge: 130 → 168 → 192
+  PHPUnit tests across the v1.3 → v1.5 cycles on the backend repo;
+  51 → 71 Vitest tests on the admin repo.
+
 ### v6.0.0 — 2026-05-14 (GA — AI Act Compliance Bundle)
 
 **v6.0.0** ships AskMyDocs as the **first Laravel platform AI-Act-ready
