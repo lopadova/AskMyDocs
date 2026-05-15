@@ -128,9 +128,40 @@
       <path value="$PROJECT_DIR$/vendor/graham-campbell/result-type" />
       <path value="$PROJECT_DIR$/vendor/tijsverkoyen/css-to-inline-styles" />
       <path value="$PROJECT_DIR$/vendor/dragonmantank/cron-expression" />
+      <path value="$PROJECT_DIR$/vendor/laravel/mcp" />
+      <path value="$PROJECT_DIR$/vendor/smalot/pdfparser" />
+      <path value="$PROJECT_DIR$/vendor/spatie/laravel-activitylog" />
+      <path value="$PROJECT_DIR$/vendor/spatie/laravel-package-tools" />
+      <path value="$PROJECT_DIR$/vendor/spatie/laravel-permission" />
+      <path value="$PROJECT_DIR$/vendor/phpoffice/math" />
+      <path value="$PROJECT_DIR$/vendor/phpoffice/phpword" />
+      <path value="$PROJECT_DIR$/vendor/symfony/polyfill-php84" />
+      <path value="$PROJECT_DIR$/vendor/mtdowling/jmespath.php" />
+      <path value="$PROJECT_DIR$/vendor/symfony/polyfill-php86" />
+      <path value="$PROJECT_DIR$/vendor/symfony/filesystem" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-base" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-google-drive" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-fabric" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-evernote" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-confluence" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/eval-harness" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-onedrive" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-notion" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/askmydocs-connector-jira" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-ai-regolo" />
+      <path value="$PROJECT_DIR$/vendor/aws/aws-sdk-php" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-ai-act-compliance-admin" />
+      <path value="$PROJECT_DIR$/vendor/aws/aws-crt-php" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-ai-act-compliance" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/eval-harness-ui" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-pii-redactor-admin" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-pii-redactor" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-flow-admin" />
+      <path value="$PROJECT_DIR$/vendor/padosoft/laravel-flow" />
+      <path value="$PROJECT_DIR$/vendor/laravel/ai" />
     </include_path>
   </component>
-  <component name="PhpProjectSharedConfiguration" php_language_level="8.2">
+  <component name="PhpProjectSharedConfiguration" php_language_level="8.3">
     <option name="suggestChangeDefaultLanguageLevel" value="false" />
   </component>
   <component name="PhpStanOptionsConfiguration">

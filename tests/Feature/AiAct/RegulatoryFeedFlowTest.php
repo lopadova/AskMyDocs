@@ -119,14 +119,14 @@ class RegulatoryFeedFlowTest extends TestCase
       <link>https://example.test/art9</link>
       <description>Continuous monitoring obligations for high-risk providers.</description>
       <guid>host-art-9</guid>
-      <pubDate>Wed, 15 May 2026 10:00:00 +0000</pubDate>
+      <pubDate>Fri, 15 May 2026 10:00:00 +0000</pubDate>
     </item>
     <item>
       <title>FRIA template revised under Art. 27</title>
       <link>https://example.test/art27</link>
       <description>Adds three new mitigation fields to the fundamental rights template.</description>
       <guid>host-art-27</guid>
-      <pubDate>Thu, 15 May 2026 11:00:00 +0000</pubDate>
+      <pubDate>Sat, 16 May 2026 11:00:00 +0000</pubDate>
     </item>
   </channel>
 </rss>

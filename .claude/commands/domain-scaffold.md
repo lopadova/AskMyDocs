@@ -1,3 +1,7 @@
+---
+description: "Scaffold di un nuovo dominio/modulo Laravel 13.x + PHP 8.3+ — struttura app/Domain/{Domain}/ con Actions|Services, Dto, Http/Controllers, Http/Requests, Jobs, Models (opzionale), Policies, Routes. Definisce confine del dominio prima di generare file in massa."
+---
+
 # Domain Scaffold
 
 Scaffold concettuale per un nuovo dominio/modulo Laravel.

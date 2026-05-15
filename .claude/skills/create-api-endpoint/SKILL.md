@@ -1,3 +1,8 @@
+---
+name: create-api-endpoint
+description: Creare endpoint API moderni in Laravel 13 con la pipeline route → controller thin → FormRequest → DTO → service/action → JsonResource/ResourceCollection → feature test HTTP. Trigger quando l'utente chiede di aggiungere una nuova rotta API in routes/api.php, un nuovo controller in app/Http/Controllers/Api/, o quando si espone una nuova capability come endpoint REST/JSON.
+---
+
 # Create API Endpoint
 
 Skill per creare endpoint API moderni in Laravel 13.

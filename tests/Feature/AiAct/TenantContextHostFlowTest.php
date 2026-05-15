@@ -50,7 +50,8 @@ class TenantContextHostFlowTest extends TestCase
                 return response()->json([
                     'package_slug' => $packageContext->currentSlug(),
                 ]);
-            });
+            })
+            ->name('test.ai-act.tenant-probe');
     }
 
     public function test_middleware_alias_is_registered_in_bootstrap(): void

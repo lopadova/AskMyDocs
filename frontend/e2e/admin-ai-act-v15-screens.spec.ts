@@ -25,21 +25,25 @@ seededTest.describe('Admin AI Act v1.3 → v1.5 screens reach through the v6.0 c
     seededTest.beforeEach(async ({ page }) => {
         // Stub the three sister-package endpoints so the screens
         // hydrate predictably regardless of host migration state.
-        await page.route('**/api/**/alerts/dispatches', async (route) => {
+        // Patterns use the explicit `/api/admin/ai-act-compliance/`
+        // prefix so the R13 verify-e2e-real-data.sh gate matches
+        // them against EXTERNAL_PROXY_PATTERNS (the sister package
+        // is external to THIS repo's boundary).
+        await page.route('**/api/admin/ai-act-compliance/alerts/dispatches', async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
                 body: JSON.stringify([]),
             });
         });
-        await page.route('**/api/**/regulatory-amendments', async (route) => {
+        await page.route('**/api/admin/ai-act-compliance/regulatory-amendments**', async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
                 body: JSON.stringify({ data: { data: [] } }),
             });
         });
-        await page.route(/\/api\/.*\/tenants$/, async (route) => {
+        await page.route('**/api/admin/ai-act-compliance/tenants', async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',

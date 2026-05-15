@@ -1,3 +1,8 @@
+---
+name: admin-interface-backend
+description: Implementare il backend di una pagina admin Laravel complessa con FormRequest, DTO/filter object, service di query/aggregation, controller thin e route. Trigger quando si crea o refactora un endpoint admin con filtri, KPI, tabelle paginate o export, o quando si tocca un controller in app/Http/Controllers/Api/Admin/ o un servizio in app/Services/Admin/.
+---
+
 # Admin Interface Backend
 
 Skill per implementare il backend di una pagina admin Laravel complessa.

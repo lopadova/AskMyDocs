@@ -4,6 +4,51 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/tests/Feature" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/tests/Unit" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/app" isTestSource="false" packagePrefix="App\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/database/seeders" isTestSource="false" packagePrefix="Database\Seeders\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/tests" isTestSource="true" packagePrefix="Tests\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/tests/Architecture" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/tests/Feature" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-a8aa86b60dd135d6b/tests/Unit" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ad584990addc27a20/app" isTestSource="false" packagePrefix="App\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ad584990addc27a20/database/seeders" isTestSource="false" packagePrefix="Database\Seeders\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ad584990addc27a20/tests" isTestSource="true" packagePrefix="Tests\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ad584990addc27a20/tests/Feature" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ad584990addc27a20/tests/Unit" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/app" isTestSource="false" packagePrefix="App\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/database/seeders" isTestSource="false" packagePrefix="Database\Seeders\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/tests" isTestSource="true" packagePrefix="Tests\" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/tests/Architecture" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/tests/Feature" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/.claude/worktrees/agent-ae9ebe134ab979aab/tests/Unit" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/app" isTestSource="false" packagePrefix="App\" />
+      <sourceFolder url="file://$MODULE_DIR$/database/seeders" isTestSource="false" packagePrefix="Database\Seeders\" />
+      <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" packagePrefix="Tests\" />
+      <sourceFolder url="file://$MODULE_DIR$/tests/Architecture" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/bootstrap/cache" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/aws/aws-crt-php" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/aws/aws-sdk-php" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/laravel/ai" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/mtdowling/jmespath.php" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-base" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-confluence" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-evernote" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-fabric" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-google-drive" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-jira" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-notion" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/askmydocs-connector-onedrive" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/eval-harness" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/eval-harness-ui" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-ai-act-compliance" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-ai-act-compliance-admin" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-ai-regolo" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-flow" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-flow-admin" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-pii-redactor" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/padosoft/laravel-pii-redactor-admin" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/symfony/filesystem" />
+      <excludeFolder url="file://$MODULE_DIR$/vendor/symfony/polyfill-php86" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

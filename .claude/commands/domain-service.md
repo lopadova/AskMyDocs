@@ -1,3 +1,7 @@
+---
+description: "Pattern Domain Service per workflow applicativo chiaro e testabile su Laravel 13.x + PHP 8.3+ — pipeline Request/CLI input → DTO/value object validato → Service/Action con responsabilità singola → Job opzionale per operazioni lunghe → Response/Resource/Result. Service indipendente dal controller, facile da testare senza HTTP."
+---
+
 # Domain Service
 
 Usa questo pattern per un workflow applicativo chiaro e testabile.
