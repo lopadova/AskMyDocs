@@ -11,6 +11,71 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v6.1.0 — 2026-05-15 (GA — AI Act compliance v1.2 → v1.5 wave)
+
+**v6.1.0** bumps the two sister packages from v1.2 to v1.5, layering
+four substantive compliance enhancements onto the v6.0 foundation. No
+v6.0 contract changes; existing tenants see no behavioural change until
+they opt into the new features (every knob defaults OFF).
+
+**Sister-package pin bump**
+
+- `padosoft/laravel-ai-act-compliance`         `^1.2.0` → **`^1.5.0`**
+- `padosoft/laravel-ai-act-compliance-admin`   `^1.2.0` → **`^1.5.0`**
+
+**Four new capabilities**
+
+1. **v1.2 — Pluggable `CohortParityMetric` registry**: `DemographicParity`
+   (legacy default), `EqualizedOdds`, `Calibration` — chosen at capture
+   time via `$context['metric_name']`. Each metric persists its own
+   `metric_name` + `metric_version` + `article_evidence_json` onto
+   `bias_snapshots` so the audit trail tells which method produced the
+   disparity score.
+2. **v1.3 — Cohort-drift real-time alerting cascade**: per-tenant
+   `alert_routes` table with at-rest-encrypted webhook URLs.
+   Slack → Discord → always-CC email policy; cascade-level throttle
+   pre-check prevents Slack+Discord double-notification within the
+   cooldown window; severity-escalation bypass so a previously-delivered
+   `low` never silently suppresses a subsequent `critical`. Circuit
+   breaker clamps misconfigured `AI_ACT_ALERT_CB_FAILURES=0` to a safe
+   minimum + auto-resets `consecutive_failures` after natural cooldown
+   elapse. `BiasDriftDetected` event uses `SerializesModels` so queued
+   listeners persist a model id, not the full payload.
+3. **v1.4 — Regulatory-feed auto-flagger**: subscribes to the EU AI Act
+   amendment feed (RSS 2.0 + Atom 1.0, XXE-safe via `LIBXML_NONET`),
+   maps each amendment to AI Act article references via a configurable
+   regex map (case-insensitive, accepts plural `Articles 5 and 9`),
+   derives severity (Art. 5/9 → critical; Art. 10/14/15/27 → high;
+   else medium). Per-tenant composite UNIQUE `(tenant_id, source_driver,
+   external_id)` enforces idempotency under concurrent polls. REST
+   surface + `ai-act:regulatory-poll` Artisan command (default OFF).
+4. **v1.5 — DPO multi-org tenant management**: first-class `tenants`
+   registry (slug-unique 50 chars matching smallest `tenant_id` column,
+   subscription tier + status enums, JSON config overrides,
+   `suspended_at` / `archived_at` first-transition audit stamps).
+   Request-scoped `TenantContext` (Octane-safe). `TenantConfigResolver`
+   layers per-tenant overrides on the host config block.
+   `ai-act.tenant-context` middleware: 404 / 423 / 410 / pass-through.
+   `CrossTenantOverviewService` uses ONE `GROUP BY tenant_id` query
+   per table (no N+1).
+
+**Companion admin SPA**
+
+Three new screens cross-mounted under `/admin/ai-act-compliance/`:
+
+- `/alerts` — dispatch audit trail + transient-failure retry
+- `/regulatory` — amendment dashboard + Poll-now + triage actions
+- `/tenants` — platform KPI grid + Suspend / Activate / Archive console
+
+**Verification**
+
+- AskMyDocs PHPUnit: **1729/1729** green with the bumped sister-package
+  pins (no host-side regressions).
+- All four sister-package cycles converged through the R36 Copilot
+  review loop with zero outstanding must-fix at merge: 130 → 168 → 192
+  PHPUnit tests across the v1.3 → v1.5 cycles on the backend repo;
+  51 → 71 Vitest tests on the admin repo.
+
 ### v6.0.0 — 2026-05-14 (GA — AI Act Compliance Bundle)
 
 **v6.0.0** ships AskMyDocs as the **first Laravel platform AI-Act-ready
