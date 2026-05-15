@@ -10,14 +10,16 @@ use Illuminate\Support\Facades\Schema;
 /**
  * v7.0/W6.2 — additive coexistence migration for the package swap.
  *
- * The host's existing `mcp_tool_call_audit` table predates the
- * `padosoft/askmydocs-mcp-pack` package by a year and uses a richer
- * shape: foreign keys to `users` + `mcp_servers`, `input_json_redacted`
- * for operator forensics, and a strict ENUM `status`. The package's
- * write contract is leaner: SHA-256 hashes (`input_hash`,
- * `result_hash`), a string-form `actor` (decoupled from the host's
- * user table), and a string `status` (so it can emit
- * `transport_error` etc. without an enum migration).
+ * The host's `mcp_tool_call_audit` table (created in v5.0/W7,
+ * `2026_05_13_000002_create_mcp_tool_call_audit_table.php`) uses a
+ * richer host-domain shape: foreign keys to `users` + `mcp_servers`,
+ * `input_json_redacted` for operator forensics, and a strict ENUM
+ * `status`. The `padosoft/askmydocs-mcp-pack` package — which the
+ * AskMyDocs host pulls in over the v7.0 cycle — has a leaner write
+ * contract: SHA-256 hashes (`input_hash`, `result_hash`), a
+ * string-form `actor` decoupled from any specific user table, and a
+ * string `status` so it can emit `transport_error` etc. without
+ * needing an enum migration on every host.
  *
  * This migration adds the two columns the package writer references
  * that don't exist on the host table yet (`input_hash` + `actor`).
