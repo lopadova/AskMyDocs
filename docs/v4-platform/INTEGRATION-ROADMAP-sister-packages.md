@@ -411,7 +411,7 @@ metric + Artisan command + CI workflow). Total ~10-15 R36 cycles.
 
 ---
 
-### `padosoft/askmydocs-mcp-pack` (v7.0/W1) — STATUS: ✅ v1.0.0 shipped 2026-05-15 (W1.A); host integration W1.B in-flight
+### `padosoft/askmydocs-mcp-pack` (v7.0) — STATUS: ✅ v1.0.1 shipped 2026-05-15 (W1.A); package v1.1-v1.3 in flight (W2-W4); host integration deferred to W5
 
 Framework-agnostic Model Context Protocol plumbing for Laravel. Extracted
 from the inline `app/Mcp/Client/*` services that AskMyDocs grew in v5.0,
@@ -453,12 +453,60 @@ What's in it:
   because earlier Laravel majors are not yet published as PHP 8.5
   compatible at the time of release.
 
-#### v7.0/W1.B — AskMyDocs host integration (in-flight)
+#### Strategy update (2026-05-15) — host integration deferred to W5
+
+Lorenzo's call after the W1.B first integration pass surfaced
+multiple deep-integration touch-points (R30 tenant scoping, sidecar
+transport rewrite, audit-schema mismatch): finish the full
+`mcp-pack` v1.1 → v1.3 roadmap FIRST so AskMyDocs adopts the package
+ONCE over a complete surface instead of rewriting the host three
+times as each new package version lands.
+
+The W1.B branch `feature/v7.0/W1.B-host-integration` is preserved as
+a checkpoint (the host bridge + Eloquent adapters + sidecar transport
++ audit subclass + migration + container bindings + regression tests
+are all valid against v1.0.1). It is rebased + extended in W5.
+
+PR #172 was closed without merge per this strategy update.
+
+#### v7.0/W2 — mcp-pack v1.1.0 (SSE + resources + prompts)
+
+- `SseJsonRpcTransport` — JSON-RPC over HTTP+SSE for remote MCP
+  gateways that prefer streaming over plain JSON-RPC.
+- JSON-RPC `resources/list` + `resources/read` methods + matching
+  `McpResourceContract` shape so the orchestrator can prefetch
+  upstream resource catalogs.
+- JSON-RPC `prompts/list` + `prompts/get` methods + matching
+  `McpPromptContract` shape so the orchestrator can hand pre-prompt
+  templates to the host bridge.
+- New tests + WOW recipes in README. Tag `v1.1.0`.
+
+#### v7.0/W3 — mcp-pack v1.2.0 (server-side)
+
+- Same package exposes a Laravel app AS an MCP server (the other
+  direction). `McpServerRunner` for stdio long-lived process,
+  `mcp-pack:serve` artisan command, HTTP+SSE route + middleware.
+- JSON-RPC handler routes incoming `initialize` / `tools/list` /
+  `tools/call` to host-supplied tool catalog (host implements
+  `McpToolContract` for its own surface).
+- Auth + RBAC integration with host gates. Tag `v1.2.0`.
+
+#### v7.0/W4 — mcp-pack v1.3.0 (circuit breaker + retry budget)
+
+- Per-tool circuit breaker (`open` / `half-open` / `closed` states
+  tracked in cache with TTL recovery). Decorator over
+  `ToolInvoker::invoke()`.
+- Adaptive retry budget — token-bucket per (tenant, server) per
+  minute with exponential backoff on failure.
+- New config keys (`mcp-pack.circuit_breaker.*` + `mcp-pack.retry.*`)
+  and telemetry events for observability stacks. Tag `v1.3.0`.
+
+#### v7.0/W5 — AskMyDocs host integration over the FULL v1.3 package
 
 The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
-"depends on `padosoft/askmydocs-mcp-pack ^1.0`":
+"depends on `padosoft/askmydocs-mcp-pack ^1.3`":
 
-1. `composer require padosoft/askmydocs-mcp-pack:^1.0` — declare the dependency.
+1. `composer require padosoft/askmydocs-mcp-pack:^1.3` — declare the dependency at the v1.3 surface (SSE + resources/prompts + server-side + circuit breaker all available).
 2. **Delete inline** `app/Mcp/Client/{McpClientBridge, McpHandshakeService,
    McpToolAuthorizer, McpToolCallingService, ToolInvoker, Registry/McpServerRegistry}.php`.
    The `Kb*Tool` classes under `app/Mcp/Tools/*` and
