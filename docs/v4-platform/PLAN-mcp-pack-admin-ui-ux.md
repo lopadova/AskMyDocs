@@ -48,7 +48,7 @@ Mirror the laravel-flow-admin shape — no new conventions. Concrete starting po
         },
         "askmydocs-admin": {
             "mount": {
-                "path-prefix": "admin/mcp",
+                "path-prefix": "admin/mcp-pack",
                 "manifest": "dist/manifest.json",
                 "entry": "frontend/src/main.tsx",
                 "blade-view": "askmydocs-mcp-pack-admin::shell"
@@ -94,7 +94,6 @@ Mirror the laravel-flow-admin shape — no new conventions. Concrete starting po
         "@tanstack/react-virtual": "^3.10.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "react-router-dom": "^6.26.0",
         "zustand": "^5.0.0",
         "lucide-react": "^0.460.0",
         "framer-motion": "^11.11.0",
@@ -361,7 +360,7 @@ Canonical icons:
 ### 3.1 Sitemap
 
 ```
-/admin/mcp/
+/admin/mcp-pack/
 ├── /                            → redirect → /dashboard
 ├── /dashboard                   → Overview Dashboard
 ├── /servers
@@ -435,7 +434,7 @@ Example: `Servers / openai-mcp / Tools / get_weather`
 
 ### 3.4 Empty / 404 / 403
 
-- `/admin/mcp/<unknown>` → 404 illustration + "Go home" CTA + "Search ⌘K" CTA
+- `/admin/mcp-pack/<unknown>` → 404 illustration + "Go home" CTA + "Search ⌘K" CTA
 - Permission denied → 403 card explaining what permission is missing + link to the user's profile page on the host
 
 ---
@@ -1298,13 +1297,13 @@ Result: `dist/manifest.json` looks like:
 ### 8.2 Service provider on the host side
 
 `McpPackAdminServiceProvider::boot()`:
-- Registers the route `/admin/mcp/{any?}` (the host CAN override the prefix via config) using a `MountController`
+- Registers the route `/admin/mcp-pack/{any?}` (the host CAN override the prefix via config) using a `MountController`
 - Publishes the `dist/` folder to `public/mcp-admin-assets/` on `vendor:publish`
 - Registers the blade view `askmydocs-mcp-pack-admin::shell`
 - Exposes a config file `config/mcp-pack-admin.php`:
   ```php
   return [
-      'path_prefix' => env('MCP_PACK_ADMIN_PREFIX', 'admin/mcp'),
+      'path_prefix' => env('MCP_PACK_ADMIN_PREFIX', 'admin/mcp-pack'),
       'assets_base' => env('MCP_PACK_ADMIN_ASSETS_BASE', '/mcp-admin-assets'),
       'middleware' => ['web', 'auth', 'verified'],
       'permission_gate' => 'mcp.servers.view',  // host-side floor
@@ -1369,7 +1368,7 @@ The README walks the consumer through:
 2. `php artisan vendor:publish --tag=mcp-pack-admin-assets`
 3. `php artisan vendor:publish --tag=mcp-pack-admin-config` (optional)
 4. (optional) Add an entry to the host admin shell's nav
-5. Visit `/admin/mcp/`
+5. Visit `/admin/mcp-pack/`
 
 Each step has a verification one-liner ("you should now see file X at Y").
 
