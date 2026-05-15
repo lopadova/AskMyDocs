@@ -46,33 +46,47 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // 1. Add columns ONLY — defer the `input_hash` index until
+        //    after the backfill so each update doesn't pay the
+        //    index-maintenance cost. On a 100k-row table the index
+        //    cost-per-row dwarfs the column-write cost.
         Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
             $table->char('input_hash', 64)->nullable()->after('tool_name');
             $table->string('actor', 100)->nullable()->after('user_id');
-
-            // Hash-lookup queries (e.g. "find every call whose input
-            // matched <known hash>") need an index; the column is
-            // nullable so a regular index is fine.
-            $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
         });
 
-        // Backfill the new `input_hash` column for every pre-existing
-        // row. We chunk by primary key so the migration scales past a
-        // few thousand rows without blowing memory; SHA-256 is run in
-        // PHP so the migration is portable across SQLite / Postgres /
-        // MySQL — `sha2()` exists on MySQL only, and Postgres needs
-        // `pgcrypto`.
+        // 2. Backfill the new `input_hash` column for every pre-
+        //    existing row. We chunk by primary key so the migration
+        //    scales past a few thousand rows without blowing memory.
+        //    SHA-256 is computed in PHP for cross-DB portability —
+        //    `sha2()` exists on MySQL only, and Postgres needs
+        //    `pgcrypto`.
+        //
+        //    The hash MUST match what the host model's `creating()`
+        //    hook produces for the same payload, otherwise rows
+        //    backfilled here would never match against rows written
+        //    later by the package (or by host code post-hook). The
+        //    model hook canonicalises the payload via
+        //    `json_encode($payload, JSON_UNESCAPED_UNICODE |
+        //    JSON_UNESCAPED_SLASHES)`. We mirror that exactly: when
+        //    the driver hands us back a string (Postgres / MySQL),
+        //    `json_decode()` it first and re-encode with the same
+        //    flags so escaping / key ordering is identical.
         DB::table('mcp_tool_call_audit')
             ->whereNull('input_hash')
             ->orderBy('id')
             ->chunkById(500, function ($rows): void {
                 foreach ($rows as $row) {
                     $payload = $row->input_json_redacted ?? '';
-                    // SQLite stores JSON columns as plain text;
-                    // Postgres / MySQL return decoded values via
-                    // their respective drivers. Normalise to the
-                    // canonical UTF-8 JSON string the package uses
-                    // for its own hash so the values join.
+                    if (is_string($payload)) {
+                        $decoded = json_decode($payload, true);
+                        // Malformed JSON is treated as the literal
+                        // string — preserving the original stored
+                        // bytes is safer than skipping the row.
+                        $payload = $decoded === null && json_last_error() !== JSON_ERROR_NONE
+                            ? $payload
+                            : $decoded;
+                    }
                     $canonical = is_string($payload)
                         ? $payload
                         : (string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -81,6 +95,13 @@ return new class extends Migration
                         ->update(['input_hash' => hash('sha256', $canonical)]);
                 }
             });
+
+        // 3. NOW create the index — hash-lookup queries
+        //    ("find every call whose input matched <known hash>")
+        //    use it; nullable column, regular index is fine.
+        Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
+            $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
+        });
     }
 
     public function down(): void

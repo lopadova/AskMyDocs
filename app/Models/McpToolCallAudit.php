@@ -23,8 +23,10 @@ use Illuminate\Database\Eloquent\Model;
  *     `user_id`; the `creating()` hook below derives `input_hash`
  *     from the redacted payload automatically.
  *   - Package writes (post-cutover) fill `input_hash` + `actor`
- *     directly; the hook leaves `input_json_redacted` as an empty
- *     `[]` JSON when none was provided.
+ *     directly. They MUST still pass `input_json_redacted` (the
+ *     column is NOT NULL — passing `[]` is the conventional empty
+ *     payload). The hook does NOT default the column; it only
+ *     derives `input_hash` when the caller leaves it empty.
  */
 class McpToolCallAudit extends Model
 {
