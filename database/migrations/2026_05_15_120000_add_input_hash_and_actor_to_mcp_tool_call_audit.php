@@ -84,10 +84,17 @@ return new class extends Migration
         //    table this collapses 200 round-trips into 200/$chunk =
         //    400 individual SQL statements down to one statement per
         //    chunk — orders of magnitude less lock contention.
+        //
+        //    Chunk size 250: each row contributes 2 bound parameters
+        //    (`WHEN ? THEN ?`), so 250 rows = 500 bindings. That
+        //    stays well clear of the SQLite default
+        //    `SQLITE_LIMIT_VARIABLE_NUMBER = 999` on older builds —
+        //    and is still bounded enough for Postgres / MySQL to
+        //    process in a single quick statement.
         DB::table('mcp_tool_call_audit')
             ->whereNull('input_hash')
             ->orderBy('id')
-            ->chunkById(500, function ($rows): void {
+            ->chunkById(250, function ($rows): void {
                 $hashes = [];
                 foreach ($rows as $row) {
                     $hashes[(int) $row->id] = \App\Models\McpToolCallAudit::canonicalHash(
