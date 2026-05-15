@@ -54,10 +54,14 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'status' => McpToolCallAudit::STATUS_OK,
         ]);
 
-        $expected = hash('sha256', json_encode(
-            ['query' => 'how do canonical docs work?'],
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
-        ));
+        // Derive the expected hash via the canonical helper so this
+        // assertion can't drift from the implementation when the
+        // algorithm changes (UTF-8 substitute flag, ksort, etc.).
+        // The hand-rolled `json_encode()` of the previous shape
+        // missed `JSON_INVALID_UTF8_SUBSTITUTE` + recursive ksort.
+        $expected = McpToolCallAudit::canonicalHash([
+            'query' => 'how do canonical docs work?',
+        ]);
         $this->assertNotNull($row->input_hash, 'creating() hook must populate input_hash');
         $this->assertSame($expected, $row->input_hash);
     }

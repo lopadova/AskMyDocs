@@ -46,15 +46,20 @@ use Illuminate\Support\Facades\Schema;
  * lands in W6.3.
  *
  * **Backfill**: every existing row gets its `input_hash` computed
- * by `\App\Models\McpToolCallAudit::canonicalHash()` — the same
- * helper the model's `creating()` hook uses. The helper recursively
- * `ksort()`s associative-array keys before encoding with
- * `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES |
+ * by a MIGRATION-LOCAL `canonicalHash()` helper (private method on
+ * this anonymous migration class). The algorithm is intentionally
+ * duplicated from `\App\Models\McpToolCallAudit::canonicalHash()` so
+ * the migration stays runnable years from now even if the host
+ * model is renamed, relocated, or has its helper signature changed —
+ * historical migrations must never depend on application-layer code.
+ *
+ * Both helpers recursively `ksort()` associative-array keys before
+ * encoding with `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES |
  * JSON_INVALID_UTF8_SUBSTITUTE` so retrospective hash lookups join
  * cleanly against fresh writes regardless of who emitted the original
  * payload (PHP, Python clients, browser clients) or in what key
- * order. Insertion-order-dependent hashing would have made the
- * cross-writer coexistence story unworkable.
+ * order. They MUST stay in lockstep — a divergence would require a
+ * follow-up rehash migration.
  */
 return new class extends Migration
 {
@@ -100,7 +105,14 @@ return new class extends Migration
         //    `SQLITE_LIMIT_VARIABLE_NUMBER = 999` on older builds —
         //    and is still bounded enough for Postgres / MySQL to
         //    process in a single quick statement.
+        // Narrow the SELECT to just the columns the backfill needs.
+        // `mcp_tool_call_audit` carries `error_json`, two
+        // `timestamps`, etc.; pulling all of them for every chunk
+        // would inflate the migration's IO + memory footprint on
+        // large tables. `chunkById` requires the ordering column
+        // (`id`) be in the projection.
         DB::table('mcp_tool_call_audit')
+            ->select(['id', 'input_json_redacted'])
             ->whereNull('input_hash')
             ->orderBy('id')
             ->chunkById(250, function ($rows): void {
