@@ -76,15 +76,16 @@ return new class extends Migration
         //    `sha2()` exists on MySQL only, and Postgres needs
         //    `pgcrypto`.
         //
-        //    Delegate the canonicalisation to
-        //    `\App\Models\McpToolCallAudit::canonicalHash()` so the
-        //    backfill and the model `creating()` hook produce
-        //    identical hashes for the same logical payload —
-        //    including the recursive `ksort()` that makes the hash
-        //    key-order-independent. Without this, rows seeded by
-        //    Python or browser-side clients (with arbitrary key
-        //    ordering) would never join hashes with rows written
-        //    later by the host hook.
+        //    The canonicalisation algorithm is INLINED below
+        //    (`canonicalHash()` private method on this migration
+        //    class). Historical migrations must never depend on
+        //    application-layer model code — if `App\Models\
+        //    McpToolCallAudit` were renamed, moved, or had its
+        //    helper signature changed, fresh installs and rollbacks
+        //    would break this migration. The host model's
+        //    `creating()` hook uses an identical algorithm; both
+        //    paths must stay in sync if the canonical form ever
+        //    changes (would require a follow-up rehash migration).
         //
         //    Each chunk issues ONE bulk update via a CASE WHEN
         //    expression instead of N per-row UPDATEs. On a 100k-row
@@ -105,7 +106,7 @@ return new class extends Migration
             ->chunkById(250, function ($rows): void {
                 $hashes = [];
                 foreach ($rows as $row) {
-                    $hashes[(int) $row->id] = \App\Models\McpToolCallAudit::canonicalHash(
+                    $hashes[(int) $row->id] = $this->canonicalHash(
                         $row->input_json_redacted ?? '',
                     );
                 }
@@ -121,6 +122,68 @@ return new class extends Migration
         Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
             $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
         });
+    }
+
+    /**
+     * Migration-LOCAL canonical SHA-256 of a redacted-input payload.
+     * Intentionally duplicates the host model's
+     * `\App\Models\McpToolCallAudit::canonicalHash()` so this
+     * migration NEVER depends on application-layer code that could
+     * be renamed, refactored, or relocated between releases. Fresh
+     * installs and rollbacks must keep working three years from now.
+     *
+     * Algorithm (must stay in lockstep with the host model):
+     *
+     *   1. Decode if the driver handed us back the raw JSON string;
+     *      malformed JSON falls through as the literal bytes.
+     *   2. Recursively `ksort()` associative-array keys; list arrays
+     *      keep positional order.
+     *   3. Re-encode with `JSON_UNESCAPED_UNICODE |
+     *      JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE`
+     *      so invalid UTF-8 lands as U+FFFD instead of breaking the
+     *      encoder.
+     *   4. On hard encode failure (circular refs etc.), fall back to
+     *      a deterministic marker embedding the json error code so
+     *      distinct failure modes never collide.
+     *
+     * @param  array<mixed>|string  $payload
+     */
+    private function canonicalHash(array|string $payload): string
+    {
+        if (is_string($payload)) {
+            $decoded = json_decode($payload, true);
+            $payload = $decoded === null && json_last_error() !== JSON_ERROR_NONE
+                ? $payload
+                : $decoded;
+        }
+        if (is_array($payload)) {
+            $this->recursivelySortKeys($payload);
+        }
+        if (is_string($payload)) {
+            return hash('sha256', $payload);
+        }
+        $canonical = json_encode(
+            $payload,
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE,
+        );
+        if ($canonical === false) {
+            $canonical = '__canonical_hash_encode_failed__:' . json_last_error();
+        }
+        return hash('sha256', $canonical);
+    }
+
+    /** @param  array<mixed>  $payload */
+    private function recursivelySortKeys(array &$payload): void
+    {
+        if (! array_is_list($payload)) {
+            ksort($payload);
+        }
+        foreach ($payload as &$value) {
+            if (is_array($value)) {
+                $this->recursivelySortKeys($value);
+            }
+        }
+        unset($value);
     }
 
     /**

@@ -66,7 +66,7 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
     {
         $user = $this->user();
         $server = $this->server();
-        $caller = str_repeat('a', 64);
+        $explicitInputHash = str_repeat('a', 64);
 
         $row = McpToolCallAudit::create([
             'tenant_id' => 'default',
@@ -74,7 +74,7 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'actor' => 'mcp-pack:tenant-acme:user-1',
             'mcp_server_id' => $server->id,
             'tool_name' => 'kb.search',
-            'input_hash' => $caller,
+            'input_hash' => $explicitInputHash,
             // Package writes still leave `input_json_redacted` empty;
             // the host model accepts `[]` to satisfy the NOT NULL.
             'input_json_redacted' => [],
@@ -83,7 +83,7 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'status' => McpToolCallAudit::STATUS_OK,
         ]);
 
-        $this->assertSame($caller, $row->input_hash, 'explicit input_hash must survive');
+        $this->assertSame($explicitInputHash, $row->input_hash, 'explicit input_hash must survive');
         $this->assertSame('mcp-pack:tenant-acme:user-1', $row->actor);
     }
 
