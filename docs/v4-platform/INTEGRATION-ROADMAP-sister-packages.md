@@ -422,7 +422,8 @@ or audit trail.
 #### v7.0/W1.A — package extraction (shipped)
 
 [padosoft/askmydocs-mcp-pack#1](https://github.com/padosoft/askmydocs-mcp-pack/pull/1)
-→ tag [v1.0.0](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.0)
+→ tags [v1.0.0](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.0)
++ [v1.0.1](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.1) (defensive migration guards)
 → [Packagist](https://packagist.org/packages/padosoft/askmydocs-mcp-pack) live.
 What's in it:
 
@@ -480,7 +481,7 @@ PR #172 was closed without merge per this strategy update.
 - JSON-RPC `prompts/list` + `prompts/get` methods + matching
   `McpPromptContract` shape so the orchestrator can hand pre-prompt
   templates to the host bridge.
-- New tests + WOW recipes in README. Tag `v1.1.0`.
+- New tests + walkthrough recipes in the package README. Tag `v1.1.0`.
 
 #### v7.0/W3 — mcp-pack v1.2.0 (server-side)
 
@@ -505,7 +506,7 @@ PR #172 was closed without merge per this strategy update.
 #### v7.0/W5 — mcp-pack v1.4.0 (admin backend surface — REST API)
 
 The MISSING step from the original roadmap: AskMyDocs already
-exposes admin React screens at `/admin/mcp/*` against the inline
+exposes admin React screens at `/app/admin/mcp-tools` against the inline
 `McpServersAdminController` + `McpToolCallAuditController`. For the
 host integration in W6 to retire those inline controllers without
 losing functionality, the PACKAGE must expose equivalent REST routes.
