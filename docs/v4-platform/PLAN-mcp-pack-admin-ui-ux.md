@@ -1376,7 +1376,7 @@ Each step has a verification one-liner ("you should now see file X at Y").
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `MCP_PACK_ADMIN_PREFIX` | `admin/mcp` | URL prefix to mount under |
+| `MCP_PACK_ADMIN_PREFIX` | `admin/mcp-pack` | URL prefix to mount under |
 | `MCP_PACK_ADMIN_ASSETS_BASE` | `/mcp-admin-assets` | Public URL prefix for assets |
 
 ---
