@@ -469,16 +469,35 @@ The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
    `mcp_servers` Eloquent model. Bind it.
 5. **Authorizer adapter** — port `McpToolAuthorizer` to implement
    `McpToolAuthorizerContract`. Bind it.
-6. **Audit-model coexistence** — the host's `mcp_tool_call_audit`
-   schema retains `input_json_redacted` (full redacted-payload audit
-   for AskMyDocs's operator forensics) on top of the SHA-256
-   `input_hash` column the package writes. Configure
-   `mcp-pack.audit_model` to point at the host's
-   `App\Models\McpToolCallAudit` subclass, which fills BOTH columns
-   from within `creating()` so the package's hash-only contract is
-   preserved while the host's richer audit row is satisfied. No
-   migration churn — the redacted-payload column exists since v5.0
-   and stays.
+6. **Audit-model coexistence — needs a host-side migration**. The
+   host's current `mcp_tool_call_audit` (v5.0) does NOT match the
+   package's columns exactly:
+
+   | Column                | Host (v5.0)              | Package (v1.0)           |
+   |-----------------------|--------------------------|--------------------------|
+   | `input_hash`          | ❌ missing               | char(64) NOT NULL        |
+   | `input_json_redacted` | json NOT NULL            | ❌ not in package        |
+   | `result_hash`         | char(64) NOT NULL        | char(64) nullable        |
+   | `mcp_server_id`       | foreignId → mcp_servers  | string(64)               |
+   | `user_id`             | foreignId → users        | ❌ uses `actor` string   |
+   | `actor`               | ❌ missing               | string(100) nullable     |
+   | `status`              | enum(ok/error/timeout/denied) | string(32)         |
+
+   W1.B ships ONE additive migration that:
+   - Adds `input_hash` (char 64, nullable initially — backfilled
+     from `sha256(input_json_redacted)` then made NOT NULL in a
+     follow-up if every row is reachable).
+   - Adds `actor` (string 100, nullable).
+   - Keeps the existing FK columns. The host's audit-model subclass
+     fills BOTH the package's columns (`input_hash`, `actor`) AND
+     the host's existing operator-forensics columns
+     (`input_json_redacted`, `user_id`) from within `creating()`.
+
+   The `mcp-pack.audit_model` config points at this subclass so the
+   package's hash-only write path is preserved while AskMyDocs's
+   richer audit row is satisfied. The `denied` enum value continues
+   to work because the subclass column override accepts the string
+   forms the package uses.
 7. **Container rewiring** — every controller / chat handler that
    currently resolves `App\Mcp\Client\McpToolCallingService` should
    resolve `Padosoft\AskMyDocsMcpPack\Services\McpToolCallingService`
