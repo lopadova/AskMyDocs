@@ -11,17 +11,18 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
-### v6.1.0 — 2026-05-15 (GA — AI Act compliance v1.2 → v1.5 wave)
+### v6.1.0 — 2026-05-15 (GA — AI Act compliance v1.2 → v1.5 catch-up wave)
 
-**v6.1.0** bumps the two sister packages from v1.2 to v1.5, layering
-four substantive compliance enhancements onto the v6.0 foundation. No
-v6.0 contract changes; existing tenants see no behavioural change until
-they opt into the new features (every knob defaults OFF).
+**v6.1.0** bumps the two sister packages from `^1.1.3` (v6.0 GA pin)
+straight to `^1.5.0`, layering four substantive compliance enhancements
+onto the v6.0 foundation in one hop. No v6.0 contract changes; existing
+tenants see no behavioural change until they opt into the new features
+(every knob defaults OFF).
 
 **Sister-package pin bump**
 
-- `padosoft/laravel-ai-act-compliance`         `^1.2.0` → **`^1.5.0`**
-- `padosoft/laravel-ai-act-compliance-admin`   `^1.2.0` → **`^1.5.0`**
+- `padosoft/laravel-ai-act-compliance`         `^1.1.3` → **`^1.5.0`**
+- `padosoft/laravel-ai-act-compliance-admin`   `^1.1.3` → **`^1.5.0`**
 
 **Four new capabilities**
 
@@ -36,11 +37,17 @@ they opt into the new features (every knob defaults OFF).
    Slack → Discord → always-CC email policy; cascade-level throttle
    pre-check prevents Slack+Discord double-notification within the
    cooldown window; severity-escalation bypass so a previously-delivered
-   `low` never silently suppresses a subsequent `critical`. Circuit
-   breaker clamps misconfigured `AI_ACT_ALERT_CB_FAILURES=0` to a safe
-   minimum + auto-resets `consecutive_failures` after natural cooldown
-   elapse. `BiasDriftDetected` event uses `SerializesModels` so queued
-   listeners persist a model id, not the full payload.
+   `low` never silently suppresses a subsequent `critical`. The circuit
+   breaker clamps a misconfigured `failures_to_trip=0` to a safe minimum
+   and auto-resets `consecutive_failures` after the natural cooldown
+   elapses. `BiasDriftDetected` event uses `SerializesModels` so queued
+   listeners persist a model id, not the full payload. All v1.3 knobs
+   are documented in the upstream
+   [`padosoft/laravel-ai-act-compliance` config reference](https://github.com/padosoft/laravel-ai-act-compliance);
+   AskMyDocs does not own the env vars and `.env.example` deliberately
+   leaves them out so operators configure them via the published-vendor
+   `config/ai-act-compliance.php` (or the upstream env keys when
+   running unpublished).
 3. **v1.4 — Regulatory-feed auto-flagger**: subscribes to the EU AI Act
    amendment feed (RSS 2.0 + Atom 1.0, XXE-safe via `LIBXML_NONET`),
    maps each amendment to AI Act article references via a configurable
@@ -61,11 +68,23 @@ they opt into the new features (every knob defaults OFF).
 
 **Companion admin SPA**
 
-Three new screens cross-mounted under `/admin/ai-act-compliance/`:
+The v6.0 GA already cross-mounts `padosoft/laravel-ai-act-compliance-admin`
+at `/admin/ai-act-compliance/` (host wiring + route group + bundle
+publishing). v6.1 ships **only** the package pin bump — the three new
+screens below ride into the host automatically via the existing
+cross-mount once `composer update` resolves the new package version.
+No new host route group, middleware, observer, scheduler, or host-side
+Playwright spec lands in this PR.
 
-- `/alerts` — dispatch audit trail + transient-failure retry
-- `/regulatory` — amendment dashboard + Poll-now + triage actions
-- `/tenants` — platform KPI grid + Suspend / Activate / Archive console
+- `/alerts` — sister-package screen exposing the dispatch audit trail
+  + transient-failure retry (backed by v1.3 REST endpoints under the
+  package-owned `/api/admin/ai-act-compliance/alerts/*` prefix)
+- `/regulatory` — sister-package screen exposing the amendment
+  dashboard + Poll-now + triage actions (backed by v1.4 REST under
+  `/regulatory-amendments/*`)
+- `/tenants` — sister-package screen exposing the platform KPI grid
+  + Suspend / Activate / Archive (backed by v1.5 REST under
+  `/tenants/*`)
 
 **Verification**
 
