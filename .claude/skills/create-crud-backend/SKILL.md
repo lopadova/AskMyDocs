@@ -1,3 +1,8 @@
+---
+name: create-crud-backend
+description: Scaffolding di un CRUD admin standard Laravel — model + migration coerenti, FormRequest di create/update, controller resource o equivalente, view index/create/edit oppure API endpoints, test di create/update/delete + validazione. Trigger quando l'utente chiede di creare un CRUD per un nuovo dominio (es. "fai il CRUD per Tag / Project / Setting"), o quando si tocca uno dei 5 file di un CRUD esistente in modo strutturale.
+---
+
 # Create CRUD Backend
 
 Per un CRUD admin standard:

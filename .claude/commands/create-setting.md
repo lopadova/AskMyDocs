@@ -1,3 +1,7 @@
+---
+description: "Pattern per introdurre un nuovo setting persistito in un progetto Laravel — feature flag, limite, parametro, endpoint esterno. Decide config statica vs tabella settings, chiave stabile, migration/seed iniziale, lettura via service o repository dedicato (mai sparsa nel codebase)."
+---
+
 # Create Setting
 
 Pattern generale per introdurre un setting persistito in un progetto Laravel.

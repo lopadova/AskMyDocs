@@ -392,6 +392,134 @@ Every environment variable is documented inline in
 [`config/laravel-flow.php`](config/laravel-flow.php),
 [`config/eval-harness.php`](config/eval-harness.php).
 
+### Enabling AI Act compliance features (junior-proof)
+
+The v6.0 GA wires AskMyDocs as **the first Laravel platform AI-Act-ready
+out of the box** — the 9 baseline compliance modules (Disclosure, DSAR,
+Risk Register, Bias Monitoring, Human Review Tracker, Incident, Consent,
+Cybersecurity, Attestation) ship configured and active. The v6.1 catch-up
+adds four additional capabilities that **default OFF** so existing
+installs see no behavioural change. Turn them on in this order — each
+section is independently optional.
+
+#### 1. Pluggable bias-metric registry (v1.2 — already active)
+
+Three reference metrics ship and auto-register:
+
+```env
+AI_ACT_BIAS_DEFAULT_METRIC=demographic_parity   # alternatives: equalized_odds | calibration
+AI_ACT_BIAS_DISPARITY_THRESHOLD=0.05            # drift alert threshold (0..1)
+```
+
+Switch the active metric on the chat path:
+
+```php
+app(\Padosoft\AiActCompliance\BiasMonitoring\Services\BiasMonitorService::class)
+    ->capture([
+        'metric_name' => 'equalized_odds',
+        'cohort_dimension' => 'language',
+        // ... domain payload
+    ]);
+```
+
+Verification one-liner:
+
+```bash
+php artisan tinker --execute='dump(app(Padosoft\AiActCompliance\BiasMonitoring\Services\MetricRegistry::class)->has("equalized_odds"))'
+# expect: true
+```
+
+#### 2. Cohort-drift real-time alerting cascade (v1.3 — opt-in)
+
+```env
+AI_ACT_ALERTING_ENABLED=true
+AI_ACT_ALERT_THROTTLE_MINUTES=60
+AI_ACT_ALERT_CB_FAILURES=5
+AI_ACT_ALERT_CB_COOLDOWN=30
+# Optional click-through link for the DPO email body:
+AI_ACT_ALERT_EVIDENCE_URL_TEMPLATE="${APP_URL}/admin/ai-act-compliance/bias?tenant={tenant_id}&metric={metric_name}"
+```
+
+Seed at least one channel route (Slack / Discord / email):
+
+```php
+\Padosoft\AiActCompliance\Alerting\Models\AlertRoute::query()->create([
+    'tenant_id' => null,                                                  // null = platform-global
+    'channel' => 'slack',
+    'webhook_url' => 'https://hooks.slack.com/services/T0/B0/xyz',        // auto-encrypted at rest
+    'enabled' => true,
+]);
+\Padosoft\AiActCompliance\Alerting\Models\AlertRoute::query()->create([
+    'tenant_id' => null,
+    'channel' => 'email',
+    'email' => 'dpo@yourcompany.example',
+    'enabled' => true,
+]);
+```
+
+Make sure `queue.default` is NOT `sync` for production deployments
+(otherwise alerts fire on the request thread). `database` is fine for
+small installs; `redis` for prod-grade.
+
+#### 3. EU AI Act regulatory-feed auto-flagger (v1.4 — opt-in)
+
+```env
+AI_ACT_REGULATORY_FEED_ENABLED=true
+AI_ACT_REGULATORY_FEED_URL=https://eur-lex.europa.eu/EN/legal-content/summaries/AI-act.xml
+AI_ACT_REGULATORY_FEED_MAX_ENTRIES=50
+AI_ACT_REGULATORY_FEED_TIMEOUT=15
+```
+
+`bootstrap/app.php` schedules `ai-act:regulatory-poll` daily at 04:10
+once the env flag is on. Trigger it on demand:
+
+```bash
+php artisan ai-act:regulatory-poll
+# expect output: "Regulatory poll complete: ingested=N skipped=M failures=0"
+```
+
+DPO operators triage the resulting rows on
+`/admin/ai-act-compliance/regulatory` (companion admin SPA cross-mount).
+
+#### 4. DPO multi-org tenant management (v1.5 — opt-in)
+
+No env vars — driven entirely via the `tenants` table. Create a tenant:
+
+```bash
+php artisan tinker --execute='
+\Padosoft\AiActCompliance\MultiTenancy\Models\Tenant::query()->create([
+    "slug" => "acme",
+    "name" => "Acme Inc.",
+    "subscription_tier" => "enterprise",
+    "dpo_email" => "dpo@acme.example",
+    "config_overrides_json" => ["bias.disparity_threshold" => 0.02],
+]);
+'
+```
+
+Send a request with the tenant header:
+
+```bash
+curl -H "X-Tenant-Id: acme" http://localhost:8000/api/admin/ai-act-compliance/tenants/acme
+# expect: {"data":{"tenant":{"slug":"acme",...},"kpis":{...}}}
+```
+
+AskMyDocs's `ResolveTenant` middleware propagates the host tenant id
+into the sister-package context via `App\Compliance\TenantContextBridge`
+automatically — every call to `TenantConfigResolver::resolve()` returns
+the per-tenant override when it exists, the host config otherwise.
+
+Verification: an unknown slug returns 404, suspended → 423 Locked,
+archived → 410 Gone (per the package's `ai-act.tenant-context`
+middleware).
+
+#### Reference
+
+- Full `.env.example` section: search for `# AI Act compliance v1.2 → v1.5`.
+- Backend package: <https://github.com/padosoft/laravel-ai-act-compliance> (READMEs §4-§6 "killer modules")
+- Admin SPA package: <https://github.com/padosoft/laravel-ai-act-compliance-admin> (11 screens)
+- Host-side end-to-end tests live in [`tests/Feature/AiAct/`](tests/Feature/AiAct/) — open them for working code samples of every flow.
+
 ---
 
 ## Architecture

@@ -1,3 +1,8 @@
+---
+name: create-admin-interface
+description: Orchestratore end-to-end per creare o rifattorizzare una pagina admin Laravel complessa (Laravel 13.x + PHP 8.3+) — audit componenti, contratto BE/FE, implementazione BE, implementazione FE, test e hardening. Trigger quando l'utente chiede una nuova pagina admin con filtri / KPI / tabelle / export / grafici / modal, o un refactor di interfacce admin disomogenee.
+---
+
 # Create Admin Interface
 
 Orchestratore per creare o rifattorizzare una pagina admin Laravel complessa.

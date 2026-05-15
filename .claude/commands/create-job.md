@@ -1,3 +1,7 @@
+---
+description: "Pattern per introdurre un Job Laravel 13 — operazione lunga, integrazione esterna lenta, export/import, side effects da rimuovere dalla request HTTP. Job sottile + service per la logica + DTO o ID stabili al posto di array anonimi + test del Service e del dispatch."
+---
+
 # Create Job
 
 Pattern per introdurre un Job in Laravel 13.

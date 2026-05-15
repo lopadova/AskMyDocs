@@ -1,3 +1,8 @@
+---
+name: playwright-enterprise-tester
+description: Workflow enterprise per test E2E Playwright — discovery (config/runner/scope), authoring con locator semantici e tag, execution mirata con artifact (trace/screenshot/report), diagnose con classificazione test/app/env/flaky, report finale con summary pass/fail/flaky e follow-up. Trigger quando si scrive una nuova spec di user journey, si estende una suite esistente, si fa un run mirato per file/folder/tag, o quando si diagnostica un test intermittente — per refactor strutturali della suite Playwright complementare a `playwright-e2e` (R12) e `ci-failure-investigation` (R22).
+---
+
 # Playwright Enterprise Tester
 
 Skill riusabile per test E2E enterprise-oriented.
