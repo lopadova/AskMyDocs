@@ -120,15 +120,19 @@ final class SidecarMcpTransport implements McpTransportContract
         $toolName = (string) ($params['name'] ?? '');
         $toolInput = is_array($params['arguments'] ?? null) ? $params['arguments'] : [];
 
-        $response = Http::timeout($this->timeoutSeconds())
+        $payload = $this->serverEnvelope() + [
+            'tool_name' => $toolName,
+            'tool_input' => $toolInput,
+        ];
+        $invokeTimeout = (int) config('mcp.sidecar.invoke_timeout_ms', 30_000);
+        if ($invokeTimeout > 0) {
+            $payload['timeout_ms'] = $invokeTimeout;
+        }
+
+        $response = Http::timeout(max(0.5, $invokeTimeout / 1000))
             ->withHeaders($this->headers())
             ->asJson()
-            ->post($this->baseUrl() . '/invoke-tool', [
-                'server_id' => $this->underlyingServerId(),
-                'server_name' => $this->server->name(),
-                'tool_name' => $toolName,
-                'input' => $toolInput,
-            ]);
+            ->post($this->baseUrl() . '/invoke-tool', $payload);
 
         if ($response->failed()) {
             return JsonRpcMessage::errorResponse(
@@ -149,15 +153,16 @@ final class SidecarMcpTransport implements McpTransportContract
             return $this->handshakeCache;
         }
 
-        $response = Http::timeout($this->timeoutSeconds())
+        $handshakeTimeout = (int) config('mcp.sidecar.handshake_timeout_ms', 15_000);
+        $payload = $this->serverEnvelope();
+        if ($handshakeTimeout > 0) {
+            $payload['timeout_ms'] = $handshakeTimeout;
+        }
+
+        $response = Http::timeout(max(0.5, $handshakeTimeout / 1000))
             ->withHeaders($this->headers())
             ->asJson()
-            ->post($this->baseUrl() . '/handshake', [
-                'server_id' => $this->underlyingServerId(),
-                'name' => $this->server->name(),
-                'transport' => $this->server->transport(),
-                'tenant_id' => $this->server->tenantId(),
-            ]);
+            ->post($this->baseUrl() . '/handshake', $payload);
 
         if ($response->failed()) {
             throw new McpTransportException(
@@ -171,13 +176,36 @@ final class SidecarMcpTransport implements McpTransportContract
         return $this->handshakeCache;
     }
 
-    private function underlyingServerId(): int|string
+    /**
+     * Build the per-server envelope every sidecar request shares —
+     * mirrors the sidecar's `HandshakeRequestSchema` /
+     * `InvokeToolRequestSchema` shape: tenant_id + server_id (int) +
+     * server_name + transport + endpoint.
+     *
+     * @return array<string,mixed>
+     */
+    private function serverEnvelope(): array
+    {
+        $row = $this->server instanceof EloquentMcpServerAdapter
+            ? $this->server->server
+            : null;
+
+        return [
+            'tenant_id' => (string) ($this->server->tenantId() ?? ($row?->tenant_id ?? 'default')),
+            'server_id' => $this->underlyingServerId(),
+            'server_name' => $this->server->name(),
+            'transport' => $this->server->transport(),
+            'endpoint' => (string) ($row?->endpoint ?? ''),
+        ];
+    }
+
+    private function underlyingServerId(): int
     {
         if ($this->server instanceof EloquentMcpServerAdapter) {
-            return $this->server->server->id;
+            return (int) $this->server->server->id;
         }
 
-        return $this->server->id();
+        return (int) $this->server->id();
     }
 
     private function baseUrl(): string
@@ -189,7 +217,12 @@ final class SidecarMcpTransport implements McpTransportContract
     private function headers(): array
     {
         $headers = [];
-        $token = (string) config('mcp.internal_auth_token', '');
+        // The sidecar's `internalAuthMiddleware` expects the token at
+        // `mcp.sidecar.internal_token` (env `MCP_SIDECAR_INTERNAL_TOKEN`).
+        // `mcp.internal_auth_token` is a SEPARATE Laravel-side token
+        // used by sidecar → Laravel internal callbacks — they must
+        // NOT be confused.
+        $token = (string) config('mcp.sidecar.internal_token', '');
         if ($token !== '') {
             $headers['Authorization'] = 'Bearer ' . $token;
         }

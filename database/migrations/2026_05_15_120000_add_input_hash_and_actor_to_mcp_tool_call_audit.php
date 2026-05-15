@@ -51,7 +51,7 @@ return new class extends Migration
             $table->string('mcp_server_name', 150)
                 ->nullable()
                 ->after('mcp_server_id')
-                ->comment('Snapshotted server name at invocation time — survives server deletion, used by the package audit shape.');
+                ->comment('Snapshotted server name at invocation time — survives server renames; matches the package audit shape. (The mcp_server_id FK still cascadeOnDelete, so audit rows do disappear when the parent row is deleted; the comment used to overstate this.)');
 
             $table->string('error_excerpt', 500)
                 ->nullable()

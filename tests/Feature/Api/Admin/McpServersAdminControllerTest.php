@@ -115,6 +115,23 @@ final class McpServersAdminControllerTest extends TestCase
         $this->assertArrayHasKey('capabilities', $payload);
         $this->assertArrayHasKey('tools', $payload);
         $this->assertSame(['doc', 'graph'], array_column($payload['tools'], 'name'));
+
+        // Contract gate: the request body MUST satisfy the sidecar's
+        // HandshakeRequestSchema (see mcp-client/src/types/mcp.ts).
+        // Regressions on the SidecarMcpTransport payload shape would
+        // produce 400 Zod validation errors against the real sidecar;
+        // failing here catches them at PHPUnit time.
+        Http::assertSent(function ($request) use ($server) {
+            if ($request->url() !== 'http://127.0.0.1:3535/handshake') {
+                return false;
+            }
+            $body = $request->data();
+            return isset($body['tenant_id'], $body['server_id'], $body['server_name'], $body['transport'], $body['endpoint'])
+                && $body['server_id'] === $server->id
+                && $body['server_name'] === $server->name
+                && in_array($body['transport'], ['stdio', 'sse', 'http'], true)
+                && is_string($body['tenant_id']) && $body['tenant_id'] !== '';
+        });
     }
 
     public function test_handshake_failure_marks_server_as_errored(): void
