@@ -55,10 +55,10 @@ final class TenantContextBridge
             return null;
         }
         $hostContext = $this->container->make(HostTenantContext::class);
-        $hostId = $hostContext->current();
-        if ($hostId === '' || $hostContext->isDefault()) {
+        if ($hostContext->isDefault()) {
             return null;
         }
+        $hostId = $hostContext->current();
         if (! $this->container->bound(PackageTenantContext::class)) {
             return null;
         }

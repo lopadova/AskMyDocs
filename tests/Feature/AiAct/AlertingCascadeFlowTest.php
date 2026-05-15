@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\AiAct;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Padosoft\AiActCompliance\Alerting\Events\BiasDriftDetected;
 use Padosoft\AiActCompliance\Alerting\Listeners\BiasDriftDetectedListener;
@@ -47,15 +46,16 @@ class AlertingCascadeFlowTest extends TestCase
         config()->set('mail.default', 'array');
     }
 
-    public function test_alerting_disabled_by_default_no_http_no_row(): void
+    public function test_alerting_disabled_by_default_listener_no_op(): void
     {
-        // Sanity: default OFF state under the AskMyDocs config-merge
-        // posture. Even with an enabled AlertRoute seeded by mistake,
-        // nothing fires because the bias service event-fire is gated on
-        // the same flag the listener honours.
+        // The OFF posture is the listener's own gate on
+        // `ai-act-compliance.alerting.enabled`. To prove THAT gate (and
+        // not Event::fake's mock-suppression of the dispatch) we invoke
+        // the real listener directly with the flag set to false — same
+        // entry-point the package SP wires to the event, so any future
+        // refactor of the listener guard is exercised here.
         config()->set('ai-act-compliance.alerting.enabled', false);
         Http::fake();
-        Event::fake([BiasDriftDetected::class]);
 
         AlertRoute::query()->create([
             'tenant_id' => null,
@@ -64,7 +64,7 @@ class AlertingCascadeFlowTest extends TestCase
             'enabled' => true,
         ]);
 
-        event($this->payloadEvent());
+        app(BiasDriftDetectedListener::class)->handle($this->payloadEvent());
 
         Http::assertNothingSent();
         $this->assertSame(0, AlertDispatch::query()->count());
