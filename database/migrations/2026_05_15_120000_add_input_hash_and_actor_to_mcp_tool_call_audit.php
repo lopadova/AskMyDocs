@@ -19,9 +19,16 @@ use Illuminate\Support\Facades\Schema;
  * user table), and a string `status` (so it can emit
  * `transport_error` etc. without an enum migration).
  *
- * This migration adds the package's two missing columns to the
- * existing host table so the audit-model subclass (W6.3) can satisfy
- * BOTH write contracts from one row:
+ * This migration adds the two columns the package writer references
+ * that don't exist on the host table yet (`input_hash` + `actor`).
+ * It is NOT the full bridge — the package writer still can't satisfy
+ * the host's NOT NULL `user_id` FK or its strict `status` enum
+ * (which has no slot for `transport_error`). The remaining schema
+ * work — make `user_id` nullable when `actor` is supplied AND widen
+ * `status` from enum to string — lands in W6.3 alongside the inline-
+ * delete + adapter port. Splitting it this way keeps the load-bearing
+ * column adds + backfill on its own R36 cycle so a backfill bug
+ * doesn't drag down the much larger swap PR.
  *
  *   - `input_hash`   — char(64), nullable. SHA-256 of the redacted
  *                      input the package writes; also auto-derived
@@ -62,7 +69,7 @@ return new class extends Migration
         //    `sha2()` exists on MySQL only, and Postgres needs
         //    `pgcrypto`.
         //
-        //    Delegate the actual canonicalisation to
+        //    Delegate the canonicalisation to
         //    `\App\Models\McpToolCallAudit::canonicalHash()` so the
         //    backfill and the model `creating()` hook produce
         //    identical hashes for the same logical payload —
@@ -71,18 +78,26 @@ return new class extends Migration
         //    Python or browser-side clients (with arbitrary key
         //    ordering) would never join hashes with rows written
         //    later by the host hook.
+        //
+        //    Each chunk issues ONE bulk update via a CASE WHEN
+        //    expression instead of N per-row UPDATEs. On a 100k-row
+        //    table this collapses 200 round-trips into 200/$chunk =
+        //    400 individual SQL statements down to one statement per
+        //    chunk — orders of magnitude less lock contention.
         DB::table('mcp_tool_call_audit')
             ->whereNull('input_hash')
             ->orderBy('id')
             ->chunkById(500, function ($rows): void {
+                $hashes = [];
                 foreach ($rows as $row) {
-                    $payload = $row->input_json_redacted ?? '';
-                    DB::table('mcp_tool_call_audit')
-                        ->where('id', $row->id)
-                        ->update([
-                            'input_hash' => \App\Models\McpToolCallAudit::canonicalHash($payload),
-                        ]);
+                    $hashes[(int) $row->id] = \App\Models\McpToolCallAudit::canonicalHash(
+                        $row->input_json_redacted ?? '',
+                    );
                 }
+                if ($hashes === []) {
+                    return;
+                }
+                $this->bulkUpdateInputHashes($hashes);
             });
 
         // 3. NOW create the index — hash-lookup queries
@@ -91,6 +106,35 @@ return new class extends Migration
         Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
             $table->index('input_hash', 'idx_mcp_tool_call_audit_input_hash');
         });
+    }
+
+    /**
+     * Issue a single SQL UPDATE that sets `input_hash` per id using a
+     * CASE WHEN expression — portable across SQLite / Postgres /
+     * MySQL without needing per-driver upsert quirks. Hashes are
+     * fixed-length hex literals so direct string concatenation is
+     * safe; ids come from a primary-key scan so quoting them is
+     * trivial. We still parameterise to stay defensive.
+     *
+     * @param  array<int,string>  $hashes  map of `id => hex_hash`
+     */
+    private function bulkUpdateInputHashes(array $hashes): void
+    {
+        $cases = [];
+        $bindings = [];
+        $ids = [];
+        foreach ($hashes as $id => $hash) {
+            $cases[] = 'WHEN ? THEN ?';
+            $bindings[] = $id;
+            $bindings[] = $hash;
+            $ids[] = $id;
+        }
+        $caseSql = implode(' ', $cases);
+        $idList = implode(',', array_map('intval', $ids));
+        $sql = "UPDATE mcp_tool_call_audit
+                SET input_hash = CASE id {$caseSql} END
+                WHERE id IN ({$idList})";
+        DB::update($sql, $bindings);
     }
 
     public function down(): void

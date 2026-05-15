@@ -11,12 +11,17 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * v5.0/W7 — audit row for every MCP tool call.
  *
- * v7.0/W6.2 — coexistence shape. The host's columns
+ * v7.0/W6.2 — partial coexistence shape. The host's columns
  * (`user_id`, `input_json_redacted`, `error_json`, enum-style
  * `status`) stay authoritative for operator forensics. The two
- * additive columns `input_hash` + `actor` exist so the
- * `padosoft/askmydocs-mcp-pack` package can write rows directly
- * (post-W6.3 cutover) without losing the host's richer payload.
+ * new columns `input_hash` + `actor` are added so the
+ * `padosoft/askmydocs-mcp-pack` package can populate them when the
+ * audit-model cutover lands in W6.3. **W6.2 does NOT make the host
+ * table fully package-writable yet**: `user_id` is still a NOT
+ * NULL FK and `status` is still an enum that cannot hold
+ * `transport_error`. W6.3 widens both alongside the inline-delete
+ * + adapter port, by which point the host model will be a true
+ * dual-shape adapter.
  *
  * Convention going forward:
  *   - Host writes (legacy code path) fill `input_json_redacted` +
