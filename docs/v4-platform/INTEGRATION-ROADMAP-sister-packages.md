@@ -411,7 +411,7 @@ metric + Artisan command + CI workflow). Total ~10-15 R36 cycles.
 
 ---
 
-### `padosoft/askmydocs-mcp-pack` (v7.0/W1) — STATUS: ✅ v1.0.0 shipped 2026-05-15 (W1.A); host integration W1.B in-flight
+### `padosoft/askmydocs-mcp-pack` (v7.0) — STATUS: ✅ v1.0.1 shipped 2026-05-15 (W1.A); package v1.1-v1.4 in flight (W2-W5); host integration deferred to W6
 
 Framework-agnostic Model Context Protocol plumbing for Laravel. Extracted
 from the inline `app/Mcp/Client/*` services that AskMyDocs grew in v5.0,
@@ -422,7 +422,8 @@ or audit trail.
 #### v7.0/W1.A — package extraction (shipped)
 
 [padosoft/askmydocs-mcp-pack#1](https://github.com/padosoft/askmydocs-mcp-pack/pull/1)
-→ tag [v1.0.0](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.0)
+→ tags [v1.0.0](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.0)
++ [v1.0.1](https://github.com/padosoft/askmydocs-mcp-pack/releases/tag/v1.0.1) (defensive migration guards)
 → [Packagist](https://packagist.org/packages/padosoft/askmydocs-mcp-pack) live.
 What's in it:
 
@@ -438,8 +439,10 @@ What's in it:
   SHA-256 of input + result, NOT raw payloads; honors
   `mcp-pack.audit_model` override for host subclassing.
 - **Two transports** — `HttpJsonRpcTransport` (Laravel HTTP client)
-  and `StdioJsonRpcTransport` (Symfony Process; single-shot per
-  request, persistent stdio sessions planned for v1.1).
+  and `StdioJsonRpcTransport` based on Symfony Process. The stdio
+  transport is single-shot per request; persistent stdio sessions
+  are NOT in the v1.1 scope and are tracked as an Open Question
+  for the v2 roadmap.
 - **Built-in defaults (development scaffolding — NOT for production)**:
   `NullMcpHostBridge` throws loudly when not bound; `NullMcpToolAuthorizer`
   allows every tool (the host MUST swap this in production — it is the
@@ -453,12 +456,105 @@ What's in it:
   because earlier Laravel majors are not yet published as PHP 8.5
   compatible at the time of release.
 
-#### v7.0/W1.B — AskMyDocs host integration (in-flight)
+#### Strategy update (2026-05-15) — host integration deferred to W6
+
+Lorenzo's call after the W1.B first integration pass surfaced
+multiple deep-integration touch-points (R30 tenant scoping, sidecar
+transport rewrite, audit-schema mismatch): finish the full
+`mcp-pack` v1.1 → v1.4 roadmap FIRST (the v1.4 admin-backend step
+came out of a follow-up clarification — see W5 below) so AskMyDocs
+adopts the package ONCE over a complete surface instead of rewriting
+the host four times as each new package version lands.
+
+The W1.B branch `feature/v7.0/W1.B-host-integration` is preserved as
+a checkpoint (the host bridge + Eloquent adapters + sidecar transport
++ audit subclass + migration + container bindings + regression tests
+are all valid against v1.0.1). It is rebased + extended in W6.
+
+PR #172 was closed without merge per this strategy update.
+
+#### v7.0/W2 — mcp-pack v1.1.0 (SSE + resources + prompts)
+
+- `SseJsonRpcTransport` — JSON-RPC over HTTP+SSE for remote MCP
+  gateways that prefer streaming over plain JSON-RPC.
+- JSON-RPC `resources/list` + `resources/read` methods + matching
+  `McpResourceContract` shape so the orchestrator can prefetch
+  upstream resource catalogs.
+- JSON-RPC `prompts/list` + `prompts/get` methods + matching
+  `McpPromptContract` shape so the orchestrator can hand pre-prompt
+  templates to the host bridge.
+- New tests + walkthrough recipes in the package README. Tag `v1.1.0`.
+
+#### v7.0/W3 — mcp-pack v1.2.0 (server-side)
+
+- Same package exposes a Laravel app AS an MCP server (the other
+  direction). `McpServerRunner` for stdio long-lived process,
+  `mcp-pack:serve` artisan command, HTTP+SSE route + middleware.
+- JSON-RPC handler routes incoming `initialize` / `tools/list` /
+  `tools/call` to host-supplied tool catalog (host implements
+  `McpToolContract` for its own surface).
+- Auth + RBAC integration with host gates. Tag `v1.2.0`.
+
+#### v7.0/W4 — mcp-pack v1.3.0 (circuit breaker + retry budget)
+
+- Per-tool circuit breaker (`open` / `half-open` / `closed` states
+  tracked in cache with TTL recovery). Decorator over
+  `ToolInvoker::invoke()`.
+- Adaptive retry budget — token-bucket per (tenant, server) per
+  minute with exponential backoff on failure.
+- New config keys (`mcp-pack.circuit_breaker.*` + `mcp-pack.retry.*`)
+  and telemetry events for observability stacks. Tag `v1.3.0`.
+
+#### v7.0/W5 — mcp-pack v1.4.0 (admin backend surface — REST API)
+
+The MISSING step from the original roadmap: AskMyDocs already
+exposes admin React screens at `/app/admin/mcp-tools` against the inline
+`McpServersAdminController` + `McpToolCallAuditController`. For the
+host integration in W6 to retire those inline controllers without
+losing functionality, the PACKAGE must expose equivalent REST routes.
+
+- Package SP registers routes under a configurable prefix (default
+  `/api/admin/mcp-pack`) — host can opt out + remount under its own
+  prefix.
+- Resource endpoints:
+  - `GET    /servers` — paginated list, tenant-scoped via the
+    registry contract
+  - `POST   /servers` — create (validates against
+    `McpServerContract::transportConfig()` shape)
+  - `GET    /servers/{id}` — single
+  - `PATCH  /servers/{id}` — update (transport / enabled tools /
+    auth config)
+  - `DELETE /servers/{id}` — HARD delete the row (admin SPA confirms
+    with type-to-confirm; preserves audit rows via the
+    `cascadeOnDelete` snapshot of `mcp_server_name` in the
+    audit table — no audit-row loss)
+  - `POST   /servers/{id}/handshake` — drives
+    `McpHandshakeService::refresh()`
+  - `POST   /servers/{id}/disable` / `/enable` — soft toggle for
+    operational pause/resume (status flips without removing the row)
+  - `GET    /servers/{id}/tools` — current handshake tool catalog
+  - `GET    /audit` — paginated audit log, filters by tenant /
+    server / tool / status / date range
+  - `GET    /audit/{id}` — single audit row
+  - `GET    /circuit-breakers` — current state per (tenant, server,
+    tool) — feeds the future admin dashboard
+- Auth: middleware-driven. The package SP registers the routes WITH
+  the host's named middleware group (`config('mcp-pack.admin.middleware')`
+  → default `['api', 'auth:sanctum']`). Host wires RBAC via the same
+  `McpToolAuthorizerContract` already bound for tool gating.
+- OpenAPI 3.1 spec ships in `docs/openapi.yaml`; tested against the
+  routes via `darkaonline/l5-swagger` validator. Postman collection
+  + Insomnia export ship alongside.
+- NO React/Vue code — this is the backend the standalone
+  `-admin` SPA will consume.
+- Tag `v1.4.0`.
+
+#### v7.0/W6 — AskMyDocs host integration over the FULL v1.4 package
 
 The work that flips AskMyDocs from "inline `app/Mcp/Client/*`" to
-"depends on `padosoft/askmydocs-mcp-pack ^1.0`":
+"depends on `padosoft/askmydocs-mcp-pack ^1.4`":
 
-1. `composer require padosoft/askmydocs-mcp-pack:^1.0` — declare the dependency.
+1. `composer require padosoft/askmydocs-mcp-pack:^1.4` — declare the dependency at the v1.4 surface (SSE + resources/prompts + server-side + circuit breaker + admin REST routes all available).
 2. **Delete inline** `app/Mcp/Client/{McpClientBridge, McpHandshakeService,
    McpToolAuthorizer, McpToolCallingService, ToolInvoker, Registry/McpServerRegistry}.php`.
    The `Kb*Tool` classes under `app/Mcp/Tools/*` and
