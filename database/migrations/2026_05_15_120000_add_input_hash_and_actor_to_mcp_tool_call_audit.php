@@ -45,9 +45,16 @@ use Illuminate\Support\Facades\Schema;
  * and the package can write rows the moment the audit-model swap
  * lands in W6.3.
  *
- * **Backfill**: every existing row gets `input_hash =
- * sha256(json_encode(input_json_redacted))` so retrospective queries
- * by hash join cleanly against new rows written by the package.
+ * **Backfill**: every existing row gets its `input_hash` computed
+ * by `\App\Models\McpToolCallAudit::canonicalHash()` — the same
+ * helper the model's `creating()` hook uses. The helper recursively
+ * `ksort()`s associative-array keys before encoding with
+ * `JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES |
+ * JSON_INVALID_UTF8_SUBSTITUTE` so retrospective hash lookups join
+ * cleanly against fresh writes regardless of who emitted the original
+ * payload (PHP, Python clients, browser clients) or in what key
+ * order. Insertion-order-dependent hashing would have made the
+ * cross-writer coexistence story unworkable.
  */
 return new class extends Migration
 {

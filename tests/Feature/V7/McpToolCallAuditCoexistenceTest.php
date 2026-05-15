@@ -103,7 +103,14 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
             'status' => McpToolCallAudit::STATUS_OK,
         ]);
 
-        $hit = McpToolCallAudit::where('input_hash', $row->input_hash)->first();
+        // `BelongsToTenant` does NOT add a global read scope; real
+        // callers must explicitly `forTenant(...)` to stay safe.
+        // Mirror that in the test so the assertion reflects the
+        // production query shape, not a cross-tenant scan.
+        $hit = McpToolCallAudit::query()
+            ->forTenant('default')
+            ->where('input_hash', $row->input_hash)
+            ->first();
         $this->assertNotNull($hit);
         $this->assertSame($row->id, $hit->id);
     }
@@ -163,7 +170,10 @@ final class McpToolCallAuditCoexistenceTest extends TestCase
         $this->assertSame($a->input_hash, $b->input_hash, 'reordered keys must hash identically');
         $this->assertSame(
             2,
-            McpToolCallAudit::where('input_hash', $a->input_hash)->count(),
+            McpToolCallAudit::query()
+                ->forTenant('default')
+                ->where('input_hash', $a->input_hash)
+                ->count(),
         );
     }
 
