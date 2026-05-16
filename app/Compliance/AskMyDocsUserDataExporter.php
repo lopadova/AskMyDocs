@@ -22,6 +22,7 @@ class AskMyDocsUserDataExporter
     {
         $userId = $this->resolveUserId($user);
         $auditActors = $this->resolveAuditActors($user, $userId);
+        $mcpActors = $this->resolveMcpAuditActors($user, $userId);
         $tenantId = $this->tenantContext->current();
 
         $conversationIds = Conversation::query()
@@ -65,9 +66,17 @@ class AskMyDocsUserDataExporter
                 ->where('created_by', $userId)
                 ->get()
                 ->toArray(),
+            // v7.0/W6.3 — must match BOTH the legacy `user_id` join
+            // (host-written rows) AND the package's opaque `actor`
+            // string (package-written rows). Mirrors the deleter's
+            // `resolveMcpAuditActors()` set. See deleter for the
+            // rationale.
             'mcp_tool_call_audit' => McpToolCallAudit::query()
                 ->forTenant($tenantId)
-                ->where('user_id', $userId)
+                ->where(function ($q) use ($userId, $mcpActors): void {
+                    $q->where('user_id', $userId)
+                        ->orWhereIn('actor', $mcpActors);
+                })
                 ->get()
                 ->toArray(),
         ];
@@ -98,6 +107,31 @@ class AskMyDocsUserDataExporter
 
         if (is_string($email) && $email !== '') {
             $actors[] = $email;
+        }
+
+        return array_values(array_unique($actors));
+    }
+
+    /**
+     * Audit actors for `mcp_tool_call_audit`. Wider than the
+     * `kb_canonical_audit` set because the package casts an opaque
+     * `$context['actor']` to string; common shapes include bare
+     * id, `"user:{id}"`, email, and `"user:{email}"`. Mirrored from
+     * the deleter so DSAR export and erasure stay in lockstep.
+     *
+     * @return list<string>
+     */
+    private function resolveMcpAuditActors(object $user, int $userId): array
+    {
+        $actors = [
+            (string) $userId,
+            'user:'.$userId,
+        ];
+
+        $email = $user->email ?? null;
+        if (is_string($email) && $email !== '') {
+            $actors[] = $email;
+            $actors[] = 'user:'.$email;
         }
 
         return array_values(array_unique($actors));

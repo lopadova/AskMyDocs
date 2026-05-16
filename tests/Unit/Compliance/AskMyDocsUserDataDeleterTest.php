@@ -169,6 +169,81 @@ class AskMyDocsUserDataDeleterTest extends TestCase
         $this->assertDatabaseHas('connector_credentials', ['id' => $tenantBCredential->id, 'tenant_id' => 'tenant-b']);
     }
 
+    public function test_it_deletes_mcp_audit_rows_written_by_the_package_via_actor(): void
+    {
+        // v7.0/W6.3 — `padosoft/askmydocs-mcp-pack` writes audit rows
+        // with `user_id=NULL` and an opaque `actor` string. DSAR
+        // erasure MUST match those rows too, otherwise the package's
+        // audit trail survives an Art. 17 request.
+        $user = $this->makeUser();
+        app(TenantContext::class)->set('tenant-a');
+
+        $server = McpServer::query()->create([
+            'tenant_id' => 'tenant-a',
+            'name' => 'pkg-server',
+            'transport' => 'http',
+            'endpoint' => 'https://example.test/mcp',
+            'status' => 'active',
+            'created_by' => $user->id,
+        ]);
+
+        $rowBareId = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => (string) $user->id,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'alpha'],
+            'result_hash' => str_repeat('a', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $rowPrefixedId = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => 'user:'.$user->id,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'beta'],
+            'result_hash' => str_repeat('b', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $rowEmail = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => $user->email,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'gamma'],
+            'result_hash' => str_repeat('c', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $rowOther = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => 'system',
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'delta'],
+            'result_hash' => str_repeat('d', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        app(AskMyDocsUserDataDeleter::class)->delete($user);
+
+        $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $rowBareId->id]);
+        $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $rowPrefixedId->id]);
+        $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $rowEmail->id]);
+        // `system` actor MUST survive — it's not user-attributable.
+        $this->assertDatabaseHas('mcp_tool_call_audit', ['id' => $rowOther->id]);
+    }
+
     public function test_it_rejects_objects_without_a_positive_integer_id(): void
     {
         $this->expectException(\InvalidArgumentException::class);

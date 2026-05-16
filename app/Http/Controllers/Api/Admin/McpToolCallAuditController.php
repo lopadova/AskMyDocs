@@ -27,7 +27,12 @@ final class McpToolCallAuditController extends Controller
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['nullable', 'string', 'in:ok,error,timeout,denied'],
+            // v7.0/W6.3 — `status` was widened from ENUM to
+            // string(32) so the package can emit `transport_error`
+            // (and future strings). Drop the strict `in:` allowlist
+            // here so operators can filter by ANY status the
+            // package or host code legitimately writes.
+            'status' => ['nullable', 'string', 'max:32'],
             'tool_name' => ['nullable', 'string', 'max:100'],
             'mcp_server_id' => ['nullable', 'integer'],
             'user_id' => ['nullable', 'integer'],

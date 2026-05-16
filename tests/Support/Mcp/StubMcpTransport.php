@@ -60,7 +60,12 @@ final class StubMcpTransport implements McpTransportContract
     private function keyFor(JsonRpcMessage $request): string
     {
         if ($request->method === 'tools/call') {
-            return 'tools/call:' . (string) ($request->params['name'] ?? '');
+            // Guard against a non-array `params` payload — JSON-RPC
+            // permits an array or omitted params, so indexing
+            // `$request->params['name']` directly would crash on a
+            // malformed test call. Fall back to the bare key.
+            $name = is_array($request->params) ? ($request->params['name'] ?? '') : '';
+            return 'tools/call:' . (string) $name;
         }
         return (string) $request->method;
     }
