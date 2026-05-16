@@ -17,6 +17,17 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
  * Returns only ACTIVE rows so the orchestrator never tries to
  * handshake against a pending / disabled / errored upstream.
  *
+ * **Unconfigured-tools guard**: the package's
+ * `McpServerContract::allowedTools()` treats an empty array as
+ * "all tools the server advertises" (wildcard). The host stores
+ * `enabled_tools_json = ['*']` as its OWN explicit wildcard, but a
+ * row with `null` or `[]` `enabled_tools_json` is "operator hasn't
+ * picked tools yet" — surfacing it to the orchestrator would
+ * silently widen permission vs the legacy `McpServer` authorizer
+ * (which denied when the list was missing). The registry filters
+ * those rows out so only servers with an EXPLICIT tools choice
+ * (`['*']` or a concrete list) reach the package.
+ *
  * **R30 tenant boundary**: `mcp_servers` is tenant-scoped on the
  * host, so a bare `forTenant(null)` would be cross-tenant data
  * leakage. When the contract caller passes `null` (system contexts
@@ -51,7 +62,9 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
             ->where('status', McpServer::STATUS_ACTIVE)
             ->orderBy('name')
             ->get()
+            ->filter(static fn(McpServer $s): bool => self::hasConfiguredTools($s))
             ->map(static fn(McpServer $s): McpServerContract => new McpServerAdapter($s))
+            ->values()
             ->all();
     }
 
@@ -70,7 +83,22 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
             ->where('id', (int) $id)
             ->where('status', McpServer::STATUS_ACTIVE)
             ->first();
-        return $server === null ? null : new McpServerAdapter($server);
+        if ($server === null || ! self::hasConfiguredTools($server)) {
+            return null;
+        }
+        return new McpServerAdapter($server);
+    }
+
+    /**
+     * True when the operator has made an EXPLICIT tools choice for
+     * this server — either the host wildcard sentinel `['*']`, or a
+     * concrete allow-list. `null` and `[]` mean "not yet configured"
+     * and MUST NOT reach the package (see class docblock).
+     */
+    private static function hasConfiguredTools(McpServer $server): bool
+    {
+        $tools = $server->enabled_tools_json;
+        return is_array($tools) && $tools !== [];
     }
 
     private function resolveTenant(?string $tenantId): string

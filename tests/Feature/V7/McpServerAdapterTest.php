@@ -116,6 +116,54 @@ final class McpServerAdapterTest extends TestCase
         $this->assertSame('Basic abcd==', $adapter->transportConfig()['headers']['Authorization']);
     }
 
+    public function test_http_transport_respects_lowercase_authorization_header(): void
+    {
+        // HTTP header names are case-insensitive per RFC 7230 §3.2.
+        // An operator who stores `headers.authorization` (lowercase)
+        // MUST NOT end up with a synthesized `Authorization`
+        // alongside it — the upstream would see two auth headers and
+        // either reject the request or pick the wrong one.
+        $authCipher = Crypt::encryptString(json_encode([
+            'headers' => ['authorization' => 'Basic abcd=='],
+            'token' => 'sk-should-be-ignored',
+        ]));
+        $adapter = new McpServerAdapter($this->makeServer([
+            'transport' => McpServer::TRANSPORT_HTTP,
+            'auth_config_encrypted' => $authCipher,
+        ]));
+
+        $headers = $adapter->transportConfig()['headers'];
+        $this->assertSame('Basic abcd==', $headers['authorization']);
+        $this->assertArrayNotHasKey('Authorization', $headers);
+    }
+
+    public function test_http_transport_skips_bearer_synthesis_on_empty_token(): void
+    {
+        // A bogus `"Authorization: Bearer "` (no credential after the
+        // scheme) is worse than no header at all — it lies to the
+        // upstream about "we authenticated" while carrying nothing.
+        // The token-to-Bearer shorthand must be skipped when the
+        // configured token is empty or pure whitespace.
+        foreach (['', '   ', "\t\n"] as $i => $emptyToken) {
+            $authCipher = Crypt::encryptString(json_encode([
+                'token' => $emptyToken,
+            ]));
+            // Override `name` so the per-iteration row doesn't trip
+            // the `(tenant_id, name)` UNIQUE on `mcp_servers`.
+            $adapter = new McpServerAdapter($this->makeServer([
+                'name' => 'EmptyToken'.$i,
+                'transport' => McpServer::TRANSPORT_HTTP,
+                'auth_config_encrypted' => $authCipher,
+            ]));
+
+            $this->assertSame(
+                [],
+                $adapter->transportConfig()['headers'],
+                "empty token [{$emptyToken}] must NOT synthesise an Authorization header",
+            );
+        }
+    }
+
     public function test_stdio_transport_config_splits_command_line(): void
     {
         $authCipher = Crypt::encryptString(json_encode([

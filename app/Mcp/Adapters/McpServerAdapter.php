@@ -73,7 +73,24 @@ final class McpServerAdapter implements McpServerContract
         };
     }
 
-    /** @return array<int,string> */
+    /**
+     * The package contract treats `[]` as "all tools the server
+     * advertises" (wildcard). The host's own wildcard sentinel is
+     * `enabled_tools_json = ['*']`, so we flatten that to the
+     * package vocabulary.
+     *
+     * Note on the unconfigured-tools case: rows with `null` or `[]`
+     * `enabled_tools_json` are filtered out by
+     * {@see EloquentMcpServerRegistry::forTenant()} BEFORE they ever
+     * reach this adapter, so the `! is_array(...)` branch below is a
+     * defence-in-depth guard for direct constructor calls (tests,
+     * fixtures). The branch returns `[]` — matching the package
+     * contract — but it should be unreachable through the normal
+     * orchestrator path; if a fresh-from-DB row hits it, the registry
+     * filter has regressed.
+     *
+     * @return array<int,string>
+     */
     public function allowedTools(): array
     {
         $tools = $this->server->enabled_tools_json;
@@ -181,10 +198,35 @@ final class McpServerAdapter implements McpServerContract
         // standard `Authorization: Bearer <token>` header. Hosts
         // that need a custom shape can store `headers.Authorization`
         // explicitly instead.
-        if (! isset($out['Authorization']) && isset($auth['token']) && is_string($auth['token'])) {
-            $out['Authorization'] = 'Bearer ' . $auth['token'];
+        //
+        // Two guards over the naive synthesis:
+        //   1. The token must be a non-empty string after trimming —
+        //      a bogus `"Authorization: Bearer "` header (empty / pure
+        //      whitespace token) is worse than no header at all: it
+        //      tells the upstream "I authenticated" while carrying no
+        //      credential, which masks the real config error.
+        //   2. The "do not overwrite an explicit Authorization" check
+        //      is case-insensitive — HTTP header names are
+        //      case-insensitive per RFC 7230 §3.2, so an operator who
+        //      stores `headers.authorization` (lowercase) MUST NOT
+        //      end up with both `authorization` AND a synthesized
+        //      `Authorization` going on the wire.
+        $token = $auth['token'] ?? null;
+        if (is_string($token) && trim($token) !== '' && ! self::hasAuthorizationHeader($out)) {
+            $out['Authorization'] = 'Bearer ' . $token;
         }
         return $out;
+    }
+
+    /** @param  array<string,string>  $headers */
+    private static function hasAuthorizationHeader(array $headers): bool
+    {
+        foreach (array_keys($headers) as $name) {
+            if (is_string($name) && strcasecmp($name, 'Authorization') === 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

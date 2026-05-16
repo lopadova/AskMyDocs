@@ -146,7 +146,57 @@ final class EloquentMcpServerRegistryTest extends TestCase
         $this->assertNull($registry->find(''));
     }
 
-    /** @param  array<string,mixed>  $overrides */
+    public function test_servers_with_unconfigured_tools_are_excluded(): void
+    {
+        // The package contract treats `allowedTools() === []` as "all
+        // tools the server advertises" (wildcard). The host stores
+        // an EXPLICIT wildcard as `['*']`; a row with `null` or `[]`
+        // means "operator hasn't picked tools yet" and MUST be
+        // excluded from the registry so the orchestrator never widens
+        // permissions beyond what the operator explicitly chose.
+        $configured = $this->makeServer([
+            'name' => 'Configured',
+            'enabled_tools_json' => ['kb.search'],
+        ]);
+        $wildcard = $this->makeServer([
+            'name' => 'Wildcard',
+            'enabled_tools_json' => ['*'],
+        ]);
+        $unconfiguredNull = $this->makeServer([
+            'name' => 'UnconfiguredNull',
+            'enabled_tools_json' => null,
+        ]);
+        $unconfiguredEmpty = $this->makeServer([
+            'name' => 'UnconfiguredEmpty',
+            'enabled_tools_json' => [],
+        ]);
+
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
+
+        $names = array_map(static fn($s) => $s->name(), $registry->forTenant('default'));
+        $this->assertEqualsCanonicalizing(['Configured', 'Wildcard'], $names);
+
+        // `find()` mirrors the same exclusion so a direct lookup of
+        // an unconfigured row can't bypass the listing guard.
+        $this->assertNull($registry->find((string) $unconfiguredNull->id));
+        $this->assertNull($registry->find((string) $unconfiguredEmpty->id));
+        $this->assertNotNull($registry->find((string) $configured->id));
+        $this->assertNotNull($registry->find((string) $wildcard->id));
+    }
+
+    /**
+     * Default fixture uses the host's `['*']` wildcard sentinel so
+     * the row is treated as "explicitly configured for all tools" by
+     * `EloquentMcpServerRegistry::hasConfiguredTools()`. The
+     * registry's listing tests are concerned with tenant scoping and
+     * status filtering — not the unconfigured-tools branch — and a
+     * bare `[]` would be filtered out (correctly, per the
+     * unconfigured-tools guard), making those tests vacuous. The
+     * dedicated test for the unconfigured-tools branch opts in by
+     * passing `enabled_tools_json => []` or `=> null` explicitly.
+     *
+     * @param  array<string,mixed>  $overrides
+     */
     private function makeServer(array $overrides = []): McpServer
     {
         return McpServer::create(array_merge([
@@ -155,7 +205,7 @@ final class EloquentMcpServerRegistryTest extends TestCase
             'transport' => McpServer::TRANSPORT_HTTP,
             'endpoint' => 'http://example.test',
             'auth_config_encrypted' => null,
-            'enabled_tools_json' => [],
+            'enabled_tools_json' => ['*'],
             'status' => McpServer::STATUS_ACTIVE,
             'created_by' => $this->creator->id,
         ], $overrides));
