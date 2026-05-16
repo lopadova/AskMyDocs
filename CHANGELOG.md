@@ -53,20 +53,24 @@ and the chat path stays on the same PHP runtime end-to-end.
 R36 cycle: 4 PRs × ~5 iterations on average to clean (load-bearing
 ones: PR #176 took 13 iters, PR #177 took 5).
 
-**Deferred to W6.3.C** — the inline `McpToolCallingService` orchestrator,
-host-flavour `McpServerRegistry`, and custom `McpToolAuthorizer` keep
-their existing surface; W6.3.C will consolidate them onto the package's
-adapters. The `/api/mcp/internal-auth` probe survives in W6.3.B for
-backward compat and goes away in W6.3.C alongside `MCP_INTERNAL_AUTH_TOKEN`.
+**W6.3.C scope split (PR #179, post-rc1, pre-GA)** — between rc1 and
+the v7.0 GA tag, the originally-planned W6.3.C work split into two
+streams:
 
-> **Update (W6.3.C, PR #179 — landed before v7.0 GA)**: `/api/mcp/internal-auth`
-> + `MCP_INTERNAL_AUTH_TOKEN` + `mcp.internal_auth_token` config key +
-> `McpInternalAuthController` all removed. The sidecar-retirement story
-> now has zero remaining surface area. The orchestrator consolidation
-> (inline `McpToolCallingService` / registry / authorizer) remains
-> deferred to post-v7.0 refactor scope per the W6.3.C PR — the inline
-> stack runs on native transports today and is intentionally kept for
-> the host-specific telemetry it carries.
+- **Sidecar-artefact retirement (W6.3.C, load-bearing for GA)** —
+  `/api/mcp/internal-auth` probe + `MCP_INTERNAL_AUTH_TOKEN` env +
+  `mcp.internal_auth_token` config key + `McpInternalAuthController`
+  all removed. After PR #179 the sidecar-retirement story has zero
+  remaining surface area.
+
+- **Inline orchestrator consolidation (deferred to post-v7.0)** — the
+  inline `McpToolCallingService` / host-flavour `McpServerRegistry` /
+  custom `McpToolAuthorizer` keep their existing surface. They
+  already run on native MCP transports (W6.3.B rewrote
+  `ToolInvoker` + `McpHandshakeService` underneath), so consolidation
+  doesn't unlock new capability — it's a refactor that needs a thin
+  translation adapter the GA timeline doesn't justify. NOT a GA
+  blocker.
 
 See [`docs/v4-platform/STATUS-2026-05-16-v7-w6.md`](docs/v4-platform/STATUS-2026-05-16-v7-w6.md)
 for the W6 closure status document.
