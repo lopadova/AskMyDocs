@@ -30,7 +30,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v7.0.0-blueviolet?style=flat-square" alt="Release v7.0.0"></a>
   <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
-  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1695%20PHPUnit%20%2B%20408%20Vitest-brightgreen?style=flat-square" alt="1695 PHPUnit + 408 Vitest"></a>
+  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-1750%20PHPUnit%20%2B%20436%20Vitest-brightgreen?style=flat-square" alt="1750 PHPUnit + 436 Vitest"></a>
 </p>
 
 <p align="center">
