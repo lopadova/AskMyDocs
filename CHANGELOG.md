@@ -11,7 +11,17 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
-### v7.0.0-rc1 — 2026-05-16 (W6 closure — host integration over `padosoft/askmydocs-mcp-pack`)
+### v7.0.0 — 2026-05-16 (GA — host integration over `padosoft/askmydocs-mcp-pack`, full Node sidecar retirement)
+
+> **Release chronology**: This entry covers the full v7.0/W6 cycle. The
+> first four sub-waves (W6.1 → W6.4) closed earlier today and were
+> tagged as **`v7.0.0-rc1`** at commit `27985b2` (PR #178). The fifth
+> sub-wave (**W6.3.C**, PR #179, merge `5911d64`) retired the final
+> sidecar artefacts before the GA tag. `v7.0.0` GA ships at the
+> post-W6.3.C `main` HEAD. The entry below was updated alongside
+> W6.3.C so the test counts, sub-wave table, and Security section
+> reflect the GA state — see the rc1 release notes on GitHub for the
+> point-in-time snapshot at PR #178.
 
 **v7.0/W6** integrates `padosoft/askmydocs-mcp-pack` v1.4 into AskMyDocs
 and retires the Node MCP sidecar that v5.0 had introduced. The cycle
