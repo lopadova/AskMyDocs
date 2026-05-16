@@ -77,6 +77,19 @@ return new class extends Migration
             // Postgres: explicit DROP NOT NULL + ENUM → varchar.
             DB::statement('ALTER TABLE mcp_tool_call_audit ALTER COLUMN user_id DROP NOT NULL');
             DB::statement('ALTER TABLE mcp_tool_call_audit ALTER COLUMN result_hash DROP NOT NULL');
+            // Laravel's `enum('status', [...])` on Postgres creates a
+            // `varchar` column WITH a CHECK constraint named
+            // `<table>_<column>_check` that enforces
+            // `status IN ('ok','error','timeout','denied')`. The
+            // `ALTER COLUMN ... TYPE varchar(32)` widens the type but
+            // does NOT drop that CHECK — so inserts with the new
+            // `'transport_error'` value (and any future package-
+            // emitted string) would still fail with a constraint
+            // violation. Drop the CHECK before the type change.
+            // `IF EXISTS` makes this idempotent so it survives hosts
+            // that ran through a custom migration path and don't
+            // have the constraint named that way.
+            DB::statement('ALTER TABLE mcp_tool_call_audit DROP CONSTRAINT IF EXISTS mcp_tool_call_audit_status_check');
             DB::statement(
                 "ALTER TABLE mcp_tool_call_audit "
                 . "ALTER COLUMN status TYPE varchar(32) USING status::text"
