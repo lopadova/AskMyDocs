@@ -153,6 +153,42 @@ final class McpServersAdminControllerTest extends TestCase
         $this->assertGreaterThanOrEqual(0, $persisted['duration_ms']);
     }
 
+    public function test_handshake_keeps_server_active_when_only_tools_list_fails(): void
+    {
+        // v7.0/W6.3.B iter-4 — the legacy sidecar treated `tools/list`
+        // as NON-fatal during handshake (a server that initialized
+        // cleanly but didn't expose tools stayed `active` with an
+        // empty list). Native-transport handshake must preserve that
+        // semantics so a slow / mid-rollout server doesn't show up as
+        // 502/errored. The soft failure is surfaced under
+        // `tools_list_warning` for the admin FE.
+        $super = $this->makeSuperAdmin();
+        $server = $this->createServer($super, ['status' => McpServer::STATUS_PENDING]);
+
+        McpClient::useTransportResolver(static function (McpServerContract $s): McpTransportContract {
+            // Script `initialize` to succeed but leave `tools/list`
+            // un-scripted so the stub answers JSON-RPC -32601, which
+            // `McpClient::listTools()` wraps in `McpTransportException`.
+            return (new StubMcpTransport())->scriptInitialize([
+                'protocolVersion' => '2024-11-05',
+                'serverInfo' => ['name' => 'slow-mcp', 'version' => '0.1.0'],
+                'capabilities' => ['tools' => new \stdClass()],
+            ]);
+        });
+
+        $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
+
+        $response->assertOk()->assertJsonPath('data.status', McpServer::STATUS_ACTIVE);
+        $server->refresh();
+        $this->assertSame(McpServer::STATUS_ACTIVE, $server->status);
+        $persisted = $server->handshake_response_json;
+        $this->assertTrue($persisted['ok']);
+        $this->assertSame('ok', $persisted['status']);
+        $this->assertSame([], $persisted['tools']);
+        $this->assertArrayHasKey('tools_list_warning', $persisted);
+        $this->assertStringContainsString('tools/list', $persisted['tools_list_warning']);
+    }
+
     public function test_handshake_failure_marks_server_as_errored(): void
     {
         $super = $this->makeSuperAdmin();

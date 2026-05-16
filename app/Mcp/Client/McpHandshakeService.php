@@ -37,21 +37,38 @@ final class McpHandshakeService
         // a slow `tools/list` shows up; the inline implementation
         // measured the same way.
         $started = microtime(true);
+
+        // `initialize` is the load-bearing call — without it, the
+        // upstream server hasn't agreed on a protocol version or
+        // capabilities, so the handshake genuinely cannot succeed. A
+        // failure here propagates as the 502 the admin controller
+        // expects.
         try {
             $initialize = $client->initialize();
-            $tools = $client->listTools();
         } catch (McpTransportException $exception) {
-            // Re-throw as a plain RuntimeException so the admin
-            // controller's existing catch-block keeps producing the
-            // same `502 Bad Gateway` response shape. The transport-
-            // specific exception type is an implementation detail of
-            // the package; the host's HTTP surface should not leak
-            // it.
             throw new \RuntimeException(
                 "MCP handshake failed for server {$server->id}: {$exception->getMessage()}",
                 previous: $exception,
             );
         }
+
+        // `tools/list` is best-effort. The legacy sidecar treated it
+        // as NON-FATAL — a server that initialized cleanly but
+        // hadn't (yet) populated its tool catalog stayed `active`
+        // with an empty `tools` array. Preserve that semantics:
+        // catch transport / protocol failures here, degrade to `[]`,
+        // and let the `status: 'ok'` payload land so operators can
+        // still see the handshake succeeded. A server that's slow
+        // to expose tools shouldn't show up as 502/errored just
+        // because the second JSON-RPC call timed out.
+        $tools = [];
+        $toolsListError = null;
+        try {
+            $tools = $client->listTools();
+        } catch (McpTransportException $exception) {
+            $toolsListError = $exception->getMessage();
+        }
+
         $durationMs = (int) round((microtime(true) - $started) * 1000);
 
         // Flatten the MCP JSON-RPC `initialize` response (camelCase
@@ -80,6 +97,14 @@ final class McpHandshakeService
             'tools' => $tools,
             'duration_ms' => $durationMs,
         ];
+        if ($toolsListError !== null) {
+            // Surface the soft failure in a dedicated key so the
+            // admin FE can show a warning ("tools list pending") on
+            // a server that's otherwise active. Backwards-compatible
+            // ADDITIVE field per R27 — consumers that didn't read it
+            // before still see the legacy shape.
+            $response['tools_list_warning'] = $toolsListError;
+        }
 
         $saved = $server->forceFill([
             'status' => McpServer::STATUS_ACTIVE,

@@ -4,9 +4,15 @@ import { test, expect } from '@playwright/test';
  * v5.0 — MCP admin + internal endpoints smoke over real backend.
  *
  * Runs under chromium-super-admin project. No route stubbing.
+ *
+ * Test name reflects the v7.0/W6.3.B contract: the `/credentials`
+ * callback was removed (Copilot iter-3 — closes a latent
+ * decrypted-secret pathway); only the `/internal-auth` probe
+ * survives. The spec therefore creates a server, exercises the
+ * probe, asserts `/credentials` is GONE (404), and disables.
  */
 test.describe('Admin MCP — super-admin', () => {
-    test('happy path — create server, list, verify internal auth and read credentials', async ({
+    test('create server, list, exercise /internal-auth probe, assert /credentials is removed, disable', async ({
         request,
         page,
     }) => {
