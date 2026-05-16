@@ -135,6 +135,27 @@ final class McpServerAdapterTest extends TestCase
         $this->assertSame(['UPSTREAM_TOKEN' => 'tok'], $config['env']);
     }
 
+    public function test_stdio_transport_config_preserves_quoted_arguments(): void
+    {
+        // Operators may store full shell-style command lines in
+        // `endpoint`. The adapter must keep quoted arguments
+        // together so `--prefix="hello world"` doesn't shred into
+        // three tokens (which would invoke the wrong process or
+        // pass nonsense args).
+        $adapter = new McpServerAdapter($this->makeServer([
+            'transport' => McpServer::TRANSPORT_STDIO,
+            'endpoint' => '/usr/bin/python3 -m my_mcp --prefix="hello world" --debug',
+        ]));
+
+        $config = $adapter->transportConfig();
+        $this->assertSame('/usr/bin/python3', $config['command']);
+        $this->assertSame(
+            ['-m', 'my_mcp', '--prefix=hello world', '--debug'],
+            $config['args'],
+            'quoted "hello world" must survive as a single token',
+        );
+    }
+
     public function test_corrupt_auth_config_degrades_to_empty_map(): void
     {
         // A row whose encrypted blob can't be decrypted (key rotated,
@@ -154,11 +175,14 @@ final class McpServerAdapterTest extends TestCase
     /** @param  array<string,mixed>  $overrides */
     private function makeServer(array $overrides = []): McpServer
     {
+        // `users` isn't tenant-scoped — `tenant_id` is not in
+        // User::$fillable and the column doesn't exist, so passing
+        // it is a silent no-op (or worse, a MassAssignmentException
+        // under strict mode). Drop it from the fixture.
         $user = User::create([
             'name' => 'Adapter test',
             'email' => 'adapter-'.uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
-            'tenant_id' => 'default',
         ]);
         return McpServer::create(array_merge([
             'tenant_id' => 'default',

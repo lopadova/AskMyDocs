@@ -20,8 +20,13 @@ use Tests\TestCase;
  *
  *  - Only ACTIVE servers surface; disabled / pending / errored stay
  *    invisible to the orchestrator.
- *  - Tenant scoping is strict — a null tenant means platform-global
- *    only, never "all tenants".
+ *  - Tenant scoping is strict. The contract's `$tenantId` hint
+ *    wins when provided; a NULL hint falls back to the host's
+ *    `TenantContext::current()` (never widens to all tenants —
+ *    that would be cross-tenant data leakage).
+ *  - `find($id)` is also tenant-scoped via `TenantContext` so
+ *    duplicate ids across tenants surface the row owned by the
+ *    active tenant.
  *  - `find($id)` accepts the package's string id (the host's int
  *    PK cast to string) and rejects non-numeric input rather than
  *    crashing the query.
@@ -38,11 +43,14 @@ final class EloquentMcpServerRegistryTest extends TestCase
         $this->seed(RbacSeeder::class);
         Cache::flush();
         app(TenantContext::class)->set('default');
+        // `users` isn't tenant-scoped — `tenant_id` is not in
+        // User::$fillable and the column doesn't exist on the
+        // table. Drop it from the fixture so the no-op doesn't
+        // mislead readers about tenant scoping.
         $this->creator = User::create([
             'name' => 'Registry test',
             'email' => 'registry-'.uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
-            'tenant_id' => 'default',
         ]);
     }
 

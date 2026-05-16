@@ -99,6 +99,53 @@ final class McpServerAdapter implements McpServerContract
         return $this->server->status === McpServer::STATUS_ACTIVE;
     }
 
+    /**
+     * Tokenise a shell-style command line into argv. Handles:
+     *   - bare tokens (`/bin/foo --plain`)
+     *   - mid-token double-quoted regions (`--prefix="hello world"`)
+     *   - whole-token double-quoted regions (`"with spaces"`)
+     *
+     * The state machine collects characters into a buffer, flushing
+     * on a top-level whitespace and toggling on `"`. Quotes inside
+     * a token are stripped so `--arg="hello world"` flushes as the
+     * single token `--arg=hello world`. POSIX shell escapes
+     * (backslash-spaces, single quotes, env-substitution) are NOT
+     * handled — operators who need them should store `command` +
+     * `args` separately in a future v8 schema enhancement.
+     *
+     * @return array<int, string>
+     */
+    private static function tokeniseCommandLine(string $cmd): array
+    {
+        $cmd = trim($cmd);
+        if ($cmd === '') {
+            return [];
+        }
+        $parts = [];
+        $buf = '';
+        $inQuotes = false;
+        $len = strlen($cmd);
+        for ($i = 0; $i < $len; $i++) {
+            $ch = $cmd[$i];
+            if ($ch === '"') {
+                $inQuotes = ! $inQuotes;
+                continue; // drop the quote character itself
+            }
+            if (! $inQuotes && ctype_space($ch)) {
+                if ($buf !== '') {
+                    $parts[] = $buf;
+                    $buf = '';
+                }
+                continue;
+            }
+            $buf .= $ch;
+        }
+        if ($buf !== '') {
+            $parts[] = $buf;
+        }
+        return $parts;
+    }
+
     /** @return array<string,mixed> */
     private function decryptAuthConfig(): array
     {
@@ -147,18 +194,31 @@ final class McpServerAdapter implements McpServerContract
     private function stdioConfig(array $auth): array
     {
         // For stdio servers the host stores the command line in
-        // `endpoint` (space-separated) — split into `command` +
-        // `args` so the package's `StdioJsonRpcTransport` can
-        // `proc_open()` it correctly.
-        $parts = preg_split('/\s+/', trim((string) $this->server->endpoint)) ?: [];
+        // `endpoint` (shell-style). The tokenizer below handles
+        // three shapes that operators commonly write:
+        //
+        //   /bin/foo --plain                  (bare tokens)
+        //   /bin/foo --prefix="hello world"   (mid-token quote)
+        //   /bin/foo "with spaces" --plain    (whole-token quote)
+        //
+        // Bare `preg_split('/\s+/')` shreds the first two; bare
+        // `str_getcsv(...)` only handles the third (quotes must
+        // start the field). The regex below grabs runs of
+        // non-whitespace-OR-quoted-segments as a single token, then
+        // strips the surrounding `"`. Operators who need POSIX
+        // shell escapes (backslash-spaces, single quotes,
+        // env-substitution) should store `command` + `args`
+        // separately — a future v8 enhancement.
+        $parts = self::tokeniseCommandLine((string) $this->server->endpoint);
         $command = array_shift($parts) ?? '';
+
         $env = $auth['env'] ?? [];
         if (! is_array($env)) {
             $env = [];
         }
         return [
             'command' => $command,
-            'args' => array_values(array_filter($parts, static fn($p): bool => $p !== '')),
+            'args' => $parts,
             'cwd' => isset($auth['cwd']) && is_string($auth['cwd']) ? $auth['cwd'] : null,
             'env' => $env,
         ];

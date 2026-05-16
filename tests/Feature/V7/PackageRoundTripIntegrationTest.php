@@ -65,11 +65,15 @@ final class PackageRoundTripIntegrationTest extends TestCase
         // model explicitly so this test exercises the W6.3 wiring.
         config(['mcp-pack.audit_model' => McpToolCallAudit::class]);
 
+        // `users` is intentionally NOT tenant-scoped in this repo —
+        // `tenant_id` is omitted from User::create() because it isn't
+        // in User::$fillable and the column doesn't exist on the
+        // table. Mass-assigning it would be a silent no-op today and
+        // a MassAssignmentException if strict assignment ever lands.
         $this->admin = User::create([
             'name' => 'W6.3 admin',
             'email' => 'w6.3-admin-'.uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
-            'tenant_id' => 'default',
         ]);
         $this->admin->assignRole('super-admin');
 
@@ -212,7 +216,6 @@ final class PackageRoundTripIntegrationTest extends TestCase
             'name' => 'W6.3 viewer',
             'email' => 'w6.3-viewer-'.uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
-            'tenant_id' => 'default',
         ]);
         $viewer->assignRole('viewer');
 

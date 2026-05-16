@@ -76,6 +76,31 @@ final class HostBridgeTest extends TestCase
         $this->assertSame('auto', $captured['options']['tool_choice'], 'tool_choice defaults to auto');
     }
 
+    public function test_chat_omits_tools_when_catalog_is_empty(): void
+    {
+        // Sending `"tools": []` to OpenAI / OpenRouter is NOT the
+        // same as omitting the key; some providers reject empty
+        // arrays outright. The bridge passes the request through
+        // as a plain completion when there's nothing to expose.
+        $captured = null;
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('chatWithHistory')
+            ->once()
+            ->withArgs(function (string $sys, array $msgs, array $options) use (&$captured): bool {
+                $captured = $options;
+                return true;
+            })
+            ->andReturn(new AiResponse('ok', 'openai', 'gpt-4o-mini'));
+
+        (new HostBridge($ai))->chat(new HostChatTurn(
+            messages: [['role' => 'user', 'content' => 'plain']],
+            tools: [],
+        ));
+
+        $this->assertArrayNotHasKey('tools', $captured);
+        $this->assertArrayNotHasKey('tool_choice', $captured);
+    }
+
     public function test_chat_falls_back_to_extras_system_prompt_when_messages_dont_carry_one(): void
     {
         $captured = null;

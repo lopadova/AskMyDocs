@@ -42,9 +42,13 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
     {
         $tenant = $this->resolveTenant($tenantId);
 
+        // Use `forTenant()` (from the `BelongsToTenant` trait) for
+        // tenant scoping so the filter goes through the same scope
+        // every other host query uses — table-qualified column name
+        // survives future joins without ambiguous-column errors.
         return McpServer::query()
+            ->forTenant($tenant)
             ->where('status', McpServer::STATUS_ACTIVE)
-            ->where('tenant_id', $tenant)
             ->orderBy('name')
             ->get()
             ->map(static fn(McpServer $s): McpServerContract => new McpServerAdapter($s))
@@ -62,9 +66,9 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
             return null;
         }
         $server = McpServer::query()
+            ->forTenant($this->tenantContext->current())
             ->where('id', (int) $id)
             ->where('status', McpServer::STATUS_ACTIVE)
-            ->where('tenant_id', $this->tenantContext->current())
             ->first();
         return $server === null ? null : new McpServerAdapter($server);
     }

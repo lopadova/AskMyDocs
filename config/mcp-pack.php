@@ -23,7 +23,10 @@ return [
     */
     'tool_calling' => [
         'enabled' => env('AI_AGENTIC_ENABLED', false),
-        'max_iterations' => env('MCP_PACK_TOOL_CALLING_MAX_ITERATIONS', 3),
+        // Cast to int — env() returns strings, and downstream consumers
+        // pass these straight into `max()` / loop counters. Matches the
+        // strict-int treatment in `config/mcp.php`.
+        'max_iterations' => (int) env('MCP_PACK_TOOL_CALLING_MAX_ITERATIONS', 3),
         'default_tool_choice' => env('MCP_PACK_TOOL_CHOICE', 'auto'),
     ],
 
@@ -33,7 +36,7 @@ return [
     |--------------------------------------------------------------------------
     */
     'handshake' => [
-        'ttl_seconds' => env('MCP_PACK_HANDSHAKE_TTL', 300),
+        'ttl_seconds' => (int) env('MCP_PACK_HANDSHAKE_TTL', 300),
     ],
 
     /*

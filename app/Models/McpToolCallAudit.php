@@ -23,15 +23,15 @@ use Illuminate\Database\Eloquent\Model;
  * + adapter port, by which point the host model will be a true
  * dual-shape adapter.
  *
- * Convention going forward:
+ * Convention going forward (v7.0/W6.3 update):
  *   - Host writes (legacy code path) fill `input_json_redacted` +
  *     `user_id`; the `creating()` hook below derives `input_hash`
  *     from the redacted payload automatically.
- *   - Package writes (post-cutover) fill `input_hash` + `actor`
- *     directly. They MUST still pass `input_json_redacted` (the
- *     column is NOT NULL — passing `[]` is the conventional empty
- *     payload). The hook does NOT default the column; it only
- *     derives `input_hash` when the caller leaves it empty.
+ *   - Package writes fill `input_hash` + `actor` directly. They
+ *     do NOT need to carry `input_json_redacted` — the
+ *     `creating()` hook defaults it to `[]` when missing so the
+ *     NOT NULL column never fails on package writes. Package
+ *     writes that DO pass a payload have it preserved verbatim.
  */
 class McpToolCallAudit extends Model
 {

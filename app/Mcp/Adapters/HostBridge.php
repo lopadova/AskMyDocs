@@ -52,11 +52,18 @@ final class HostBridge implements McpHostBridgeContract
 
         $options = $turn->extras;
         // The orchestrator carries provider-tuning extras (temperature,
-        // seed, …) verbatim; tool catalog overrides anything the
-        // extras may have set.
-        $options['tools'] = $this->buildToolsPayload($turn->tools);
-        if (! isset($options['tool_choice'])) {
-            $options['tool_choice'] = 'auto';
+        // seed, …) verbatim. Only INJECT the tool catalog when there's
+        // something to inject — sending `"tools": []` to OpenAI /
+        // OpenRouter behaves differently than omitting the field (and
+        // some providers outright reject empty arrays). When the catalog
+        // is empty the bridge passes the request through as a plain
+        // chat completion.
+        $toolsPayload = $this->buildToolsPayload($turn->tools);
+        if ($toolsPayload !== []) {
+            $options['tools'] = $toolsPayload;
+            if (! isset($options['tool_choice'])) {
+                $options['tool_choice'] = 'auto';
+            }
         }
 
         $response = $this->ai->chatWithHistory($systemPrompt, $history, $options);
