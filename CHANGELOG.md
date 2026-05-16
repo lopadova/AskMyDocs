@@ -59,6 +59,15 @@ their existing surface; W6.3.C will consolidate them onto the package's
 adapters. The `/api/mcp/internal-auth` probe survives in W6.3.B for
 backward compat and goes away in W6.3.C alongside `MCP_INTERNAL_AUTH_TOKEN`.
 
+> **Update (W6.3.C, PR #179 — landed before v7.0 GA)**: `/api/mcp/internal-auth`
+> + `MCP_INTERNAL_AUTH_TOKEN` + `mcp.internal_auth_token` config key +
+> `McpInternalAuthController` all removed. The sidecar-retirement story
+> now has zero remaining surface area. The orchestrator consolidation
+> (inline `McpToolCallingService` / registry / authorizer) remains
+> deferred to post-v7.0 refactor scope per the W6.3.C PR — the inline
+> stack runs on native transports today and is intentionally kept for
+> the host-specific telemetry it carries.
+
 See [`docs/v4-platform/STATUS-2026-05-16-v7-w6.md`](docs/v4-platform/STATUS-2026-05-16-v7-w6.md)
 for the W6 closure status document.
 
