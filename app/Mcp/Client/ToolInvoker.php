@@ -47,11 +47,21 @@ final class ToolInvoker
             $rawResult = $client->callTool($toolName, $toolInput);
             $result = is_array($rawResult) ? $rawResult : ['content' => $rawResult];
         } catch (McpTransportException $exception) {
-            // Native transport failures (timeout, refused, malformed
-            // JSON-RPC) map to the legacy `timeout` status so the
-            // existing dashboard filter + alerting rules keep firing
-            // for the same operator-visible failure class.
-            $status = McpToolCallAudit::STATUS_TIMEOUT;
+            // Native transport failures classify into two buckets:
+            //
+            //   - real timeouts (cURL "Operation timed out", stdio
+            //     read timeout, SSE keep-alive miss) → `timeout`
+            //     keeps the legacy dashboard filter + alerting rules
+            //     wired up for the same operator-visible failure
+            //     class they triaged through the sidecar era.
+            //   - everything else the transport layer surfaces
+            //     (refused connection, malformed JSON-RPC envelope,
+            //     unexpected upstream HTTP status, protocol error) →
+            //     `transport_error`, the dedicated value the W6.3
+            //     audit-schema widening added. Operators looking at
+            //     a non-timeout transport failure now get a distinct
+            //     pill in the admin audit view.
+            $status = self::classifyTransportException($exception);
             $errorPayload = [
                 'message' => 'MCP tool invocation failed.',
                 'error' => $exception->getMessage(),
@@ -90,5 +100,32 @@ final class ToolInvoker
         }
 
         return $result;
+    }
+
+    /**
+     * Map an `McpTransportException` to the most accurate audit
+     * status. Timeouts get the legacy `STATUS_TIMEOUT` so existing
+     * dashboards keep firing; everything else gets the W6.3 widened
+     * `STATUS_TRANSPORT_ERROR`. Pattern-match the message body case-
+     * insensitively against the well-known timeout markers that cURL
+     * / stream wrappers emit.
+     */
+    private static function classifyTransportException(McpTransportException $exception): string
+    {
+        $message = strtolower($exception->getMessage() ?? '');
+        $timeoutMarkers = [
+            'timed out',
+            'operation timeout',
+            'operation timed out',
+            'connection timed out',
+            'read timeout',
+            'idle timeout',
+        ];
+        foreach ($timeoutMarkers as $marker) {
+            if (str_contains($message, $marker)) {
+                return McpToolCallAudit::STATUS_TIMEOUT;
+            }
+        }
+        return McpToolCallAudit::STATUS_TRANSPORT_ERROR;
     }
 }

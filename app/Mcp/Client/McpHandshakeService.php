@@ -32,8 +32,13 @@ final class McpHandshakeService
     {
         $client = McpClient::forServer(new McpServerAdapter($server));
 
+        // Time the full round-trip so the admin FE can display the
+        // `Round-trip: N ms` indicator. Captured around BOTH calls so
+        // a slow `tools/list` shows up; the inline implementation
+        // measured the same way.
+        $started = microtime(true);
         try {
-            $capabilities = $client->initialize();
+            $initialize = $client->initialize();
             $tools = $client->listTools();
         } catch (McpTransportException $exception) {
             // Re-throw as a plain RuntimeException so the admin
@@ -47,10 +52,27 @@ final class McpHandshakeService
                 previous: $exception,
             );
         }
+        $durationMs = (int) round((microtime(true) - $started) * 1000);
 
+        // Flatten the MCP JSON-RPC `initialize` response (camelCase
+        // per spec) into the snake_case top-level fields the admin
+        // FE has read since v5.0 (`HandshakeStatus.tsx` →
+        // `response.protocol_version`, `.server_info`, `.tools`,
+        // `.duration_ms`). The legacy sidecar always emitted these
+        // top-level keys; we restore the same surface so the admin
+        // dashboard doesn't render `Protocol: unknown` after the
+        // cutover.
         $response = [
-            'capabilities' => $capabilities,
+            'status' => 'ok',
+            'protocol_version' => isset($initialize['protocolVersion']) && is_string($initialize['protocolVersion'])
+                ? $initialize['protocolVersion']
+                : null,
+            'server_info' => $this->normaliseServerInfo($initialize['serverInfo'] ?? null),
+            'capabilities' => is_array($initialize['capabilities'] ?? null)
+                ? $initialize['capabilities']
+                : [],
             'tools' => $tools,
+            'duration_ms' => $durationMs,
         ];
 
         $saved = $server->forceFill([
@@ -64,5 +86,20 @@ final class McpHandshakeService
         }
 
         return $response;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array{name: ?string, version: ?string}
+     */
+    private function normaliseServerInfo(mixed $raw): array
+    {
+        if (! is_array($raw)) {
+            return ['name' => null, 'version' => null];
+        }
+        return [
+            'name' => isset($raw['name']) && is_string($raw['name']) ? $raw['name'] : null,
+            'version' => isset($raw['version']) && is_string($raw['version']) ? $raw['version'] : null,
+        ];
     }
 }

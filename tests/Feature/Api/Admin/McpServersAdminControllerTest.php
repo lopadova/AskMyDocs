@@ -119,9 +119,14 @@ final class McpServersAdminControllerTest extends TestCase
             ['name' => 'doc', 'description' => 'Search docs', 'inputSchema' => ['type' => 'object']],
             ['name' => 'graph', 'description' => 'Graph lookup', 'inputSchema' => ['type' => 'object']],
         ];
+        $initialise = [
+            'protocolVersion' => '2024-11-05',
+            'serverInfo' => ['name' => 'acme-mcp', 'version' => '1.2.3'],
+            'capabilities' => ['tools' => new \stdClass()],
+        ];
         McpClient::useTransportResolver(static fn (McpServerContract $s): McpTransportContract =>
             (new StubMcpTransport())
-                ->scriptInitialize(['tools' => []])
+                ->scriptInitialize($initialise)
                 ->scriptListTools($tools));
 
         $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
@@ -130,9 +135,20 @@ final class McpServersAdminControllerTest extends TestCase
         $server->refresh();
         $this->assertSame(McpServer::STATUS_ACTIVE, $server->status);
         $persisted = $server->handshake_response_json;
+
+        // Admin FE (`HandshakeStatus.tsx`) reads these top-level keys
+        // verbatim — every assertion below is a contract guarantee.
+        // The legacy sidecar emitted the same shape; v7.0/W6.3.B
+        // restored it on top of the package's MCP-spec camelCase
+        // initialize response.
         $this->assertIsArray($persisted);
-        $this->assertArrayHasKey('capabilities', $persisted);
+        $this->assertSame('ok', $persisted['status']);
+        $this->assertSame('2024-11-05', $persisted['protocol_version']);
+        $this->assertSame('acme-mcp', $persisted['server_info']['name']);
+        $this->assertSame('1.2.3', $persisted['server_info']['version']);
         $this->assertSame($tools, $persisted['tools']);
+        $this->assertIsInt($persisted['duration_ms']);
+        $this->assertGreaterThanOrEqual(0, $persisted['duration_ms']);
     }
 
     public function test_handshake_failure_marks_server_as_errored(): void
@@ -158,10 +174,18 @@ final class McpServersAdminControllerTest extends TestCase
         $server->refresh();
         $this->assertSame(McpServer::STATUS_ERRORED, $server->status);
         $this->assertSame('error', $server->handshake_response_json['status']);
-        // The message is whatever the upstream stub answered with —
-        // assert it carries the JSON-RPC error context the package
-        // surfaces.
-        $this->assertNotEmpty($server->handshake_response_json['message']);
+        // Assert a STABLE substring from the package's JSON-RPC
+        // failure path. `assertNotEmpty()` alone would pass on any
+        // placeholder and silently hide a regression where the
+        // upstream exception message stops reaching the persisted
+        // record. `StubMcpTransport` answers unknown methods with
+        // `"No stub for [initialize]"` (-32601 method-not-found), so
+        // that fragment proves both that the JSON-RPC error class
+        // travelled cleanly AND that the host's exception wrapper
+        // surfaced the package's message body verbatim.
+        $message = $server->handshake_response_json['message'] ?? '';
+        $this->assertIsString($message);
+        $this->assertStringContainsString('No stub for [initialize]', $message);
     }
 
     public function test_update_enabled_tools_requires_validation_and_persists_allowed_tools(): void

@@ -41,6 +41,13 @@ class McpToolCallAudit extends Model
     public const STATUS_ERROR = 'error';
     public const STATUS_TIMEOUT = 'timeout';
     public const STATUS_DENIED = 'denied';
+    // v7.0/W6.3 — the host audit column was widened from a strict
+    // ENUM to `varchar(32)` so the package's transport layer can emit
+    // its own status string when a non-timeout transport failure
+    // hits (refused connection, malformed JSON-RPC envelope, upstream
+    // protocol violation). Keep the literal here so callers don't
+    // hand-type the magic string and drift.
+    public const STATUS_TRANSPORT_ERROR = 'transport_error';
 
     protected $table = 'mcp_tool_call_audit';
 
