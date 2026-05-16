@@ -134,11 +134,17 @@ final class HostBridge implements McpHostBridgeContract
             if (! is_array($call)) {
                 continue;
             }
-            $id = (string) ($call['id'] ?? 'tool_' . bin2hex(random_bytes(6)));
+            // Resolve and validate the tool name BEFORE generating a
+            // fallback id. The fallback id calls `random_bytes()`,
+            // which can throw `Random\RandomException` on a degraded
+            // entropy source; doing that work for a malformed call
+            // that the loop is about to `continue` past is wasted at
+            // best and a crash vector at worst.
             $name = (string) data_get($call, 'function.name', $call['name'] ?? '');
             if ($name === '') {
                 continue;
             }
+            $id = (string) ($call['id'] ?? 'tool_' . bin2hex(random_bytes(6)));
             // OpenAI ships arguments as a JSON-string under
             // `function.arguments`; the host's AiResponse already
             // mirrors that shape. Decode lazily so the bridge can

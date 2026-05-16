@@ -165,6 +165,12 @@ final class HostBridgeTest extends TestCase
     {
         // A malformed provider response (missing function.name) must
         // not crash the orchestrator. The bridge silently filters.
+        //
+        // The third entry below is BOTH unnamed AND missing an `id`.
+        // The bridge MUST validate `name` before falling back to a
+        // randomly-generated id; otherwise it burns entropy (and
+        // risks a `Random\RandomException` on a degraded source) for
+        // a call that the next line is about to discard.
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('chatWithHistory')->andReturn(new AiResponse(
             content: '',
@@ -172,7 +178,9 @@ final class HostBridgeTest extends TestCase
             model: 'gpt-4o',
             toolCalls: [
                 ['id' => 'call_a', 'function' => ['name' => 'kb.search', 'arguments' => '{}']],
-                ['id' => 'call_b'], // malformed — no name
+                ['id' => 'call_b'], // malformed — no name, id present
+                [],                  // malformed — no name AND no id (must not trigger random_bytes)
+                'not-an-array',      // wrong type — must be skipped before any field access
             ],
         ));
 
