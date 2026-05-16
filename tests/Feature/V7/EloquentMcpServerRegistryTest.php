@@ -154,6 +154,12 @@ final class EloquentMcpServerRegistryTest extends TestCase
         // means "operator hasn't picked tools yet" and MUST be
         // excluded from the registry so the orchestrator never widens
         // permissions beyond what the operator explicitly chose.
+        //
+        // The same guard MUST also reject garbage shapes like
+        // `[null]` / `[0]` / `['']` — the adapter strips non-strings
+        // and empty strings to nothing, so a garbage row would
+        // otherwise surface as `allowedTools() === []` (package
+        // wildcard).
         $configured = $this->makeServer([
             'name' => 'Configured',
             'enabled_tools_json' => ['kb.search'],
@@ -170,6 +176,18 @@ final class EloquentMcpServerRegistryTest extends TestCase
             'name' => 'UnconfiguredEmpty',
             'enabled_tools_json' => [],
         ]);
+        $garbageNullEntries = $this->makeServer([
+            'name' => 'GarbageNullEntries',
+            'enabled_tools_json' => [null],
+        ]);
+        $garbageNumericEntries = $this->makeServer([
+            'name' => 'GarbageNumericEntries',
+            'enabled_tools_json' => [0],
+        ]);
+        $garbageEmptyStrings = $this->makeServer([
+            'name' => 'GarbageEmptyStrings',
+            'enabled_tools_json' => ['', '   '],
+        ]);
 
         $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
 
@@ -177,9 +195,13 @@ final class EloquentMcpServerRegistryTest extends TestCase
         $this->assertEqualsCanonicalizing(['Configured', 'Wildcard'], $names);
 
         // `find()` mirrors the same exclusion so a direct lookup of
-        // an unconfigured row can't bypass the listing guard.
+        // an unconfigured / garbage row can't bypass the listing
+        // guard.
         $this->assertNull($registry->find((string) $unconfiguredNull->id));
         $this->assertNull($registry->find((string) $unconfiguredEmpty->id));
+        $this->assertNull($registry->find((string) $garbageNullEntries->id));
+        $this->assertNull($registry->find((string) $garbageNumericEntries->id));
+        $this->assertNull($registry->find((string) $garbageEmptyStrings->id));
         $this->assertNotNull($registry->find((string) $configured->id));
         $this->assertNotNull($registry->find((string) $wildcard->id));
     }

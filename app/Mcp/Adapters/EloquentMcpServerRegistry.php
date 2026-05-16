@@ -90,15 +90,44 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
     }
 
     /**
-     * True when the operator has made an EXPLICIT tools choice for
-     * this server — either the host wildcard sentinel `['*']`, or a
-     * concrete allow-list. `null` and `[]` mean "not yet configured"
-     * and MUST NOT reach the package (see class docblock).
+     * True when the operator has made an EXPLICIT, USABLE tools
+     * choice for this server. Three shapes qualify; everything else
+     * is treated as "unconfigured / invalid" and excluded from the
+     * orchestrator's view (see class docblock for the widening
+     * argument):
+     *
+     *   - exactly `['*']`        — host's explicit wildcard sentinel
+     *   - a list containing at least one non-empty string
+     *
+     * The non-empty-string check matters because
+     * `McpServerAdapter::allowedTools()` filters out non-string and
+     * empty-string entries, so a garbage row like
+     * `enabled_tools_json = [null]` / `[0]` / `['']` would otherwise
+     * surface as `allowedTools() === []` to the package — the
+     * package's "all tools" sentinel, silently widening permission.
+     * A naive `is_array($t) && $t !== []` guard catches `null` / `[]`
+     * but lets the garbage shapes through; this guard catches both.
      */
     private static function hasConfiguredTools(McpServer $server): bool
     {
         $tools = $server->enabled_tools_json;
-        return is_array($tools) && $tools !== [];
+        if (! is_array($tools) || $tools === []) {
+            return false;
+        }
+        // Host wildcard sentinel — operator explicitly opted into
+        // every tool the server advertises.
+        if ($tools === ['*']) {
+            return true;
+        }
+        // At least one entry must be a non-empty string for the row
+        // to survive the adapter's downstream filter and produce a
+        // meaningful allow-list.
+        foreach ($tools as $t) {
+            if (is_string($t) && trim($t) !== '') {
+                return true;
+            }
+        }
+        return false;
     }
 
     private function resolveTenant(?string $tenantId): string
