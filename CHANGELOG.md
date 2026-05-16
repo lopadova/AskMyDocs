@@ -37,7 +37,7 @@ and the chat path stays on the same PHP runtime end-to-end.
 - DSAR (Art. 15 / 17) compliance: `AskMyDocsUserData{Exporter, Deleter}` match `mcp_tool_call_audit` rows by BOTH the legacy `user_id` join AND every common `actor` shape the package may write.
 
 **Security** —
-- `POST /api/mcp/credentials` removed. The endpoint was the Node sidecar's hook for decrypted upstream `auth_config`; with the sidecar gone and `MCP_INTERNAL_AUTH_TOKEN` defaulting to empty it was reachable by any authenticated user. Regression test `test_credentials_endpoint_is_removed` asserts a 404 so a silent restoration fails CI loudly.
+- `POST /api/mcp/credentials` removed. The endpoint was the Node sidecar's hook for decrypted upstream `auth_config`; with the sidecar gone and `MCP_INTERNAL_AUTH_TOKEN` defaulting to empty it was reachable by any authenticated user. (At rc1, a PHPUnit `test_credentials_endpoint_is_removed` asserted the 404; W6.3.C subsequently deleted that test file when it also retired the sibling `/internal-auth` endpoint. The 404 assertion now lives in `frontend/e2e/admin-mcp-super-admin.spec.ts`, which also asserts both retired routes 404 from the Playwright smoke.)
 - `McpServerAdapter::extractHeaders()` now does case-insensitive header lookup + trims the synthesised `Bearer <token>` value. Operator-stored lowercase `headers.authorization` no longer duplicates with a synthesised uppercase variant; empty / whitespace tokens no longer ship `Bearer ` (which would have lied to the upstream).
 - `EloquentMcpServerRegistry::hasConfiguredTools()` rejects garbage `enabled_tools_json` arrays (`[null]` / `[0]` / `['']`) — only an explicit `['*']` or a list with at least one trimmed-non-empty string entry surfaces.
 
