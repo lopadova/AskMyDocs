@@ -194,8 +194,9 @@ final class McpServerAdapter implements McpServerContract
     private function stdioConfig(array $auth): array
     {
         // For stdio servers the host stores the command line in
-        // `endpoint` (shell-style). The tokenizer below handles
-        // three shapes that operators commonly write:
+        // `endpoint` (shell-style). `tokeniseCommandLine()` (a small
+        // state machine — NOT a regex) handles three shapes that
+        // operators commonly write:
         //
         //   /bin/foo --plain                  (bare tokens)
         //   /bin/foo --prefix="hello world"   (mid-token quote)
@@ -203,12 +204,14 @@ final class McpServerAdapter implements McpServerContract
         //
         // Bare `preg_split('/\s+/')` shreds the first two; bare
         // `str_getcsv(...)` only handles the third (quotes must
-        // start the field). The regex below grabs runs of
-        // non-whitespace-OR-quoted-segments as a single token, then
-        // strips the surrounding `"`. Operators who need POSIX
-        // shell escapes (backslash-spaces, single quotes,
-        // env-substitution) should store `command` + `args`
-        // separately — a future v8 enhancement.
+        // start the field). The state machine collects characters
+        // into a buffer, flushes on top-level whitespace, and toggles
+        // an in-quotes flag on `"`; quotes themselves are dropped so
+        // `--prefix="hello world"` flushes as the single token
+        // `--prefix=hello world`. Operators who need POSIX shell
+        // escapes (backslash-spaces, single quotes, env-substitution)
+        // should store `command` + `args` separately — a future v8
+        // enhancement.
         $parts = self::tokeniseCommandLine((string) $this->server->endpoint);
         $command = array_shift($parts) ?? '';
 
