@@ -41,13 +41,4 @@ return [
         'hash_results' => (bool) env('AI_MCP_AUDIT_HASH_RESULTS', true),
     ],
 
-    /*
-    |-----------------------------------------------------------------------
-    | Internal endpoint auth
-    |-----------------------------------------------------------------------
-    |
-    | For v1 scaffold this is optional. If empty, only Sanctum-protected
-    | requests can reach internal callbacks.
-    */
-    'internal_auth_token' => env('MCP_INTERNAL_AUTH_TOKEN'),
 ];

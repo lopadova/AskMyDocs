@@ -15,7 +15,9 @@ moats and roadmap, see [README.md](README.md).
 
 **v7.0/W6** integrates `padosoft/askmydocs-mcp-pack` v1.4 into AskMyDocs
 and retires the Node MCP sidecar that v5.0 had introduced. The cycle
-closed across four sub-waves merged separately into `main`:
+closed across five sub-waves merged separately into `main` (the rc1
+snapshot at PR #178 captured the first four; PR #179 added the final
+sidecar-artefact retirement before the v7.0 GA tag):
 
 | Sub-wave | PR | SHA | Headline |
 |----------|----|-----|----------|
@@ -23,6 +25,7 @@ closed across four sub-waves merged separately into `main`:
 | **W6.2** Audit-table coexistence | #175 | `b0ea065` | `mcp_tool_call_audit.input_hash` + `actor` columns + chunked CASE-WHEN backfill (SQLite-binding-safe chunks of 250) |
 | **W6.3.A** Adapters + schema widening | #176 | `3d6cec2` | Host adapters bound via `AppServiceProvider::boot()`; `status` ENUM→`varchar(32)`; `user_id`/`result_hash` NULLABLE; `mcp_server_name` column added; pgsql `DROP CONSTRAINT IF EXISTS` for the legacy CHECK |
 | **W6.3.B** Sidecar retirement | #177 | `8eee610` | Entire `mcp-client/` TypeScript project deleted; `ToolInvoker` + `McpHandshakeService` rewritten to drive `McpClient::forServer()` natively (HTTP / SSE / stdio); `/api/mcp/credentials` decrypted-secret callback removed |
+| **W6.3.C** Final sidecar-artefact retirement | #179 | (post-rc1) | `/api/mcp/internal-auth` probe + `MCP_INTERNAL_AUTH_TOKEN` env + `mcp.internal_auth_token` config + `McpInternalAuthController` all removed. After this PR, zero sidecar-era surface area remains. |
 
 **Why** — the v5.0 design routed every MCP call through a separate Node
 process on `127.0.0.1:3535`. v7.0 swaps that for native PHP JSON-RPC
@@ -37,27 +40,46 @@ and the chat path stays on the same PHP runtime end-to-end.
 - DSAR (Art. 15 / 17) compliance: `AskMyDocsUserData{Exporter, Deleter}` match `mcp_tool_call_audit` rows by BOTH the legacy `user_id` join AND every common `actor` shape the package may write.
 
 **Security** —
-- `POST /api/mcp/credentials` removed. The endpoint was the Node sidecar's hook for decrypted upstream `auth_config`; with the sidecar gone and `MCP_INTERNAL_AUTH_TOKEN` defaulting to empty it was reachable by any authenticated user. Regression test `test_credentials_endpoint_is_removed` asserts a 404 so a silent restoration fails CI loudly.
+- `POST /api/mcp/credentials` removed. The endpoint was the Node sidecar's hook for decrypted upstream `auth_config`; with the sidecar gone and `MCP_INTERNAL_AUTH_TOKEN` defaulting to empty it was reachable by any authenticated user. (At rc1, a PHPUnit `test_credentials_endpoint_is_removed` asserted the 404; W6.3.C subsequently deleted that test file when it also retired the sibling `/internal-auth` endpoint. The 404 assertion now lives in `frontend/e2e/admin-mcp-super-admin.spec.ts`, which also asserts both retired routes 404 from the Playwright smoke.)
 - `McpServerAdapter::extractHeaders()` now does case-insensitive header lookup + trims the synthesised `Bearer <token>` value. Operator-stored lowercase `headers.authorization` no longer duplicates with a synthesised uppercase variant; empty / whitespace tokens no longer ship `Bearer ` (which would have lied to the upstream).
 - `EloquentMcpServerRegistry::hasConfiguredTools()` rejects garbage `enabled_tools_json` arrays (`[null]` / `[0]` / `['']`) — only an explicit `['*']` or a list with at least one trimmed-non-empty string entry surfaces.
 
-**Tests** (full sweep on the closure branch):
+**Tests** (full sweep, post-W6.3.C, on the v7.0 GA closure branch):
 
 | Suite | Tests | Status |
 |------:|------:|:------:|
-| PHPUnit Feature | 1142 | ✅ |
+| PHPUnit Feature | 1137 | ✅ |
 | PHPUnit Unit | 613 | ✅ |
 | Vitest (60 files) | 436 | ✅ |
-| Playwright E2E | — | ✅ (CI gate green on PR #177) |
+| Playwright E2E | — | ✅ (CI gate green on PR #177 + #179) |
 
-R36 cycle: 4 PRs × ~5 iterations on average to clean (load-bearing
-ones: PR #176 took 13 iters, PR #177 took 5).
+(The rc1 snapshot reported PHPUnit Feature 1142 / 1142 — W6.3.C
+subsequently deleted 5 PHPUnit `McpInternalAuthController` test
+methods when retiring the underlying endpoint, bringing the count
+to 1137. The endpoint-removed assertion lives in the Playwright
+smoke at `frontend/e2e/admin-mcp-super-admin.spec.ts`.)
 
-**Deferred to W6.3.C** — the inline `McpToolCallingService` orchestrator,
-host-flavour `McpServerRegistry`, and custom `McpToolAuthorizer` keep
-their existing surface; W6.3.C will consolidate them onto the package's
-adapters. The `/api/mcp/internal-auth` probe survives in W6.3.B for
-backward compat and goes away in W6.3.C alongside `MCP_INTERNAL_AUTH_TOKEN`.
+R36 cycle: 5 PRs × ~5 iterations on average to clean (load-bearing
+ones: PR #176 took 13 iters, PR #177 took 5, PR #179 took 4).
+
+**W6.3.C scope split (PR #179, post-rc1, pre-GA)** — between rc1 and
+the v7.0 GA tag, the originally-planned W6.3.C work split into two
+streams:
+
+- **Sidecar-artefact retirement (W6.3.C, load-bearing for GA)** —
+  `/api/mcp/internal-auth` probe + `MCP_INTERNAL_AUTH_TOKEN` env +
+  `mcp.internal_auth_token` config key + `McpInternalAuthController`
+  all removed. After PR #179 the sidecar-retirement story has zero
+  remaining surface area.
+
+- **Inline orchestrator consolidation (deferred to post-v7.0)** — the
+  inline `McpToolCallingService` / host-flavour `McpServerRegistry` /
+  custom `McpToolAuthorizer` keep their existing surface. They
+  already run on native MCP transports (W6.3.B rewrote
+  `ToolInvoker` + `McpHandshakeService` underneath), so consolidation
+  doesn't unlock new capability — it's a refactor that needs a thin
+  translation adapter the GA timeline doesn't justify. NOT a GA
+  blocker.
 
 See [`docs/v4-platform/STATUS-2026-05-16-v7-w6.md`](docs/v4-platform/STATUS-2026-05-16-v7-w6.md)
 for the W6 closure status document.
