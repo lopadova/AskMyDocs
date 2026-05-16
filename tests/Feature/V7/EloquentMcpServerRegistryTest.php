@@ -54,30 +54,48 @@ final class EloquentMcpServerRegistryTest extends TestCase
         $this->makeServer(['name' => 'Disabled', 'tenant_id' => 'acme', 'status' => McpServer::STATUS_DISABLED]);
         $this->makeServer(['name' => 'Pending', 'tenant_id' => 'acme', 'status' => McpServer::STATUS_PENDING]);
 
-        $registry = new EloquentMcpServerRegistry();
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
         $names = array_map(static fn($s): string => $s->name(), $registry->forTenant('acme'));
 
         $this->assertSame(['Acme Alpha'], $names);
     }
 
-    public function test_null_tenant_is_platform_global_and_does_not_leak_other_tenants(): void
+    public function test_null_tenant_falls_back_to_tenant_context_no_cross_tenant_leak(): void
     {
-        $this->makeServer(['name' => 'Public', 'tenant_id' => 'public']);
-        $this->makeServer(['name' => 'Acme', 'tenant_id' => 'acme']);
+        // **R30 regression**: a previous shape made `forTenant(null)`
+        // return EVERY active row, which is cross-tenant data
+        // leakage. The adapter now resolves the active tenant from
+        // the host's `TenantContext` so a missing hint cannot widen
+        // the query past the current request's tenant.
+        $this->makeServer(['name' => 'DefaultOne', 'tenant_id' => 'default']);
+        $this->makeServer(['name' => 'AcmeOnly', 'tenant_id' => 'acme']);
+        $this->makeServer(['name' => 'GlobexOnly', 'tenant_id' => 'globex']);
 
-        $registry = new EloquentMcpServerRegistry();
-        // Per the package contract: `null` means "no tenant filter
-        // applied at the registry level"; the authorizer is the
-        // final gate. So `forTenant(null)` returns every active row.
+        // TenantContext is set to 'default' in setUp() — null tenant
+        // hint MUST surface only 'default' rows.
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
         $names = array_map(static fn($s): string => $s->name(), $registry->forTenant(null));
 
-        $this->assertEqualsCanonicalizing(['Acme', 'Public'], $names);
+        $this->assertSame(['DefaultOne'], $names);
     }
 
-    public function test_find_returns_adapter_for_active_row(): void
+    public function test_null_tenant_follows_tenant_context_when_it_changes(): void
+    {
+        $this->makeServer(['name' => 'DefaultOne', 'tenant_id' => 'default']);
+        $this->makeServer(['name' => 'AcmeOnly', 'tenant_id' => 'acme']);
+
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
+
+        app(TenantContext::class)->set('acme');
+        $names = array_map(static fn($s): string => $s->name(), $registry->forTenant(null));
+        $this->assertSame(['AcmeOnly'], $names);
+    }
+
+    public function test_find_returns_adapter_for_active_row_in_active_tenant(): void
     {
         $server = $this->makeServer(['name' => 'Findable', 'tenant_id' => 'acme']);
-        $registry = new EloquentMcpServerRegistry();
+        app(TenantContext::class)->set('acme');
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
 
         $hit = $registry->find((string) $server->id);
 
@@ -86,10 +104,24 @@ final class EloquentMcpServerRegistryTest extends TestCase
         $this->assertSame('Findable', $hit->name());
     }
 
+    public function test_find_returns_null_when_id_belongs_to_a_different_tenant(): void
+    {
+        // **R30 regression**: previously `find()` was unscoped, so a
+        // duplicate id between tenants could surface the WRONG row.
+        // The adapter now scopes by `TenantContext::current()` so
+        // an id outside the active tenant returns null.
+        $acmeServer = $this->makeServer(['name' => 'AcmeOnly', 'tenant_id' => 'acme']);
+
+        // TenantContext stays at 'default' (set in setUp). Looking
+        // up the acme row from a default-tenant request MUST miss.
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
+        $this->assertNull($registry->find((string) $acmeServer->id));
+    }
+
     public function test_find_returns_null_for_disabled_rows(): void
     {
         $disabled = $this->makeServer(['status' => McpServer::STATUS_DISABLED]);
-        $registry = new EloquentMcpServerRegistry();
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
 
         $this->assertNull($registry->find((string) $disabled->id));
     }
@@ -99,7 +131,7 @@ final class EloquentMcpServerRegistryTest extends TestCase
         // A package caller passing a UUID-style id from a different
         // implementation must NOT cause an SQL error here. The
         // adapter rejects anything that isn't an int-string.
-        $registry = new EloquentMcpServerRegistry();
+        $registry = new EloquentMcpServerRegistry(app(TenantContext::class));
 
         $this->assertNull($registry->find('not-a-number'));
         $this->assertNull($registry->find('11abc'));

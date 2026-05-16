@@ -162,19 +162,19 @@ final class HostBridgeTest extends TestCase
         $ai = Mockery::mock(AiManager::class);
         $bridge = new HostBridge($ai);
 
-        config(['ai.provider' => 'openai']);
+        config(['ai.default' =>'openai']);
         $this->assertTrue($bridge->supportsToolCalling());
 
-        config(['ai.provider' => 'openrouter']);
+        config(['ai.default' =>'openrouter']);
         $this->assertTrue($bridge->supportsToolCalling());
 
-        config(['ai.provider' => 'anthropic']);
+        config(['ai.default' =>'anthropic']);
         $this->assertFalse(
             $bridge->supportsToolCalling(),
             'Anthropic uses a different tool-calling shape; the OpenAI-style bridge does not support it yet',
         );
 
-        config(['ai.provider' => 'gemini']);
+        config(['ai.default' =>'gemini']);
         $this->assertFalse($bridge->supportsToolCalling());
     }
 

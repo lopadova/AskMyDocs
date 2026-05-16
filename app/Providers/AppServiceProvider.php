@@ -120,21 +120,24 @@ class AppServiceProvider extends ServiceProvider
         if (interface_exists(CohortParityMetric::class)) {
             $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
         }
-
-        // v7.0/W6.3 — bind the three host adapters that satisfy the
-        // `padosoft/askmydocs-mcp-pack` contracts. The bindings live
-        // here (not in a dedicated McpServiceProvider) because the
-        // package's own service provider auto-discovers and would
-        // otherwise install its `Null*` defaults. Eager singletons
-        // are safe — these adapters are stateless wrappers around
-        // `AiManager` / Eloquent / Spatie.
-        $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
-        $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
-        $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
     }
 
     public function boot(): void
     {
+        // v7.0/W6.3 — bind the three host adapters that satisfy the
+        // `padosoft/askmydocs-mcp-pack` contracts. Bindings live in
+        // `boot()` (not `register()`) because `bootstrap/providers.php`
+        // loads `AppServiceProvider` BEFORE vendor service providers
+        // run their `register()`. A bind in `register()` here would
+        // be overwritten by the package's `Null*` defaults. Boot-time
+        // bindings run AFTER every package's `register()`, so this
+        // adapter wiring wins definitively. Singletons are safe —
+        // the adapters are stateless wrappers around `AiManager` /
+        // Eloquent / Spatie.
+        $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
+        $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
+        $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
+
         $this->registerCommands();
         $this->registerRateLimiters();
         $this->registerPolicies();

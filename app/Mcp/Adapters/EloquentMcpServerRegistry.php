@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Adapters;
 
 use App\Models\McpServer;
+use App\Support\TenantContext;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
 
@@ -14,31 +15,36 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
  * `App\Models\McpServer` Eloquent table.
  *
  * Returns only ACTIVE rows so the orchestrator never tries to
- * handshake against a pending / disabled / errored upstream. The
- * `find()` lookup is tenant-aware via the caller's tenant hint —
- * the caller (host controller) passes the active tenant from its
- * Sanctum/RBAC middleware. Cross-tenant id collisions surface the
- * row owned by the matching tenant.
+ * handshake against a pending / disabled / errored upstream.
+ *
+ * **R30 tenant boundary**: `mcp_servers` is tenant-scoped on the
+ * host, so a bare `forTenant(null)` would be cross-tenant data
+ * leakage. When the contract caller passes `null` (system contexts
+ * like queue workers that pre-date the package's tenant routing),
+ * the adapter resolves the active tenant from the host's
+ * `TenantContext` singleton instead — matching the inline
+ * `App\Mcp\Client\Registry\McpServerRegistry` semantics this
+ * adapter replaces. The same tenant-resolved scope applies to
+ * `find()` so duplicate ids across tenants surface the row owned
+ * by the active tenant, not whichever the query happened to hit
+ * first.
  */
 final class EloquentMcpServerRegistry implements McpServerRegistryContract
 {
+    public function __construct(
+        private readonly TenantContext $tenantContext,
+    ) {}
+
     /**
      * @return array<int, McpServerContract>
      */
     public function forTenant(?string $tenantId): array
     {
-        $query = McpServer::query()
-            ->where('status', McpServer::STATUS_ACTIVE);
+        $tenant = $this->resolveTenant($tenantId);
 
-        // R30: when the host caller resolved an active tenant, scope
-        // strictly. A `null` tenant means "platform-global" — the
-        // package contract supports it for system-context flows like
-        // queue workers that don't carry a user.
-        if ($tenantId !== null) {
-            $query->where('tenant_id', $tenantId);
-        }
-
-        return $query
+        return McpServer::query()
+            ->where('status', McpServer::STATUS_ACTIVE)
+            ->where('tenant_id', $tenant)
             ->orderBy('name')
             ->get()
             ->map(static fn(McpServer $s): McpServerContract => new McpServerAdapter($s))
@@ -47,17 +53,29 @@ final class EloquentMcpServerRegistry implements McpServerRegistryContract
 
     public function find(string $id): ?McpServerContract
     {
-        // The package's contract scopes ids per tenant. We accept
-        // both numeric (the host's autoincrement) and string ids
-        // here so package callers that already cast to string for
-        // their own cache keys round-trip cleanly.
+        // The package contract scopes ids per tenant. Accept both
+        // numeric (the host's autoincrement) and string ids so
+        // package callers that already cast to string for their
+        // own cache keys round-trip cleanly. Non-numeric input
+        // returns null without an SQL error.
         if (! ctype_digit($id)) {
             return null;
         }
         $server = McpServer::query()
             ->where('id', (int) $id)
             ->where('status', McpServer::STATUS_ACTIVE)
+            ->where('tenant_id', $this->tenantContext->current())
             ->first();
         return $server === null ? null : new McpServerAdapter($server);
+    }
+
+    private function resolveTenant(?string $tenantId): string
+    {
+        if (is_string($tenantId) && $tenantId !== '') {
+            return $tenantId;
+        }
+        // Fall back to the host's TenantContext so a null hint
+        // never widens the query to every tenant's rows.
+        return $this->tenantContext->current();
     }
 }

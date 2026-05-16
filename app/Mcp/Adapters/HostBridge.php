@@ -151,9 +151,11 @@ final class HostBridge implements McpHostBridgeContract
 
     private function providerName(): string
     {
-        // The host's AiManager exposes the active provider name via
-        // its config; fall back to OpenAI when unset (matches the
-        // host's default config shipped in `.env.example`).
-        return (string) (config('ai.provider') ?? 'openai');
+        // The host's active AI provider lives at `ai.default`
+        // (driven by `AI_PROVIDER` env in `config/ai.php`). NOT
+        // `ai.provider` — that key doesn't exist and would silently
+        // default to OpenAI even when the operator selected
+        // Anthropic / Gemini / Regolo.
+        return (string) (config('ai.default') ?? 'openai');
     }
 }

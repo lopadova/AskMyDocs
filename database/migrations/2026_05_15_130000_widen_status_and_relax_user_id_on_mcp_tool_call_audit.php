@@ -41,11 +41,13 @@ use Illuminate\Support\Facades\Schema;
  * populated, and Postgres / MySQL / SQLite all accept the column
  * type change in-place.
  *
- * SQLite quirk: dropping an ENUM constraint requires a recreate.
- * Laravel's `change()` method handles the recreate on SQLite via
- * the doctrine column-modifier shim. To keep this migration
- * portable AND avoid the doctrine dependency, we use the more
- * explicit "drop / re-add" path that every driver supports.
+ * Driver handling: Laravel 11+ on PHP 8.3+ no longer requires
+ * `doctrine/dbal` for the simple `change()` cases used here
+ * (nullable / type swap to string / type swap from enum to
+ * string) on SQLite + MySQL. Postgres still needs explicit
+ * `ALTER COLUMN` statements because `change()` cannot drop the
+ * ENUM cleanly on Postgres without a USING expression — handled
+ * in the `pgsql` branch via raw SQL.
  */
 return new class extends Migration
 {
@@ -93,36 +95,27 @@ return new class extends Migration
 
     public function down(): void
     {
+        // **Roll-back is best-effort by design.** Re-narrowing
+        // these columns is structurally lossy:
+        //
+        //  - `user_id` SET NOT NULL would FAIL if any row was
+        //    written with `user_id = NULL` after `up()` ran —
+        //    which is the whole point of the migration (the
+        //    package writer fills `actor` instead of `user_id`).
+        //  - `status` re-enum-ing would FAIL on any row carrying
+        //    `transport_error` (or any future package-emitted
+        //    string outside the original ENUM).
+        //  - `result_hash` SET NOT NULL would FAIL on any failed-
+        //    call audit row written after `up()`.
+        //
+        // Restoring NOT NULL without scrubbing data is unsafe AND
+        // would crash mid-rollback on the first offending row.
+        // Instead `down()` does the one truly safe revert — drops
+        // the new `mcp_server_name` column. Operators who need to
+        // re-narrow the other columns should scrub the offending
+        // rows manually first, then ship a follow-up migration.
         Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
             $table->dropColumn('mcp_server_name');
-        });
-
-
-        // Re-narrowing the column is a one-way bet — pre-existing
-        // rows with `transport_error` (or any non-enum status) would
-        // fail to fit. The roll-back is therefore deliberately
-        // best-effort: it tries to restore the original shape but
-        // does NOT scrub data that won't fit.
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'sqlite') {
-            Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
-                $table->foreignId('user_id')->nullable(false)->change();
-                $table->enum('status', ['ok', 'error', 'timeout', 'denied'])->default('ok')->change();
-            });
-            return;
-        }
-
-        if ($driver === 'pgsql') {
-            DB::statement('ALTER TABLE mcp_tool_call_audit ALTER COLUMN user_id SET NOT NULL');
-            // Don't recreate the enum — operators rolling back can
-            // do that manually if they really need the constraint.
-            return;
-        }
-
-        Schema::table('mcp_tool_call_audit', function (Blueprint $table): void {
-            $table->foreignId('user_id')->nullable(false)->change();
-            $table->enum('status', ['ok', 'error', 'timeout', 'denied'])->default('ok')->change();
         });
     }
 };
