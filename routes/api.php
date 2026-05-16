@@ -25,7 +25,6 @@ use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbDeleteController;
-use App\Http\Controllers\Api\McpInternalAuthController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
@@ -695,21 +694,10 @@ Route::middleware([
             ->name('api.admin.workflows.unhide');
     });
 
-/*
-|--------------------------------------------------------------------------
-| MCP internal callbacks
-|--------------------------------------------------------------------------
-|
-| The `/credentials` callback existed solely to feed the Node MCP
-| sidecar (retired in v7.0/W6.3.B). It returned decrypted server
-| auth_config to the sidecar process. With the sidecar gone there is
-| no legitimate consumer, and Copilot iter-3 flagged it as a latent
-| decrypted-secret pathway reachable by ordinary authenticated users
-| when `MCP_INTERNAL_AUTH_TOKEN` is empty. The route is removed.
-|
-| The `/internal-auth` probe survives only as a thin token-presence
-| check — also a sidecar artefact, dropped in v7.0/W6.3.C alongside
-| `MCP_INTERNAL_AUTH_TOKEN` itself.
-*/
-Route::post('/mcp/internal-auth', [McpInternalAuthController::class, 'verify'])
-    ->name('api.mcp.internal-auth');
+// v7.0/W6.3.C — MCP internal callbacks (`/api/mcp/internal-auth` token
+// probe + `/api/mcp/credentials` decrypted-secret callback) were both
+// Node MCP sidecar artefacts. v7.0/W6.3.B retired the sidecar itself +
+// removed `/credentials`; W6.3.C drops the surviving probe and
+// `MCP_INTERNAL_AUTH_TOKEN` alongside it. The native MCP transports
+// (HTTP / SSE / stdio) provided by `padosoft/askmydocs-mcp-pack` don't
+// need any host-side internal callbacks.

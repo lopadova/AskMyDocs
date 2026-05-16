@@ -1,18 +1,19 @@
 import { test, expect } from '@playwright/test';
 
 /*
- * v5.0 — MCP admin + internal endpoints smoke over real backend.
+ * v5.0 → v7.0/W6.3.C — MCP admin smoke over real backend.
  *
  * Runs under chromium-super-admin project. No route stubbing.
  *
- * Test name reflects the v7.0/W6.3.B contract: the `/credentials`
- * callback was removed (Copilot iter-3 — closes a latent
- * decrypted-secret pathway); only the `/internal-auth` probe
- * survives. The spec therefore creates a server, exercises the
- * probe, asserts `/credentials` is GONE (404), and disables.
+ * v7.0/W6.3.B removed `/api/mcp/credentials` (decrypted-secret
+ * callback that fed the Node sidecar). v7.0/W6.3.C drops the
+ * surviving `/api/mcp/internal-auth` probe and the
+ * `MCP_INTERNAL_AUTH_TOKEN` env var. The spec asserts both routes
+ * are now 404 — regressions that bring either back without
+ * explicit security review will fail this spec.
  */
 test.describe('Admin MCP — super-admin', () => {
-    test('create server, list, exercise /internal-auth probe, assert /credentials is removed, disable', async ({
+    test('create server, list, assert sidecar callbacks are removed, disable', async ({
         request,
         page,
     }) => {
@@ -38,31 +39,13 @@ test.describe('Admin MCP — super-admin', () => {
         expect(Array.isArray(listing.data)).toBeTruthy();
         expect(listing.data.some((row: { id: number }) => row.id === id)).toBeTruthy();
 
-        // v7.0/W6.3.B — `/api/mcp/internal-auth` survives only as a
-        // thin token-presence probe; the richer `/credentials`
-        // callback was removed to close a latent decrypted-secret
-        // pathway (Copilot iter-3 finding). Exercise the probe so
-        // the route + middleware wiring stays smoke-tested.
-        const verifyNoToken = await request.post('/api/mcp/internal-auth');
-        const tokenFromEnv = process.env.MCP_INTERNAL_AUTH_TOKEN ?? '';
-        if (verifyNoToken.status() === 401) {
-            if (tokenFromEnv === '') {
-                throw new Error(
-                    'MCP internal auth token is required by backend but MCP_INTERNAL_AUTH_TOKEN is not set for E2E.',
-                );
-            }
+        // v7.0/W6.3.C — both sidecar callbacks (`/internal-auth` and
+        // `/credentials`) are now gone. Native MCP transports don't
+        // need any host-side internal callbacks. Assert both 404 so
+        // a regression bringing either back fails CI loudly.
+        const verifyProbe = await request.post('/api/mcp/internal-auth');
+        expect(verifyProbe.status()).toBe(404);
 
-            const verifyWithToken = await request.post('/api/mcp/internal-auth', {
-                headers: { 'X-MCP-Internal-Token': tokenFromEnv },
-            });
-            expect(verifyWithToken.ok()).toBeTruthy();
-        } else {
-            expect(verifyNoToken.ok()).toBeTruthy();
-        }
-
-        // `/api/mcp/credentials` MUST be gone (W6.3.B). Any non-404
-        // response means a regression brought back the
-        // decrypted-secret pathway without explicit security review.
         const credentials = await request.post('/api/mcp/credentials', {
             data: { tenant_id: 'default', mcp_server_id: id },
         });
