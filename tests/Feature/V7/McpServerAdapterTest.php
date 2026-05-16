@@ -67,6 +67,22 @@ final class McpServerAdapterTest extends TestCase
         $this->assertSame([], $adapter->allowedTools());
     }
 
+    public function test_allowed_tools_trims_and_drops_whitespace_only_entries(): void
+    {
+        // Defence-in-depth lockstep with `hasConfiguredTools()` in
+        // the registry — every name reaching the package MUST be a
+        // trimmed, non-empty string. Whitespace-only entries (like
+        // a trailing newline an operator pasted into the JSON) would
+        // otherwise surface as a "tool name" no real tool can match,
+        // showing up as a configured tool that never authorises any
+        // call.
+        $adapter = new McpServerAdapter($this->makeServer([
+            'enabled_tools_json' => ['kb.search', '   ', "\tkb.read\n", '', null, 42],
+        ]));
+
+        $this->assertSame(['kb.search', 'kb.read'], $adapter->allowedTools());
+    }
+
     public function test_disabled_status_propagates(): void
     {
         $adapter = new McpServerAdapter($this->makeServer([

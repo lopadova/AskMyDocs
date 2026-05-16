@@ -102,9 +102,19 @@ final class McpServerAdapter implements McpServerContract
         if ($tools === ['*']) {
             return [];
         }
+        // Trim every entry and drop empty / whitespace-only ones in
+        // lockstep with `EloquentMcpServerRegistry::hasConfiguredTools()`.
+        // Without the trim, a row like
+        // `enabled_tools_json = ['kb.search', '   ']` would slip a
+        // whitespace-only "tool name" through to the package — the
+        // package would never match a real tool against it, and
+        // operators would see a misleading "configured" tool that
+        // never authorises any call. Stripping at the adapter keeps
+        // the contract clean: every name reaching the package is a
+        // trimmed, non-empty string.
         return array_values(array_filter(
             array_map(
-                static fn($t): string => is_string($t) ? $t : '',
+                static fn($t): string => is_string($t) ? trim($t) : '',
                 $tools,
             ),
             static fn(string $t): bool => $t !== '',
