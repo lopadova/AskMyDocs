@@ -63,6 +63,12 @@ final class McpHandshakeService
         // dashboard doesn't render `Protocol: unknown` after the
         // cutover.
         $response = [
+            // Legacy sidecar emitted both `ok: true` and `status: 'ok'`
+            // on a successful handshake; some host code paths +
+            // operator dashboards read one, some read the other. Keep
+            // BOTH on the persisted payload so no downstream
+            // consumer regresses after the cutover.
+            'ok' => true,
             'status' => 'ok',
             'protocol_version' => isset($initialize['protocolVersion']) && is_string($initialize['protocolVersion'])
                 ? $initialize['protocolVersion']

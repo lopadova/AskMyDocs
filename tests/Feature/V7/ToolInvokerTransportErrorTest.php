@@ -9,14 +9,12 @@ use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\User;
 use App\Support\TenantContext;
-use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
 use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
-use Tests\Support\Mcp\StubMcpTransport;
 use Tests\TestCase;
 
 /**
@@ -45,7 +43,9 @@ final class ToolInvokerTransportErrorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->seed(RbacSeeder::class);
+        // No RBAC seeding — these tests only exercise audit-row
+        // persistence and the transport-exception classifier; roles
+        // and permissions don't gate `ToolInvoker::invoke()`.
         app(TenantContext::class)->set('default');
 
         $this->user = User::create([
@@ -68,6 +68,49 @@ final class ToolInvokerTransportErrorTest extends TestCase
     {
         McpClient::useTransportResolver(null);
         parent::tearDown();
+    }
+
+    public function test_successful_call_returns_native_result_and_writes_ok_audit_row(): void
+    {
+        // The native `callTool()` happy path: a stub transport that
+        // answers `initialize` cleanly + returns a result payload for
+        // `tools/call:search`. The invoker's job is to wrap the raw
+        // result and persist an `ok` audit row with the SHA-256 hash
+        // of the result. Without this test, regressing the
+        // sidecar-to-package transport adapter on the success path
+        // would only surface in production.
+        $payload = ['items' => [['id' => 1, 'title' => 'Hello']]];
+        McpClient::useTransportResolver(static fn (McpServerContract $s): McpTransportContract =>
+            (new \Tests\Support\Mcp\StubMcpTransport())
+                ->scriptInitialize()
+                ->scriptToolCall('search', $payload));
+
+        // No `conversation_id` / `message_id` in context — the test
+        // focuses on the audit row schema for a vanilla invocation;
+        // adding real FK targets would require seeding a Conversation
+        // + Message and isn't what this scenario verifies.
+        $result = (new ToolInvoker())->invoke(
+            user: $this->user,
+            server: $this->server,
+            toolName: 'search',
+            toolInput: ['q' => 'hello'],
+        );
+
+        // Package returns the result map verbatim; the host wraps
+        // non-array results in `{content: ...}` but preserves arrays.
+        $this->assertSame($payload, $result);
+
+        $row = McpToolCallAudit::query()->latest('id')->first();
+        $this->assertNotNull($row);
+        $this->assertSame(McpToolCallAudit::STATUS_OK, $row->status);
+        $this->assertSame('search', $row->tool_name);
+        $this->assertSame($this->server->id, (int) $row->mcp_server_id);
+        $this->assertSame($this->user->id, (int) $row->user_id);
+        $this->assertNull($row->conversation_id);
+        $this->assertNull($row->message_id);
+        $this->assertSame(['q' => 'hello'], $row->input_json_redacted);
+        $this->assertSame(64, strlen((string) $row->result_hash), 'result_hash should be a SHA-256 hex digest');
+        $this->assertNull($row->error_json);
     }
 
     public function test_timeout_marker_in_exception_message_classifies_as_timeout(): void

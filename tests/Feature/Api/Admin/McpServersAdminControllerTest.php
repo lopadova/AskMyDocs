@@ -11,7 +11,6 @@ use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Http;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
 use Padosoft\AskMyDocsMcpPack\Services\McpClient;
@@ -142,6 +141,9 @@ final class McpServersAdminControllerTest extends TestCase
         // restored it on top of the package's MCP-spec camelCase
         // initialize response.
         $this->assertIsArray($persisted);
+        // Legacy sidecar emitted both `ok` and `status`; native path
+        // restores both (W6.3.B iter-2 — preserve advertised contract).
+        $this->assertTrue($persisted['ok']);
         $this->assertSame('ok', $persisted['status']);
         $this->assertSame('2024-11-05', $persisted['protocol_version']);
         $this->assertSame('acme-mcp', $persisted['server_info']['name']);
