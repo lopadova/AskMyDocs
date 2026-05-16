@@ -4,24 +4,28 @@ declare(strict_types=1);
 
 namespace App\Mcp\Client;
 
+use App\Mcp\Adapters\McpServerAdapter;
 use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\User;
-use Illuminate\Http\Client\ConnectionException;
+use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
+use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
 /**
- * v5.0/W1 — tool invocation orchestration.
+ * v7.0/W6.3.B — tool invocation via the package's native MCP
+ * transports (HTTP / SSE / stdio). The v5.0/W1 incarnation routed
+ * every call through a Node sidecar on `127.0.0.1:3535`; that
+ * sidecar is retired in W6.3.B and the host now speaks JSON-RPC
+ * directly through `padosoft/askmydocs-mcp-pack`'s
+ * {@see McpClient::forServer()}.
  *
- * The public surface is intentionally small in W1: invoke a tool and
- * persist an audit row. Follow-up W5 adds provider-specific tool-schema
- * wiring and stricter redaction.
+ * The audit-row writes stay verbatim — the schema, redaction, and
+ * tenant scoping are unchanged. The only architectural shift is the
+ * transport layer underneath: no extra process, no extra hop, one
+ * fewer thing to monitor in production.
  */
 final class ToolInvoker
 {
-    public function __construct(
-        private readonly McpClientBridge $bridge,
-    ) {}
-
     public function invoke(
         User $user,
         McpServer $server,
@@ -35,14 +39,29 @@ final class ToolInvoker
         $errorPayload = null;
 
         try {
-            $result = $this->bridge->invokeTool([
-                'server_id' => $server->id,
-                'server_name' => $server->name,
-                'tool_name' => $toolName,
-                'input' => $toolInput,
-            ]);
-        } catch (ConnectionException $exception) {
-            $status = McpToolCallAudit::STATUS_TIMEOUT;
+            // Native transport via the package — `forServer()` reads
+            // the adapter's `transportConfig()` to pick HTTP / SSE /
+            // stdio, then `callTool()` does the `initialize` +
+            // `tools/call` JSON-RPC round trip.
+            $client = McpClient::forServer(new McpServerAdapter($server));
+            $rawResult = $client->callTool($toolName, $toolInput);
+            $result = is_array($rawResult) ? $rawResult : ['content' => $rawResult];
+        } catch (McpTransportException $exception) {
+            // Native transport failures classify into two buckets:
+            //
+            //   - real timeouts (cURL "Operation timed out", stdio
+            //     read timeout, SSE keep-alive miss) → `timeout`
+            //     keeps the legacy dashboard filter + alerting rules
+            //     wired up for the same operator-visible failure
+            //     class they triaged through the sidecar era.
+            //   - everything else the transport layer surfaces
+            //     (refused connection, malformed JSON-RPC envelope,
+            //     unexpected upstream HTTP status, protocol error) →
+            //     `transport_error`, the dedicated value the W6.3
+            //     audit-schema widening added. Operators looking at
+            //     a non-timeout transport failure now get a distinct
+            //     pill in the admin audit view.
+            $status = self::classifyTransportException($exception);
             $errorPayload = [
                 'message' => 'MCP tool invocation failed.',
                 'error' => $exception->getMessage(),
@@ -81,5 +100,32 @@ final class ToolInvoker
         }
 
         return $result;
+    }
+
+    /**
+     * Map an `McpTransportException` to the most accurate audit
+     * status. Timeouts get the legacy `STATUS_TIMEOUT` so existing
+     * dashboards keep firing; everything else gets the W6.3 widened
+     * `STATUS_TRANSPORT_ERROR`. Pattern-match the message body case-
+     * insensitively against the well-known timeout markers that cURL
+     * / stream wrappers emit.
+     */
+    private static function classifyTransportException(McpTransportException $exception): string
+    {
+        $message = strtolower($exception->getMessage() ?? '');
+        $timeoutMarkers = [
+            'timed out',
+            'operation timeout',
+            'operation timed out',
+            'connection timed out',
+            'read timeout',
+            'idle timeout',
+        ];
+        foreach ($timeoutMarkers as $marker) {
+            if (str_contains($message, $marker)) {
+                return McpToolCallAudit::STATUS_TIMEOUT;
+            }
+        }
+        return McpToolCallAudit::STATUS_TRANSPORT_ERROR;
     }
 }

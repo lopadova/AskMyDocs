@@ -7,27 +7,11 @@ return [
     | v5.0 Agentic switch
     |-----------------------------------------------------------------------
     |
-    | Keep MCP disabled by default. Enable only on GA/preview environments
-    | where the Node sidecar is deployed on localhost with loopback
-    | connectivity.
+    | Keep MCP disabled by default. Enable on environments where at least
+    | one MCP server is configured under `mcp_servers` and the operator
+    | wants chat turns to route through the tool-calling loop.
     */
     'enabled' => (bool) env('AI_AGENTIC_ENABLED', false),
-
-    /*
-    |-----------------------------------------------------------------------
-    | Node sidecar
-    |-----------------------------------------------------------------------
-    |
-    | The sidecar exposes a small HTTP shim on localhost:3535.
-    */
-    'sidecar' => [
-        'base_url' => env('MCP_CLIENT_BASE_URL', 'http://127.0.0.1:3535'),
-        'health_endpoint' => '/healthz',
-        'timeout_ms' => (int) env('MCP_CLIENT_TIMEOUT_MS', 2500),
-        'invoke_timeout_ms' => (int) env('MCP_CLIENT_INVOKE_TIMEOUT_MS', 30000),
-        'handshake_timeout_ms' => (int) env('MCP_CLIENT_HANDSHAKE_TIMEOUT_MS', 15000),
-        'internal_token' => env('MCP_SIDECAR_INTERNAL_TOKEN'),
-    ],
 
     /*
     |-----------------------------------------------------------------------

@@ -4,9 +4,15 @@ import { test, expect } from '@playwright/test';
  * v5.0 — MCP admin + internal endpoints smoke over real backend.
  *
  * Runs under chromium-super-admin project. No route stubbing.
+ *
+ * Test name reflects the v7.0/W6.3.B contract: the `/credentials`
+ * callback was removed (Copilot iter-3 — closes a latent
+ * decrypted-secret pathway); only the `/internal-auth` probe
+ * survives. The spec therefore creates a server, exercises the
+ * probe, asserts `/credentials` is GONE (404), and disables.
  */
 test.describe('Admin MCP — super-admin', () => {
-    test('happy path — create server, list, verify internal auth and read credentials', async ({
+    test('create server, list, exercise /internal-auth probe, assert /credentials is removed, disable', async ({
         request,
         page,
     }) => {
@@ -32,10 +38,13 @@ test.describe('Admin MCP — super-admin', () => {
         expect(Array.isArray(listing.data)).toBeTruthy();
         expect(listing.data.some((row: { id: number }) => row.id === id)).toBeTruthy();
 
+        // v7.0/W6.3.B — `/api/mcp/internal-auth` survives only as a
+        // thin token-presence probe; the richer `/credentials`
+        // callback was removed to close a latent decrypted-secret
+        // pathway (Copilot iter-3 finding). Exercise the probe so
+        // the route + middleware wiring stays smoke-tested.
         const verifyNoToken = await request.post('/api/mcp/internal-auth');
         const tokenFromEnv = process.env.MCP_INTERNAL_AUTH_TOKEN ?? '';
-        let credentialHeaders: Record<string, string> | undefined = undefined;
-
         if (verifyNoToken.status() === 401) {
             if (tokenFromEnv === '') {
                 throw new Error(
@@ -47,26 +56,17 @@ test.describe('Admin MCP — super-admin', () => {
                 headers: { 'X-MCP-Internal-Token': tokenFromEnv },
             });
             expect(verifyWithToken.ok()).toBeTruthy();
-            credentialHeaders = { 'X-MCP-Internal-Token': tokenFromEnv };
         } else {
             expect(verifyNoToken.ok()).toBeTruthy();
         }
 
+        // `/api/mcp/credentials` MUST be gone (W6.3.B). Any non-404
+        // response means a regression brought back the
+        // decrypted-secret pathway without explicit security review.
         const credentials = await request.post('/api/mcp/credentials', {
-            headers: credentialHeaders,
-            data: {
-                tenant_id: 'default',
-                mcp_server_id: id,
-            },
+            data: { tenant_id: 'default', mcp_server_id: id },
         });
-        if (credentials.ok()) {
-            const credPayload = await credentials.json();
-            expect(credPayload.data).toBeTruthy();
-            expect(credPayload.data.transport).toBe('http');
-            expect(credPayload.data.enabled_tools).toEqual(['search_docs']);
-        } else {
-            expect([401, 403]).toContain(credentials.status());
-        }
+        expect(credentials.status()).toBe(404);
 
         const disable = await request.post(`/api/admin/mcp-servers/${id}/disable`);
         expect(disable.ok()).toBeTruthy();

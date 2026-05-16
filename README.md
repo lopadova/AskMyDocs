@@ -285,7 +285,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Sister `padosoft/*` package stack | `laravel-ai-regolo` v1.0 (Regolo provider for `laravel/ai`) + `laravel-pii-redactor` v1.2 (PII detection with EU country packs: Italy + Germany + Spain) + `laravel-pii-redactor-admin` v1.0.2 + `laravel-flow` v1.0 (saga engine + approval gates + webhook outbox + replay) + `laravel-flow-admin` v1.0.0 + `eval-harness` v1.2 (golden datasets + 7 metrics + cohorts + adversarial + LLM-as-judge) + `eval-harness-ui` v1.0.0 — every package MIT, every architecture test enforces standalone-agnostic invariants (zero refs to `KnowledgeDocument` / `kb_*` tables / `lopadova/askmydocs` in `src/`) | v4.2 |
 | External Patent Box dossier tool | `padosoft/laravel-patent-box-tracker` v0.1 generates audit-grade Italian Patent Box dossiers; **deliberately NOT in AskMyDocs `composer.json`** — operators install it in a separate Laravel project (R37 standalone-agnostic) and consume `tools/patent-box/2026.yml` from this repo. Commercialista-validated 2026-05-02 | v4.0 |
 | Connector framework + 7 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 7 native connectors: `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (all inline for v4.5; extracted to `padosoft/askmydocs-connector-*` packages in v4.6 per ADR 0008 D1) | v4.5 |
-| **MCP client framework** | AskMyDocs as MCP **CLIENT** (outward direction) — tenant-scoped `McpServerRegistry` + `McpToolCallingService` orchestrates multi-turn tool-calling loops (max 3 iterations, configurable); `McpToolAuthorizer` gates per-user/per-server/per-tool access; `McpClientBridge` relays invocations to the Node sidecar (`@modelcontextprotocol/sdk`); `McpHandshakeService` + `McpInternalAuthController` handle sidecar auth; immutable audit trail in `mcp_tool_call_audit`; admin API for server CRUD + handshake + tool-list management; `AI_AGENTIC_ENABLED` master switch; OpenAI + OpenRouter providers wire tool schemas automatically | v5.0 |
+| **MCP client framework** | AskMyDocs as MCP **CLIENT** (outward direction) — tenant-scoped `McpServerRegistry` + `McpToolCallingService` orchestrates multi-turn tool-calling loops (max 3 iterations, configurable); `McpToolAuthorizer` gates per-user/per-server/per-tool access; v7.0/W6.3.B retired the v5.0 Node sidecar and now drives JSON-RPC directly over native HTTP / SSE / stdio transports via `padosoft/askmydocs-mcp-pack`; `McpHandshakeService` persists initialize+tools/list under `mcp_servers.handshake_response_json`; immutable audit trail in `mcp_tool_call_audit` (with `transport_error` status when the upstream connection is unreachable but not timing out); admin API for server CRUD + handshake + tool-list management; `AI_AGENTIC_ENABLED` master switch; OpenAI + OpenRouter providers wire tool schemas automatically | v5.0 |
 
 ### Quality & Observability
 
@@ -535,8 +535,11 @@ hybrid retrieval pipeline (vector + FTS + reranker + canonical graph
 expansion + rejected-approach injection). When `AI_AGENTIC_ENABLED=true`,
 `McpToolCallingService` intercepts after the first provider response and
 runs a multi-turn tool-calling loop (max `AI_MCP_TOOL_CALL_MAX_ITERATIONS`
-iterations) — invoking registered MCP servers via `McpClientBridge` (Node
-sidecar) and accumulating results before returning the final answer.
+iterations) — invoking registered MCP servers via native JSON-RPC
+transports (HTTP / SSE / stdio) provided by `padosoft/askmydocs-mcp-pack`
+and accumulating results before returning the final answer. (v5.0
+shipped this via a separate Node sidecar process; v7.0/W6.3.B retired
+the sidecar and moved every call onto the host PHP process.)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -563,8 +566,10 @@ sidecar) and accumulating results before returning the final answer.
 │  │ • AiManager::chat()          │   │ • AiManager::chatStream()        │     │
 │  │ • McpToolCallingService       │   │ • McpToolCallingService (v5)     │     │
 │  │   (v5, if AI_AGENTIC_ENABLED) │   │   multi-turn tool loop →        │     │
-│  │ → { answer, citations,       │   │   McpClientBridge → Node sidecar │     │
-│  │     refusal_reason,          │   │ → UIMessageChunk frames          │     │
+│  │ → { answer, citations,       │   │   native JSON-RPC transport      │     │
+│  │     refusal_reason,          │   │   (v7 — HTTP / SSE / stdio,      │     │
+│  │                              │   │    no Node sidecar)              │     │
+│  │                              │   │ → UIMessageChunk frames          │     │
 │  │     confidence, meta,        │   │   (start/text-delta/source-url/  │     │
 │  │     tool_calls }             │   │    data-confidence/data-refusal/ │     │
 │  │                              │   │    finish)                       │     │

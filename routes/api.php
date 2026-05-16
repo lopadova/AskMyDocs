@@ -697,10 +697,19 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
-| MCP internal callbacks for the Node sidecar (W1.2+)
+| MCP internal callbacks
 |--------------------------------------------------------------------------
+|
+| The `/credentials` callback existed solely to feed the Node MCP
+| sidecar (retired in v7.0/W6.3.B). It returned decrypted server
+| auth_config to the sidecar process. With the sidecar gone there is
+| no legitimate consumer, and Copilot iter-3 flagged it as a latent
+| decrypted-secret pathway reachable by ordinary authenticated users
+| when `MCP_INTERNAL_AUTH_TOKEN` is empty. The route is removed.
+|
+| The `/internal-auth` probe survives only as a thin token-presence
+| check — also a sidecar artefact, dropped in v7.0/W6.3.C alongside
+| `MCP_INTERNAL_AUTH_TOKEN` itself.
 */
 Route::post('/mcp/internal-auth', [McpInternalAuthController::class, 'verify'])
     ->name('api.mcp.internal-auth');
-Route::post('/mcp/credentials', [McpInternalAuthController::class, 'credentials'])
-    ->name('api.mcp.credentials');

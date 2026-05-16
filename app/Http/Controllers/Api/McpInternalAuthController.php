@@ -4,21 +4,26 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\McpServer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Crypt;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * v5.0/W1 — internal callbacks consumed by the Node sidecar.
+ * v5.0/W1 → v7.0/W6.3.B — thin token-presence probe.
  *
- * These endpoints are intentionally thin. Once the sidecar is deployed,
- * Node posts to `/api/mcp/credentials` to read decrypted auth config and
- * can post to `/api/mcp/internal-auth` to validate its possession of the
- * shared token.
+ * The richer `credentials()` callback was removed in v7.0/W6.3.B —
+ * it existed only to feed the Node MCP sidecar (also retired in
+ * W6.3.B) with decrypted upstream auth config. With the sidecar
+ * gone there is no legitimate consumer; leaving the endpoint live
+ * keeps a latent decrypted-secret pathway reachable whenever
+ * `MCP_INTERNAL_AUTH_TOKEN` is empty (the controller would fall
+ * back to `request->user()` and any authenticated user could read
+ * the decrypted config).
+ *
+ * Only the token-presence probe survives so deployment scripts +
+ * health-check tooling that still post to `/api/mcp/internal-auth`
+ * don't break suddenly. v7.0/W6.3.C will drop this endpoint along
+ * with `MCP_INTERNAL_AUTH_TOKEN`.
  */
 final class McpInternalAuthController extends Controller
 {
@@ -35,70 +40,5 @@ final class McpInternalAuthController extends Controller
         }
 
         return response()->json(['ok' => false], 401);
-    }
-
-    public function credentials(Request $request): JsonResponse
-    {
-        $this->ensureInternalRequesterAuthorized($request);
-
-        $request->validate([
-            'tenant_id' => ['required', 'string', 'max:50'],
-            'mcp_server_id' => ['required', 'integer'],
-        ]);
-
-        $tenantId = $request->input('tenant_id');
-        if (! preg_match('/^[a-z0-9_-]{1,50}$/', (string) $tenantId)) {
-            throw new NotFoundHttpException('Invalid tenant id.');
-        }
-
-        $server = McpServer::query()
-            ->where('tenant_id', $tenantId)
-            ->where('id', (int) $request->input('mcp_server_id'))
-            ->first();
-
-        if ($server === null) {
-            throw new NotFoundHttpException('MCP server not found.');
-        }
-
-        $encrypted = $server->getAttribute('auth_config_encrypted');
-        if (! is_string($encrypted) || $encrypted === '') {
-            return response()->json(['data' => null]);
-        }
-
-        return response()->json([
-            'data' => [
-                'transport' => $server->transport,
-                'endpoint' => $server->endpoint,
-                'auth_config' => $this->decryptAuthConfig($encrypted),
-                'enabled_tools' => $server->enabled_tools_json ?? [],
-            ],
-        ]);
-    }
-
-    private function decryptAuthConfig(string $encrypted): array
-    {
-        try {
-            $decoded = json_decode(Crypt::decryptString($encrypted), true, 512, JSON_THROW_ON_ERROR);
-            return is_array($decoded) ? $decoded : [];
-        } catch (\Throwable) {
-            return [];
-        }
-    }
-
-    private function ensureInternalRequesterAuthorized(Request $request): void
-    {
-        $expectedToken = (string) config('mcp.internal_auth_token', '');
-        if ($expectedToken === '') {
-            if ($request->user() === null) {
-                throw new AccessDeniedHttpException('Missing internal auth token and no authenticated user.');
-            }
-
-            return;
-        }
-
-        $providedToken = (string) $request->header('X-MCP-Internal-Token', '');
-        if (! hash_equals($expectedToken, $providedToken)) {
-            throw new AccessDeniedHttpException('Invalid MCP internal token.');
-        }
     }
 }
