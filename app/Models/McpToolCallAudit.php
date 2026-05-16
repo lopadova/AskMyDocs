@@ -49,6 +49,7 @@ class McpToolCallAudit extends Model
         'user_id',
         'actor',
         'mcp_server_id',
+        'mcp_server_name',
         'conversation_id',
         'message_id',
         'tool_name',
@@ -68,20 +69,27 @@ class McpToolCallAudit extends Model
 
     protected static function booted(): void
     {
-        // Auto-derive `input_hash` from `input_json_redacted` for
-        // legacy host writes so the column is always populated going
-        // forward, without forcing every caller to compute the hash
-        // themselves. Package writes that already set `input_hash`
-        // explicitly are NOT overwritten.
         static::creating(static function (self $audit): void {
+            // v7.0/W6.3 — the package writer doesn't carry the
+            // redacted payload (it stores only hashes by design).
+            // `input_json_redacted` is still NOT NULL on the host
+            // table, so default it to an empty array when missing
+            // so the package's audit row insert never fails for
+            // shape reasons. Host writes that already populate the
+            // column are left untouched.
+            if ($audit->input_json_redacted === null) {
+                $audit->input_json_redacted = [];
+            }
+
+            // Auto-derive `input_hash` from `input_json_redacted`
+            // for legacy host writes so the column is always
+            // populated going forward, without forcing every caller
+            // to compute the hash themselves. Package writes that
+            // already set `input_hash` explicitly are NOT overwritten.
             if (! empty($audit->input_hash)) {
                 return;
             }
-            $payload = $audit->input_json_redacted;
-            if ($payload === null) {
-                return;
-            }
-            $audit->input_hash = self::canonicalHash($payload);
+            $audit->input_hash = self::canonicalHash($audit->input_json_redacted);
         });
     }
 

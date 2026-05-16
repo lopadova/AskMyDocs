@@ -21,7 +21,13 @@ use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
 use App\Connectors\HostIngestionBridge;
+use App\Mcp\Adapters\EloquentMcpServerRegistry;
+use App\Mcp\Adapters\HostBridge;
+use App\Mcp\Adapters\McpToolAuthorizerAdapter;
 use App\Models\KnowledgeDocument;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
@@ -114,6 +120,17 @@ class AppServiceProvider extends ServiceProvider
         if (interface_exists(CohortParityMetric::class)) {
             $this->app->singleton(CohortParityMetric::class, RagRefusalQualityMetric::class);
         }
+
+        // v7.0/W6.3 — bind the three host adapters that satisfy the
+        // `padosoft/askmydocs-mcp-pack` contracts. The bindings live
+        // here (not in a dedicated McpServiceProvider) because the
+        // package's own service provider auto-discovers and would
+        // otherwise install its `Null*` defaults. Eager singletons
+        // are safe — these adapters are stateless wrappers around
+        // `AiManager` / Eloquent / Spatie.
+        $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
+        $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
+        $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
     }
 
     public function boot(): void
