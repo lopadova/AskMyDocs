@@ -153,6 +153,30 @@ final class McpServerAdapterTest extends TestCase
         $this->assertArrayNotHasKey('Authorization', $headers);
     }
 
+    public function test_http_transport_trims_token_before_bearer_concatenation(): void
+    {
+        // A token with stray leading / trailing whitespace (a newline
+        // an operator pasted from a vault UI, a tab from a CSV export)
+        // must NOT survive into the `Authorization` header value. The
+        // upstream's behaviour with `Bearer sk-test\n` is
+        // upstream-dependent — some strip silently, some reject, some
+        // match against an internal canonicalisation — and the
+        // failure mode is hard to debug. The adapter trims before
+        // concatenation.
+        $authCipher = Crypt::encryptString(json_encode([
+            'token' => "  sk-test-1234\n",
+        ]));
+        $adapter = new McpServerAdapter($this->makeServer([
+            'transport' => McpServer::TRANSPORT_HTTP,
+            'auth_config_encrypted' => $authCipher,
+        ]));
+
+        $this->assertSame(
+            'Bearer sk-test-1234',
+            $adapter->transportConfig()['headers']['Authorization'],
+        );
+    }
+
     public function test_http_transport_skips_bearer_synthesis_on_empty_token(): void
     {
         // A bogus `"Authorization: Bearer "` (no credential after the

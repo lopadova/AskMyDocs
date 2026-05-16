@@ -181,6 +181,9 @@ final class HostBridgeTest extends TestCase
                 ['id' => 'call_b'], // malformed — no name, id present
                 [],                  // malformed — no name AND no id (must not trigger random_bytes)
                 'not-an-array',      // wrong type — must be skipped before any field access
+                ['id' => 'call_c', 'function' => ['name' => ['nested', 'array'], 'arguments' => '{}']], // name as array — must NOT be cast to "Array"
+                ['id' => 'call_d', 'function' => ['name' => "  \t \n", 'arguments' => '{}']], // whitespace-only name
+                ['id' => 'call_e', 'function' => ['name' => 42, 'arguments' => '{}']], // numeric name — must not coerce to "42"
             ],
         ));
 

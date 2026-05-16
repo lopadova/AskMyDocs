@@ -140,7 +140,18 @@ final class HostBridge implements McpHostBridgeContract
             // entropy source; doing that work for a malformed call
             // that the loop is about to `continue` past is wasted at
             // best and a crash vector at worst.
-            $name = (string) data_get($call, 'function.name', $call['name'] ?? '');
+            //
+            // The raw value MUST be a non-empty string — `(string)`
+            // casting blindly would coerce an array/object payload to
+            // the literal `"Array"` (with a PHP notice), which would
+            // then be forwarded to the orchestrator as a phantom
+            // tool name no real tool can match. Reject anything that
+            // isn't a real string.
+            $rawName = data_get($call, 'function.name', $call['name'] ?? null);
+            if (! is_string($rawName)) {
+                continue;
+            }
+            $name = trim($rawName);
             if ($name === '') {
                 continue;
             }

@@ -222,8 +222,17 @@ final class McpServerAdapter implements McpServerContract
         //      end up with both `authorization` AND a synthesized
         //      `Authorization` going on the wire.
         $token = $auth['token'] ?? null;
-        if (is_string($token) && trim($token) !== '' && ! self::hasAuthorizationHeader($out)) {
-            $out['Authorization'] = 'Bearer ' . $token;
+        if (is_string($token)) {
+            $trimmed = trim($token);
+            if ($trimmed !== '' && ! self::hasAuthorizationHeader($out)) {
+                // Use the TRIMMED token in the concatenation. Sending
+                // `Bearer <token>\n` with leading / trailing
+                // whitespace is hard-to-debug auth failure territory:
+                // some upstreams strip silently, some reject, some
+                // match against an internal canonicalisation. Always
+                // emit a clean value.
+                $out['Authorization'] = 'Bearer ' . $trimmed;
+            }
         }
         return $out;
     }
