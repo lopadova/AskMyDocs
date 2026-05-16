@@ -134,6 +134,12 @@ function FilterBar({ filters, onChange, servers }: FilterBarProps) {
                     <option value="error">Error</option>
                     <option value="timeout">Timeout</option>
                     <option value="denied">Denied</option>
+                    {/* v7.0/W6.3 — `transport_error` ships with the
+                        package's circuit-breaker path. The BE accepts
+                        any 32-char string for the `status` filter,
+                        so this list is exhaustive only for the values
+                        operators commonly need to triage. */}
+                    <option value="transport_error">Transport error</option>
                 </select>
             </label>
             <label style={fieldStyle}>
@@ -233,7 +239,19 @@ function StatusPill({ status }: { status: McpAuditStatus }) {
                 return { background: 'rgba(245,158,11,0.18)', color: '#fde68a' };
             case 'denied':
                 return { background: 'rgba(148,163,184,0.22)', color: '#cbd5e1' };
+            case 'transport_error':
+                // v7.0/W6.3 — distinct from `error` so operators can
+                // tell upstream-protocol failures (the package's
+                // circuit-breaker path) apart from in-tool error
+                // returns at a glance. Orange palette mirrors the
+                // `timeout` family (both are transport-class).
+                return { background: 'rgba(249,115,22,0.20)', color: '#fdba74' };
             default:
+                // Unknown / future-emitted status — the `string &
+                // Record<never, never>` branch on the type lets the
+                // BE add new strings without breaking the FE. Render
+                // them in a neutral palette so the cell still
+                // communicates state instead of crashing.
                 return { background: 'rgba(148,163,184,0.18)', color: '#cbd5e1' };
         }
     }, [status]);

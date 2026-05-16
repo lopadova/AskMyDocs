@@ -104,7 +104,23 @@ export async function deleteMcpServer(id: number): Promise<void> {
 /* Audit log                                                              */
 /* --------------------------------------------------------------------- */
 
-export type McpAuditStatus = 'ok' | 'error' | 'timeout' | 'denied';
+/**
+ * v7.0/W6.3 — the `mcp_tool_call_audit.status` column was widened
+ * from a strict ENUM `('ok','error','timeout','denied')` to
+ * `varchar(32)` so the package (and future host code) can emit new
+ * values without a migration: `transport_error` is the first one
+ * the package ships. The known set is captured below for
+ * autocomplete + the StatusPill palette, but `McpAuditStatus`
+ * intentionally accepts arbitrary strings via the `(string & {})`
+ * trick so the type doesn't lie about what the API can return.
+ *
+ * Mirror change: `result_hash` is nullable on the column — the
+ * package writes `null` on a transport failure (no result to
+ * hash). The host's own writers still populate a SHA-256 hex
+ * string on success, so the union remains backwards-compatible.
+ */
+export type McpAuditKnownStatus = 'ok' | 'error' | 'timeout' | 'denied' | 'transport_error';
+export type McpAuditStatus = McpAuditKnownStatus | (string & Record<never, never>);
 
 export interface McpAuditEntry {
     id: number;
@@ -116,7 +132,7 @@ export interface McpAuditEntry {
     message_id: number | null;
     tool_name: string;
     input_json_redacted: Record<string, unknown> | null;
-    result_hash: string;
+    result_hash: string | null;
     duration_ms: number;
     status: McpAuditStatus;
     error_json: Record<string, unknown> | null;
