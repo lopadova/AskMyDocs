@@ -563,8 +563,10 @@ sidecar) and accumulating results before returning the final answer.
 │  │ • AiManager::chat()          │   │ • AiManager::chatStream()        │     │
 │  │ • McpToolCallingService       │   │ • McpToolCallingService (v5)     │     │
 │  │   (v5, if AI_AGENTIC_ENABLED) │   │   multi-turn tool loop →        │     │
-│  │ → { answer, citations,       │   │   McpClientBridge → Node sidecar │     │
-│  │     refusal_reason,          │   │ → UIMessageChunk frames          │     │
+│  │ → { answer, citations,       │   │   native JSON-RPC transport      │     │
+│  │     refusal_reason,          │   │   (v7 — HTTP / SSE / stdio,      │     │
+│  │                              │   │    no Node sidecar)              │     │
+│  │                              │   │ → UIMessageChunk frames          │     │
 │  │     confidence, meta,        │   │   (start/text-delta/source-url/  │     │
 │  │     tool_calls }             │   │    data-confidence/data-refusal/ │     │
 │  │                              │   │    finish)                       │     │

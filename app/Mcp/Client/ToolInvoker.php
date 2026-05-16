@@ -4,24 +4,28 @@ declare(strict_types=1);
 
 namespace App\Mcp\Client;
 
+use App\Mcp\Adapters\McpServerAdapter;
 use App\Models\McpServer;
 use App\Models\McpToolCallAudit;
 use App\Models\User;
-use Illuminate\Http\Client\ConnectionException;
+use Padosoft\AskMyDocsMcpPack\Exceptions\McpTransportException;
+use Padosoft\AskMyDocsMcpPack\Services\McpClient;
 
 /**
- * v5.0/W1 — tool invocation orchestration.
+ * v7.0/W6.3.B — tool invocation via the package's native MCP
+ * transports (HTTP / SSE / stdio). The v5.0/W1 incarnation routed
+ * every call through a Node sidecar on `127.0.0.1:3535`; that
+ * sidecar is retired in W6.3.B and the host now speaks JSON-RPC
+ * directly through `padosoft/askmydocs-mcp-pack`'s
+ * {@see McpClient::forServer()}.
  *
- * The public surface is intentionally small in W1: invoke a tool and
- * persist an audit row. Follow-up W5 adds provider-specific tool-schema
- * wiring and stricter redaction.
+ * The audit-row writes stay verbatim — the schema, redaction, and
+ * tenant scoping are unchanged. The only architectural shift is the
+ * transport layer underneath: no extra process, no extra hop, one
+ * fewer thing to monitor in production.
  */
 final class ToolInvoker
 {
-    public function __construct(
-        private readonly McpClientBridge $bridge,
-    ) {}
-
     public function invoke(
         User $user,
         McpServer $server,
@@ -35,13 +39,18 @@ final class ToolInvoker
         $errorPayload = null;
 
         try {
-            $result = $this->bridge->invokeTool([
-                'server_id' => $server->id,
-                'server_name' => $server->name,
-                'tool_name' => $toolName,
-                'input' => $toolInput,
-            ]);
-        } catch (ConnectionException $exception) {
+            // Native transport via the package — `forServer()` reads
+            // the adapter's `transportConfig()` to pick HTTP / SSE /
+            // stdio, then `callTool()` does the `initialize` +
+            // `tools/call` JSON-RPC round trip.
+            $client = McpClient::forServer(new McpServerAdapter($server));
+            $rawResult = $client->callTool($toolName, $toolInput);
+            $result = is_array($rawResult) ? $rawResult : ['content' => $rawResult];
+        } catch (McpTransportException $exception) {
+            // Native transport failures (timeout, refused, malformed
+            // JSON-RPC) map to the legacy `timeout` status so the
+            // existing dashboard filter + alerting rules keep firing
+            // for the same operator-visible failure class.
             $status = McpToolCallAudit::STATUS_TIMEOUT;
             $errorPayload = [
                 'message' => 'MCP tool invocation failed.',

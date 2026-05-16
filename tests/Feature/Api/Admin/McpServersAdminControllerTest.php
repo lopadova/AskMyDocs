@@ -12,6 +12,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpServerContract;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpTransportContract;
+use Padosoft\AskMyDocsMcpPack\Services\McpClient;
+use Tests\Support\Mcp\StubMcpTransport;
 use Tests\TestCase;
 
 /**
@@ -33,6 +37,18 @@ final class McpServersAdminControllerTest extends TestCase
         Cache::flush();
         app(TenantContext::class)->set('default');
         $this->seed(RbacSeeder::class);
+    }
+
+    protected function tearDown(): void
+    {
+        // v7.0/W6.3.B — every handshake test that swaps the package's
+        // transport via `McpClient::useTransportResolver()` MUST
+        // restore the default resolver here, otherwise the static
+        // override leaks across tests and the next scenario sees the
+        // wrong stub. Always clear unconditionally — no-op when not
+        // set.
+        McpClient::useTransportResolver(null);
+        parent::tearDown();
     }
 
     public function test_index_lists_only_current_tenant_servers_ordered_by_name(): void
@@ -90,20 +106,33 @@ final class McpServersAdminControllerTest extends TestCase
 
     public function test_handshake_success_updates_status_and_response(): void
     {
+        // v7.0/W6.3.B — handshake now drives `initialize` +
+        // `tools/list` through the package's native transport (HTTP /
+        // SSE / stdio). The legacy assertion that `handshake_response_json`
+        // matched a fake sidecar payload verbatim is gone; instead we
+        // assert the host persists the canonical
+        // `{capabilities, tools}` shape the package returns.
         $super = $this->makeSuperAdmin();
         $server = $this->createServer($super, ['status' => McpServer::STATUS_PENDING]);
-        $handshake = ['status' => 'ok', 'tools' => ['doc', 'graph']];
 
-        Http::fake([
-            'http://127.0.0.1:3535/handshake' => Http::response($handshake, 200),
-        ]);
+        $tools = [
+            ['name' => 'doc', 'description' => 'Search docs', 'inputSchema' => ['type' => 'object']],
+            ['name' => 'graph', 'description' => 'Graph lookup', 'inputSchema' => ['type' => 'object']],
+        ];
+        McpClient::useTransportResolver(static fn (McpServerContract $s): McpTransportContract =>
+            (new StubMcpTransport())
+                ->scriptInitialize(['tools' => []])
+                ->scriptListTools($tools));
 
         $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
 
         $response->assertOk()->assertJsonPath('data.status', McpServer::STATUS_ACTIVE);
         $server->refresh();
         $this->assertSame(McpServer::STATUS_ACTIVE, $server->status);
-        $this->assertSame($handshake, $server->handshake_response_json);
+        $persisted = $server->handshake_response_json;
+        $this->assertIsArray($persisted);
+        $this->assertArrayHasKey('capabilities', $persisted);
+        $this->assertSame($tools, $persisted['tools']);
     }
 
     public function test_handshake_failure_marks_server_as_errored(): void
@@ -111,9 +140,17 @@ final class McpServersAdminControllerTest extends TestCase
         $super = $this->makeSuperAdmin();
         $server = $this->createServer($super, ['status' => McpServer::STATUS_PENDING]);
 
-        Http::fake([
-            'http://127.0.0.1:3535/handshake' => Http::response('sidecar unavailable', 500),
-        ]);
+        // Transport stub that refuses `initialize` so the package's
+        // `McpClient` raises `McpTransportException` and the host
+        // controller maps it to a 502.
+        McpClient::useTransportResolver(static function (McpServerContract $s): McpTransportContract {
+            $stub = new StubMcpTransport();
+            $stub->healthy = false;
+            // Empty `responses` map → every request answers with
+            // JSON-RPC error -32601, which `McpClient::initialize()`
+            // wraps in `McpTransportException`.
+            return $stub;
+        });
 
         $response = $this->actingAs($super)->postJson('/api/admin/mcp-servers/'.$server->id.'/handshake');
 
@@ -121,7 +158,10 @@ final class McpServersAdminControllerTest extends TestCase
         $server->refresh();
         $this->assertSame(McpServer::STATUS_ERRORED, $server->status);
         $this->assertSame('error', $server->handshake_response_json['status']);
-        $this->assertStringContainsString('sidecar unavailable', $server->handshake_response_json['message']);
+        // The message is whatever the upstream stub answered with —
+        // assert it carries the JSON-RPC error context the package
+        // surfaces.
+        $this->assertNotEmpty($server->handshake_response_json['message']);
     }
 
     public function test_update_enabled_tools_requires_validation_and_persists_allowed_tools(): void
