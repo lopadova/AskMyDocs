@@ -21,7 +21,13 @@ use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
 use App\Connectors\HostIngestionBridge;
+use App\Mcp\Adapters\EloquentMcpServerRegistry;
+use App\Mcp\Adapters\HostBridge;
+use App\Mcp\Adapters\McpToolAuthorizerAdapter;
 use App\Models\KnowledgeDocument;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
+use Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
@@ -118,6 +124,20 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // v7.0/W6.3 — bind the three host adapters that satisfy the
+        // `padosoft/askmydocs-mcp-pack` contracts. Bindings live in
+        // `boot()` (not `register()`) because `bootstrap/providers.php`
+        // loads `AppServiceProvider` BEFORE vendor service providers
+        // run their `register()`. A bind in `register()` here would
+        // be overwritten by the package's `Null*` defaults. Boot-time
+        // bindings run AFTER every package's `register()`, so this
+        // adapter wiring wins definitively. Singletons are safe —
+        // the adapters are stateless wrappers around `AiManager` /
+        // Eloquent / Spatie.
+        $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
+        $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
+        $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
+
         $this->registerCommands();
         $this->registerRateLimiters();
         $this->registerPolicies();

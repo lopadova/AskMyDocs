@@ -207,6 +207,82 @@ class AskMyDocsUserDataExporterTest extends TestCase
         $this->assertSame([$serverA->id], array_values(array_column($export['mcp_tool_call_audit'], 'mcp_server_id')));
     }
 
+    public function test_it_exports_mcp_audit_rows_written_by_the_package_via_actor(): void
+    {
+        // v7.0/W6.3 — mirror of the deleter regression. The package
+        // writes `user_id=NULL` + opaque `actor`; the exporter MUST
+        // surface those rows so the DSAR Art. 15 dossier is complete.
+        $user = $this->makeUser();
+        app(TenantContext::class)->set('tenant-a');
+
+        $server = McpServer::query()->create([
+            'tenant_id' => 'tenant-a',
+            'name' => 'pkg-server',
+            'transport' => 'http',
+            'endpoint' => 'https://example.test/mcp',
+            'status' => 'active',
+            'created_by' => $user->id,
+        ]);
+
+        $rowBareId = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => (string) $user->id,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'alpha'],
+            'result_hash' => str_repeat('a', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $rowPrefixedId = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => 'user:'.$user->id,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'beta'],
+            'result_hash' => str_repeat('b', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $rowEmail = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => $user->email,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'gamma'],
+            'result_hash' => str_repeat('c', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => null,
+            'actor' => 'system',
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'delta'],
+            'result_hash' => str_repeat('d', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        $export = app(AskMyDocsUserDataExporter::class)->export($user);
+
+        $exportedIds = array_values(array_column($export['mcp_tool_call_audit'], 'id'));
+        $this->assertContains($rowBareId->id, $exportedIds);
+        $this->assertContains($rowPrefixedId->id, $exportedIds);
+        $this->assertContains($rowEmail->id, $exportedIds);
+        // `system` actor is NOT the user — must NOT appear in the user's
+        // export dossier.
+        $this->assertCount(3, $exportedIds);
+    }
+
     public function test_it_rejects_objects_without_a_positive_integer_id(): void
     {
         $this->expectException(\InvalidArgumentException::class);

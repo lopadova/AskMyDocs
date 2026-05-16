@@ -128,6 +128,69 @@ final class McpToolCallAuditControllerTest extends TestCase
         $this->actingAs($super)->getJson('/api/admin/mcp-tool-call-audit')->assertOk();
     }
 
+    public function test_admin_can_filter_by_spa_canonical_server_id_param(): void
+    {
+        // v7.0/W6.3 — the SPA filter bar sends `server_id` (its
+        // canonical FE name); the controller used to validate only
+        // `mcp_server_id` so the server filter was a silent no-op
+        // in the admin audit view. The validator now accepts both.
+        $admin = $this->makeAdmin();
+        $serverA = $this->createServer($admin, ['name' => 'spa-server-a']);
+        $serverB = $this->createServer($admin, ['name' => 'spa-server-b']);
+
+        $rowA = $this->createAuditRow($admin, $serverA, McpToolCallAudit::STATUS_OK, 'tool-a');
+        $this->createAuditRow($admin, $serverB, McpToolCallAudit::STATUS_OK, 'tool-b');
+
+        $rows = $this->actingAs($admin)
+            ->getJson("/api/admin/mcp-tool-call-audit?server_id={$serverA->id}")
+            ->assertOk()
+            ->json('data');
+
+        $this->assertCount(1, $rows);
+        $this->assertSame((int) $rowA->id, (int) $rows[0]['id']);
+    }
+
+    public function test_response_carries_pagination_meta_and_flat_user_server_fields(): void
+    {
+        // v7.0/W6.3 — the SPA reads `meta.{total,per_page,current_page,last_page}`
+        // for the pager AND `row.user_name` / `row.mcp_server_name`
+        // for the table columns. The controller used to return only
+        // `data` (no meta) and only the nested `user`/`mcp_server`
+        // shape, so the SPA pager broke and the columns rendered '—'.
+        $admin = $this->makeAdmin();
+        $server = $this->createServer($admin, ['name' => 'flat-server']);
+        $this->createAuditRow($admin, $server, McpToolCallAudit::STATUS_OK, 'first');
+        $this->createAuditRow($admin, $server, McpToolCallAudit::STATUS_OK, 'second');
+        $this->createAuditRow($admin, $server, McpToolCallAudit::STATUS_OK, 'third');
+
+        $response = $this->actingAs($admin)
+            ->getJson('/api/admin/mcp-tool-call-audit?page=1&per_page=2')
+            ->assertOk();
+
+        $response->assertJsonStructure([
+            'data' => [
+                '*' => [
+                    'id', 'status', 'tool_name', 'duration_ms', 'result_hash',
+                    'user_id', 'user_name', 'mcp_server_id', 'mcp_server_name',
+                    'user' => ['id', 'name'],
+                    'mcp_server' => ['id', 'name'],
+                ],
+            ],
+            'meta' => ['total', 'per_page', 'current_page', 'last_page'],
+        ]);
+
+        $this->assertSame(3, $response->json('meta.total'));
+        $this->assertSame(2, $response->json('meta.per_page'));
+        $this->assertSame(1, $response->json('meta.current_page'));
+        $this->assertSame(2, $response->json('meta.last_page'));
+
+        $row = $response->json('data.0');
+        $this->assertSame($admin->name, $row['user_name']);
+        $this->assertSame('flat-server', $row['mcp_server_name']);
+        $this->assertSame((int) $admin->id, (int) $row['user_id']);
+        $this->assertSame((int) $server->id, (int) $row['mcp_server_id']);
+    }
+
     public function test_cross_tenant_audit_rows_are_hidden(): void
     {
         $admin = $this->makeAdmin();
