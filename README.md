@@ -286,6 +286,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | External Patent Box dossier tool | `padosoft/laravel-patent-box-tracker` v0.1 generates audit-grade Italian Patent Box dossiers; **deliberately NOT in AskMyDocs `composer.json`** — operators install it in a separate Laravel project (R37 standalone-agnostic) and consume `tools/patent-box/2026.yml` from this repo. Commercialista-validated 2026-05-02 | v4.0 |
 | Connector framework + 7 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 7 native connectors: `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (all inline for v4.5; extracted to `padosoft/askmydocs-connector-*` packages in v4.6 per ADR 0008 D1) | v4.5 |
 | **MCP client framework** | AskMyDocs as MCP **CLIENT** (outward direction) — tenant-scoped `McpServerRegistry` + `McpToolCallingService` orchestrates multi-turn tool-calling loops (max 3 iterations, configurable); `McpToolAuthorizer` gates per-user/per-server/per-tool access; v7.0/W6.3.B retired the v5.0 Node sidecar and now drives JSON-RPC directly over native HTTP / SSE / stdio transports via `padosoft/askmydocs-mcp-pack`; `McpHandshakeService` persists initialize+tools/list under `mcp_servers.handshake_response_json`; immutable audit trail in `mcp_tool_call_audit` (with `transport_error` status when the upstream connection is unreachable but not timing out); admin API for server CRUD + handshake + tool-list management; `AI_AGENTIC_ENABLED` master switch; OpenAI + OpenRouter providers wire tool schemas automatically | v5.0 |
+| **MCP admin web panel** (optional companion) | Standalone Laravel package `padosoft/askmydocs-mcp-pack-admin` ships a React SPA that cross-mounts under `/admin/mcp-pack` and surfaces every MCP-side capability above through 12 routes (Dashboard, Servers list + new-server wizard, per-server detail with 7 tabs, Tools matrix + try-it, Resources tree, Prompts playground, Audit log + drilldown, Circuit breakers, OpenAPI explorer, Settings, Help). v1.0.x renders bundled fixture data (12-route design preview); v1.1 wires the same UI to the live `GET /api/admin/mcp-pack/*` surface the parent `mcp-pack` v1.4 already exposes. Composer-discoverable, RBAC-gated, dark+light themed — see [Optional: mount the MCP admin web panel](#optional-mount-the-mcp-admin-web-panel) | v7.0 |
 
 ### Quality & Observability
 
@@ -391,6 +392,42 @@ Every environment variable is documented inline in
 [`config/admin.php`](config/admin.php),
 [`config/laravel-flow.php`](config/laravel-flow.php),
 [`config/eval-harness.php`](config/eval-harness.php).
+
+### Optional: mount the MCP admin web panel
+
+The MCP client framework (v5.0+) is exposed through the parent host
+admin under `/app/admin` with a server-list page and chat-time
+tool-call UI. For a richer single-pane-of-glass view dedicated to the
+MCP fleet (12 routes — fleet table, three-step new-server wizard,
+seven-tab per-server detail, tools matrix + try-it, three-pane resource
+tree, prompt playground, audit drilldown, circuit-breaker grid,
+OpenAPI explorer, settings + tour), install the standalone companion
+package:
+
+```bash
+composer require padosoft/askmydocs-mcp-pack-admin:^1.0
+# Service provider auto-discovers via composer.json::extra.laravel.providers
+# Pre-built SPA bundle ships inside vendor/padosoft/askmydocs-mcp-pack-admin/public/vendor/mcp-pack-admin/
+# Publish the assets so Laravel can serve them at /vendor/mcp-pack-admin/:
+php artisan vendor:publish --tag=mcp-pack-admin-assets --force
+# Optionally override the mount prefix (default: /admin/mcp-pack)
+php artisan vendor:publish --tag=mcp-pack-admin-config
+```
+
+Then sign in as a `super-admin` and open
+`http://localhost:8000/admin/mcp-pack`.
+
+> **Status note (v1.0.x):** the panel is design-complete (every route +
+> every interactive control wired) and ships a deterministic fixture
+> bundle (`SERVERS` / `TOOLS` / `AUDIT` / `BREAKERS` / `RESOURCES` /
+> `PROMPTS`) so reviewers + designers can navigate the full UX before
+> committing to a deployment. The wire-up to the live
+> `GET /api/admin/mcp-pack/*` surface that the parent `mcp-pack` v1.4
+> already exposes lands in `padosoft/askmydocs-mcp-pack-admin` **v1.1**.
+> Mount the v1.0 line today to lock the look-and-feel and validate
+> RBAC + cross-mount; flip to live data with `composer update
+> padosoft/askmydocs-mcp-pack-admin` once v1.1 ships — no host changes
+> required.
 
 ### Enabling AI Act compliance features (junior-proof)
 
@@ -742,7 +779,7 @@ feature.
 | `padosoft/laravel-patent-box-tracker` v0.1 | Italian Patent Box dossier auto-generator | ❌ external by design — operators install in a separate Laravel project; AskMyDocs ships `tools/patent-box/2026.yml` as input | [github](https://github.com/padosoft/laravel-patent-box-tracker) |
 | **Connectors** (8 packages, v4.6 extraction) — `padosoft/askmydocs-connector-base` v1.1.1 + `-google-drive` v1.0.1 + `-notion` v1.0.1 + `-evernote` v1.0.0 + `-fabric` v1.0.0 + `-onedrive` v1.0.0 + `-confluence` v1.0.0 + `-jira` v1.0.0 | Framework primitives + 7 standalone external-source connectors (OAuth2 + sync + source-aware markdown rendering) — each `composer require`-able; auto-discovered via `composer.json::extra.askmydocs.connectors`; talk to AskMyDocs through the `ConnectorIngestionContract` IoC bridge | ✅ wired since v4.6 W4 — `HostIngestionBridge` implements the contract (dispatch / path resolve / PII redact / audit / soft-delete by remote-id); inline `app/Connectors/BuiltIn/` from v4.5 fully replaced | [base](https://github.com/padosoft/askmydocs-connector-base) · [google-drive](https://github.com/padosoft/askmydocs-connector-google-drive) · [notion](https://github.com/padosoft/askmydocs-connector-notion) · [evernote](https://github.com/padosoft/askmydocs-connector-evernote) · [fabric](https://github.com/padosoft/askmydocs-connector-fabric) · [onedrive](https://github.com/padosoft/askmydocs-connector-onedrive) · [confluence](https://github.com/padosoft/askmydocs-connector-confluence) · [jira](https://github.com/padosoft/askmydocs-connector-jira) |
 | `padosoft/askmydocs-mcp-pack` v1.0.1 | Framework-agnostic MCP (Model Context Protocol) plumbing for Laravel — 6 contracts + multi-turn tool-calling orchestrator + stdio/HTTP transports + hash-only audit + RBAC hooks; standalone, zero AskMyDocs dependencies; 42 tests across 7 CI cells (PHP 8.3 × Laravel 11/12/13, PHP 8.4 × Laravel 11/12/13, PHP 8.5 × Laravel 13 only) | ✅ shipped 2026-05-15 (v7.0/W1.A) — v1.1 (SSE + resources + prompts) / v1.2 (server-side) / v1.3 (circuit breaker + retry budget) / v1.4 (admin REST API surface) ship next as v7.0/W2-W5; AskMyDocs host integration over the COMPLETE v1.4 surface lands as v7.0/W6 (the existing `app/Mcp/Client/*` services keep running until then) | [github](https://github.com/padosoft/askmydocs-mcp-pack) |
-| `padosoft/askmydocs-mcp-pack-admin` v1.0.0 | Standalone React SPA companion — server CRUD + handshake + tool catalog + paginated audit log + circuit-breaker dashboard, consuming the v1.4 REST routes the main package exposes. Cross-mounts under `/admin/mcp-pack` exactly like `pii-redactor-admin` / `flow-admin` / `eval-harness-ui` | ✅ shipped 2026-05-17 — 50 files (~6,140 LoC TS/TSX + 2,005 LoC CSS), 12 routes via react-router-dom v6, 16 real-backend Playwright scenarios per R13, 9/9 CI cells green (PHP 8.3/8.4/8.5 × Laravel 11/12/13 + Vitest + Playwright), auto-registered via `composer.json::extra.laravel.providers` | [github](https://github.com/padosoft/askmydocs-mcp-pack-admin) |
+| `padosoft/askmydocs-mcp-pack-admin` v1.0.1 | Standalone React SPA companion — 12 routes covering server CRUD, handshake, tool catalog, paginated audit log, circuit-breaker dashboard, three-pane resources browser, prompt playground, OpenAPI explorer, settings + tour. Cross-mounts under `/admin/mcp-pack` exactly like `pii-redactor-admin` / `flow-admin` / `eval-harness-ui` | ✅ scaffold shipped 2026-05-17 — 50 files (~6,140 LoC TS/TSX + 2,005 LoC CSS), 12 routes via react-router-dom v6, **15 Playwright scenarios against bundled fixture data** (`resources/js/lib/data.ts` — `SERVERS` / `TOOLS` / `AUDIT` / `BREAKERS` / `RESOURCES` / `PROMPTS` / `TENANTS` / `ME` / `API_KEYS`), 9/9 CI cells green (PHP 8.3/8.4/8.5 × Laravel 11/12/13 + Vitest + Playwright), auto-registered via `composer.json::extra.laravel.providers`. **v1.1 will wire the SPA to the live v1.4 REST surface** (`GET /api/admin/mcp-pack/servers` + handshake action + audit list/detail + SSE event stream + circuit-breaker reset); v1.0.x is design-complete and host-mountable but the panel still renders deterministic fixtures so it stays demoable before the wire-up | [github](https://github.com/padosoft/askmydocs-mcp-pack-admin) |
 | `padosoft/laravel-ai-act-compliance` + `-admin` | EU AI Act compliance pack: DSAR, **pluggable bias-metric registry** (DemographicParity / EqualizedOdds / Calibration), risk register, FRIA (Art. 27), human-review tracker, incident state machine, consent + disclosure middleware, cybersecurity middleware stack, Article 30 attestation PDF, **cohort-drift real-time alerting cascade** (Slack → Discord → always-CC email; throttle + circuit breaker + severity-escalation bypass), **EU AI Act regulatory-feed auto-flagger** (RSS + Atom, XXE-safe), **DPO multi-org tenant registry** + per-tenant config overrides + cross-tenant overview; companion admin SPA cross-mounts under `/admin/ai-act-compliance` (host cross-mount infrastructure shipped in v6.0; v6.1 brings 3 additional screens via the package upgrade) with 12 fully-featured screens (Overview / DSAR / Consent / Risks / FRIA / Incidents / Bias / DPO / Settings / **Alerts** / **Regulatory** / **Tenants**) | v1.5.0 — Packagist ✅ | v6.0–v6.1 |
 
 See [`docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md`](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md)
