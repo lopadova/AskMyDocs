@@ -25,6 +25,10 @@ return new class extends Migration
                 ['tenant_id', 'user_id', 'event_type', 'channel'],
                 'uq_notif_prefs_tenant_user_event_channel',
             );
+            $table->index(
+                ['tenant_id', 'event_type', 'channel', 'enabled'],
+                'idx_notif_prefs_dispatcher_lookup',
+            );
         });
     }
 

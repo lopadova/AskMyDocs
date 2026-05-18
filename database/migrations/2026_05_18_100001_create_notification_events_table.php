@@ -32,8 +32,8 @@ use Illuminate\Support\Facades\Schema;
  * alongside the prune command).
  *
  * Indexes:
- *  - `(tenant_id, user_id, read_at)` — bell unread counter / list
- *  - `(tenant_id, user_id, dismissed_at)` — dismissed filter
+ *  - `(tenant_id, user_id, dismissed_at, read_at, created_at)` — bell
+ *    unread + undismissed hot path, newest first
  *  - `(tenant_id, event_type)` — admin panel filter by event
  *  - `(tenant_id, created_at)` — pruning sweep
  */
@@ -55,18 +55,23 @@ return new class extends Migration
             $table->timestamp('dismissed_at')->nullable();
             $table->timestamps();
 
+            // Bell hot path: "unread + undismissed for THIS user
+            // in THIS tenant, newest first". The composite covers
+            // every predicate the W1.4 query will carry, in the
+            // order the planner uses, so the unread-badge count and
+            // the dropdown's top-N read both hit one index without
+            // a sort step.
             $table->index(
-                ['tenant_id', 'user_id', 'read_at'],
-                'idx_notif_events_tenant_user_read',
+                ['tenant_id', 'user_id', 'dismissed_at', 'read_at', 'created_at'],
+                'idx_notif_events_bell_hot_path',
             );
-            $table->index(
-                ['tenant_id', 'user_id', 'dismissed_at'],
-                'idx_notif_events_tenant_user_dismissed',
-            );
+            // Admin panel filter "all events of type X in tenant Y".
             $table->index(
                 ['tenant_id', 'event_type'],
                 'idx_notif_events_tenant_event',
             );
+            // Retention sweep: `notifications:prune` walks oldest
+            // rows per tenant.
             $table->index(
                 ['tenant_id', 'created_at'],
                 'idx_notif_events_tenant_created',

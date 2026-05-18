@@ -44,8 +44,16 @@ class NotificationEvent extends Model
     public const EVENT_KB_DOC_MODIFIED = 'kb_doc_modified';
     public const EVENT_KB_CANONICAL_PROMOTED = 'kb_canonical_promoted';
     public const EVENT_KB_DECISION_DEBT_THRESHOLD = 'kb_decision_debt_threshold';
-    public const EVENT_WEEKLY_DIGEST = 'weekly_digest';
     public const EVENT_COLLECTION_NEW_MEMBER = 'collection_new_member';
+
+    // Intentionally NO `EVENT_WEEKLY_DIGEST` constant: the aggregated
+    // weekly digest is persisted in `notification_digests`, not as
+    // notification_events rows. The W2 digest dispatcher reads the
+    // digest payload from that table, renders an email, and ships it
+    // via the email channel — without ever inserting an event row.
+    // Subscribed-user notifications about a digest being available
+    // (if added in the future) will use a distinct, narrowly-named
+    // event type rather than a colliding `weekly_digest` label.
 
     protected $table = 'notification_events';
 

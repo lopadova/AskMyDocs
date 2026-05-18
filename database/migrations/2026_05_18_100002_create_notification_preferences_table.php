@@ -49,6 +49,14 @@ return new class extends Migration
                 ['tenant_id', 'user_id', 'event_type', 'channel'],
                 'uq_notif_prefs_tenant_user_event_channel',
             );
+            // W2 dispatcher hot path: "for this (tenant, event,
+            // channel), which users have it enabled?" — drives the
+            // recipient set on every event fire. The composite
+            // index avoids a per-user scan across the matrix.
+            $table->index(
+                ['tenant_id', 'event_type', 'channel', 'enabled'],
+                'idx_notif_prefs_dispatcher_lookup',
+            );
         });
     }
 

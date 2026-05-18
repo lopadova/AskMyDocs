@@ -132,13 +132,17 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 - **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v8.0 — defer Reverb a v8.x se serve).
 - **Consequences:** schema nuovo per 3 tabelle; tutti gli event publisher esistenti vanno wirati a `KbDocumentChanged` / `KbCanonicalPromoted` etc. via Listener; default-policy in `config/askmydocs.php` editabile da tenant-admin; `notifications:prune` aggiunto come 13° slot scheduler default 90gg.
 
-**Task W1.1 — Schema + Models + Migrations**
-- **Obiettivo:** creare tabelle + Eloquent model + factory.
-- **Cosa fa:** migration `2026_xx_xx_create_notification_events_table` con (id, tenant_id, user_id?, event_type, payload JSON, channel_dispatch_log JSON, created_at, read_at?, dismissed_at?), migration `notification_preferences` (id, tenant_id, user_id, event_type, channel, enabled BOOL, updated_at, UNIQUE(user_id, event_type, channel)), migration `notification_digests` (id, tenant_id, week_start_date, payload JSON, sent_at?, recipients_count, UNIQUE(tenant_id, week_start_date)). Aggiungi `tenant_id` con `BelongsToTenant` trait (R31). Composite uniques iniziano da `tenant_id`. Factory + seeder demo.
+**Task W1.1 — Schema + Models + Migrations** (✅ shipped commit `aee622d` su `feature/v8.0-W1.1-notif-schema` — PR #188)
+- **Obiettivo:** creare tabelle + Eloquent model.
+- **Cosa fa:** tre nuove migration con `tenant_id` mandatory (R31) + `timestamps()` su tutte:
+  - `notification_events`: `id`, `tenant_id`, `user_id` nullable + FK cascade su `users`, `event_type`, `payload` JSON, `channel_dispatch_log` JSON nullable, `read_at?`, `dismissed_at?`, `timestamps()`. Composite index `(tenant_id, user_id, dismissed_at, read_at, created_at)` per la bell-hot-path + `(tenant_id, event_type)` per admin filter + `(tenant_id, created_at)` per retention sweep.
+  - `notification_preferences`: `id`, `tenant_id`, `user_id` NOT NULL + FK cascade, `event_type`, `channel`, `enabled` BOOL default true, `timestamps()`. `UNIQUE(tenant_id, user_id, event_type, channel)` (idempotent upsert) + index `(tenant_id, event_type, channel, enabled)` per il dispatcher lookup di W2.
+  - `notification_digests`: `id`, `tenant_id`, `week_start_date` date, `payload` JSON, `sent_at?`, `recipients_count` unsigned int default 0, `timestamps()`. `UNIQUE(tenant_id, week_start_date)`. **Nessun `user_id`** — digest è per-tenant, fan-out ai recipient avviene al render dell'email in W2.
+  - I 3 model usano `BelongsToTenant` trait. Composite uniques iniziano sempre da `tenant_id` (R30).
 - **Acceptance gate:**
-  - `php artisan migrate:fresh --seed` verde
-  - Architecture test `tenants/Architecture/TenantIdMandatoryTest` enumera 3 nuovi model
-  - PHPUnit feature test crea evento, legge, mark-read, dismiss
+  - `php artisan migrate:fresh` verde (no seeder dedicato in W1.1)
+  - Architecture test `tests/Architecture/TenantIdMandatoryTest` enumera 3 nuovi model
+  - PHPUnit feature test crea evento, legge, mark-read, dismiss + cross-tenant coexistence + composite-unique enforcement
 
 **Task W1.2 — Event publisher wiring**
 - **Obiettivo:** ogni mutazione interessante emette un Laravel event.
@@ -566,9 +570,10 @@ php artisan tinker
 
 # 9. Notification end-to-end
 php artisan tinker
+> $tenantId = app(\App\Support\TenantContext::class)->current();
 > event(new App\Events\KbDocumentChanged(KnowledgeDocument::first()));
-> NotificationEvent::latest()->first()
-# expected: row creata per ogni user iscritto a kb_doc_modified
+> NotificationEvent::forTenant($tenantId)->latest()->first()
+# expected: row creata per ogni user iscritto a kb_doc_modified (R30 — tenant-scoped read)
 
 # 10. Decision-debt heatmap end-to-end
 php artisan kb:health-recompute --tenant=test-tenant

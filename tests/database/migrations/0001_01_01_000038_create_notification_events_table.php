@@ -25,12 +25,8 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(
-                ['tenant_id', 'user_id', 'read_at'],
-                'idx_notif_events_tenant_user_read',
-            );
-            $table->index(
-                ['tenant_id', 'user_id', 'dismissed_at'],
-                'idx_notif_events_tenant_user_dismissed',
+                ['tenant_id', 'user_id', 'dismissed_at', 'read_at', 'created_at'],
+                'idx_notif_events_bell_hot_path',
             );
             $table->index(
                 ['tenant_id', 'event_type'],

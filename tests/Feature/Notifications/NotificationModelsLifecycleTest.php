@@ -89,14 +89,23 @@ final class NotificationModelsLifecycleTest extends TestCase
 
     public function test_event_user_id_can_be_null_for_tenant_wide_events(): void
     {
+        // Use a non-digest event type — the weekly digest aggregate
+        // lives in `notification_digests`, NOT in this table, so
+        // there is no `EVENT_WEEKLY_DIGEST` constant on the model.
+        // The tenant-wide-event branch is exercised here with a
+        // generic decision-debt threshold event the dispatcher fires
+        // once at the org level (e.g. for the tenant DPO inbox).
         $event = NotificationEvent::create([
             'user_id' => null,
-            'event_type' => NotificationEvent::EVENT_WEEKLY_DIGEST,
-            'payload' => ['week' => '2026-W20'],
+            'event_type' => NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD,
+            'payload' => ['threshold_score' => 80, 'doc_count' => 5],
         ]);
 
         $this->assertNull($event->user_id);
-        $this->assertSame(NotificationEvent::EVENT_WEEKLY_DIGEST, $event->event_type);
+        $this->assertSame(
+            NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD,
+            $event->event_type,
+        );
     }
 
     public function test_event_cascades_when_user_force_deleted(): void
@@ -186,6 +195,27 @@ final class NotificationModelsLifecycleTest extends TestCase
             'payload' => ['created' => ['doc-1'], 'modified' => []],
             'recipients_count' => 0,
         ]);
+    }
+
+    public function test_digest_same_week_can_coexist_across_tenants(): void
+    {
+        app(TenantContext::class)->set('tenant-a');
+        $a = NotificationDigest::create([
+            'week_start_date' => '2026-05-18',
+            'payload' => ['created' => ['doc-a-1']],
+            'recipients_count' => 0,
+        ]);
+
+        app(TenantContext::class)->set('tenant-b');
+        $b = NotificationDigest::create([
+            'week_start_date' => '2026-05-18',
+            'payload' => ['created' => ['doc-b-1']],
+            'recipients_count' => 0,
+        ]);
+
+        $this->assertNotSame($a->id, $b->id);
+        $this->assertSame('tenant-a', $a->tenant_id);
+        $this->assertSame('tenant-b', $b->tenant_id);
     }
 
     public function test_digest_payload_roundtrips_and_sent_at_caster(): void
