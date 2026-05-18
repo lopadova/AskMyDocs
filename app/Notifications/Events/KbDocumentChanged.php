@@ -9,10 +9,25 @@ use App\Models\NotificationEvent;
 /**
  * v8.0/W1.2 — fired when a KB document is created or modified.
  *
- * Publisher: `IngestDocumentJob` on successful ingestion. The
- * payload carries `doc_id`, `title`, `project_key`, `change`
- * (`'created'`|`'modified'`), and `source_path` so downstream
- * channels can render a human-readable line without re-querying.
+ * Publisher: the `KnowledgeDocument::created` Eloquent hook registered
+ * in `NotificationServiceProvider::wireDomainPublishers()`. The hook
+ * fires for EVERY code path that ends up inserting a row (legacy
+ * `ingestMarkdown()` facade, polymorphic `ingest()`,
+ * `persistDrafts()` Flow step, future connectors) — no per-job /
+ * per-controller wiring to forget.
+ * `NotificationPublisher::publishKbDocumentChanged()` resolves the
+ * recipient set (filtered by project membership + per-document ACL)
+ * and constructs this event.
+ *
+ * Payload contract (downstream channel adapters can rely on these
+ * keys being present):
+ *   - `doc_id` (int) — `knowledge_documents.id`
+ *   - `project_key` (string)
+ *   - `source_path` (string)
+ *   - `title` (string|null) — the persisted `title` column
+ *   - `change` (`'created'`|`'modified'`) — `'modified'` when a prior
+ *     row exists for `(tenant_id, project_key, source_path)`,
+ *     otherwise `'created'`
  *
  * `eventType()` maps the `change` field to one of two distinct
  * notification event types: `'modified'` →

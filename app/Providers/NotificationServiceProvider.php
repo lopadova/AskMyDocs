@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
 use App\Notifications\ChannelRegistry;
+use App\Scopes\AccessScopeScope;
 use App\Notifications\Events\BaseNotificationEvent;
 use App\Notifications\Events\CollectionNewMember;
 use App\Notifications\Events\KbCanonicalPromoted;
@@ -98,7 +99,20 @@ final class NotificationServiceProvider extends ServiceProvider
                     if ($tenantId === '' || $projectKey === '') {
                         return;
                     }
-                    $isModified = KnowledgeDocument::withTrashed()
+                    // R10 / R30 + Copilot PR #189: bypass
+                    // `AccessScopeScope` for this SYSTEM-side classification
+                    // lookup. The scope filters reads by the currently
+                    // authenticated user's project membership, but the
+                    // dispatcher runs in the context of whoever triggered
+                    // the ingest — which is often not authorized to see
+                    // prior versions (canonical predecessors, deny-ACL
+                    // rows, scope_allowlist mismatches). Without the
+                    // bypass a re-ingest by a user who can't read the
+                    // archived row gets misclassified as `'created'`
+                    // instead of `'modified'`. `withTrashed()` only
+                    // removes the SoftDeletes scope, not AccessScopeScope.
+                    $isModified = KnowledgeDocument::withoutGlobalScope(AccessScopeScope::class)
+                        ->withTrashed()
                         ->where('tenant_id', $tenantId)
                         ->where('project_key', $projectKey)
                         ->where('source_path', $document->source_path)
@@ -106,12 +120,8 @@ final class NotificationServiceProvider extends ServiceProvider
                         ->exists();
 
                     app(NotificationPublisher::class)->publishKbDocumentChanged(
-                        tenantId: $tenantId,
-                        projectKey: $projectKey,
-                        documentId: (int) $document->id,
-                        sourcePath: (string) $document->source_path,
-                        title: $document->title === null ? null : (string) $document->title,
-                        isModified: $isModified,
+                        $document,
+                        $isModified,
                     );
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::warning(

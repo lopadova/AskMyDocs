@@ -9,10 +9,29 @@ use App\Models\NotificationEvent;
 /**
  * v8.0/W1.2 — fired when a doc is promoted to canonical.
  *
- * Publisher: `CanonicalWriter::write()` on successful promote +
- * `KbPromotionController` on `POST /promotion/promote`. Payload
- * carries `doc_id`, `slug`, `canonical_type`, `promoted_by` (user
- * id of the editor / operator who triggered the promotion).
+ * Publisher: the `KbCanonicalAudit::created` Eloquent hook (filtered
+ * to `event_type='promoted'`) registered in
+ * `NotificationServiceProvider::wireDomainPublishers()`. The audit
+ * row is the canonical seam because `WriteCanonicalMarkdownStep`
+ * writes it inside the saga transaction — synchronous and
+ * flow-based promotions both end up there, so this event covers
+ * every promotion path without per-controller wiring.
+ * `NotificationPublisher::publishKbCanonicalPromoted()` resolves the
+ * recipient set (filtered by project membership).
+ *
+ * Payload contract (downstream channel adapters can rely on these
+ * keys being present):
+ *   - `project_key` (string)
+ *   - `doc_id` (string|null) — the canonical `doc_id` of the
+ *     promoted document, copied off the audit row
+ *   - `slug` (string|null)
+ *   - `promoted_by` (string|null) — the `kb_canonical_audit.actor`
+ *     identifier (`flow:kb.promote:write-markdown`, a user id,
+ *     `system`, etc.)
+ *
+ * `canonical_type` is NOT carried in the payload — the audit row
+ * does not store it, and the v8.0 baseline channel adapters do not
+ * need it for the rendered notification body.
  */
 final class KbCanonicalPromoted extends BaseNotificationEvent
 {

@@ -6,10 +6,13 @@ namespace Tests\Feature\Notifications;
 
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
+use App\Models\KnowledgeDocumentAcl;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\ChannelRegistry;
+use App\Notifications\NotificationPublisher;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -17,15 +20,19 @@ use Tests\Support\Notifications\RecordingChannel;
 use Tests\TestCase;
 
 /**
- * v8.0/W1.2 — production publisher bridge (NotificationServiceProvider
- * `wireDomainPublishers()`).
+ * v8.0/W1.2 — production publisher bridge
+ * (`NotificationServiceProvider::wireDomainPublishers()`).
  *
  * Pins that EVERY ingestion / promotion path that ends up creating a
  * `KnowledgeDocument` row or a `kb_canonical_audit` row with
- * `event_type='promoted'` fans out the matching `BaseNotificationEvent`
- * via the dispatcher, regardless of which code path triggered the
- * create() — addresses the "events are dead code in production"
- * Copilot finding on PR #189.
+ * `event_type='promoted'` fans out the matching
+ * `BaseNotificationEvent` via the dispatcher — provided the candidate
+ * subscriber has both an enabled preference AND project membership +
+ * row-level ACL covering the document. Addresses two Copilot findings
+ * on PR #189:
+ *   1. "events are dead code in production" (publisher wiring)
+ *   2. "recipient resolution leaks across project / ACL boundaries"
+ *      (project + ACL filter — pinned by the `ignores_*` scenarios)
  */
 final class NotificationPublisherTest extends TestCase
 {
@@ -42,28 +49,10 @@ final class NotificationPublisherTest extends TestCase
 
     public function test_knowledge_document_create_fires_kb_document_changed_to_subscribers(): void
     {
-        $subscriber = $this->makeUser('sub');
-        NotificationPreference::create([
-            'user_id' => $subscriber->id,
-            'event_type' => NotificationEvent::EVENT_KB_DOC_CREATED,
-            'channel' => NotificationPreference::CHANNEL_IN_APP,
-            'enabled' => true,
-        ]);
+        $subscriber = $this->makeMember('sub', 'proj-pub');
+        $this->enablePref($subscriber, NotificationEvent::EVENT_KB_DOC_CREATED);
 
-        KnowledgeDocument::create([
-            'project_key' => 'proj-pub',
-            'source_path' => 'docs/example.md',
-            'source_type' => 'markdown',
-            'title' => 'Example',
-            'mime_type' => 'text/markdown',
-            'language' => 'it',
-            'access_scope' => 'internal',
-            'status' => 'active',
-            'document_hash' => hash('sha256', 'example-1'),
-            'version_hash' => hash('sha256', 'example-1'),
-            'metadata' => [],
-            'indexed_at' => now(),
-        ]);
+        KnowledgeDocument::create($this->docAttributes('proj-pub', 'docs/example.md', 'example-1'));
 
         $row = NotificationEvent::sole();
         $this->assertSame(NotificationEvent::EVENT_KB_DOC_CREATED, $row->event_type);
@@ -74,62 +63,108 @@ final class NotificationPublisherTest extends TestCase
 
     public function test_knowledge_document_reingest_fires_modified_event(): void
     {
-        $subscriber = $this->makeUser('mod');
-        NotificationPreference::create([
-            'user_id' => $subscriber->id,
-            'event_type' => NotificationEvent::EVENT_KB_DOC_MODIFIED,
-            'channel' => NotificationPreference::CHANNEL_IN_APP,
-            'enabled' => true,
-        ]);
+        $subscriber = $this->makeMember('mod', 'proj-mod');
+        $this->enablePref($subscriber, NotificationEvent::EVENT_KB_DOC_MODIFIED);
 
         // First version — no subscriber for `created`, so no row.
-        KnowledgeDocument::create([
-            'project_key' => 'proj-mod',
-            'source_path' => 'docs/dec.md',
-            'source_type' => 'markdown',
-            'title' => 'Decision v1',
-            'mime_type' => 'text/markdown',
-            'language' => 'it',
-            'access_scope' => 'internal',
-            'status' => 'archived',
-            'document_hash' => hash('sha256', 'v1'),
-            'version_hash' => hash('sha256', 'v1'),
-            'metadata' => [],
-            'indexed_at' => now(),
-        ]);
-
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-mod', 'docs/dec.md', 'v1', 'archived')
+        );
         $this->assertSame(0, NotificationEvent::count());
 
         // Second version — same (project, source_path) → 'modified'.
-        KnowledgeDocument::create([
-            'project_key' => 'proj-mod',
-            'source_path' => 'docs/dec.md',
-            'source_type' => 'markdown',
-            'title' => 'Decision v2',
-            'mime_type' => 'text/markdown',
-            'language' => 'it',
-            'access_scope' => 'internal',
-            'status' => 'active',
-            'document_hash' => hash('sha256', 'v2'),
-            'version_hash' => hash('sha256', 'v2'),
-            'metadata' => [],
-            'indexed_at' => now(),
-        ]);
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-mod', 'docs/dec.md', 'v2', 'active', 'Decision v2')
+        );
 
         $row = NotificationEvent::sole();
         $this->assertSame(NotificationEvent::EVENT_KB_DOC_MODIFIED, $row->event_type);
         $this->assertSame('modified', $row->payload['change'] ?? null);
     }
 
+    public function test_publisher_ignores_users_without_project_membership(): void
+    {
+        // Subscriber has the preference but no project_memberships row
+        // covering 'proj-secret', so they MUST NOT receive the event.
+        $outsider = $this->makeUser('outsider');
+        $this->enablePref($outsider, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-secret', 'docs/secret.md', 'secret-1', 'active', 'Secret')
+        );
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
+    public function test_publisher_ignores_users_with_deny_acl_on_document(): void
+    {
+        // Pins the documented ACL contract on `KbDocumentChanged`:
+        // when the publisher's `hasDocumentAccess($doc, 'view')` check
+        // runs against a doc with a pre-existing deny ACL for the
+        // candidate user, that user is dropped from the recipient set.
+        //
+        // The test invokes `NotificationPublisher::publishKbDocumentChanged()`
+        // DIRECTLY (instead of triggering it via the `KnowledgeDocument::created`
+        // hook) for a reason: ACL rows are keyed by the document's PK,
+        // and the hook fires when a row is CREATED — at which point no
+        // ACL row can have referenced that PK yet. The realistic
+        // scenario the publisher must guard is a re-emission of the
+        // event (queue retry, manual replay, future audit-replay
+        // tooling) for a doc with a deny ACL already attached.
+        $member = $this->makeMember('blocked', 'proj-acl');
+        $this->enablePref($member, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        $document = KnowledgeDocument::create(
+            $this->docAttributes('proj-acl', 'docs/restricted.md', 'restricted-1', 'active', 'Restricted')
+        );
+
+        // First create already fanned out a `KbDocumentChanged(created)`
+        // event (subscriber was eligible at that moment). Reset so the
+        // assertion below measures the ACL filter only.
+        NotificationEvent::query()->delete();
+
+        KnowledgeDocumentAcl::create([
+            'knowledge_document_id' => $document->id,
+            'subject_type' => KnowledgeDocumentAcl::SUBJECT_USER,
+            'subject_id' => (string) $member->getKey(),
+            'permission' => KnowledgeDocumentAcl::PERMISSION_VIEW,
+            'effect' => KnowledgeDocumentAcl::EFFECT_DENY,
+        ]);
+
+        // Direct publisher invocation — bypasses the `created` hook so
+        // the ACL filter is actually exercised on the doc + ACL pair.
+        app(NotificationPublisher::class)->publishKbDocumentChanged($document, false);
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
+    public function test_publisher_ignores_users_in_a_different_project(): void
+    {
+        // Member belongs to project-A but the event fires for project-B —
+        // even though the preference matches the event_type, the member
+        // must not receive it.
+        $aMember = $this->makeMember('a-mem', 'proj-A');
+        $this->enablePref($aMember, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-B', 'docs/other.md', 'other-1', 'active', 'Other proj')
+        );
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
     public function test_kb_canonical_audit_promoted_fires_kb_canonical_promoted(): void
     {
-        $subscriber = $this->makeUser('promo');
-        NotificationPreference::create([
-            'user_id' => $subscriber->id,
-            'event_type' => NotificationEvent::EVENT_KB_CANONICAL_PROMOTED,
-            'channel' => NotificationPreference::CHANNEL_IN_APP,
-            'enabled' => true,
-        ]);
+        $subscriber = $this->makeMember('promo', 'proj-promo');
+        $this->enablePref($subscriber, NotificationEvent::EVENT_KB_CANONICAL_PROMOTED);
+
+        $this->makeCanonicalDocument('proj-promo', 'dec-cache-v2');
+        // Reset — the document create() already fanned out a
+        // KbDocumentChanged event (subscribers for that type are 0,
+        // but if any tested side-effects landed we want a clean
+        // baseline). No notification_events rows yet because the
+        // subscriber is only opted into the promoted event_type.
+        NotificationEvent::query()->delete();
 
         KbCanonicalAudit::create([
             'project_key' => 'proj-promo',
@@ -145,17 +180,66 @@ final class NotificationPublisherTest extends TestCase
         $row = NotificationEvent::sole();
         $this->assertSame(NotificationEvent::EVENT_KB_CANONICAL_PROMOTED, $row->event_type);
         $this->assertSame('dec-cache-v2', $row->payload['slug'] ?? null);
+        $this->assertSame('flow:kb.promote:write-markdown', $row->payload['promoted_by'] ?? null);
+    }
+
+    public function test_canonical_promoted_suppressed_when_underlying_document_missing(): void
+    {
+        // Audit row exists but no `knowledge_documents` row matches the
+        // doc_id/slug (force-deleted canonical, or audit emitted before
+        // the doc lands). Publisher MUST NOT leak slug/doc_id metadata
+        // to subscribers who can't be ACL-checked.
+        $subscriber = $this->makeMember('orphan', 'proj-orphan');
+        $this->enablePref($subscriber, NotificationEvent::EVENT_KB_CANONICAL_PROMOTED);
+
+        KbCanonicalAudit::create([
+            'project_key' => 'proj-orphan',
+            'doc_id' => 'dec-gone',
+            'slug' => 'dec-gone',
+            'event_type' => 'promoted',
+            'actor' => 'flow:kb.promote:write-markdown',
+            'before_json' => null,
+            'after_json' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
+    public function test_canonical_promoted_ignores_users_with_deny_acl(): void
+    {
+        $member = $this->makeMember('canon-blocked', 'proj-acl-canon');
+        $this->enablePref($member, NotificationEvent::EVENT_KB_CANONICAL_PROMOTED);
+        $document = $this->makeCanonicalDocument('proj-acl-canon', 'dec-blocked');
+
+        KnowledgeDocumentAcl::create([
+            'knowledge_document_id' => $document->id,
+            'subject_type' => KnowledgeDocumentAcl::SUBJECT_USER,
+            'subject_id' => (string) $member->getKey(),
+            'permission' => KnowledgeDocumentAcl::PERMISSION_VIEW,
+            'effect' => KnowledgeDocumentAcl::EFFECT_DENY,
+        ]);
+
+        NotificationEvent::query()->delete();
+
+        KbCanonicalAudit::create([
+            'project_key' => 'proj-acl-canon',
+            'doc_id' => 'dec-blocked',
+            'slug' => 'dec-blocked',
+            'event_type' => 'promoted',
+            'actor' => 'flow:kb.promote:write-markdown',
+            'before_json' => null,
+            'after_json' => null,
+            'metadata_json' => [],
+        ]);
+
+        $this->assertSame(0, NotificationEvent::count());
     }
 
     public function test_audit_with_non_promoted_event_type_does_not_fire_notification(): void
     {
-        $subscriber = $this->makeUser('noise');
-        NotificationPreference::create([
-            'user_id' => $subscriber->id,
-            'event_type' => NotificationEvent::EVENT_KB_CANONICAL_PROMOTED,
-            'channel' => NotificationPreference::CHANNEL_IN_APP,
-            'enabled' => true,
-        ]);
+        $subscriber = $this->makeMember('noise', 'proj-noise');
+        $this->enablePref($subscriber, NotificationEvent::EVENT_KB_CANONICAL_PROMOTED);
 
         KbCanonicalAudit::create([
             'project_key' => 'proj-noise',
@@ -171,27 +255,73 @@ final class NotificationPublisherTest extends TestCase
         $this->assertSame(0, NotificationEvent::count());
     }
 
-    public function test_no_subscribers_means_no_dispatcher_invocation(): void
+    public function test_canonical_promoted_ignores_users_in_other_projects(): void
     {
-        // Sanity: hook fires unconditionally on create, but
-        // resolveRecipients() returns [] → publisher early-exits
-        // and no notification_events row is inserted.
-        KnowledgeDocument::create([
-            'project_key' => 'proj-empty',
-            'source_path' => 'docs/empty.md',
-            'source_type' => 'markdown',
-            'title' => 'No Subscribers',
-            'mime_type' => 'text/markdown',
-            'language' => 'it',
-            'access_scope' => 'internal',
-            'status' => 'active',
-            'document_hash' => hash('sha256', 'empty'),
-            'version_hash' => hash('sha256', 'empty'),
-            'metadata' => [],
-            'indexed_at' => now(),
+        // Subscriber belongs to project-A; the canonical audit row is
+        // for project-B → publisher's project filter MUST skip them.
+        $aMember = $this->makeMember('a-canon', 'proj-A');
+        $this->enablePref($aMember, NotificationEvent::EVENT_KB_CANONICAL_PROMOTED);
+
+        $this->makeCanonicalDocument('proj-B', 'dec-b');
+        NotificationEvent::query()->delete();
+
+        KbCanonicalAudit::create([
+            'project_key' => 'proj-B',
+            'doc_id' => 'dec-b',
+            'slug' => 'dec-b',
+            'event_type' => 'promoted',
+            'actor' => 'flow:kb.promote:write-markdown',
+            'before_json' => null,
+            'after_json' => null,
+            'metadata_json' => [],
         ]);
 
         $this->assertSame(0, NotificationEvent::count());
+    }
+
+    public function test_no_subscribers_means_no_dispatcher_invocation(): void
+    {
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-empty', 'docs/empty.md', 'empty', 'active', 'No Subscribers')
+        );
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function docAttributes(
+        string $projectKey,
+        string $sourcePath,
+        string $hashSeed,
+        string $status = 'active',
+        string $title = 'Example',
+    ): array {
+        return [
+            'project_key' => $projectKey,
+            'source_path' => $sourcePath,
+            'source_type' => 'markdown',
+            'title' => $title,
+            'mime_type' => 'text/markdown',
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => $status,
+            'document_hash' => hash('sha256', $hashSeed),
+            'version_hash' => hash('sha256', $hashSeed),
+            'metadata' => [],
+            'indexed_at' => now(),
+        ];
+    }
+
+    private function enablePref(User $user, string $eventType): void
+    {
+        NotificationPreference::create([
+            'user_id' => $user->id,
+            'event_type' => $eventType,
+            'channel' => NotificationPreference::CHANNEL_IN_APP,
+            'enabled' => true,
+        ]);
     }
 
     private function makeUser(string $slug): User
@@ -201,5 +331,31 @@ final class NotificationPublisherTest extends TestCase
             'email' => "{$slug}-".uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
         ]);
+    }
+
+    private function makeMember(string $slug, string $projectKey): User
+    {
+        $user = $this->makeUser($slug);
+        ProjectMembership::create([
+            'user_id' => $user->id,
+            'project_key' => $projectKey,
+            'role' => 'member',
+            'scope_allowlist' => null,
+        ]);
+        return $user;
+    }
+
+    private function makeCanonicalDocument(string $projectKey, string $docId): KnowledgeDocument
+    {
+        return KnowledgeDocument::create(array_merge(
+            $this->docAttributes($projectKey, "canonical/{$docId}.md", "canonical-{$docId}", 'active', $docId),
+            [
+                'is_canonical' => true,
+                'doc_id' => $docId,
+                'slug' => $docId,
+                'canonical_type' => 'decision',
+                'canonical_status' => 'accepted',
+            ],
+        ));
     }
 }
