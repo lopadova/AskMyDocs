@@ -40,11 +40,19 @@ class NotificationEvent extends Model
 {
     use BelongsToTenant;
 
+    // Per-user fan-out events (one row per recipient, `user_id != null`).
     public const EVENT_KB_DOC_CREATED = 'kb_doc_created';
     public const EVENT_KB_DOC_MODIFIED = 'kb_doc_modified';
     public const EVENT_KB_CANONICAL_PROMOTED = 'kb_canonical_promoted';
-    public const EVENT_KB_DECISION_DEBT_THRESHOLD = 'kb_decision_debt_threshold';
     public const EVENT_COLLECTION_NEW_MEMBER = 'collection_new_member';
+
+    // Dual-mode event: the W2 dispatcher policy chooses per-user
+    // fan-out (one row per DPO / editor recipient) OR a single
+    // tenant-wide system row (`user_id == null`) depending on
+    // tenant configuration. Tests exercise BOTH read-state
+    // semantics here so the dispatcher contract has freedom to
+    // pick either path without a schema change.
+    public const EVENT_KB_DECISION_DEBT_THRESHOLD = 'kb_decision_debt_threshold';
 
     // Intentionally NO `EVENT_WEEKLY_DIGEST` constant: the aggregated
     // weekly digest is persisted in `notification_digests`, not as
