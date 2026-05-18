@@ -1062,6 +1062,84 @@ plain SemVer, NOT the RC convention.
 
 → See `.claude/skills/rc-tag-per-week-milestone/SKILL.md`.
 
+### R40 — Local critic loop (copilot-cli) BEFORE every push (v8.0+)
+
+Standing convention from **2026-05-18** (v8.0/W1.1 — Lorenzo decision
+post round-2 of PR #188). Every PR push from this point forward on
+`lopadova/AskMyDocs` and every `padosoft/*` repo MUST run a local
+copilot-cli pre-flight review BEFORE the push leaves the laptop.
+The R36 cloud loop stays mandatory but converges in 1-2 rounds
+instead of 5-15.
+
+**Tool**: GitHub Copilot CLI (`copilot --autopilot --yolo -p "<prompt>"`).
+`--autopilot` lets the agent run multi-step research autonomously;
+`--yolo` is shorthand for `--allow-all-tools --allow-all-paths`;
+`-p` is non-interactive prompt mode (single-shot).
+
+**Mandatory workflow per sub-PR**:
+
+1. **Local tests green first** (`vendor/bin/phpunit` + relevant
+   targeted suites). Standard pre-existing gate.
+2. **`copilot --autopilot --yolo -p <review-prompt>` against the
+   unstaged + uncommitted working tree** (or the last N commits
+   on the branch). The prompt MUST ask for: must-fix bugs / R-rule
+   compliance violations / contract drift between schema-models-
+   tests-docs / security issues (R21 + R30 + R31) / missing edge
+   coverage / migration safety. Skip nitpicks (formatting / comment
+   style — Copilot Code Review on GitHub will catch those if they
+   matter).
+3. **Fix every finding locally** (must-fix + should-fix). Re-run
+   tests after each fix.
+4. **Re-run `copilot --autopilot --yolo -p`** to verify the fixes
+   landed and to catch any new issues introduced by the fixes.
+   Loop until copilot-cli reports `0 must-fix, 0 should-fix`.
+5. **Only then push.** First push of a new sub-branch creates the
+   PR with `gh pr create --reviewer copilot-pull-request-reviewer`
+   per R36. Subsequent pushes re-request review via `gh pr edit
+   <N> --add-reviewer copilot-pull-request-reviewer` per R36.
+6. **R36 cloud loop runs as documented** on the now-much-cleaner
+   commits. Expected: 0-1 round of GitHub Copilot findings; rarely
+   2. If GitHub Copilot finds NEW issues that copilot-cli missed,
+   note the gap as a calibration signal (the local prompt needs to
+   ask harder questions for that class of finding).
+
+**Why mandatory**:
+- Wall-time win: ~6-10 min CI cycle × N fix rounds becomes 1-3 min
+  copilot-cli call × N (no CI burn, no waiting for the formal
+  Copilot review lag of 1-7 min). Established empirically on
+  PR #188: 6 findings caught locally that would have been 1-2
+  extra cloud rounds.
+- Quality win: multi-LLM diversity (the Anthropic-side coder doing
+  the work + the Copilot-side reviewer + the GitHub Copilot Code
+  Review bot) catches more than any single reviewer.
+- Cost win: ~1 copilot-cli premium request per round vs ~30 min of
+  human attention waiting on cloud cycles.
+
+**Anti-patterns**:
+- ❌ Push first, then run copilot-cli post-hoc on the cloud-mirrored
+  branch (defeats the wall-time saving; doesn't reduce GitHub
+  Copilot findings).
+- ❌ Skip copilot-cli because "the diff is small" — the discipline
+  is uniform; small diffs converge in seconds anyway.
+- ❌ Accept copilot-cli findings without fix and push regardless —
+  if copilot-cli finds it, GitHub Copilot will likely find it too,
+  and re-pushing fixes is more expensive than fixing pre-flight.
+- ❌ Run copilot-cli on a remote branch that has uncommitted local
+  changes — always commit-or-stash before; otherwise the agent
+  reviews a stale snapshot.
+
+**Calibration**: keep `feedback_local_critic_loop_before_push` memory
+file updated with examples of (issue found locally → would have hit
+cloud → counterfactual minutes saved) so the rule's ROI stays
+measurable session-over-session.
+
+**Scope**: every PR on `lopadova/AskMyDocs` from 2026-05-18 onward,
+and every PR on `padosoft/*` (current + future). Applies to
+docs-only PRs and CI-fix PRs too. Same exception clause as R36:
+the only acceptable skip is a documented hotfix where every minute
+of delay is operationally costly — and even then the local critic
+must run retroactively.
+
 ---
 
 ## 8. Testing & CI
@@ -1098,7 +1176,7 @@ plain SemVer, NOT the RC convention.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow the **twenty-two rules above (R1–R22)** before opening a PR —
+- Follow the **forty rules above (R1–R40)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the
