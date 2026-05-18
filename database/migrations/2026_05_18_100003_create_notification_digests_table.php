@@ -12,13 +12,15 @@ use Illuminate\Support\Facades\Schema;
  * Weekly aggregated digest payload per tenant (ADR 0012). One row
  * per (tenant, week_start_date). Populated incrementally by the
  * dispatcher: every event with delivery mode `aggregate` gets
- * upserted into the current week's payload instead of firing a
- * `NotifyUserJob` immediately.
+ * upserted into the current week's payload instead of firing an
+ * immediate notification job.
  *
- * The `BuildWeeklyDigestCommand` cron then renders the digest from
- * the aggregated payload and sends it via the email channel to
- * subscribed users. After delivery, `sent_at` and
- * `recipients_count` are updated.
+ * The future weekly-digest job (planned cycle slot
+ * `notifications:digest-weekly`, lands in W2 alongside the channel
+ * adapters) reads the aggregated payload, renders it, ships via
+ * the email channel to subscribed users, and stamps `sent_at` +
+ * `recipients_count` post-delivery. Until that job exists, rows
+ * here are write-only.
  *
  * Composite unique `(tenant_id, week_start_date)` makes the
  * incremental upsert idempotent.

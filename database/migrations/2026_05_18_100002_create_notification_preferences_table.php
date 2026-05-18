@@ -51,10 +51,13 @@ return new class extends Migration
             );
             // W2 dispatcher hot path: "for this (tenant, event,
             // channel), which users have it enabled?" — drives the
-            // recipient set on every event fire. The composite
-            // index avoids a per-user scan across the matrix.
+            // recipient set on every event fire. `user_id` as the
+            // trailing index column lets the planner return the
+            // recipient IDs from the index itself (covering scan)
+            // without a heap lookup for every enabled preference
+            // row — material on tenants with thousands of users.
             $table->index(
-                ['tenant_id', 'event_type', 'channel', 'enabled'],
+                ['tenant_id', 'event_type', 'channel', 'enabled', 'user_id'],
                 'idx_notif_prefs_dispatcher_lookup',
             );
         });

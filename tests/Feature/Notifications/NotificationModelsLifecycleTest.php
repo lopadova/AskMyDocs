@@ -123,6 +123,28 @@ final class NotificationModelsLifecycleTest extends TestCase
         $this->assertNull(NotificationEvent::find($eventId));
     }
 
+    public function test_preference_cascades_when_user_force_deleted(): void
+    {
+        // Mirror of the events cascade: the preferences table has its
+        // own FK `user_id → users(id) ON DELETE CASCADE`, and if the
+        // cascade were silently regressed at the schema level (e.g.
+        // CASCADE → SET NULL), the dispatcher would later try to
+        // deliver to a deleted user. Lock the contract here so the
+        // schema cannot regress without this test going red.
+        $user = $this->makeUser();
+        $pref = NotificationPreference::create([
+            'user_id' => $user->id,
+            'event_type' => NotificationEvent::EVENT_KB_DOC_CREATED,
+            'channel' => NotificationPreference::CHANNEL_EMAIL,
+            'enabled' => true,
+        ]);
+
+        $prefId = $pref->id;
+        $user->forceDelete();
+
+        $this->assertNull(NotificationPreference::find($prefId));
+    }
+
     public function test_preference_composite_unique_blocks_duplicate_tenant_user_event_channel(): void
     {
         $user = $this->makeUser();
@@ -241,15 +263,13 @@ final class NotificationModelsLifecycleTest extends TestCase
 
     private function makeUser(): User
     {
-        // `User` is intentionally NOT tenant-aware (cross-tenant
-        // identity — see `tests/Architecture/TenantIdMandatoryTest`
-        // excluded-on-purpose list). The `users` table carries a
-        // `tenant_id` column with `default('default')` so existing
-        // rows are queryable per-tenant, but the model does not
-        // include the field in `$fillable` and mass-assigning it
-        // here would be silently discarded. Keep this helper plain
-        // — the notification tests rely on the active
-        // `TenantContext`, not on a per-User binding.
+        // `User` is intentionally NOT tenant-aware: it represents a
+        // cross-tenant identity. The v3 multi-tenancy migration
+        // (`database/migrations/2026_04_28_000001_add_tenant_id_to_v3_tables.php`)
+        // EXCLUDES `users` / `roles` / `permissions` from the
+        // tenant_id column rollout, and `User::$fillable` omits it
+        // accordingly. The notification tests bind tenancy via the
+        // active `TenantContext`, never per-User.
         return User::create([
             'name' => 'notif-test-actor',
             'email' => 'notif-'.uniqid('', true).'@test.local',

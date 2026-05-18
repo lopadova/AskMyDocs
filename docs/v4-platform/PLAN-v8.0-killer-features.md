@@ -154,7 +154,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 - **Cosa fa:** interface in `app/Notifications/Channels/`. `InAppChannel::send($event, $user)` scrive in `notification_events`. `EmailChannel::send` usa `Mail::to($user)->queue(new NotificationMail($event))` con template MJML in `resources/views/emails/notification.blade.php` + unsubscribe link HMAC-signed per (tenant, user, event_type).
 - **Acceptance gate:** feature test fired → `Mail::fake()->assertQueued(NotificationMail::class)` + `notification_events` row visibile
 
-**Task W1.4 — Bell SPA + `/admin/notifications` panel**
+**Task W1.4 — Bell SPA + `/app/admin/notifications` panel**
 - **Obiettivo:** UI integrata nel host admin shell.
 - **Cosa fa:** componenti React `frontend/src/features/notifications/NotificationBell.tsx` (top-bar bell + unread badge + dropdown ultime 5) e `frontend/src/features/notifications/NotificationPanel.tsx` (full panel con tabs Unread/Read/Dismissed/All, filter per event_type, bulk mark-read). Polling 30s via TanStack Query (no WebSocket). Testid hierarchy per R29 (`notif-bell`, `notif-panel-tab-{state}`, `notif-row-{id}-mark-read`, etc.).
 - **Acceptance gate:**
@@ -182,14 +182,14 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 - **Cosa fa:** ogni adapter implementa `send($event, $user)`; rate-limit interno (10 msg/sec per canale via `RateLimiter::for('notif-discord')`); retry 3× con backoff [5,30,120]s; payload formato canonical webhook (Discord embed / Slack blocks / Teams adaptive card / generic webhook con HMAC `X-AskMyDocs-Signature`).
 - **Acceptance gate:** unit test per ogni adapter con `Http::fake()` → assertion sul body POST; retry test su 503; HMAC verify test per WebhookChannel
 
-**Task W2.2 — `/account/notifications` preferences grid**
+**Task W2.2 — `/app/account/notifications` preferences grid**
 - **Obiettivo:** UI per-user-per-event-per-channel toggle matrix.
 - **Cosa fa:** React component `NotificationPreferencesGrid.tsx` con righe = event_type, colonne = channel. Ogni cella = checkbox controlled. Bulk "enable all in row" / "enable all in column". Save via TanStack Query mutation, optimistic update con R25 dedupe pattern.
 - **Acceptance gate:**
   - Vitest unit con grid 6 event × 6 channel
   - Playwright happy: utente toggla 3 cell + bulk-enable colonna → reload pagina → state persistito
 
-**Task W2.3 — `/admin/notifications/defaults` tenant defaults**
+**Task W2.3 — `/app/admin/notifications/defaults` tenant defaults**
 - **Obiettivo:** tenant-admin imposta default per nuovi utenti.
 - **Cosa fa:** controller `AdminNotificationDefaultsController` espone GET/PUT su `config('askmydocs.notifications.defaults')` (tenant-overridden in `tenant_settings`). Quando un nuovo `User` viene creato, hook `User::created` popola `notification_preferences` dai default tenant.
 - **Acceptance gate:** feature test cambia default, crea nuovo user, asserta righe pref popolate

@@ -30,8 +30,20 @@ final class TenantIdMandatoryTest extends TestCase
     /**
      * Domain models that MUST be tenant-aware.
      *
-     * Sync with the table list in
-     * `database/migrations/2026_04_28_000001_add_tenant_id_to_v3_tables.php`.
+     * Two source authorities (the older v3 backfill + every newer
+     * cycle's own create-table migration):
+     *  - v3 backfill: `database/migrations/2026_04_28_000001_add_tenant_id_to_v3_tables.php`
+     *    enumerates the v3 domain tables that received `tenant_id` retroactively.
+     *  - v4.x..v8.x cycles: each create-table migration adds `tenant_id`
+     *    inline, so newer tenant-aware tables (workflows, mcp_servers,
+     *    notification_events, notification_preferences,
+     *    notification_digests, etc.) are NOT in the v3 backfill list and
+     *    are added directly to this enumeration when shipped.
+     *
+     * When adding a tenant-aware model to this list: also wire
+     * `use BelongsToTenant;` + `'tenant_id'` in `$fillable` on the model,
+     * and ensure the migration starts every composite unique with
+     * `tenant_id` (R30).
      */
     private const TENANT_AWARE_MODELS = [
         \App\Models\KnowledgeDocument::class,
