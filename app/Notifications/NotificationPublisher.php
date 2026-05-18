@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Notifications;
 
 use App\Models\KnowledgeDocument;
+use App\Models\KnowledgeDocumentAcl;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\ProjectMembership;
@@ -12,6 +13,7 @@ use App\Models\User;
 use App\Notifications\Events\KbCanonicalPromoted;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Scopes\AccessScopeScope;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
 /**
@@ -259,22 +261,17 @@ final class NotificationPublisher
         string $eventType,
         callable $filter,
     ): array {
-        $userIds = NotificationPreference::query()
-            ->where('tenant_id', $tenantId)
-            ->where('event_type', $eventType)
-            ->where('enabled', true)
-            ->distinct()
-            ->pluck('user_id')
-            ->all();
-
-        if ($userIds === []) {
-            return [];
-        }
-
         $eligible = [];
         User::query()
             ->withTrashed()
-            ->whereIn('id', $userIds)
+            ->whereExists(function ($query) use ($tenantId, $eventType): void {
+                $query->select(DB::raw(1))
+                    ->from('notification_preferences')
+                    ->whereColumn('notification_preferences.user_id', 'users.id')
+                    ->where('notification_preferences.tenant_id', $tenantId)
+                    ->where('notification_preferences.event_type', $eventType)
+                    ->where('notification_preferences.enabled', true);
+            })
             ->chunkById(
                 500,
                 function ($users) use (&$eligible, $filter): void {
@@ -318,16 +315,28 @@ final class NotificationPublisher
     }
 
     /**
-     * Tenant-aware per-document access check. `User::hasDocumentAccess()`
-     * does the ACL lookup by `knowledge_document_id` (tenant-safe via
-     * the doc's PK) and the scope_allowlist lookup via
-     * `User::allowedScopesFor($projectKey)` (which queries
-     * `project_memberships` without a tenant filter). Setting the
-     * `TenantContext` for the duration of the check would not help
-     * because the User methods don't consult TenantContext when
-     * querying memberships — so we mirror the tenant-correct
-     * membership lookup inline first, then defer to
-     * `hasDocumentAccess()` for the ACL + permission semantics.
+     * Tenant-aware per-document access check.
+     *
+     * Layered semantics (cheapest predicate first, short-circuit):
+     *   1. Global `kb.view.any` permission → allow (matches the
+     *      `AccessScopeScope` bypass on the read path).
+     *   2. Tenant-scoped project membership check
+     *      (`userHasProjectAccessInTenant`) — must pass before any
+     *      ACL evaluation runs.
+     *   3. INLINE ACL row evaluation (`evaluateAclForUser`) on
+     *      `knowledge_document_acl` for the user OR any of their
+     *      roles, scoped to the document's PK. Any matching deny →
+     *      reject; any matching allow → allow. Otherwise fall
+     *      through to membership-only allow.
+     *
+     * We deliberately do NOT delegate to `User::hasDocumentAccess()`:
+     * its scope_allowlist arm calls `User::allowedScopesFor()` which
+     * queries `project_memberships` WITHOUT a tenant_id predicate —
+     * same cross-tenant leak class as `User::allowedProjects()`.
+     * Implementing scope_allowlist tenant-safely would either need a
+     * new `User::allowedScopesForInTenant()` API or a duplicate of
+     * `matchesScope()` here; parked as a documented limitation in
+     * the class-level docblock.
      */
     private function userCanViewDocumentInTenant(
         User $user,
@@ -335,9 +344,51 @@ final class NotificationPublisher
         string $projectKey,
         KnowledgeDocument $document,
     ): bool {
+        if ($user->can('kb.view.any')) {
+            return true;
+        }
         if (! $this->userHasProjectAccessInTenant($user, $tenantId, $projectKey)) {
             return false;
         }
-        return $user->hasDocumentAccess($document, 'view');
+        return $this->evaluateAclForUser($user, $document) !== 'deny';
+    }
+
+    /**
+     * Inline mirror of `User::evaluateAclDecision()` (which is
+     * `private`) — returns `'deny'` if any matching deny ACL row
+     * exists, `'allow'` if at least one allow row matches with no
+     * deny, or `null` if no ACL row matches. The lookup is keyed by
+     * the document's PK so it is naturally tenant-safe.
+     *
+     * @return 'allow'|'deny'|null
+     */
+    private function evaluateAclForUser(User $user, KnowledgeDocument $document): ?string
+    {
+        $roleNames = $user->getRoleNames()->all();
+        $effects = DB::table('knowledge_document_acl')
+            ->where('knowledge_document_id', $document->getKey())
+            ->where('permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
+            ->where(function ($query) use ($user, $roleNames): void {
+                $query->where(function ($q) use ($user): void {
+                    $q->where('subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
+                        ->where('subject_id', (string) $user->getKey());
+                })->orWhere(function ($q) use ($roleNames): void {
+                    if ($roleNames === []) {
+                        $q->whereRaw('1=0');
+                        return;
+                    }
+                    $q->where('subject_type', KnowledgeDocumentAcl::SUBJECT_ROLE)
+                        ->whereIn('subject_id', $roleNames);
+                });
+            })
+            ->pluck('effect');
+
+        if ($effects->contains(KnowledgeDocumentAcl::EFFECT_DENY)) {
+            return 'deny';
+        }
+        if ($effects->contains(KnowledgeDocumentAcl::EFFECT_ALLOW)) {
+            return 'allow';
+        }
+        return null;
     }
 }
