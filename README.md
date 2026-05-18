@@ -208,8 +208,9 @@ AI_PROVIDER=openrouter
 # Embeddings provider. Must support embeddings (openai, gemini, regolo, openrouter).
 # Anthropic does NOT offer embeddings. OpenRouter exposes OpenAI-compatible
 # /v1/embeddings (since Oct 2025) routing openai/text-embedding-3-small (default)
-# and qwen/qwen3-embedding-4b. Leave empty to let AiManager auto-select the
-# first embeddings-capable provider with a configured API key:
+# and qwen/qwen3-embedding-4b. Leave empty to let AiManager reuse AI_PROVIDER
+# when the default chat provider supports embeddings; otherwise it falls back
+# to the first embeddings-capable provider with a configured API key in this order:
 # regolo → openai → gemini → openrouter.
 AI_EMBEDDINGS_PROVIDER=openai
 ```
