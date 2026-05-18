@@ -205,8 +205,12 @@ Config file: `config/ai.php`
 # Chat provider. Supported: openai, anthropic, gemini, openrouter, regolo
 AI_PROVIDER=openrouter
 
-# Embeddings provider. Must support embeddings (openai, gemini, regolo).
-# Anthropic and OpenRouter do NOT offer embeddings.
+# Embeddings provider. Must support embeddings (openai, gemini, regolo, openrouter).
+# Anthropic does NOT offer embeddings. OpenRouter exposes OpenAI-compatible
+# /v1/embeddings (since Oct 2025) routing openai/text-embedding-3-small (default)
+# and qwen/qwen3-embedding-4b. Leave empty to let AiManager auto-select the
+# first embeddings-capable provider with a configured API key:
+# regolo → openai → gemini → openrouter.
 AI_EMBEDDINGS_PROVIDER=openai
 ```
 
@@ -248,18 +252,24 @@ GEMINI_EMBEDDINGS_MODEL=text-embedding-004
 
 #### OpenRouter (multi-model gateway) — default
 
-OpenRouter proxies hundreds of models. It does not serve embeddings.
+OpenRouter proxies hundreds of models. Since Oct 2025 it also exposes an
+OpenAI-compatible `/v1/embeddings` endpoint, so it can serve both chat
+and embeddings from the same gateway. Default embedding model is
+`openai/text-embedding-3-small` (1536 dims — matches the default
+`KB_EMBEDDINGS_DIMENSIONS`, no re-index needed). Alternative
+`qwen/qwen3-embedding-4b` (2560 dims) requires resizing the pgvector
+column on `knowledge_chunks.embedding` + `embedding_cache.embedding`
+and re-indexing. Pair with a separate provider if you prefer.
 
 ```env
 AI_PROVIDER=openrouter
-AI_EMBEDDINGS_PROVIDER=openai
+AI_EMBEDDINGS_PROVIDER=openrouter
 
 OPENROUTER_API_KEY=sk-or-...
 OPENROUTER_CHAT_MODEL=openai/gpt-4o-mini
+OPENROUTER_EMBEDDINGS_MODEL=openai/text-embedding-3-small
 OPENROUTER_APP_NAME="AskMyDocs"
 OPENROUTER_SITE_URL=https://kb.example.com
-
-OPENAI_API_KEY=sk-...
 ```
 
 #### Regolo.ai (by Seeweb)

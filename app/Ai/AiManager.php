@@ -41,7 +41,7 @@ class AiManager
             if (! $provider->supportsEmbeddings()) {
                 throw new InvalidArgumentException(
                     "Provider [{$explicit}] does not support embeddings. "
-                    . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, or regolo.'
+                    . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, regolo, or openrouter.'
                 );
             }
 
@@ -70,8 +70,8 @@ class AiManager
         throw new InvalidArgumentException(
             "Provider [{$defaultName}] does not support embeddings and no "
             . 'fallback embeddings provider is configured. '
-            . 'Set AI_EMBEDDINGS_PROVIDER=openai|gemini|regolo and provide '
-            . 'the matching API key (OPENAI_API_KEY, GEMINI_API_KEY, REGOLO_API_KEY).'
+            . 'Set AI_EMBEDDINGS_PROVIDER=openai|gemini|regolo|openrouter and provide '
+            . 'the matching API key (OPENAI_API_KEY, GEMINI_API_KEY, REGOLO_API_KEY, OPENROUTER_API_KEY).'
         );
     }
 

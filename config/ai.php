@@ -25,7 +25,6 @@ return [
     |--------------------------------------------------------------------------
     |
     | Provider used specifically for generating embeddings. Must be a provider
-    | Provider used specifically for generating embeddings. Must be a provider
     | that supports embeddings (openai, gemini, regolo, openrouter). Anthropic
     | does NOT expose an embeddings endpoint. OpenRouter exposes an OpenAI-
     | compatible `/v1/embeddings` and routes both `openai/text-embedding-3-small`
