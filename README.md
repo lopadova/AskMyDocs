@@ -195,7 +195,7 @@ DB_PASSWORD=secret
 
 ### AI Provider
 
-The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw HTTP — full control over auth, retries, timeouts, and response parsing. Regolo is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
+The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::`, which keeps auth, retries, timeouts, and response parsing under our control. Regolo is the exception: it is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
 
 Config file: `config/ai.php`
 
