@@ -380,6 +380,16 @@ final class NotificationPublisher
      * `FNM_PATHNAME` so `*` matches a single path segment instead of
      * spanning `/` separators — `hr/*` should match `hr/policy.md`
      * but NOT `hr/policy/details.md` (per R19 input-escape complete).
+     *
+     * Intentional divergence from `User::matchesAnyGlob()`, which
+     * still calls `fnmatch()` without flags (the long-standing R19
+     * bug already flagged in CLAUDE.md and tracked as a follow-up at
+     * the User-layer). The publisher chooses the stricter behaviour
+     * because a false-POSITIVE notification (the user gets notified
+     * about a doc they can read via the broken-glob read path) is
+     * less harmful than a false-NEGATIVE (the user is denied a
+     * notification they SHOULD receive). Once the User-level R19 fix
+     * lands, both paths will agree without further changes here.
      */
     private function matchesAnyGlob(string $path, array $globs): bool
     {
