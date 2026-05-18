@@ -123,6 +123,20 @@ final class NotificationServiceProvider extends ServiceProvider
                         $document,
                         $isModified,
                     );
+                } catch (\Illuminate\Database\QueryException $e) {
+                    // Non-integrity DB errors (deadlocks, connection
+                    // drops, schema mismatches) re-raised by the
+                    // dispatcher or evaluateAcl* lookups MUST be
+                    // surfaced at error level — silently warning would
+                    // hide operational incidents. We still swallow so
+                    // the original ingest write is not aborted by a
+                    // failing notification side-effect, but the
+                    // operator's log pipeline sees this as a real
+                    // alert.
+                    \Illuminate\Support\Facades\Log::error(
+                        'NotificationServiceProvider: KbDocumentChanged DB failure',
+                        ['document_id' => $document->id, 'sqlstate' => $e->getCode(), 'error' => $e->getMessage()],
+                    );
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::warning(
                         'NotificationServiceProvider: KbDocumentChanged publisher failed',
@@ -149,6 +163,15 @@ final class NotificationServiceProvider extends ServiceProvider
                         docId: $audit->doc_id === null ? null : (string) $audit->doc_id,
                         slug: $audit->slug === null ? null : (string) $audit->slug,
                         actor: $audit->actor === null ? null : (string) $audit->actor,
+                    );
+                } catch (\Illuminate\Database\QueryException $e) {
+                    // See KbDocumentChanged hook above — non-integrity
+                    // DB failures get error-level logging so operators
+                    // see deadlocks / schema errors instead of having
+                    // them buried in warnings.
+                    \Illuminate\Support\Facades\Log::error(
+                        'NotificationServiceProvider: KbCanonicalPromoted DB failure',
+                        ['audit_id' => $audit->id, 'sqlstate' => $e->getCode(), 'error' => $e->getMessage()],
                     );
                 } catch (\Throwable $e) {
                     \Illuminate\Support\Facades\Log::warning(

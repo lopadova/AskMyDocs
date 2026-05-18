@@ -319,16 +319,26 @@ final class NotificationPublisher
             return true;
         }
 
+        // ACL evaluation BEFORE the membership check so the semantics
+        // mirror `User::hasDocumentAccess()` exactly:
+        //   - deny ACL row → always reject (overrides everything)
+        //   - allow ACL row → always allow (admins can grant access to
+        //     non-members)
+        //   - no ACL match → fall through to membership + scope check
+        $acl = $this->evaluateAclForUser($user, $document);
+        if ($acl === 'deny') {
+            return false;
+        }
+        if ($acl === 'allow') {
+            return true;
+        }
+
         $membership = ProjectMembership::query()
             ->where('tenant_id', $tenantId)
             ->where('user_id', $user->id)
             ->where('project_key', $projectKey)
             ->first();
         if ($membership === null) {
-            return false;
-        }
-
-        if ($this->evaluateAclForUser($user, $document) === 'deny') {
             return false;
         }
 
