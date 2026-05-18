@@ -410,7 +410,7 @@ function Hero() {
 function TrustStrip() {
   const items = [
     "PHP / Laravel 13", "PostgreSQL 16", "pgvector 0.7",
-    "React 19 + TanStack", "MCP 0.7", "OpenAI", "Anthropic", "Gemini",
+    "React 18.3.1 + TanStack", "MCP 0.7", "OpenAI", "Anthropic", "Gemini",
     "OpenRouter", "Regolo", "Spatie Permissions", "PHPUnit · Vitest · Playwright",
   ];
   const track = [...items, ...items];
