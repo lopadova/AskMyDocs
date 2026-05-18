@@ -25,7 +25,7 @@ In parallel, [`padosoft/askmydocs-mcp-pack-admin`](https://github.com/padosoft/a
 
 #### What changed in this repo
 
-- **`composer.json`** — `padosoft/askmydocs-mcp-pack: ^1.4 → ^1.5`. Composer resolves v1.5.0 + transitive `symfony/process` minor bump (v8.0.8 → v8.0.11).
+- **`composer.json`** — `padosoft/askmydocs-mcp-pack: ^1.4 → ^1.5`. Composer resolves v1.5.0 + transitive `symfony/process` patch bump (v8.0.8 → v8.0.11).
 - **`README.md`** — sister-packages table reflects v1.5.0 (mcp-pack) and v1.1.0 (mcp-pack-admin) reality; features-at-a-glance MCP admin row drops the v1.0.x fixture-disclaimer language; Optional setup section bumps `composer require padosoft/askmydocs-mcp-pack-admin:^1.0` to `^1.1` and rewrites the status note from "design preview" to "GA live wire-up"; new v7.1 roadmap row.
 - **CI** — workflow trigger widened from `feature/v4.*` to `feature/v*` + `feature/v*/**` in both `tests.yml` and `rag-regression.yml` (PR #184) so v7+ branches get CI automatically.
 
