@@ -166,16 +166,25 @@ function BrandMark() {
 
 /* ---------- Language switcher ----------------------------------------- */
 function LanguageSwitcher({ inNav = false }) {
-  const { lang, setLang } = useI18n();
+  const { t, lang, setLang } = useI18n();
   const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
   const ref = useRef(null);
+  const buttonRef = useRef(null);
+  const optionRefs = useRef([]);
+  const langs = window.LANGS;
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
-    const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onEsc = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onEsc);
     return () => {
@@ -184,39 +193,84 @@ function LanguageSwitcher({ inNav = false }) {
     };
   }, [open]);
 
-  const current = window.LANGS.find((l) => l.code === lang) || window.LANGS[0];
+  useEffect(() => {
+    if (!open) return;
+    const idx = langs.findIndex((l) => l.code === lang);
+    setActiveIdx(idx >= 0 ? idx : 0);
+  }, [open, lang, langs]);
+
+  useEffect(() => {
+    if (open) optionRefs.current[activeIdx]?.focus();
+  }, [open, activeIdx]);
+
+  const onListKeyDown = (e) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => (i + 1) % langs.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => (i - 1 + langs.length) % langs.length);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActiveIdx(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActiveIdx(langs.length - 1);
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setLang(langs[activeIdx].code);
+      setOpen(false);
+      buttonRef.current?.focus();
+    }
+  };
+
+  const current = langs.find((l) => l.code === lang) || langs[0];
+  const switcherLabel = t("langSwitch", "Language");
 
   return (
     <div className={`lang-switcher ${inNav ? "in-nav" : ""}`} ref={ref}>
       <button
         type="button"
+        ref={buttonRef}
         className={`lang-button ${open ? "open" : ""}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label="Language"
+        aria-label={switcherLabel}
         onClick={() => setOpen((v) => !v)}
       >
         <Icon.Globe />
-        <span className="label-name">{current.flag} {current.code.toUpperCase()}</span>
-        <span className="chev" />
+        <span className="label-name" aria-hidden="true">{current.flag}</span>
+        <span className="label-name">{current.code.toUpperCase()}</span>
+        <span className="chev" aria-hidden="true" />
       </button>
       {open && (
-        <div className="lang-menu" role="listbox">
-          {window.LANGS.map((l) => (
-            <button
-              key={l.code}
-              type="button"
-              role="option"
-              aria-selected={l.code === lang}
-              className={l.code === lang ? "active" : ""}
-              onClick={() => { setLang(l.code); setOpen(false); }}
-            >
-              <span className="flag">{l.flag}</span>
-              <span>{l.name}</span>
-              <span className="code">{l.code}</span>
-            </button>
+        <ul
+          className="lang-menu"
+          role="listbox"
+          aria-label={switcherLabel}
+          aria-activedescendant={`lang-opt-${langs[activeIdx].code}`}
+          onKeyDown={onListKeyDown}
+        >
+          {langs.map((l, i) => (
+            <li key={l.code} role="presentation">
+              <button
+                id={`lang-opt-${l.code}`}
+                type="button"
+                role="option"
+                ref={(el) => (optionRefs.current[i] = el)}
+                aria-selected={l.code === lang}
+                tabIndex={i === activeIdx ? 0 : -1}
+                className={l.code === lang ? "active" : ""}
+                onClick={() => { setLang(l.code); setOpen(false); buttonRef.current?.focus(); }}
+                onFocus={() => setActiveIdx(i)}
+              >
+                <span className="flag" aria-hidden="true">{l.flag}</span>
+                <span>{l.name}</span>
+                <span className="code" aria-hidden="true">{l.code}</span>
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -682,11 +736,19 @@ function FAQ() {
         <div className="faq">
           {items.map((it, i) => (
             <div className={`faq-item ${open === i ? "open" : ""}`} key={i}>
-              <div className="faq-q" onClick={() => setOpen(open === i ? -1 : i)}>
+              <button
+                type="button"
+                className="faq-q"
+                aria-expanded={open === i}
+                aria-controls={`faq-a-${i}`}
+                onClick={() => setOpen(open === i ? -1 : i)}
+              >
                 <span>{it.q}</span>
-                <span className="plus" />
+                <span className="plus" aria-hidden="true" />
+              </button>
+              <div className="faq-a" id={`faq-a-${i}`} role="region" aria-hidden={open !== i}>
+                <div className="faq-a-inner">{it.a}</div>
               </div>
-              <div className="faq-a"><div className="faq-a-inner">{it.a}</div></div>
             </div>
           ))}
         </div>
@@ -770,13 +832,6 @@ function Footer() {
 
 /* ---------- App -------------------------------------------------------- */
 function App() {
-  useEffect(() => {
-    const io = new IntersectionObserver((entries) => {
-      entries.forEach((e) => { if (e.isIntersecting) e.target.classList.add("in"); });
-    }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
-    document.querySelectorAll(".appear").forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, []);
   return (
     <I18nProvider>
       <Nav />

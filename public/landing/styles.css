@@ -867,6 +867,12 @@ p { margin: 0; color: var(--ink-2); }
   user-select: none;
   font-size: 16px;
   font-weight: 500;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  font-family: inherit;
 }
 .faq-q:hover { background: rgba(255,255,255,0.015); }
 .faq-q .plus {
@@ -1067,6 +1073,8 @@ p { margin: 0; color: var(--ink-2); }
   z-index: 200;
   min-width: 170px;
   padding: 6px;
+  margin: 0;
+  list-style: none;
   border: 1px solid var(--line-2);
   border-radius: 9px;
   background: rgba(14, 16, 21, 0.96);
@@ -1076,6 +1084,7 @@ p { margin: 0; color: var(--ink-2); }
   display: flex; flex-direction: column;
   gap: 1px;
 }
+.lang-menu li { list-style: none; margin: 0; padding: 0; display: block; }
 .lang-menu button {
   display: flex; align-items: center; gap: 10px;
   background: transparent;
@@ -1105,3 +1114,13 @@ p { margin: 0; color: var(--ink-2); }
 @media (max-width: 960px) {
   .lang-switcher.in-nav .lang-button .label-name { display: none; }
 }
+
+/* ---------- Focus visibility ------------------------------------------ */
+:where(a, button, [role="button"], [role="option"]):focus { outline: none; }
+:where(a, button, [role="button"], [role="option"]):focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.btn:focus-visible { outline-offset: 3px; }
+.faq-q:focus-visible { outline-offset: -2px; }
