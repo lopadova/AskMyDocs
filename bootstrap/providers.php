@@ -58,6 +58,15 @@ $providers = [
     //      preventing routes from leaking on an unprepared deploy.
     Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class,
     App\Providers\FlowAdminIntegrationServiceProvider::class,
+    // v8.0/W1.2 — Notification dispatch pipeline. Binds the
+    // ChannelRegistry singleton and registers NotificationDispatcher
+    // as the listener for the 4 BaseNotificationEvent subclasses
+    // shipped in W1.2 (KbDocumentChanged + KbCanonicalPromoted +
+    // KbDecisionDebtThreshold + CollectionNewMember). Real channel
+    // adapters (InApp + Email) register themselves in W1.3; this
+    // provider ships only the registry + NullChannel fallback so
+    // the dispatch path is end-to-end testable in W1.2.
+    App\Providers\NotificationServiceProvider::class,
     // v4.6 — Connector framework SP (padosoft/askmydocs-connector-base
     // v1.1.1). Listed explicitly for the same auto-discovery
     // brittleness rationale as the siblings above. Required to
