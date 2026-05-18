@@ -8,8 +8,12 @@ return [
     |--------------------------------------------------------------------------
     |
     | The provider used for chat completions. Embeddings can use a different
-    | provider via AI_EMBEDDINGS_PROVIDER (useful when using Anthropic or
-    | OpenRouter for chat, since they don't offer an embeddings endpoint).
+    | provider via AI_EMBEDDINGS_PROVIDER (useful when chat is on a provider
+    | that has no embeddings endpoint — e.g. Anthropic — or when you want
+    | to keep chat and embeddings on separate models / cost tiers).
+    | OpenRouter exposes an OpenAI-compatible /v1/embeddings endpoint
+    | routing both openai/text-embedding-3-small (default, 1536 dims) and
+    | qwen/qwen3-embedding-4b (2560 dims).
     |
     | Supported: "openai", "anthropic", "gemini", "openrouter", "regolo"
     |
@@ -22,11 +26,21 @@ return [
     | Embeddings Provider
     |--------------------------------------------------------------------------
     |
-    | Provider used specifically for generating embeddings. If null, the
-    | default provider is used. Must be a provider that supports embeddings
-    | (openai, gemini, regolo). Anthropic and OpenRouter do NOT support
-    | embeddings. Regolo serves Qwen3-Embedding-8B at 4096 dims — see the
-    | KB_EMBEDDINGS_DIMENSIONS warning in `.env.example` if you switch.
+    | Provider used specifically for generating embeddings. Must be a provider
+    | that supports embeddings (openai, gemini, regolo, openrouter). Anthropic
+    | does NOT expose an embeddings endpoint. OpenRouter exposes an OpenAI-
+    | compatible `/v1/embeddings` and routes both `openai/text-embedding-3-small`
+    | (default — 1536 dims, $0.02 / 1M tokens) and `qwen/qwen3-embedding-4b`
+    | (2560 dims, GA Oct 2025). When `AI_PROVIDER` is anthropic and
+    | `AI_EMBEDDINGS_PROVIDER` is not set, AiManager auto-selects the first
+    | embeddings-capable provider with a configured API key, in this order:
+    | openai → openrouter → regolo → gemini. 1536-dim defaults (openai +
+    | openrouter routing `openai/text-embedding-3-small`) come first so the
+    | stock pgvector schema stays consistent under auto-selection (R14).
+    | Regolo serves Qwen3-Embedding-8B at 4096 dims and Gemini's default
+    | `text-embedding-004` is 768 dims — both REQUIRE migrating the
+    | `vector(N)` column + `KB_EMBEDDINGS_DIMENSIONS` in lock-step before
+    | use; set `AI_EMBEDDINGS_PROVIDER` explicitly to opt in.
     |
     */
 
@@ -121,6 +135,7 @@ return [
             'api_key' => env('OPENROUTER_API_KEY'),
             'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
             'chat_model' => env('OPENROUTER_CHAT_MODEL', 'openai/gpt-4o-mini'),
+            'embeddings_model' => env('OPENROUTER_EMBEDDINGS_MODEL', 'openai/text-embedding-3-small'),
             'app_name' => env('OPENROUTER_APP_NAME', 'AskMyDocs'),
             'site_url' => env('OPENROUTER_SITE_URL'),
             'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),

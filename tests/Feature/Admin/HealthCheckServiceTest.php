@@ -121,11 +121,33 @@ class HealthCheckServiceTest extends TestCase
         $this->assertSame('degraded', $svc->embeddingProviderOk());
     }
 
-    public function test_embedding_provider_degraded_when_default_is_empty(): void
+    public function test_embedding_provider_ok_when_fallback_provider_is_resolvable(): void
     {
         config([
+            'ai.default' => 'anthropic',
             'ai.embeddings_provider' => null,
-            'ai.providers' => ['openai' => ['api_key' => 'sk-test']],
+            'ai.providers' => [
+                'anthropic' => ['api_key' => 'sk-ant'],
+                'openai' => ['api_key' => 'sk-test'],
+            ],
+        ]);
+
+        $svc = new HealthCheckService;
+        $this->assertSame('ok', $svc->embeddingProviderOk());
+    }
+
+    public function test_embedding_provider_degraded_when_no_explicit_default_or_fallback_is_usable(): void
+    {
+        config([
+            'ai.default' => 'anthropic',
+            'ai.embeddings_provider' => null,
+            'ai.providers' => [
+                'anthropic' => ['api_key' => 'sk-ant'],
+                'openai' => ['api_key' => null],
+                'openrouter' => ['api_key' => null],
+                'regolo' => ['key' => null],
+                'gemini' => ['api_key' => null],
+            ],
         ]);
 
         $svc = new HealthCheckService;

@@ -183,6 +183,387 @@ Branch (a new conversation forks from that point); pick a follow-up
 pill chip to chain into the next prompt; hover any code block for the
 Copy button.
 
+### Database
+```env
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=askmydocs
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+```
+
+### AI Provider
+
+The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::`, which keeps auth, retries, timeouts, and response parsing under our control. Regolo is the exception: it is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
+
+Config file: `config/ai.php`
+
+#### Defaults
+
+```env
+# Chat provider. Supported: openai, anthropic, gemini, openrouter, regolo
+AI_PROVIDER=openrouter
+
+# Embeddings provider. Must support embeddings (openai, gemini, regolo, openrouter).
+# Anthropic does NOT offer embeddings. OpenRouter exposes OpenAI-compatible
+# /v1/embeddings (since Oct 2025) routing openai/text-embedding-3-small (default)
+# and qwen/qwen3-embedding-4b. Leave empty to let AiManager reuse AI_PROVIDER
+# when the default chat provider supports embeddings; otherwise it falls back
+# to the first embeddings-capable provider with a configured API key in this order:
+# openai → openrouter → regolo → gemini. The 1536-dim defaults (openai +
+# openrouter) come first so the stock KB_EMBEDDINGS_DIMENSIONS=1536 pgvector
+# schema stays consistent under auto-selection — regolo (4096) and gemini
+# (768) require a pgvector resize in lock-step, set AI_EMBEDDINGS_PROVIDER
+# explicitly to opt in.
+AI_EMBEDDINGS_PROVIDER=openai
+```
+
+#### OpenAI
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_CHAT_MODEL=gpt-4o
+OPENAI_EMBEDDINGS_MODEL=text-embedding-3-small
+OPENAI_TEMPERATURE=0.2
+OPENAI_MAX_TOKENS=4096
+OPENAI_TIMEOUT=120
+```
+
+#### Anthropic (Claude)
+
+Anthropic has no embeddings endpoint, so pair it with any embeddings-capable provider — OpenAI, OpenRouter, Regolo, or Gemini. If `AI_EMBEDDINGS_PROVIDER` is left empty, `AiManager` auto-selects the first one with a configured API key in this order: openai → openrouter → regolo → gemini. The 1536-dim defaults (OpenAI's `text-embedding-3-small` + OpenRouter routing the same model) come first so a deployment with the stock `KB_EMBEDDINGS_DIMENSIONS=1536` pgvector schema stays consistent under auto-selection; Regolo (4096) and Gemini (768) require a `vector(N)` resize and a matching `KB_EMBEDDINGS_DIMENSIONS` change before use, so set `AI_EMBEDDINGS_PROVIDER=regolo|gemini` explicitly when you've migrated.
+
+```env
+AI_PROVIDER=anthropic
+AI_EMBEDDINGS_PROVIDER=openai
+
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_CHAT_MODEL=claude-sonnet-4-20250514
+OPENAI_API_KEY=sk-...
+```
+
+#### Google Gemini
+
+Gemini supports both chat and embeddings. `text-embedding-004` is **768-dim**, so switching embedding providers requires updating `KB_EMBEDDINGS_DIMENSIONS` **and** re-indexing.
+
+```env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=AIza...
+GEMINI_CHAT_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDINGS_MODEL=text-embedding-004
+```
+
+#### OpenRouter (multi-model gateway) — default
+
+OpenRouter proxies hundreds of models. Since Oct 2025 it also exposes an
+OpenAI-compatible `/v1/embeddings` endpoint, so it can serve both chat
+and embeddings from the same gateway. Default embedding model is
+`openai/text-embedding-3-small` (1536 dims — matches the default
+`KB_EMBEDDINGS_DIMENSIONS`, no re-index needed). Alternative
+`qwen/qwen3-embedding-4b` (2560 dims) requires resizing the pgvector
+column on `knowledge_chunks.embedding` + `embedding_cache.embedding`
+and re-indexing. Pair with a separate provider if you prefer.
+
+```env
+AI_PROVIDER=openrouter
+AI_EMBEDDINGS_PROVIDER=openrouter
+
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_CHAT_MODEL=openai/gpt-4o-mini
+OPENROUTER_EMBEDDINGS_MODEL=openai/text-embedding-3-small
+OPENROUTER_APP_NAME="AskMyDocs"
+OPENROUTER_SITE_URL=https://kb.example.com
+```
+
+#### Regolo.ai (by Seeweb)
+
+EU-based, GDPR-compliant, **OpenAI-compatible** REST API. Supports chat, streaming, embeddings, and reranking via the [`padosoft/laravel-ai-regolo`](https://github.com/padosoft/laravel-ai-regolo) extension on top of the official `laravel/ai` SDK. Get keys at [dashboard.regolo.ai](https://dashboard.regolo.ai) and see [docs.regolo.ai](https://docs.regolo.ai) for the full model catalogue.
+
+```env
+AI_PROVIDER=regolo
+AI_EMBEDDINGS_PROVIDER=regolo
+
+REGOLO_API_KEY=...
+REGOLO_BASE_URL=https://api.regolo.ai/v1
+
+# Chat models — `cheapest` / `smartest` aliases pick the right model for
+# cost-vs-quality shortcuts (see `Lab::Cheapest` / `Lab::Smartest` in laravel/ai).
+REGOLO_CHAT_MODEL=Llama-3.3-70B-Instruct
+REGOLO_CHAT_MODEL_CHEAPEST=Llama-3.1-8B-Instruct
+REGOLO_CHAT_MODEL_SMARTEST=Llama-3.3-70B-Instruct
+
+# Embeddings — set KB_EMBEDDINGS_DIMENSIONS to the same value below.
+REGOLO_EMBEDDINGS_MODEL=Qwen3-Embedding-8B
+REGOLO_EMBEDDINGS_DIMENSIONS=4096
+
+# Reranker — used when KB_RERANKING_ENABLED=true.
+REGOLO_RERANKING_MODEL=jina-reranker-v2
+
+# Transport + per-call defaults. `REGOLO_MAX_TOKENS` / `REGOLO_TEMPERATURE`
+# are the provider-level fallbacks; per-call `$options['max_tokens']` /
+# `$options['temperature']` (e.g. `ConversationController::generateTitle`
+# capping titles at 60 tokens) take precedence.
+REGOLO_TIMEOUT=120
+REGOLO_MAX_TOKENS=4096
+REGOLO_TEMPERATURE=0.2
+```
+
+#### Embedding dimension gotcha
+
+If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini 768-dim):
+
+1. Update `KB_EMBEDDINGS_DIMENSIONS` in `.env`
+2. Create a new migration that resizes the `embedding` `vector(N)` column on `knowledge_chunks` and `embedding_cache`
+3. Flush the cache so stale-dimension vectors don't pollute retrieval — call `app(\App\Services\Kb\EmbeddingCacheService::class)->flush()` (or scope by retired provider with `->flush('openai')`) from a tinker session. `kb:prune-embedding-cache --days=N` only evicts rows older than N days and returns early when `N <= 0`, so it is **not** a full-flush substitute.
+4. Re-index all documents
+
+### Storage (Laravel disks)
+
+KB markdown files are read through a Laravel filesystem disk, so the ingestion pipeline is **storage-agnostic**: local for dev, S3 for production, MinIO for on-prem — no code change needed.
+
+Config file: `config/filesystems.php`. The dedicated `kb` disk defaults to `storage/app/kb`:
+
+```env
+# Disk used by kb:ingest and DocumentIngestor (see config/filesystems.php)
+KB_FILESYSTEM_DISK=kb
+KB_DISK_DRIVER=local
+# KB_DISK_ROOT=/absolute/path/to/markdown/root
+
+# Optional path prefix prepended to every ingested path
+KB_PATH_PREFIX=
+```
+
+#### Switching to S3
+
+Install the Flysystem S3 adapter once:
+
+```bash
+composer require league/flysystem-aws-s3-v3 "^3.0"
+```
+
+Then switch the disk driver and fill the AWS credentials:
+
+```env
+KB_FILESYSTEM_DISK=s3
+
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=eu-west-1
+AWS_BUCKET=askmydocs-kb
+AWS_URL=
+AWS_ENDPOINT=              # set for MinIO / R2 / Wasabi
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+#### Ingesting a document
+
+```bash
+# Reads storage/app/kb/docs/setup.md (local disk)
+php artisan kb:ingest docs/setup.md --project=erp-core --title="Installation Guide"
+
+# Override the disk ad-hoc
+php artisan kb:ingest docs/setup.md --project=erp-core --disk=s3
+```
+
+### Chat Logging
+
+Chat logging is **off by default**. Enable it to get structured analytics about every Q&A turn.
+
+Config file: `config/chat-log.php`
+
+```env
+CHAT_LOG_ENABLED=true
+CHAT_LOG_DRIVER=database
+CHAT_LOG_DB_CONNECTION=      # optional: dedicated DB connection
+CHAT_LOG_RETENTION_DAYS=90   # scheduler rotates rows older than N days
+```
+
+#### Fields persisted per interaction
+
+| Field | Description |
+|---|---|
+| `session_id` | Session UUID (from `X-Session-Id` header or auto-generated) |
+| `user_id` | Authenticated user id (nullable) |
+| `question` | User question |
+| `answer` | Assistant response |
+| `project_key` | Project key used as RAG filter |
+| `ai_provider` | openai / anthropic / gemini / openrouter / regolo |
+| `ai_model` | Specific model used |
+| `chunks_count` | Number of retrieved context chunks |
+| `sources` | Source document paths that contributed context |
+| `prompt_tokens` / `completion_tokens` / `total_tokens` | Token usage |
+| `latency_ms` | End-to-end latency |
+| `client_ip` / `user_agent` | Client metadata |
+| `extra` | JSON for custom fields (e.g. `few_shot_count`) |
+
+Logging is wrapped in try/catch — a driver failure never breaks the user response.
+
+### Knowledge Base
+
+Config file: `config/kb.php`
+
+```env
+KB_EMBEDDINGS_DIMENSIONS=1536
+KB_MIN_SIMILARITY=0.30
+KB_DEFAULT_LIMIT=8
+
+# Chunking
+KB_CHUNK_TARGET_TOKENS=512
+KB_CHUNK_HARD_CAP_TOKENS=1024
+KB_CHUNK_OVERLAP_TOKENS=64
+
+# Embedding cache
+KB_EMBEDDING_CACHE_ENABLED=true
+KB_EMBEDDING_CACHE_RETENTION_DAYS=30
+```
+
+### `GET /api/kb/documents/search` (v3.0+)
+
+Document title/path autocomplete used by the chat composer's `@mention` popover (T2.7/T2.8). Sanctum-protected.
+
+**Query params:**
+
+- `q` — search string (2-120 chars, escaped for `LIKE` wildcards via `\` + `ESCAPE '\\'` clause per R19; literal `_` and `%` in the query do NOT act as wildcards)
+- `project_keys[]` — optional tenant scope (zero or more)
+
+**Response:** `{ "data": [{ "id", "project_key", "title", "source_path", "source_type", "canonical_type" }] }`
+
+Up to 20 results per request. Archived documents are excluded.
+
+### Saved filter presets (v3.0+)
+
+Authenticated users can save / load / delete personal filter combinations via `RESTful /api/chat-filter-presets` (consumed by the FE FilterBar dropdown — UI work in a follow-up FE PR).
+
+- `GET    /api/chat-filter-presets` — list the user's presets (alphabetical by name).
+- `POST   /api/chat-filter-presets` — create. Required body: `{ "name": "…", "filters": { … } }`. Per-user uniqueness enforced on `name` (422 on duplicate within the same account). Different users may pick the same display name independently.
+- `GET    /api/chat-filter-presets/{id}` — show one. Returns `404` for IDs owned by a different user (deliberate — the API does not leak the existence of other users' presets).
+- `PUT    /api/chat-filter-presets/{id}` — update name + filters; same `404` semantics for non-owned rows.
+- `DELETE /api/chat-filter-presets/{id}` — delete; `204` on success, `404` for non-owned rows.
+
+The `filters` JSON column carries a serialised RetrievalFilters payload — the same shape the chat controller's `KbChatRequest::toFilters()` consumes. Round-trip is lossless: load preset → POST to `/api/kb/chat` produces identical retrieval scope as if the user had re-selected every filter manually.
+
+### Chat filters (v3.0+)
+
+`POST /api/kb/chat` accepts an optional `filters` object that narrows the retrieval scope BEFORE reranking + graph expansion + rejected-approach injection — filters change the candidate population, not the post-hoc ranking. Every dimension is optional.
+
+```json
+{
+  "question": "What is our cache invalidation policy?",
+  "filters": {
+    "project_keys": ["hr-portal", "engineering"],
+    "tag_slugs": ["policy", "security"],
+    "source_types": ["markdown", "pdf"],
+    "canonical_types": ["decision", "runbook"],
+    "connector_types": ["local", "google-drive"],
+    "doc_ids": [42, 99],
+    "folder_globs": ["hr/policies/**"],
+    "date_from": "2026-01-01",
+    "date_to": "2026-12-31",
+    "languages": ["it", "en"]
+  }
+}
+```
+
+Field semantics:
+
+- `project_keys` — multi-tenant scope; takes precedence over the legacy `project_key` field when both are sent.
+- `tag_slugs` — match documents tagged with ANY listed slug (T2.3 join, ships in a follow-up).
+- `source_types` — one of `markdown`, `text`, `pdf`, `docx` (validated against `App\Support\Kb\SourceType` so adding a new type extends the validator automatically).
+- `canonical_types` — one of the `App\Support\Canonical\CanonicalType` enum values currently stored on `knowledge_documents.canonical_type`: `decision`, `module-kb`, `runbook`, `standard`, `incident`, `integration`, `domain-concept`, `rejected-approach`, `project-index`. The validator is built from `CanonicalType::cases()` so adding a new case auto-extends the accepted set.
+- `connector_types` — connector identifier strings (for example `local`, `google-drive`, `onedrive`, `notion`, `asana`, `imap`). Accepted in v3.0 but currently a no-op in retrieval until the `connector_type` column is added in v3.1.
+- `doc_ids` — explicit document-id allowlist (used by the `@mention` UI in the chat composer, T2.7).
+- `folder_globs` — path globs against `source_path`. `*` matches a single segment (does NOT cross `/`), `**` matches across segments (e.g. `hr/policies/**` matches `hr/policies/leave.md` AND `hr/policies/inner/leave.md`), `?` matches a single char (not `/`). Applied PHP-side after the SQL pre-filter via `App\Support\KbPath::matchesAnyGlob` (PostgreSQL has no native fnmatch and `**` doesn't translate to LIKE cleanly).
+- `date_from` / `date_to` — ISO 8601 date range against `indexed_at`. `date_to` must be after-or-equal to `date_from`.
+- `languages` — ISO 639-1 codes (normalized to lowercase during DTO construction; the validator enforces `size:2`).
+
+Pre-T2.2 callers using the legacy `{question, project_key}` payload keep working unchanged — internally `project_key` is wrapped into `filters.project_keys = [project_key]`. The response `meta.filters_selected` echoes the count of user-selected filter dimensions for the FE composer to render "5 filters selected".
+
+### Multi-format ingest (v3.0+)
+
+`kb:ingest-folder` now picks up `.md`, `.markdown`, `.txt`, `.pdf`, and `.docx` files automatically (default `--pattern` is the union of every supported extension). Operators who want pre-T1.8 markdown-only behavior pass `--pattern=md,markdown` explicitly.
+
+The `POST /api/kb/ingest` endpoint accepts an optional `mime_type` field per document (defaults to `text/markdown` for back-compat). Binary formats (`application/pdf`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`) require `documents.*.content` to be **base64-encoded**; the controller decodes-or-422 before writing to disk. Text MIMEs (`text/markdown`, `text/x-markdown`, `text/plain`) keep accepting raw content. Unsupported MIME types return 422 with an actionable error naming the supported set.
+
+The `App\Support\Kb\SourceType` enum is a typed helper for the markdown/text/pdf/docx domain — `SourceType::fromMime()` and `SourceType::fromExtension()` are the canonical conversions used by the API controller and the folder walker. The actual ingest routing is config-driven via `config/kb-pipeline.php` (`converters` / `chunkers` / `mime_to_source_type`); adding a new format requires updating BOTH `config/kb-pipeline.php` AND `SourceType::fromMime()` / `fromExtension()` / `toMime()` / `supportedMimes()` so the API/CLI surfaces stay consistent with what the registry resolves.
+
+### Extending the Ingestion Pipeline
+
+AskMyDocs v3.0 introduces a pluggable ingestion pipeline driven by `config/kb-pipeline.php`. To add support for a new file format:
+
+1. **Implement** `App\Services\Kb\Contracts\ConverterInterface` — convert raw bytes to a `ConvertedDocument` (markdown + extraction metadata). Every converter MUST populate `extractionMeta['filename'] = basename($doc->sourcePath)` so the chunker can attribute chunks back to their source file.
+2. **Implement** `App\Services\Kb\Contracts\ChunkerInterface` — or reuse `MarkdownChunker` if your converter outputs markdown (the default for prose formats).
+3. **Register** in `config/kb-pipeline.php` under `converters` and `chunkers`.
+4. **Map** the MIME type in `mime_to_source_type` so the pipeline can route to the right chunker.
+
+Built-in converters (v3.0):
+
+- `MarkdownPassthroughConverter` — `text/markdown`, `text/x-markdown`
+- `TextPassthroughConverter` — `text/plain` (wraps prose in a `# {basename}` header so MarkdownChunker can section it)
+- `PdfConverter` — `application/pdf` (smalot/pdfparser primary; falls back to `pdftotext` from Poppler when smalot rejects the file)
+- `DocxConverter` — `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (parses the `.docx` package via `phpoffice/phpword`; maps `Heading{N}` paragraph styles to `#{×N+1}` markdown headings nested under the basename H1; tables become markdown pipe-tables. Embedded images are NOT extracted in v3.0 — planned for v3.1 with the vision-LLM pipeline.)
+
+**PDF support:** `smalot/pdfparser` is a hard `require` (pure PHP, no system deps). For more robust extraction on complex PDFs (multi-column layouts, certain XFA forms, mixed encodings), install `poppler-utils` on the host (`apt install poppler-utils` on Debian/Ubuntu, `brew install poppler` on macOS) — the `PdfConverter` automatically falls back to the `pdftotext` binary when smalot raises an exception. `extractionMeta.extraction_strategy` records which strategy was used per document so you can audit the rate of fallbacks in production.
+
+Built-in chunkers (v3.0):
+
+- `PdfPageChunker` — handles `pdf` source-type. Slices on the `## Page N` heading boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` so citations like "see page N of foo.pdf" map 1:1 to a single chunk row. Pages exceeding `KB_CHUNK_HARD_CAP_TOKENS` are split intra-page on `\n\n` paragraph boundaries; all pieces of the same page share the same `heading_path` so page-level citations still resolve cleanly.
+- `MarkdownChunker` — handles `markdown`, `md`, `text`, `docx` source types (any source whose converter outputs markdown). Uses `section_aware` mode: emits one chunk per ATX heading section with `heading_path` as a `>`-joined breadcrumb of H1-H3 ancestors. Falls back to `paragraph_split` (one chunk per blank-line-separated block) for documents without headings.
+
+The chunker registry is order-significant — `PdfPageChunker` is listed FIRST in `config/kb-pipeline.php`'s `chunkers` so the first-match-wins resolution prefers it for `pdf` over the markdown fallback.
+
+The polymorphic entry point is `DocumentIngestor::ingest(string $projectKey, SourceDocument $source, string $title, array $extraMetadata = [])`. The pre-v3 `ingestMarkdown(...)` is now a thin facade that synthesises a `text/markdown` `SourceDocument` and delegates to `ingest()` — IngestDocumentJob and the GitHub Action keep working unchanged.
+
+### Multi-tenant deployment (v4.0)
+
+The v4.0 cycle adds a **per-request tenant context** that scopes every Eloquent query against tenant-aware tables (R30/R31). Existing v3.x deployments are backward-compatible — every row gets `tenant_id = 'default'` and the resolver returns `'default'` unless explicitly configured otherwise.
+
+**The plumbing**
+
+| Piece | Path | Responsibility |
+|---|---|---|
+| `TenantContext` | `app/Support/TenantContext.php` | Request-scoped singleton; holds the active `tenant_id` for the duration of one HTTP request or one CLI command |
+| `ResolveTenant` middleware | `app/Http/Middleware/ResolveTenant.php` | Reads the tenant from the configured resolver and sets `TenantContext`; runs at the top of the global middleware stack so every controller / job dispatched from the request inherits the context |
+| `BelongsToTenant` trait | `app/Models/Concerns/BelongsToTenant.php` | Auto-fills `tenant_id` on `creating` events from `TenantContext::current()`; provides `forTenant($id)` query scope |
+| `--tenant=X` CLI option | every domain Artisan command | CLI commands (`kb:ingest-folder`, `kb:rebuild-graph`, `kb:promote`, `insights:compute`) accept the option and set the context before running |
+
+**Configuration (`.env`)**
+
+```bash
+# Single-tenant deployment (v3.x backward compatible — DEFAULT)
+TENANT_DEFAULT=default
+TENANT_RESOLVER=default          # always returns 'default'
+
+# Multi-tenant by HTTP header (suitable for B2B SaaS with API gateway routing)
+TENANT_RESOLVER=header
+TENANT_HEADER_NAME=X-Tenant-ID
+
+# Multi-tenant by domain (suitable for subdomain-per-customer deployments)
+TENANT_RESOLVER=domain
+TENANT_DOMAIN_PATTERN='([^.]+)\\.example\\.com'   # captures tenant slug
+
+# Multi-tenant by authenticated user (suitable for shared-host SaaS)
+TENANT_RESOLVER=auth
+TENANT_USER_COLUMN=tenant_id     # column on the User model that holds the tenant
+```
+
+**What's tenant-scoped (and what isn't)**
+
+The 20 tenant-aware models (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — `KnowledgeDocument`, `KnowledgeChunk`, `ChatLog`, `Conversation`, `Message`, `KbNode`, `KbEdge`, `KbCanonicalAudit`, `ProjectMembership`, `KbTag`, `KnowledgeDocumentAcl`, `AdminCommandAudit`, `AdminCommandNonce`, `AdminInsightsSnapshot`, `ChatFilterPreset`, `ChatLogProvenance`, `TabularReview`, `TabularCell`, `Workflow`, `HiddenWorkflow`) all carry `tenant_id` and use the `BelongsToTenant` trait. The architecture test gates new models on every CI run so this list stays in lock-step with the migrations. Composite tenant-scoped FKs on `kb_edges` make cross-tenant edges **structurally impossible** at the database level.
+
+`embedding_cache` is **intentionally NOT tenant-scoped** — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE alone (provider + model are retrieval-time filters). Sharing embeddings across tenants is a deliberate cost optimisation; eviction goes through `EmbeddingCacheService::flush($provider)` whenever the embedding model changes.
+
+**The 6 v4 cycle rules guard the boundary**
+
+| Rule | What it enforces |
+|---|---|
+| **R30** | Every Eloquent query against a tenant-aware table MUST be scoped to the active tenant via `forTenant()` or explicit `where('tenant_id', $ctx->current())` — cross-tenant leak is a GDPR catastrophe |
+| **R31** | Every tenant-aware model MUST `use BelongsToTenant;` and list `'tenant_id'` in `$fillable`; `tests/Architecture/TenantIdMandatoryTest.php` enumerates the model list and gates new entries on every CI run |
+| **R36** | Mandatory Copilot review + CI green loop on every PR — caught the v4 PR #98 regression where `embedding_cache` was wrongly tagged tenant-scoped |
+| **R37** | `feature/vX.Y` integration branch + once-per-major merge to main — preserves stable consumers from in-flight major work |
+| **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
+| **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
 ---
 
 ## Features by area
@@ -243,7 +624,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Feature | Description | Since |
 |---|---|---|
 | PII redaction at 11 persistence boundaries | `padosoft/laravel-pii-redactor` v1.2 wired at: (1) chat-message middleware, (2) embedding-cache pre-redact, (3) AI-insights snippet sanitiser, (4) operator detokenize endpoint, (5) Monolog log channel processor, (6) failed-jobs sanitiser via `JobFailed` listener with deterministic UUID match, (7) `Conversation`+`Message` `saving` observers, (8) `ChatLog::creating` observer, (9) `AdminCommandAudit::creating` observer, (10) `AdminInsightsSnapshot::creating` observer (6 JSON columns), (11) Flow `CurrentPayloadRedactorProvider` contract binding (covers run input + step results + audit + webhook outbox + approvals in one wire). All 5 v4.3 env knobs default OFF | v4.3 |
-| Multi-tenant isolation (R30 + R31) | 17 tenant-aware tables carry `tenant_id`; `BelongsToTenant` trait auto-fills from `TenantContext` on `creating`; composite tenant-scoped FK on `kb_edges` makes cross-tenant edges structurally impossible; architecture test `TenantIdMandatoryTest` gates new models | v4.0 |
+| Multi-tenant isolation (R30 + R31) | 20 tenant-aware models carry `tenant_id` (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS`); `BelongsToTenant` trait auto-fills from `TenantContext` on `creating`; composite tenant-scoped FK on `kb_edges` makes cross-tenant edges structurally impossible; architecture test `TenantIdMandatoryTest` gates new models | v4.0 |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
 | Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |

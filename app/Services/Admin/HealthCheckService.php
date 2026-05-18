@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Ai\AiManager;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -192,7 +193,16 @@ class HealthCheckService
 
     public function embeddingProviderOk(): string
     {
-        return $this->providerConfigured('ai.embeddings_provider', 'ai.providers');
+        try {
+            // Keep health semantics aligned with AiManager fallback behavior
+            // (explicit provider, or default provider, or auto-selected fallback)
+            // without making any network calls.
+            app(AiManager::class)->embeddingsProvider();
+
+            return 'ok';
+        } catch (Throwable) {
+            return 'degraded';
+        }
     }
 
     public function chatProviderOk(): string
