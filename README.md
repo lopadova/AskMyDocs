@@ -195,7 +195,7 @@ DB_PASSWORD=secret
 
 ### AI Provider
 
-The system supports **five providers**. Each is called via raw HTTP — no external SDK, full control over auth, retries, timeouts, and response parsing.
+The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw HTTP — full control over auth, retries, timeouts, and response parsing. Regolo is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
 
 Config file: `config/ai.php`
 
@@ -228,7 +228,7 @@ OPENAI_TIMEOUT=120
 
 #### Anthropic (Claude)
 
-Anthropic has no embeddings endpoint, so pair it with OpenAI or Gemini.
+Anthropic has no embeddings endpoint, so pair it with any embeddings-capable provider — OpenAI, Gemini, Regolo, or OpenRouter. If `AI_EMBEDDINGS_PROVIDER` is left empty, `AiManager` auto-selects the first one with a configured API key in this order: regolo → openai → gemini → openrouter.
 
 ```env
 AI_PROVIDER=anthropic

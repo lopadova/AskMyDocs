@@ -9,9 +9,11 @@ return [
     |
     | The provider used for chat completions. Embeddings can use a different
     | provider via AI_EMBEDDINGS_PROVIDER (useful when chat is on a provider
-    | with limited embedding-model selection — e.g. Anthropic has no
-    | embeddings endpoint at all, OpenRouter only routes one embedding model
-    | at the moment).
+    | that has no embeddings endpoint — e.g. Anthropic — or when you want
+    | to keep chat and embeddings on separate models / cost tiers).
+    | OpenRouter exposes an OpenAI-compatible /v1/embeddings endpoint
+    | routing both openai/text-embedding-3-small (default, 1536 dims) and
+    | qwen/qwen3-embedding-4b (2560 dims).
     |
     | Supported: "openai", "anthropic", "gemini", "openrouter", "regolo"
     |
