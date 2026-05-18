@@ -12,13 +12,16 @@ use Illuminate\Support\Facades\Schema;
  * Per-user-per-event-per-channel toggle matrix (ADR 0012).
  *
  * The dispatcher consults this table for every (user, event, channel)
- * combination before delivering. Rows are populated:
- *   - on user creation, from tenant defaults
- *     (`config('askmydocs.notifications.defaults')` or
- *     tenant-overridden in `tenant_settings`);
- *   - on every user-edit save from `/account/notifications`;
- *   - via tenant-admin bulk override from
- *     `/admin/notifications/defaults`.
+ * combination before delivering. The W1.1 schema covers persistence
+ * only; the population paths land in follow-up sub-PRs of the same
+ * cycle:
+ *   - **W2.3** — populate from tenant defaults on `User::created`.
+ *     Sources `config('askmydocs.notifications.defaults')` (config
+ *     file introduced in W2) with per-tenant override in
+ *     `tenant_settings` (table introduced in W2).
+ *   - **W2.2** — `/app/account/notifications` user-edit save.
+ *   - **W2.3** — `/app/admin/notifications/defaults` tenant-admin
+ *     bulk override.
  *
  * Composite unique `(tenant_id, user_id, event_type, channel)` makes
  * upserts idempotent. Starting with `tenant_id` keeps queries

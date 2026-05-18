@@ -5,9 +5,9 @@
 > **Stato corrente del repo (verificato 2026-05-18).**
 > - Notifiche nel host AskMyDocs: **assenti** (zero migration / model / controller / bell / canale). `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` non wirato.
 > - Scheduler: tutti i 12 slot hanno cron hard-coded in `bootstrap/app.php`; solo le retention window sono env-configurabili.
-> - Cicli aperti: v7.0 Phase B (W6.3 next) + v8.0 (mcp-pack live wire-up) greenlit 2026-05-17. Le feature qui pianificate vivono nel **nuovo ciclo v8.0**, post v7.0 GA + v8.0 GA.
+> - Cicli predecessori chiusi: v7.0.0 GA `2026-05-16` (mcp-pack host integration) + v7.1.0 GA `2026-05-18 08:54Z` (mcp-pack v1.5 + mcp-pack-admin v1.1 live wire-up — semver MINOR sopra v7.0). Le feature qui pianificate aprono il **nuovo ciclo major v8.0**, cut subito dopo v7.1.0.
 >
-> **Assumption flag.** Cycle label = **v8.0**. Se vuoi label diversa (v8.x bundle, v8.x split) lo correggiamo prima dell'apertura `feature/v8.0`.
+> **Cycle label.** v8.0 = next major (semver) post v7.1.0. Originariamente il plan fu scritto come "v9.0" sull'assunto che il wire-up mcp-pack del 2026-05-18 sarebbe stato un major bump; è uscito invece come v7.1 minor, quindi il next major è v8.0. Tutti i riferimenti sono stati riallineati 2026-05-18.
 
 ---
 
@@ -79,22 +79,22 @@
 | **Export PDF + JSON** | PDF tramite Browsershot (riusa `app/Services/Admin/Pdf/`) con cover page + indice + sezioni + hash footer. JSON machine-readable per integrazioni downstream |
 | **Trigger** | (a) manuale da `/admin/compliance/reports` button "Generate Q1 2026 report"; (b) cron `compliance:digest-quarterly` (1° gennaio/aprile/luglio/ottobre alle 06:00, configurabile via Tier 2 scheduler per-tenant), default OFF |
 
-**Non incluso in v1 (sarà v8.x+future v2):**
+**Non incluso in v1 (sarà v8.x o v9.0 — v2):**
 - Answer drift replay (richiede #1 Semantic Time Travel)
 - Cosine similarity confronto pre/post trimestre
 - Bias monitor longitudinale (vive già in `padosoft/laravel-ai-act-compliance` v6.0)
 
 ### A7. v2 → roadmap futura
-**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v8.x.+1 o v8.0**. Aggiungo riga roadmap README ma niente codice in v8.0.
+**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v8.x o v9.0**. Aggiungo riga roadmap README ma niente codice in v8.0.
 
 ### A8. Admin panel = host AskMyDocs integrato
-**CONFERMATO.** Tutti i nuovi screen citati in questo plan (`/admin/notifications`, `/admin/notifications/defaults`, `/account/notifications`, `/admin/kb/health`, `/admin/kb/health/settings`, `/admin/collections`, `/admin/collections/{id}`, `/admin/mcp/tokens`, `/admin/compliance/reports`) vivono nella **SPA host AskMyDocs** sotto `frontend/src/features/admin/`. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v8.0.)
+**CONFERMATO.** Tutti i nuovi screen citati in questo plan vivono sotto il mount SPA host `/app/{any?}` di `app/Http/Controllers/SpaController.php` (routes/web.php). Path completi: `/app/admin/notifications`, `/app/admin/notifications/defaults`, `/app/account/notifications`, `/app/admin/kb/health`, `/app/admin/kb/health/settings`, `/app/admin/collections`, `/app/admin/collections/{id}`, `/app/admin/mcp/tokens`, `/app/admin/compliance/reports`. Componenti React sotto `frontend/src/features/admin/`. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v8.0.)
 
 ### A9. Cosa va in `askmydocs-pro` (recap completo)
 Vedi §E in fondo al plan. Sintesi: tutto quello in v8.0 OSS è **gratuito**; il Pro aggiunge cap-removal + vertical agents + SSO + analytics + connector enterprise. Recap dettagliato sotto.
 
 ### A10. #1 + #8 v2 ultimi
-**ACK.** Non in v8.0. Riga "Coming in v8.x or v8.0" nel README roadmap.
+**ACK.** Non in v8.0. Riga "Coming in v8.x or v9.0" nel README roadmap.
 
 ---
 
@@ -428,7 +428,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 **Task W8.7 — GA merge feature/v8.0 → main + tag v8.0.0**
 - **Obiettivo:** rispetta R37 (once-per-major).
 - **Cosa fa:** PR feature/v8.0 → main con `--merge` per preservare W1-W8 integration history; tag `v8.0.0` su merge commit; aggiorna roadmap README flip "v8.0 ⏳ planned" → "v8.0 ✅ shipped YYYY-MM-DD" + deliverables summary (rispetta R[readme_roadmap_status_flip_on_ga]); GH Release stabile.
-- **Acceptance gate:** main HEAD = v8.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v8.x or v8.0" rows aggiunte per #1 + #8 v2
+- **Acceptance gate:** main HEAD = v8.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v8.x or v9.0" rows aggiunte per #1 + #8 v2
 
 ---
 
@@ -581,12 +581,12 @@ php artisan kb:health-recompute --tenant=test-tenant
 
 Tutti risolti in `AskUserQuestion` 2026-05-18 prima dell'apertura branch:
 
-1. ✅ **Cycle label:** **v8.0** (nuovo ciclo dedicato 8w, post v8.0 GA mcp-pack live wire-up). Branch `feature/v8.0` cut da `main` dopo v8.0 GA tag.
-2. ✅ **Bell:** **polling 30s** (no Reverb in v8.0). Upgrade WebSocket parked v8.x se serve.
+1. ✅ **Cycle label:** **v8.0** (nuovo ciclo dedicato 8w, cut da `main` dopo v7.1.0 GA `2026-05-18 08:54Z` — mcp-pack v1.5 + admin v1.1 wire-up).
+2. ✅ **Bell:** **polling 30s** (no Reverb in v8.0). Upgrade WebSocket parked v8.x o v9.0 se serve.
 3. ✅ **Discord:** **webhook** (no bot). Canale default `#askmydocs-notifications` configurabile per tenant.
 4. ✅ **HMAC compliance:** **statico per-tenant** in `tenant_settings`. Rotation parked Pro/futuro.
 5. ✅ **Playbook MCP-debugger:** **solo inglese** (consumer enterprise; clienti IT capiscono inglese tech docs).
 6. ✅ **Compliance retention OSS:** **4 trimestri** (12 trimestri Pro).
 7. ✅ **Cap-removal lato Pro:** flag `config('askmydocs.tier') === 'pro'` letto dai service che enforcano cap; OSS hard-coded ai default §E.
 
-**Verde libero per apertura `feature/v8.0` quando v8.0 chiude.**
+**`feature/v8.0` aperto 2026-05-18 09:15Z; W1.1 (notification system schema + models) in flight come prima sub-PR.**

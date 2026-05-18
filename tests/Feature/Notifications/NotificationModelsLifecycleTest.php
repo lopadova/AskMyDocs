@@ -211,11 +211,19 @@ final class NotificationModelsLifecycleTest extends TestCase
 
     private function makeUser(): User
     {
+        // `User` is intentionally NOT tenant-aware (cross-tenant
+        // identity — see `tests/Architecture/TenantIdMandatoryTest`
+        // excluded-on-purpose list). The `users` table carries a
+        // `tenant_id` column with `default('default')` so existing
+        // rows are queryable per-tenant, but the model does not
+        // include the field in `$fillable` and mass-assigning it
+        // here would be silently discarded. Keep this helper plain
+        // — the notification tests rely on the active
+        // `TenantContext`, not on a per-User binding.
         return User::create([
             'name' => 'notif-test-actor',
             'email' => 'notif-'.uniqid('', true).'@test.local',
             'password' => Hash::make('secret123'),
-            'tenant_id' => 'default',
         ]);
     }
 }
