@@ -11,6 +11,38 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v7.1.0 — 2026-05-18 (MINOR — mcp-pack v1.5 + mcp-pack-admin v1.1 live wire-up)
+
+Host bump in lockstep with the [`padosoft/askmydocs-mcp-pack`](https://github.com/padosoft/askmydocs-mcp-pack) v1.5.0 + [`padosoft/askmydocs-mcp-pack-admin`](https://github.com/padosoft/askmydocs-mcp-pack-admin) v1.1.0 release pair (both also shipped 2026-05-18). This is a docs + dependency-pin release: no host `app/` code changes — the entire host integration surface from v7.0/W6 keeps working byte-identical because v1.5.0 is BC-safe by construction.
+
+#### What's new (in the dependency)
+
+`padosoft/askmydocs-mcp-pack` jumped from v1.4 → v1.5 with **+16 admin REST endpoints** (22 total) covering the full surface the standalone React SPA consumes — me/tenants/api-keys, server CRUD + handshake, tools / resources / prompts listing, **R21-atomic confirm-token protocol** on tool invoke / audit replay / breaker reset (host-owned `mintConfirmToken` + `consumeConfirmToken`), SSE events, OpenAPI 3.1 spec.
+
+**BC safety**: every new method lives on two sub-interfaces that EXTEND the originals rather than mutating them — `McpHostBridgeIdentityContract extends McpHostBridgeContract` and `McpServerMutableRegistryContract extends McpServerRegistryContract`. Default trait implementations (`HasIdentitySurface`, `HasMutableRegistry`) throw `HostFeatureNotImplementedException` from the optional methods so any host wiring only the original contracts works unchanged. This is the BC-safety pattern that made the host bump zero-change.
+
+In parallel, [`padosoft/askmydocs-mcp-pack-admin`](https://github.com/padosoft/askmydocs-mcp-pack-admin) v1.1.0 ships the React SPA wired end-to-end against the live v1.5 surface — 22 typed endpoints, 13 read hooks + 10 mutation hooks, R21 two-call confirm-token protocol with a second-leg expired-token guard on `useInvokeTool` / `useReplayAudit` / `useResetBreaker`, SSE live-feed consumer replacing the prototype simulator. 154 Vitest specs cover every endpoint binding with loading / error / empty / ready states + R21 happy + failure paths via MSW handlers shaped to the real wire schema. Operators can now `composer require padosoft/askmydocs-mcp-pack-admin:^1.1` and get a fully functional `/admin/mcp-pack` panel out of the box.
+
+#### What changed in this repo
+
+- **`composer.json`** — `padosoft/askmydocs-mcp-pack: ^1.4 → ^1.5`. Composer resolves v1.5.0 + transitive `symfony/process` patch bump (v8.0.8 → v8.0.11).
+- **`README.md`** — sister-packages table reflects v1.5.0 (mcp-pack) and v1.1.0 (mcp-pack-admin) reality; features-at-a-glance MCP admin row drops the v1.0.x fixture-disclaimer language; Optional setup section bumps `composer require padosoft/askmydocs-mcp-pack-admin:^1.0` to `^1.1` and rewrites the status note from "design preview" to "GA live wire-up"; new v7.1 roadmap row.
+- **CI** — workflow trigger widened from `feature/v4.*` to `feature/v*` + `feature/v*/**` in both `tests.yml` and `rag-regression.yml` (PR #184) so v7+ branches get CI automatically.
+
+#### Local verification
+
+- **613 / 613** Unit tests green
+- **1137 / 1137** Feature tests green
+- **81 / 81** MCP-tagged tests green (`vendor/bin/phpunit --filter='Mcp'`)
+- Zero breakage across the v1.4 → v1.5 hop. The BC-safe sub-interface extensions on the package side are exactly why this worked.
+
+#### PRs
+
+- PR #183 — `feat(v7.1): bump padosoft/askmydocs-mcp-pack ^1.4 → ^1.5 + roadmap closure` — merged at `308eed4`
+- PR #184 — `ci: widen workflow trigger from feature/v4.* to feature/v* + feature/v*/**` — merged at `4cbe0c9` (side quest; CI on v7+ branches was completely missing before)
+
+---
+
 ### v7.0.0 — 2026-05-16 (GA — host integration over `padosoft/askmydocs-mcp-pack`, full Node sidecar retirement)
 
 > **Release chronology**: This entry covers the full v7.0/W6 cycle. The
