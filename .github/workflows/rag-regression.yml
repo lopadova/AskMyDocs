@@ -28,6 +28,7 @@ on:
     branches:
       - main
       - 'feature/v*'
+      - 'feature/v*/**'
   workflow_dispatch:
     inputs:
       live_ai:
