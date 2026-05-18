@@ -51,14 +51,14 @@ const I18N = {
     },
 
     graphPanel: {
-      nodeTypesHeader: "node types · 9",
-      edgesHeader: "edges · 10 tipi",
+      nodeTypesHeader: "tipi di nodo · 9",
+      edgesHeader: "archi · 10 tipi",
       graphExpansionHeader: "graph expansion",
       row1hop: "vicini 1-hop",
       rowRejectedInj: "iniezione approcci scartati",
       rowCompositeFk: "FK composite tenant",
       floatingNodes: "nodi",
-      floatingEdges: "edges",
+      floatingEdges: "archi",
       floatingRejected: "scartato",
       floatingExpansion: "espansione",
     },
