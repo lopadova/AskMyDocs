@@ -36,9 +36,10 @@ final class TenantIdMandatoryTest extends TestCase
      *    enumerates the v3 domain tables that received `tenant_id` retroactively.
      *  - v4.x..v8.x cycles: each create-table migration adds `tenant_id`
      *    inline, so newer tenant-aware tables (workflows, mcp_servers,
-     *    notification_events, notification_preferences,
-     *    notification_digests, etc.) are NOT in the v3 backfill list and
-     *    are added directly to this enumeration when shipped.
+     *    mcp_tool_call_audit, notification_events,
+     *    notification_preferences, notification_digests, etc.) are NOT
+     *    in the v3 backfill list and are added directly to this
+     *    enumeration when shipped.
      *
      * When adding a tenant-aware model to this list: also wire
      * `use BelongsToTenant;` + `'tenant_id'` in `$fillable` on the model,
@@ -84,6 +85,11 @@ final class TenantIdMandatoryTest extends TestCase
         // `ConnectorInstallation` + `ConnectorCredential` and exercises
         // R31 in its own CI. No host-side entries here so this gate
         // doesn't drift between package and host.
+        // v5.0/W1 — MCP server registry + per-call audit (both
+        // tenant-aware; added retroactively 2026-05-18 when the v8.0
+        // R31 audit caught the omission).
+        \App\Models\McpServer::class,
+        \App\Models\McpToolCallAudit::class,
         // v8.0/W1.1 — notification system foundation (ADR 0012).
         \App\Models\NotificationEvent::class,
         \App\Models\NotificationPreference::class,

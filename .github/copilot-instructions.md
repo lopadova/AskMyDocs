@@ -498,17 +498,21 @@ should converge in 1-2 rounds instead of 5-15.
 
 Mandatory workflow per sub-PR:
 1. Local tests green (`vendor/bin/phpunit` + targeted suites).
-2. `copilot --autopilot --yolo --add-dir "$(pwd)" -p "<review prompt>"`
-   on the unstaged + uncommitted working tree. Ask for must-fix
-   bugs / R-rule violations / contract drift between schema, models,
-   tests, docs / security (R21 + R30 + R31) / missing edge coverage
-   / migration safety.
-3. Fix every must-fix + should-fix locally; re-run tests.
-4. Re-run copilot-cli; loop until `0 must-fix, 0 should-fix`.
-5. Only then push; first push opens the PR with
+2. Settle the working tree (stop editing, save buffers, run
+   tests once more so phpunit confirms the WIP compiles +
+   behaves). Working tree may stay uncommitted — copilot-cli
+   reads via `git diff HEAD` plus direct file reads — but MUST
+   NOT be mid-edit.
+3. `copilot --autopilot --yolo --add-dir "$(pwd)" -p "<review prompt>"`
+   on the settled diff. Ask for must-fix bugs / R-rule violations
+   / contract drift between schema, models, tests, docs / security
+   (R21 + R30 + R31) / missing edge coverage / migration safety.
+4. Fix every must-fix + should-fix locally; re-run tests.
+5. Re-run copilot-cli; loop until `0 must-fix, 0 should-fix`.
+6. Only then push; first push opens the PR with
    `--reviewer copilot-pull-request-reviewer` per R36; subsequent
    pushes re-request the review.
-6. R36 cloud loop runs on the already-clean diff; expect 0-1 round
+7. R36 cloud loop runs on the already-clean diff; expect 0-1 round
    of GitHub Copilot findings, rarely 2.
 
 Anti-patterns:
@@ -516,8 +520,9 @@ Anti-patterns:
   (defeats the wall-time saving).
 - ❌ Skip copilot-cli because the diff is small.
 - ❌ Accept copilot-cli findings without fix and push regardless.
-- ❌ Run copilot-cli on a branch with uncommitted local edits in an
-  ad-hoc state — always commit-or-stash before the review pass.
+- ❌ Run copilot-cli mid-edit on an in-flux working tree (half-
+  typed methods, broken syntax, unsaved buffers) — settle first,
+  then review.
 
 Scope: every PR on `lopadova/AskMyDocs` from 2026-05-18 onward and
 every PR on `padosoft/*` (current + future). Applies to docs-only

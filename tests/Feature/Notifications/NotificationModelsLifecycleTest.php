@@ -240,7 +240,7 @@ final class NotificationModelsLifecycleTest extends TestCase
         $this->assertSame('tenant-b', $b->tenant_id);
     }
 
-    public function test_digest_payload_roundtrips_and_sent_at_caster(): void
+    public function test_digest_payload_roundtrips_and_sent_at_cast(): void
     {
         $digest = NotificationDigest::create([
             'week_start_date' => '2026-05-18',

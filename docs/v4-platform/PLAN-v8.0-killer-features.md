@@ -3,7 +3,7 @@
 > **Context.** Sessione brainstorming originale: `C:\Users\lopad\Documents\DocLore\obsidianlore\obsidianlore\Clippings\AskMyDocs V8.0 Killer features distintive.md` (10 idee killer + sezioni A/B/C/D/E). Lorenzo applica ora 10 osservazioni/correzioni e chiede roadmap definitiva con ADR + task atomiche + acceptance gate per ogni feature, più recap di cosa va in `askmydocs-pro` (privato a pagamento).
 >
 > **Stato corrente del repo (verificato 2026-05-18).**
-> - Notifiche nel host AskMyDocs: **assenti** (zero migration / model / controller / bell / canale). `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` non wirato.
+> - Notifiche nel host AskMyDocs: **fondazione W1.1 SHIPPED** (3 migration + 3 Eloquent model + 12 lifecycle feature test + 3 nuovi entry in `TenantIdMandatoryTest` R31). Pending: controller / event publisher / dispatcher listener / canale adapter / bell SPA / `notifications:prune` cron — coperti dai sotto-task W1.2..W1.5 + W2. `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` ancora non wirato.
 > - Scheduler: tutti i 12 slot hanno cron hard-coded in `bootstrap/app.php`; solo le retention window sono env-configurabili.
 > - Cicli predecessori chiusi: v7.0.0 GA `2026-05-16` (mcp-pack host integration) + v7.1.0 GA `2026-05-18 08:54Z` (mcp-pack v1.5 + mcp-pack-admin v1.1 live wire-up — semver MINOR sopra v7.0). Le feature qui pianificate aprono il **nuovo ciclo major v8.0**, cut subito dopo v7.1.0.
 >
@@ -33,7 +33,7 @@
 - **DB persistence: default ON** (tabella `notification_events`, retention 90 giorni, `notifications:prune` wirato come 13° slot scheduler).
 - **In-app bell + lista "Ultime notifiche": default ON** (top-bar `<NotificationBell/>` + pannello `/app/admin/notifications` con tabs Unread / Read / Dismissed / All).
 - **Canali per-utente per-event-type:**
-  - Tabella `notification_preferences(user_id, event_type, channel, enabled BOOL)` — riga per ogni combinazione user × event × channel.
+  - Tabella `notification_preferences(tenant_id, user_id, event_type, channel, enabled BOOL)` — riga per ogni combinazione tenant × user × event × channel, con `UNIQUE(tenant_id, user_id, event_type, channel)` (R30).
   - UI `/app/account/notifications`: griglia event_type (righe) × channel (colonne `in_app|email|discord|slack|teams|webhook`). Toggle individuale per cella + "enable all in column" / "enable all in row" bulk.
   - Default-policy globale in `config/askmydocs.php` (es. `kb_doc_created: in_app=on email=off slack=off discord=off`) editabile dal tenant-admin in `/app/admin/notifications/defaults`.
 - **Pruning: default ON** (90gg) con env override `NOTIFICATION_RETENTION_DAYS=0` per disabilitare.
@@ -127,7 +127,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 ### §C.1 — ADR 0012 + W1 Notification System core (D-foundation)
 
 **ADR 0012 — Database-backed multi-channel notification system.**
-- **Status:** proposed
+- **Status:** Accepted 2026-05-18 (canonical record: `docs/adr/0012-v80-notification-system.md`)
 - **Context:** host AskMyDocs non ha nessuna infrastruttura notifiche; eventi di interesse (kb canonical promoted, doc created/modified, decision debt threshold, weekly digest, collection_new_member) vanno dispatched a 6 canali (in_app, email, discord, slack, teams, webhook) con preferenze per-user-per-event-per-channel.
 - **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v8.0 — defer Reverb a v8.x se serve).
 - **Consequences:** schema nuovo per 3 tabelle; tutti gli event publisher esistenti vanno wirati a `KbDocumentChanged` / `KbCanonicalPromoted` etc. via Listener; default-policy in `config/askmydocs.php` editabile da tenant-admin; `notifications:prune` aggiunto come 13° slot scheduler default 90gg.
