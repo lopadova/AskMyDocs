@@ -76,6 +76,21 @@ return new class extends Migration
                 ['tenant_id', 'created_at'],
                 'idx_notif_events_tenant_created',
             );
+            // FK cascade hot path: User deletion triggers
+            // `DELETE FROM notification_events WHERE user_id = ?`.
+            // The bell + admin indexes above all lead with
+            // `tenant_id` (correct for read patterns), so without
+            // this user-leading index the cascade falls back to a
+            // table scan + row-level locks that on a 90-day
+            // retained feed can hold writes back longer than
+            // necessary. `tenant_id` as the trailing column keeps
+            // the index small (covers the typical (user_id,
+            // tenant_id) tuple) without becoming a duplicate of
+            // the bell index.
+            $table->index(
+                ['user_id', 'tenant_id'],
+                'idx_notif_events_user_cascade',
+            );
         });
     }
 

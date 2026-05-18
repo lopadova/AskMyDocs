@@ -1102,9 +1102,10 @@ section §R40.
    Code Review on GitHub will catch those if they matter).
 4. **Fix every finding locally** (must-fix + should-fix). Re-run
    tests after each fix.
-5. **Re-run `copilot --autopilot --yolo -p`** to verify the fixes
-   landed and to catch any new issues introduced by the fixes.
-   Loop until copilot-cli reports `0 must-fix, 0 should-fix`.
+5. **Re-run `copilot --autopilot --yolo --add-dir "$(pwd)" -p`**
+   to verify the fixes landed and to catch any new issues
+   introduced by the fixes. Loop until copilot-cli reports
+   `0 must-fix, 0 should-fix`.
 6. **Only then push.** First push of a new sub-branch creates the
    PR with `gh pr create --reviewer copilot-pull-request-reviewer`
    per R36. Subsequent pushes re-request review via `gh pr edit

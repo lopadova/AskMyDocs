@@ -36,6 +36,10 @@ return new class extends Migration
                 ['tenant_id', 'created_at'],
                 'idx_notif_events_tenant_created',
             );
+            $table->index(
+                ['user_id', 'tenant_id'],
+                'idx_notif_events_user_cascade',
+            );
         });
     }
 
