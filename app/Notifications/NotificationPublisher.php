@@ -40,7 +40,7 @@ use Illuminate\Support\Facades\Event;
  *      after the predicate runs, so the resulting array stays
  *      bounded by the FILTERED count.
  *   2. Access predicate (`userCanViewDocumentInTenant`):
- *        a. `kb.view.any` global permission → allow (matches the
+ *        a. `kb.read.any` global permission → allow (matches the
  *           `AccessScopeScope` bypass on the read path).
  *        b. Project membership in `(tenant_id, user_id, project_key)`
  *           on `project_memberships` — explicit tenant scope. Crucial:
@@ -88,7 +88,7 @@ final class NotificationPublisher
      * Recipients are filtered to users who (a) hold an enabled
      * preference for the resolved event_type, (b) have project
      * membership in `(tenant_id, user_id, project_key)` (or the
-     * global `kb.view.any` permission), (c) have no matching deny
+     * global `kb.read.any` permission), (c) have no matching deny
      * row on `knowledge_document_acl` for this document's PK, AND
      * (d) pass the membership's `scope_allowlist` folder_globs /
      * tags check (when configured). The class docblock documents
@@ -284,7 +284,7 @@ final class NotificationPublisher
      * Tenant-aware per-document access check.
      *
      * Layered semantics (cheapest predicate first, short-circuit):
-     *   1. Global `kb.view.any` permission → allow (matches the
+     *   1. Global `kb.read.any` permission → allow (matches the
      *      `AccessScopeScope` bypass on the read path).
      *   2. Tenant-scoped project membership in
      *      `(tenant_id, user_id, project_key)`. We fetch the full
@@ -315,7 +315,7 @@ final class NotificationPublisher
         string $projectKey,
         KnowledgeDocument $document,
     ): bool {
-        if ($user->can('kb.view.any')) {
+        if ($user->can('kb.read.any')) {
             return true;
         }
 
@@ -366,11 +366,15 @@ final class NotificationPublisher
 
     /**
      * @param  array<int,string>  $globs
+     *
+     * `FNM_PATHNAME` so `*` matches a single path segment instead of
+     * spanning `/` separators — `hr/*` should match `hr/policy.md`
+     * but NOT `hr/policy/details.md` (per R19 input-escape complete).
      */
     private function matchesAnyGlob(string $path, array $globs): bool
     {
         foreach ($globs as $glob) {
-            if (fnmatch($glob, $path)) {
+            if (fnmatch($glob, $path, FNM_PATHNAME)) {
                 return true;
             }
         }
@@ -378,13 +382,28 @@ final class NotificationPublisher
     }
 
     /**
+     * Defence-in-depth tenant scope: `kb_tags` and
+     * `knowledge_document_tags` are R30 tenant-aware. The
+     * `knowledge_document_id` predicate is naturally tenant-safe
+     * (the document was loaded with explicit tenant_id), but we
+     * still add the explicit `tenant_id` predicate so a future
+     * audit trace can see the constraint at the SQL layer instead
+     * of inferring it from the FK chain.
+     *
      * @param  array<int,string>  $tagSlugs
      */
     private function documentHasAnyTag(KnowledgeDocument $document, array $tagSlugs): bool
     {
+        $tenantId = (string) ($document->tenant_id ?? '');
+        if ($tenantId === '') {
+            return false;
+        }
+
         return DB::table('knowledge_document_tags')
             ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
             ->where('knowledge_document_tags.knowledge_document_id', $document->getKey())
+            ->where('knowledge_document_tags.tenant_id', $tenantId)
+            ->where('kb_tags.tenant_id', $tenantId)
             ->whereIn('kb_tags.slug', $tagSlugs)
             ->exists();
     }
@@ -400,9 +419,15 @@ final class NotificationPublisher
      */
     private function evaluateAclForUser(User $user, KnowledgeDocument $document): ?string
     {
+        $tenantId = (string) ($document->tenant_id ?? '');
+        if ($tenantId === '') {
+            return null;
+        }
+
         $roleNames = $user->getRoleNames()->all();
         $effects = DB::table('knowledge_document_acl')
             ->where('knowledge_document_id', $document->getKey())
+            ->where('tenant_id', $tenantId)
             ->where('permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
             ->where(function ($query) use ($user, $roleNames): void {
                 $query->where(function ($q) use ($user): void {
