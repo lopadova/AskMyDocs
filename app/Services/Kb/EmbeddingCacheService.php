@@ -216,11 +216,6 @@ class EmbeddingCacheService
             'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
             'gemini' => config('ai.providers.gemini.embeddings_model', 'text-embedding-004'),
             'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),
-            // OpenRouter (Oct 2025+): OpenAI-compatible `/v1/embeddings`.
-            // Resolves the same env knob the provider's `generateEmbeddings()`
-            // uses, so the (text_hash, provider, model) lookup matches the
-            // insert path on `$apiResponse->model`.
-            'openrouter' => config('ai.providers.openrouter.embeddings_model', 'openai/text-embedding-3-small'),
             default => 'unknown',
         };
     }

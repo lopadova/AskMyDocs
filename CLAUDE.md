@@ -32,7 +32,7 @@ token.
 - Tests: PHPUnit 12 + Orchestra Testbench 11 + Vitest. SQLite is used in tests —
   `vector(N)` columns swap to JSON text via the migrations under
   `tests/database/migrations/`.
-- No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter — each is called via `Illuminate\Support\Facades\Http`. Regolo is the documented exception: `RegoloProvider` uses the `padosoft/laravel-ai-regolo` SDK on top of `Laravel\Ai` so chat + embeddings reuse its OpenAI-compatible client. New providers added going forward should default to raw `Http::` unless an existing SDK already covers auth/retries/timeouts; document any SDK adoption in the same PR.
+- No AI SDKs: every provider is called via `Illuminate\Support\Facades\Http`.
 
 ---
 
