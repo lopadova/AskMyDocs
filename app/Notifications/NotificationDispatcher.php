@@ -181,11 +181,17 @@ final class NotificationDispatcher
             );
         }
 
+        // Deterministic order (insertion id ASC) so adapter
+        // invocation is reproducible across DB engines. Important
+        // for the mixed success/failure regression test that pins
+        // the stale-row contract: if order were engine-dependent
+        // the test might or might not trigger the bug case.
         return NotificationPreference::query()
             ->where('tenant_id', $event->tenantId())
             ->where('user_id', $recipient->id)
             ->where('event_type', $event->eventType())
             ->where('enabled', true)
+            ->orderBy('id')
             ->pluck('channel')
             ->all();
     }
@@ -209,19 +215,23 @@ final class NotificationDispatcher
         string $channelName,
         string $error,
     ): void {
-        // Reload to avoid clobbering prior channel log entries that
-        // landed since this row was first created in this dispatch
-        // (sibling adapters wrote to it via `$row->save()` between
-        // create() and now).
-        $fresh = $row->fresh() ?? $row;
-        $log = $fresh->channel_dispatch_log ?? [];
+        // Mutate the same in-memory `$row` instance the dispatcher
+        // hands to each subsequent adapter. The ADR 0012 contract
+        // guarantees serialised invocations per row, so no concurrent
+        // writer can clobber what we save here — but reloading via
+        // `fresh()` and saving a *different* model object would leave
+        // the dispatcher's `$row` stale, and the next adapter's own
+        // `$row->save()` would overwrite this failure entry with the
+        // pre-failure log. Keep the original `$row` as the single
+        // mutable source of truth.
+        $log = $row->channel_dispatch_log ?? [];
         $log[] = [
             'channel' => $channelName,
             'status' => 'failed',
             'at' => now()->toIso8601String(),
             'error' => $error,
         ];
-        $fresh->channel_dispatch_log = $log;
-        $fresh->save();
+        $row->channel_dispatch_log = $log;
+        $row->save();
     }
 }

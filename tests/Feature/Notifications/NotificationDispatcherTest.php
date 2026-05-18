@@ -321,6 +321,50 @@ final class NotificationDispatcherTest extends TestCase
         $this->assertSame($live->id, NotificationEvent::sole()->user_id);
     }
 
+    public function test_dispatch_preserves_failure_log_when_later_channel_succeeds(): void
+    {
+        // Regression: previously `appendFailureLog()` saved a freshly
+        // reloaded copy of the row while leaving the dispatcher's
+        // in-memory `$row` stale, so the next adapter's own
+        // `$row->save()` overwrote the failure entry. Pin the
+        // fix by running a throwing adapter followed by a
+        // succeeding one and asserting both entries persist.
+        $user = $this->makeUser('mixed');
+        $this->enablePrefs($user, ['boom-first', NotificationPreference::CHANNEL_IN_APP]);
+
+        $registry = app(ChannelRegistry::class);
+        $registry->register(new class implements \App\Notifications\Channels\NotificationChannelInterface
+        {
+            public function name(): string
+            {
+                return 'boom-first';
+            }
+
+            public function send(
+                \App\Notifications\Events\BaseNotificationEvent $event,
+                ?User $user,
+                NotificationEvent $eventRow,
+            ): void {
+                throw new \RuntimeException('boom-first failed');
+            }
+        });
+
+        Event::dispatch(new KbCanonicalPromoted(
+            recipients: [$user],
+            payload: ['slug' => 'dec-mix'],
+            tenantId: 'default',
+        ));
+
+        $row = NotificationEvent::sole();
+        $statuses = array_combine(
+            array_column($row->channel_dispatch_log, 'channel'),
+            array_column($row->channel_dispatch_log, 'status'),
+        );
+        $this->assertSame('failed', $statuses['boom-first'] ?? null);
+        $this->assertSame('delivered', $statuses[NotificationPreference::CHANNEL_IN_APP] ?? null);
+        $this->assertCount(2, $row->channel_dispatch_log);
+    }
+
     private function makeUser(string $slug): User
     {
         return User::create([

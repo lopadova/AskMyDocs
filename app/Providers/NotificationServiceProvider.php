@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Models\KbCanonicalAudit;
+use App\Models\KnowledgeDocument;
 use App\Notifications\ChannelRegistry;
 use App\Notifications\Events\BaseNotificationEvent;
 use App\Notifications\Events\CollectionNewMember;
@@ -11,6 +13,8 @@ use App\Notifications\Events\KbCanonicalPromoted;
 use App\Notifications\Events\KbDecisionDebtThreshold;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Notifications\NotificationDispatcher;
+use App\Notifications\NotificationPublisher;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -25,6 +29,22 @@ use Illuminate\Support\ServiceProvider;
  *   per-user preferences, inserts the audit row, and invokes
  *   channel adapters (NullChannel fallback until W1.3 lands real
  *   adapters).
+ * - Wires the production publishers via Eloquent `created` hooks
+ *   so EVERY ingestion / promotion path (HTTP, CLI, Flow, future
+ *   connectors) fires the matching event without per-call-site
+ *   plumbing:
+ *     - `KnowledgeDocument::created` → `KbDocumentChanged`
+ *       (`'created'` for first-version inserts, `'modified'`
+ *       when a prior version exists for the same
+ *       `(tenant_id, project_key, source_path)`).
+ *     - `KbCanonicalAudit::created` with `event_type='promoted'`
+ *       → `KbCanonicalPromoted`. The audit row is the canonical
+ *       seam: `WriteCanonicalMarkdownStep` writes it inside the
+ *       saga transaction, so synchronous + flow-based promotions
+ *       both end up here without separate wiring.
+ *   `KbDecisionDebtThreshold` and `CollectionNewMember` stay as
+ *   listenable contracts in W1.2 — their publisher hooks land in
+ *   W4 (decision-debt cron) and W6 (Living Collections evaluator).
  *
  * Listed in `bootstrap/providers.php` AFTER AppServiceProvider so
  * the TenantContext singleton it depends on is bound first.
@@ -51,5 +71,82 @@ final class NotificationServiceProvider extends ServiceProvider
                 static fn (BaseNotificationEvent $event) => app(NotificationDispatcher::class)->handle($event),
             );
         }
+
+        $this->wireDomainPublishers();
+    }
+
+    /**
+     * Bridge Eloquent `created` hooks to {@see NotificationPublisher}.
+     * Each hook is wrapped in `DB::afterCommit` so the publisher
+     * (and downstream `NotificationDispatcher`) only run if the
+     * transaction that created the row actually commits — otherwise
+     * a rolled-back ingest would still fan out notification emails.
+     *
+     * The recipient resolution + event dispatch happens INSIDE
+     * `afterCommit`; outside a transaction Laravel fires it
+     * immediately. Failures inside the closure are swallowed and
+     * logged so a notification-pipeline outage never breaks the
+     * underlying domain mutation.
+     */
+    private function wireDomainPublishers(): void
+    {
+        KnowledgeDocument::created(static function (KnowledgeDocument $document): void {
+            DB::afterCommit(static function () use ($document): void {
+                try {
+                    $tenantId = (string) ($document->tenant_id ?? '');
+                    $projectKey = (string) ($document->project_key ?? '');
+                    if ($tenantId === '' || $projectKey === '') {
+                        return;
+                    }
+                    $isModified = KnowledgeDocument::withTrashed()
+                        ->where('tenant_id', $tenantId)
+                        ->where('project_key', $projectKey)
+                        ->where('source_path', $document->source_path)
+                        ->where('id', '!=', $document->id)
+                        ->exists();
+
+                    app(NotificationPublisher::class)->publishKbDocumentChanged(
+                        tenantId: $tenantId,
+                        projectKey: $projectKey,
+                        documentId: (int) $document->id,
+                        sourcePath: (string) $document->source_path,
+                        title: $document->title === null ? null : (string) $document->title,
+                        isModified: $isModified,
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning(
+                        'NotificationServiceProvider: KbDocumentChanged publisher failed',
+                        ['document_id' => $document->id, 'error' => $e->getMessage()],
+                    );
+                }
+            });
+        });
+
+        KbCanonicalAudit::created(static function (KbCanonicalAudit $audit): void {
+            if ((string) $audit->event_type !== 'promoted') {
+                return;
+            }
+            DB::afterCommit(static function () use ($audit): void {
+                try {
+                    $tenantId = (string) ($audit->tenant_id ?? '');
+                    $projectKey = (string) ($audit->project_key ?? '');
+                    if ($tenantId === '' || $projectKey === '') {
+                        return;
+                    }
+                    app(NotificationPublisher::class)->publishKbCanonicalPromoted(
+                        tenantId: $tenantId,
+                        projectKey: $projectKey,
+                        docId: $audit->doc_id === null ? null : (string) $audit->doc_id,
+                        slug: $audit->slug === null ? null : (string) $audit->slug,
+                        actor: $audit->actor === null ? null : (string) $audit->actor,
+                    );
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning(
+                        'NotificationServiceProvider: KbCanonicalPromoted publisher failed',
+                        ['audit_id' => $audit->id, 'error' => $e->getMessage()],
+                    );
+                }
+            });
+        });
     }
 }
