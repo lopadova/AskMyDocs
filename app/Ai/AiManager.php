@@ -7,10 +7,20 @@ use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use App\Ai\Providers\RegoloProvider;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class AiManager
 {
+    /**
+     * Auto-fallback search order when the chat provider doesn't support
+     * embeddings AND `AI_EMBEDDINGS_PROVIDER` is not set. Regolo first
+     * because it ships in-house with EU-residency Qwen3-Embedding-8B;
+     * OpenAI second (most universally configured); Gemini third;
+     * OpenRouter last (only since Oct 2025 with qwen/qwen3-embedding-4b).
+     */
+    private const EMBEDDINGS_FALLBACK_ORDER = ['regolo', 'openai', 'gemini', 'openrouter'];
+
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];
 
@@ -23,17 +33,76 @@ class AiManager
 
     public function embeddingsProvider(): AiProviderInterface
     {
-        $name = config('ai.embeddings_provider') ?? config('ai.default', 'openai');
-        $provider = $this->provider($name);
+        $explicit = config('ai.embeddings_provider');
 
-        if (! $provider->supportsEmbeddings()) {
-            throw new InvalidArgumentException(
-                "Provider [{$name}] does not support embeddings. "
-                . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, or regolo.'
-            );
+        if ($explicit !== null && $explicit !== '') {
+            $provider = $this->provider($explicit);
+
+            if (! $provider->supportsEmbeddings()) {
+                throw new InvalidArgumentException(
+                    "Provider [{$explicit}] does not support embeddings. "
+                    . 'Set AI_EMBEDDINGS_PROVIDER to openai, gemini, or regolo.'
+                );
+            }
+
+            return $provider;
         }
 
-        return $provider;
+        $defaultName = config('ai.default', 'openai');
+        $defaultProvider = $this->provider($defaultName);
+
+        if ($defaultProvider->supportsEmbeddings()) {
+            return $defaultProvider;
+        }
+
+        $fallback = $this->autoSelectEmbeddingsProvider();
+
+        if ($fallback !== null) {
+            Log::info('ai.embeddings_provider auto-selected fallback', [
+                'chat_provider' => $defaultName,
+                'embeddings_provider' => $fallback->name(),
+                'reason' => "chat provider [{$defaultName}] does not support embeddings",
+            ]);
+
+            return $fallback;
+        }
+
+        throw new InvalidArgumentException(
+            "Provider [{$defaultName}] does not support embeddings and no "
+            . 'fallback embeddings provider is configured. '
+            . 'Set AI_EMBEDDINGS_PROVIDER=openai|gemini|regolo and provide '
+            . 'the matching API key (OPENAI_API_KEY, GEMINI_API_KEY, REGOLO_API_KEY).'
+        );
+    }
+
+    private function autoSelectEmbeddingsProvider(): ?AiProviderInterface
+    {
+        foreach (self::EMBEDDINGS_FALLBACK_ORDER as $name) {
+            if (! $this->hasApiKey($name)) {
+                continue;
+            }
+
+            $provider = $this->provider($name);
+
+            if ($provider->supportsEmbeddings()) {
+                return $provider;
+            }
+        }
+
+        return null;
+    }
+
+    private function hasApiKey(string $provider): bool
+    {
+        $key = match ($provider) {
+            'openai' => config('ai.providers.openai.api_key'),
+            'gemini' => config('ai.providers.gemini.api_key'),
+            'regolo' => config('ai.providers.regolo.key'),
+            'openrouter' => config('ai.providers.openrouter.api_key'),
+            default => null,
+        };
+
+        return is_string($key) && $key !== '';
     }
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse

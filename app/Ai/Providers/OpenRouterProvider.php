@@ -106,9 +106,31 @@ final class OpenRouterProvider implements AiProviderInterface
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
-        throw new \RuntimeException(
-            'OpenRouter does not support embeddings. '
-            . 'Configure AI_EMBEDDINGS_PROVIDER (e.g. openai, gemini).'
+        $response = Http::withToken($this->config['api_key'])
+            ->withHeaders([
+                'HTTP-Referer' => $this->config['site_url'] ?? config('app.url', ''),
+                'X-Title' => $this->config['app_name'] ?? config('app.name', 'Enterprise KB'),
+            ])
+            ->timeout($this->config['timeout'] ?? 120)
+            ->post("{$this->baseUrl}/embeddings", [
+                'model' => $this->config['embeddings_model'] ?? 'openai/text-embedding-3-small',
+                'input' => $texts,
+            ]);
+
+        $response->throw();
+        $data = $response->json();
+
+        $embeddings = collect($data['data'] ?? [])
+            ->sortBy('index')
+            ->pluck('embedding')
+            ->values()
+            ->all();
+
+        return new EmbeddingsResponse(
+            embeddings: $embeddings,
+            provider: $this->name(),
+            model: $data['model'] ?? ($this->config['embeddings_model'] ?? 'openai/text-embedding-3-small'),
+            totalTokens: $data['usage']['total_tokens'] ?? null,
         );
     }
 
@@ -119,7 +141,7 @@ final class OpenRouterProvider implements AiProviderInterface
 
     public function supportsEmbeddings(): bool
     {
-        return false;
+        return true;
     }
 
     private function normalizeToolCalls(mixed $rawToolCalls): array

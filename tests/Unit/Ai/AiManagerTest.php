@@ -99,4 +99,74 @@ class AiManagerTest extends TestCase
 
         $manager->embeddingsProvider();
     }
+
+    public function test_embeddings_auto_fallback_when_chat_provider_lacks_support(): void
+    {
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.regolo.key', null);
+        config()->set('ai.providers.openrouter.api_key', null);
+
+        $manager = new AiManager();
+
+        $this->assertSame('openai', $manager->embeddingsProvider()->name());
+    }
+
+    public function test_embeddings_auto_fallback_prefers_regolo_when_available(): void
+    {
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.regolo.key', 'rgl-test');
+        config()->set('ai.providers.openrouter.api_key', 'or-test');
+
+        $manager = new AiManager();
+
+        $this->assertSame('regolo', $manager->embeddingsProvider()->name());
+    }
+
+    public function test_embeddings_auto_fallback_throws_when_no_keys_configured(): void
+    {
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.regolo.key', null);
+        config()->set('ai.providers.openrouter.api_key', null);
+
+        $manager = new AiManager();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/no fallback embeddings provider is configured/i');
+
+        $manager->embeddingsProvider();
+    }
+
+    public function test_embeddings_uses_openrouter_when_default_and_only_keyed(): void
+    {
+        config()->set('ai.default', 'openrouter');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openrouter.api_key', 'or-test');
+
+        $manager = new AiManager();
+
+        $this->assertSame('openrouter', $manager->embeddingsProvider()->name());
+    }
+
+    public function test_embeddings_auto_fallback_skips_anthropic_even_if_keyed(): void
+    {
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.anthropic.api_key', 'ak-test');
+        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.regolo.key', null);
+
+        $manager = new AiManager();
+
+        $this->assertSame('openai', $manager->embeddingsProvider()->name());
+    }
 }

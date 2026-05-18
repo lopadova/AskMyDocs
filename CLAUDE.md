@@ -251,7 +251,14 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   control over auth, retries, timeouts, response parsing, and testability via
   `Http::fake()`.
 - **Chat and embeddings providers are separate** (`AI_PROVIDER` vs
-  `AI_EMBEDDINGS_PROVIDER`). Anthropic and OpenRouter don't do embeddings.
+  `AI_EMBEDDINGS_PROVIDER`). Anthropic does not offer embeddings.
+  OpenRouter exposes an OpenAI-compatible `/v1/embeddings` endpoint and
+  routes both `openai/text-embedding-3-small` (default, 1536 dims, matches
+  the schema default — no DB migration needed) and `qwen/qwen3-embedding-4b`
+  (2560 dims, requires resizing the pgvector columns). When
+  `AI_PROVIDER=anthropic` and `AI_EMBEDDINGS_PROVIDER` is empty, AiManager
+  auto-selects the first embeddings-capable provider with a configured
+  API key in this order: regolo → openai → gemini → openrouter.
 - **Embedding dimensions are part of the contract.** Switching provider/model
   requires migrating the `vector(N)` column **and** flushing the cache **and**
   re-indexing. See the "Embedding dimension gotcha" section in the README.

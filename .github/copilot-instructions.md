@@ -185,8 +185,11 @@ when no canonical docs exist.
 
 - **No AI SDKs**, only `Http::`.
 - **Chat and embeddings providers are independent** (`AI_PROVIDER` vs
-  `AI_EMBEDDINGS_PROVIDER`). Anthropic and OpenRouter have no embeddings
-  endpoint.
+  `AI_EMBEDDINGS_PROVIDER`). Anthropic has no embeddings endpoint.
+  OpenRouter exposes one (OpenAI-compatible `/v1/embeddings`); default
+  routed model is `openai/text-embedding-3-small` (1536 dims — matches
+  the schema, no migration needed). Auto-fallback order when chat
+  provider can't embed: regolo → openai → gemini → openrouter.
 - **Embedding dimensions are part of the contract.** Changing the embeddings
   model requires migrating the `vector(N)` column, flushing
   `embedding_cache`, and re-indexing.
