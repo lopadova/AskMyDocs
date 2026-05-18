@@ -150,3 +150,12 @@ if (app()->environment('testing')) {
 
 Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/plain']))
     ->name('healthz');
+
+// v8.0/W1.3 — one-click unsubscribe for email notifications.
+// HMAC-signed token is the auth; no session / Sanctum guard required
+// because the user is clicking from their mail client outside the
+// browser session. See UnsubscribeTokenSigner for the token format
+// and NotificationUnsubscribeController for the verification flow.
+Route::get('/notifications/unsubscribe/{token}', \App\Http\Controllers\NotificationUnsubscribeController::class)
+    ->name('notifications.unsubscribe')
+    ->where('token', '[A-Za-z0-9_-]+');
