@@ -138,6 +138,36 @@ final class NotificationPublisherTest extends TestCase
         $this->assertSame(0, NotificationEvent::count());
     }
 
+    public function test_publisher_ignores_cross_tenant_project_membership_with_same_project_key(): void
+    {
+        // User Alice has membership in `(tenant_other, proj-shared)`.
+        // The current event fires under tenant `default` for the same
+        // `project_key = proj-shared`. Because `project_key` is NOT
+        // globally unique and `User` rows ARE global, a naive
+        // `User::allowedProjects()` (no tenant filter) would falsely
+        // match Alice. The publisher's tenant-scoped membership lookup
+        // must reject this candidate.
+        $alice = $this->makeUser('cross-tenant-alice');
+        ProjectMembership::create([
+            'tenant_id' => 'tenant_other',
+            'user_id' => $alice->id,
+            'project_key' => 'proj-shared',
+            'role' => 'member',
+            'scope_allowlist' => null,
+        ]);
+        // Alice's preference is in the current tenant (default) —
+        // preference lookup will return her id, but the project filter
+        // MUST drop her because she has no membership in
+        // (default, proj-shared).
+        $this->enablePref($alice, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-shared', 'docs/cross.md', 'cross-1', 'active', 'Cross-tenant')
+        );
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
     public function test_publisher_ignores_users_in_a_different_project(): void
     {
         // Member belongs to project-A but the event fires for project-B —

@@ -7,6 +7,7 @@ namespace App\Notifications;
 use App\Models\KnowledgeDocument;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
+use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\Events\KbCanonicalPromoted;
 use App\Notifications\Events\KbDocumentChanged;
@@ -25,43 +26,48 @@ use Illuminate\Support\Facades\Event;
  * publisher having to remember the call.
  *
  * Recipient resolution is layered (cheapest filter first to keep the
- * common case — zero-subscriber tenants — to 1 SELECT):
+ * common case — zero-subscriber tenants — to 1 SELECT) and STREAMED
+ * via `User::chunkById(500)` so a tenant with thousands of opt-in
+ * users never materialises a single huge IN-clause or in-memory
+ * collection:
  *
- *   1. Pull every `User` who has a `notification_preferences` row in
- *      the event's tenant with `enabled=true` for the event_type.
- *      No project filter at the SQL layer because preferences are
- *      stored per (user, event_type, channel) — the project scope
- *      is enforced in PHP against `User::allowedProjects()` next.
- *   2. Filter the candidate set by `User::allowedProjects()`
- *      containing the event's `$projectKey` (or
- *      `User::PROJECT_WILDCARD`). A user with no membership in the
- *      project the event came from MUST NOT receive a notification
- *      that leaks the `source_path`, `title`, or `slug` of a doc
- *      they cannot otherwise see (Copilot PR #189 finding —
- *      cross-project ACL leak).
- *   3. For both `KbDocumentChanged` AND `KbCanonicalPromoted`,
- *      additionally call `User::hasDocumentAccess($doc, 'view')` per
- *      candidate so the row-level ACL on `knowledge_document_acl` and
- *      the `scope_allowlist` folder_globs / tags are honoured the same
- *      way `KnowledgeDocumentPolicy::view()` enforces them on the read
- *      path. `KbCanonicalPromoted` resolves the canonical
- *      `KnowledgeDocument` row from the audit's `(tenant, project,
- *      doc_id|slug)` triple (bypassing `AccessScopeScope` because the
- *      lookup is a SYSTEM operation), and SUPPRESSES the notification
- *      entirely if the row can't be resolved — otherwise we'd leak
- *      slug/doc_id metadata to a subscriber the ACL would deny.
+ *   1. Pull `notification_preferences.user_id` for the event's tenant
+ *      + event_type + enabled=true. This is the only SQL pre-filter.
+ *   2. `chunkById(500)` the candidate User set; for each chunk apply
+ *      the access predicate in PHP and accumulate eligible users.
+ *   3. Access predicate (`userCanViewDocumentInTenant`):
+ *        a. Project membership in `(tenant_id, user_id, project_key)`
+ *           on `project_memberships` — explicit tenant scope. Crucial:
+ *           `User::allowedProjects()` does NOT carry a tenant filter
+ *           and therefore returns memberships across tenants, so a
+ *           User in `(tenant_B, project_X)` would falsely match an
+ *           event for `(tenant_A, project_X)` since `User` rows are
+ *           global and `project_key` is NOT globally unique. We
+ *           bypass that leaky helper and query the join directly.
+ *           `kb.read.any` global permission still short-circuits.
+ *        b. `User::hasDocumentAccess($doc, 'view')` — the ACL row
+ *           lookup is keyed by `knowledge_documents.id`, so the
+ *           document we already loaded (with explicit tenant_id)
+ *           anchors the check to the right tenant's doc.
  *
- *      ACL caveat for `KbDocumentChanged`: `knowledge_document_acl`
- *      rows are keyed by `knowledge_documents.id` (the auto-increment
- *      PK), and each re-ingest creates a NEW row with a new PK. Deny
- *      ACL rows attached to an earlier version of the same logical
- *      document therefore do NOT automatically carry over to the new
- *      row's notification — the publisher checks ACL on the EXACT
- *      row passed in. Inheriting ACL via stable `doc_id` would be a
- *      schema change parked outside W1.2. For first-ingest docs and
- *      for any future deny ACL added after creation, the check works
- *      as documented; the regression test pins that exact contract by
- *      invoking the publisher with a doc + pre-existing deny ACL.
+ *   `KbCanonicalPromoted` resolves the canonical `KnowledgeDocument`
+ *   row from the audit's `(tenant, project, doc_id|slug)` triple
+ *   (bypassing `AccessScopeScope` because this is a SYSTEM-side
+ *   lookup), and SUPPRESSES the notification entirely if the row
+ *   can't be resolved — otherwise we'd leak slug/doc_id metadata to
+ *   subscribers the ACL would deny.
+ *
+ *   ACL caveat for `KbDocumentChanged`: `knowledge_document_acl`
+ *   rows are keyed by `knowledge_documents.id` (the auto-increment
+ *   PK), and each re-ingest creates a NEW row with a new PK. Deny
+ *   ACL rows attached to an earlier version of the same logical
+ *   document therefore do NOT automatically carry over to the new
+ *   row's notification — the publisher checks ACL on the EXACT row
+ *   passed in. Inheriting ACL via stable `doc_id` would be a schema
+ *   change parked outside W1.2. For first-ingest docs and for any
+ *   future deny ACL added after creation, the check works as
+ *   documented; the regression test pins that exact contract by
+ *   invoking the publisher with a doc + pre-existing deny ACL.
  */
 final class NotificationPublisher
 {
@@ -91,15 +97,15 @@ final class NotificationPublisher
             ? NotificationEvent::EVENT_KB_DOC_MODIFIED
             : NotificationEvent::EVENT_KB_DOC_CREATED;
 
-        $candidates = $this->resolveCandidateRecipients($tenantId, $eventType);
-        if ($candidates === []) {
-            return;
-        }
-
-        $recipients = $this->filterByProjectAndDocumentAccess(
-            $candidates,
-            $projectKey,
-            $document,
+        $recipients = $this->streamEligibleRecipients(
+            $tenantId,
+            $eventType,
+            fn (User $user): bool => $this->userCanViewDocumentInTenant(
+                $user,
+                $tenantId,
+                $projectKey,
+                $document,
+            ),
         );
         if ($recipients === []) {
             return;
@@ -152,18 +158,15 @@ final class NotificationPublisher
             return;
         }
 
-        $candidates = $this->resolveCandidateRecipients(
+        $recipients = $this->streamEligibleRecipients(
             $tenantId,
             NotificationEvent::EVENT_KB_CANONICAL_PROMOTED,
-        );
-        if ($candidates === []) {
-            return;
-        }
-
-        $recipients = $this->filterByProjectAndDocumentAccess(
-            $candidates,
-            $projectKey,
-            $document,
+            fn (User $user): bool => $this->userCanViewDocumentInTenant(
+                $user,
+                $tenantId,
+                $projectKey,
+                $document,
+            ),
         );
         if ($recipients === []) {
             return;
@@ -225,10 +228,23 @@ final class NotificationPublisher
      * channel preference. The dispatcher will re-query per recipient
      * to pick the actual channel set.
      *
+     * Loads in `User::chunkById(500)` batches so a tenant with
+     * thousands of subscribers does not blow up the IN-clause list
+     * or materialise a single huge model collection in PHP memory.
+     * The returned array stays bounded by the *filtered* recipient
+     * count (project + ACL filters apply per chunk and only eligible
+     * recipients are kept), so a tenant where only a small fraction
+     * of subscribers has access to the document does not allocate a
+     * recipient array proportional to the total subscriber count.
+     *
+     * @param  callable(User $user): bool  $filter
      * @return array<int, User>
      */
-    private function resolveCandidateRecipients(string $tenantId, string $eventType): array
-    {
+    private function streamEligibleRecipients(
+        string $tenantId,
+        string $eventType,
+        callable $filter,
+    ): array {
         $userIds = NotificationPreference::query()
             ->where('tenant_id', $tenantId)
             ->where('event_type', $eventType)
@@ -241,46 +257,73 @@ final class NotificationPublisher
             return [];
         }
 
-        return User::query()
+        $eligible = [];
+        User::query()
             ->withTrashed()
             ->whereIn('id', $userIds)
-            ->get()
-            ->all();
-    }
-
-    /**
-     * @param  array<int, User>  $candidates
-     * @return array<int, User>
-     */
-    private function filterByProject(array $candidates, string $projectKey): array
-    {
-        $eligible = [];
-        foreach ($candidates as $user) {
-            $allowed = $user->allowedProjects();
-            if (in_array(User::PROJECT_WILDCARD, $allowed, true)
-                || in_array($projectKey, $allowed, true)
-            ) {
-                $eligible[] = $user;
-            }
-        }
+            ->chunkById(
+                500,
+                function ($users) use (&$eligible, $filter): void {
+                    foreach ($users as $user) {
+                        if ($filter($user)) {
+                            $eligible[] = $user;
+                        }
+                    }
+                },
+            );
         return $eligible;
     }
 
     /**
-     * @param  array<int, User>  $candidates
-     * @return array<int, User>
+     * Tenant-aware project membership check. `User::allowedProjects()`
+     * queries `project_memberships` without a tenant filter, so a User
+     * who belongs to `(tenant_B, project_X)` would falsely match an
+     * event for `(tenant_A, project_X)` — `User` rows are global,
+     * `project_key` is NOT globally unique, and BelongsToTenant only
+     * stamps on write. Query memberships explicitly with both
+     * `tenant_id` AND `project_key` predicates so the leak is
+     * structurally impossible at the SQL layer.
+     *
+     * Global `kb.read.any` permission still short-circuits to allow
+     * (matching `AccessScopeScope` semantics on the read path).
      */
-    private function filterByProjectAndDocumentAccess(
-        array $candidates,
+    private function userHasProjectAccessInTenant(
+        User $user,
+        string $tenantId,
+        string $projectKey,
+    ): bool {
+        if ($user->can('kb.read.any')) {
+            return true;
+        }
+
+        return ProjectMembership::query()
+            ->where('tenant_id', $tenantId)
+            ->where('user_id', $user->id)
+            ->where('project_key', $projectKey)
+            ->exists();
+    }
+
+    /**
+     * Tenant-aware per-document access check. `User::hasDocumentAccess()`
+     * does the ACL lookup by `knowledge_document_id` (tenant-safe via
+     * the doc's PK) and the scope_allowlist lookup via
+     * `User::allowedScopesFor($projectKey)` (which queries
+     * `project_memberships` without a tenant filter). Setting the
+     * `TenantContext` for the duration of the check would not help
+     * because the User methods don't consult TenantContext when
+     * querying memberships — so we mirror the tenant-correct
+     * membership lookup inline first, then defer to
+     * `hasDocumentAccess()` for the ACL + permission semantics.
+     */
+    private function userCanViewDocumentInTenant(
+        User $user,
+        string $tenantId,
         string $projectKey,
         KnowledgeDocument $document,
-    ): array {
-        $eligible = [];
-        foreach ($this->filterByProject($candidates, $projectKey) as $user) {
-            if ($user->hasDocumentAccess($document, 'view')) {
-                $eligible[] = $user;
-            }
+    ): bool {
+        if (! $this->userHasProjectAccessInTenant($user, $tenantId, $projectKey)) {
+            return false;
         }
-        return $eligible;
+        return $user->hasDocumentAccess($document, 'view');
     }
 }
