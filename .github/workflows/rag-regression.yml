@@ -27,7 +27,8 @@ on:
   push:
     branches:
       - main
-      - 'feature/v4.*'
+      - 'feature/v*'
+      - 'feature/v*/**'
   workflow_dispatch:
     inputs:
       live_ai:
