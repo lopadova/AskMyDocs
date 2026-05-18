@@ -7,6 +7,8 @@ namespace App\Providers;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
 use App\Notifications\ChannelRegistry;
+use App\Notifications\Channels\EmailChannel;
+use App\Notifications\Channels\InAppChannel;
 use App\Scopes\AccessScopeScope;
 use App\Notifications\Events\BaseNotificationEvent;
 use App\Notifications\Events\CollectionNewMember;
@@ -59,6 +61,15 @@ final class NotificationServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // v8.0/W1.3 — register the two baseline channel adapters
+        // (in_app + email). W2 will add Discord/Slack/Teams/Webhook.
+        // Tests that need the NullChannel fallback can clear the
+        // registry via `$this->app->forgetInstance(ChannelRegistry::class)`
+        // before re-resolving.
+        $registry = $this->app->make(ChannelRegistry::class);
+        $registry->register(new InAppChannel());
+        $registry->register(new EmailChannel());
+
         $events = [
             KbDocumentChanged::class,
             KbCanonicalPromoted::class,
