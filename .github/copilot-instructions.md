@@ -489,6 +489,47 @@ Increment N once per Wn. Final `vX.Y.0` GA fires only when the last Wn
 closes and `feature/vX.Y` merges into `main` (R37).
 See `.claude/skills/rc-tag-per-week-milestone/`.
 
+### R40 — Local critic loop (copilot-cli) BEFORE every push (v8.0+)
+
+Standing convention from **2026-05-18**. Every push from this point
+forward MUST run a local copilot-cli pre-flight review BEFORE the
+push leaves the laptop. The R36 cloud loop stays mandatory but
+should converge in 1-2 rounds instead of 5-15.
+
+Mandatory workflow per sub-PR:
+1. Local tests green (`vendor/bin/phpunit` + targeted suites).
+2. Settle the working tree (stop editing, save buffers, run
+   tests once more so phpunit confirms the WIP compiles +
+   behaves). Working tree may stay uncommitted — copilot-cli
+   reads via `git diff HEAD` plus direct file reads — but MUST
+   NOT be mid-edit.
+3. `copilot --autopilot --yolo --add-dir "$(pwd)" -p "<review prompt>"`
+   on the settled diff. Ask for must-fix bugs / R-rule violations
+   / contract drift between schema, models, tests, docs / security
+   (R21 + R30 + R31) / missing edge coverage / migration safety.
+4. Fix every must-fix + should-fix locally; re-run tests.
+5. Re-run copilot-cli; loop until `0 must-fix, 0 should-fix`.
+6. Only then push; first push opens the PR with
+   `--reviewer copilot-pull-request-reviewer` per R36; subsequent
+   pushes re-request the review.
+7. R36 cloud loop runs on the already-clean diff; expect 0-1 round
+   of GitHub Copilot findings, rarely 2.
+
+Anti-patterns:
+- ❌ Push first, then run copilot-cli on the cloud-mirrored branch
+  (defeats the wall-time saving).
+- ❌ Skip copilot-cli because the diff is small.
+- ❌ Accept copilot-cli findings without fix and push regardless.
+- ❌ Run copilot-cli mid-edit on an in-flux working tree (half-
+  typed methods, broken syntax, unsaved buffers) — settle first,
+  then review.
+
+Scope: every PR on `lopadova/AskMyDocs` from 2026-05-18 onward and
+every PR on `padosoft/*` (current + future). Applies to docs-only
+PRs and CI-fix PRs too.
+
+See full rule in `CLAUDE.md` R40 (load-bearing canonical version).
+
 ---
 
 ## 7. Testing & CI

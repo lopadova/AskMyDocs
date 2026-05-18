@@ -30,8 +30,21 @@ final class TenantIdMandatoryTest extends TestCase
     /**
      * Domain models that MUST be tenant-aware.
      *
-     * Sync with the table list in
-     * `database/migrations/2026_04_28_000001_add_tenant_id_to_v3_tables.php`.
+     * Two source authorities (the older v3 backfill + every newer
+     * cycle's own create-table migration):
+     *  - v3 backfill: `database/migrations/2026_04_28_000001_add_tenant_id_to_v3_tables.php`
+     *    enumerates the v3 domain tables that received `tenant_id` retroactively.
+     *  - v4.x..v8.x cycles: each create-table migration adds `tenant_id`
+     *    inline, so newer tenant-aware tables (workflows, mcp_servers,
+     *    mcp_tool_call_audit, notification_events,
+     *    notification_preferences, notification_digests, etc.) are NOT
+     *    in the v3 backfill list and are added directly to this
+     *    enumeration when shipped.
+     *
+     * When adding a tenant-aware model to this list: also wire
+     * `use BelongsToTenant;` + `'tenant_id'` in `$fillable` on the model,
+     * and ensure the migration starts every composite unique with
+     * `tenant_id` (R30).
      */
     private const TENANT_AWARE_MODELS = [
         \App\Models\KnowledgeDocument::class,
@@ -72,6 +85,15 @@ final class TenantIdMandatoryTest extends TestCase
         // `ConnectorInstallation` + `ConnectorCredential` and exercises
         // R31 in its own CI. No host-side entries here so this gate
         // doesn't drift between package and host.
+        // v5.0/W1 — MCP server registry + per-call audit (both
+        // tenant-aware; added retroactively 2026-05-18 when the v8.0
+        // R31 audit caught the omission).
+        \App\Models\McpServer::class,
+        \App\Models\McpToolCallAudit::class,
+        // v8.0/W1.1 — notification system foundation (ADR 0012).
+        \App\Models\NotificationEvent::class,
+        \App\Models\NotificationPreference::class,
+        \App\Models\NotificationDigest::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
