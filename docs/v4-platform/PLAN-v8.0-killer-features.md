@@ -571,9 +571,10 @@ php artisan tinker
 # 9. Notification end-to-end
 php artisan tinker
 > $tenantId = app(\App\Support\TenantContext::class)->current();
-> event(new App\Events\KbDocumentChanged(KnowledgeDocument::first()));
+> $doc = KnowledgeDocument::forTenant($tenantId)->first(); // R30 — never read tenant-aware models unscoped
+> event(new App\Events\KbDocumentChanged($doc));
 > NotificationEvent::forTenant($tenantId)->latest()->first()
-# expected: row creata per ogni user iscritto a kb_doc_modified (R30 — tenant-scoped read)
+# expected: row creata per ogni user iscritto a kb_doc_modified (R30 — tenant-scoped read end-to-end)
 
 # 10. Decision-debt heatmap end-to-end
 php artisan kb:health-recompute --tenant=test-tenant

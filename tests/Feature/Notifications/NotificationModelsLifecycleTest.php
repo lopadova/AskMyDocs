@@ -259,6 +259,12 @@ final class NotificationModelsLifecycleTest extends TestCase
         $this->assertSame(17, $reloaded->recipients_count);
         $this->assertNotNull($reloaded->sent_at);
         $this->assertSame('2026-05-19', $reloaded->sent_at->format('Y-m-d'));
+        // Lock the `week_start_date` date cast contract: removing
+        // `'week_start_date' => 'date'` from the model's $casts would
+        // make the reloaded value a raw string instead of Carbon and
+        // this assertion would go red.
+        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $reloaded->week_start_date);
+        $this->assertSame('2026-05-18', $reloaded->week_start_date->format('Y-m-d'));
     }
 
     private function makeUser(): User

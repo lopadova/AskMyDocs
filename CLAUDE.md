@@ -1071,10 +1071,16 @@ copilot-cli pre-flight review BEFORE the push leaves the laptop.
 The R36 cloud loop stays mandatory but converges in 1-2 rounds
 instead of 5-15.
 
-**Tool**: GitHub Copilot CLI (`copilot --autopilot --yolo -p "<prompt>"`).
+**Tool**: GitHub Copilot CLI
+(`copilot --autopilot --yolo --add-dir "$(pwd)" -p "<prompt>"`).
 `--autopilot` lets the agent run multi-step research autonomously;
 `--yolo` is shorthand for `--allow-all-tools --allow-all-paths`;
-`-p` is non-interactive prompt mode (single-shot).
+`--add-dir "$(pwd)"` whitelists the current repo root for file
+access (otherwise the agent's allowed-paths default is the home
+directory only and grep across the codebase comes back empty);
+`-p` is non-interactive prompt mode (single-shot). Keep this
+canonical command in lockstep with `.github/copilot-instructions.md`
+section §R40.
 
 **Mandatory workflow per sub-PR**:
 
