@@ -60,6 +60,18 @@ return new class extends Migration
                 ['tenant_id', 'event_type', 'channel', 'enabled', 'user_id'],
                 'idx_notif_prefs_dispatcher_lookup',
             );
+            // FK cascade hot path: `User::forceDelete()` triggers
+            // `DELETE FROM notification_preferences WHERE user_id = ?`.
+            // PostgreSQL does NOT auto-index child FK columns; the
+            // unique + dispatcher indexes above both lead with
+            // `tenant_id` so the cascade would fall back to a full
+            // table scan + locks on every user removal. Mirror the
+            // same `(user_id, tenant_id)` index pattern used by
+            // `notification_events`.
+            $table->index(
+                ['user_id', 'tenant_id'],
+                'idx_notif_prefs_user_cascade',
+            );
         });
     }
 

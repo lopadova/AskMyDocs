@@ -65,13 +65,29 @@ W1 with the following invariants:
 
 Laravel event-listener pipeline: every interesting mutation emits a
 domain event (`KbDocumentChanged` / `KbCanonicalPromoted` etc.).
-The `NotificationDispatcher` listener filters by
-`notification_preferences` and dispatches one `NotifyUserJob` per
-(user × channel) enabled match. Aggregate-mode events upsert into
-the current week's `notification_digests` payload instead of firing
-immediately; the weekly digest job (planned slot
-`notifications:digest-weekly`, lands in W2) reads + ships + stamps
-`sent_at` + `recipients_count`.
+The `NotificationDispatcher` listener works per target user as
+follows:
+
+1. Reads `notification_preferences` for (tenant, user, event) and
+   collects every enabled channel.
+2. If at least one channel is enabled, inserts **one**
+   `notification_events` row with `channel_dispatch_log = []`. The
+   row's existence is the audit trail and the bell-feed source for
+   in-app subscribers; it is created regardless of which specific
+   channels are enabled, so an `email`-only user still has an
+   observable row + log.
+3. For each enabled channel, invokes
+   `NotificationChannelInterface::send($event, $user, $eventRowId)`.
+   The channel appends ONE entry to that row's `channel_dispatch_log`
+   array with `{channel, status, at, error?}`. The dispatcher
+   serialises channel invocations per row to avoid the
+   read/append/write race that two parallel channels writing to the
+   same JSON array would otherwise hit (see Consequences below).
+
+Aggregate-mode events (e.g. weekly digest) upsert into the current
+week's `notification_digests` payload instead of firing immediately;
+the weekly digest job (planned slot `notifications:digest-weekly`,
+lands in W2) reads + ships + stamps `sent_at` + `recipients_count`.
 
 ### Defaults + preferences UI
 
@@ -122,6 +138,20 @@ env var to `0` disables the prune.
   in `NotificationModelsLifecycleTest`. If future events ALSO need
   dual-mode, lift the policy out of the dispatcher into a
   per-event policy table.
+- **`channel_dispatch_log` append concurrency.** Because each row's
+  JSON array is appended by every enabled channel, naive parallel
+  appends (two channels processing the same row concurrently from
+  separate workers) would read/append/write-race and drop an
+  entry. The dispatcher MUST serialise channel invocations per
+  `eventRowId` — either (a) by running channels synchronously
+  within a single listener call after the row insert (W1.2/W1.3
+  baseline), or (b) by using a row-level mutex
+  (`Cache::lock("notif-dispatch:{$eventRowId}")`) when channels
+  fan out to async jobs. The synchronous baseline is sufficient
+  for v8.0 since the in-app and email channels are both quick
+  (the email channel queues to `Mail`, not waits for SMTP
+  ack). When v8.x adds slow external channels (Discord webhook
+  retry chains, etc.) revisit with strategy (b).
 
 ## Alternatives considered
 
@@ -137,8 +167,13 @@ env var to `0` disables the prune.
    to keep the W1 scope tight. The schema doesn't change if we
    add Reverb later — only the FE event source flips from
    `setInterval(30s)` to a Reverb subscription.
-3. **One row per (user, event, ALL channels) instead of
-   per-channel.** Rejected: pivoting at read time forces the
-   dispatcher to expand each row into N channel writes anyway,
-   and a column-per-channel layout breaks every time we add a new
-   channel.
+3. **One row per (user, event, channel) instead of one row per
+   (user, event) with a `channel_dispatch_log` array.** Rejected:
+   the per-channel row layout would N-multiply the payload + audit
+   storage for every dispatched event and force the bell to
+   collapse N rows per logical notification into a single feed
+   item. The accepted shape is one row per (user, event) with the
+   `channel_dispatch_log` array tracking per-channel delivery
+   outcomes — the dispatcher writes the row once and each channel
+   adapter appends its own log entry under a per-row serialised
+   contract (see Dispatcher section above).

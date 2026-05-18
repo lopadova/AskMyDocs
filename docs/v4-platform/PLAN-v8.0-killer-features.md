@@ -148,7 +148,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 - **Obiettivo:** ogni mutazione interessante emette un Laravel event; il dispatcher persiste l'audit row e delega ai channel adapter per le delivery side-effect.
 - **Cosa fa:** events `KbDocumentChanged`, `KbCanonicalPromoted`, `KbDecisionDebtThreshold` (placeholder per W4), `CollectionNewMember` (placeholder per W6). Listener `NotificationDispatcher`:
   1. Per ogni user-target del evento, **se almeno un canale è abilitato in `notification_preferences`**, crea 1 sola row in `notification_events` con `channel_dispatch_log = []` iniziale (audit trail completo indipendentemente dal mix di canali abilitati — risolve la regressione di round-9 dove user con `email=on, in_app=off` non avrebbe avuto row osservabile).
-  2. Per ogni canale abilitato per quel (user × event), invoca `ChannelInterface::send($event, $user, $rowId)` che internamente appende `{channel, status, at, error?}` a `channel_dispatch_log` della row.
+  2. Per ogni canale abilitato per quel (user × event), invoca `ChannelInterface::send($event, $user, $eventRowId)` **in modo serializzato sotto la stessa row** (sequenziale dentro un singolo listener pass — o in v8.x con channels async, dietro `Cache::lock("notif-dispatch:{$eventRowId}")` per evitare il read/append/write race su `channel_dispatch_log`); ogni canale appende `{channel, status, at, error?}` come UNA voce JSON.
   3. **Single writer per la row** = il dispatcher. **Single writer per ogni voce di `channel_dispatch_log`** = il channel adapter relativo. Idempotency: la creazione della row è gated da una `unique(tenant_id, user_id, event_type, payload_hash)` opzionale ipotizzata in W1.5 prune o lasciata alla logica di dispatch.
 - **Acceptance gate:** feature test ingerisce 1 doc → 3 user (A in_app+email, B email-only, C in_app-only) → 3 row in `notification_events` (NO duplicates) con `channel_dispatch_log` distinto: A=[in_app delivered, email queued], B=[email queued], C=[in_app delivered]
 
@@ -184,7 +184,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W2.1 — `DiscordChannel` + `SlackChannel` + `TeamsChannel` + `WebhookChannel`**
 - **Obiettivo:** 4 adapter pluggabili.
-- **Cosa fa:** ogni adapter implementa `send($event, $user)`; rate-limit interno (10 msg/sec per canale via `RateLimiter::for('notif-discord')`); retry 3× con backoff [5,30,120]s; payload formato canonical webhook (Discord embed / Slack blocks / Teams adaptive card / generic webhook con HMAC `X-AskMyDocs-Signature`).
+- **Cosa fa:** ogni adapter implementa la stessa signature di W1.3 — `send($event, User $user, int $eventRowId): void` — e appende UNA voce a `channel_dispatch_log` della row indicata da `$eventRowId` (NON crea nuove righe `notification_events`, ownership esclusiva del dispatcher per W1.2). Rate-limit interno (10 msg/sec per canale via `RateLimiter::for('notif-discord')`); retry 3× con backoff [5,30,120]s; payload formato canonical webhook (Discord embed / Slack blocks / Teams adaptive card / generic webhook con HMAC `X-AskMyDocs-Signature`). Fallimenti finali → `channel_dispatch_log` con `{status: 'failed', error: <msg>, at: <now>}` per la R14 observability.
 - **Acceptance gate:** unit test per ogni adapter con `Http::fake()` → assertion sul body POST; retry test su 503; HMAC verify test per WebhookChannel
 
 **Task W2.2 — `/app/account/notifications` preferences grid**
