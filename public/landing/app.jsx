@@ -8,6 +8,11 @@ const { useState, useEffect, useRef, useMemo, createContext, useContext, Fragmen
 const I18nCtx = createContext({ t: () => "", lang: "it", setLang: () => {} });
 
 const STORAGE_KEY = "askmydoc.landing.lang";
+const REPO_URL = "https://github.com/lopadova/AskMyDocs";
+const DOCS_URL = `${REPO_URL}#documentation`;
+const CHANGELOG_URL = `${REPO_URL}/blob/main/CHANGELOG.md`;
+const SIGN_IN_URL = "/login";
+const DEMO_URL = "/app/chat";
 
 function detectInitialLang() {
   try {
@@ -293,13 +298,13 @@ function Nav() {
           <a href="#security">{t("nav.security")}</a>
           <a href="#usecases" className="hide-md">{t("nav.usecases")}</a>
           <a href="#faq" className="hide-md">{t("nav.faq")}</a>
-          <a href="#docs">{t("nav.docs")}</a>
+          <a href={DOCS_URL}>{t("nav.docs")}</a>
         </nav>
         <div className="nav-cta">
-          <a className="btn btn-link hide-sm" href="#github"><Icon.Github /> {t("nav.github")}</a>
-          <a className="btn btn-ghost hide-sm" href="#docs">{t("nav.signin")}</a>
+          <a className="btn btn-link hide-sm" href={REPO_URL}><Icon.Github /> {t("nav.github")}</a>
+          <a className="btn btn-ghost hide-sm" href={SIGN_IN_URL}>{t("nav.signin")}</a>
           <LanguageSwitcher inNav />
-          <a className="btn btn-primary" href="#demo">{t("nav.bookdemo")} <Icon.Arrow /></a>
+          <a className="btn btn-primary" href={DEMO_URL}>{t("nav.bookdemo")} <Icon.Arrow /></a>
         </div>
       </div>
     </header>
@@ -324,8 +329,8 @@ function Hero() {
         <p className="hero-sub">{t("hero.sub")}</p>
 
         <div className="hero-cta">
-          <a className="btn btn-primary btn-lg" href="#demo">{t("hero.ctaPrimary")} <Icon.Arrow /></a>
-          <a className="btn btn-ghost btn-lg" href="#docs">{t("hero.ctaSecondary")}</a>
+          <a className="btn btn-primary btn-lg" href={DEMO_URL}>{t("hero.ctaPrimary")} <Icon.Arrow /></a>
+          <a className="btn btn-ghost btn-lg" href={DOCS_URL}>{t("hero.ctaSecondary")}</a>
         </div>
 
         <div className="hero-meta">
@@ -770,8 +775,8 @@ function CTA() {
           <THtml as="h2" path="cta.titleHtml" />
           <p>{t("cta.sub")}</p>
           <div className="cta-buttons">
-            <a className="btn btn-primary btn-lg" href="#demo">{t("cta.primary")} <Icon.Arrow /></a>
-            <a className="btn btn-ghost btn-lg" href="#github"><Icon.Github /> {t("cta.secondary")}</a>
+            <a className="btn btn-primary btn-lg" href={DEMO_URL}>{t("cta.primary")} <Icon.Arrow /></a>
+            <a className="btn btn-ghost btn-lg" href={REPO_URL}><Icon.Github /> {t("cta.secondary")}</a>
           </div>
         </div>
       </div>
@@ -801,9 +806,9 @@ function Footer() {
           </div>
           <div className="footer-col">
             <h5>{t("footer.colResources")}</h5>
-            <a href="#docs">{t("footer.resources.docs")}</a>
+            <a href={DOCS_URL}>{t("footer.resources.docs")}</a>
             <a href="#mcp">{t("footer.resources.mcp")}</a>
-            <a href="#changelog">{t("footer.resources.changelog")}</a>
+            <a href={CHANGELOG_URL}>{t("footer.resources.changelog")}</a>
             <a href="#status">{t("footer.resources.status")}</a>
           </div>
           <div className="footer-col">
