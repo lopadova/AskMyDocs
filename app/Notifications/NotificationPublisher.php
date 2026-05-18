@@ -31,12 +31,16 @@ use Illuminate\Support\Facades\Event;
  * users never materialises a single huge IN-clause or in-memory
  * collection:
  *
- *   1. Pull `notification_preferences.user_id` for the event's tenant
- *      + event_type + enabled=true. This is the only SQL pre-filter.
- *   2. `chunkById(500)` the candidate User set; for each chunk apply
- *      the access predicate in PHP and accumulate eligible users.
- *   3. Access predicate (`userCanViewDocumentInTenant`):
- *        a. Project membership in `(tenant_id, user_id, project_key)`
+ *   1. Stream the User set via `chunkById(500)` driven by a
+ *      `whereExists` join against `notification_preferences` —
+ *      neither the candidate user-id list nor the User collection is
+ *      materialised in full. Eligible recipients are accumulated
+ *      after the predicate runs, so the resulting array stays
+ *      bounded by the FILTERED count.
+ *   2. Access predicate (`userCanViewDocumentInTenant`):
+ *        a. `kb.view.any` global permission → allow (matches the
+ *           `AccessScopeScope` bypass on the read path).
+ *        b. Project membership in `(tenant_id, user_id, project_key)`
  *           on `project_memberships` — explicit tenant scope. Crucial:
  *           `User::allowedProjects()` does NOT carry a tenant filter
  *           and therefore returns memberships across tenants, so a
@@ -44,11 +48,14 @@ use Illuminate\Support\Facades\Event;
  *           event for `(tenant_A, project_X)` since `User` rows are
  *           global and `project_key` is NOT globally unique. We
  *           bypass that leaky helper and query the join directly.
- *           `kb.read.any` global permission still short-circuits.
- *        b. `User::hasDocumentAccess($doc, 'view')` — the ACL row
- *           lookup is keyed by `knowledge_documents.id`, so the
- *           document we already loaded (with explicit tenant_id)
- *           anchors the check to the right tenant's doc.
+ *        c. INLINE ACL row evaluation (`evaluateAclForUser`) on
+ *           `knowledge_document_acl`, keyed by the document's PK.
+ *           Mirrors `User::evaluateAclDecision()` (which is
+ *           `private`) so we get tenant-safe deny / allow semantics
+ *           without dragging in `User::hasDocumentAccess()`'s
+ *           leaky `allowedScopesFor()` path. Any matching deny →
+ *           reject; any matching allow → allow; no match → fall
+ *           through to membership-only allow.
  *
  *   `KbCanonicalPromoted` resolves the canonical `KnowledgeDocument`
  *   row from the audit's `(tenant, project, doc_id|slug)` triple
@@ -57,17 +64,22 @@ use Illuminate\Support\Facades\Event;
  *   can't be resolved — otherwise we'd leak slug/doc_id metadata to
  *   subscribers the ACL would deny.
  *
- *   ACL caveat for `KbDocumentChanged`: `knowledge_document_acl`
- *   rows are keyed by `knowledge_documents.id` (the auto-increment
- *   PK), and each re-ingest creates a NEW row with a new PK. Deny
- *   ACL rows attached to an earlier version of the same logical
- *   document therefore do NOT automatically carry over to the new
- *   row's notification — the publisher checks ACL on the EXACT row
- *   passed in. Inheriting ACL via stable `doc_id` would be a schema
- *   change parked outside W1.2. For first-ingest docs and for any
- *   future deny ACL added after creation, the check works as
- *   documented; the regression test pins that exact contract by
- *   invoking the publisher with a doc + pre-existing deny ACL.
+ *   Two limitations explicitly accepted in W1.2 baseline:
+ *     - `knowledge_document_acl` is keyed by `knowledge_documents.id`
+ *       (the auto-increment PK), and each re-ingest creates a NEW
+ *       row with a new PK. Deny ACL rows attached to a prior version
+ *       do NOT carry over to the fresh-row notification — the
+ *       publisher checks ACL on the EXACT row passed in. Inheriting
+ *       ACL via stable `doc_id` would be a schema change parked
+ *       outside W1.2. The regression test pins that EXACT-row
+ *       contract by invoking the publisher with a doc + pre-existing
+ *       deny ACL.
+ *     - `scope_allowlist` folder_globs / tags are NOT applied. A
+ *       user with project membership but a narrow `scope_allowlist`
+ *       can still receive notifications about docs that the read
+ *       path would filter out. Smaller leak than cross-tenant or
+ *       cross-project, but documented to set expectations for any
+ *       future tightening.
  */
 final class NotificationPublisher
 {
@@ -79,9 +91,11 @@ final class NotificationPublisher
      *
      * Recipients are filtered to users who (a) hold an enabled
      * preference for the resolved event_type, (b) have project
-     * membership covering `$document->project_key`, AND (c) pass
-     * `User::hasDocumentAccess($document, 'view')` so deny ACL rows
-     * + scope_allowlist restrictions block the leak.
+     * membership in `(tenant_id, user_id, project_key)` (or the
+     * global `kb.view.any` permission), AND (c) have no matching
+     * deny row on `knowledge_document_acl` for this document's PK.
+     * `scope_allowlist` is NOT applied — see class docblock for the
+     * documented limitation.
      */
     public function publishKbDocumentChanged(
         KnowledgeDocument $document,
@@ -127,17 +141,17 @@ final class NotificationPublisher
     /**
      * Fires `KbCanonicalPromoted` for a `kb_canonical_audit` row with
      * `event_type='promoted'`. Recipients are filtered by project
-     * membership AND per-document ACL: the canonical
-     * `KnowledgeDocument` is resolved from the audit's
-     * `(tenant, project, doc_id|slug)` triple (with
-     * `AccessScopeScope` bypassed because this is a SYSTEM-side
-     * lookup) and the recipient list is gated on
-     * `User::hasDocumentAccess($doc, 'view')`. When the audit row
-     * predates / outlives a force-deleted canonical doc and the
+     * membership AND the inline tenant-safe ACL evaluation
+     * (`evaluateAclForUser`): the canonical `KnowledgeDocument` is
+     * resolved from the audit's `(tenant, project, doc_id|slug)`
+     * triple (with `AccessScopeScope` bypassed because this is a
+     * SYSTEM-side lookup), and any candidate with a matching deny
+     * row on `knowledge_document_acl` is dropped. When the audit
+     * row predates / outlives a force-deleted canonical doc and the
      * resolver returns null, the notification is SUPPRESSED rather
      * than fanned out — otherwise we'd leak `slug` / `doc_id`
-     * metadata to a subscriber whose ACL would otherwise deny them
-     * read access to the same canonical via the chat / admin paths.
+     * metadata to a subscriber whose ACL would deny them read access
+     * to the same canonical via the chat / admin paths.
      */
     public function publishKbCanonicalPromoted(
         string $tenantId,
