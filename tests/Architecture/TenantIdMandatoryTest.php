@@ -72,6 +72,10 @@ final class TenantIdMandatoryTest extends TestCase
         // `ConnectorInstallation` + `ConnectorCredential` and exercises
         // R31 in its own CI. No host-side entries here so this gate
         // doesn't drift between package and host.
+        // v8.0/W1.1 — notification system foundation (ADR 0012).
+        \App\Models\NotificationEvent::class,
+        \App\Models\NotificationPreference::class,
+        \App\Models\NotificationDigest::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

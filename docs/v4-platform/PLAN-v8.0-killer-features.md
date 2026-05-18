@@ -1,13 +1,13 @@
-# Plan — AskMyDocs v9.0 — Killer Features Distintive
+# Plan — AskMyDocs v8.0 — Killer Features Distintive
 
 > **Context.** Sessione brainstorming originale: `C:\Users\lopad\Documents\DocLore\obsidianlore\obsidianlore\Clippings\AskMyDocs V8.0 Killer features distintive.md` (10 idee killer + sezioni A/B/C/D/E). Lorenzo applica ora 10 osservazioni/correzioni e chiede roadmap definitiva con ADR + task atomiche + acceptance gate per ogni feature, più recap di cosa va in `askmydocs-pro` (privato a pagamento).
 >
 > **Stato corrente del repo (verificato 2026-05-18).**
 > - Notifiche nel host AskMyDocs: **assenti** (zero migration / model / controller / bell / canale). `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` non wirato.
 > - Scheduler: tutti i 12 slot hanno cron hard-coded in `bootstrap/app.php`; solo le retention window sono env-configurabili.
-> - Cicli aperti: v7.0 Phase B (W6.3 next) + v8.0 (mcp-pack live wire-up) greenlit 2026-05-17. Le feature qui pianificate vivono nel **nuovo ciclo v9.0**, post v7.0 GA + v8.0 GA.
+> - Cicli aperti: v7.0 Phase B (W6.3 next) + v8.0 (mcp-pack live wire-up) greenlit 2026-05-17. Le feature qui pianificate vivono nel **nuovo ciclo v8.0**, post v7.0 GA + v8.0 GA.
 >
-> **Assumption flag.** Cycle label = **v9.0**. Se vuoi label diversa (v8.x bundle, v9.x split) lo correggiamo prima dell'apertura `feature/v9.0`.
+> **Assumption flag.** Cycle label = **v8.0**. Se vuoi label diversa (v8.x bundle, v8.x split) lo correggiamo prima dell'apertura `feature/v8.0`.
 
 ---
 
@@ -18,7 +18,7 @@
 
 ### A2. Scheduler tunabile per slot
 **Decisione.** Due tier:
-- **Tier 1 — per-host env config (v9.0/W1).** Ogni slot in `bootstrap/app.php` legge cron da config:
+- **Tier 1 — per-host env config (v8.0/W1).** Ogni slot in `bootstrap/app.php` legge cron da config:
   ```php
   Schedule::command('kb:prune-deleted')
       ->cron(config('askmydocs.schedule.kb_prune_deleted.cron', '30 3 * * *'))
@@ -26,7 +26,7 @@
       ->onOneServer()->withoutOverlapping();
   ```
   Env var pattern: `SCHEDULE_<SLOT>_CRON`, `SCHEDULE_<SLOT>_ENABLED`. Coprire tutti i 12 slot esistenti + i nuovi.
-- **Tier 2 — per-tenant scheduler (v9.0/W4).** SOLO per gli scheduler user-facing che hanno senso per-tenant: `notifications:digest-weekly`, `kb:health-recompute`, `collections:reevaluate`. Tabella `tenant_scheduler_overrides(tenant_id, slot_name, cron, enabled, timezone)`. Cron resolver in `App\Support\Scheduling\TenantSchedulerResolver`. Gli scheduler di **sistema** (`kb:prune-deleted`, `chat-log:prune`, `embedding-cache:prune`, `queue:prune-failed`, `admin-audit:prune`, `admin-nonces:prune`, `kb:prune-orphan-files`) restano **solo Tier 1** (per-host) — non ha senso lasciare a un tenant decidere quando pulisce la sua chat-log retention, è una decisione operativa del SaaS host.
+- **Tier 2 — per-tenant scheduler (v8.0/W4).** SOLO per gli scheduler user-facing che hanno senso per-tenant: `notifications:digest-weekly`, `kb:health-recompute`, `collections:reevaluate`. Tabella `tenant_scheduler_overrides(tenant_id, slot_name, cron, enabled, timezone)`. Cron resolver in `App\Support\Scheduling\TenantSchedulerResolver`. Gli scheduler di **sistema** (`kb:prune-deleted`, `chat-log:prune`, `embedding-cache:prune`, `queue:prune-failed`, `admin-audit:prune`, `admin-nonces:prune`, `kb:prune-orphan-files`) restano **solo Tier 1** (per-host) — non ha senso lasciare a un tenant decidere quando pulisce la sua chat-log retention, è una decisione operativa del SaaS host.
 
 ### A3. Notifiche DB-persistite + bell + per-tipo + per-canale
 **Decisione.** La sezione D originale è **rifondata e ampliata**. Default-state:
@@ -85,22 +85,22 @@
 - Bias monitor longitudinale (vive già in `padosoft/laravel-ai-act-compliance` v6.0)
 
 ### A7. v2 → roadmap futura
-**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v9.x.+1 o v10.0**. Aggiungo riga roadmap README ma niente codice in v9.0.
+**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v8.x.+1 o v8.0**. Aggiungo riga roadmap README ma niente codice in v8.0.
 
 ### A8. Admin panel = host AskMyDocs integrato
-**CONFERMATO.** Tutti i nuovi screen citati in questo plan (`/admin/notifications`, `/admin/notifications/defaults`, `/account/notifications`, `/admin/kb/health`, `/admin/kb/health/settings`, `/admin/collections`, `/admin/collections/{id}`, `/admin/mcp/tokens`, `/admin/compliance/reports`) vivono nella **SPA host AskMyDocs** sotto `frontend/src/features/admin/`. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v9.0.)
+**CONFERMATO.** Tutti i nuovi screen citati in questo plan (`/admin/notifications`, `/admin/notifications/defaults`, `/account/notifications`, `/admin/kb/health`, `/admin/kb/health/settings`, `/admin/collections`, `/admin/collections/{id}`, `/admin/mcp/tokens`, `/admin/compliance/reports`) vivono nella **SPA host AskMyDocs** sotto `frontend/src/features/admin/`. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v8.0.)
 
 ### A9. Cosa va in `askmydocs-pro` (recap completo)
-Vedi §E in fondo al plan. Sintesi: tutto quello in v9.0 OSS è **gratuito**; il Pro aggiunge cap-removal + vertical agents + SSO + analytics + connector enterprise. Recap dettagliato sotto.
+Vedi §E in fondo al plan. Sintesi: tutto quello in v8.0 OSS è **gratuito**; il Pro aggiunge cap-removal + vertical agents + SSO + analytics + connector enterprise. Recap dettagliato sotto.
 
 ### A10. #1 + #8 v2 ultimi
-**ACK.** Non in v9.0. Riga "Coming in v9.x or v10.0" nel README roadmap.
+**ACK.** Non in v8.0. Riga "Coming in v8.x or v8.0" nel README roadmap.
 
 ---
 
-## §B — Roadmap v9.0 (8 settimane W1→W8)
+## §B — Roadmap v8.0 (8 settimane W1→W8)
 
-Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37 (`feature/v9.0` integration branch, sub-branch per Wn, merge to main una volta a fine ciclo) e R39 (rc-tag per Wn).
+Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37 (`feature/v8.0` integration branch, sub-branch per Wn, merge to main una volta a fine ciclo) e R39 (rc-tag per Wn).
 
 | Wn | Feature | Effort | Dipende da | Acceptance gate macro |
 |---|---|---|---|---|
@@ -111,7 +111,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 | **W5** | **E-foundation** Living Collections (schema + CRUD API + `/admin/collections` SPA list+create+edit + static-criteria evaluator + manual-add/remove + threshold preview UI) | M | nessuna | crea collection con criteria statici → 1 ingest dispatch → membership auto-popolata + manual override testato |
 | **W6** | **E-semantic** Living Collections semantic + retro-eval + chat scoping + MCP resource exposure + integrazione D (`collection_new_member` event) | M | W5, D | semantic prompt embedding → cosine ≥ threshold → membership; retro-eval su 100-doc fixture < 60s; chat picker funziona; resource MCP listabile da pack |
 | **W7** | **#9 MCP-as-KB-Debugger** (tenant tokens model + admin SPA mint/revoke + 4 propose-only tool + consumer playbook + test demo integration + audit hook) | M | mcp-pack v1.4 ✅ già lì | token RBAC scope test architettura; 4 tool invocati da MCP inspector → output corretto + audit row scritto; playbook README testato manualmente |
-| **W8** | **#8 v1 Compliance Differential Pack** (delta report + audit aggregate + tamper-evident hash + PDF/JSON export + `compliance:digest-quarterly` cron + `/admin/compliance/reports` SPA) + **RC + GA close** | S+close | tutte le precedenti | report Q1 fixture generato + PDF apre + JSON validato + verify endpoint conferma hash; v9.0.0 GA tag pinned |
+| **W8** | **#8 v1 Compliance Differential Pack** (delta report + audit aggregate + tamper-evident hash + PDF/JSON export + `compliance:digest-quarterly` cron + `/admin/compliance/reports` SPA) + **RC + GA close** | S+close | tutte le precedenti | report Q1 fixture generato + PDF apre + JSON validato + verify endpoint conferma hash; v8.0.0 GA tag pinned |
 
 **Acceptance gate trasversali (ogni Wn):**
 - CI verde (PHPUnit + Vitest + Playwright + architecture tests + verify-e2e-real-data.sh)
@@ -129,7 +129,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 **ADR 0012 — Database-backed multi-channel notification system.**
 - **Status:** proposed
 - **Context:** host AskMyDocs non ha nessuna infrastruttura notifiche; eventi di interesse (kb canonical promoted, doc created/modified, decision debt threshold, weekly digest, collection_new_member) vanno dispatched a 6 canali (in_app, email, discord, slack, teams, webhook) con preferenze per-user-per-event-per-channel.
-- **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v9.0 — defer Reverb a v9.x se serve).
+- **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v8.0 — defer Reverb a v8.x se serve).
 - **Consequences:** schema nuovo per 3 tabelle; tutti gli event publisher esistenti vanno wirati a `KbDocumentChanged` / `KbCanonicalPromoted` etc. via Listener; default-policy in `config/askmydocs.php` editabile da tenant-admin; `notifications:prune` aggiunto come 13° slot scheduler default 90gg.
 
 **Task W1.1 — Schema + Models + Migrations**
@@ -422,13 +422,13 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W8.6 — RC1 tag + README features update + CHANGELOG**
 - **Obiettivo:** rispetta R39 + R37.
-- **Cosa fa:** docs PR refresh `### Key Features` + `## Changelog` con v9.0.0-rc1 entry + bullet list di tutte le feature W1-W8. Tag `v9.0.0-rc1` su SHA closure-commit di W8.5.
+- **Cosa fa:** docs PR refresh `### Key Features` + `## Changelog` con v8.0.0-rc1 entry + bullet list di tutte le feature W1-W8. Tag `v8.0.0-rc1` su SHA closure-commit di W8.5.
 - **Acceptance gate:** GH Release prerelease pubblicata
 
-**Task W8.7 — GA merge feature/v9.0 → main + tag v9.0.0**
+**Task W8.7 — GA merge feature/v8.0 → main + tag v8.0.0**
 - **Obiettivo:** rispetta R37 (once-per-major).
-- **Cosa fa:** PR feature/v9.0 → main con `--merge` per preservare W1-W8 integration history; tag `v9.0.0` su merge commit; aggiorna roadmap README flip "v9.0 ⏳ planned" → "v9.0 ✅ shipped YYYY-MM-DD" + deliverables summary (rispetta R[readme_roadmap_status_flip_on_ga]); GH Release stabile.
-- **Acceptance gate:** main HEAD = v9.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v9.x or v10.0" rows aggiunte per #1 + #8 v2
+- **Cosa fa:** PR feature/v8.0 → main con `--merge` per preservare W1-W8 integration history; tag `v8.0.0` su merge commit; aggiorna roadmap README flip "v8.0 ⏳ planned" → "v8.0 ✅ shipped YYYY-MM-DD" + deliverables summary (rispetta R[readme_roadmap_status_flip_on_ga]); GH Release stabile.
+- **Acceptance gate:** main HEAD = v8.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v8.x or v8.0" rows aggiunte per #1 + #8 v2
 
 ---
 
@@ -442,16 +442,16 @@ Da rispettare in OGNI sub-PR del ciclo, in aggiunta agli acceptance gate task-sp
 4. **R31 tenant_id mandatory:** test enumerazione modelli aggiornato
 5. **R13 E2E real-data:** Playwright NON intercetta route interne (eccezione marker `R13: failure injection`)
 6. **R36 Copilot review loop:** `gh pr create --reviewer copilot-pull-request-reviewer`; loop fino a 0 must-fix + tutte CI green
-7. **R39 rc-tag per Wn:** dopo merge ultimo PR del Wn, tag `v9.0.0-rcN` su SHA closure-commit con README + CHANGELOG refresh
+7. **R39 rc-tag per Wn:** dopo merge ultimo PR del Wn, tag `v8.0.0-rcN` su SHA closure-commit con README + CHANGELOG refresh
 8. **R9 docs match code:** README/CLAUDE.md/copilot-instructions.md aggiornate se cambiano env var/schema/route/comandi
 9. **R14 surface failures loudly:** nessun 200 con body vuoto/null/NaN in error path
 10. **R11 + R29 testid hierarchy:** `feature-resource-{id}-{action[-substep]}` su ogni elemento interattivo nuovo
 
 ---
 
-## §E — Recap AskMyDocs Pro (privato, a pagamento, separato da v9.0 OSS)
+## §E — Recap AskMyDocs Pro (privato, a pagamento, separato da v8.0 OSS)
 
-Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti feature **NON entrano in OSS** e vivono nel repo privato `padosoft/askmydocs-pro`:
+Tutto in v8.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti feature **NON entrano in OSS** e vivono nel repo privato `padosoft/askmydocs-pro`:
 
 ### Connettori enterprise-specific (vs i connettori reference OSS già in v4.5)
 - **OneDrive Azure AD integration** (workspace OAuth con Entra ID, group-based ACL, Azure AD conditional access)
@@ -509,12 +509,12 @@ Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti featu
 - **Support enterprise tier** (named TAM, quarterly business review, dedicated Solutions Engineer)
 - **Professional services** (custom connector dev, custom agent training, on-site workshop)
 
-### Compliance Pack v2 — quando arriva (post-v9.0)
+### Compliance Pack v2 — quando arriva (post-v8.0)
 - **Answer drift replay** (richiede #1 Semantic Time Travel)
 - **Compliance Bundle Plus** (AI Act + SOC2 + ISO27001 + HIPAA + PCI-DSS evidence templates pre-cooked + auditor on-call quarterly review)
 - **Custom audit trail extensions** (per cliente, su richiesta — es. integrazione Splunk/Datadog)
 
-### Resta in OSS v9.0 (per chiarezza — NON Pro)
+### Resta in OSS v8.0 (per chiarezza — NON Pro)
 - Sistema notifiche completo (W1+W2 — tutti i 6 canali + DB persistence + bell + preferences UI + scheduler Tier 1)
 - Scheduler Tier 2 per-tenant (W4 — base)
 - Decision-Debt Heatmap (#2) + pesi configurabili
@@ -525,7 +525,7 @@ Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti featu
 
 ---
 
-## §F — Verifica end-to-end del ciclo v9.0
+## §F — Verifica end-to-end del ciclo v8.0
 
 A fine ciclo, prima del GA merge:
 
@@ -581,12 +581,12 @@ php artisan kb:health-recompute --tenant=test-tenant
 
 Tutti risolti in `AskUserQuestion` 2026-05-18 prima dell'apertura branch:
 
-1. ✅ **Cycle label:** **v9.0** (nuovo ciclo dedicato 8w, post v8.0 GA mcp-pack live wire-up). Branch `feature/v9.0` cut da `main` dopo v8.0 GA tag.
-2. ✅ **Bell:** **polling 30s** (no Reverb in v9.0). Upgrade WebSocket parked v9.x se serve.
+1. ✅ **Cycle label:** **v8.0** (nuovo ciclo dedicato 8w, post v8.0 GA mcp-pack live wire-up). Branch `feature/v8.0` cut da `main` dopo v8.0 GA tag.
+2. ✅ **Bell:** **polling 30s** (no Reverb in v8.0). Upgrade WebSocket parked v8.x se serve.
 3. ✅ **Discord:** **webhook** (no bot). Canale default `#askmydocs-notifications` configurabile per tenant.
 4. ✅ **HMAC compliance:** **statico per-tenant** in `tenant_settings`. Rotation parked Pro/futuro.
 5. ✅ **Playbook MCP-debugger:** **solo inglese** (consumer enterprise; clienti IT capiscono inglese tech docs).
 6. ✅ **Compliance retention OSS:** **4 trimestri** (12 trimestri Pro).
 7. ✅ **Cap-removal lato Pro:** flag `config('askmydocs.tier') === 'pro'` letto dai service che enforcano cap; OSS hard-coded ai default §E.
 
-**Verde libero per apertura `feature/v9.0` quando v8.0 chiude.**
+**Verde libero per apertura `feature/v8.0` quando v8.0 chiude.**
