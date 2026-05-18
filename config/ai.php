@@ -34,9 +34,13 @@ return [
     | (2560 dims, GA Oct 2025). When `AI_PROVIDER` is anthropic and
     | `AI_EMBEDDINGS_PROVIDER` is not set, AiManager auto-selects the first
     | embeddings-capable provider with a configured API key, in this order:
-    | regolo → openai → gemini → openrouter. Regolo serves Qwen3-Embedding-8B
-    | at 4096 dims — see the KB_EMBEDDINGS_DIMENSIONS warning in `.env.example`
-    | if you switch.
+    | openai → openrouter → regolo → gemini. 1536-dim defaults (openai +
+    | openrouter routing `openai/text-embedding-3-small`) come first so the
+    | stock pgvector schema stays consistent under auto-selection (R14).
+    | Regolo serves Qwen3-Embedding-8B at 4096 dims and Gemini's default
+    | `text-embedding-004` is 768 dims — both REQUIRE migrating the
+    | `vector(N)` column + `KB_EMBEDDINGS_DIMENSIONS` in lock-step before
+    | use; set `AI_EMBEDDINGS_PROVIDER` explicitly to opt in.
     |
     */
 

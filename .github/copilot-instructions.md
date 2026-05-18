@@ -189,7 +189,8 @@ when no canonical docs exist.
   OpenRouter exposes one (OpenAI-compatible `/v1/embeddings`); default
   routed model is `openai/text-embedding-3-small` (1536 dims — matches
   the schema, no migration needed). Auto-fallback order when chat
-  provider can't embed: regolo → openai → gemini → openrouter.
+  provider can't embed: openai → openrouter → regolo → gemini (1536-dim
+  defaults first; regolo+gemini require pgvector resize, R14).
 - **Embedding dimensions are part of the contract.** Changing the embeddings
   model requires migrating the `vector(N)` column, flushing
   `embedding_cache`, and re-indexing.

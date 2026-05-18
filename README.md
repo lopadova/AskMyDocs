@@ -211,7 +211,11 @@ AI_PROVIDER=openrouter
 # and qwen/qwen3-embedding-4b. Leave empty to let AiManager reuse AI_PROVIDER
 # when the default chat provider supports embeddings; otherwise it falls back
 # to the first embeddings-capable provider with a configured API key in this order:
-# regolo → openai → gemini → openrouter.
+# openai → openrouter → regolo → gemini. The 1536-dim defaults (openai +
+# openrouter) come first so the stock KB_EMBEDDINGS_DIMENSIONS=1536 pgvector
+# schema stays consistent under auto-selection — regolo (4096) and gemini
+# (768) require a pgvector resize in lock-step, set AI_EMBEDDINGS_PROVIDER
+# explicitly to opt in.
 AI_EMBEDDINGS_PROVIDER=openai
 ```
 
@@ -229,7 +233,7 @@ OPENAI_TIMEOUT=120
 
 #### Anthropic (Claude)
 
-Anthropic has no embeddings endpoint, so pair it with any embeddings-capable provider — OpenAI, Gemini, Regolo, or OpenRouter. If `AI_EMBEDDINGS_PROVIDER` is left empty, `AiManager` auto-selects the first one with a configured API key in this order: regolo → openai → gemini → openrouter.
+Anthropic has no embeddings endpoint, so pair it with any embeddings-capable provider — OpenAI, OpenRouter, Regolo, or Gemini. If `AI_EMBEDDINGS_PROVIDER` is left empty, `AiManager` auto-selects the first one with a configured API key in this order: openai → openrouter → regolo → gemini. The 1536-dim defaults (OpenAI's `text-embedding-3-small` + OpenRouter routing the same model) come first so a deployment with the stock `KB_EMBEDDINGS_DIMENSIONS=1536` pgvector schema stays consistent under auto-selection; Regolo (4096) and Gemini (768) require a `vector(N)` resize and a matching `KB_EMBEDDINGS_DIMENSIONS` change before use, so set `AI_EMBEDDINGS_PROVIDER=regolo|gemini` explicitly when you've migrated.
 
 ```env
 AI_PROVIDER=anthropic
@@ -312,7 +316,7 @@ If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini
 
 1. Update `KB_EMBEDDINGS_DIMENSIONS` in `.env`
 2. Create a new migration that resizes the `embedding` `vector(N)` column on `knowledge_chunks` and `embedding_cache`
-3. `php artisan kb:prune-embedding-cache --days=0` (then `--days=` reset) or `EmbeddingCacheService::flush()` to drop the old vectors
+3. Flush the cache so stale-dimension vectors don't pollute retrieval — call `app(\App\Services\Kb\EmbeddingCacheService::class)->flush()` (or scope by retired provider with `->flush('openai')`) from a tinker session. `kb:prune-embedding-cache --days=N` only evicts rows older than N days and returns early when `N <= 0`, so it is **not** a full-flush substitute.
 4. Re-index all documents
 
 ### Storage (Laravel disks)
@@ -546,7 +550,7 @@ TENANT_USER_COLUMN=tenant_id     # column on the User model that holds the tenan
 
 **What's tenant-scoped (and what isn't)**
 
-The 17 tenant-aware tables (knowledge_documents, knowledge_chunks, chat_logs, conversations, messages, kb_nodes, kb_edges, kb_canonical_audit, project_memberships, kb_tags, knowledge_document_tags, knowledge_document_acl, admin_command_audit, admin_command_nonces, admin_insights_snapshots, chat_filter_presets, plus `ChatFilterPreset`) all carry `tenant_id` and use the `BelongsToTenant` trait. Composite tenant-scoped FKs on `kb_edges` make cross-tenant edges **structurally impossible** at the database level.
+The 20 tenant-aware models (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — `KnowledgeDocument`, `KnowledgeChunk`, `ChatLog`, `Conversation`, `Message`, `KbNode`, `KbEdge`, `KbCanonicalAudit`, `ProjectMembership`, `KbTag`, `KnowledgeDocumentAcl`, `AdminCommandAudit`, `AdminCommandNonce`, `AdminInsightsSnapshot`, `ChatFilterPreset`, `ChatLogProvenance`, `TabularReview`, `TabularCell`, `Workflow`, `HiddenWorkflow`) all carry `tenant_id` and use the `BelongsToTenant` trait. The architecture test gates new models on every CI run so this list stays in lock-step with the migrations. Composite tenant-scoped FKs on `kb_edges` make cross-tenant edges **structurally impossible** at the database level.
 
 `embedding_cache` is **intentionally NOT tenant-scoped** — the cache is a cross-tenant reuse layer keyed on `text_hash` UNIQUE alone (provider + model are retrieval-time filters). Sharing embeddings across tenants is a deliberate cost optimisation; eviction goes through `EmbeddingCacheService::flush($provider)` whenever the embedding model changes.
 
@@ -620,7 +624,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Feature | Description | Since |
 |---|---|---|
 | PII redaction at 11 persistence boundaries | `padosoft/laravel-pii-redactor` v1.2 wired at: (1) chat-message middleware, (2) embedding-cache pre-redact, (3) AI-insights snippet sanitiser, (4) operator detokenize endpoint, (5) Monolog log channel processor, (6) failed-jobs sanitiser via `JobFailed` listener with deterministic UUID match, (7) `Conversation`+`Message` `saving` observers, (8) `ChatLog::creating` observer, (9) `AdminCommandAudit::creating` observer, (10) `AdminInsightsSnapshot::creating` observer (6 JSON columns), (11) Flow `CurrentPayloadRedactorProvider` contract binding (covers run input + step results + audit + webhook outbox + approvals in one wire). All 5 v4.3 env knobs default OFF | v4.3 |
-| Multi-tenant isolation (R30 + R31) | 17 tenant-aware tables carry `tenant_id`; `BelongsToTenant` trait auto-fills from `TenantContext` on `creating`; composite tenant-scoped FK on `kb_edges` makes cross-tenant edges structurally impossible; architecture test `TenantIdMandatoryTest` gates new models | v4.0 |
+| Multi-tenant isolation (R30 + R31) | 20 tenant-aware models carry `tenant_id` (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS`); `BelongsToTenant` trait auto-fills from `TenantContext` on `creating`; composite tenant-scoped FK on `kb_edges` makes cross-tenant edges structurally impossible; architecture test `TenantIdMandatoryTest` gates new models | v4.0 |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
 | Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |

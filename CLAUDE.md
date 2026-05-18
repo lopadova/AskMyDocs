@@ -258,7 +258,11 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   (2560 dims, requires resizing the pgvector columns). When
   `AI_PROVIDER=anthropic` and `AI_EMBEDDINGS_PROVIDER` is empty, AiManager
   auto-selects the first embeddings-capable provider with a configured
-  API key in this order: regolo → openai → gemini → openrouter.
+  API key in this order: openai → openrouter → regolo → gemini. The order
+  is dimension-safety first (R14): openai + openrouter both default to a
+  1536-dim model matching the stock pgvector schema, so a deployment that
+  happens to have `REGOLO_API_KEY` or `GEMINI_API_KEY` set but never
+  resized the column does not silently corrupt ingest writes.
 - **Embedding dimensions are part of the contract.** Switching provider/model
   requires migrating the `vector(N)` column **and** flushing the cache **and**
   re-indexing. See the "Embedding dimension gotcha" section in the README.

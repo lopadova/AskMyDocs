@@ -114,14 +114,50 @@ class AiManagerTest extends TestCase
         $this->assertSame('openai', $manager->embeddingsProvider()->name());
     }
 
-    public function test_embeddings_auto_fallback_prefers_regolo_when_available(): void
+    public function test_embeddings_auto_fallback_prefers_openai_when_all_keys_present(): void
     {
+        // Fallback order is openai → openrouter → regolo → gemini (R14:
+        // 1536-dim-default providers first so a stock pgvector schema
+        // doesn't silently corrupt under auto-selection).
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', 'sk-test');
         config()->set('ai.providers.gemini.api_key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
         config()->set('ai.providers.openrouter.api_key', 'or-test');
+
+        $manager = new AiManager();
+
+        $this->assertSame('openai', $manager->embeddingsProvider()->name());
+    }
+
+    public function test_embeddings_auto_fallback_picks_openrouter_when_openai_missing(): void
+    {
+        // openai missing → next 1536-dim-default candidate is openrouter
+        // (openai/text-embedding-3-small).
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.regolo.key', 'rgl-test');
+        config()->set('ai.providers.openrouter.api_key', 'or-test');
+
+        $manager = new AiManager();
+
+        $this->assertSame('openrouter', $manager->embeddingsProvider()->name());
+    }
+
+    public function test_embeddings_auto_fallback_picks_regolo_when_only_non_1536_dim_keys_present(): void
+    {
+        // No 1536-dim-default provider keyed → operator deliberately runs
+        // on a non-stock dim layout; pick regolo before gemini (Qwen3 has
+        // a richer model catalogue than `text-embedding-004`).
+        config()->set('ai.default', 'anthropic');
+        config()->set('ai.embeddings_provider', null);
+        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.openrouter.api_key', null);
+        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.regolo.key', 'rgl-test');
 
         $manager = new AiManager();
 

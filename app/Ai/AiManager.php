@@ -14,12 +14,27 @@ class AiManager
 {
     /**
      * Auto-fallback search order when the chat provider doesn't support
-     * embeddings AND `AI_EMBEDDINGS_PROVIDER` is not set. Regolo first
-     * because it ships in-house with EU-residency Qwen3-Embedding-8B;
-     * OpenAI second (most universally configured); Gemini third;
-     * OpenRouter last (only since Oct 2025 with qwen/qwen3-embedding-4b).
+     * embeddings AND `AI_EMBEDDINGS_PROVIDER` is not set.
+     *
+     * Order is chosen to minimise the risk of a silent dimension mismatch
+     * against the default `KB_EMBEDDINGS_DIMENSIONS=1536` pgvector schema
+     * (R14 — surface failures loudly; never silently write the wrong shape):
+     *
+     *   1. openai      — text-embedding-3-small (1536, matches schema default)
+     *   2. openrouter  — openai/text-embedding-3-small (1536, matches schema default)
+     *   3. regolo      — Qwen3-Embedding-8B (4096, REQUIRES pgvector resize +
+     *                    `KB_EMBEDDINGS_DIMENSIONS=4096` already configured)
+     *   4. gemini      — text-embedding-004 (768, REQUIRES pgvector resize +
+     *                    `KB_EMBEDDINGS_DIMENSIONS=768` already configured)
+     *
+     * If `KB_EMBEDDINGS_DIMENSIONS` was not migrated in lock-step with the
+     * picked provider's default model, ingest writes will fail loudly at the
+     * vector-cast layer rather than silently corrupting retrieval. Operators
+     * who deliberately run on 4096 / 768 dims must set `AI_EMBEDDINGS_PROVIDER`
+     * explicitly to make the choice auditable instead of relying on
+     * auto-selection.
      */
-    private const EMBEDDINGS_FALLBACK_ORDER = ['regolo', 'openai', 'gemini', 'openrouter'];
+    private const EMBEDDINGS_FALLBACK_ORDER = ['openai', 'openrouter', 'regolo', 'gemini'];
 
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];
