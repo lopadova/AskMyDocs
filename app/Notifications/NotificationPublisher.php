@@ -66,7 +66,7 @@ use Illuminate\Support\Facades\Event;
  *   can't be resolved — otherwise we'd leak slug/doc_id metadata to
  *   subscribers the ACL would deny.
  *
- *   Two limitations explicitly accepted in W1.2 baseline:
+ *   One limitation explicitly accepted in W1.2 baseline:
  *     - `knowledge_document_acl` is keyed by `knowledge_documents.id`
  *       (the auto-increment PK), and each re-ingest creates a NEW
  *       row with a new PK. Deny ACL rows attached to a prior version
@@ -76,12 +76,6 @@ use Illuminate\Support\Facades\Event;
  *       outside W1.2. The regression test pins that EXACT-row
  *       contract by invoking the publisher with a doc + pre-existing
  *       deny ACL.
- *     - `scope_allowlist` folder_globs / tags are NOT applied. A
- *       user with project membership but a narrow `scope_allowlist`
- *       can still receive notifications about docs that the read
- *       path would filter out. Smaller leak than cross-tenant or
- *       cross-project, but documented to set expectations for any
- *       future tightening.
  */
 final class NotificationPublisher
 {
@@ -94,10 +88,11 @@ final class NotificationPublisher
      * Recipients are filtered to users who (a) hold an enabled
      * preference for the resolved event_type, (b) have project
      * membership in `(tenant_id, user_id, project_key)` (or the
-     * global `kb.view.any` permission), AND (c) have no matching
-     * deny row on `knowledge_document_acl` for this document's PK.
-     * `scope_allowlist` is NOT applied — see class docblock for the
-     * documented limitation.
+     * global `kb.view.any` permission), (c) have no matching deny
+     * row on `knowledge_document_acl` for this document's PK, AND
+     * (d) pass the membership's `scope_allowlist` folder_globs /
+     * tags check (when configured). The class docblock documents
+     * the per-version ACL caveat.
      */
     public function publishKbDocumentChanged(
         KnowledgeDocument $document,
@@ -286,57 +281,33 @@ final class NotificationPublisher
     }
 
     /**
-     * Tenant-aware project membership check. `User::allowedProjects()`
-     * queries `project_memberships` without a tenant filter, so a User
-     * who belongs to `(tenant_B, project_X)` would falsely match an
-     * event for `(tenant_A, project_X)` — `User` rows are global,
-     * `project_key` is NOT globally unique, and BelongsToTenant only
-     * stamps on write. Query memberships explicitly with both
-     * `tenant_id` AND `project_key` predicates so the leak is
-     * structurally impossible at the SQL layer.
-     *
-     * Global `kb.read.any` permission still short-circuits to allow
-     * (matching `AccessScopeScope` semantics on the read path).
-     */
-    private function userHasProjectAccessInTenant(
-        User $user,
-        string $tenantId,
-        string $projectKey,
-    ): bool {
-        if ($user->can('kb.read.any')) {
-            return true;
-        }
-
-        return ProjectMembership::query()
-            ->where('tenant_id', $tenantId)
-            ->where('user_id', $user->id)
-            ->where('project_key', $projectKey)
-            ->exists();
-    }
-
-    /**
      * Tenant-aware per-document access check.
      *
      * Layered semantics (cheapest predicate first, short-circuit):
      *   1. Global `kb.view.any` permission → allow (matches the
      *      `AccessScopeScope` bypass on the read path).
-     *   2. Tenant-scoped project membership check
-     *      (`userHasProjectAccessInTenant`) — must pass before any
-     *      ACL evaluation runs.
+     *   2. Tenant-scoped project membership in
+     *      `(tenant_id, user_id, project_key)`. We fetch the full
+     *      `ProjectMembership` row (not just `exists()`) so the
+     *      `scope_allowlist` JSON is available for step 4.
      *   3. INLINE ACL row evaluation (`evaluateAclForUser`) on
      *      `knowledge_document_acl` for the user OR any of their
      *      roles, scoped to the document's PK. Any matching deny →
-     *      reject; any matching allow → allow. Otherwise fall
-     *      through to membership-only allow.
+     *      reject; any matching allow → allow.
+     *   4. `scope_allowlist` folder_globs / tags check: if the
+     *      membership row carries a non-empty
+     *      `scope_allowlist`, the document MUST match at least one
+     *      glob OR at least one tag (`documentMatchesScope`).
+     *      Mirrors `User::matchesScope()` exactly so a recipient who
+     *      cannot read the doc via the chat / admin path also cannot
+     *      be notified about it.
      *
      * We deliberately do NOT delegate to `User::hasDocumentAccess()`:
      * its scope_allowlist arm calls `User::allowedScopesFor()` which
      * queries `project_memberships` WITHOUT a tenant_id predicate —
      * same cross-tenant leak class as `User::allowedProjects()`.
-     * Implementing scope_allowlist tenant-safely would either need a
-     * new `User::allowedScopesForInTenant()` API or a duplicate of
-     * `matchesScope()` here; parked as a documented limitation in
-     * the class-level docblock.
+     * Mirroring the policy semantics inline keeps the tenant scope
+     * structurally enforced at the SQL layer.
      */
     private function userCanViewDocumentInTenant(
         User $user,
@@ -347,10 +318,75 @@ final class NotificationPublisher
         if ($user->can('kb.view.any')) {
             return true;
         }
-        if (! $this->userHasProjectAccessInTenant($user, $tenantId, $projectKey)) {
+
+        $membership = ProjectMembership::query()
+            ->where('tenant_id', $tenantId)
+            ->where('user_id', $user->id)
+            ->where('project_key', $projectKey)
+            ->first();
+        if ($membership === null) {
             return false;
         }
-        return $this->evaluateAclForUser($user, $document) !== 'deny';
+
+        if ($this->evaluateAclForUser($user, $document) === 'deny') {
+            return false;
+        }
+
+        $scope = is_array($membership->scope_allowlist) ? $membership->scope_allowlist : [];
+        return $this->documentMatchesScope($document, $scope);
+    }
+
+    /**
+     * Mirror of `User::matchesScope()`. Empty scope → unrestricted;
+     * non-empty scope → doc must match at least one folder glob OR
+     * one tag for the user to be eligible. Keeping the algorithm
+     * byte-identical to the read-path policy means a future R19
+     * fnmatch tightening (FNM_PATHNAME) lands once in `User` and
+     * the publisher inherits the corrected semantics on the next
+     * sync — no parallel implementation to keep in lockstep.
+     *
+     * @param  array{folder_globs?: array<int,string>, tags?: array<int,string>}  $scope
+     */
+    private function documentMatchesScope(KnowledgeDocument $document, array $scope): bool
+    {
+        $globs = $scope['folder_globs'] ?? [];
+        $tags = $scope['tags'] ?? [];
+
+        if ($globs === [] && $tags === []) {
+            return true;
+        }
+        if ($globs !== [] && $this->matchesAnyGlob((string) $document->source_path, $globs)) {
+            return true;
+        }
+        if ($tags !== [] && $this->documentHasAnyTag($document, $tags)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @param  array<int,string>  $globs
+     */
+    private function matchesAnyGlob(string $path, array $globs): bool
+    {
+        foreach ($globs as $glob) {
+            if (fnmatch($glob, $path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param  array<int,string>  $tagSlugs
+     */
+    private function documentHasAnyTag(KnowledgeDocument $document, array $tagSlugs): bool
+    {
+        return DB::table('knowledge_document_tags')
+            ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
+            ->where('knowledge_document_tags.knowledge_document_id', $document->getKey())
+            ->whereIn('kb_tags.slug', $tagSlugs)
+            ->exists();
     }
 
     /**

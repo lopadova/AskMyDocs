@@ -138,6 +138,51 @@ final class NotificationPublisherTest extends TestCase
         $this->assertSame(0, NotificationEvent::count());
     }
 
+    public function test_publisher_ignores_user_whose_scope_allowlist_excludes_document(): void
+    {
+        // Member has tenant-scoped project membership AND preference,
+        // but their `scope_allowlist.folder_globs` only matches paths
+        // outside the new document's source_path. Mirrors the read-path
+        // policy (KnowledgeDocumentPolicy::view) so the user cannot
+        // receive a notification about a doc they could not otherwise
+        // read.
+        $member = $this->makeUser('scoped');
+        ProjectMembership::create([
+            'user_id' => $member->id,
+            'project_key' => 'proj-scope',
+            'role' => 'member',
+            'scope_allowlist' => ['folder_globs' => ['hr/*']],
+        ]);
+        $this->enablePref($member, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-scope', 'engineering/rfc.md', 'rfc-1', 'active', 'Engineering RFC')
+        );
+
+        $this->assertSame(0, NotificationEvent::count());
+    }
+
+    public function test_publisher_includes_user_whose_scope_allowlist_matches_document(): void
+    {
+        // Same setup as above, but the doc source_path matches the
+        // scope_allowlist glob → user IS notified.
+        $member = $this->makeUser('scoped-match');
+        ProjectMembership::create([
+            'user_id' => $member->id,
+            'project_key' => 'proj-scope-match',
+            'role' => 'member',
+            'scope_allowlist' => ['folder_globs' => ['hr/*']],
+        ]);
+        $this->enablePref($member, NotificationEvent::EVENT_KB_DOC_CREATED);
+
+        KnowledgeDocument::create(
+            $this->docAttributes('proj-scope-match', 'hr/policy.md', 'pol-1', 'active', 'HR Policy')
+        );
+
+        $row = NotificationEvent::sole();
+        $this->assertSame($member->id, $row->user_id);
+    }
+
     public function test_publisher_ignores_cross_tenant_project_membership_with_same_project_key(): void
     {
         // User Alice has membership in `(tenant_other, proj-shared)`.
