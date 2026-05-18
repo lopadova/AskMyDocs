@@ -51,6 +51,11 @@ abstract class TestCase extends OrchestraTestCase
         // the vendor's DenyAllAuthorizer.
         $app->register(\Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class);
         $app->register(\App\Providers\FlowAdminIntegrationServiceProvider::class);
+        // v8.0/W1.2 — notification dispatch pipeline (ChannelRegistry
+        // singleton + Event::listen wiring for the 4 BaseNotificationEvent
+        // subclasses). Same explicit-registration reason as the other
+        // host providers above (Testbench skips bootstrap/providers.php).
+        $app->register(\App\Providers\NotificationServiceProvider::class);
 
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
