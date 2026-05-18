@@ -145,14 +145,14 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
   - PHPUnit feature test crea evento, legge, mark-read, dismiss + cross-tenant coexistence + composite-unique enforcement
 
 **Task W1.2 — Event publisher wiring**
-- **Obiettivo:** ogni mutazione interessante emette un Laravel event.
-- **Cosa fa:** events `KbDocumentChanged`, `KbCanonicalPromoted`, `KbDecisionDebtThreshold` (placeholder per W4), `CollectionNewMember` (placeholder per W6). Listener `NotificationDispatcher` ascolta tutti, applica `notification_preferences` filter, dispatcha `NotifyUserJob` per ogni (user × channel) abilitato.
-- **Acceptance gate:** feature test ingerisce 1 doc → `KbDocumentChanged` fired → listener scrive 1 row in `notification_events` per ogni user iscritto a `kb_doc_created`
+- **Obiettivo:** ogni mutazione interessante emette un Laravel event; il listener delega ai channel adapter.
+- **Cosa fa:** events `KbDocumentChanged`, `KbCanonicalPromoted`, `KbDecisionDebtThreshold` (placeholder per W4), `CollectionNewMember` (placeholder per W6). Listener `NotificationDispatcher` ascolta tutti, applica `notification_preferences` filter per ogni (user × channel) abilitato, e **delega ad ogni channel adapter** (via `NotificationChannelInterface::send($event, $user)`). **Il listener NON scrive direttamente in `notification_events`**: la persistenza in-app è ownership esclusiva di `InAppChannel` (W1.3). Per `email` la persistenza è la `notification_events` row creata da InAppChannel + il job email lavora in parallelo. Single source-of-truth per ogni table-write evita duplicazione (regression Copilot round-8).
+- **Acceptance gate:** feature test ingerisce 1 doc → `KbDocumentChanged` fired → dispatcher chiama `InAppChannel::send` per ogni user con `in_app=enabled` → 1 row in `notification_events` per user (NO duplicate)
 
 **Task W1.3 — `NotificationChannelInterface` + `InAppChannel` + `EmailChannel`**
-- **Obiettivo:** astrazione per canali + 2 implementazioni baseline.
-- **Cosa fa:** interface in `app/Notifications/Channels/`. `InAppChannel::send($event, $user)` scrive in `notification_events`. `EmailChannel::send` usa `Mail::to($user)->queue(new NotificationMail($event))` con template MJML in `resources/views/emails/notification.blade.php` + unsubscribe link HMAC-signed per (tenant, user, event_type).
-- **Acceptance gate:** feature test fired → `Mail::fake()->assertQueued(NotificationMail::class)` + `notification_events` row visibile
+- **Obiettivo:** astrazione per canali + 2 implementazioni baseline; ownership chiaro della persistenza.
+- **Cosa fa:** interface in `app/Notifications/Channels/` con un solo metodo `send(NotificationEvent|array $eventData, User $user): void`. `InAppChannel::send` è **l'UNICO writer** della tabella `notification_events` (la persistenza in-app è del canale, non del listener). `EmailChannel::send` usa `Mail::to($user)->queue(new NotificationMail($event))` con template MJML in `resources/views/emails/notification.blade.php` + unsubscribe link HMAC-signed per (tenant, user, event_type) — l'email NON crea righe `notification_events` (non è una notifica in-app; il logging della spedizione finisce in `notification_events.channel_dispatch_log` quando il canale email fa append-to-existing-row se l'utente ha in_app+email abilitati entrambi).
+- **Acceptance gate:** feature test fired → `Mail::fake()->assertQueued(NotificationMail::class)` + `notification_events` row visibile (singolo writer = InAppChannel) con `channel_dispatch_log` che include `{channel: 'email', status: 'queued', ...}` se l'utente ha email abilitato
 
 **Task W1.4 — Bell SPA + `/app/admin/notifications` panel**
 - **Obiettivo:** UI integrata nel host admin shell.
@@ -191,8 +191,8 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W2.3 — `/app/admin/notifications/defaults` tenant defaults**
 - **Obiettivo:** tenant-admin imposta default per nuovi utenti.
-- **Cosa fa:** controller `AdminNotificationDefaultsController` espone GET/PUT su `config('askmydocs.notifications.defaults')` (tenant-overridden in `tenant_settings`). Quando un nuovo `User` viene creato, hook `User::created` popola `notification_preferences` dai default tenant.
-- **Acceptance gate:** feature test cambia default, crea nuovo user, asserta righe pref popolate
+- **Cosa fa:** controller `AdminNotificationDefaultsController` espone GET/PUT su `config('askmydocs.notifications.defaults')` (tenant-overridden in `tenant_settings`). Per il seeding delle preferenze **NON si usa un `User::created` model hook globale** (User è cross-tenant identity — `app/Models/User.php` $fillable non ha `tenant_id`, quindi un hook globale leggerebbe la `TenantContext` attiva al momento della creazione che potrebbe non corrispondere al tenant di destinazione). Invece: ogni endpoint che crea un user (admin add-user, sign-up, invite-acceptance) chiama esplicitamente `NotificationPreferencesSeeder::seedFromTenantDefaults($user, $tenantId)` passando il tenant_id originating del flusso. Questo rende il binding user→tenant esplicito e testabile senza ambiguità di TenantContext.
+- **Acceptance gate:** feature test cambia default tenant A; admin del tenant A crea user → preferenze popolate con default tenant A; stesso user invitato da admin del tenant B → preferenze tenant B righe distinte (R30 — no leak tra tenant nelle pref iniziali)
 
 **Task W2.4 — Scheduler Tier 1 (env-configurable cron per-host)**
 - **Obiettivo:** rendere tunabili i 12+1 slot scheduler via env.
