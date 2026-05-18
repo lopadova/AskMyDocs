@@ -2,9 +2,9 @@ name: tests
 
 on:
   push:
-    branches: [main, 'feature/v4.*']
+    branches: [main, 'feature/v*']
   pull_request:
-    branches: [main, 'feature/v4.*']
+    branches: [main, 'feature/v*']
 
 jobs:
   phpunit:
