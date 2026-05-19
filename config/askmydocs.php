@@ -61,6 +61,51 @@ return [
         | to disable pruning entirely.
         */
         'retention_days' => (int) env('NOTIFICATIONS_RETENTION_DAYS', 90),
+
+        /*
+        |--------------------------------------------------------------------------
+        | External channel webhook URLs (W2.1)
+        |--------------------------------------------------------------------------
+        |
+        | Each entry below maps to one optional outbound webhook
+        | channel registered by `NotificationServiceProvider`:
+        |
+        |   - `discord`  — Discord incoming webhook (rich embed)
+        |   - `slack`    — Slack incoming webhook (Block Kit blocks)
+        |   - `teams`    — Microsoft Teams Incoming Webhook
+        |                  connector (Adaptive Card 1.4)
+        |   - `webhook`  — generic outbound POST with optional
+        |                  HMAC-SHA256 `X-AskMyDocs-Signature`
+        |                  header for receiver verification
+        |
+        | A channel is registered with `ChannelRegistry` ONLY when
+        | its `.url` is non-empty (see
+        | `NotificationServiceProvider::registerExternalChannels()`).
+        | Per-user opt-in still gates dispatch via
+        | `notification_preferences` — a configured URL alone does
+        | NOT cause traffic to fire until at least one user toggles
+        | the relevant cell on in `/app/account/notifications` (the
+        | W2.2 grid).
+        |
+        | The `secret` value is only consumed by the generic
+        | `webhook` channel — Discord / Slack / Teams authenticate
+        | via the webhook id baked into the URL and ignore it.
+        */
+        'channels' => [
+            'discord' => [
+                'url' => (string) env('NOTIFICATIONS_DISCORD_URL', ''),
+            ],
+            'slack' => [
+                'url' => (string) env('NOTIFICATIONS_SLACK_URL', ''),
+            ],
+            'teams' => [
+                'url' => (string) env('NOTIFICATIONS_TEAMS_URL', ''),
+            ],
+            'webhook' => [
+                'url' => (string) env('NOTIFICATIONS_WEBHOOK_URL', ''),
+                'secret' => (string) env('NOTIFICATIONS_WEBHOOK_SECRET', ''),
+            ],
+        ],
     ],
 
 ];

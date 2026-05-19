@@ -7,8 +7,12 @@ namespace App\Providers;
 use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
 use App\Notifications\ChannelRegistry;
+use App\Notifications\Channels\DiscordChannel;
 use App\Notifications\Channels\EmailChannel;
 use App\Notifications\Channels\InAppChannel;
+use App\Notifications\Channels\SlackChannel;
+use App\Notifications\Channels\TeamsChannel;
+use App\Notifications\Channels\WebhookChannel;
 use App\Scopes\AccessScopeScope;
 use App\Notifications\Events\BaseNotificationEvent;
 use App\Notifications\Events\CollectionNewMember;
@@ -62,13 +66,21 @@ final class NotificationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // v8.0/W1.3 — register the two baseline channel adapters
-        // (in_app + email). W2 will add Discord/Slack/Teams/Webhook.
+        // (in_app + email). v8.0/W2.1 — register the 4 external
+        // adapters (discord / slack / teams / generic webhook)
+        // ONLY when their corresponding URL is configured; an
+        // unconfigured external channel stays unregistered so the
+        // ChannelRegistry falls through to NullChannel for any
+        // (event, user) pair that has an enabled preference for
+        // it — see `registerExternalChannels()` below.
+        //
         // Tests that need the NullChannel fallback can clear the
         // registry via `$this->app->forgetInstance(ChannelRegistry::class)`
         // before re-resolving.
         $registry = $this->app->make(ChannelRegistry::class);
         $registry->register(new InAppChannel());
         $registry->register(new EmailChannel());
+        $this->registerExternalChannels($registry);
 
         $events = [
             KbDocumentChanged::class,
@@ -85,6 +97,40 @@ final class NotificationServiceProvider extends ServiceProvider
         }
 
         $this->wireDomainPublishers();
+    }
+
+    /**
+     * v8.0/W2.1 — register the 4 optional external webhook channels
+     * (Discord, Slack, Teams, generic Webhook) ONLY when their URL
+     * is configured. An unconfigured channel stays unregistered so
+     * the dispatcher's ChannelRegistry::for() lookup falls through
+     * to NullChannel (which appends `'skipped'` to the log) instead
+     * of dispatching a real job against an empty URL.
+     *
+     * This also makes the architecture-level cost of opting OUT of
+     * a channel a single env var line rather than a code change —
+     * operators can run AskMyDocs with only `in_app` + `email`
+     * enabled and never see Discord/Slack/Teams instances in
+     * memory.
+     */
+    private function registerExternalChannels(ChannelRegistry $registry): void
+    {
+        $channelClasses = [
+            'discord' => DiscordChannel::class,
+            'slack' => SlackChannel::class,
+            'teams' => TeamsChannel::class,
+            'webhook' => WebhookChannel::class,
+        ];
+
+        foreach ($channelClasses as $key => $className) {
+            $url = (string) config("askmydocs.notifications.channels.{$key}.url", '');
+            if ($url === '') {
+                continue;
+            }
+            /** @var \App\Notifications\Channels\NotificationChannelInterface $instance */
+            $instance = new $className();
+            $registry->register($instance);
+        }
     }
 
     /**
