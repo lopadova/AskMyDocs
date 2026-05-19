@@ -343,7 +343,13 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                         data-testid={`notif-pref-cell-${evt}-${chan}-toggle`}
                                                         aria-label={label}
                                                         checked={checked}
-                                                        disabled={!registered || saveMut.isPending}
+                                                        // Copilot iter-5: when the channel was previously
+                                                        // enabled (DB row carries `enabled=true`) but the
+                                                        // operator has since de-registered the adapter URL,
+                                                        // the user still needs to be able to UNCHECK so
+                                                        // future deliveries stop. Only block the
+                                                        // enable transition; allow disable.
+                                                        disabled={saveMut.isPending || (!registered && !checked)}
                                                         onChange={() => toggleCell(evt, chan)}
                                                         className="h-4 w-4"
                                                     />

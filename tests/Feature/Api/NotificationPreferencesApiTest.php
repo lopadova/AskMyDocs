@@ -247,11 +247,15 @@ final class NotificationPreferencesApiTest extends TestCase
         $this->assertDatabaseHas('notification_preferences', [
             'tenant_id' => 'tenant-foreign',
             'user_id' => $user->id,
+            'event_type' => 'kb_doc_created',
+            'channel' => 'in_app',
             'enabled' => true,
         ]);
         $this->assertDatabaseHas('notification_preferences', [
             'tenant_id' => 'default',
             'user_id' => $user->id,
+            'event_type' => 'kb_doc_created',
+            'channel' => 'in_app',
             'enabled' => false,
         ]);
     }
