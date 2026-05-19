@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     notificationsApi,
@@ -90,14 +90,33 @@ export function NotificationPanel(): ReactNode {
 
     const rows = listQuery.data?.data ?? [];
     const meta = listQuery.data?.meta;
+    // Copilot iter-5 #2/#8 — distinguish "tenant has no notifications
+    // in this view" from "user is on an out-of-range page". The
+    // former → empty state. The latter → snap-back effect below
+    // pulls the user to the last valid page and avoids a misleading
+    // empty state when earlier pages still contain rows.
+    const totalForView = meta?.total ?? 0;
     const dataState = listQuery.isError
         ? 'error'
         : listQuery.isLoading
             ? 'loading'
-            : rows.length === 0
+            : totalForView === 0
                 ? 'empty'
                 : 'ready';
     const actionError = markReadMut.error ?? dismissMut.error ?? markAllReadMut.error;
+
+    // Copilot iter-5 #2 — snap the current page back to last_page
+    // when a mutation (mark-read, dismiss, mark-all-read) shrinks
+    // the result set so the user lands on now-out-of-range pages.
+    // Without this, marking the only row on page 3 of a 3-page
+    // unread view leaves the user stuck on an "empty" page 3 even
+    // though page 1 + 2 still have rows.
+    useEffect(() => {
+        if (!meta) return;
+        if (page > meta.last_page && meta.last_page >= 1) {
+            setPage(meta.last_page);
+        }
+    }, [meta, page]);
 
     // Copilot iter-4 #1 — fetch the canonical event_type list from the
     // BE (R18 — derive options from the DB, not from a literal subset).

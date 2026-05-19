@@ -137,7 +137,16 @@ export function NotificationBell(): ReactNode {
                             type="button"
                             data-testid="notif-bell-mark-all-read"
                             onClick={() => markAllReadMut.mutate()}
-                            disabled={markAllReadMut.isPending || unread === 0}
+                            // Copilot iter-5 #1 — the bulk button must
+                            // not be paralysed by a count-only outage.
+                            // Enable when EITHER the count query
+                            // confirms unread > 0, OR the dropdown
+                            // list already has visible rows the user
+                            // can act on (independent failure modes).
+                            disabled={
+                                markAllReadMut.isPending
+                                || (unread === 0 && (listQuery.data?.data ?? []).length === 0)
+                            }
                             className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                         >
                             Mark all read
@@ -215,10 +224,26 @@ export function NotificationBell(): ReactNode {
                     </ul>
 
                     <div className="border-t border-gray-100 px-3 py-2 text-center">
+                        {/* Copilot iter-5 #6 — kept as <a href> rather
+                          * than `<Link>` so the bell stays renderable
+                          * in Vitest without a `<RouterProvider>` test
+                          * harness. The Bell is the only feature
+                          * widget mounted in the Topbar of every
+                          * authenticated page, and wrapping every
+                          * existing Topbar-using Vitest in router
+                          * context is out of scope for W1.4. The
+                          * navigation hits the same SPA bundle so
+                          * the "full reload" cost is bootstrap-only
+                          * (auth /me + initial route resolve), not a
+                          * server round-trip per click. A follow-up
+                          * sub-PR can introduce a shared `Router`
+                          * test wrapper and migrate this + other
+                          * navigation links to `<Link>` in lockstep. */}
                         <a
                             data-testid="notif-bell-see-all"
                             href="/app/admin/notifications"
                             className="text-sm text-blue-600 hover:underline"
+                            onClick={() => setOpen(false)}
                         >
                             See all
                         </a>

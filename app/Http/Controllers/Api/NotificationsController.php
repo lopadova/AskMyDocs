@@ -41,7 +41,11 @@ final class NotificationsController extends Controller
     {
         $validated = $request->validate([
             'state' => ['nullable', Rule::in(['unread', 'read', 'dismissed', 'all'])],
-            'event_type' => ['nullable', 'string', 'max:120'],
+            // Copilot iter-5 #3 — max aligned with the DB column
+            // `string('event_type', 64)`. The previous max of 120
+            // would never trigger 422 for too-long input but the
+            // resulting WHERE clause could never match a row.
+            'event_type' => ['nullable', 'string', 'max:64'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
@@ -145,27 +149,32 @@ final class NotificationsController extends Controller
         // separate conditional updates (one for read_at, one for
         // dismissed_at) which could interleave with a concurrent
         // mark-read on the same row and leave the two timestamps
-        // mismatched (read_at from the racing call, dismissed_at from
-        // this one). COALESCE preserves any pre-existing read_at while
-        // stamping dismissed_at + read_at together in one round-trip
-        // when either column is null; the WHERE guard turns a replay
-        // into a no-op at the DB level.
+        // mismatched. COALESCE preserves any pre-existing read_at
+        // while stamping dismissed_at + read_at together in one
+        // round-trip when either column is null; the WHERE guard
+        // turns a replay into a no-op at the DB level.
         //
-        // Embedding the timestamp via Carbon's `toDateTimeString()` is
-        // safe from injection: the format is the fixed
-        // `YYYY-MM-DD HH:MM:SS` string, no caller input, no SQL
-        // meta-characters. Both SQLite + PostgreSQL accept this literal
-        // in a timestamp column.
-        $nowSql = now()->toDateTimeString();
-        $this->ownedQuery($request, $tenants)
-            ->whereKey($id)
-            ->where(function ($q) {
-                $q->whereNull('read_at')->orWhereNull('dismissed_at');
-            })
-            ->update([
-                'read_at' => DB::raw("COALESCE(read_at, '{$nowSql}')"),
-                'dismissed_at' => DB::raw("COALESCE(dismissed_at, '{$nowSql}')"),
-            ]);
+        // Copilot iter-5 #9 — use proper PDO bindings instead of
+        // string-interpolating the timestamp into raw SQL. Even
+        // though Carbon's `toDateTimeString()` output is safe by
+        // construction, bound parameters are the canonical pattern:
+        // safer under future refactor (no risk a caller-controlled
+        // value slips into the interpolation) and portable across
+        // drivers without quoting differences.
+        $user = $request->user();
+        if ($user === null) {
+            abort(401);
+        }
+        $tenantId = $tenants->current();
+        $now = now()->toDateTimeString();
+
+        DB::update(
+            'UPDATE notification_events '.
+            'SET read_at = COALESCE(read_at, ?), dismissed_at = COALESCE(dismissed_at, ?) '.
+            'WHERE id = ? AND tenant_id = ? AND user_id = ? '.
+            'AND (read_at IS NULL OR dismissed_at IS NULL)',
+            [$now, $now, $id, $tenantId, $user->id],
+        );
 
         $row = $this->ownedQuery($request, $tenants)->find($id);
         if ($row === null) {
@@ -182,7 +191,8 @@ final class NotificationsController extends Controller
         // marks unrelated unread rows (e.g. `kb_canonical_promoted`)
         // as read. The FE always forwards its current filter.
         $validated = $request->validate([
-            'event_type' => ['nullable', 'string', 'max:120'],
+            // Copilot iter-5 #3 — aligned with DB column length (64).
+            'event_type' => ['nullable', 'string', 'max:64'],
         ]);
 
         $query = $this->ownedQuery($request, $tenants)
