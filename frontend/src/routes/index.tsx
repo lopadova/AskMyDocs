@@ -525,12 +525,13 @@ const adminMcpToolsRoute = createRoute({
 // wrap lives in the route (not in NotificationPanel itself)
 // because AdminShell uses `useNavigate` from TanStack Router and
 // would require a Router context in Vitest unit tests otherwise.
-// `dashboard` is the closest semantic section until the
-// AdminSection union grows a dedicated `notifications` entry in a
-// follow-up.
+// Copilot iter-6 #2 — pass the dedicated `notifications` section
+// so no neighbouring rail entry highlights as active while the user
+// is on this page (the rail has no notifications entry by design;
+// users reach the panel from the bell's See-all link).
 function AdminNotificationsRoute() {
     return (
-        <AdminShell section="dashboard">
+        <AdminShell section="notifications">
             <NotificationPanel />
         </AdminShell>
     );

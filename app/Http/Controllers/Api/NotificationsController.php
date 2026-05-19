@@ -168,12 +168,18 @@ final class NotificationsController extends Controller
         $tenantId = $tenants->current();
         $now = now()->toDateTimeString();
 
+        // Copilot iter-6 #1 — also stamp `updated_at` so the row's
+        // Eloquent-managed timestamp stays in lockstep with markRead /
+        // markAllRead (both of which update it via the query builder).
+        // Without this, audit traces relying on `updated_at` to detect
+        // the dismiss event would silently miss it.
         DB::update(
             'UPDATE notification_events '.
-            'SET read_at = COALESCE(read_at, ?), dismissed_at = COALESCE(dismissed_at, ?) '.
+            'SET read_at = COALESCE(read_at, ?), dismissed_at = COALESCE(dismissed_at, ?), '.
+            'updated_at = ? '.
             'WHERE id = ? AND tenant_id = ? AND user_id = ? '.
             'AND (read_at IS NULL OR dismissed_at IS NULL)',
-            [$now, $now, $id, $tenantId, $user->id],
+            [$now, $now, $now, $id, $tenantId, $user->id],
         );
 
         $row = $this->ownedQuery($request, $tenants)->find($id);

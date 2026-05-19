@@ -32,12 +32,16 @@ import {
  * R15 a11y: container exposes `aria-busy` while the list query is
  * loading or refetching (Copilot iter-2 #6).
  *
- * Event-type options merge a static AskMyDocs-known vocabulary with
- * any event_type observed in the current page response, so newly-
- * shipped event types automatically appear in the dropdown without a
- * FE redeploy (Copilot iter-2 #11). A dedicated FE-FE constants file
- * is intentionally avoided — the BE remains source-of-truth via
- * `App\Models\NotificationEvent::EVENT_*`.
+ * Event-type options are primarily sourced from
+ * `GET /api/notifications/event-types` (BE returns DISTINCT
+ * event_type for the calling user + tenant — R18 derive from DB,
+ * not from a literal subset; Copilot iter-4 #1). The static
+ * AskMyDocs-known vocabulary remains as a graceful-degradation
+ * fallback while the query is loading or errors out: in that case
+ * the dropdown shows the static list augmented with any event_type
+ * observed in the current page response (Copilot iter-2 #11).
+ * A dedicated FE constants file is intentionally avoided — the BE
+ * remains source-of-truth via `App\Models\NotificationEvent::EVENT_*`.
  */
 
 const KNOWN_EVENT_TYPES = [

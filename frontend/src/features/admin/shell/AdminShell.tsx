@@ -26,7 +26,13 @@ export type AdminSection =
     | 'connectors'
     | 'tabular-reviews'
     | 'workflows'
-    | 'mcp-tools';
+    | 'mcp-tools'
+    // v8.0/W1.4 — dedicated identifier so the
+    // /app/admin/notifications route does NOT highlight a
+    // neighbouring rail entry (Copilot iter-6 #2). Notifications
+    // intentionally have no rail entry — the user reaches the panel
+    // from the Topbar bell's "See all" link, not from the admin rail.
+    | 'notifications';
 
 interface RailEntry {
     id: AdminSection;
