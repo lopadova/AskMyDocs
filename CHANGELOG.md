@@ -11,6 +11,137 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.0-rc1 — 2026-05-19 (W1 closure — Notification System core)
+
+First release candidate of the **v8.0 killer-features cycle** (8 weekly
+milestones, ADRs 0012..0018 — see
+[`docs/v4-platform/PLAN-v8.0-killer-features.md`](docs/v4-platform/PLAN-v8.0-killer-features.md)).
+rc1 pins the **W1 closure**: the foundation Notification System (schema +
+dispatcher + 2 baseline channels + bell SPA + admin panel + retention
+cron) so every later feature (W2 external channels, W4 Decision-Debt
+Heatmap, W6 Living Collections semantic, W8 Compliance Diff) can publish
+events through a working transport.
+
+#### What W1 ships (ADR 0012 — Database-backed multi-channel notifications)
+
+- **Schema (PR #188 — W1.1)**. Three new tenant-aware tables:
+  `notification_events` (storage + bell feed),
+  `notification_preferences` (per-user × per-event_type × per-channel
+  matrix with `UNIQUE(tenant_id, user_id, event_type, channel)`),
+  `notification_digests` (weekly per-tenant aggregates). All three use
+  the `BelongsToTenant` trait and start every composite UNIQUE with
+  `tenant_id` per R31. Covering index
+  `(tenant_id, event_type, channel, enabled, user_id)` keeps the W2
+  dispatcher lookup heap-free. New entries in
+  `tests/Architecture/TenantIdMandatoryTest`.
+- **Dispatcher (PR #189 — W1.2)**. Laravel events + `NotificationDispatcher`
+  listener. Single writer for `notification_events` rows (the
+  dispatcher); single writer per voice of `channel_dispatch_log` (the
+  per-channel adapter). Idempotency gated by
+  `(tenant_id, user_id, event_type, payload_hash)`. Event publishers
+  wired for `KbDocumentChanged` + `KbCanonicalPromoted` +
+  `KbDecisionDebtThreshold` (placeholder for W4) +
+  `CollectionNewMember` (placeholder for W6).
+- **In-app + Email channels (PR #190 — W1.3)**.
+  `NotificationChannelInterface` + `InAppChannel` (append `delivered`
+  voice; bell-feed driver) + `EmailChannel` (queue
+  `NotificationMail` via `Mail::to($user)->queue(…)` with MJML
+  template + HMAC-signed one-click unsubscribe link). Per-channel
+  voice appended to `channel_dispatch_log` so R14 failure-observability
+  holds independently of the mix of channels enabled.
+- **Bell SPA + admin panel (PR #191 — W1.4)**. Top-bar
+  `<NotificationBell />` polls `/api/notifications/unread-count`
+  every 30s (R11 `data-state` + `aria-busy`); full panel at
+  `/app/admin/notifications` with `unread | read | dismissed | all`
+  tabs, BE-derived event-type filter (R18 — `GET
+  /api/notifications/event-types`), pagination, per-row
+  mark-read/dismiss, bulk mark-all-read scoped to the active filter.
+  R21 atomic mark-read + dismiss
+  (`whereNull('read_at')->update(['read_at' => now()])` and
+  `dismissed_at` via COALESCE-preserving update). R30 cross-tenant
+  isolation enforced on every endpoint including mutations.
+  Presenter strips forensic `channel_dispatch_log` + `tenant_id` +
+  `user_id` from the FE feed. Playwright happy + failure path (R12).
+- **Retention cron (PR #192 — W1.5)**. New Artisan command
+  `notifications:prune --days=N` (default
+  `config('askmydocs.notifications.retention_days', 90)`) and
+  scheduler slot 13 in `bootstrap/app.php` —
+  `dailyAt('04:10')->onOneServer()->withoutOverlapping()` with env
+  override `NOTIFICATIONS_RETENTION_DAYS` (set `0` to disable). R30
+  strict on the DELETE (carries explicit
+  `where('tenant_id', $tenantId)`). Feature test creates 100 rows
+  aged `-100d`, runs prune, asserts 0 residue and 0 cross-tenant
+  leak.
+
+#### Tooling — R40 local critic loop hardened
+
+Companion to W1 closure: this release also lands the **R40 path-scoped
+reviewer instructions** at
+[`.github/instructions/r-rules.instructions.md`](.github/instructions/r-rules.instructions.md)
+(critical R-rule subset with `applyTo:` frontmatter, auto-loaded by
+both Copilot CLI and GitHub Copilot Code Review) and the canonical
+wrapper script
+[`scripts/local-critic-loop.sh`](scripts/local-critic-loop.sh)
+(diff capture + PR meta capture + `/review` slash-command invocation
++ `SUMMARY: <N> must-fix, <M> nit` parsing + non-zero exit when
+`N > 0`). CLAUDE.md §R40 and `.github/copilot-instructions.md` updated
+to document the diff-passing pattern and the slash-command
+invocation syntax.
+
+#### What's still in flight in v8.0
+
+- **W2** — Discord + Slack + Teams + Webhook channel adapters,
+  per-user preferences grid + bulk row/column enable, per-tenant
+  default-policy editor, **Tier-1 scheduler env override** for every
+  slot in `bootstrap/app.php` (`SCHEDULE_<SLOT>_CRON` +
+  `SCHEDULE_<SLOT>_ENABLED`).
+- **W3** — #4 Why-not-cited (runner-up retrieval surfaced into
+  `messages.metadata`) + #3 Counterfactual citations (neighbor query
+  scoped by `project_memberships`), both default-ON sticky.
+- **W4** — #2 Decision-Debt Heatmap (`KbHealthService` + formula +
+  weights UI + `kb:health-recompute` cron) + **Tier-2 per-tenant
+  scheduler overrides** for the user-facing slots.
+- **W5 + W6** — Living Collections foundation (static criteria +
+  manual override) + semantic (cosine-embedding membership +
+  retro-eval + chat scoping + MCP resource exposure).
+- **W7** — #9 MCP-as-KB-Debugger (tenant tokens model + admin SPA
+  mint/revoke + 4 propose-only tools + consumer playbook).
+- **W8** — #8 v1 Compliance Differential Pack (delta report + audit
+  aggregate + tamper-evident HMAC hash + PDF/JSON export +
+  `compliance:digest-quarterly` cron) + RC2..final + **v8.0.0 GA**.
+
+#### Verification
+
+- All v7.1 baseline tests remain green at the rc1 commit
+  (no regressions): 613 Unit + 1137 Feature.
+- W1 adds: ~85 feature tests across the 5 sub-PRs (schema upserts,
+  cross-tenant isolation, dispatcher idempotency, channel append
+  voices, bell mark-read/dismiss R21 atomicity, prune retention),
+  ~24 Vitest specs for the bell + panel components, 2 Playwright
+  scenarios (happy + failure path).
+
+#### PRs
+
+- PR #188 — `feat(v8.0/W1.1): notification schema + 3 models + R31
+  arch test` — merged at the SHA pinned by feature/v8.0-W1.1 closure.
+- PR #189 — `feat(v8.0/W1.2): event publisher + NotificationDispatcher
+  listener + 4 event classes` — merged.
+- PR #190 — `feat(v8.0/W1.3): NotificationChannelInterface +
+  InAppChannel + EmailChannel + Mailable template + HMAC
+  unsubscribe` — merged.
+- PR #191 — `feat(v8.0/W1.4): bell SPA + /app/admin/notifications
+  panel + presenter strips forensic columns + Playwright spec` —
+  merged.
+- PR #192 — `feat(v8.0/W1.5): notifications:prune cron + retention
+  env + R30 DELETE strict` — merged at `badeaf3` (round-2
+  documented).
+- PR #193 (this PR) — `chore(v8.0): close W1 docs + r-rules
+  path-scoped instructions + local-critic-loop wrapper + v8.0.0-rc1
+  CHANGELOG + roadmap row flip` — landing now to anchor the rc1
+  GitHub release at the closure-commit SHA per R39.
+
+---
+
 ### v7.1.0 — 2026-05-18 (MINOR — mcp-pack v1.5 + mcp-pack-admin v1.1 live wire-up)
 
 Host bump in lockstep with the [`padosoft/askmydocs-mcp-pack`](https://github.com/padosoft/askmydocs-mcp-pack) v1.5.0 + [`padosoft/askmydocs-mcp-pack-admin`](https://github.com/padosoft/askmydocs-mcp-pack-admin) v1.1.0 release pair (both also shipped 2026-05-18). This is a docs + dependency-pin release: no host `app/` code changes — the entire host integration surface from v7.0/W6 keeps working byte-identical because v1.5.0 is BC-safe by construction.
