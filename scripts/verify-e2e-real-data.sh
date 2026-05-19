@@ -31,6 +31,7 @@ INTERNAL_PATTERNS=(
   '/api/admin/'
   '/api/kb/'
   '/api/auth/'
+  '/api/notifications'   # v8.0/W1.4 — per-user notification feed
   '/sanctum/csrf-cookie'
   '/login'
   '/logout'
