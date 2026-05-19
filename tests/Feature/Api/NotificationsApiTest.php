@@ -327,6 +327,74 @@ final class NotificationsApiTest extends TestCase
         $this->assertCount(0, $response->json('data'), 'rows in tenant_other must not leak into default tenant feed');
     }
 
+    public function test_cross_tenant_mutations_are_blocked(): void
+    {
+        // Copilot iter-4 #2 — R30 isolation must hold on EVERY mutation
+        // endpoint, not just `index`. The same user_id can exist in
+        // multiple tenants; rows in tenant_other must be invisible to
+        // both mark-read AND dismiss AND mark-all-read in the default
+        // tenant.
+        $user = $this->makeUser('xtenant-mut');
+        $foreign = NotificationEvent::create([
+            'tenant_id' => 'tenant_other',
+            'user_id' => $user->id,
+            'event_type' => 'kb_doc_created',
+            'payload' => [],
+            'channel_dispatch_log' => [],
+        ]);
+        $home = $this->makeEvent($user, 'kb_doc_created');
+
+        // mark-read on the foreign row must 404 (NOT 200; NOT 403 —
+        // no enumeration leak).
+        $this->actingAs($user)
+            ->postJson("/api/notifications/{$foreign->id}/mark-read")
+            ->assertStatus(404);
+        $this->assertNull(NotificationEvent::find($foreign->id)->read_at, 'foreign row read_at must stay null');
+
+        // dismiss on the foreign row must 404.
+        $this->actingAs($user)
+            ->postJson("/api/notifications/{$foreign->id}/dismiss")
+            ->assertStatus(404);
+        $this->assertNull(NotificationEvent::find($foreign->id)->dismissed_at, 'foreign row dismissed_at must stay null');
+
+        // mark-all-read in the home tenant flips the home row, NOT
+        // the foreign one.
+        $this->actingAs($user)
+            ->postJson('/api/notifications/mark-all-read')
+            ->assertStatus(200)
+            ->assertJson(['marked_read' => 1]);
+        $this->assertNotNull(NotificationEvent::find($home->id)->read_at);
+        $this->assertNull(NotificationEvent::find($foreign->id)->read_at, 'mark-all-read must NOT cross tenants');
+    }
+
+    public function test_event_types_returns_distinct_values_scoped_to_user_and_tenant(): void
+    {
+        // Copilot iter-4 #1 — R18: the FE dropdown derives options
+        // from this endpoint. Verify it returns only distinct event
+        // types for the calling user in the active tenant; foreign
+        // tenant rows and foreign user rows must not leak.
+        $alice = $this->makeUser('etypes-alice');
+        $bob = $this->makeUser('etypes-bob');
+        $this->makeEvent($alice, 'kb_doc_created');
+        $this->makeEvent($alice, 'kb_doc_created'); // duplicate must collapse
+        $this->makeEvent($alice, 'kb_canonical_promoted');
+        $this->makeEvent($bob, 'collection_new_member'); // foreign user
+        NotificationEvent::create([
+            'tenant_id' => 'tenant_other',
+            'user_id' => $alice->id,
+            'event_type' => 'kb_decision_debt_threshold',
+            'payload' => [],
+            'channel_dispatch_log' => [],
+        ]); // foreign tenant for alice
+
+        $response = $this->actingAs($alice)->getJson('/api/notifications/event-types');
+
+        $response->assertStatus(200);
+        $types = $response->json('data');
+        sort($types);
+        $this->assertSame(['kb_canonical_promoted', 'kb_doc_created'], $types);
+    }
+
     private function makeUser(string $slug): User
     {
         return User::create([

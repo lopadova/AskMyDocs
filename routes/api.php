@@ -726,6 +726,9 @@ Route::middleware([
             ->name('api.notifications.index');
         Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationsController::class, 'unreadCount'])
             ->name('api.notifications.unread-count');
+        // Copilot iter-4 #1 — R18 event-type discovery endpoint.
+        Route::get('/event-types', [\App\Http\Controllers\Api\NotificationsController::class, 'eventTypes'])
+            ->name('api.notifications.event-types');
         Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markAllRead'])
             ->name('api.notifications.mark-all-read');
         Route::post('/{id}/mark-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markRead'])

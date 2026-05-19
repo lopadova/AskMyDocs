@@ -99,35 +99,40 @@ export function NotificationPanel(): ReactNode {
                 : 'ready';
     const actionError = markReadMut.error ?? dismissMut.error ?? markAllReadMut.error;
 
+    // Copilot iter-4 #1 — fetch the canonical event_type list from the
+    // BE (R18 — derive options from the DB, not from a literal subset).
+    // Falls back to the static AskMyDocs-known vocabulary if the query
+    // is still loading or errors out (graceful degradation).
+    const eventTypesQuery = useQuery({
+        queryKey: ['notifications', 'event-types'],
+        queryFn: () => notificationsApi.eventTypes(),
+        staleTime: 60_000,
+    });
+
     const eventTypeOptions = useMemo(() => {
-        // Copilot iter-3 #8 — deduplicate the dynamic event-type
-        // options. The previous version filtered against `seen`
-        // without updating it during the iteration, so a current
-        // page that contained the same unknown event_type on
-        // multiple rows produced duplicate <option> values + React
-        // key collisions. Mutate `seen` as we walk the rows so the
-        // dynamic list contains each new event_type at most once.
-        //
-        // Defer (#5): the dropdown is still derived from the current
-        // page + the static AskMyDocs-known vocabulary. Event types
-        // that exist elsewhere in the tenant feed but never appear
-        // on the current page are not discoverable here. A dedicated
-        // `GET /api/notifications/event-types` endpoint that returns
-        // `DISTINCT event_type WHERE user_id=:u AND tenant_id=:t`
-        // would close this gap; parked for W4 alongside the
-        // decision-debt digest publisher work.
-        const seen = new Set(KNOWN_EVENT_TYPES.map((o) => o.value));
-        const dynamic: { value: string; label: string }[] = [];
-        for (const row of rows) {
-            const t = row.event_type;
-            if (typeof t !== 'string' || seen.has(t)) {
-                continue;
+        const knownByValue = new Map(KNOWN_EVENT_TYPES.map((o) => [o.value, o.label]));
+        const sources: string[] = [];
+        if (eventTypesQuery.data && eventTypesQuery.data.length > 0) {
+            sources.push(...eventTypesQuery.data);
+        } else {
+            sources.push(...KNOWN_EVENT_TYPES.map((o) => o.value));
+            // Augment with current-page rows (Copilot iter-3 #8 — dedup
+            // by mutating the seen set as we walk). Only used as the
+            // fallback path while the dedicated endpoint is unavailable.
+            const seen = new Set(sources);
+            for (const row of rows) {
+                const t = row.event_type;
+                if (typeof t === 'string' && !seen.has(t)) {
+                    seen.add(t);
+                    sources.push(t);
+                }
             }
-            seen.add(t);
-            dynamic.push({ value: t, label: t });
         }
-        return [...KNOWN_EVENT_TYPES, ...dynamic];
-    }, [rows]);
+        return sources.map((value) => ({
+            value,
+            label: knownByValue.get(value) ?? value,
+        }));
+    }, [eventTypesQuery.data, rows]);
 
     const lastPage = meta?.last_page ?? 1;
     const total = meta?.total ?? 0;

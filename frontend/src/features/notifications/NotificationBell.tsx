@@ -71,6 +71,17 @@ export function NotificationBell(): ReactNode {
         : countQuery.isLoading
             ? 'loading'
             : 'ready';
+    // Copilot iter-4 #5 — R11 expects observable async state on every
+    // FE container. The dropdown is its own async surface (separate
+    // queryKey from the bell-button count) and now exposes its own
+    // data-state alongside aria-busy so E2E waits are deterministic.
+    const dropdownState = listQuery.isError
+        ? 'error'
+        : listQuery.isLoading
+            ? 'loading'
+            : (listQuery.data?.data ?? []).length === 0
+                ? 'empty'
+                : 'ready';
     const unread = countQuery.data ?? 0;
     const isBusy = countQuery.isFetching || listQuery.isFetching;
     const actionError = markReadMut.error ?? markAllReadMut.error;
@@ -114,6 +125,7 @@ export function NotificationBell(): ReactNode {
             {open && (
                 <div
                     data-testid="notif-bell-dropdown"
+                    data-state={dropdownState}
                     role="dialog"
                     aria-label="Notifications"
                     aria-busy={listQuery.isFetching}

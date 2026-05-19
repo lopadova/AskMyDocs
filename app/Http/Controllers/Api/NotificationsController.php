@@ -93,6 +93,29 @@ final class NotificationsController extends Controller
         return response()->json(['unread_count' => $count]);
     }
 
+    /**
+     * Copilot iter-3 #5 + iter-4 #1 — distinct event_types present in
+     * THIS user's feed (current tenant). The FE event-type dropdown
+     * derives its options from this list (R18 — derive from DB, not
+     * from a literal subset) so newly-shipped or rare event types
+     * become discoverable in the filter without a FE redeploy.
+     *
+     * Ordering matches the natural alpha sort of the underlying
+     * column. Cache-friendly: 1 distinct query per request, max ~10
+     * event types per tenant in practice.
+     */
+    public function eventTypes(Request $request, TenantContext $tenants): JsonResponse
+    {
+        $types = $this->ownedQuery($request, $tenants)
+            ->select('event_type')
+            ->distinct()
+            ->orderBy('event_type')
+            ->pluck('event_type')
+            ->all();
+
+        return response()->json(['data' => $types]);
+    }
+
     public function markRead(Request $request, TenantContext $tenants, int $id): JsonResponse
     {
         // R21 — atomic conditional update. The previous load-then-save

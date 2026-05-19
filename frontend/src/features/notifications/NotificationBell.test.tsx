@@ -212,6 +212,25 @@ describe('NotificationBell', () => {
         });
     });
 
+    it('dropdown exposes data-state reflecting the list query (Copilot iter-4 #5)', async () => {
+        // Empty list path → data-state='empty'.
+        mockGet
+            .mockResolvedValueOnce({ data: { unread_count: 0 } })
+            .mockResolvedValueOnce({
+                data: {
+                    data: [],
+                    meta: { current_page: 1, last_page: 1, per_page: 5, total: 0, state: 'unread' },
+                },
+            });
+
+        render(wrapped(<NotificationBell />));
+        await userEvent.click(await screen.findByTestId('notif-bell'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-bell-dropdown')).toHaveAttribute('data-state', 'empty');
+        });
+    });
+
     it('disables Mark-all-read when there are 0 unread', async () => {
         mockGet
             .mockResolvedValueOnce({ data: { unread_count: 0 } })

@@ -78,6 +78,15 @@ export const notificationsApi = {
         return data.unread_count;
     },
 
+    async eventTypes(): Promise<string[]> {
+        // Copilot iter-4 #1 — R18: derive options from the DB. Lists
+        // every distinct event_type present in the calling user's
+        // feed (current tenant) so newly-shipped event types appear
+        // without a FE redeploy.
+        const { data } = await api.get<{ data: string[] }>('/api/notifications/event-types');
+        return data.data;
+    },
+
     async markRead(id: number): Promise<NotificationRow> {
         const { data } = await api.post<{ data: NotificationRow }>(`/api/notifications/${id}/mark-read`);
         return data.data;

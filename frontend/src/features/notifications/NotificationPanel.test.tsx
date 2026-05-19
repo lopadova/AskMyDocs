@@ -9,10 +9,34 @@ import { api } from '../../lib/api';
 const mockGet = vi.fn();
 const mockPost = vi.fn();
 
+// Copilot iter-4 #1 — the panel now fetches `/api/notifications/event-types`
+// alongside the list. Tests previously assumed a single GET responder;
+// `routedGet` dispatches by URL so each query receives its own canned
+// payload. List-specific tests still call `mockGet.mockResolvedValueOnce`
+// to override the list response only.
+const EVENT_TYPES_RESPONSE = { data: { data: ['kb_doc_created', 'kb_canonical_promoted'] } };
+
+function routedGet(url: string, ..._args: unknown[]) {
+    if (url.includes('/event-types')) {
+        return Promise.resolve(EVENT_TYPES_RESPONSE);
+    }
+    // Fall through to the list responder configured by the test.
+    const next = mockGet.getMockImplementation();
+    if (next && next !== routedGet) {
+        return next(url, ..._args);
+    }
+    return Promise.resolve({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 20, total: 0, state: 'unread' } } });
+}
+
 beforeEach(() => {
     mockGet.mockReset();
     mockPost.mockReset();
-    vi.spyOn(api, 'get').mockImplementation(mockGet);
+    vi.spyOn(api, 'get').mockImplementation((url: string, ...args: unknown[]) => {
+        if (url.includes('/event-types')) {
+            return Promise.resolve(EVENT_TYPES_RESPONSE);
+        }
+        return mockGet(url, ...args);
+    });
     vi.spyOn(api, 'post').mockImplementation(mockPost);
 });
 
