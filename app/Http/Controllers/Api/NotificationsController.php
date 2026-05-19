@@ -61,10 +61,18 @@ final class NotificationsController extends Controller
             'all' => $query,
         };
 
-        $page = $query->orderByDesc('created_at')->paginate($perPage);
+        // Copilot iter-3 #2 — secondary `id DESC` tie-breaker keeps the
+        // page boundary deterministic when multiple events share the
+        // same `created_at` (PostgreSQL is free to return tied rows in
+        // any order otherwise, which can duplicate or skip rows across
+        // page boundaries).
+        $page = $query
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
 
         return response()->json([
-            'data' => $page->items(),
+            'data' => array_map(fn ($row) => $this->presentRow($row), $page->items()),
             'meta' => [
                 'current_page' => $page->currentPage(),
                 'last_page' => $page->lastPage(),
@@ -105,7 +113,7 @@ final class NotificationsController extends Controller
         if ($row === null) {
             return response()->json(['error' => 'not_found'], 404);
         }
-        return response()->json(['data' => $row, 'changed' => $updated > 0]);
+        return response()->json(['data' => $this->presentRow($row), 'changed' => $updated > 0]);
     }
 
     public function dismiss(Request $request, TenantContext $tenants, int $id): JsonResponse
@@ -140,7 +148,7 @@ final class NotificationsController extends Controller
         if ($row === null) {
             return response()->json(['error' => 'not_found'], 404);
         }
-        return response()->json(['data' => $row]);
+        return response()->json(['data' => $this->presentRow($row)]);
     }
 
     public function markAllRead(Request $request, TenantContext $tenants): JsonResponse
@@ -181,5 +189,34 @@ final class NotificationsController extends Controller
         return NotificationEvent::query()
             ->where('tenant_id', $tenants->current())
             ->where('user_id', $user->id);
+    }
+
+    /**
+     * Copilot iter-3 #1 — shape a NotificationEvent for the FE feed
+     * without leaking forensic delivery metadata. The full
+     * `channel_dispatch_log` carries per-channel `{channel, status,
+     * at, error}` entries that on the email/webhook channels include
+     * the user's email address + the configured webhook URL — both
+     * inappropriate to ship to the user-facing JSON feed. `tenant_id`
+     * + `user_id` are also redundant: every row in the response is by
+     * construction owned by the calling user in their current tenant.
+     *
+     * The FE only needs the rendering-relevant columns. A future
+     * admin-only `/api/admin/notifications/{id}/audit` endpoint can
+     * expose the full row to operators when forensic inspection is
+     * needed (parked for W4).
+     *
+     * @return array<string, mixed>
+     */
+    private function presentRow(NotificationEvent $row): array
+    {
+        return [
+            'id' => $row->id,
+            'event_type' => $row->event_type,
+            'payload' => $row->payload ?? [],
+            'created_at' => optional($row->created_at)->toIso8601String(),
+            'read_at' => optional($row->read_at)->toIso8601String(),
+            'dismissed_at' => optional($row->dismissed_at)->toIso8601String(),
+        ];
     }
 }

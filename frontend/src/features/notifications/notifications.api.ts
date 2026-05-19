@@ -23,19 +23,25 @@ export type NotificationEventType =
 
 export interface NotificationRow {
     id: number;
-    tenant_id: string;
-    user_id: number | null;
     event_type: NotificationEventType | string;
     payload: Record<string, unknown>;
-    channel_dispatch_log: Array<{
+    created_at: string;
+    read_at: string | null;
+    dismissed_at: string | null;
+    // Copilot iter-3 #1 — the BE no longer ships these to the FE
+    // feed (forensic delivery log can carry email addresses /
+    // webhook URLs; tenant_id + user_id are redundant since every
+    // row is owned by the calling user by construction). Optional
+    // here so existing test fixtures + future admin-only audit
+    // endpoints can still type-check.
+    tenant_id?: string;
+    user_id?: number | null;
+    channel_dispatch_log?: Array<{
         channel: string;
         status: string;
         at: string;
         error?: string;
     }>;
-    created_at: string;
-    read_at: string | null;
-    dismissed_at: string | null;
 }
 
 export interface NotificationListResponse {

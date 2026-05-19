@@ -29,6 +29,7 @@ import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularRev
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
+import { AdminShell } from '../features/admin/shell/AdminShell';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
 import { KbPlaceholder } from '../components/sections/KbPlaceholder';
@@ -518,8 +519,21 @@ const adminMcpToolsRoute = createRoute({
 // authenticated user (notifications are per-user, not admin-only);
 // no RequireRole wrapper. The Topbar's NotificationBell links here
 // via the "See all" link in its dropdown.
+//
+// Copilot iter-3 #4 — wrap in AdminShell so the panel inherits the
+// secondary admin rail every other /app/admin/* page uses. The
+// wrap lives in the route (not in NotificationPanel itself)
+// because AdminShell uses `useNavigate` from TanStack Router and
+// would require a Router context in Vitest unit tests otherwise.
+// `dashboard` is the closest semantic section until the
+// AdminSection union grows a dedicated `notifications` entry in a
+// follow-up.
 function AdminNotificationsRoute() {
-    return <NotificationPanel />;
+    return (
+        <AdminShell section="dashboard">
+            <NotificationPanel />
+        </AdminShell>
+    );
 }
 
 const adminNotificationsRoute = createRoute({

@@ -100,11 +100,32 @@ export function NotificationPanel(): ReactNode {
     const actionError = markReadMut.error ?? dismissMut.error ?? markAllReadMut.error;
 
     const eventTypeOptions = useMemo(() => {
+        // Copilot iter-3 #8 — deduplicate the dynamic event-type
+        // options. The previous version filtered against `seen`
+        // without updating it during the iteration, so a current
+        // page that contained the same unknown event_type on
+        // multiple rows produced duplicate <option> values + React
+        // key collisions. Mutate `seen` as we walk the rows so the
+        // dynamic list contains each new event_type at most once.
+        //
+        // Defer (#5): the dropdown is still derived from the current
+        // page + the static AskMyDocs-known vocabulary. Event types
+        // that exist elsewhere in the tenant feed but never appear
+        // on the current page are not discoverable here. A dedicated
+        // `GET /api/notifications/event-types` endpoint that returns
+        // `DISTINCT event_type WHERE user_id=:u AND tenant_id=:t`
+        // would close this gap; parked for W4 alongside the
+        // decision-debt digest publisher work.
         const seen = new Set(KNOWN_EVENT_TYPES.map((o) => o.value));
-        const dynamic = rows
-            .map((r) => r.event_type)
-            .filter((t): t is string => typeof t === 'string' && !seen.has(t))
-            .map((t) => ({ value: t, label: t }));
+        const dynamic: { value: string; label: string }[] = [];
+        for (const row of rows) {
+            const t = row.event_type;
+            if (typeof t !== 'string' || seen.has(t)) {
+                continue;
+            }
+            seen.add(t);
+            dynamic.push({ value: t, label: t });
+        }
         return [...KNOWN_EVENT_TYPES, ...dynamic];
     }, [rows]);
 
