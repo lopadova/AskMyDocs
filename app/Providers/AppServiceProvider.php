@@ -19,6 +19,7 @@ use App\Console\Commands\PruneAdminCommandNoncesCommand;
 use App\Console\Commands\PruneChatLogsCommand;
 use App\Console\Commands\PruneDeletedDocumentsCommand;
 use App\Console\Commands\PruneEmbeddingCacheCommand;
+use App\Console\Commands\PruneNotificationsCommand;
 use App\Console\Commands\PruneOrphanFilesCommand;
 use App\Connectors\HostIngestionBridge;
 use App\Mcp\Adapters\EloquentMcpServerRegistry;
@@ -313,6 +314,9 @@ class AppServiceProvider extends ServiceProvider
             // PR13 / Phase H2 — admin audit + nonces rotations.
             PruneAdminCommandAuditCommand::class,
             PruneAdminCommandNoncesCommand::class,
+            // v8.0/W1.5 — notification_events retention rotation
+            // (daily 04:10 via bootstrap/app.php->withSchedule()).
+            PruneNotificationsCommand::class,
             // PR14 / Phase I — daily AI insights snapshot.
             InsightsComputeCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
