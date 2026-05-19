@@ -701,3 +701,37 @@ Route::middleware([
 // `MCP_INTERNAL_AUTH_TOKEN` alongside it. The native MCP transports
 // (HTTP / SSE / stdio) provided by `padosoft/askmydocs-mcp-pack` don't
 // need any host-side internal callbacks.
+
+/*
+|--------------------------------------------------------------------------
+| v8.0/W1.4 — Notification bell + /admin/notifications panel API
+|--------------------------------------------------------------------------
+|
+| Per-user notification feed driven by the React NotificationBell +
+| NotificationPanel components. Same EncryptCookies+StartSession+
+| auth:sanctum surface as the rest of the SPA — no token-bearer
+| auth path. Reads return only rows owned by the authenticated user
+| in the active tenant; tenant-wide rows (user_id IS NULL) get a
+| dedicated /api/notifications/system surface in W4 (decision-debt
+| digest).
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+])
+    ->prefix('notifications')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\NotificationsController::class, 'index'])
+            ->name('api.notifications.index');
+        Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationsController::class, 'unreadCount'])
+            ->name('api.notifications.unread-count');
+        Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markAllRead'])
+            ->name('api.notifications.mark-all-read');
+        Route::post('/{id}/mark-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markRead'])
+            ->whereNumber('id')
+            ->name('api.notifications.mark-read');
+        Route::post('/{id}/dismiss', [\App\Http\Controllers\Api\NotificationsController::class, 'dismiss'])
+            ->whereNumber('id')
+            ->name('api.notifications.dismiss');
+    });

@@ -1,0 +1,164 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { NotificationPanel } from './NotificationPanel';
+import { api } from '../../lib/api';
+
+const mockGet = vi.fn();
+const mockPost = vi.fn();
+
+beforeEach(() => {
+    mockGet.mockReset();
+    mockPost.mockReset();
+    vi.spyOn(api, 'get').mockImplementation(mockGet);
+    vi.spyOn(api, 'post').mockImplementation(mockPost);
+});
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
+function wrapped(node: ReactNode): ReactNode {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
+}
+
+const TWO_UNREAD = {
+    data: {
+        data: [
+            {
+                id: 1,
+                tenant_id: 'default',
+                user_id: 7,
+                event_type: 'kb_doc_created',
+                payload: { title: 'Doc A' },
+                channel_dispatch_log: [],
+                created_at: '2026-05-18T09:00:00Z',
+                read_at: null,
+                dismissed_at: null,
+            },
+            {
+                id: 2,
+                tenant_id: 'default',
+                user_id: 7,
+                event_type: 'kb_canonical_promoted',
+                payload: { slug: 'dec-cache-v2' },
+                channel_dispatch_log: [],
+                created_at: '2026-05-18T08:00:00Z',
+                read_at: null,
+                dismissed_at: null,
+            },
+        ],
+        meta: { current_page: 1, last_page: 1, per_page: 20, total: 2, state: 'unread' },
+    },
+};
+
+describe('NotificationPanel', () => {
+    it('renders all 4 tabs and the event-type filter', async () => {
+        mockGet.mockResolvedValueOnce(TWO_UNREAD);
+
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel')).toHaveAttribute('data-state', 'ready');
+        });
+
+        for (const state of ['unread', 'read', 'dismissed', 'all']) {
+            expect(screen.getByTestId(`notif-panel-tab-${state}`)).toBeInTheDocument();
+        }
+        expect(screen.getByTestId('notif-panel-filter-event_type')).toBeInTheDocument();
+    });
+
+    it('switches state when a tab is clicked', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        render(wrapped(<NotificationPanel />));
+
+        await screen.findByTestId('notif-panel-tab-read');
+        await userEvent.click(screen.getByTestId('notif-panel-tab-read'));
+
+        await waitFor(() => {
+            const lastCall = mockGet.mock.calls.at(-1);
+            expect(lastCall?.[1]?.params?.state).toBe('read');
+        });
+    });
+
+    it('filters by event_type when the dropdown changes', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        render(wrapped(<NotificationPanel />));
+
+        await screen.findByTestId('notif-panel-filter-event_type');
+        await userEvent.selectOptions(
+            screen.getByTestId('notif-panel-filter-event_type'),
+            'kb_canonical_promoted',
+        );
+
+        await waitFor(() => {
+            const lastCall = mockGet.mock.calls.at(-1);
+            expect(lastCall?.[1]?.params?.event_type).toBe('kb_canonical_promoted');
+        });
+    });
+
+    it('renders one row per notification with mark-read + dismiss buttons', async () => {
+        mockGet.mockResolvedValueOnce(TWO_UNREAD);
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel-row-1-mark-read')).toBeInTheDocument();
+            expect(screen.getByTestId('notif-panel-row-1-dismiss')).toBeInTheDocument();
+            expect(screen.getByTestId('notif-panel-row-2-mark-read')).toBeInTheDocument();
+            expect(screen.getByTestId('notif-panel-row-2-dismiss')).toBeInTheDocument();
+        });
+    });
+
+    it('shows empty state when no rows', async () => {
+        mockGet.mockResolvedValueOnce({
+            data: {
+                data: [],
+                meta: { current_page: 1, last_page: 1, per_page: 20, total: 0, state: 'unread' },
+            },
+        });
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel')).toHaveAttribute('data-state', 'empty');
+        });
+        expect(screen.getByTestId('notif-panel-empty')).toBeInTheDocument();
+    });
+
+    it('surfaces an error state with a retry button on API failure', async () => {
+        mockGet.mockRejectedValueOnce(new Error('boom'));
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel')).toHaveAttribute('data-state', 'error');
+        });
+        expect(screen.getByTestId('notif-panel-error')).toBeInTheDocument();
+        expect(screen.getByTestId('notif-panel-retry')).toBeInTheDocument();
+    });
+
+    it('disables Mark-all-read on non-unread tabs', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        render(wrapped(<NotificationPanel />));
+
+        await userEvent.click(await screen.findByTestId('notif-panel-tab-all'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel-mark-all-read')).toBeDisabled();
+        });
+    });
+
+    it('fires mark-all-read mutation when bulk button is clicked on unread tab', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        mockPost.mockResolvedValueOnce({ data: { marked_read: 2 } });
+
+        render(wrapped(<NotificationPanel />));
+        await screen.findByTestId('notif-panel-mark-all-read');
+        await userEvent.click(screen.getByTestId('notif-panel-mark-all-read'));
+
+        await waitFor(() => {
+            expect(mockPost).toHaveBeenCalledWith('/api/notifications/mark-all-read');
+        });
+    });
+});

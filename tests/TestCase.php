@@ -284,6 +284,10 @@ abstract class TestCase extends OrchestraTestCase
     protected function defineRoutes($router): void
     {
         require __DIR__.'/../routes/web.php';
+        // v8.0/W1.4 — `routes/api.php` is registered with the `api/`
+        // prefix in production via withRouting; mirror that here so
+        // feature tests can hit `/api/notifications` etc. directly.
+        $router->prefix('api')->group(__DIR__.'/../routes/api.php');
     }
 
     protected function defineDatabaseMigrations(): void
