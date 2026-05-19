@@ -28,7 +28,7 @@ import {
  *   - `notif-pref-dirty-indicator`                "Unsaved changes" hint
  *   - `notif-pref-save-error`                     error banner
  *   - `notif-pref-save-success`                   transient success toast
- *   - `notif-pref-loading` / `-error` / `-empty`  data-state placeholders
+ *   - `notif-pref-loading` / `-error`             data-state placeholders
  *
  * R15 a11y: every checkbox has an `aria-label` ("Enable email for
  * Doc created"). The grid is wrapped in `<table>` with proper
@@ -118,14 +118,15 @@ export function NotificationPreferencesGrid(): ReactNode {
 
     // The grid stays in `loading` until edits has been seeded from
     // the server payload, so the first paint never shows the empty-
-    // `{}` map.
+    // `{}` map. `event_types` comes from a closed static enum on the
+    // BE (5 values today), so there is no reachable empty state
+    // (Copilot iter-2: removed dangling 'empty' branch the render
+    // tree never handled).
     const dataState = query.isError
         ? 'error'
         : query.isLoading || edits === null
             ? 'loading'
-            : query.data && query.data.event_types.length === 0
-                ? 'empty'
-                : 'ready';
+            : 'ready';
 
     const toggleCell = (eventType: string, channel: string) => {
         const k = cellKey(eventType, channel);
@@ -289,7 +290,8 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                                 data-testid={`notif-pref-column-${chan}-enable-all`}
                                                                 aria-label={`Enable all ${CHANNEL_LABELS[chan] ?? chan} notifications`}
                                                                 onClick={() => setColumn(chan, true)}
-                                                                className="text-xs text-blue-600 hover:underline"
+                                                                disabled={saveMut.isPending}
+                                                                className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                                                             >
                                                                 On
                                                             </button>
@@ -298,7 +300,8 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                                 data-testid={`notif-pref-column-${chan}-disable-all`}
                                                                 aria-label={`Disable all ${CHANNEL_LABELS[chan] ?? chan} notifications`}
                                                                 onClick={() => setColumn(chan, false)}
-                                                                className="text-xs text-gray-600 hover:underline"
+                                                                disabled={saveMut.isPending}
+                                                                className="text-xs text-gray-600 hover:underline disabled:text-gray-400"
                                                             >
                                                                 Off
                                                             </button>

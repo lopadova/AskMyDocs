@@ -115,7 +115,7 @@ final class NotificationPreferencesController extends Controller
             // payload with two contradictory rows for the same cell
             // settles deterministically on the LAST occurrence — the
             // FE never sends duplicates today, but the dedup keeps
-            // the upsert loop predictable under future use-cases
+            // the upsert payload predictable under future use-cases
             // (CLI tooling, scripted seeding).
             $byCell = [];
             foreach ($validated['preferences'] as $pref) {
@@ -123,17 +123,35 @@ final class NotificationPreferencesController extends Controller
                 $byCell[$key] = $pref;
             }
 
-            foreach ($byCell as $pref) {
-                NotificationPreference::query()->updateOrCreate(
-                    [
-                        'tenant_id' => $tenantId,
-                        'user_id' => $userId,
-                        'event_type' => $pref['event_type'],
-                        'channel' => $pref['channel'],
-                    ],
-                    ['enabled' => (bool) $pref['enabled']],
-                );
+            if ($byCell === []) {
+                return;
             }
+
+            // Atomic single-statement upsert keyed on the composite
+            // unique `(tenant_id, user_id, event_type, channel)`
+            // (Copilot iter-2: `updateOrCreate()` inside a loop is a
+            // select+write per row and can race two concurrent PUTs
+            // into a unique-constraint violation; the single
+            // INSERT...ON CONFLICT DO UPDATE is collision-proof).
+            $now = now();
+            $rows = [];
+            foreach ($byCell as $pref) {
+                $rows[] = [
+                    'tenant_id' => $tenantId,
+                    'user_id' => $userId,
+                    'event_type' => $pref['event_type'],
+                    'channel' => $pref['channel'],
+                    'enabled' => (bool) $pref['enabled'],
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            NotificationPreference::query()->upsert(
+                $rows,
+                ['tenant_id', 'user_id', 'event_type', 'channel'],
+                ['enabled', 'updated_at'],
+            );
         });
 
         // Return the freshly-saved state so the FE TanStack Query

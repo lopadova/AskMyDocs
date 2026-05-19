@@ -7,8 +7,6 @@ namespace Tests\Feature\Api;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\User;
-use App\Notifications\ChannelRegistry;
-use App\Notifications\Channels\InAppChannel;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -47,7 +45,7 @@ final class NotificationPreferencesApiTest extends TestCase
         $response->assertStatus(200);
         $this->assertSame(NotificationEvent::eventTypes(), $response->json('event_types'));
         $this->assertSame(NotificationPreference::availableChannels(), $response->json('channels'));
-        // `registered_channels` is the live ChannelRegistry subset —
+        // `registered_channels` is the live channel-adapter subset —
         // at least `in_app` always registers in W1.3.
         $this->assertContains('in_app', $response->json('registered_channels'));
         $this->assertIsArray($response->json('defaults'));
