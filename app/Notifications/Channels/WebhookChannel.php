@@ -20,9 +20,9 @@ use App\Notifications\Events\BaseNotificationEvent;
  * needed:
  *
  *   {
- *     "event_type":     "kb.doc.created",
+ *     "event_type":     "kb_doc_created",   // NotificationEvent::EVENT_* snake_case
  *     "tenant_id":      "default",
- *     "user_id":        42,                // null for tenant-wide events
+ *     "user_id":        42,                 // null for tenant-wide events
  *     "user_email":     "alice@example.com",
  *     "subject":        "New document published in your knowledge base",
  *     "summary":        "A document <slug> was added under <project>",

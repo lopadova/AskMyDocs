@@ -6,8 +6,6 @@ namespace Tests\Feature\Notifications\Channels;
 
 use App\Jobs\SendExternalNotificationJob;
 use App\Models\NotificationEvent;
-use App\Models\NotificationPreference;
-use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\Channels\DiscordChannel;
 use App\Notifications\Channels\SlackChannel;
@@ -295,6 +293,53 @@ final class ExternalChannelsTest extends TestCase
         $errors = array_column($row->channel_dispatch_log, 'error');
         $this->assertSame('failed', $statuses['teams'] ?? null);
         $this->assertNotEmpty(array_filter($errors, fn (?string $e) => $e !== null && str_contains($e, 'retries exhausted')));
+    }
+
+    public function test_helper_preserves_existing_log_entries_across_concurrent_appends(): void
+    {
+        // Lost-update regression: simulate the W1.3 in-memory write
+        // pattern (channel A) sandwiched around the job-driven
+        // append (channel B reading the fresh DB row). All entries
+        // must survive. This is the bug Copilot caught on PR #195
+        // round-1.
+        $row = $this->makeRow();
+
+        // 1. Channel A writes via the legacy in-memory pattern.
+        $row->channel_dispatch_log = [
+            ['channel' => 'in_app', 'status' => 'delivered', 'at' => now()->toIso8601String()],
+        ];
+        $row->save();
+
+        // 2. The job (channel B) runs and appends through the atomic
+        //    helper.
+        \App\Notifications\NotificationEventLogger::append(
+            eventRowId: (int) $row->id,
+            channel: 'discord',
+            status: 'delivered',
+        );
+
+        // 3. Channel C (e.g. AbstractWebhookChannel.appendLog called
+        //    after dispatch under sync) also appends through the
+        //    helper, passing in the stale in-memory $row.
+        \App\Notifications\NotificationEventLogger::append(
+            eventRowId: (int) $row->id,
+            channel: 'discord',
+            status: 'queued',
+            inMemoryRow: $row,
+        );
+
+        // 4. Final DB state has ALL 3 entries.
+        $fresh = NotificationEvent::find($row->id);
+        $channels = array_column($fresh->channel_dispatch_log, 'channel');
+        $statuses = array_column($fresh->channel_dispatch_log, 'status');
+        $this->assertCount(3, $fresh->channel_dispatch_log);
+        $this->assertSame(['in_app', 'discord', 'discord'], $channels);
+        $this->assertSame(['delivered', 'delivered', 'queued'], $statuses);
+
+        // 5. The in-memory $row that was passed to step 3 was
+        //    refreshed in-place so callers reading from it see the
+        //    full log too (defense-in-depth against stale state).
+        $this->assertCount(3, $row->channel_dispatch_log);
     }
 
     public function test_provider_only_registers_channels_with_a_url(): void

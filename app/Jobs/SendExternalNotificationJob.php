@@ -4,16 +4,13 @@ declare(strict_types=1);
 
 namespace App\Jobs;
 
-use App\Models\NotificationEvent;
+use App\Notifications\NotificationEventLogger;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -97,21 +94,25 @@ final class SendExternalNotificationJob implements ShouldQueue
 
     public function handle(): void
     {
-        // Headers + optional HMAC signature. The signature is over
-        // the JSON-encoded payload bytes the recipient will see, so
-        // verifiers can re-compute deterministically.
+        // Serialise the payload ONCE with explicit flags. The same
+        // bytes are signed (for HMAC) and shipped on the wire — if
+        // we let `Http::post()` re-encode internally with different
+        // defaults, the receiver's HMAC verification would fail
+        // against the body it actually got.
+        $body = json_encode($this->payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
         $headers = ['Content-Type' => 'application/json'];
         if ($this->hmacSecret !== null && $this->hmacSecret !== '') {
-            $body = json_encode($this->payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
             $headers['X-AskMyDocs-Signature'] = 'sha256='.hash_hmac('sha256', $body, $this->hmacSecret);
         }
 
         $response = Http::timeout(self::REQUEST_TIMEOUT_SECONDS)
             ->withHeaders($headers)
-            ->post($this->url, $this->payload);
+            ->withBody($body, 'application/json')
+            ->post($this->url);
 
         if ($response->successful()) {
-            $this->appendLog('delivered');
+            NotificationEventLogger::append($this->eventRowId, $this->channelName, 'delivered');
             return;
         }
 
@@ -121,15 +122,22 @@ final class SendExternalNotificationJob implements ShouldQueue
         // 4xx (other than 429) is a client bug — retrying will not
         // fix it, so we surface immediately as `failed` and return
         // (no throw, no retry).
+        //
+        // For the retryable branch we ONLY throw; Laravel reads the
+        // `backoff()` method automatically on uncaught exception
+        // and re-queues with the per-attempt delay. Calling
+        // `$this->release(...)` here would be redundant (and would
+        // cause double-release on some queue drivers).
         if ($status === 429 || $status >= 500) {
-            $this->release($this->backoffSeconds());
-            // Throw so Laravel records the attempt and runs `failed()`
-            // once `$tries` is exhausted.
-            $error = "HTTP {$status} from external notification channel";
-            throw new \RuntimeException($error);
+            throw new \RuntimeException("HTTP {$status} from external notification channel");
         }
 
-        $this->appendLog('failed', "HTTP {$status} (non-retryable): ".substr((string) $response->body(), 0, 200));
+        NotificationEventLogger::append(
+            $this->eventRowId,
+            $this->channelName,
+            'failed',
+            "HTTP {$status} (non-retryable): ".substr((string) $response->body(), 0, 200),
+        );
     }
 
     /**
@@ -140,72 +148,11 @@ final class SendExternalNotificationJob implements ShouldQueue
     public function failed(?Throwable $exception): void
     {
         $error = $exception !== null ? $exception->getMessage() : 'unknown failure';
-        $this->appendLog('failed', "retries exhausted: {$error}");
-    }
-
-    /**
-     * Determine the backoff delay for the *current* attempt. Laravel
-     * provides `$this->attempts()` 1-indexed; we want index 0 of the
-     * backoff() array on the first failure → second attempt.
-     */
-    private function backoffSeconds(): int
-    {
-        $backoff = $this->backoff();
-        $attempt = max(1, $this->attempts());
-        $index = min(count($backoff) - 1, $attempt - 1);
-        return $backoff[$index];
-    }
-
-    /**
-     * Atomically append a `{channel, status, at, error?}` entry to
-     * the originating row's `channel_dispatch_log`. R21 holds because
-     * the lock + write happen in the same transaction closure.
-     */
-    private function appendLog(string $status, ?string $error = null): void
-    {
-        try {
-            DB::transaction(function () use ($status, $error): void {
-                /** @var NotificationEvent|null $row */
-                $row = NotificationEvent::query()
-                    ->where('id', $this->eventRowId)
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($row === null) {
-                    Log::warning(
-                        'SendExternalNotificationJob: target notification row missing',
-                        [
-                            'event_row_id' => $this->eventRowId,
-                            'channel' => $this->channelName,
-                            'status' => $status,
-                        ],
-                    );
-                    return;
-                }
-
-                $log = $row->channel_dispatch_log ?? [];
-                $entry = [
-                    'channel' => $this->channelName,
-                    'status' => $status,
-                    'at' => Carbon::now()->toIso8601String(),
-                ];
-                if ($error !== null) {
-                    $entry['error'] = $error;
-                }
-                $log[] = $entry;
-                $row->channel_dispatch_log = $log;
-                $row->save();
-            });
-        } catch (Throwable $e) {
-            Log::error(
-                'SendExternalNotificationJob: failed to write channel_dispatch_log',
-                [
-                    'event_row_id' => $this->eventRowId,
-                    'channel' => $this->channelName,
-                    'status' => $status,
-                    'error' => $e->getMessage(),
-                ],
-            );
-        }
+        NotificationEventLogger::append(
+            $this->eventRowId,
+            $this->channelName,
+            'failed',
+            "retries exhausted: {$error}",
+        );
     }
 }

@@ -8,7 +8,7 @@ use App\Jobs\SendExternalNotificationJob;
 use App\Models\NotificationEvent;
 use App\Models\User;
 use App\Notifications\Events\BaseNotificationEvent;
-use Illuminate\Support\Carbon;
+use App\Notifications\NotificationEventLogger;
 
 /**
  * v8.0/W2.1 — base class for external webhook-based channels.
@@ -30,10 +30,12 @@ use Illuminate\Support\Carbon;
  *      append. The channel records `'queued'` immediately so the
  *      audit row always reflects an outcome.
  *
- * The queueable indirection is on purpose: external HTTP can take
- * up to 10s per attempt × `$tries` = 155s of accumulated backoff
- * in the worst case, which is unacceptable to do synchronously
- * inside `DB::afterCommit` (the dispatcher's callsite). Mirroring
+ * The queueable indirection is on purpose: each HTTP attempt has a
+ * 10s timeout and `$tries=4` (1 + 3 retries), so a single send can
+ * accumulate up to ~40s of in-flight HTTP plus the
+ * `[5, 30, 120]s = 155s` backoff between retries — ~195s worst case.
+ * That latency is unacceptable to do synchronously inside
+ * `DB::afterCommit` (the dispatcher's callsite). Mirroring
  * EmailChannel's `Mail::to->queue(...)` pattern keeps the dispatch
  * thread non-blocking.
  */
@@ -73,6 +75,15 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
         $payload = $this->buildPayload($event, $user);
         $secret = $this->resolveSecret();
 
+        // Log `queued` BEFORE dispatching the job so the chronological
+        // order in `channel_dispatch_log` is correct under both async
+        // queue (the worker picks up the job seconds later) AND
+        // synchronous queue (`QUEUE_CONNECTION=sync` runs `handle()`
+        // inline during `dispatch()` — without the pre-log the
+        // `delivered`/`failed` entry would land BEFORE the `queued`
+        // entry, which is confusing for operators tailing the row).
+        $this->appendLog($eventRow, 'queued');
+
         SendExternalNotificationJob::dispatch(
             channelName: $this->name(),
             eventRowId: (int) $eventRow->id,
@@ -80,8 +91,6 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
             payload: $payload,
             hmacSecret: $secret,
         );
-
-        $this->appendLog($eventRow, 'queued');
     }
 
     /**
@@ -107,25 +116,31 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
     }
 
     /**
-     * Append one `{channel, status, at, error?}` entry to the
-     * passed-in row's `channel_dispatch_log`. Mirrors the helper in
-     * EmailChannel + InAppChannel (intentional copy until a v8.x
-     * refactor pulls them into a shared trait — keeping W2.1 PR
-     * surface tight by not touching W1 code).
+     * Append one `{channel, status, at, error?}` entry atomically.
+     *
+     * Delegates to {@see NotificationEventLogger::append()} so the
+     * write goes through a `lockForUpdate` + `update` inside a
+     * single transaction (R21). This protects against the lost-
+     * update race that arises under `QUEUE_CONNECTION=sync`:
+     * `SendExternalNotificationJob::handle()` runs inline during
+     * `dispatch()` and appends its own `delivered`/`failed` entry
+     * against a fresh DB load — if this method then mutated the
+     * stale in-memory `$eventRow` and saved, the job's entry would
+     * be overwritten.
+     *
+     * Passing `$eventRow` along refreshes its in-memory
+     * `channel_dispatch_log` so any subsequent helper call (from
+     * the next adapter in the dispatcher's loop) starts from a
+     * non-stale view.
      */
     protected function appendLog(NotificationEvent $eventRow, string $status, ?string $error = null): void
     {
-        $log = $eventRow->channel_dispatch_log ?? [];
-        $entry = [
-            'channel' => $this->name(),
-            'status' => $status,
-            'at' => Carbon::now()->toIso8601String(),
-        ];
-        if ($error !== null) {
-            $entry['error'] = $error;
-        }
-        $log[] = $entry;
-        $eventRow->channel_dispatch_log = $log;
-        $eventRow->save();
+        NotificationEventLogger::append(
+            eventRowId: (int) $eventRow->getKey(),
+            channel: $this->name(),
+            status: $status,
+            error: $error,
+            inMemoryRow: $eventRow,
+        );
     }
 }
