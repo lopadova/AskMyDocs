@@ -7,7 +7,7 @@ namespace App\Notifications\Channels;
 use App\Models\NotificationEvent;
 use App\Models\User;
 use App\Notifications\Events\BaseNotificationEvent;
-use Illuminate\Support\Carbon;
+use App\Notifications\NotificationEventLogger;
 
 /**
  * v8.0/W1.2 — fallback adapter for any channel name that has no
@@ -20,6 +20,11 @@ use Illuminate\Support\Carbon;
  * resolve to a real adapter, which in W1.2 is every channel
  * (in_app + email implementations land in W1.3; discord / slack /
  * teams / webhook in W2.1).
+ *
+ * The append goes through {@see NotificationEventLogger::append()}
+ * so a sync-queued external channel's `delivered` entry cannot be
+ * silently overwritten by this skip entry's save() (and vice
+ * versa).
  *
  * Tests that need to assert "what channels were attempted" can
  * either register a `RecordingChannel` test double OR query the
@@ -41,14 +46,13 @@ final class NullChannel implements NotificationChannelInterface
         ?User $user,
         NotificationEvent $eventRow,
     ): void {
-        $log = $eventRow->channel_dispatch_log ?? [];
-        $log[] = [
-            'channel' => $this->channelName,
-            'status' => 'skipped',
-            'at' => Carbon::now()->toIso8601String(),
-            'error' => 'no adapter registered for channel',
-        ];
-        $eventRow->channel_dispatch_log = $log;
-        $eventRow->save();
+        NotificationEventLogger::append(
+            eventRowId: (int) $eventRow->getKey(),
+            tenantId: (string) $eventRow->tenant_id,
+            channel: $this->channelName,
+            status: 'skipped',
+            error: 'no adapter registered for channel',
+            inMemoryRow: $eventRow,
+        );
     }
 }

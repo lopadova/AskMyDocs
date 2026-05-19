@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Notifications\Channels\NotificationSubjects;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -62,26 +63,18 @@ final class NotificationMail extends Mailable implements ShouldQueue
     }
 
     /**
-     * Human-readable subject line keyed off `event_type`. Templates
-     * deliberately kept short (one line) for the v8.0 baseline; the
-     * Blade view renders the long-form body with payload details.
-     *
-     * Match arms use the actual `NotificationEvent::EVENT_*` constants
-     * (snake_case, no dots) — not stylised hierarchical strings —
-     * because the dispatcher writes `notification_events.event_type`
-     * from exactly those constants. Drifting to dot-notation here
-     * would silently fall through to the `default` arm for every
-     * shipped event type.
+     * Human-readable subject line keyed off `event_type`. Delegates
+     * to {@see NotificationSubjects::forEventType()} — the same
+     * shared map every other channel (Discord, Slack, Teams, generic
+     * Webhook) uses for its title, so the email subject and the
+     * channel embed header can never drift apart. The shared map's
+     * `match` arms use the actual `NotificationEvent::EVENT_*`
+     * constants (snake_case, no dots) — drifting to dot-notation
+     * would silently fall through to the default for every shipped
+     * event type.
      */
     private function renderSubject(): string
     {
-        return match ($this->eventType) {
-            \App\Models\NotificationEvent::EVENT_KB_DOC_CREATED => 'New document published in your knowledge base',
-            \App\Models\NotificationEvent::EVENT_KB_DOC_MODIFIED => 'A document you follow was updated',
-            \App\Models\NotificationEvent::EVENT_KB_CANONICAL_PROMOTED => 'A decision was promoted to canonical',
-            \App\Models\NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD => 'Decision debt threshold reached',
-            \App\Models\NotificationEvent::EVENT_COLLECTION_NEW_MEMBER => 'A new document joined a collection you follow',
-            default => 'AskMyDocs notification',
-        };
+        return NotificationSubjects::forEventType($this->eventType);
     }
 }
