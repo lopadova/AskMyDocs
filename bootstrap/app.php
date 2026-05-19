@@ -165,11 +165,15 @@ return Application::configure(basePath: dirname(__DIR__))
             ->onOneServer()
             ->withoutOverlapping();
 
-        // NOTE: Laravel 13 does NOT ship a `notifications:prune` artisan
-        //   command out of the box (only `notifications:table`). When the
-        //   app installs a DatabaseNotification model that implements the
-        //   `Prunable` trait, wire `model:prune --model=\\App\\Models\\DatabaseNotification`
-        //   at 04:10 here instead.
+        // v8.0/W1.5 — notification_events retention (default 90 days,
+        // env NOTIFICATIONS_RETENTION_DAYS; set 0 to disable). The
+        // table grows ~1 row per (user × dispatched event) including
+        // the per-channel dispatch log payload — daily rotation keeps
+        // the working set bounded.
+        $schedule->command('notifications:prune')
+            ->dailyAt('04:10')
+            ->onOneServer()
+            ->withoutOverlapping();
 
         // Orphan scan (files on the KB disk with no matching DB row).
         // Runs in dry-run mode so nothing is deleted automatically —
