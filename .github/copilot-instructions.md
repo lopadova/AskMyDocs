@@ -503,12 +503,28 @@ Mandatory workflow per sub-PR:
    behaves). Working tree may stay uncommitted — copilot-cli
    reads via `git diff HEAD` plus direct file reads — but MUST
    NOT be mid-edit.
-3. `copilot --autopilot --yolo --add-dir "$(pwd)" -p "<review prompt>"`
-   on the settled diff. Ask for must-fix bugs / R-rule violations
-   / contract drift between schema, models, tests, docs / security
-   (R21 + R30 + R31) / missing edge coverage / migration safety.
+3. `copilot --autopilot --yolo --add-dir "$(pwd)" -p "/review ..."`
+   on the settled diff — `/review` is the built-in slash command
+   (`copilot help commands` lists it) and is invocable as the
+   first line of `-p`. Pass the actual diff and PR metadata via
+   files so the agent reviews real hunks, not a re-derivation
+   from `git log`:
+   ```bash
+   git diff "origin/${BASE_BRANCH}...HEAD" >/tmp/pr-diff.patch
+   gh pr view --json title,body >/tmp/pr-meta.json
+   ```
+   Then point the prompt at those files plus
+   `.github/instructions/r-rules.instructions.md` (path-scoped
+   R-rule subset, auto-loaded by Copilot CLI). End the prompt
+   with a directive asking for `SUMMARY: <N> must-fix, <M> nit`
+   on the last line so the wrapper can parse it.
 4. Fix every must-fix + should-fix locally; re-run tests.
 5. Re-run copilot-cli; loop until `0 must-fix, 0 should-fix`.
+
+Canonical wrapper: `scripts/local-critic-loop.sh [base-branch]`
+encodes the full pattern (diff capture, meta capture, prompt
+assembly, `/review` invocation, SUMMARY parsing). Exits non-zero
+when `N > 0` so the wrapper is usable as a `pre-push` git hook.
 6. Only then push; first push opens the PR with
    `--reviewer copilot-pull-request-reviewer` per R36; subsequent
    pushes re-request the review.

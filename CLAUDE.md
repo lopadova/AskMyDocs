@@ -813,7 +813,7 @@ boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
 Tenant-aware tables: knowledge_documents, knowledge_chunks,
 embedding_cache, chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
-knowledge_document_tags, knowledge_document_acl, admin_command_audit,
+knowledge_document_tags, knowledge_document_acl, admin_command_audits,
 admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
 → See `.claude/skills/cross-tenant-isolation/SKILL.md`.
 
@@ -1074,13 +1074,66 @@ instead of 5-15.
 **Tool**: GitHub Copilot CLI
 (`copilot --autopilot --yolo --add-dir "$(pwd)" -p "<prompt>"`).
 `--autopilot` lets the agent run multi-step research autonomously;
-`--yolo` is shorthand for `--allow-all-tools --allow-all-paths`;
-`--add-dir "$(pwd)"` whitelists the current repo root for file
-access (otherwise the agent's allowed-paths default is the home
-directory only and grep across the codebase comes back empty);
-`-p` is non-interactive prompt mode (single-shot). Keep this
-canonical command in lockstep with `.github/copilot-instructions.md`
-section §R40.
+`--yolo` is shorthand for `--allow-all-tools --allow-all-paths
+--allow-all-urls`; `--add-dir "$(pwd)"` whitelists the current repo
+root for file access (otherwise the agent's allowed-paths default
+is the home directory only and grep across the codebase comes back
+empty); `-p` is non-interactive prompt mode (single-shot). Keep
+this canonical command in lockstep with
+`.github/copilot-instructions.md` section §R40.
+
+**Slash-command invocation**: copilot-cli ships a built-in
+`/review` slash command (visible in interactive `/help` since
+v1.0.49 — "Run code review agent to analyze changes"). It can be
+invoked from `-p` non-interactive mode by passing it as the **first
+line** of the prompt:
+```bash
+copilot --autopilot --yolo --add-dir "$(pwd)" -p "$(cat <<'EOF'
+/review
+
+<context, diff file paths, R-rule reminders, SUMMARY contract>
+EOF
+)"
+```
+This routes the prompt through the dedicated code-review pipeline
+on the Copilot side rather than the general agentic loop, with
+sharper findings on diff hunks.
+
+**Diff-passing pattern**: pass the actual PR diff to the agent so
+findings are anchored to real hunks, not the agent re-deriving
+context from `git log`:
+```bash
+git diff "origin/${BASE_BRANCH}...HEAD" >/tmp/pr-diff.patch
+gh pr view --json number,title,body >/tmp/pr-meta.json
+# then reference both files in the prompt and let copilot read them
+```
+The wrapper script `scripts/local-critic-loop.sh` encodes this
+pattern + the SUMMARY-line contract (see below).
+
+**Path-scoped R-rule instructions**:
+`.github/instructions/r-rules.instructions.md` carries the critical
+R-rule subset with `applyTo: "**/*.{php,ts,tsx,js,jsx,yml,yaml}"`
+frontmatter. Both copilot-cli (via the
+`.github/instructions/` directory convention — Copilot CLI auto-
+discovers these under git root) and GitHub Copilot Code Review on
+the cloud side load this file when the diff touches matching
+extensions, so the reviewer sees the same rule set in both loops.
+
+**SUMMARY-line contract**: the prompt MUST end with a directive
+asking the agent to close its review with EXACTLY one line in the
+form `SUMMARY: <N> must-fix, <M> nit`. The wrapper script greps
+that line and exits non-zero when `N > 0`, which makes the wrapper
+usable as a `pre-push` git hook or a manual gate before
+`gh pr create`.
+
+**Canonical wrapper**: `scripts/local-critic-loop.sh [base-branch]`
+encodes all of the above (diff capture + meta capture + prompt
+assembly + SUMMARY parsing + exit-code). Invoke it after
+local tests pass, before `git push`. The full rule with examples
+lives in
+[`.claude/skills/copilot-pr-review-loop/`](.claude/skills/copilot-pr-review-loop/)
+and the R-rule subset the agent enforces lives in
+[`.github/instructions/r-rules.instructions.md`](.github/instructions/r-rules.instructions.md).
 
 **Mandatory workflow per sub-PR**:
 
