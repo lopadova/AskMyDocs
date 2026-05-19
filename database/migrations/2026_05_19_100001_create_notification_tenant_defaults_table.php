@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
  * v8.0/W2.3 — `notification_tenant_defaults` table.
  *
  * Per-tenant baseline for new users. Super-admins edit it under
- * `/app/admin/notifications/defaults`; the `NotificationPreferencesSeeder`
+ * `/app/admin/notifications/defaults`; the `NotificationPreferencesInitializer`
  * service reads from this table when a new user is created (admin
  * add-user flow today; sign-up + invite-acceptance land in Phase B2).
  *

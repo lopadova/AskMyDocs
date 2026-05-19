@@ -31,7 +31,7 @@ use Illuminate\Support\Facades\DB;
  * tenant_id of the surface that created the user (admin add-user,
  * sign-up form, invite acceptance).
  */
-final class NotificationPreferencesSeeder
+final class NotificationPreferencesInitializer
 {
     /**
      * @param  int|string  $userId

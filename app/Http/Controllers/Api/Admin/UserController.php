@@ -6,7 +6,7 @@ use App\Http\Requests\Admin\UserStoreRequest;
 use App\Http\Requests\Admin\UserUpdateRequest;
 use App\Http\Resources\Admin\UserResource;
 use App\Models\User;
-use App\Notifications\NotificationPreferencesSeeder;
+use App\Notifications\NotificationPreferencesInitializer;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -82,12 +82,12 @@ class UserController extends Controller
 
     public function store(
         UserStoreRequest $request,
-        NotificationPreferencesSeeder $notifSeeder,
+        NotificationPreferencesInitializer $notifInitializer,
         TenantContext $tenants,
     ): JsonResponse {
         $data = $request->validated();
 
-        $user = DB::transaction(function () use ($data, $notifSeeder, $tenants) {
+        $user = DB::transaction(function () use ($data, $notifInitializer, $tenants) {
             $user = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
@@ -98,13 +98,13 @@ class UserController extends Controller
             $roles = $data['roles'] ?? ['viewer'];
             $user->syncRoles($roles);
 
-            // v8.0/W2.3 — seed `notification_preferences` from the
+            // v8.0/W2.3 — initialise `notification_preferences` from the
             // active tenant's baseline so the dispatcher has rows to
             // consult on the user's very first event. Idempotent at
             // the DB level (composite unique on the prefs table); the
             // explicit tenant_id avoids R30 ambiguity for User (cross-
             // tenant identity).
-            $notifSeeder->seedFromTenantDefaults($user->id, $tenants->current());
+            $notifInitializer->seedFromTenantDefaults($user->id, $tenants->current());
 
             return $user;
         });

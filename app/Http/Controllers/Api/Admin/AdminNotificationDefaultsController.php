@@ -19,7 +19,7 @@ use Illuminate\Validation\Rule;
  * v8.0/W2.3 — REST surface backing the React
  * `AdminNotificationDefaultsGrid` at `/app/admin/notifications/defaults`.
  *
- * Per-tenant defaults are the baseline `NotificationPreferencesSeeder`
+ * Per-tenant defaults are the baseline `NotificationPreferencesInitializer`
  * applies to brand-new users on admin add-user (and Phase B2 sign-up /
  * invite-acceptance). Edited by super-admins only.
  *

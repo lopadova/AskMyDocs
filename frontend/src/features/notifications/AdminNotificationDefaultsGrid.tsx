@@ -10,11 +10,13 @@ import {
  * v8.0/W2.3 — /app/admin/notifications/defaults grid.
  *
  * Per-tenant baseline (event_type × channel) matrix that
- * `NotificationPreferencesSeeder` applies to brand-new users.
+ * `NotificationPreferencesInitializer` applies to brand-new users.
  * Layout mirrors `NotificationPreferencesGrid` (W2.2 user-side); the
  * only difference is the row shape — admin defaults don't carry
- * `user_id`, and the BE accepts a sparse payload (only the edited
- * cells need to be sent).
+ * `user_id`. `save()` posts the FULL matrix (every event × channel
+ * cell, mirroring the user grid) so the BE can dedup with the same
+ * last-wins semantics; the controller treats the unchanged cells as
+ * no-ops at the DB level thanks to the composite-unique upsert.
  *
  * RBAC: read is open to admin + super-admin (route ACL on the BE);
  * the PUT path is rejected with 403 for non-super-admin. The FE
