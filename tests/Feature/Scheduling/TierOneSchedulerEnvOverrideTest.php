@@ -16,13 +16,17 @@ use Tests\TestCase;
  * `withSchedule` closure (Testbench uses its own bootstrap
  * skeleton; the host closure never fires under tests).
  *
- * Three branches:
+ * Four branches:
  *   1. Default cron is registered when no env overrides exist —
  *      sanity-check the literal defaults are still wired correctly.
  *   2. Override cron via `config()` and assert the registered
  *      `Schedule::Event::expression` matches verbatim.
  *   3. Override `enabled = false` and assert NO event is registered
  *      for the slot.
+ *   4. Override EVERY slot's cron to a recognisable sentinel and
+ *      assert every registered event picks up the override — catches
+ *      the regression where a SLOTS entry desyncs from the
+ *      `config/askmydocs.php` + `.env.example` listing.
  *
  * Each test seeds its OWN Schedule instance so registrations from
  * other tests can't leak in.
@@ -67,31 +71,38 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
 
     public function test_every_slot_in_registrar_round_trips_through_config(): void
     {
-        // Sanity: nudge every slot's cron to a recognisable sentinel
-        // and assert all 10 are observable on the schedule. Catches
-        // the regression where a SLOT entry desyncs from the
-        // config/.env.example listing.
-        $slots = [
-            'kb:prune-embedding-cache',
-            'chat-log:prune',
-            'kb:prune-deleted',
-            'kb:rebuild-graph',
-            'queue:prune-failed --hours=48',
-            'admin-audit:prune',
-            'admin-nonces:prune',
-            'notifications:prune',
-            'kb:prune-orphan-files --dry-run',
-            'insights:compute',
+        // Each slot key gets its own recognisable sentinel cron so the
+        // assertion can verify the registrar correctly mapped THIS
+        // slot's config entry to THIS slot's Schedule event (not just
+        // "any cron landed for any slot"). A SLOTS desync from the
+        // config / .env.example listing would surface as either a
+        // missing event or an unchanged default cron.
+        $slotMap = [
+            'kb_prune_embedding_cache' => ['kb:prune-embedding-cache', '1 1 * * *'],
+            'chat_log_prune' => ['chat-log:prune', '2 1 * * *'],
+            'kb_prune_deleted' => ['kb:prune-deleted', '3 1 * * *'],
+            'kb_rebuild_graph' => ['kb:rebuild-graph', '4 1 * * *'],
+            'queue_prune_failed' => ['queue:prune-failed --hours=48', '5 1 * * *'],
+            'admin_audit_prune' => ['admin-audit:prune', '6 1 * * *'],
+            'admin_nonces_prune' => ['admin-nonces:prune', '7 1 * * *'],
+            'notifications_prune' => ['notifications:prune', '8 1 * * *'],
+            'kb_prune_orphan_files' => ['kb:prune-orphan-files --dry-run', '9 1 * * *'],
+            'insights_compute' => ['insights:compute', '10 1 * * *'],
         ];
+
+        foreach ($slotMap as $slotKey => [$command, $sentinelCron]) {
+            config(["askmydocs.schedule.$slotKey.cron" => $sentinelCron]);
+        }
 
         $schedule = $this->app->make(Schedule::class);
         (new TierOneSchedulerRegistrar)->register($schedule);
 
-        foreach ($slots as $command) {
+        foreach ($slotMap as $slotKey => [$command, $sentinelCron]) {
             $events = $this->collectExpressionsFor($schedule, $command);
-            $this->assertNotEmpty(
+            $this->assertContains(
+                $sentinelCron,
                 $events,
-                "Tier-1 slot for `{$command}` must register at least one Schedule event",
+                "Tier-1 slot `{$slotKey}` did not propagate its overridden cron `{$sentinelCron}` to the `{$command}` Schedule event",
             );
         }
     }
