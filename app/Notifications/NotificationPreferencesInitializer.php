@@ -20,9 +20,12 @@ use Illuminate\Support\Facades\DB;
  *     — a `{channel: bool}` map applied uniformly across every
  *     event_type the model exposes.
  *
- * Idempotent: calling twice for the same `(user, tenant)` pair is a
- * no-op at the DB level (composite unique `(tenant_id, user_id,
- * event_type, channel)`).
+ * Idempotent in resulting state: calling twice for the same
+ * `(user, tenant)` pair lands the same final `enabled` map (composite
+ * unique `(tenant_id, user_id, event_type, channel)` keeps row count
+ * fixed). The second call still bumps `updated_at` on every row via
+ * the `upsert`'s update branch, but the business value is unchanged
+ * — safe to retry on partial failure.
  *
  * **R30 — do NOT invoke from `User::created`.** `User` is a
  * cross-tenant identity in this codebase; a global model-event would

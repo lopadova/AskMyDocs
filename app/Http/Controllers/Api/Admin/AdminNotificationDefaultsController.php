@@ -49,7 +49,7 @@ final class AdminNotificationDefaultsController extends Controller
         }
 
         $rows = NotificationTenantDefault::query()
-            ->where('tenant_id', $tenants->current())
+            ->forTenant($tenants->current())
             ->orderBy('event_type')
             ->orderBy('channel')
             ->get(['event_type', 'channel', 'enabled']);
@@ -64,7 +64,7 @@ final class AdminNotificationDefaultsController extends Controller
             abort(401);
         }
         if (! method_exists($user, 'hasRole') || ! $user->hasRole('super-admin')) {
-            abort(403, 'Only super-admin can mutate tenant defaults.');
+            abort(403, 'Only super-admins can mutate tenant defaults.');
         }
 
         $allowedEventTypes = NotificationEvent::eventTypes();
@@ -115,7 +115,7 @@ final class AdminNotificationDefaultsController extends Controller
         });
 
         $rows = NotificationTenantDefault::query()
-            ->where('tenant_id', $tenantId)
+            ->forTenant($tenantId)
             ->orderBy('event_type')
             ->orderBy('channel')
             ->get(['event_type', 'channel', 'enabled']);

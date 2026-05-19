@@ -15,8 +15,13 @@ import {
  * only difference is the row shape — admin defaults don't carry
  * `user_id`. `save()` posts the FULL matrix (every event × channel
  * cell, mirroring the user grid) so the BE can dedup with the same
- * last-wins semantics; the controller treats the unchanged cells as
- * no-ops at the DB level thanks to the composite-unique upsert.
+ * last-wins semantics. Unchanged cells DO re-write `updated_at` on
+ * every Save (the composite-unique upsert touches every row in the
+ * payload), but the `enabled` business value is idempotent — the
+ * resulting state matches the canonical payload byte-for-byte.
+ * Sparse-delta change-tracking was considered and rejected: the
+ * matrix is 5x6 = 30 rows max, so updating the whole grid on every
+ * Save is cheaper than the FE-side state machinery it would replace.
  *
  * RBAC: read is open to admin + super-admin (route ACL on the BE);
  * the PUT path is rejected with 403 for non-super-admin. The FE

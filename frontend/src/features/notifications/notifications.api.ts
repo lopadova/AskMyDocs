@@ -169,6 +169,14 @@ export interface NotificationTenantDefaultsResponse {
     registered_channels: string[];
     /** Platform-wide fallback `{channel: bool}` from config. */
     platform_defaults: Record<string, boolean>;
-    /** Tenant-level overrides; sparse — only edited cells appear. */
+    /**
+     * Tenant-level overrides. Starts empty for a brand-new tenant;
+     * after the first Save, every event×channel cell is persisted
+     * (the FE's `save()` posts the full matrix to keep the user-grid
+     * and tenant-defaults-grid contracts identical, and the BE's
+     * composite-unique upsert dedups on `(tenant_id, event_type,
+     * channel)`). Treat this as the authoritative snapshot — NOT as
+     * a sparse delta against `platform_defaults`.
+     */
     defaults: NotificationPreferenceRow[];
 }
