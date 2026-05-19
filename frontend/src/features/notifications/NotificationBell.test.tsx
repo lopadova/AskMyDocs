@@ -151,6 +151,67 @@ describe('NotificationBell', () => {
         expect(screen.getByTestId('notif-bell-retry')).toBeInTheDocument();
     });
 
+    it('surfaces a dedicated list-error placeholder when the dropdown query fails', async () => {
+        // Copilot iter-2 #1 — a failed list query must NOT collapse
+        // into the "no unread" empty state. Render an explicit error
+        // row with a retry button so the user can distinguish "nothing
+        // to show" from "we couldn't fetch your feed".
+        mockGet
+            .mockResolvedValueOnce({ data: { unread_count: 2 } })
+            .mockRejectedValueOnce(new Error('list failure'));
+
+        render(wrapped(<NotificationBell />));
+        await userEvent.click(await screen.findByTestId('notif-bell'));
+
+        expect(await screen.findByTestId('notif-bell-list-error')).toBeInTheDocument();
+        expect(screen.getByTestId('notif-bell-list-retry')).toBeInTheDocument();
+        expect(screen.queryByTestId('notif-bell-empty')).not.toBeInTheDocument();
+    });
+
+    it('shows an inline action-error banner when a mutation fails', async () => {
+        // Copilot iter-2 #5 — swallowed mutation errors mislead the
+        // operator. After mark-read 500s, an inline alert must be
+        // visible inside the dropdown.
+        mockGet
+            .mockResolvedValueOnce({ data: { unread_count: 1 } })
+            .mockResolvedValue({
+                data: {
+                    data: [
+                        {
+                            id: 42,
+                            tenant_id: 'default',
+                            user_id: 1,
+                            event_type: 'kb_doc_created',
+                            payload: { title: 'X' },
+                            channel_dispatch_log: [],
+                            created_at: '2026-05-18T10:00:00Z',
+                            read_at: null,
+                            dismissed_at: null,
+                        },
+                    ],
+                    meta: { current_page: 1, last_page: 1, per_page: 5, total: 1, state: 'unread' },
+                },
+            });
+        mockPost.mockRejectedValueOnce(new Error('500 boom'));
+
+        render(wrapped(<NotificationBell />));
+        await userEvent.click(await screen.findByTestId('notif-bell'));
+        await userEvent.click(await screen.findByTestId('notif-bell-row-42-mark-read'));
+
+        expect(await screen.findByTestId('notif-bell-action-error')).toBeInTheDocument();
+    });
+
+    it('exposes aria-busy on the bell button while the unread-count query is fetching', async () => {
+        mockGet.mockResolvedValueOnce({ data: { unread_count: 0 } });
+        render(wrapped(<NotificationBell />));
+
+        // After the query settles aria-busy must serialise to 'false'
+        // — assistive tech reads the boolean attribute consistently.
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-bell')).toHaveAttribute('aria-busy', 'false');
+        });
+    });
+
     it('disables Mark-all-read when there are 0 unread', async () => {
         mockGet
             .mockResolvedValueOnce({ data: { unread_count: 0 } })

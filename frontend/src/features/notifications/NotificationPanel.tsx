@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     notificationsApi,
@@ -7,34 +7,60 @@ import {
 } from './notifications.api';
 
 /**
- * v8.0/W1.4 — /admin/notifications full panel.
+ * v8.0/W1.4 — /app/admin/notifications full panel.
  *
  * Tab navigation across `unread | read | dismissed | all`, optional
- * event_type filter, bulk mark-all-read, per-row mark-read +
+ * event_type filter, paginated list (20 per page), bulk mark-all-read
+ * scoped to the active filter (Copilot iter-2 #3), per-row mark-read +
  * dismiss. Polls the list every 30 s while the tab is visible.
  *
  * R29 testid hierarchy:
- *   - `notif-panel`                  top-level container
- *   - `notif-panel-tab-{state}`      tab button per state
- *   - `notif-panel-filter-event_type` event_type select
- *   - `notif-panel-mark-all-read`    bulk action button
+ *   - `notif-panel`                     top-level container
+ *   - `notif-panel-tab-{state}`         tab button per state
+ *   - `notif-panel-filter-event_type`   event_type select
+ *   - `notif-panel-mark-all-read`       bulk action button
  *   - `notif-panel-row-{id}-mark-read`
  *   - `notif-panel-row-{id}-dismiss`
- *   - `notif-panel-empty`            empty-state placeholder
- *   - `notif-panel-error`            error-state placeholder
- *   - `notif-panel-retry`            retry button on error
+ *   - `notif-panel-empty`               empty-state placeholder
+ *   - `notif-panel-error`               error-state placeholder
+ *   - `notif-panel-retry`               retry button on error
+ *   - `notif-panel-action-error`        inline banner for mutation
+ *                                       failures (Copilot iter-2 #4)
+ *   - `notif-panel-page-prev` / `-next` pagination controls
+ *   - `notif-panel-page-status`         "Page N of M (T total)"
+ *
+ * R15 a11y: container exposes `aria-busy` while the list query is
+ * loading or refetching (Copilot iter-2 #6).
+ *
+ * Event-type options merge a static AskMyDocs-known vocabulary with
+ * any event_type observed in the current page response, so newly-
+ * shipped event types automatically appear in the dropdown without a
+ * FE redeploy (Copilot iter-2 #11). A dedicated FE-FE constants file
+ * is intentionally avoided — the BE remains source-of-truth via
+ * `App\Models\NotificationEvent::EVENT_*`.
  */
+
+const KNOWN_EVENT_TYPES = [
+    { value: 'kb_doc_created', label: 'Doc created' },
+    { value: 'kb_doc_modified', label: 'Doc modified' },
+    { value: 'kb_canonical_promoted', label: 'Canonical promoted' },
+    { value: 'kb_decision_debt_threshold', label: 'Decision debt threshold' },
+    { value: 'collection_new_member', label: 'Collection new member' },
+];
+
 export function NotificationPanel(): ReactNode {
     const qc = useQueryClient();
     const [state, setState] = useState<NotificationState>('unread');
     const [eventType, setEventType] = useState<string>('');
+    const [page, setPage] = useState<number>(1);
 
     const listQuery = useQuery({
-        queryKey: ['notifications', 'panel', state, eventType],
+        queryKey: ['notifications', 'panel', state, eventType, page],
         queryFn: () => notificationsApi.list({
             state,
             eventType: eventType || undefined,
             perPage: 20,
+            page,
         }),
         refetchInterval: 30_000,
     });
@@ -54,13 +80,16 @@ export function NotificationPanel(): ReactNode {
     });
 
     const markAllReadMut = useMutation({
-        mutationFn: () => notificationsApi.markAllRead(),
+        // Copilot iter-2 #3 — forward the current event_type filter so
+        // the BE only flips rows the user can actually see in this view.
+        mutationFn: () => notificationsApi.markAllRead({ eventType: eventType || undefined }),
         onSuccess: () => {
             void qc.invalidateQueries({ queryKey: ['notifications'] });
         },
     });
 
     const rows = listQuery.data?.data ?? [];
+    const meta = listQuery.data?.meta;
     const dataState = listQuery.isError
         ? 'error'
         : listQuery.isLoading
@@ -68,9 +97,28 @@ export function NotificationPanel(): ReactNode {
             : rows.length === 0
                 ? 'empty'
                 : 'ready';
+    const actionError = markReadMut.error ?? dismissMut.error ?? markAllReadMut.error;
+
+    const eventTypeOptions = useMemo(() => {
+        const seen = new Set(KNOWN_EVENT_TYPES.map((o) => o.value));
+        const dynamic = rows
+            .map((r) => r.event_type)
+            .filter((t): t is string => typeof t === 'string' && !seen.has(t))
+            .map((t) => ({ value: t, label: t }));
+        return [...KNOWN_EVENT_TYPES, ...dynamic];
+    }, [rows]);
+
+    const lastPage = meta?.last_page ?? 1;
+    const total = meta?.total ?? 0;
+    const currentPage = meta?.current_page ?? page;
 
     return (
-        <div data-testid="notif-panel" data-state={dataState} className="space-y-4 p-6">
+        <div
+            data-testid="notif-panel"
+            data-state={dataState}
+            aria-busy={listQuery.isFetching}
+            className="space-y-4 p-6"
+        >
             <h1 className="text-2xl font-semibold">Notifications</h1>
 
             <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
@@ -80,7 +128,10 @@ export function NotificationPanel(): ReactNode {
                         type="button"
                         data-testid={`notif-panel-tab-${s}`}
                         aria-pressed={state === s}
-                        onClick={() => setState(s)}
+                        onClick={() => {
+                            setState(s);
+                            setPage(1);
+                        }}
                         className={`rounded px-3 py-1 text-sm ${
                             state === s
                                 ? 'bg-blue-600 text-white'
@@ -100,15 +151,16 @@ export function NotificationPanel(): ReactNode {
                         data-testid="notif-panel-filter-event_type"
                         aria-label="Filter by event type"
                         value={eventType}
-                        onChange={(e) => setEventType(e.target.value)}
+                        onChange={(e) => {
+                            setEventType(e.target.value);
+                            setPage(1);
+                        }}
                         className="rounded border border-gray-300 px-2 py-1 text-sm"
                     >
                         <option value="">All event types</option>
-                        <option value="kb_doc_created">Doc created</option>
-                        <option value="kb_doc_modified">Doc modified</option>
-                        <option value="kb_canonical_promoted">Canonical promoted</option>
-                        <option value="kb_decision_debt_threshold">Decision debt threshold</option>
-                        <option value="collection_new_member">Collection new member</option>
+                        {eventTypeOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
                     </select>
 
                     <button
@@ -122,6 +174,28 @@ export function NotificationPanel(): ReactNode {
                     </button>
                 </div>
             </div>
+
+            {actionError && (
+                <div
+                    data-testid="notif-panel-action-error"
+                    role="alert"
+                    className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700"
+                >
+                    Action failed. Please retry.
+                    <button
+                        type="button"
+                        data-testid="notif-panel-action-error-dismiss"
+                        onClick={() => {
+                            markReadMut.reset();
+                            dismissMut.reset();
+                            markAllReadMut.reset();
+                        }}
+                        className="ml-2 underline"
+                    >
+                        Dismiss
+                    </button>
+                </div>
+            )}
 
             {dataState === 'loading' && (
                 <p data-testid="notif-panel-loading" className="py-8 text-center text-gray-500">
@@ -191,6 +265,34 @@ export function NotificationPanel(): ReactNode {
                         </li>
                     ))}
                 </ul>
+            )}
+
+            {meta && (
+                <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-sm text-gray-600">
+                    <span data-testid="notif-panel-page-status">
+                        Page {currentPage} of {lastPage} ({total} total)
+                    </span>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            data-testid="notif-panel-page-prev"
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1 || listQuery.isFetching}
+                            className="rounded border border-gray-300 px-3 py-1 text-sm disabled:text-gray-400"
+                        >
+                            Prev
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="notif-panel-page-next"
+                            onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                            disabled={currentPage >= lastPage || listQuery.isFetching}
+                            className="rounded border border-gray-300 px-3 py-1 text-sm disabled:text-gray-400"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );

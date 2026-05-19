@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Icon } from '../Icons';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Tooltip } from './Tooltip';
+import { NotificationBell } from '../../features/notifications/NotificationBell';
 import type { Project } from '../../lib/seed';
 import type { Theme } from './hooks';
 
@@ -73,23 +74,11 @@ export function Topbar({
                 <span className="pulse-dot" style={{ width: 6, height: 6 }} />
                 <span className="mono">All systems operational</span>
             </div>
-            <Tooltip label="Notifications">
-                <button type="button" className="btn icon ghost" style={{ position: 'relative' }}>
-                    <Icon.Bell size={15} />
-                    <span
-                        style={{
-                            position: 'absolute',
-                            top: 6,
-                            right: 7,
-                            width: 6,
-                            height: 6,
-                            background: 'var(--accent-a)',
-                            borderRadius: 99,
-                            border: '1.5px solid var(--bg-1)',
-                        }}
-                    />
-                </button>
-            </Tooltip>
+            {/* v8.0/W1.4 — real notification bell wired to
+              * `/api/notifications/unread-count` (30s polling) and
+              * the per-user dropdown. Replaces the previous static
+              * mockup. */}
+            <NotificationBell />
             <Tooltip label={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
                 <button
                     type="button"

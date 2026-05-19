@@ -149,6 +149,44 @@ final class NotificationsApiTest extends TestCase
             ->count());
     }
 
+    public function test_mark_all_read_respects_event_type_filter(): void
+    {
+        // Copilot iter-2 #3 — bulk mark-all must NOT flip rows hidden
+        // by the active event_type filter. Verify the BE honours the
+        // forwarded filter and leaves un-matched rows untouched.
+        $user = $this->makeUser('all-filter');
+        $created = $this->makeEvent($user, 'kb_doc_created');
+        $other = $this->makeEvent($user, 'kb_canonical_promoted');
+
+        $response = $this->actingAs($user)
+            ->postJson('/api/notifications/mark-all-read', ['event_type' => 'kb_doc_created']);
+
+        $response->assertStatus(200);
+        $response->assertJson(['marked_read' => 1]);
+        $this->assertNotNull(NotificationEvent::find($created->id)->read_at);
+        $this->assertNull(NotificationEvent::find($other->id)->read_at, 'unrelated event_type must stay unread');
+    }
+
+    public function test_mark_read_is_atomic_under_concurrent_replay(): void
+    {
+        // R21 — atomic conditional update. Simulate a concurrent
+        // double-click by issuing two sequential mark-read calls and
+        // asserting the second one reports `changed=false` and the
+        // stored read_at matches the first call exactly.
+        $user = $this->makeUser('atomic');
+        $row = $this->makeEvent($user, 'kb_doc_created');
+
+        $first = $this->actingAs($user)->postJson("/api/notifications/{$row->id}/mark-read");
+        $first->assertStatus(200);
+        $this->assertTrue($first->json('changed'));
+        $stamped = $first->json('data.read_at');
+
+        $second = $this->actingAs($user)->postJson("/api/notifications/{$row->id}/mark-read");
+        $second->assertStatus(200);
+        $this->assertFalse($second->json('changed'), 'replay must report changed=false');
+        $this->assertSame($stamped, $second->json('data.read_at'), 'read_at must not drift on replay');
+    }
+
     public function test_unauthenticated_returns_401(): void
     {
         $response = $this->getJson('/api/notifications');

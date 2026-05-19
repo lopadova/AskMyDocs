@@ -287,7 +287,16 @@ abstract class TestCase extends OrchestraTestCase
         // v8.0/W1.4 — `routes/api.php` is registered with the `api/`
         // prefix in production via withRouting; mirror that here so
         // feature tests can hit `/api/notifications` etc. directly.
-        $router->prefix('api')->group(__DIR__.'/../routes/api.php');
+        //
+        // Copilot iter-2 #10 — apply the `api` middleware group too,
+        // so feature tests mirror production's stack (SubstituteBindings
+        // for route-model binding + `throttle:api` for rate-limiting).
+        // Without this, /api routes under tests behave subtly different
+        // from production and tests pass against a stack that production
+        // never sees.
+        $router->prefix('api')
+            ->middleware('api')
+            ->group(__DIR__.'/../routes/api.php');
     }
 
     protected function defineDatabaseMigrations(): void

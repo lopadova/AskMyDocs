@@ -7,8 +7,8 @@ import { notificationsApi, type NotificationRow } from './notifications.api';
  *
  * Polls `/api/notifications/unread-count` every 30 s (TanStack
  * Query `refetchInterval`). Clicking the bell opens a dropdown
- * with the last 5 unread notifications + a "see all" link to
- * `/admin/notifications` (the full panel, separate component).
+ * with the last 5 unread notifications + a "See all" link to
+ * `/app/admin/notifications` (the full panel, separate component).
  *
  * R29 testid hierarchy:
  *   - `notif-bell`              top-level button (opens dropdown)
@@ -16,11 +16,23 @@ import { notificationsApi, type NotificationRow } from './notifications.api';
  *   - `notif-bell-dropdown`     dropdown container (only when open)
  *   - `notif-bell-row-{id}-mark-read`
  *   - `notif-bell-empty`        "no unread" state inside dropdown
- *   - `notif-bell-see-all`      link to /admin/notifications
+ *   - `notif-bell-see-all`      link to /app/admin/notifications
  *   - `notif-bell-mark-all-read`
+ *   - `notif-bell-list-error`   dropdown error placeholder when
+ *                               the list query itself fails
+ *   - `notif-bell-action-error` inline banner shown when a
+ *                               mark-read / mark-all-read mutation
+ *                               fails (Copilot iter-2 #5)
  *
- * R14: API errors set `data-state="error"` + show a retry button
- * (the dropdown's caller can read the state and show inline error).
+ * R14: API errors on the count query set `data-state="error"` on
+ * the bell button + show a retry. List-query failures render an
+ * explicit error placeholder (NOT the empty state — Copilot iter-2
+ * #1). Mutation failures surface an inline banner with retry
+ * guidance (Copilot iter-2 #5).
+ *
+ * R15 a11y: bell button + dropdown container both expose
+ * `aria-busy` while the unread-count / list queries are loading
+ * or refetching (Copilot iter-2 #7).
  */
 export function NotificationBell(): ReactNode {
     const qc = useQueryClient();
@@ -60,6 +72,8 @@ export function NotificationBell(): ReactNode {
             ? 'loading'
             : 'ready';
     const unread = countQuery.data ?? 0;
+    const isBusy = countQuery.isFetching || listQuery.isFetching;
+    const actionError = markReadMut.error ?? markAllReadMut.error;
 
     return (
         <div className="relative inline-block">
@@ -67,6 +81,7 @@ export function NotificationBell(): ReactNode {
                 type="button"
                 data-testid="notif-bell"
                 data-state={state}
+                aria-busy={isBusy}
                 aria-label={`Notifications (${unread} unread)`}
                 aria-expanded={open}
                 aria-haspopup="dialog"
@@ -101,6 +116,7 @@ export function NotificationBell(): ReactNode {
                     data-testid="notif-bell-dropdown"
                     role="dialog"
                     aria-label="Notifications"
+                    aria-busy={listQuery.isFetching}
                     className="absolute right-0 z-50 mt-2 w-80 rounded border border-gray-200 bg-white shadow-lg"
                 >
                     <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
@@ -116,18 +132,56 @@ export function NotificationBell(): ReactNode {
                         </button>
                     </div>
 
+                    {actionError && (
+                        <div
+                            data-testid="notif-bell-action-error"
+                            role="alert"
+                            className="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+                        >
+                            Action failed. Please retry.
+                            <button
+                                type="button"
+                                data-testid="notif-bell-action-error-dismiss"
+                                onClick={() => {
+                                    markReadMut.reset();
+                                    markAllReadMut.reset();
+                                }}
+                                className="ml-2 underline"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
+
                     <ul className="max-h-80 divide-y divide-gray-100 overflow-y-auto">
                         {listQuery.isLoading && (
                             <li data-testid="notif-bell-loading" className="px-3 py-4 text-center text-sm text-gray-500">
                                 Loading…
                             </li>
                         )}
-                        {!listQuery.isLoading && (listQuery.data?.data ?? []).length === 0 && (
+                        {listQuery.isError && (
+                            <li
+                                data-testid="notif-bell-list-error"
+                                role="alert"
+                                className="px-3 py-4 text-center text-sm text-red-700"
+                            >
+                                Could not load notifications.
+                                <button
+                                    type="button"
+                                    data-testid="notif-bell-list-retry"
+                                    onClick={() => void listQuery.refetch()}
+                                    className="ml-2 underline"
+                                >
+                                    Retry
+                                </button>
+                            </li>
+                        )}
+                        {!listQuery.isLoading && !listQuery.isError && (listQuery.data?.data ?? []).length === 0 && (
                             <li data-testid="notif-bell-empty" className="px-3 py-4 text-center text-sm text-gray-500">
                                 No unread notifications
                             </li>
                         )}
-                        {(listQuery.data?.data ?? []).map((row: NotificationRow) => (
+                        {!listQuery.isError && (listQuery.data?.data ?? []).map((row: NotificationRow) => (
                             <li key={row.id} className="px-3 py-2">
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 text-sm">
@@ -149,15 +203,6 @@ export function NotificationBell(): ReactNode {
                     </ul>
 
                     <div className="border-t border-gray-100 px-3 py-2 text-center">
-                        {/*
-                          v8.0/W1.4 — the SPA shell catches /app/* so the
-                          link must carry the /app prefix. The actual
-                          TanStack Router mount of `/app/admin/notifications`
-                          (rendering NotificationPanel) is W1.4.x scope —
-                          this PR ships the component + backend; the
-                          AdminShell sidebar wire-up + route registration
-                          lands in the follow-up sub-task.
-                        */}
                         <a
                             data-testid="notif-bell-see-all"
                             href="/app/admin/notifications"

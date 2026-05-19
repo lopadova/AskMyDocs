@@ -158,7 +158,59 @@ describe('NotificationPanel', () => {
         await userEvent.click(screen.getByTestId('notif-panel-mark-all-read'));
 
         await waitFor(() => {
-            expect(mockPost).toHaveBeenCalledWith('/api/notifications/mark-all-read');
+            // Copilot iter-2 #3 — the FE forwards an empty body when no
+            // event_type filter is active; the API client only adds
+            // event_type when set.
+            expect(mockPost).toHaveBeenCalledWith('/api/notifications/mark-all-read', {});
         });
+    });
+
+    it('forwards the active event_type filter to mark-all-read', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        mockPost.mockResolvedValueOnce({ data: { marked_read: 1 } });
+
+        render(wrapped(<NotificationPanel />));
+
+        await userEvent.selectOptions(
+            await screen.findByTestId('notif-panel-filter-event_type'),
+            'kb_canonical_promoted',
+        );
+        await userEvent.click(await screen.findByTestId('notif-panel-mark-all-read'));
+
+        await waitFor(() => {
+            expect(mockPost).toHaveBeenCalledWith(
+                '/api/notifications/mark-all-read',
+                { event_type: 'kb_canonical_promoted' },
+            );
+        });
+    });
+
+    it('renders pagination controls and disables Prev on page 1', async () => {
+        mockGet.mockResolvedValue({
+            data: {
+                ...TWO_UNREAD.data,
+                meta: { current_page: 1, last_page: 3, per_page: 20, total: 45, state: 'unread' },
+            },
+        });
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel-page-status')).toHaveTextContent('Page 1 of 3 (45 total)');
+        });
+        expect(screen.getByTestId('notif-panel-page-prev')).toBeDisabled();
+        expect(screen.getByTestId('notif-panel-page-next')).toBeEnabled();
+    });
+
+    it('exposes aria-busy on the panel container while fetching', async () => {
+        mockGet.mockResolvedValue(TWO_UNREAD);
+        render(wrapped(<NotificationPanel />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-panel')).toHaveAttribute('data-state', 'ready');
+        });
+        // After the query settles aria-busy must be false (not absent
+        // — React serialises boolean attributes as 'false'/'true' so
+        // assistive tech can read it consistently).
+        expect(screen.getByTestId('notif-panel')).toHaveAttribute('aria-busy', 'false');
     });
 });

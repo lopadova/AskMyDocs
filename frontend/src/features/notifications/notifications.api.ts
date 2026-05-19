@@ -82,8 +82,14 @@ export const notificationsApi = {
         return data.data;
     },
 
-    async markAllRead(): Promise<number> {
-        const { data } = await api.post<{ marked_read: number }>('/api/notifications/mark-all-read');
+    async markAllRead(params: { eventType?: string } = {}): Promise<number> {
+        // Copilot iter-2 #3 — forward the current filter so the BE
+        // only flips rows the user actually sees in the panel.
+        const body: Record<string, string> = {};
+        if (params.eventType) {
+            body.event_type = params.eventType;
+        }
+        const { data } = await api.post<{ marked_read: number }>('/api/notifications/mark-all-read', body);
         return data.marked_read;
     },
 };
