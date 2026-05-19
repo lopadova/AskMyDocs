@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi, type NotificationRow } from './notifications.api';
+import { summariseNotificationEvent } from './summarise';
 
 /**
  * v8.0/W1.4 — Top-bar notification bell.
@@ -206,7 +207,7 @@ export function NotificationBell(): ReactNode {
                             <li key={row.id} className="px-3 py-2">
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 text-sm">
-                                        <div className="font-medium">{summariseEvent(row)}</div>
+                                        <div className="font-medium">{summariseNotificationEvent(row)}</div>
                                         <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}</div>
                                     </div>
                                     <button
@@ -254,20 +255,3 @@ export function NotificationBell(): ReactNode {
     );
 }
 
-function summariseEvent(row: NotificationRow): string {
-    const payload = row.payload ?? {};
-    switch (row.event_type) {
-        case 'kb_doc_created':
-            return `New document: ${String(payload.title ?? payload.source_path ?? 'untitled')}`;
-        case 'kb_doc_modified':
-            return `Updated: ${String(payload.title ?? payload.source_path ?? 'untitled')}`;
-        case 'kb_canonical_promoted':
-            return `Promoted to canonical: ${String(payload.slug ?? '?')}`;
-        case 'kb_decision_debt_threshold':
-            return 'Decision debt threshold reached';
-        case 'collection_new_member':
-            return 'New member added to a collection';
-        default:
-            return String(row.event_type);
-    }
-}

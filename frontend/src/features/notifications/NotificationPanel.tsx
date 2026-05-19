@@ -5,6 +5,7 @@ import {
     type NotificationRow,
     type NotificationState,
 } from './notifications.api';
+import { summariseNotificationEvent } from './summarise';
 
 /**
  * v8.0/W1.4 — /app/admin/notifications full panel.
@@ -151,11 +152,21 @@ export function NotificationPanel(): ReactNode {
                 }
             }
         }
+        // Copilot iter-8 #1 — guarantee the currently-selected
+        // `eventType` is always present in the options list. When
+        // `/event-types` is loading/errored AND the current page has
+        // zero rows containing the selected type (e.g. switching to
+        // an unread tab with no matches), the value would otherwise
+        // be absent and the <select> would render an empty
+        // selection while the filter is still active.
+        if (eventType && !sources.includes(eventType)) {
+            sources.push(eventType);
+        }
         return sources.map((value) => ({
             value,
             label: knownByValue.get(value) ?? value,
         }));
-    }, [eventTypesQuery.data, rows]);
+    }, [eventTypesQuery.data, rows, eventType]);
 
     const lastPage = meta?.last_page ?? 1;
     const total = meta?.total ?? 0;
@@ -278,7 +289,7 @@ export function NotificationPanel(): ReactNode {
                         <li key={row.id} className="p-3">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1">
-                                    <div className="text-sm font-medium">{summariseEvent(row)}</div>
+                                    <div className="text-sm font-medium">{summariseNotificationEvent(row)}</div>
                                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                                         <span>{new Date(row.created_at).toLocaleString()}</span>
                                         <code>{row.event_type}</code>
@@ -347,20 +358,3 @@ export function NotificationPanel(): ReactNode {
     );
 }
 
-function summariseEvent(row: NotificationRow): string {
-    const payload = row.payload ?? {};
-    switch (row.event_type) {
-        case 'kb_doc_created':
-            return `New document: ${String(payload.title ?? payload.source_path ?? 'untitled')}`;
-        case 'kb_doc_modified':
-            return `Document updated: ${String(payload.title ?? payload.source_path ?? 'untitled')}`;
-        case 'kb_canonical_promoted':
-            return `Canonical promoted: ${String(payload.slug ?? '?')}`;
-        case 'kb_decision_debt_threshold':
-            return 'Decision debt threshold reached';
-        case 'collection_new_member':
-            return 'New member added to a collection';
-        default:
-            return String(row.event_type);
-    }
-}
