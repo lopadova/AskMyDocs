@@ -729,6 +729,11 @@ Route::middleware([
         // Copilot iter-4 #1 — R18 event-type discovery endpoint.
         Route::get('/event-types', [\App\Http\Controllers\Api\NotificationsController::class, 'eventTypes'])
             ->name('api.notifications.event-types');
+        // v8.0/W2.2 — preferences grid backing endpoints.
+        Route::get('/preferences', [\App\Http\Controllers\Api\NotificationPreferencesController::class, 'index'])
+            ->name('api.notifications.preferences.index');
+        Route::put('/preferences', [\App\Http\Controllers\Api\NotificationPreferencesController::class, 'update'])
+            ->name('api.notifications.preferences.update');
         Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markAllRead'])
             ->name('api.notifications.mark-all-read');
         Route::post('/{id}/mark-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markRead'])

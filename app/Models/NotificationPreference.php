@@ -43,6 +43,26 @@ class NotificationPreference extends Model
         'enabled' => 'bool',
     ];
 
+    /**
+     * Every channel name the dispatcher knows about. The `index()` of
+     * the preferences endpoint also returns a `registered_channels`
+     * subset (ChannelRegistry::registered()) so the FE can render
+     * un-configured channels as visibly disabled toggles.
+     *
+     * @return array<int, string>
+     */
+    public static function availableChannels(): array
+    {
+        return [
+            self::CHANNEL_IN_APP,
+            self::CHANNEL_EMAIL,
+            self::CHANNEL_DISCORD,
+            self::CHANNEL_SLACK,
+            self::CHANNEL_TEAMS,
+            self::CHANNEL_WEBHOOK,
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

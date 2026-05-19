@@ -336,8 +336,14 @@ final class ExternalChannelsTest extends TestCase
             inMemoryRow: $row,
         );
 
-        // 4. Final DB state has ALL 3 entries.
-        $fresh = NotificationEvent::find($row->id);
+        // 4. Final DB state has ALL 3 entries. R30 — scope the lookup
+        //    by tenant_id explicitly; bare `find($row->id)` bypasses
+        //    cross-tenant isolation even when the test runs under a
+        //    single tenant.
+        $fresh = NotificationEvent::query()
+            ->where('tenant_id', (string) $row->tenant_id)
+            ->whereKey($row->id)
+            ->firstOrFail();
         $channels = array_column($fresh->channel_dispatch_log, 'channel');
         $statuses = array_column($fresh->channel_dispatch_log, 'status');
         $this->assertCount(3, $fresh->channel_dispatch_log);
