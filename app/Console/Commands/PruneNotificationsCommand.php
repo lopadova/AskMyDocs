@@ -84,11 +84,25 @@ class PruneNotificationsCommand extends Command
                 NotificationEvent::query()
                     ->where('tenant_id', $tenantId)
                     ->where('created_at', '<', $cutoff)
-                    ->chunkById(100, function ($rows) use (&$deletedForTenant) {
-                        foreach ($rows as $row) {
-                            $row->delete();
-                            $deletedForTenant++;
+                    ->chunkById(100, function ($rows) use (&$deletedForTenant, $tenantId) {
+                        $ids = $rows->pluck('id')->all();
+                        if ($ids === []) {
+                            return;
                         }
+                        // Copilot iter-2 #1 — R30 strict reading. The
+                        // outer SELECT carries the tenant predicate so
+                        // every loaded row IS owned by $tenantId, BUT
+                        // `$row->delete()` would issue
+                        // `DELETE WHERE id = ?` with no tenant column
+                        // in the SQL trace. Re-stating the predicate
+                        // on the bulk DELETE keeps the boundary
+                        // explicit at the SQL layer (audit-friendly)
+                        // and collapses the chunk's N statements into
+                        // one — same memory budget, fewer round-trips.
+                        $deletedForTenant += NotificationEvent::query()
+                            ->where('tenant_id', $tenantId)
+                            ->whereIn('id', $ids)
+                            ->delete();
                     });
 
                 $this->info("[{$tenantId}] Deleted {$deletedForTenant} notification_events rows older than {$days} days.");
