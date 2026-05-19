@@ -30,6 +30,7 @@ import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
+import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
@@ -562,6 +563,24 @@ const adminNotificationPreferencesRoute = createRoute({
     component: AdminNotificationPreferencesRoute,
 });
 
+// v8.0/W2.3 — admin tenant-defaults grid. Read open to admin +
+// super-admin (route ACL on the BE); PUT rejected with 403 for
+// non-super-admin. Wrapped in AdminShell under the `notifications`
+// section so the rail highlight stays consistent.
+function AdminNotificationDefaultsRoute() {
+    return (
+        <AdminShell section="notifications">
+            <AdminNotificationDefaultsGrid />
+        </AdminShell>
+    );
+}
+
+const adminNotificationDefaultsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/notifications/defaults',
+    component: AdminNotificationDefaultsRoute,
+});
+
 const adminConnectorCallbackRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/connectors/$key/callback',
@@ -617,6 +636,7 @@ const routeTree = rootRoute.addChildren([
         adminMcpToolsRoute,
         adminNotificationsRoute,
         adminNotificationPreferencesRoute,
+        adminNotificationDefaultsRoute,
     ]),
 ]);
 

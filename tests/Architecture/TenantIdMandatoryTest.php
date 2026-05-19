@@ -94,6 +94,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\NotificationEvent::class,
         \App\Models\NotificationPreference::class,
         \App\Models\NotificationDigest::class,
+        // v8.0/W2.3 — per-tenant baseline preferences for new users.
+        \App\Models\NotificationTenantDefault::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

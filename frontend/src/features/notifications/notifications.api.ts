@@ -127,6 +127,24 @@ export const notificationsApi = {
         );
         return data;
     },
+
+    // v8.0/W2.3 — admin tenant-defaults grid.
+    async loadTenantDefaults(): Promise<NotificationTenantDefaultsResponse> {
+        const { data } = await api.get<NotificationTenantDefaultsResponse>(
+            '/api/admin/notifications/defaults',
+        );
+        return data;
+    },
+
+    async saveTenantDefaults(
+        rows: NotificationPreferenceRow[],
+    ): Promise<NotificationTenantDefaultsResponse> {
+        const { data } = await api.put<NotificationTenantDefaultsResponse>(
+            '/api/admin/notifications/defaults',
+            { defaults: rows },
+        );
+        return data;
+    },
 };
 
 // v8.0/W2.2 — preferences grid contract.
@@ -142,4 +160,15 @@ export interface NotificationPreferencesResponse {
     registered_channels: string[];
     defaults: Record<string, boolean>;
     preferences: NotificationPreferenceRow[];
+}
+
+// v8.0/W2.3 — admin tenant-defaults grid contract.
+export interface NotificationTenantDefaultsResponse {
+    event_types: string[];
+    channels: string[];
+    registered_channels: string[];
+    /** Platform-wide fallback `{channel: bool}` from config. */
+    platform_defaults: Record<string, boolean>;
+    /** Tenant-level overrides; sparse — only edited cells appear. */
+    defaults: NotificationPreferenceRow[];
 }
