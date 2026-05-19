@@ -133,4 +133,89 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Tier-1 scheduler slots (v8.0/W2.4)
+    |--------------------------------------------------------------------------
+    |
+    | Each host-side scheduler slot reads its cron expression and
+    | enabled flag from this map. Both knobs are env-driven so
+    | operators can shift retention windows, disable individual jobs
+    | (e.g. on staging where a noisy cron would skew telemetry), or
+    | adopt a non-overnight maintenance window without editing
+    | `bootstrap/app.php`.
+    |
+    | Conventions:
+    |   - `enabled` defaults to true (matches the pre-W2.4 behavior).
+    |   - `cron` defaults preserve the original `dailyAt('HH:MM')`
+    |     literals so opting out of every env var keeps the same
+    |     overnight rotation.
+    |   - Slot names mirror the kebab-style command name with `:` and
+    |     `-` collapsed to `_`, so the env var is grep-able from the
+    |     command itself.
+    |
+    | Tier-2 (W4 — per-tenant scheduler overrides) layers on top of
+    | this Tier-1 map. The connector sync scheduler is owned by the
+    | `padosoft/askmydocs-connector-base` package and not configurable
+    | here — that registration stays inside `bootstrap/app.php`.
+    */
+    'schedule' => [
+        'kb_prune_embedding_cache' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_EMBEDDING_CACHE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_EMBEDDING_CACHE_CRON', '10 3 * * *'),
+        ],
+        'chat_log_prune' => [
+            'enabled' => (bool) env('SCHEDULE_CHAT_LOG_PRUNE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_CHAT_LOG_PRUNE_CRON', '20 3 * * *'),
+        ],
+        'kb_prune_deleted' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_DELETED_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_DELETED_CRON', '30 3 * * *'),
+        ],
+        'kb_rebuild_graph' => [
+            'enabled' => (bool) env('SCHEDULE_KB_REBUILD_GRAPH_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_REBUILD_GRAPH_CRON', '40 3 * * *'),
+        ],
+        'queue_prune_failed' => [
+            'enabled' => (bool) env('SCHEDULE_QUEUE_PRUNE_FAILED_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_QUEUE_PRUNE_FAILED_CRON', '0 4 * * *'),
+        ],
+        'notifications_prune' => [
+            'enabled' => (bool) env('SCHEDULE_NOTIFICATIONS_PRUNE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_NOTIFICATIONS_PRUNE_CRON', '10 4 * * *'),
+        ],
+        'admin_audit_prune' => [
+            'enabled' => (bool) env('SCHEDULE_ADMIN_AUDIT_PRUNE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_ADMIN_AUDIT_PRUNE_CRON', '30 4 * * *'),
+        ],
+        'kb_prune_orphan_files' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ORPHAN_FILES_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_ORPHAN_FILES_CRON', '40 4 * * *'),
+        ],
+        'admin_nonces_prune' => [
+            'enabled' => (bool) env('SCHEDULE_ADMIN_NONCES_PRUNE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_ADMIN_NONCES_PRUNE_CRON', '50 4 * * *'),
+        ],
+        'insights_compute' => [
+            'enabled' => (bool) env('SCHEDULE_INSIGHTS_COMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_INSIGHTS_COMPUTE_CRON', '0 5 * * *'),
+        ],
+        // `eval:nightly` ALSO has an upstream `EVAL_NIGHTLY_ENABLED`
+        // env var (different lane: live-mode opt-in) read inside the
+        // command itself. This slot only controls scheduler
+        // registration; the command's own live-mode gating is
+        // unaffected.
+        'eval_nightly' => [
+            'enabled' => (bool) env('SCHEDULE_EVAL_NIGHTLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_EVAL_NIGHTLY_CRON', '30 5 * * *'),
+        ],
+        // `ai-act:regulatory-poll` ALSO early-returns when
+        // `ai-act-compliance.regulatory_feed.enabled` is false. This
+        // slot controls only the scheduler registration window.
+        'ai_act_regulatory_poll' => [
+            'enabled' => (bool) env('SCHEDULE_AI_ACT_REGULATORY_POLL_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_AI_ACT_REGULATORY_POLL_CRON', '10 4 * * *'),
+        ],
+    ],
+
 ];

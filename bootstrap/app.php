@@ -108,132 +108,51 @@ return Application::configure(basePath: dirname(__DIR__))
         });
     })
     ->withSchedule(function (Schedule $schedule) {
-        // Embedding cache retention (default: 30 days, env KB_EMBEDDING_CACHE_RETENTION_DAYS)
-        $schedule->command('kb:prune-embedding-cache')
-            ->dailyAt('03:10')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // Chat log retention (default: 90 days, env CHAT_LOG_RETENTION_DAYS)
-        $schedule->command('chat-log:prune')
-            ->dailyAt('03:20')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // Soft-deleted document retention (default: 30 days,
-        // env KB_SOFT_DELETE_RETENTION_DAYS). Hard-deletes rows that have
-        // been soft-deleted longer than the retention window and removes
-        // their original files from the KB disk.
-        $schedule->command('kb:prune-deleted')
-            ->dailyAt('03:30')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // Canonical graph consistency sweep. Dispatches one
-        // CanonicalIndexerJob per canonical doc so kb_nodes + kb_edges
-        // stay in sync even if a queue backlog or schema change has
-        // left some docs with stale graph rows. No-op when no canonical
-        // documents exist in any project.
-        $schedule->command('kb:rebuild-graph')
-            ->dailyAt('03:40')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // Rotate the failed_jobs table so a noisy week doesn't keep
-        // growing the table forever. Default: drop rows older than 48h.
-        $schedule->command('queue:prune-failed --hours=48')
-            ->dailyAt('04:00')
-            ->onOneServer()
-            ->withoutOverlapping();
+        // v8.0/W2.4 — every host-side slot reads its cron + enabled
+        // flag from `config('askmydocs.schedule.<slot>.*')`. The
+        // defaults preserve the pre-W2.4 overnight rotation, so a
+        // deployment that ignores every new env var keeps shipping
+        // the same schedule. Per-tenant overrides land in W4
+        // (Tier-2). Slot list lives on the registrar so PHPUnit can
+        // exercise the config-driven branch directly.
+        $registrar = new \App\Scheduling\TierOneSchedulerRegistrar;
+        $registrar->register($schedule);
 
         // TODO PR3 (RBAC): when spatie/laravel-activitylog is installed,
-        //   enable:
-        //   $schedule->command('activitylog:clean --days=90')
-        //       ->dailyAt('04:20')->onOneServer()->withoutOverlapping();
-
-        // PR13 / Phase H2 — admin_command_audit forensic table rotation.
-        // 1-year retention by default (env ADMIN_AUDIT_RETENTION_DAYS).
-        $schedule->command('admin-audit:prune')
-            ->dailyAt('04:30')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // PR13 / Phase H2 — confirm-token nonces cleanup (TTL 5min +
-        // single-use). Default retention 1 day; env ADMIN_NONCE_RETENTION_DAYS.
-        $schedule->command('admin-nonces:prune')
-            ->dailyAt('04:50')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // v8.0/W1.5 — notification_events retention (default 90 days,
-        // env NOTIFICATIONS_RETENTION_DAYS; set 0 to disable). The
-        // table grows ~1 row per (user × dispatched event) including
-        // the per-channel dispatch log payload — daily rotation keeps
-        // the working set bounded.
-        $schedule->command('notifications:prune')
-            ->dailyAt('04:10')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // Orphan scan (files on the KB disk with no matching DB row).
-        // Runs in dry-run mode so nothing is deleted automatically —
-        // operators review the output and run the command manually
-        // without --dry-run if they want to purge the reported orphans.
-        $schedule->command('kb:prune-orphan-files --dry-run')
-            ->dailyAt('04:40')
-            ->onOneServer()
-            ->withoutOverlapping();
-
-        // PR14 / Phase I — AI insights snapshot. Runs ONE pass per day
-        // at 05:00 — LLM-bearing, so it is deliberately the last job
-        // in the overnight window (lets the prune jobs stabilise the
-        // corpus first) and --force is NOT passed (idempotent reruns
-        // no-op, avoiding duplicate provider spend on retries).
-        $schedule->command('insights:compute')
-            ->dailyAt('05:00')
-            ->onOneServer()
-            ->withoutOverlapping();
+        //   add 'activitylog_clean' => ['activitylog:clean --days=90', '20 4 * * *']
+        //   to TierOneSchedulerRegistrar::SLOTS.
 
         // v4.5/W1 — Connector framework sync scheduler. Walks every
         // active installation each minute and dispatches a
         // ConnectorSyncJob for any whose cadence window has elapsed.
         // The per-installation cadence is read from `config/connectors.php`
         // (default 15 min, per-connector overrides supported). No-op
-        // when the migration hasn't run yet.
+        // when the migration hasn't run yet. NOT routed through the
+        // registrar — the package owns this registration; the Tier-1
+        // env knobs only cover host-side slots.
         (new \Padosoft\AskMyDocsConnectorBase\Scheduling\SyncScheduler)->registerSchedules($schedule);
 
-        // v4.3/W3 — Nightly eval-harness regression run. Hits the real RAG
-        // pipeline when EVAL_NIGHTLY_LIVE=true AND a provider key is
-        // present (the command's own resolveLiveMode() refuses live mode
-        // otherwise). Note: EVAL_NIGHTLY_LIVE is the nightly-cron's own
-        // opt-in; the PR-time CI gate's separate EVAL_LIVE_AI=1 knob is
-        // unrelated. Cost-controlled by the package's `nightly` batch
-        // profile applied to the BASELINE dataset only — adversarial
-        // lanes stay PR-time-only on the rag-regression workflow.
-        // Default-off via EVAL_NIGHTLY_ENABLED. Writes the dated report
-        // + optional alert sidecar to storage/app/eval-harness/nightly/.
+        // v4.3/W3 — Nightly eval-harness regression run. The W2.4 Tier-1
+        // slot gates scheduler REGISTRATION; the original
+        // `EVAL_NIGHTLY_ENABLED` env var (different lane: live-mode
+        // opt-in) is still read INSIDE the command, so an operator who
+        // leaves the Tier-1 slot enabled but `EVAL_NIGHTLY_ENABLED=false`
+        // gets a daily idempotent stub run — the previous "register only
+        // when EVAL_NIGHTLY_ENABLED" gate is preserved here to keep the
+        // exact pre-W2.4 wall-time behavior. Operators who explicitly
+        // want the slot live just set SCHEDULE_EVAL_NIGHTLY_ENABLED=true
+        // AND EVAL_NIGHTLY_ENABLED=true.
         if ((bool) env('EVAL_NIGHTLY_ENABLED', false)) {
-            $schedule->command('eval:nightly')
-                ->dailyAt('05:30')
-                ->onOneServer()
-                ->withoutOverlapping()
-                ->runInBackground();
+            $job = $registrar->registerSlot($schedule, 'eval_nightly', 'eval:nightly', '30 5 * * *');
+            if ($job !== null) {
+                $job->runInBackground();
+            }
         }
 
-        // v6.1.1 — EU AI Act regulatory-feed daily poll. Off by
-        // default; the package command itself early-returns when
-        // `ai-act-compliance.regulatory_feed.enabled` is false, so
-        // even an accidentally-running schedule is a no-op until
-        // the operator sets AI_ACT_REGULATORY_FEED_ENABLED=true AND
-        // configures at least one feed URL in
-        // `regulatory_feed.sources.*.feed_url`. Routed at 04:10
-        // (BEFORE 04:30 admin-audit prune) so the day's amendment
-        // ingest lands before the audit-rotation window starts.
+        // v6.1.1 — EU AI Act regulatory-feed daily poll. Same composite
+        // gating pattern as eval:nightly above.
         if ((bool) env('AI_ACT_REGULATORY_FEED_ENABLED', false)) {
-            $schedule->command('ai-act:regulatory-poll')
-                ->dailyAt('04:10')
-                ->onOneServer()
-                ->withoutOverlapping();
+            $registrar->registerSlot($schedule, 'ai_act_regulatory_poll', 'ai-act:regulatory-poll', '10 4 * * *');
         }
     })
     ->create();
