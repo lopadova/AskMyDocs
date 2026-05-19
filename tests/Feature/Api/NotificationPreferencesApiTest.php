@@ -119,12 +119,14 @@ final class NotificationPreferencesApiTest extends TestCase
         $first = $this->actingAs($user)->putJson('/api/notifications/preferences', $body);
         $first->assertStatus(200);
         $countAfterFirst = NotificationPreference::query()
+            ->where('tenant_id', app(TenantContext::class)->current())
             ->where('user_id', $user->id)
             ->count();
 
         $second = $this->actingAs($user)->putJson('/api/notifications/preferences', $body);
         $second->assertStatus(200);
         $countAfterSecond = NotificationPreference::query()
+            ->where('tenant_id', app(TenantContext::class)->current())
             ->where('user_id', $user->id)
             ->count();
 
@@ -155,7 +157,10 @@ final class NotificationPreferencesApiTest extends TestCase
         ]);
         $this->assertSame(
             1,
-            NotificationPreference::query()->where('user_id', $user->id)->count(),
+            NotificationPreference::query()
+                ->where('tenant_id', app(TenantContext::class)->current())
+                ->where('user_id', $user->id)
+                ->count(),
         );
     }
 

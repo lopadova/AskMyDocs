@@ -343,7 +343,7 @@ final class ExternalChannelsTest extends TestCase
         $fresh = NotificationEvent::query()
             ->where('tenant_id', (string) $row->tenant_id)
             ->whereKey($row->id)
-            ->first();
+            ->firstOrFail();
         $channels = array_column($fresh->channel_dispatch_log, 'channel');
         $statuses = array_column($fresh->channel_dispatch_log, 'status');
         $this->assertCount(3, $fresh->channel_dispatch_log);

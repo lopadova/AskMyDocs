@@ -26,8 +26,10 @@ use Illuminate\Validation\Rule;
  * Authorisation: same Sanctum cookie surface as the rest of the
  * notification feed. R30 — every read + write is scoped to the
  * (tenant_id, user_id) pair derived from the active TenantContext +
- * the authenticated user; cross-tenant probes return 404 by virtue
- * of the scope, never 403.
+ * the authenticated user. Cross-tenant probes silently return an
+ * empty `preferences` list (200) by virtue of the scope filter,
+ * never a 403/404 — the existence of a tenant_id is never echoed
+ * back to a non-member.
  *
  * Response shape (index):
  *   {

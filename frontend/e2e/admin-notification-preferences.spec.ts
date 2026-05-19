@@ -52,7 +52,7 @@ test.describe('Notification preferences grid', () => {
     // R13: failure injection — the happy path above already exercises
     // the real PUT round-trip; this scenario covers the R14
     // "surface failures loudly" contract on the save-error path.
-    test('panel surfaces save-error when /api/notifications/preferences PUT returns 500', async ({ page }) => {
+    test('preferences grid surfaces save-error when PUT /api/notifications/preferences returns 500', async ({ page }) => {
         await page.route('**/api/notifications/preferences', async (route) => {
             if (route.request().method() === 'PUT') {
                 await route.fulfill({
