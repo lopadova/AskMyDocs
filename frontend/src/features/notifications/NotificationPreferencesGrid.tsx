@@ -27,7 +27,7 @@ import {
  *   - `notif-pref-discard`                        reset to last-saved
  *   - `notif-pref-dirty-indicator`                "Unsaved changes" hint
  *   - `notif-pref-save-error`                     error banner
- *   - `notif-pref-save-success`                   transient success toast
+ *   - `notif-pref-save-success`                   post-save success banner (persists until the next mutation / discard)
  *   - `notif-pref-loading` / `-error`             data-state placeholders
  *
  * R15 a11y: every checkbox has an `aria-label` ("Enable email for
@@ -95,24 +95,27 @@ export function NotificationPreferencesGrid(): ReactNode {
     // assertions against a momentarily-unchecked grid).
     const [edits, setEdits] = useState<Record<string, boolean> | null>(null);
 
-    // R17 — sync the local edit cache from the server snapshot whenever
-    // it changes (initial load, post-save refetch). Re-seeding on
-    // every `query.data` reference change is safe: the seed is
-    // deterministic and converges to the same map; rendering the grid
-    // is gated below on `edits !== null` so the user never sees a
-    // partial / unchecked-by-default frame.
+    // R17 — seed the local edit cache from the server snapshot ONLY on
+    // the very first load (when `edits` is still null). A naive seed
+    // on every `query.data` change would clobber unsaved user edits
+    // the moment TanStack Query revalidates in the background (e.g.
+    // network reconnect, manual invalidation, future staleness window)
+    // — Copilot iter-4 caught the clobber. Post-save sync is handled
+    // explicitly inside `saveMut.onSuccess` against the canonical
+    // server payload; Discard re-seeds via the `discard()` callback.
     useEffect(() => {
-        if (!query.data) return;
+        if (!query.data || edits !== null) return;
         setEdits(buildCurrentMatrix(query.data));
-    }, [query.data]);
+    }, [query.data, edits]);
 
     const saveMut = useMutation({
         mutationFn: (rows: NotificationPreferenceRow[]) => notificationsApi.savePreferences(rows),
         onSuccess: (data) => {
-            // BE returns the freshly-saved canonical snapshot — drop it
-            // into the cache so the seed effect above syncs `edits` to
-            // the saved values (turning the grid clean).
+            // BE returns the freshly-saved canonical snapshot. Drop it
+            // into the cache AND re-seed local edits explicitly so the
+            // grid converges to the saved values (turning it clean).
             qc.setQueryData(['notifications', 'preferences'], data);
+            setEdits(buildCurrentMatrix(data));
         },
     });
 
