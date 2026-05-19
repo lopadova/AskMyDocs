@@ -32,27 +32,30 @@ final class TierOneSchedulerRegistrar
      * sequence in `bootstrap/app.php` to keep CI-grade telemetry
      * (lock acquisition order, log timestamps) backwards-compatible.
      *
-     * Each entry: `[slot_key, command, default_cron]`.
+     * Each entry: `[slot_key, command]`. The cron expression lives in
+     * `config('askmydocs.schedule.<slot>.cron')` — single source of
+     * truth (Copilot iter-3 caught the prior drift hazard between
+     * SLOTS literals and `config/askmydocs.php`).
      *
-     * @var array<int, array{string, string, string}>
+     * @var array<int, array{string, string}>
      */
     private const SLOTS = [
-        ['kb_prune_embedding_cache', 'kb:prune-embedding-cache', '10 3 * * *'],
-        ['chat_log_prune', 'chat-log:prune', '20 3 * * *'],
-        ['kb_prune_deleted', 'kb:prune-deleted', '30 3 * * *'],
-        ['kb_rebuild_graph', 'kb:rebuild-graph', '40 3 * * *'],
-        ['queue_prune_failed', 'queue:prune-failed --hours=48', '0 4 * * *'],
-        ['admin_audit_prune', 'admin-audit:prune', '30 4 * * *'],
-        ['admin_nonces_prune', 'admin-nonces:prune', '50 4 * * *'],
-        ['notifications_prune', 'notifications:prune', '10 4 * * *'],
-        ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run', '40 4 * * *'],
-        ['insights_compute', 'insights:compute', '0 5 * * *'],
+        ['kb_prune_embedding_cache', 'kb:prune-embedding-cache'],
+        ['chat_log_prune', 'chat-log:prune'],
+        ['kb_prune_deleted', 'kb:prune-deleted'],
+        ['kb_rebuild_graph', 'kb:rebuild-graph'],
+        ['queue_prune_failed', 'queue:prune-failed --hours=48'],
+        ['admin_audit_prune', 'admin-audit:prune'],
+        ['admin_nonces_prune', 'admin-nonces:prune'],
+        ['notifications_prune', 'notifications:prune'],
+        ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run'],
+        ['insights_compute', 'insights:compute'],
     ];
 
     public function register(Schedule $schedule): void
     {
-        foreach (self::SLOTS as [$slot, $command, $defaultCron]) {
-            $this->registerSlot($schedule, $slot, $command, $defaultCron);
+        foreach (self::SLOTS as [$slot, $command]) {
+            $this->registerSlot($schedule, $slot, $command);
         }
     }
 
@@ -62,20 +65,31 @@ final class TierOneSchedulerRegistrar
      * can attach `->runInBackground()` etc. on the returned Event.
      *
      * Returns null when the slot is disabled via
-     * `config(...enabled = false)`.
+     * `config(...enabled = false)`. Cron expression comes from
+     * `config('askmydocs.schedule.<slot>.cron')`; a missing config
+     * entry is a programmer error (slot registered here but absent
+     * from `config/askmydocs.php`) and throws.
      */
     public function registerSlot(
         Schedule $schedule,
         string $slot,
         string $command,
-        string $defaultCron,
     ): ?Event {
         if (! (bool) config("askmydocs.schedule.$slot.enabled", true)) {
             return null;
         }
 
+        $cron = (string) config("askmydocs.schedule.$slot.cron", '');
+        if ($cron === '') {
+            throw new \RuntimeException(
+                "Tier-1 slot `{$slot}` has no `cron` entry in `config('askmydocs.schedule')`. "
+                .'Add it to `config/askmydocs.php` and document the matching '
+                .'`SCHEDULE_*_CRON` env var in `.env.example`.'
+            );
+        }
+
         return $schedule->command($command)
-            ->cron((string) config("askmydocs.schedule.$slot.cron", $defaultCron))
+            ->cron($cron)
             ->onOneServer()
             ->withoutOverlapping();
     }

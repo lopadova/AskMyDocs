@@ -16,17 +16,22 @@ use Tests\TestCase;
  * `withSchedule` closure (Testbench uses its own bootstrap
  * skeleton; the host closure never fires under tests).
  *
- * Four branches:
+ * Five branches:
  *   1. Default cron is registered when no env overrides exist —
  *      sanity-check the literal defaults are still wired correctly.
  *   2. Override cron via `config()` and assert the registered
  *      `Schedule::Event::expression` matches verbatim.
  *   3. Override `enabled = false` and assert NO event is registered
  *      for the slot.
- *   4. Override EVERY slot's cron to a recognisable sentinel and
+ *   4. Override EVERY base SLOT's cron to a recognisable sentinel and
  *      assert every registered event picks up the override — catches
  *      the regression where a SLOTS entry desyncs from the
  *      `config/askmydocs.php` + `.env.example` listing.
+ *   5. Composite-gated slots (`eval_nightly`, `ai_act_regulatory_poll`)
+ *      are not in the SLOTS list (bootstrap wraps them in upstream
+ *      env gates), but their Tier-1 config entries must still
+ *      round-trip through `registerSlot()` so the override knobs
+ *      work when the upstream gate IS open.
  *
  * Each test seeds its OWN Schedule instance so registrations from
  * other tests can't leak in.
@@ -121,6 +126,50 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
                 $sentinelCron,
                 $events,
                 "Tier-1 slot `{$slotKey}` did not propagate its overridden cron `{$sentinelCron}` to the `{$command}` Schedule event",
+            );
+        }
+    }
+
+    public function test_composite_gated_slots_round_trip_through_config(): void
+    {
+        // Composite-gated slots (`eval_nightly` + `ai_act_regulatory_poll`)
+        // are NOT registered by `register()` — bootstrap/app.php wraps
+        // the calls behind upstream env gates (`EVAL_NIGHTLY_ENABLED` /
+        // `AI_ACT_REGULATORY_FEED_ENABLED`). The Tier-1 slots still need
+        // a `config/askmydocs.php` entry so the cron/enabled override
+        // works when the upstream gate IS open; this test exercises the
+        // inner `registerSlot()` call directly (Copilot iter-3 caught
+        // the missing coverage).
+        $compositeSlots = [
+            'eval_nightly' => ['eval:nightly', '11 1 * * *'],
+            'ai_act_regulatory_poll' => ['ai-act:regulatory-poll', '12 1 * * *'],
+        ];
+
+        $declaredScheduleConfig = (array) config('askmydocs.schedule', []);
+        foreach (array_keys($compositeSlots) as $slotKey) {
+            $this->assertArrayHasKey(
+                $slotKey,
+                $declaredScheduleConfig,
+                "Composite-gated slot `{$slotKey}` is referenced by `bootstrap/app.php` but absent from `config/askmydocs.php` — env-override + .env.example documentation would be wrong",
+            );
+        }
+
+        foreach ($compositeSlots as $slotKey => [$command, $sentinelCron]) {
+            config(["askmydocs.schedule.$slotKey.cron" => $sentinelCron]);
+        }
+
+        $schedule = $this->app->make(Schedule::class);
+        $registrar = new TierOneSchedulerRegistrar;
+        foreach ($compositeSlots as $slotKey => [$command, $sentinelCron]) {
+            $registrar->registerSlot($schedule, $slotKey, $command);
+        }
+
+        foreach ($compositeSlots as $slotKey => [$command, $sentinelCron]) {
+            $events = $this->collectExpressionsFor($schedule, $command);
+            $this->assertContains(
+                $sentinelCron,
+                $events,
+                "Composite-gated slot `{$slotKey}` did not propagate its overridden cron through registerSlot()",
             );
         }
     }

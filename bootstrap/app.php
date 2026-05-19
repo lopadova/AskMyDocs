@@ -148,7 +148,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // AND SCHEDULE_EVAL_NIGHTLY_ENABLED=true (the latter is the
         // default).
         if ((bool) env('EVAL_NIGHTLY_ENABLED', false)) {
-            $job = $registrar->registerSlot($schedule, 'eval_nightly', 'eval:nightly', '30 5 * * *');
+            $job = $registrar->registerSlot($schedule, 'eval_nightly', 'eval:nightly');
             if ($job !== null) {
                 $job->runInBackground();
             }
@@ -157,7 +157,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // v6.1.1 — EU AI Act regulatory-feed daily poll. Same composite
         // gating pattern as eval:nightly above.
         if ((bool) env('AI_ACT_REGULATORY_FEED_ENABLED', false)) {
-            $registrar->registerSlot($schedule, 'ai_act_regulatory_poll', 'ai-act:regulatory-poll', '10 4 * * *');
+            $registrar->registerSlot($schedule, 'ai_act_regulatory_poll', 'ai-act:regulatory-poll');
         }
     })
     ->create();

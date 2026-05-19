@@ -209,30 +209,53 @@ class MaintenanceCommandController extends Controller
     /**
      * GET /api/admin/commands/scheduler-status
      *
-     * Returns the static schedule declared in bootstrap/app.php as a
-     * list of `{command, cron_time, description}`. Computing the next
-     * execution time would require pulling the framework scheduler
-     * into request-time, which is overkill for an ops widget.
+     * Returns the effective host-side schedule as a list of
+     * `{command, cron_time, description}`. Sourced from
+     * `config('askmydocs.schedule')` so env overrides (W2.4 Tier-1)
+     * surface in the ops widget instead of drifting from the literal
+     * cron times in `bootstrap/app.php`.
      */
     public function schedulerStatus(Request $request): JsonResponse
     {
-        return response()->json([
-            'data' => [
-                ['command' => 'kb:prune-embedding-cache', 'cron_time' => '03:10', 'description' => 'Embedding cache retention (LRU).'],
-                ['command' => 'chat-log:prune', 'cron_time' => '03:20', 'description' => 'Chat log retention (default 90d).'],
-                ['command' => 'kb:prune-deleted', 'cron_time' => '03:30', 'description' => 'Hard-delete soft-deleted KB docs past retention.'],
-                ['command' => 'kb:rebuild-graph', 'cron_time' => '03:40', 'description' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.'],
-                ['command' => 'queue:prune-failed --hours=48', 'cron_time' => '04:00', 'description' => 'Rotate the failed_jobs table.'],
-                ['command' => 'kb:prune-orphan-files --dry-run', 'cron_time' => '04:40', 'description' => 'Dry-run orphan scan.'],
-                // Copilot #2 fix: bootstrap/app.php runs `admin-audit:prune`
-                // with no `--days` arg (the command reads ADMIN_AUDIT_RETENTION_DAYS
-                // from env). Previously this string said `--days=365`, so the
-                // UI schedule grid was lying about what the scheduler actually
-                // executes.
-                ['command' => 'admin-audit:prune', 'cron_time' => '04:30', 'description' => 'Rotate admin_command_audit (Phase H2).'],
-                ['command' => 'admin-nonces:prune', 'cron_time' => '04:50', 'description' => 'Purge expired/used admin_command_nonces.'],
-            ],
-        ]);
+        // Description map is the only thing local to this widget; the
+        // cron expression + enabled flag come from the same config
+        // entries the registrar reads, so an env-overridden cron
+        // surfaces here verbatim. Disabled slots (enabled=false) are
+        // suppressed from the response so the UI matches the actually-
+        // running schedule, not the documented defaults.
+        $slots = [
+            'kb_prune_embedding_cache' => ['kb:prune-embedding-cache', 'Embedding cache retention (LRU).'],
+            'chat_log_prune' => ['chat-log:prune', 'Chat log retention (default 90d).'],
+            'kb_prune_deleted' => ['kb:prune-deleted', 'Hard-delete soft-deleted KB docs past retention.'],
+            'kb_rebuild_graph' => ['kb:rebuild-graph', 'Recompute kb_nodes + kb_edges from canonical frontmatter.'],
+            'queue_prune_failed' => ['queue:prune-failed --hours=48', 'Rotate the failed_jobs table.'],
+            'kb_prune_orphan_files' => ['kb:prune-orphan-files --dry-run', 'Dry-run orphan scan.'],
+            // Copilot #2 fix: bootstrap/app.php runs `admin-audit:prune`
+            // with no `--days` arg (the command reads ADMIN_AUDIT_RETENTION_DAYS
+            // from env). Previously this string said `--days=365`, so the
+            // UI schedule grid was lying about what the scheduler actually
+            // executes.
+            'admin_audit_prune' => ['admin-audit:prune', 'Rotate admin_command_audit (Phase H2).'],
+            'admin_nonces_prune' => ['admin-nonces:prune', 'Purge expired/used admin_command_nonces.'],
+            'notifications_prune' => ['notifications:prune', 'Rotate notification_events past retention (W1.5).'],
+            'insights_compute' => ['insights:compute', 'Daily AI-insights snapshot (Phase I).'],
+        ];
+
+        $scheduleConfig = (array) config('askmydocs.schedule', []);
+        $data = [];
+        foreach ($slots as $slotKey => [$command, $description]) {
+            $slot = (array) ($scheduleConfig[$slotKey] ?? []);
+            if (! (bool) ($slot['enabled'] ?? true)) {
+                continue;
+            }
+            $data[] = [
+                'command' => $command,
+                'cron_time' => (string) ($slot['cron'] ?? ''),
+                'description' => $description,
+            ];
+        }
+
+        return response()->json(['data' => $data]);
     }
 
     // ------------------------------------------------------------------
