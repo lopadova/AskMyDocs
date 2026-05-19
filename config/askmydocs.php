@@ -64,6 +64,31 @@ return [
 
         /*
         |--------------------------------------------------------------------------
+        | Default channel-preference matrix (W2.2)
+        |--------------------------------------------------------------------------
+        |
+        | When a user has no `notification_preferences` row for a given
+        | (event_type, channel) cell, the W2.2 grid renders the toggle
+        | using the default below. The dispatcher only ever consults
+        | rows that are explicitly enabled, so an absent row is
+        | functionally equivalent to `enabled=false` regardless of
+        | this map — these defaults only drive the FE rendering of
+        | the preferences grid for first-time visitors.
+        |
+        | Tenant-level overrides land in W2.3 via the
+        | `AdminNotificationDefaultsController`.
+        */
+        'default_channel_preferences' => [
+            'in_app' => true,
+            'email' => false,
+            'discord' => false,
+            'slack' => false,
+            'teams' => false,
+            'webhook' => false,
+        ],
+
+        /*
+        |--------------------------------------------------------------------------
         | External channel webhook URLs (W2.1)
         |--------------------------------------------------------------------------
         |

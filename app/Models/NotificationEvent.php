@@ -82,6 +82,29 @@ class NotificationEvent extends Model
         'dismissed_at' => 'datetime',
     ];
 
+    /**
+     * Source of truth for the event-type vocabulary.
+     *
+     * Used by:
+     *   - validation (Rule::in) on `NotificationPreferencesController::update`
+     *   - the `/api/notifications/preferences` GET payload (R18 — FE
+     *     derives the preferences-grid rows from this list rather than
+     *     a FE literal subset)
+     *   - tests that need to iterate every supported event type
+     *
+     * @return array<int, string>
+     */
+    public static function eventTypes(): array
+    {
+        return [
+            self::EVENT_KB_DOC_CREATED,
+            self::EVENT_KB_DOC_MODIFIED,
+            self::EVENT_KB_CANONICAL_PROMOTED,
+            self::EVENT_KB_DECISION_DEBT_THRESHOLD,
+            self::EVENT_COLLECTION_NEW_MEMBER,
+        ];
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

@@ -190,6 +190,12 @@ abstract class TestCase extends OrchestraTestCase
         // controller's own check. Tests that exercise the wired routes
         // flip this on via config(['eval-harness-ui.enabled' => true]).
         $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
+        // v8.0/W2.2 — askmydocs.* namespace (notifications subsystem).
+        // Without this, `config('askmydocs.notifications.*')` returns
+        // null in tests and the preferences-grid endpoint ships an
+        // empty `defaults` map. Testbench doesn't auto-load project
+        // config/ files; explicit set mirrors the other configs above.
+        $app['config']->set('askmydocs', require __DIR__.'/../config/askmydocs.php');
         // v4.5/W1 — connector framework config. Without this,
         // ConnectorRegistry boots empty and the admin endpoints can't
         // resolve provider knobs.

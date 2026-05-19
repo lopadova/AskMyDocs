@@ -29,6 +29,7 @@ import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularRev
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
+import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
@@ -543,6 +544,24 @@ const adminNotificationsRoute = createRoute({
     component: AdminNotificationsRoute,
 });
 
+// v8.0/W2.2 — per-user notification preferences grid. Same auth
+// surface as the panel (any authenticated user). Wrapped in
+// AdminShell with the `notifications` section so the rail
+// highlights stay consistent with the panel page.
+function AdminNotificationPreferencesRoute() {
+    return (
+        <AdminShell section="notifications">
+            <NotificationPreferencesGrid />
+        </AdminShell>
+    );
+}
+
+const adminNotificationPreferencesRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/notifications/preferences',
+    component: AdminNotificationPreferencesRoute,
+});
+
 const adminConnectorCallbackRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/connectors/$key/callback',
@@ -597,6 +616,7 @@ const routeTree = rootRoute.addChildren([
         adminWorkflowsRoute,
         adminMcpToolsRoute,
         adminNotificationsRoute,
+        adminNotificationPreferencesRoute,
     ]),
 ]);
 

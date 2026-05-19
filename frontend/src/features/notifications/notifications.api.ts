@@ -113,4 +113,33 @@ export const notificationsApi = {
         const { data } = await api.post<{ marked_read: number }>('/api/notifications/mark-all-read', body);
         return data.marked_read;
     },
+
+    // v8.0/W2.2 — preferences grid.
+    async loadPreferences(): Promise<NotificationPreferencesResponse> {
+        const { data } = await api.get<NotificationPreferencesResponse>('/api/notifications/preferences');
+        return data;
+    },
+
+    async savePreferences(prefs: NotificationPreferenceRow[]): Promise<NotificationPreferencesResponse> {
+        const { data } = await api.put<NotificationPreferencesResponse>(
+            '/api/notifications/preferences',
+            { preferences: prefs },
+        );
+        return data;
+    },
 };
+
+// v8.0/W2.2 — preferences grid contract.
+export interface NotificationPreferenceRow {
+    event_type: string;
+    channel: string;
+    enabled: boolean;
+}
+
+export interface NotificationPreferencesResponse {
+    event_types: string[];
+    channels: string[];
+    registered_channels: string[];
+    defaults: Record<string, boolean>;
+    preferences: NotificationPreferenceRow[];
+}
