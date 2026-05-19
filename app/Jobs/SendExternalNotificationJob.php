@@ -43,19 +43,28 @@ use Throwable;
  * cannot mutate another tenant's audit log.
  *
  * Failure modes (R14 surface failures loudly):
- *   - audit row was pruned    → skip the HTTP POST AND the log
- *                               append (the recipient is gone; we
- *                               don't ship a webhook for an audit
- *                               row that no longer exists)
- *   - URL never resolves      → `failed` entry with the error message
- *   - HTTP 4xx (non-429)      → `failed` entry, no retry (client bug,
- *                               retrying won't fix it)
- *   - HTTP 429 / 5xx / network → throws, job retries with backoff
- *                                [5, 30, 120] seconds (matching
- *                                PLAN-v8.0 §C.2 W2.1 acceptance gate)
- *   - retries exhausted       → {@see failed()} appends a final
- *                               `failed` entry so the audit row
- *                               always carries an outcome
+ *   - audit row was pruned     → skip the HTTP POST AND the log
+ *                                append (the recipient is gone; we
+ *                                don't ship a webhook for an audit
+ *                                row that no longer exists)
+ *   - HTTP 4xx (non-429)       → `failed` entry deterministically
+ *                                appended on the same handle()
+ *                                invocation, no retry (client bug,
+ *                                retrying won't fix it)
+ *   - HTTP 429 / 5xx /          → uncaught throw bubbles up to
+ *     ConnectionException         Laravel's retry machinery, which
+ *     (DNS failure, TCP            re-queues with backoff
+ *      timeout, refused             [5, 30, 120] seconds (matching
+ *      connection)                  PLAN-v8.0 §C.2 W2.1 gate). The
+ *                                   transient `failed` entry is NOT
+ *                                   written by handle() in this
+ *                                   branch — the row stays in
+ *                                   `queued` state across attempts.
+ *   - retries exhausted        → {@see failed()} appends the
+ *                                terminal `failed` entry so the
+ *                                audit row always carries an
+ *                                outcome (no row stays in `queued`
+ *                                state forever).
  *
  * The original `notification_events` row is identified by id — we
  * don't serialise the model itself (R3 memory-safe) because the row

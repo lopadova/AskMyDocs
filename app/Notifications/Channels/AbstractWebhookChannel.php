@@ -53,8 +53,12 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
      * Build the per-channel JSON payload from the event + recipient.
      *
      * Return value MUST be a JSON-encodable array (no Closure / no
-     * Eloquent models). The job dispatches it via `Http::post()`
-     * which json_encodes the body before sending.
+     * Eloquent models). The job explicitly `json_encode()`s the
+     * payload once with `JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES`
+     * and ships the raw bytes via `Http::withBody()` so the same
+     * bytes are both HMAC-signed (for the generic Webhook channel)
+     * and sent on the wire — letting `Http::post()` re-encode
+     * internally would break the receiver's signature verification.
      *
      * @return array<string, mixed>
      */
