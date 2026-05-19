@@ -90,6 +90,24 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
             'insights_compute' => ['insights:compute', '10 1 * * *'],
         ];
 
+        // Pre-step (Copilot iter-2): seeding `config(...)` for every
+        // slot BEFORE registration would mask a missing entry in
+        // `config/askmydocs.php` — the sentinel would propagate just
+        // fine via the test's own override even if the slot was never
+        // declared anywhere else. Assert FIRST that each slot key
+        // exists in `config('askmydocs.schedule')` (which the test
+        // bootstrap loads verbatim from `config/askmydocs.php`), so a
+        // missing slot surfaces as a failed key-existence check, not
+        // a silent pass via the test-only override.
+        $declaredScheduleConfig = (array) config('askmydocs.schedule', []);
+        foreach (array_keys($slotMap) as $slotKey) {
+            $this->assertArrayHasKey(
+                $slotKey,
+                $declaredScheduleConfig,
+                "Slot `{$slotKey}` is registered by TierOneSchedulerRegistrar but absent from `config/askmydocs.php` — the env-override + .env.example documentation would be wrong",
+            );
+        }
+
         foreach ($slotMap as $slotKey => [$command, $sentinelCron]) {
             config(["askmydocs.schedule.$slotKey.cron" => $sentinelCron]);
         }

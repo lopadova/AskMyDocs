@@ -200,11 +200,14 @@ return [
             'enabled' => (bool) env('SCHEDULE_INSIGHTS_COMPUTE_ENABLED', true),
             'cron' => (string) env('SCHEDULE_INSIGHTS_COMPUTE_CRON', '0 5 * * *'),
         ],
-        // `eval:nightly` ALSO has an upstream `EVAL_NIGHTLY_ENABLED`
-        // env var (different lane: live-mode opt-in) read inside the
-        // command itself. This slot only controls scheduler
-        // registration; the command's own live-mode gating is
-        // unaffected.
+        // `eval:nightly` is double-gated: an upstream
+        // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
+        // scheduler REGISTRATION in `bootstrap/app.php` — when false,
+        // the slot is never registered and `enabled` / `cron` here
+        // have no effect. When the legacy knob is true, this Tier-1
+        // slot controls the cron expression and offers a per-host
+        // kill-switch without removing the upstream knob. Production
+        // live-runs require BOTH knobs on.
         'eval_nightly' => [
             'enabled' => (bool) env('SCHEDULE_EVAL_NIGHTLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_EVAL_NIGHTLY_CRON', '30 5 * * *'),

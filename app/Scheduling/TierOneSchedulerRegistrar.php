@@ -20,8 +20,10 @@ use Illuminate\Console\Scheduling\Schedule;
  *    project's `withSchedule` closure (Testbench uses its own
  *    bootstrap skeleton; the host closure never fires under tests).
  *
- * Tier-2 (W4 — per-tenant overrides) will subclass / decorate this
- * registrar; the slot list itself is canonical and stable.
+ * Tier-2 (W4 — per-tenant overrides) will compose this registrar via
+ * dependency injection (the class is intentionally `final`, so
+ * subclassing is NOT part of the Tier-2 design); the slot list
+ * itself is canonical and stable.
  */
 final class TierOneSchedulerRegistrar
 {

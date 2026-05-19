@@ -132,16 +132,21 @@ return Application::configure(basePath: dirname(__DIR__))
         // env knobs only cover host-side slots.
         (new \Padosoft\AskMyDocsConnectorBase\Scheduling\SyncScheduler)->registerSchedules($schedule);
 
-        // v4.3/W3 — Nightly eval-harness regression run. The W2.4 Tier-1
-        // slot gates scheduler REGISTRATION; the original
-        // `EVAL_NIGHTLY_ENABLED` env var (different lane: live-mode
-        // opt-in) is still read INSIDE the command, so an operator who
-        // leaves the Tier-1 slot enabled but `EVAL_NIGHTLY_ENABLED=false`
-        // gets a daily idempotent stub run — the previous "register only
-        // when EVAL_NIGHTLY_ENABLED" gate is preserved here to keep the
-        // exact pre-W2.4 wall-time behavior. Operators who explicitly
-        // want the slot live just set SCHEDULE_EVAL_NIGHTLY_ENABLED=true
-        // AND EVAL_NIGHTLY_ENABLED=true.
+        // v4.3/W3 — Nightly eval-harness regression run. Two gates,
+        // BOTH must be true for the cron to fire:
+        //   - upstream `EVAL_NIGHTLY_ENABLED` (legacy v4.3 knob) gates
+        //     REGISTRATION below — when false, no Schedule event is
+        //     created and the `eval:nightly` command never runs from
+        //     the scheduler. The command itself does NOT read this
+        //     env var; the registration check below is the only place
+        //     `EVAL_NIGHTLY_ENABLED` has effect.
+        //   - inside the gate, the W2.4 Tier-1 slot
+        //     (`SCHEDULE_EVAL_NIGHTLY_ENABLED` + `_CRON`) controls the
+        //     cron expression and offers a per-host kill-switch
+        //     without removing the upstream legacy knob.
+        // Production live-runs need BOTH on: EVAL_NIGHTLY_ENABLED=true
+        // AND SCHEDULE_EVAL_NIGHTLY_ENABLED=true (the latter is the
+        // default).
         if ((bool) env('EVAL_NIGHTLY_ENABLED', false)) {
             $job = $registrar->registerSlot($schedule, 'eval_nightly', 'eval:nightly', '30 5 * * *');
             if ($job !== null) {
