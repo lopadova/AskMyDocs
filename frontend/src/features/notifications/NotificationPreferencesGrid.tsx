@@ -81,15 +81,26 @@ export function NotificationPreferencesGrid(): ReactNode {
     const query = useQuery({
         queryKey: ['notifications', 'preferences'],
         queryFn: () => notificationsApi.loadPreferences(),
-        // Preferences rarely change; let the user trigger a manual
-        // refetch via the Discard button rather than poll.
+        // Preferences rarely change; the panel does not poll and
+        // does not refetch on focus — Discard pulls from the cache,
+        // an explicit page reload is the way to re-read the BE.
         refetchOnWindowFocus: false,
     });
 
-    const [edits, setEdits] = useState<Record<string, boolean>>({});
+    // `edits` is `null` until `query.data` arrives; the first paint
+    // gates the grid on `data-state='loading'` rather than risk a
+    // single-frame render where every checkbox would read unchecked
+    // because `!!edits[k]` evaluates false against an empty map
+    // (Copilot iter-1 #2 — initial-render flicker / flaky test
+    // assertions against a momentarily-unchecked grid).
+    const [edits, setEdits] = useState<Record<string, boolean> | null>(null);
 
     // R17 — sync the local edit cache from the server snapshot whenever
-    // it changes (initial load, post-save refetch, manual refetch).
+    // it changes (initial load, post-save refetch). Re-seeding on
+    // every `query.data` reference change is safe: the seed is
+    // deterministic and converges to the same map; rendering the grid
+    // is gated below on `edits !== null` so the user never sees a
+    // partial / unchecked-by-default frame.
     useEffect(() => {
         if (!query.data) return;
         setEdits(buildCurrentMatrix(query.data));
@@ -105,9 +116,12 @@ export function NotificationPreferencesGrid(): ReactNode {
         },
     });
 
+    // The grid stays in `loading` until edits has been seeded from
+    // the server payload, so the first paint never shows the empty-
+    // `{}` map.
     const dataState = query.isError
         ? 'error'
-        : query.isLoading
+        : query.isLoading || edits === null
             ? 'loading'
             : query.data && query.data.event_types.length === 0
                 ? 'empty'
@@ -115,11 +129,11 @@ export function NotificationPreferencesGrid(): ReactNode {
 
     const toggleCell = (eventType: string, channel: string) => {
         const k = cellKey(eventType, channel);
-        setEdits((prev) => ({ ...prev, [k]: !prev[k] }));
+        setEdits((prev) => ({ ...(prev ?? {}), [k]: !((prev ?? {})[k]) }));
     };
 
     const setRow = (eventType: string, enabled: boolean) => {
-        if (!query.data) return;
+        if (!query.data || edits === null) return;
         const registered = new Set(query.data.registered_channels);
         const next = { ...edits };
         for (const chan of query.data.channels) {
@@ -133,7 +147,7 @@ export function NotificationPreferencesGrid(): ReactNode {
     };
 
     const setColumn = (channel: string, enabled: boolean) => {
-        if (!query.data) return;
+        if (!query.data || edits === null) return;
         if (!query.data.registered_channels.includes(channel)) return;
         const next = { ...edits };
         for (const evt of query.data.event_types) {
@@ -143,7 +157,7 @@ export function NotificationPreferencesGrid(): ReactNode {
     };
 
     const save = () => {
-        if (!query.data) return;
+        if (!query.data || edits === null) return;
         const rows: NotificationPreferenceRow[] = [];
         for (const evt of query.data.event_types) {
             for (const chan of query.data.channels) {
@@ -163,8 +177,20 @@ export function NotificationPreferencesGrid(): ReactNode {
         saveMut.reset();
     };
 
+    // First-save semantics (Copilot iter-1 #1):
+    // A user who has zero `notification_preferences` rows AND who
+    // accepts the seeded defaults must still be able to press Save —
+    // otherwise the dispatcher (which only delivers when `enabled=true`
+    // rows exist in the DB) would NEVER ship a notification to that
+    // user until they manually flip something off and back on. Treat
+    // the absent-rows + matching-defaults state as inherently dirty
+    // so the very first Save persists the defaults verbatim.
     const dirty = useMemo(() => {
-        if (!query.data) return false;
+        if (!query.data || edits === null) return false;
+        // First-save case: no stored prefs yet AND the user just
+        // landed on the page. Save is enabled so the user can opt
+        // in by clicking Save against the seeded defaults.
+        if (query.data.preferences.length === 0) return true;
         const current = buildCurrentMatrix(query.data);
         for (const k of Object.keys(current)) {
             if (edits[k] !== current[k]) return true;
@@ -232,7 +258,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                 </div>
             )}
 
-            {dataState === 'ready' && query.data && (
+            {dataState === 'ready' && query.data && edits && (
                 <>
                     <div className="overflow-x-auto rounded border border-gray-200">
                         <table className="min-w-full border-collapse text-sm">
@@ -261,6 +287,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                             <button
                                                                 type="button"
                                                                 data-testid={`notif-pref-column-${chan}-enable-all`}
+                                                                aria-label={`Enable all ${CHANNEL_LABELS[chan] ?? chan} notifications`}
                                                                 onClick={() => setColumn(chan, true)}
                                                                 className="text-xs text-blue-600 hover:underline"
                                                             >
@@ -269,6 +296,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                             <button
                                                                 type="button"
                                                                 data-testid={`notif-pref-column-${chan}-disable-all`}
+                                                                aria-label={`Disable all ${CHANNEL_LABELS[chan] ?? chan} notifications`}
                                                                 onClick={() => setColumn(chan, false)}
                                                                 className="text-xs text-gray-600 hover:underline"
                                                             >
@@ -321,6 +349,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                 <button
                                                     type="button"
                                                     data-testid={`notif-pref-row-${evt}-enable-all`}
+                                                    aria-label={`Enable all channels for ${EVENT_TYPE_LABELS[evt] ?? evt}`}
                                                     onClick={() => setRow(evt, true)}
                                                     disabled={saveMut.isPending}
                                                     className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
@@ -330,6 +359,7 @@ export function NotificationPreferencesGrid(): ReactNode {
                                                 <button
                                                     type="button"
                                                     data-testid={`notif-pref-row-${evt}-disable-all`}
+                                                    aria-label={`Disable all channels for ${EVENT_TYPE_LABELS[evt] ?? evt}`}
                                                     onClick={() => setRow(evt, false)}
                                                     disabled={saveMut.isPending}
                                                     className="text-xs text-gray-600 hover:underline disabled:text-gray-400"

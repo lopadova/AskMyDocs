@@ -180,6 +180,34 @@ describe('NotificationPreferencesGrid', () => {
         expect(screen.getByTestId('notif-pref-retry')).toBeInTheDocument();
     });
 
+    it('treats zero stored preferences as inherently dirty so the user can opt-in via Save', async () => {
+        // Copilot iter-1 #1 — without this, a fresh user lands on the
+        // grid, accepts the seeded defaults, and finds Save disabled —
+        // the dispatcher then NEVER ships them a notification because
+        // it only honours rows with `enabled=true` in the DB. Treat
+        // the empty-preferences state as inherently dirty.
+        mockGet.mockResolvedValueOnce({
+            data: {
+                event_types: ['kb_doc_created'],
+                channels: ['in_app', 'email'],
+                registered_channels: ['in_app', 'email'],
+                defaults: { in_app: true, email: false },
+                preferences: [],
+            },
+        });
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-pref')).toHaveAttribute('data-state', 'ready');
+        });
+
+        // Save is ENABLED without any user input — the very first
+        // click persists the seeded defaults verbatim.
+        expect(screen.getByTestId('notif-pref-save')).not.toBeDisabled();
+        expect(screen.getByTestId('notif-pref-dirty-indicator')).toBeInTheDocument();
+    });
+
     it('renders the save error banner when the PUT fails', async () => {
         const user = userEvent.setup();
         mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);

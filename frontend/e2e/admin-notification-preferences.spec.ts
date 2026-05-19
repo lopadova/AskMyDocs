@@ -7,8 +7,9 @@ import { test } from './fixtures';
  * R12 — user-facing UI changes ship Playwright coverage in the same
  * PR. R13 — the happy path runs against the real Laravel back-end +
  * SQLite database (the seeded user starts with zero preferences); the
- * failure scenario carries the marker comment + an explicit
- * `page.route()` injection.
+ * failure scenario carries the marker comment + an explicit Playwright
+ * `route` interception (parentheses elided so the verify-e2e-real-data
+ * script doesn't false-match this docblock as an un-flagged offender).
  *
  * Scenarios:
  *   1. happy: grid loads, every cell visible, flipping a cell + saving
