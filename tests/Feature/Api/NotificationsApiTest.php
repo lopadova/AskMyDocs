@@ -204,11 +204,19 @@ final class NotificationsApiTest extends TestCase
         // Copilot iter-3 #2 — secondary `id DESC` ordering. Seed 5
         // rows with the SAME created_at, then assert the page order
         // is strict id-descending.
+        //
+        // Copilot iter-7 #1 — `created_at` / `updated_at` are NOT in
+        // `NotificationEvent::$fillable`, so passing them to `::create()`
+        // silently drops them and Eloquent stamps fresh per-row
+        // timestamps (microsecond apart), defeating the tie. Force
+        // the shared timestamp via a second `forceFill` + `save` with
+        // `timestamps=false` so Eloquent does not touch the columns.
         $user = $this->makeUser('tied');
         $sharedAt = now();
         $ids = [];
         foreach (range(1, 5) as $i) {
-            $row = NotificationEvent::create([
+            $row = new NotificationEvent();
+            $row->forceFill([
                 'user_id' => $user->id,
                 'event_type' => 'kb_doc_created',
                 'payload' => ['marker' => $i],
@@ -216,6 +224,8 @@ final class NotificationsApiTest extends TestCase
                 'created_at' => $sharedAt,
                 'updated_at' => $sharedAt,
             ]);
+            $row->timestamps = false;
+            $row->save();
             $ids[] = $row->id;
         }
 

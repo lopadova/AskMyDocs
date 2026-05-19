@@ -23,7 +23,13 @@ export type NotificationEventType =
 
 export interface NotificationRow {
     id: number;
-    event_type: NotificationEventType | string;
+    // Copilot iter-7 #2 — `NotificationEventType | string` collapses
+    // to `string` and loses the literal autocomplete. Using the
+    // opaque `string & {}` brand keeps the unioned literals as
+    // suggestions while still accepting any future event_type the
+    // BE introduces. (TS preserves the union when one branch is
+    // an "anonymous-but-not-widened" string.)
+    event_type: NotificationEventType | (string & {});
     payload: Record<string, unknown>;
     created_at: string;
     read_at: string | null;
