@@ -813,7 +813,7 @@ boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
 Tenant-aware tables: knowledge_documents, knowledge_chunks,
 embedding_cache, chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
-knowledge_document_tags, knowledge_document_acl, admin_command_audit,
+knowledge_document_tags, knowledge_document_acl, admin_command_audits,
 admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
 → See `.claude/skills/cross-tenant-isolation/SKILL.md`.
 

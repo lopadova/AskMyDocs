@@ -52,13 +52,18 @@ the active tenant:
 - explicit `->where('tenant_id', $tenantId)`.
 
 Tenant-aware tables include: `knowledge_documents`,
-`knowledge_chunks`, `embedding_cache`, `chat_logs`, `conversations`,
-`messages`, `kb_nodes`, `kb_edges`, `kb_canonical_audit`,
+`knowledge_chunks`, `chat_logs`, `conversations`, `messages`,
+`kb_nodes`, `kb_edges`, `kb_canonical_audit`,
 `project_memberships`, `kb_tags`, `knowledge_document_tags`,
-`knowledge_document_acl`, `admin_command_audit`,
+`knowledge_document_acl`, `admin_command_audits`,
 `admin_command_nonces`, `admin_insights_snapshots`,
 `chat_filter_presets`, `notification_events`,
 `notification_preferences`, `notification_digests`.
+
+**Intentionally NOT tenant-scoped** (do NOT add a `tenant_id` query
+to these — by design, see model docblocks + CLAUDE.md §4):
+`embedding_cache` (text-hash keyed, shared across projects by
+design — same paragraph in two projects reuses the embedding).
 
 A bare `Model::where(...)` that does NOT include `tenant_id` (or a
 scope that adds it) is a cross-tenant leak — GDPR catastrophe.
