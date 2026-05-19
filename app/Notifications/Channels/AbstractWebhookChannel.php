@@ -87,6 +87,7 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
         SendExternalNotificationJob::dispatch(
             channelName: $this->name(),
             eventRowId: (int) $eventRow->id,
+            tenantId: (string) $eventRow->tenant_id,
             url: $url,
             payload: $payload,
             hmacSecret: $secret,
@@ -137,6 +138,7 @@ abstract class AbstractWebhookChannel implements NotificationChannelInterface
     {
         NotificationEventLogger::append(
             eventRowId: (int) $eventRow->getKey(),
+            tenantId: (string) $eventRow->tenant_id,
             channel: $this->name(),
             status: $status,
             error: $error,

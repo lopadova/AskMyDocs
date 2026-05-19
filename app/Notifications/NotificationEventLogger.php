@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Notifications;
 
 use App\Models\NotificationEvent;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -26,9 +25,16 @@ use Throwable;
  * row WHILE the dispatcher's loop still holds a stale in-memory copy,
  * and the next adapter's `save()` overwrites the job's append.
  *
+ * Round-2 fix (PR #195): every adapter — baseline (in_app, email,
+ * null fallback) AND external (discord, slack, teams, webhook) AND
+ * the dispatcher's own failure-log path — routes through this helper
+ * so the lost-update race is closed regardless of queue connection.
+ *
  * This helper makes every appender go through the same path:
  *   1. Open a transaction.
- *   2. `lockForUpdate()` the target row.
+ *   2. `lockForUpdate()` the target row, scoped by `(id, tenant_id)`
+ *      so a poisoned job payload from one tenant cannot mutate
+ *      another tenant's audit log (R30 cross-tenant isolation).
  *   3. Read the current `channel_dispatch_log` from the FRESH DB
  *      state (not from any caller's in-memory instance).
  *   4. Append the new entry + save.
@@ -43,6 +49,14 @@ use Throwable;
  * don't enforce row-level locking but the call shape stays the same
  * — production Postgres serialises the append.
  *
+ * R30 — `tenant_id` is REQUIRED on every call. Callers that hold
+ * an in-memory `NotificationEvent` simply pass `$row->tenant_id`;
+ * the queued job stores `tenant_id` in its constructor at dispatch
+ * time and passes it to every helper call (success + non-retryable
+ * failure + terminal `failed()` callback). Cross-tenant log
+ * mutation is structurally impossible — a mismatch returns no row
+ * (the lockForUpdate misses) and the helper logs a warning.
+ *
  * Failure mode: any throw inside the transaction is caught and
  * logged at `error` level (the audit trail is best-effort; an
  * unwritable `channel_dispatch_log` must not break the underlying
@@ -55,26 +69,36 @@ final class NotificationEventLogger
      * row's `channel_dispatch_log` atomically. If `$inMemoryRow` is
      * non-null and references the same row, it is refreshed in place
      * so subsequent in-memory reads see the latest log.
+     *
+     * `$tenantId` is required and scopes the row lookup — see class
+     * docblock R30 note.
      */
     public static function append(
         int $eventRowId,
+        string $tenantId,
         string $channel,
         string $status,
         ?string $error = null,
         ?NotificationEvent $inMemoryRow = null,
     ): void {
         try {
-            DB::transaction(function () use ($eventRowId, $channel, $status, $error, $inMemoryRow): void {
+            DB::transaction(function () use ($eventRowId, $tenantId, $channel, $status, $error, $inMemoryRow): void {
                 /** @var NotificationEvent|null $row */
                 $row = NotificationEvent::query()
                     ->where('id', $eventRowId)
+                    ->where('tenant_id', $tenantId)
                     ->lockForUpdate()
                     ->first();
 
                 if ($row === null) {
                     Log::warning(
-                        'NotificationEventLogger: target row missing',
-                        ['event_row_id' => $eventRowId, 'channel' => $channel, 'status' => $status],
+                        'NotificationEventLogger: target row missing (or cross-tenant mismatch)',
+                        [
+                            'event_row_id' => $eventRowId,
+                            'tenant_id' => $tenantId,
+                            'channel' => $channel,
+                            'status' => $status,
+                        ],
                     );
                     return;
                 }
@@ -106,6 +130,7 @@ final class NotificationEventLogger
                 'NotificationEventLogger: failed to append channel_dispatch_log',
                 [
                     'event_row_id' => $eventRowId,
+                    'tenant_id' => $tenantId,
                     'channel' => $channel,
                     'status' => $status,
                     'error' => $e->getMessage(),

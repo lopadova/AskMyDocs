@@ -67,6 +67,7 @@ final class ExternalChannelsTest extends TestCase
         Bus::assertDispatched(SendExternalNotificationJob::class, function (SendExternalNotificationJob $job) use ($row): bool {
             return $job->channelName === 'discord'
                 && $job->eventRowId === (int) $row->id
+                && $job->tenantId === (string) $row->tenant_id
                 && $job->url === 'https://discord.com/api/webhooks/123/abc'
                 && $job->hmacSecret === null
                 && isset($job->payload['embeds'])
@@ -181,6 +182,7 @@ final class ExternalChannelsTest extends TestCase
         $job = new SendExternalNotificationJob(
             channelName: 'discord',
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             url: 'https://discord.com/api/webhooks/123/abc',
             payload: ['embeds' => [['title' => 't', 'description' => 'd']]],
         );
@@ -212,6 +214,7 @@ final class ExternalChannelsTest extends TestCase
         $job = new SendExternalNotificationJob(
             channelName: 'webhook',
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             url: 'https://example.test/inbox',
             payload: $payload,
             hmacSecret: $secret,
@@ -234,6 +237,7 @@ final class ExternalChannelsTest extends TestCase
         $job = new SendExternalNotificationJob(
             channelName: 'slack',
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             url: 'https://slack.example/hook',
             payload: ['text' => 'x'],
         );
@@ -261,6 +265,7 @@ final class ExternalChannelsTest extends TestCase
         $job = new SendExternalNotificationJob(
             channelName: 'discord',
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             url: 'https://discord.example/hook',
             payload: ['embeds' => []],
         );
@@ -280,6 +285,7 @@ final class ExternalChannelsTest extends TestCase
         $job = new SendExternalNotificationJob(
             channelName: 'teams',
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             url: 'https://teams.example/hook',
             payload: ['type' => 'message'],
         );
@@ -314,6 +320,7 @@ final class ExternalChannelsTest extends TestCase
         //    helper.
         \App\Notifications\NotificationEventLogger::append(
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             channel: 'discord',
             status: 'delivered',
         );
@@ -323,6 +330,7 @@ final class ExternalChannelsTest extends TestCase
         //    helper, passing in the stale in-memory $row.
         \App\Notifications\NotificationEventLogger::append(
             eventRowId: (int) $row->id,
+            tenantId: (string) $row->tenant_id,
             channel: 'discord',
             status: 'queued',
             inMemoryRow: $row,
@@ -340,6 +348,52 @@ final class ExternalChannelsTest extends TestCase
         //    refreshed in-place so callers reading from it see the
         //    full log too (defense-in-depth against stale state).
         $this->assertCount(3, $row->channel_dispatch_log);
+    }
+
+    public function test_helper_rejects_cross_tenant_log_writes(): void
+    {
+        // R30 defense-in-depth: the helper scopes the row lookup by
+        // (id, tenant_id), so a poisoned payload targeting the right
+        // row id but the wrong tenant_id must NOT mutate the row's
+        // log. The lockForUpdate misses and the helper logs a
+        // warning instead — the row stays pristine.
+        $row = $this->makeRow();
+
+        \App\Notifications\NotificationEventLogger::append(
+            eventRowId: (int) $row->id,
+            tenantId: 'attacker-tenant',
+            channel: 'discord',
+            status: 'delivered',
+        );
+
+        $row->refresh();
+        $this->assertSame([], $row->channel_dispatch_log ?? []);
+    }
+
+    public function test_job_skips_send_when_audit_row_was_pruned(): void
+    {
+        Http::fake();
+
+        // Simulate the W1.5 `notifications:prune` cron running between
+        // dispatch and queue execution: hard-delete the row before the
+        // job runs.
+        $row = $this->makeRow();
+        $rowId = (int) $row->id;
+        $tenantId = (string) $row->tenant_id;
+        $row->delete();
+
+        $job = new SendExternalNotificationJob(
+            channelName: 'discord',
+            eventRowId: $rowId,
+            tenantId: $tenantId,
+            url: 'https://discord.com/api/webhooks/123/abc',
+            payload: ['embeds' => [['title' => 't']]],
+        );
+        $job->handle();
+
+        // No HTTP request fired — the job no-opped on the missing
+        // audit row.
+        Http::assertNothingSent();
     }
 
     public function test_provider_only_registers_channels_with_a_url(): void

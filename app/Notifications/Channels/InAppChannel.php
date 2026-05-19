@@ -7,7 +7,7 @@ namespace App\Notifications\Channels;
 use App\Models\NotificationEvent;
 use App\Models\User;
 use App\Notifications\Events\BaseNotificationEvent;
-use Illuminate\Support\Carbon;
+use App\Notifications\NotificationEventLogger;
 
 /**
  * v8.0/W1.3 — in-app channel adapter.
@@ -21,11 +21,13 @@ use Illuminate\Support\Carbon;
  * so the audit trail correctly records the channel as delivered
  * even though no message left the system boundary.
  *
- * Per `NotificationChannelInterface` contract: the adapter mutates
- * the SAME `$eventRow` instance the dispatcher hands to each
- * subsequent adapter, and saves once. The dispatcher's per-row
- * serialisation (ADR 0012) guarantees no concurrent writer races
- * us on the same row.
+ * The append goes through {@see NotificationEventLogger::append()}
+ * so writes from sibling channels (in-memory baseline + queued
+ * external job under `QUEUE_CONNECTION=sync`) cannot lost-update
+ * each other — the helper takes a `lockForUpdate` on the row,
+ * reads the FRESH `channel_dispatch_log` from the DB, appends, and
+ * refreshes the in-memory copy the dispatcher hands to the next
+ * adapter.
  */
 final class InAppChannel implements NotificationChannelInterface
 {
@@ -39,13 +41,12 @@ final class InAppChannel implements NotificationChannelInterface
         ?User $user,
         NotificationEvent $eventRow,
     ): void {
-        $log = $eventRow->channel_dispatch_log ?? [];
-        $log[] = [
-            'channel' => $this->name(),
-            'status' => 'delivered',
-            'at' => Carbon::now()->toIso8601String(),
-        ];
-        $eventRow->channel_dispatch_log = $log;
-        $eventRow->save();
+        NotificationEventLogger::append(
+            eventRowId: (int) $eventRow->getKey(),
+            tenantId: (string) $eventRow->tenant_id,
+            channel: $this->name(),
+            status: 'delivered',
+            inMemoryRow: $eventRow,
+        );
     }
 }

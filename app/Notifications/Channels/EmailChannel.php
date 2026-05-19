@@ -8,8 +8,8 @@ use App\Mail\NotificationMail;
 use App\Models\NotificationEvent;
 use App\Models\User;
 use App\Notifications\Events\BaseNotificationEvent;
+use App\Notifications\NotificationEventLogger;
 use App\Notifications\Unsubscribe\UnsubscribeTokenSigner;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -37,6 +37,10 @@ use Throwable;
  * only `Throwable` from the `Mail::to()->queue()` call — so
  * configuration errors (missing HMAC secret, malformed payload)
  * still propagate up to the dispatcher's broader try/catch.
+ *
+ * Every log append routes through {@see NotificationEventLogger::append()}
+ * so concurrent baseline + external-job writers on the same row
+ * cannot lost-update each other under `QUEUE_CONNECTION=sync`.
  */
 final class EmailChannel implements NotificationChannelInterface
 {
@@ -105,17 +109,13 @@ final class EmailChannel implements NotificationChannelInterface
 
     private function appendLog(NotificationEvent $eventRow, string $status, ?string $error = null): void
     {
-        $log = $eventRow->channel_dispatch_log ?? [];
-        $entry = [
-            'channel' => $this->name(),
-            'status' => $status,
-            'at' => Carbon::now()->toIso8601String(),
-        ];
-        if ($error !== null) {
-            $entry['error'] = $error;
-        }
-        $log[] = $entry;
-        $eventRow->channel_dispatch_log = $log;
-        $eventRow->save();
+        NotificationEventLogger::append(
+            eventRowId: (int) $eventRow->getKey(),
+            tenantId: (string) $eventRow->tenant_id,
+            channel: $this->name(),
+            status: $status,
+            error: $error,
+            inMemoryRow: $eventRow,
+        );
     }
 }

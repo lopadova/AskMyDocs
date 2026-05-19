@@ -11,6 +11,7 @@ use App\Notifications\Events\BaseNotificationEvent;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Notifications\NotificationEventLogger;
 use Throwable;
 
 /**
@@ -215,23 +216,18 @@ final class NotificationDispatcher
         string $channelName,
         string $error,
     ): void {
-        // Mutate the same in-memory `$row` instance the dispatcher
-        // hands to each subsequent adapter. The ADR 0012 contract
-        // guarantees serialised invocations per row, so no concurrent
-        // writer can clobber what we save here — but reloading via
-        // `fresh()` and saving a *different* model object would leave
-        // the dispatcher's `$row` stale, and the next adapter's own
-        // `$row->save()` would overwrite this failure entry with the
-        // pre-failure log. Keep the original `$row` as the single
-        // mutable source of truth.
-        $log = $row->channel_dispatch_log ?? [];
-        $log[] = [
-            'channel' => $channelName,
-            'status' => 'failed',
-            'at' => now()->toIso8601String(),
-            'error' => $error,
-        ];
-        $row->channel_dispatch_log = $log;
-        $row->save();
+        // Route the failure-log append through the atomic helper so
+        // the dispatcher's in-memory `$row` and any sibling channel
+        // writers (baseline + sync-queued external job) all see a
+        // consistent `channel_dispatch_log` regardless of ordering
+        // (R21 + the lost-update fix landed in PR #195 round-2).
+        NotificationEventLogger::append(
+            eventRowId: (int) $row->getKey(),
+            tenantId: (string) $row->tenant_id,
+            channel: $channelName,
+            status: 'failed',
+            error: $error,
+            inMemoryRow: $row,
+        );
     }
 }
