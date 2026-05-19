@@ -310,6 +310,68 @@ class EmbeddingCacheServiceTest extends TestCase
         $this->assertSame($configuredModel, $row->model);
     }
 
+    public function test_openrouter_provider_round_trips_through_cache(): void
+    {
+        // PR #185 follow-up — exercises the public service path
+        // against the `openrouter` provider. Pre-fix
+        // `resolveModelName('openrouter')` fell through to the
+        // `default => 'unknown'` arm of the match: cache lookups hit
+        // `model='unknown'` while inserts stored the real OpenRouter
+        // model returned by the API (`$apiResponse->model`). The
+        // lookup never matched its own writes, so every OpenRouter
+        // embedding call became a permanent cache miss → redundant
+        // paid API requests on every re-ingestion. The fix wires the
+        // provider's flat config key
+        // (`ai.providers.openrouter.embeddings_model`) into the
+        // resolver so reads and writes share a key.
+        config()->set('kb.embedding_cache.enabled', true);
+        // phpunit.xml does not set `OPENROUTER_EMBEDDINGS_MODEL`, so
+        // the config default `openai/text-embedding-3-small` applies
+        // and is what the resolver will return below.
+        $configuredModel = config('ai.providers.openrouter.embeddings_model');
+        $this->assertSame('openai/text-embedding-3-small', $configuredModel, 'Test config drift — expected the OPENROUTER_EMBEDDINGS_MODEL default');
+
+        $provider = Mockery::mock(AiProviderInterface::class);
+        $provider->shouldReceive('name')->andReturn('openrouter');
+        $provider->shouldReceive('supportsEmbeddings')->andReturn(true);
+
+        $manager = Mockery::mock(AiManager::class);
+        $manager->shouldReceive('embeddingsProvider')->andReturn($provider);
+
+        $apiResponse = new EmbeddingsResponse(
+            // Float-distinct values so JSON round-trip preserves
+            // the float type (Eloquent's array cast JSON-decodes
+            // `9.0` back as integer `9`, would mask a real bug).
+            embeddings: [[9.5, 10.5]],
+            provider: 'openrouter',
+            model: $configuredModel,
+        );
+        // R26 — `once()` is the load-bearing assertion: a regression
+        // that resurrects `'unknown'` for openrouter would make the
+        // second generate() miss the cache and re-invoke the API,
+        // tripping the `once()` constraint at tearDown.
+        $manager->shouldReceive('generateEmbeddings')->once()->andReturn($apiResponse);
+
+        $service = new EmbeddingCacheService($manager);
+
+        // First call inserts.
+        $first = $service->generate(['openrouter embedding test']);
+        $this->assertSame([[9.5, 10.5]], $first->embeddings);
+        $this->assertSame(1, EmbeddingCache::count());
+
+        // Second call must HIT the cache via the composite
+        // (text_hash, provider, model) key.
+        $second = $service->generate(['openrouter embedding test']);
+        $this->assertSame([[9.5, 10.5]], $second->embeddings);
+
+        // No duplicate row inserted — the lookup found the prior
+        // entry by (text_hash, provider='openrouter', model=$configuredModel).
+        $this->assertSame(1, EmbeddingCache::count());
+        $row = EmbeddingCache::first();
+        $this->assertSame('openrouter', $row->provider);
+        $this->assertSame($configuredModel, $row->model);
+    }
+
     public function test_pii_pre_redact_off_by_default_does_not_alter_text(): void
     {
         // v4.1/W4.1.C — fail-safe contract: when the integration knobs
