@@ -132,6 +132,10 @@ export interface MessageMetadata {
     // open shape (LLM-providers diverge on field naming), so `unknown`
     // forces every reader through the normaliser.
     tool_calls?: unknown[];
+    retrieval_runner_up?: RunnerUpChunk[];
+    runner_up_count?: number;
+    counterfactual?: CounterfactualPanel[];
+    counterfactual_count?: number;
 }
 
 export interface Message {
@@ -146,6 +150,26 @@ export interface Message {
     // through metadata. Null on legacy rows + on user turns.
     confidence?: number | null;
     refusal_reason?: string | null;
+}
+
+export interface RunnerUpChunk {
+    chunk_id: number;
+    project_key: string | null;
+    heading_path?: string | null;
+    chunk_text?: string | null;
+    vector_score?: number | null;
+    reason?: string | null;
+    document?: {
+        id?: number | null;
+        title?: string | null;
+        source_path?: string | null;
+        source_type?: string | null;
+    } | null;
+}
+
+export interface CounterfactualPanel {
+    project_key: string;
+    top_chunks: RunnerUpChunk[];
 }
 
 export const chatApi = {
@@ -204,6 +228,17 @@ export const chatApi = {
             `/conversations/${conversationId}/messages/${messageId}/feedback`,
             { rating },
         );
+        return data;
+    },
+
+    async sendChunkFeedback(
+        chunkId: number,
+        signal: 'should_have_cited' | 'not_relevant',
+    ): Promise<{ chunk_id: number; signal: string }> {
+        const { data } = await api.post<{ chunk_id: number; signal: string }>('/api/kb/feedback', {
+            chunk_id: chunkId,
+            signal,
+        });
         return data;
     },
 
