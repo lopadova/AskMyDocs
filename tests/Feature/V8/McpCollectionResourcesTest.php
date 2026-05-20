@@ -42,7 +42,7 @@ final class McpCollectionResourcesTest extends TestCase
 
         $method = new ListCollectionResources();
         $response = $method->handle(
-            new JsonRpcRequest(id: 1, method: 'resources/list', params: []),
+            new JsonRpcRequest(1, 'resources/list', []),
             $this->context(),
         )->toArray();
 
@@ -88,7 +88,7 @@ final class McpCollectionResourcesTest extends TestCase
 
         $method = new ReadCollectionResource();
         $response = $method->handle(
-            new JsonRpcRequest(id: 2, method: 'resources/read', params: ['uri' => "collection://tenant-a/{$collection->id}"]),
+            new JsonRpcRequest(2, 'resources/read', ['uri' => "collection://tenant-a/{$collection->id}"]),
             $this->context(),
         )->toArray();
 
@@ -103,16 +103,16 @@ final class McpCollectionResourcesTest extends TestCase
     private function context(): ServerContext
     {
         return new ServerContext(
-            supportedProtocolVersions: ['2025-11-25'],
-            serverCapabilities: [],
-            serverName: 'test',
-            serverVersion: '1.0.0',
-            instructions: '',
-            maxPaginationLength: 50,
-            defaultPaginationLength: 15,
-            tools: [],
-            resources: [],
-            prompts: [],
+            ['2025-11-25'],
+            [],
+            'test',
+            '1.0.0',
+            '',
+            50,
+            15,
+            [],
+            [],
+            [],
         );
     }
 }
