@@ -15,6 +15,7 @@ import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
+import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -289,6 +290,20 @@ const adminKbRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb',
     component: AdminKbRoute,
+});
+
+function AdminKbHealthRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <KbHealthView />
+        </RequireRole>
+    );
+}
+
+const adminKbHealthRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/health',
+    component: AdminKbHealthRoute,
 });
 
 // T2.10 — Admin Tags. Same flat-RBAC + RequireRole wrapping pattern as
@@ -624,6 +639,7 @@ const routeTree = rootRoute.addChildren([
         adminUsersRoute,
         adminRolesRoute,
         adminKbRoute,
+        adminKbHealthRoute,
         adminTagsRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
