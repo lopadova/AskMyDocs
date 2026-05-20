@@ -8,12 +8,12 @@
  * the two-grids-drift hazard Copilot flagged (W2.3 iter-6 #L65).
  *
  * Source of truth for the keys themselves is the BE — these maps
- * just translate the kebab-case BE values into human-readable
- * strings the operator sees in the grid header / row label / aria-
- * label. An unknown key falls back to the raw value in the grid
- * (handled at the call site via `LABELS[k] ?? k`) so a new BE event
- * type ships safely with the original key visible until the FE
- * label is added.
+ * just translate the snake_case BE values (e.g. `kb_doc_created`,
+ * `in_app`) into human-readable strings the operator sees in the
+ * grid header / row label / aria-label. An unknown key falls back
+ * to the raw value in the grid (handled at the call site via
+ * `LABELS[k] ?? k`) so a new BE event type ships safely with the
+ * original key visible until the FE label is added.
  */
 export const EVENT_TYPE_LABELS: Record<string, string> = {
     kb_doc_created: 'Doc created',
