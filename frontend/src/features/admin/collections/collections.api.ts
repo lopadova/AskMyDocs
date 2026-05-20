@@ -38,6 +38,12 @@ export interface KbCollectionMember {
   } | null;
 }
 
+export interface KbCollectionPreviewPayload {
+  criteria: Record<string, unknown> | null;
+  semantic_prompt: string | null;
+  threshold: number;
+}
+
 export async function listCollections(): Promise<KbCollection[]> {
   const response = await api.get<{ data: KbCollection[] }>('/api/admin/kb/collections');
   return response.data.data;
@@ -68,5 +74,10 @@ export async function addCollectionMember(id: number, knowledgeDocumentId: numbe
 
 export async function removeCollectionMember(id: number, knowledgeDocumentId: number): Promise<void> {
   await api.delete(`/api/admin/kb/collections/${id}/members/${knowledgeDocumentId}`);
+}
+
+export async function previewCollection(payload: KbCollectionPreviewPayload): Promise<number> {
+  const response = await api.post<{ data: { included_count: number } }>('/api/admin/kb/collections/preview', payload);
+  return response.data.data.included_count;
 }
 

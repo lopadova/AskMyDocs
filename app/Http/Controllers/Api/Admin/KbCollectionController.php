@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 final class KbCollectionController extends Controller
@@ -174,6 +175,37 @@ final class KbCollectionController extends Controller
         return response()->json(null, 204);
     }
 
+    public function preview(Request $request, TenantContext $tenantContext): JsonResponse
+    {
+        $tenantId = $tenantContext->current();
+        $validated = $request->validate([
+            'criteria' => ['nullable', 'array'],
+            'semantic_prompt' => ['nullable', 'string'],
+            'threshold' => ['required', 'numeric', 'min:0', 'max:1'],
+        ]);
+
+        $criteria = is_array($validated['criteria'] ?? null) ? $validated['criteria'] : [];
+        $threshold = (float) $validated['threshold'];
+
+        $documents = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->get();
+
+        $includedCount = 0;
+        foreach ($documents as $document) {
+            $score = $this->previewStaticScore($criteria, $document);
+            if ($score >= $threshold) {
+                $includedCount++;
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'included_count' => $includedCount,
+            ],
+        ]);
+    }
+
     private function rules(string $tenantId, ?int $ignoreId = null): array
     {
         return [
@@ -220,5 +252,103 @@ final class KbCollectionController extends Controller
             'created_at' => optional($collection->created_at)?->toISOString(),
             'updated_at' => optional($collection->updated_at)?->toISOString(),
         ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $criteria
+     */
+    private function previewStaticScore(array $criteria, KnowledgeDocument $document): float
+    {
+        $active = 0;
+        $matched = 0;
+
+        $projects = $this->stringList($criteria['projects'] ?? null);
+        if ($projects !== []) {
+            $active++;
+            if (in_array((string) $document->project_key, $projects, true)) {
+                $matched++;
+            }
+        }
+
+        $canonicalTypes = $this->stringList($criteria['canonical_types'] ?? null);
+        if ($canonicalTypes !== []) {
+            $active++;
+            $type = is_string($document->canonical_type) ? $document->canonical_type : '';
+            if ($type !== '' && in_array($type, $canonicalTypes, true)) {
+                $matched++;
+            }
+        }
+
+        $slugGlobs = $this->stringList($criteria['slug_globs'] ?? null);
+        if ($slugGlobs !== []) {
+            $active++;
+            $slug = is_string($document->slug) ? $document->slug : '';
+            if ($slug !== '') {
+                foreach ($slugGlobs as $glob) {
+                    if (Str::is($glob, $slug)) {
+                        $matched++;
+                        break;
+                    }
+                }
+            }
+        }
+
+        $criteriaTags = $this->stringList($criteria['tags'] ?? null);
+        if ($criteriaTags !== []) {
+            $active++;
+            $documentTags = $this->extractDocumentTags($document);
+            if ($documentTags !== [] && array_intersect($criteriaTags, $documentTags) !== []) {
+                $matched++;
+            }
+        }
+
+        if ($active === 0) {
+            return 1.0;
+        }
+
+        return $matched / $active;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function extractDocumentTags(KnowledgeDocument $document): array
+    {
+        $frontmatter = is_array($document->frontmatter_json) ? $document->frontmatter_json : [];
+        $metadata = is_array($document->metadata) ? $document->metadata : [];
+
+        $tags = [];
+        foreach ($this->stringList($frontmatter['tags'] ?? null) as $tag) {
+            $tags[] = $tag;
+        }
+        foreach ($this->stringList($metadata['tags'] ?? null) as $tag) {
+            $tags[] = $tag;
+        }
+
+        return array_values(array_unique($tags));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function stringList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (! is_string($item)) {
+                continue;
+            }
+            $trimmed = trim($item);
+            if ($trimmed === '') {
+                continue;
+            }
+            $out[] = $trimmed;
+        }
+
+        return array_values(array_unique($out));
     }
 }
