@@ -56,7 +56,11 @@ class KbSearchService
         // can compose `meta.latency_ms_breakdown` with retrieval/llm/total.
         $retrievalStart = microtime(true);
 
-        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters);
+        // Generate once per request and reuse across primary + runner-up.
+        $embeddingsResponse = $this->embeddingCache->generate([$query]);
+        $queryEmbedding = $embeddingsResponse->embeddings[0];
+
+        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
         // v8.0/W3.1 — Why-not-cited: fetch up to 15 candidates that
         // were considered but did NOT make the primary top-K cut.
         // Each runner-up carries a `reason` field so the FE can
@@ -69,6 +73,7 @@ class KbSearchService
             minSimilarity: $minSimilarity,
             filters: $effectiveFilters,
             limit: (int) config('kb.runner_up.limit', 15),
+            precomputedEmbedding: $queryEmbedding,
         );
         $expanded = $this->graphExpander->expand($primary, $effectiveProject);
         $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
@@ -230,6 +235,7 @@ class KbSearchService
         float $minSimilarity,
         RetrievalFilters $filters,
         int $limit,
+        ?array $precomputedEmbedding = null,
     ): Collection {
         if ($limit <= 0) {
             return collect();
@@ -251,13 +257,8 @@ class KbSearchService
             ->values()
             ->all();
 
-        // Copilot iter-1 #L256: `search()` already generated the
-        // embedding for this query; `EmbeddingCacheService::generate()`
-        // is cached on `text_hash` so the second call hits the cache,
-        // but it still adds an extra round-trip. Pull the embedding
-        // once and reuse.
-        $embeddingsResponse = $this->embeddingCache->generate([$query]);
-        $queryEmbedding = $embeddingsResponse->embeddings[0];
+        $queryEmbedding = $precomputedEmbedding
+            ?? $this->embeddingCache->generate([$query])->embeddings[0];
         $vectorString = '['.implode(',', $queryEmbedding).']';
 
         $floor = (float) config('kb.runner_up.min_similarity', max(0.0, $minSimilarity - 0.10));
@@ -339,6 +340,7 @@ class KbSearchService
         int $limit = 8,
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
+        ?array $precomputedEmbedding = null,
     ): Collection {
         // T2.1 — back-compat: legacy callers pass `?string $projectKey`;
         // when no filters DTO is provided, we synthesise one from the
@@ -350,10 +352,12 @@ class KbSearchService
         // the chunk-level filter narrows CHUNKS).
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
 
-        // Generate query embedding (cached)
-        $embeddingsResponse = $this->embeddingCache->generate([$query]);
-        $queryEmbedding = $embeddingsResponse->embeddings[0];
+        // Generate query embedding (cached), or reuse the precomputed
+        // embedding from searchWithContext() when provided.
+        $queryEmbedding = $precomputedEmbedding
+            ?? $this->embeddingCache->generate([$query])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
+        $tenantId = app(TenantContext::class)->current();
 
         // Over-retrieve for reranking
         $rerankEnabled = config('kb.reranking.enabled', true);
@@ -363,6 +367,7 @@ class KbSearchService
 
         // ── Semantic search (pgvector) ───────────────────────────
         $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
@@ -383,7 +388,7 @@ class KbSearchService
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
 
         if ($hybridEnabled) {
-            $ftsChunks = $this->fullTextSearch($query, $projectKey, $candidateCount);
+            $ftsChunks = $this->fullTextSearch($query, $projectKey, $candidateCount, $tenantId);
 
             // Merge via Reciprocal Rank Fusion (RRF)
             $semanticChunks = $this->reciprocalRankFusion(
@@ -447,11 +452,12 @@ class KbSearchService
      * Uses plainto_tsquery for safe query parsing (no syntax errors).
      * Searches chunk_text with the configured FTS language.
      */
-    private function fullTextSearch(string $query, ?string $projectKey, int $limit): Collection
+    private function fullTextSearch(string $query, ?string $projectKey, int $limit, string $tenantId): Collection
     {
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
         $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw(
                 "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), plainto_tsquery(?, ?)) as fts_score",

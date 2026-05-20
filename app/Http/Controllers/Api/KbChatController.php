@@ -320,6 +320,8 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 'latency_ms' => $latencyMs,
                 'latency_ms_breakdown' => [
                     'retrieval' => $retrievalMs,
