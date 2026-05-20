@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T00:25:20Z
+- updated_at_utc: 2026-05-21T00:41:20Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: waiting_ci_review
-- last_action: reconciled PR #210 current HEAD 397f6eb1e1c1c5d4cbf8e0ecf03c521bb0443bfa; CI checks are in progress/queued and no must-fix review findings are present as of 2026-05-21
-- next_action: wait/recheck CI + review on PR #210, patch must-fix findings if any, then merge with closure audit when checks are green
+- last_action: inspected failed CI check on PR #210 HEAD 41a66f1f5cd0525f2739691e0f301bc6cc8afd43 (Playwright timeout in chat wikilink hover test) and triggered rerun for failed jobs on 2026-05-21
+- next_action: await rerun completion; if green and no must-fix findings remain, post closure audit and merge PR #210
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
