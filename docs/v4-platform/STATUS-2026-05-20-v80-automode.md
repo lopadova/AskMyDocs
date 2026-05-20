@@ -11,12 +11,12 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T00:24:10Z
+- updated_at_utc: 2026-05-21T00:25:20Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: waiting_ci_review
-- last_action: opened PR #210 (https://github.com/lopadova/AskMyDocs/pull/210) from feature/v8.0-W6.2-chat-collection-picker-r2 at head 48d6677169ecf5a89f1fdb93d922871c189e156e on 2026-05-21
+- last_action: reconciled PR #210 current HEAD 397f6eb1e1c1c5d4cbf8e0ecf03c521bb0443bfa; CI checks are in progress/queued and no must-fix review findings are present as of 2026-05-21
 - next_action: wait/recheck CI + review on PR #210, patch must-fix findings if any, then merge with closure audit when checks are green
 
 - prs:
