@@ -6,6 +6,7 @@ use App\Compliance\AskMyDocsUserDataDeleter;
 use App\Compliance\AskMyDocsUserDataExporter;
 use App\Compliance\RagRefusalQualityMetric;
 use App\Console\Commands\AuthGrantCommand;
+use App\Console\Commands\CollectionsReevaluateCommand;
 use App\Console\Commands\EvalNightlyCommand;
 use App\Console\Commands\InsightsComputeCommand;
 use App\Console\Commands\KbDeleteCommand;
@@ -319,6 +320,8 @@ class AppServiceProvider extends ServiceProvider
             PruneNotificationsCommand::class,
             // PR14 / Phase I — daily AI insights snapshot.
             InsightsComputeCommand::class,
+            // v8.0/W6.1 — full tenant collection membership reevaluation.
+            CollectionsReevaluateCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
             EvalNightlyCommand::class,
         ]);

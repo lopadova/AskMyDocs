@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\EmbeddingCacheService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,9 @@ final class KbCollectionController extends Controller
         $tenantId = $tenantContext->current();
         $validated = $request->validate($this->rules($tenantId));
         $validated['tenant_id'] = $tenantId;
+        $validated['semantic_prompt_embedding'] = $this->semanticPromptEmbedding(
+            $validated['semantic_prompt'] ?? null
+        );
 
         $collection = KbCollection::query()->create($validated);
 
@@ -58,6 +62,11 @@ final class KbCollectionController extends Controller
         $tenantId = $tenantContext->current();
         $collection = $this->findForTenantOr404($id, $tenantId);
         $validated = $request->validate($this->rules($tenantId, $collection->id));
+        if (array_key_exists('semantic_prompt', $validated)) {
+            $validated['semantic_prompt_embedding'] = $this->semanticPromptEmbedding(
+                $validated['semantic_prompt']
+            );
+        }
 
         $collection->fill($validated);
         $collection->save();
@@ -350,5 +359,20 @@ final class KbCollectionController extends Controller
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * @return list<float>|null
+     */
+    private function semanticPromptEmbedding(mixed $semanticPrompt): ?array
+    {
+        if (! is_string($semanticPrompt) || trim($semanticPrompt) === '') {
+            return null;
+        }
+
+        $response = app(EmbeddingCacheService::class)->generate([trim($semanticPrompt)]);
+        $embedding = $response->embeddings[0] ?? null;
+
+        return is_array($embedding) ? $embedding : null;
     }
 }
