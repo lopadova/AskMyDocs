@@ -54,6 +54,7 @@ export interface MessageThreadProps {
      * re-runs from the edit point.
      */
     onEditUserMessage?: (messageIndex: number, messageId: number | null, newContent: string) => void | Promise<void>;
+    showCounterfactual?: boolean;
 }
 
 /**
@@ -81,6 +82,7 @@ export function MessageThread({
     onRegenerate,
     onBranchAt,
     onEditUserMessage,
+    showCounterfactual = true,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -211,6 +213,7 @@ export function MessageThread({
                                 onRegenerate={regenerateHandler}
                                 onBranch={branchHandler}
                                 onEditSubmit={editHandler}
+                                showCounterfactual={showCounterfactual}
                             />
                         );
                     });

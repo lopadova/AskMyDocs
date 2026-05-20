@@ -12,6 +12,8 @@ import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
 
+const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
+
 /**
  * Chat feature root. Three columns:
  *   - ConversationList (sidebar)
@@ -85,6 +87,16 @@ export function ChatView(): ReactNode {
     // request body. Composer is now a controlled component for
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
+    const [showCounterfactual, setShowCounterfactual] = useState(true);
+
+    useEffect(() => {
+        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
+        if (raw === '0') {
+            setShowCounterfactual(false);
+        } else {
+            setShowCounterfactual(true);
+        }
+    }, []);
 
     // Initial message history. The SDK's `useChat()` doesn't fetch
     // history from the BE — it only manages live state. This query
@@ -405,6 +417,7 @@ export function ChatView(): ReactNode {
                     onRegenerate={handleRegenerate}
                     onBranchAt={handleBranchAt}
                     onEditUserMessage={handleEditUserMessage}
+                    showCounterfactual={showCounterfactual}
                 />
 
                 <SuggestedFollowups

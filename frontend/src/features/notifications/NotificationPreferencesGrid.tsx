@@ -7,6 +7,8 @@ import {
 } from './notifications.api';
 import { EVENT_TYPE_LABELS, CHANNEL_LABELS } from './labels';
 
+const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
+
 /**
  * v8.0/W2.2 — /app/admin/notifications/preferences grid.
  *
@@ -78,6 +80,12 @@ export function NotificationPreferencesGrid(): ReactNode {
     // (Copilot iter-1 #2 — initial-render flicker / flaky test
     // assertions against a momentarily-unchecked grid).
     const [edits, setEdits] = useState<Record<string, boolean> | null>(null);
+    const [counterfactualEnabled, setCounterfactualEnabled] = useState(true);
+
+    useEffect(() => {
+        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
+        setCounterfactualEnabled(raw !== '0');
+    }, []);
 
     // R17 — seed the local edit cache from the server snapshot ONLY on
     // the very first load (when `edits` is still null). A naive seed
@@ -186,6 +194,12 @@ export function NotificationPreferencesGrid(): ReactNode {
         return false;
     }, [edits, query.data]);
 
+    const toggleCounterfactual = () => {
+        const next = !counterfactualEnabled;
+        setCounterfactualEnabled(next);
+        window.localStorage.setItem(COUNTERFACTUAL_PREF_KEY, next ? '1' : '0');
+    };
+
     return (
         <div
             data-testid="notif-pref"
@@ -198,6 +212,26 @@ export function NotificationPreferencesGrid(): ReactNode {
                 Choose which channels receive each notification. Channels with
                 no webhook URL configured by your operator render as disabled.
             </p>
+
+            <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <p className="text-sm font-medium text-gray-800">Counterfactual panel in chat</p>
+                        <p className="text-xs text-gray-600">
+                            Show/hide “N other projects” counterfactual citations. Sticky per browser, default ON.
+                        </p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={counterfactualEnabled}
+                            onChange={toggleCounterfactual}
+                            data-testid="chat-counterfactual-toggle"
+                        />
+                        <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
+                    </label>
+                </div>
+            </div>
 
             {dataState === 'loading' && (
                 <p data-testid="notif-pref-loading" className="py-8 text-center text-gray-500">
