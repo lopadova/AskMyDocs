@@ -127,6 +127,24 @@ export const notificationsApi = {
         );
         return data;
     },
+
+    // v8.0/W2.3 — admin tenant-defaults grid.
+    async loadTenantDefaults(): Promise<NotificationTenantDefaultsResponse> {
+        const { data } = await api.get<NotificationTenantDefaultsResponse>(
+            '/api/admin/notifications/defaults',
+        );
+        return data;
+    },
+
+    async saveTenantDefaults(
+        rows: NotificationPreferenceRow[],
+    ): Promise<NotificationTenantDefaultsResponse> {
+        const { data } = await api.put<NotificationTenantDefaultsResponse>(
+            '/api/admin/notifications/defaults',
+            { defaults: rows },
+        );
+        return data;
+    },
 };
 
 // v8.0/W2.2 — preferences grid contract.
@@ -142,4 +160,23 @@ export interface NotificationPreferencesResponse {
     registered_channels: string[];
     defaults: Record<string, boolean>;
     preferences: NotificationPreferenceRow[];
+}
+
+// v8.0/W2.3 — admin tenant-defaults grid contract.
+export interface NotificationTenantDefaultsResponse {
+    event_types: string[];
+    channels: string[];
+    registered_channels: string[];
+    /** Platform-wide fallback `{channel: bool}` from config. */
+    platform_defaults: Record<string, boolean>;
+    /**
+     * Tenant-level overrides. Starts empty for a brand-new tenant;
+     * after the first Save, every event×channel cell is persisted
+     * (the FE's `save()` posts the full matrix to keep the user-grid
+     * and tenant-defaults-grid contracts identical, and the BE's
+     * composite-unique upsert dedups on `(tenant_id, event_type,
+     * channel)`). Treat this as the authoritative snapshot — NOT as
+     * a sparse delta against `platform_defaults`.
+     */
+    defaults: NotificationPreferenceRow[];
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
+use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
@@ -325,6 +326,17 @@ Route::middleware([
             Route::get('/{date}', [AdminInsightsController::class, 'byDate'])
                 ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
                 ->name('api.admin.insights.by-date');
+        });
+
+        // v8.0/W2.3 — Per-tenant notification defaults grid. Read open
+        // to admin + super-admin (route group ACL); the controller
+        // tightens the mutation path to super-admin only so platform
+        // admins can audit the baselines without altering them.
+        Route::prefix('notifications')->group(function () {
+            Route::get('/defaults', [AdminNotificationDefaultsController::class, 'index'])
+                ->name('api.admin.notifications.defaults.index');
+            Route::put('/defaults', [AdminNotificationDefaultsController::class, 'update'])
+                ->name('api.admin.notifications.defaults.update');
         });
 
         // Phase H2 — Maintenance command runner. Write-path actions
