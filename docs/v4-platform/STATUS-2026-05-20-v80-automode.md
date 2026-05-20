@@ -11,15 +11,15 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T10:11:31Z
+- updated_at_utc: 2026-05-20T10:47:56Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: working
-- last_action: automode poll snapshot + prompt render
-- next_action: if child process exited -> dispatch immediately; else keep monitoring
+- last_action: review snapshot for PR #205 head=0aa13638cb190cc1e173081f8561d4e4b5fc886d: Copilot commented (no must-fix), PHPUnit/Vitest/RAG green, Playwright still pending
+- next_action: continue wait/recheck loop until Playwright is green, then post closure audit and merge PR #205
 
 - prs:
-  - #204 head=7a981c1 state=OPEN merge=UNSTABLE review= inline_on_head=0
-    - url: https://github.com/lopadova/AskMyDocs/pull/204
-    - checks: RAG regression gate (ci):IN_PROGRESS:; RAG regression gate (ci):IN_PROGRESS:; PHPUnit (PHP 8.3):IN_PROGRESS:; PHPUnit (PHP 8.3):IN_PROGRESS:; PHPUnit (PHP 8.4):IN_PROGRESS:; PHPUnit (PHP 8.4):IN_PROGRESS:; PHPUnit (PHP 8.5):IN_PROGRESS:; PHPUnit (PHP 8.5):IN_PROGRESS:; Vitest:IN_PROGRESS:; Vitest:IN_PROGRESS:
+  - #205 head=0aa1363 state=OPEN merge=UNSTABLE review=commented inline_on_head=0
+    - url: https://github.com/lopadova/AskMyDocs/pull/205
+    - checks: PHPUnit (PHP 8.3):COMPLETED:SUCCESS; PHPUnit (PHP 8.4):COMPLETED:SUCCESS; PHPUnit (PHP 8.5):COMPLETED:SUCCESS; Vitest:COMPLETED:SUCCESS; RAG regression gate (ci):COMPLETED:SUCCESS; Playwright E2E:IN_PROGRESS
