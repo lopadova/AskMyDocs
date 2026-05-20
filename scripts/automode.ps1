@@ -25,6 +25,10 @@ param(
 
     [Parameter(Mandatory = $false)]
     [int]$MaxCheckpointStaleMinutes = 20
+
+    ,
+    [Parameter(Mandatory = $false)]
+    [switch]$FollowChildLogs
 )
 
 $ErrorActionPreference = "Stop"
@@ -270,6 +274,30 @@ __AUTOMODE_DISPATCH_COMMAND__
     }
 }
 
+function Read-NewLogChunk {
+    param(
+        [string]$Path,
+        [long]$Offset
+    )
+    if (-not (Test-Path $Path)) {
+        return @{ Text = ""; Offset = $Offset }
+    }
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        if ($Offset -gt $fs.Length) {
+            $Offset = 0
+        }
+        $fs.Seek($Offset, [System.IO.SeekOrigin]::Begin) | Out-Null
+        $sr = New-Object System.IO.StreamReader($fs)
+        $text = $sr.ReadToEnd()
+        $newOffset = $fs.Position
+        $sr.Dispose()
+        return @{ Text = $text; Offset = $newOffset }
+    } finally {
+        $fs.Dispose()
+    }
+}
+
 $paths = Get-RepoStatePaths
 Acquire-Lock -LockPath $paths.Lock
 
@@ -279,6 +307,11 @@ try {
     Write-Host "[automode] workspace=$workspace"
     Write-Host "[automode] checkpoint=$CheckpointPath"
     Write-Host "[automode] poll=${PollSeconds}s max_runtime=${MaxRuntimeMinutes}m max_checkpoint_stale=${MaxCheckpointStaleMinutes}m"
+    Write-Host "[automode] follow_child_logs=$FollowChildLogs"
+
+    $stdoutOffset = 0L
+    $stderrOffset = 0L
+    $currentFollowPid = $null
 
     while ($true) {
         $rows = @()
@@ -313,6 +346,32 @@ try {
         }
 
         if ($childAlive) {
+            if ($FollowChildLogs -and $state.child_pid -ne $null) {
+                if ($currentFollowPid -ne [int]$state.child_pid) {
+                    $currentFollowPid = [int]$state.child_pid
+                    $stdoutOffset = 0L
+                    $stderrOffset = 0L
+                }
+                if ($state.child_stdout_log) {
+                    $o = Read-NewLogChunk -Path ([string]$state.child_stdout_log) -Offset $stdoutOffset
+                    $stdoutOffset = [long]$o.Offset
+                    if (-not [string]::IsNullOrWhiteSpace([string]$o.Text)) {
+                        ([string]$o.Text -split "`r?`n" | Where-Object { $_ -ne "" }) | ForEach-Object {
+                            Write-Host "[child:out] $_"
+                        }
+                    }
+                }
+                if ($state.child_stderr_log) {
+                    $e = Read-NewLogChunk -Path ([string]$state.child_stderr_log) -Offset $stderrOffset
+                    $stderrOffset = [long]$e.Offset
+                    if (-not [string]::IsNullOrWhiteSpace([string]$e.Text)) {
+                        ([string]$e.Text -split "`r?`n" | Where-Object { $_ -ne "" }) | ForEach-Object {
+                            Write-Host "[child:err] $_"
+                        }
+                    }
+                }
+            }
+
             $started = $null
             try { $started = [DateTime]::Parse([string]$state.child_started_at_utc).ToUniversalTime() } catch {}
             $runtimeExceeded = $false
@@ -334,6 +393,7 @@ try {
                 $childAlive = $false
                 $state.child_pid = $null
                 $state.child_started_at_utc = $null
+                $currentFollowPid = $null
             } else {
                 Write-Host "[$(Get-IsoNow)] child_pid=$($state.child_pid) running -> monitor only (no overlap dispatch)"
             }
@@ -351,6 +411,9 @@ try {
                     $state.last_dispatch_at_utc = Get-IsoNow
                     $state.child_stdout_log = $child.Stdout
                     $state.child_stderr_log = $child.Stderr
+                    $currentFollowPid = [int]$child.Process.Id
+                    $stdoutOffset = 0L
+                    $stderrOffset = 0L
                     Write-Host "[automode] dispatched child_pid=$($child.Process.Id)"
                     Write-Host "[automode] stdout=$($child.Stdout)"
                     Write-Host "[automode] stderr=$($child.Stderr)"
