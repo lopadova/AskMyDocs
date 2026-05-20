@@ -60,6 +60,40 @@ final class TierOneSchedulerRegistrar
     }
 
     /**
+     * Read-only access to the canonical SLOT list for callers that
+     * need to iterate the host-side slot inventory (e.g. the
+     * `MaintenanceCommandController::schedulerStatus()` ops widget
+     * builds its response from this list, avoiding the drift hazard
+     * a duplicated map would create — Copilot iter-3 #L242).
+     *
+     * @return array<int, array{string, string}>  list of [slot_key, command]
+     */
+    public static function slots(): array
+    {
+        return self::SLOTS;
+    }
+
+    /**
+     * Composite-gated slots — `bootstrap/app.php` registers them
+     * conditionally on an upstream env flag IN ADDITION to the
+     * Tier-1 `SCHEDULE_*_ENABLED` knob. Returned as
+     * `[slot_key, command, upstream_env_var]` so callers (the ops
+     * widget) can mirror the same dual-gate behaviour without
+     * duplicating the slot keys (Copilot iter-4 — the scheduler
+     * status widget previously omitted `eval_nightly` /
+     * `ai_act_regulatory_poll` because they're not in SLOTS).
+     *
+     * @return array<int, array{string, string, string}>
+     */
+    public static function compositeGatedSlots(): array
+    {
+        return [
+            ['eval_nightly', 'eval:nightly', 'EVAL_NIGHTLY_ENABLED'],
+            ['ai_act_regulatory_poll', 'ai-act:regulatory-poll', 'AI_ACT_REGULATORY_FEED_ENABLED'],
+        ];
+    }
+
+    /**
      * Register a single slot. Composite-gated callers (e.g.
      * eval:nightly + EVAL_NIGHTLY_ENABLED) call this directly so they
      * can attach `->runInBackground()` etc. on the returned Event.
