@@ -11,16 +11,17 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:09:04Z
+- updated_at_utc: 2026-05-20T21:10:33Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: active
-- last_action: implemented W5.5 threshold live preview slice on 2026-05-20 at HEAD 0c9226d0476045d46b29627dcb87253b7be695dd (new POST /api/admin/kb/collections/preview + admin collections preview count UI + tests green: 5 tests, 19 assertions)
-- next_action: commit/push W5.5 preview changes to feature/v8.0-W5.5-threshold-preview, open PR, then run CI/review loop
+- open_pr_count: 1
+- agent_state: waiting_ci_review
+- last_action: opened PR #208 on 2026-05-20 for W5.5 threshold preview from HEAD ee60c17e498d12bf07d4ea9a5fd8882454e5090b and requested review from copilot-pull-request-reviewer
+- next_action: wait/recheck CI + review on PR #208, patch must-fix findings if any, merge when green
 
 - prs:
-  - none
+  - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: ee60c17e498d12bf07d4ea9a5fd8882454e5090b, status: open)
+
 
 
 
