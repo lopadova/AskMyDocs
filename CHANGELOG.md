@@ -11,6 +11,83 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.0-rc2 — 2026-05-20 (W2 closure — Notification channels + preferences + Tier-1 scheduler env)
+
+W2 closure of the **v8.0 killer-features cycle**. Layers user-facing
+preference management + 4 external delivery channels + per-tenant
+admin defaults + env-tunable scheduler on top of the W1 transport
+foundation. Four sub-PRs all merged on `feature/v8.0`:
+
+- **W2.1** (PR #195 — merged at `9d32557`) — Discord/Slack/Teams/Webhook
+  channel adapters + queueable `SendExternalNotificationJob` (R21
+  lockForUpdate inside DB::transaction; R14 4xx-non-retryable vs
+  5xx/429 throw-to-retry; backoff `[5, 30, 120]s`). Shared
+  `NotificationEventLogger` helper routes EVERY channel write
+  through atomic lockForUpdate — `InAppChannel`, `EmailChannel`,
+  the `NullChannel` fallback for un-registered adapters, plus the
+  4 W2.1 webhook channels (`discord` / `slack` / `teams` /
+  `webhook`) all going through it via `AbstractWebhookChannel`.
+  Per-channel env knob (`NOTIFICATIONS_DISCORD_URL` etc.); generic
+  webhook signs every request with `X-AskMyDocs-Signature` when
+  `NOTIFICATIONS_WEBHOOK_SECRET` is set.
+- **W2.2** (PR #196 — merged at `4908e17`) — Per-user notification
+  preferences grid at `/app/admin/notifications/preferences`. React
+  5×6 (event_type × channel) matrix; controller GET + atomic
+  `upsert()` PUT keyed on `(tenant_id, user_id, event_type, channel)`
+  (R30 + R21 race-safe). R29 testid hierarchy, R17 effect-clobber
+  guard, R15 a11y aria-labels, first-save dirty semantics, unregistered
+  channel uncheck allowed. Platform `config('askmydocs.notifications.default_channel_preferences')`
+  fallback for new users.
+- **W2.3** (PR #197 — merged at `bdd18c4`) — Per-tenant admin
+  defaults grid at `/app/admin/notifications/defaults`. New
+  `notification_tenant_defaults` table + `NotificationTenantDefault`
+  model. `AdminNotificationDefaultsController` super-admin-only PUT
+  (admin can view, only super-admin mutates — `canMutate` derived
+  from `useAuthStore().roles`). `NotificationPreferencesInitializer`
+  service seeds new users from tenant defaults → platform fallback;
+  invoked from `UserController@store` inside the existing
+  transaction. Shared `frontend/src/features/notifications/labels.ts`
+  module so the user grid + tenant-defaults grid don't drift.
+- **W2.4** (PR #198 — merged at `9ee5d13`) — Tier-1 scheduler env
+  overrides. Every host-side slot reads `cron` + `enabled` from
+  `config('askmydocs.schedule.<slot>.*')` (24 commented-out env
+  vars in `.env.example`); `App\Scheduling\TierOneSchedulerRegistrar`
+  owns the slot list + composite-gated slot list. Composite gates
+  (`EVAL_NIGHTLY_ENABLED` / `AI_ACT_REGULATORY_FEED_ENABLED`) now
+  exposed as `config('askmydocs.composite_gates.*')` so bootstrap +
+  ops widget stay consistent under `php artisan config:cache`.
+  `MaintenanceCommandController::schedulerStatus` derives the
+  response from registrar + config (HH:MM `cron_time` for daily
+  slots, raw `cron_expression` always; fail-closed on missing
+  config). New `frontend/e2e/admin-maintenance-scheduler.spec.ts`
+  ships R13-marked failure injection.
+
+#### Test deltas
+- PHPUnit: +33 in W2.x feature/architecture coverage (W2.1
+  external channels, W2.2 preferences, W2.3 tenant defaults +
+  initializer hook, W2.4 scheduler env override + maintenance
+  widget).
+- Vitest: +19 React component tests (NotificationPreferencesGrid +
+  AdminNotificationDefaultsGrid).
+- Playwright: +3 specs (notification-preferences happy + R13
+  failure injection; admin-notification-defaults-super-admin happy
+  + R13 failure injection; admin-maintenance-scheduler 3 scenarios).
+
+#### W2.x R36 + R40 calibration
+Each W2.x sub-PR ran 4-7 R36 cloud review cycles. Copilot republished
+the same comments 5-6 times despite earlier resolution — known
+regression behaviour, documented in closure audit comments on the
+PRs. R40 local-critic-loop caught 2 legit must-fix locally (R30
+tenant_id scope on a test query — W2.2 round-1; R14 schedulerStatus
+returning 200 with empty cron — W2.4 round-4) that would have
+cycled through cloud R36 otherwise. Parallel-PR experiment validated
+(W2.4 opened from `feature/v8.0` while W2.3 was still in cycle, zero
+merge conflicts, ~6 hour wall-time saved vs sequential).
+
+Plan source: [`docs/v4-platform/PLAN-v8.0-killer-features.md`](docs/v4-platform/PLAN-v8.0-killer-features.md) §C.2.
+
+---
+
 ### v8.0.0-rc1 — 2026-05-19 (W1 closure — Notification System core)
 
 First release candidate of the **v8.0 killer-features cycle** (8 weekly
