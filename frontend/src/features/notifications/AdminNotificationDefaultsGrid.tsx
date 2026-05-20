@@ -6,6 +6,7 @@ import {
     type NotificationTenantDefaultsResponse,
 } from './notifications.api';
 import { useAuthStore } from '../../lib/auth-store';
+import { EVENT_TYPE_LABELS, CHANNEL_LABELS } from './labels';
 
 /**
  * v8.0/W2.3 — /app/admin/notifications/defaults grid.
@@ -45,23 +46,6 @@ import { useAuthStore } from '../../lib/auth-store';
  * `TenantContext`; the FE never sends a tenant_id and never selects
  * a tenant.
  */
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-    kb_doc_created: 'Doc created',
-    kb_doc_modified: 'Doc modified',
-    kb_canonical_promoted: 'Canonical promoted',
-    kb_decision_debt_threshold: 'Decision debt threshold',
-    collection_new_member: 'Collection new member',
-};
-
-const CHANNEL_LABELS: Record<string, string> = {
-    in_app: 'In-app',
-    email: 'Email',
-    discord: 'Discord',
-    slack: 'Slack',
-    teams: 'Teams',
-    webhook: 'Webhook',
-};
 
 function cellKey(eventType: string, channel: string): string {
     return `${eventType}|${channel}`;
@@ -181,7 +165,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
     // BEFORE the dirty calculation so the grid never advertises a
     // Save that the BE would reject with 403 (Copilot iter-5 #L178).
     const dirty = useMemo(() => {
-        if (! canMutate) return false;
+        if (!canMutate) return false;
         if (!query.data || edits === null) return false;
         if (query.data.defaults.length === 0) return true;
         const current = buildCurrentMatrix(query.data);
@@ -226,7 +210,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                 </div>
             )}
 
-            {! canMutate && dataState === 'ready' && (
+            {!canMutate && dataState === 'ready' && (
                 <div
                     data-testid="notif-defaults-readonly-banner"
                     role="status"

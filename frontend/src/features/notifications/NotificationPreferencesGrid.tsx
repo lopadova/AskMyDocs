@@ -5,6 +5,7 @@ import {
     type NotificationPreferenceRow,
     type NotificationPreferencesResponse,
 } from './notifications.api';
+import { EVENT_TYPE_LABELS, CHANNEL_LABELS } from './labels';
 
 /**
  * v8.0/W2.2 — /app/admin/notifications/preferences grid.
@@ -38,23 +39,6 @@ import {
  * user_id) — the FE never sends tenant_id, never selects a target
  * user.
  */
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-    kb_doc_created: 'Doc created',
-    kb_doc_modified: 'Doc modified',
-    kb_canonical_promoted: 'Canonical promoted',
-    kb_decision_debt_threshold: 'Decision debt threshold',
-    collection_new_member: 'Collection new member',
-};
-
-const CHANNEL_LABELS: Record<string, string> = {
-    in_app: 'In-app',
-    email: 'Email',
-    discord: 'Discord',
-    slack: 'Slack',
-    teams: 'Teams',
-    webhook: 'Webhook',
-};
 
 function cellKey(eventType: string, channel: string): string {
     return `${eventType}|${channel}`;
