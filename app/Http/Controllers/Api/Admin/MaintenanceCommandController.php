@@ -233,6 +233,7 @@ class MaintenanceCommandController extends Controller
             'chat_log_prune' => 'Chat log retention (default 90d).',
             'kb_prune_deleted' => 'Hard-delete soft-deleted KB docs past retention.',
             'kb_rebuild_graph' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.',
+            'kb_health_recompute' => 'Recompute canonical health snapshot + decision-debt score.',
             'queue_prune_failed' => 'Rotate the failed_jobs table.',
             'kb_prune_orphan_files' => 'Dry-run orphan scan.',
             // Copilot earlier fix: bootstrap/app.php runs `admin-audit:prune`
