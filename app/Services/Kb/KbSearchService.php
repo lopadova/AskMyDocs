@@ -234,6 +234,16 @@ class KbSearchService
             return collect();
         }
 
+        // Runner-up uses the same `embedding <=> ?::vector` clause as
+        // `search()`. SQLite (the test runner) can't parse pgvector
+        // syntax, so partial-mock-based tests that stub `search()`
+        // would still trip on this second-pass query. Skip gracefully
+        // when the active driver isn't pgsql — production (always
+        // pgsql) keeps the full second-pass query.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return collect();
+        }
+
         $primaryIds = $primary
             ->map(fn ($c) => $c['chunk_id'] ?? null)
             ->filter()
