@@ -5,6 +5,7 @@ import {
   deleteCollection,
   listCollectionMembers,
   listCollections,
+  previewCollection,
   removeCollectionMember,
   type KbCollection,
   type KbCollectionMember,
@@ -29,6 +30,8 @@ export function CollectionsView() {
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<KbCollectionMember[]>([]);
   const [memberDocId, setMemberDocId] = useState('');
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -59,6 +62,14 @@ export function CollectionsView() {
     }
     void refreshMembers(selectedId);
   }, [selectedId]);
+
+  useEffect(() => {
+    if (selectedId === null) {
+      setPreviewCount(null);
+      return;
+    }
+    void refreshPreview();
+  }, [selectedId, form.criteria, form.semantic_prompt, form.threshold]);
 
   async function refresh(): Promise<void> {
     setLoading(true);
@@ -113,6 +124,20 @@ export function CollectionsView() {
     await refreshMembers(selectedId);
   }
 
+  async function refreshPreview(): Promise<void> {
+    setPreviewLoading(true);
+    try {
+      const count = await previewCollection({
+        criteria: form.criteria,
+        semantic_prompt: form.semantic_prompt,
+        threshold: form.threshold,
+      });
+      setPreviewCount(count);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   return (
     <div data-testid="admin-collections-view" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 18 }}>
       <section data-testid="admin-collections-list">
@@ -152,6 +177,9 @@ export function CollectionsView() {
             onChange={(e) => setForm({ ...form, threshold: Number(e.target.value) })}
           />
         </label>
+        <div data-testid="admin-collections-preview-count">
+          {previewLoading ? 'Previewing...' : `Would include ${previewCount ?? 0} document(s)`}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" data-testid="admin-collections-create" onClick={() => void onCreate()}>Create</button>
           <button type="button" data-testid="admin-collections-save" onClick={() => void onSave()} disabled={selectedId === null}>Save</button>

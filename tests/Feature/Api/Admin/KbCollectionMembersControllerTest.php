@@ -93,6 +93,20 @@ final class KbCollectionMembersControllerTest extends TestCase
         $this->assertSame('manual', $member->reason);
     }
 
+    public function test_add_member_rejects_document_from_foreign_tenant(): void
+    {
+        app(TenantContext::class)->set('tenant-a');
+        $admin = $this->makeAdmin();
+        $collection = $this->makeCollection('tenant-a');
+        $foreignDocument = $this->makeDocument('tenant-b', 'hr', 'doc-foreign.md');
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/kb/collections/{$collection->id}/members", [
+                'knowledge_document_id' => $foreignDocument->id,
+            ])
+            ->assertStatus(404);
+    }
+
     private function makeAdmin(): User
     {
         $admin = User::create([

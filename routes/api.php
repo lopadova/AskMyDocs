@@ -292,6 +292,8 @@ Route::middleware([
         Route::post('/kb/collections/{id}/members', [KbCollectionController::class, 'addMember'])
             ->whereNumber('id')
             ->name('api.admin.kb.collections.members.add');
+        Route::post('/kb/collections/preview', [KbCollectionController::class, 'preview'])
+            ->name('api.admin.kb.collections.preview');
         Route::get('/kb/collections/{id}/members', [KbCollectionController::class, 'members'])
             ->whereNumber('id')
             ->name('api.admin.kb.collections.members.index');
