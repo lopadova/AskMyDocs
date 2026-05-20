@@ -11,17 +11,17 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:56:39Z
+- updated_at_utc: 2026-05-20T21:57:05Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
-- agent_state: patching_findings_ready_to_push
-- last_action: patched 5 must-fix review findings on PR #209 at 2026-05-20T21:56:39Z and validated with `php artisan test tests/Feature/Jobs/EvaluateCollectionsJobTest.php` from HEAD e0e0e2cd5d359ff8f8dfed1839964cca66a5378e
-- next_action: commit + push fixes to PR #209, recheck CI/review, then merge when green and no must-fix findings remain
+- agent_state: waiting_ci_review
+- last_action: pushed commit 0cc1aeb66c9c7a5db64e1b51a454c8f75ffe8f78 to PR #209 on 2026-05-20T21:57:05Z with 5 review-finding fixes
+- next_action: wait/recheck CI + review on PR #209, then merge with closure audit when checks are green and no must-fix findings remain
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
-  - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: 65b35a2f5178bd5830090e6198bf5f23906a1e1f, status: open)
+  - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: 0cc1aeb66c9c7a5db64e1b51a454c8f75ffe8f78, status: open)
 
 
 
