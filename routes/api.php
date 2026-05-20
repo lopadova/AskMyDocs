@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
+use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
@@ -99,6 +100,8 @@ Route::middleware([
     }
     Route::post('/kb/chat', KbChatController::class)
         ->middleware($chatMiddleware);
+    Route::post('/kb/feedback', KbChunkFeedbackController::class)
+        ->name('api.kb.feedback');
     Route::post('/kb/ingest', KbIngestController::class);
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
