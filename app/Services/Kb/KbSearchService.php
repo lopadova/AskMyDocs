@@ -8,6 +8,7 @@ use App\Services\Kb\Retrieval\RejectedApproachInjector;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -55,7 +56,25 @@ class KbSearchService
         // can compose `meta.latency_ms_breakdown` with retrieval/llm/total.
         $retrievalStart = microtime(true);
 
-        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters);
+        // Generate once per request and reuse across primary + runner-up.
+        $embeddingsResponse = $this->embeddingCache->generate([$query]);
+        $queryEmbedding = $embeddingsResponse->embeddings[0];
+
+        $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
+        // v8.0/W3.1 — Why-not-cited: fetch up to 15 candidates that
+        // were considered but did NOT make the primary top-K cut.
+        // Each runner-up carries a `reason` field so the FE can
+        // surface "Considered but not used" with a demotion-cause
+        // badge. NOT fed to the LLM — visible only in the chat UI.
+        $runnerUp = $this->fetchRunnerUp(
+            query: $query,
+            primary: $primary,
+            projectKey: $projectKey,
+            minSimilarity: $minSimilarity,
+            filters: $effectiveFilters,
+            limit: (int) config('kb.runner_up.limit', 15),
+            precomputedEmbedding: $queryEmbedding,
+        );
         $expanded = $this->graphExpander->expand($primary, $effectiveProject);
         $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
 
@@ -87,10 +106,12 @@ class KbSearchService
             primary: $primary,
             expanded: $expanded,
             rejected: $rejected,
+            runnerUp: $runnerUp,
             meta: [
                 'primary_count' => $primary->count(),
                 'expanded_count' => $expanded->count(),
                 'rejected_count' => $rejected->count(),
+                'runner_up_count' => $runnerUp->count(),
                 'project_key' => $effectiveProject,
                 // Operational hint: how many filter dimensions the USER
                 // selected on this query — NOT how many actually narrowed
@@ -184,6 +205,127 @@ class KbSearchService
     }
 
     /**
+     * v8.0/W3.1 — fetch up to `$limit` chunks that were retrievable for
+     * the query but did NOT survive into the top-K primary set. Used
+     * by the chat-UI "Considered but not used" tab so users can see
+     * what the retriever considered + why it was demoted.
+     *
+     * The reason categorisation is intentionally coarse for the MVP:
+     * `not_in_top_k` covers everything that the over-retrieve+rerank
+     * pipeline considered but didn't surface. Finer-grained reasons
+     * (`below_rerank_threshold` / `demoted_by_status_penalty` /
+     * `deduplicated_by_doc` / `outside_context_window`) live in the
+     * config-driven roadmap entry and follow when the operator-side
+     * value justifies the Reranker refactor.
+     *
+     * Excludes the chunk IDs already in `$primary` so the FE doesn't
+     * double-render any cell. Honours the same project + filter scope
+     * as the primary search (R30 tenant + filter contract). The
+     * `min_similarity` floor is lowered to `runner_up.min_similarity`
+     * (default 0.20) so the FE can show "near miss" candidates that
+     * fell just below the primary cutoff.
+     *
+     * @param  Collection<int, array>  $primary
+     * @return Collection<int, array>
+     */
+    private function fetchRunnerUp(
+        string $query,
+        Collection $primary,
+        ?string $projectKey,
+        float $minSimilarity,
+        RetrievalFilters $filters,
+        int $limit,
+        ?array $precomputedEmbedding = null,
+    ): Collection {
+        if ($limit <= 0) {
+            return collect();
+        }
+
+        // Runner-up uses the same `embedding <=> ?::vector` clause as
+        // `search()`. SQLite (the test runner) can't parse pgvector
+        // syntax, so partial-mock-based tests that stub `search()`
+        // would still trip on this second-pass query. Skip gracefully
+        // when the active driver isn't pgsql — production (always
+        // pgsql) keeps the full second-pass query.
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return collect();
+        }
+
+        $primaryIds = $primary
+            ->map(fn ($c) => $c['chunk_id'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+
+        $queryEmbedding = $precomputedEmbedding
+            ?? $this->embeddingCache->generate([$query])->embeddings[0];
+        $vectorString = '['.implode(',', $queryEmbedding).']';
+
+        $floor = (float) config('kb.runner_up.min_similarity', max(0.0, $minSimilarity - 0.10));
+
+        // Copilot iter-1 #L263: tenant scope MUST be explicit. The
+        // KnowledgeChunk model uses `BelongsToTenant` with no global
+        // scope so an unqualified `query()` would let chunks from
+        // OTHER tenants with the same `project_key` leak into the
+        // runner-up panel (R30).
+        $tenantId = app(TenantContext::class)->current();
+
+        $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
+            ->with('document')
+            ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
+            ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $floor])
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->orderByDesc('vector_score');
+
+        if ($projectKey !== null && $projectKey !== '') {
+            $builder->where('knowledge_chunks.project_key', $projectKey);
+        }
+
+        if (! $filters->isEmpty()) {
+            $this->applyFilters($builder, $filters);
+        }
+
+        if ($primaryIds !== []) {
+            $builder->whereNotIn('knowledge_chunks.id', $primaryIds);
+        }
+
+        $candidates = $builder->limit($limit)->get();
+
+        // Copilot iter-1 #L280: `search()` applies `filterByFolderGlobs()`
+        // post-fetch (folder globs aren't representable in portable
+        // SQL); the runner-up second-pass had skipped it, so
+        // `filters.folder_globs` could leak excluded folders into
+        // the panel. Apply the same post-fetch filter here.
+        $candidates = $this->filterByFolderGlobs($candidates, $filters->folderGlobs);
+
+        return collect($candidates)->map(function ($chunk): array {
+            return [
+                'chunk_id' => $chunk->id,
+                'project_key' => $chunk->project_key,
+                'heading_path' => $chunk->heading_path,
+                // Truncate the body — the runner-up panel renders a
+                // preview only, not the full chunk. Caps the JSON
+                // payload size when the FE pulls a message back.
+                'chunk_text' => mb_substr((string) $chunk->chunk_text, 0, 400),
+                'vector_score' => (float) ($chunk->vector_score ?? 0),
+                'reason' => 'not_in_top_k',
+                'document' => [
+                    'id' => $chunk->document?->id,
+                    'title' => $chunk->document?->title,
+                    'source_path' => $chunk->document?->source_path,
+                    'source_type' => $chunk->document?->source_type,
+                    'doc_id' => $chunk->document?->doc_id,
+                    'slug' => $chunk->document?->slug,
+                    'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
+                    'canonical_type' => $chunk->document?->canonical_type,
+                    'canonical_status' => $chunk->document?->canonical_status,
+                ],
+            ];
+        });
+    }
+
+    /**
      * Hybrid search: semantic (pgvector) + optional full-text (tsvector) + reranking.
      *
      * 1. Generate query embedding (with cache)
@@ -198,6 +340,7 @@ class KbSearchService
         int $limit = 8,
         float $minSimilarity = 0.30,
         ?RetrievalFilters $filters = null,
+        ?array $precomputedEmbedding = null,
     ): Collection {
         // T2.1 — back-compat: legacy callers pass `?string $projectKey`;
         // when no filters DTO is provided, we synthesise one from the
@@ -209,10 +352,12 @@ class KbSearchService
         // the chunk-level filter narrows CHUNKS).
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
 
-        // Generate query embedding (cached)
-        $embeddingsResponse = $this->embeddingCache->generate([$query]);
-        $queryEmbedding = $embeddingsResponse->embeddings[0];
+        // Generate query embedding (cached), or reuse the precomputed
+        // embedding from searchWithContext() when provided.
+        $queryEmbedding = $precomputedEmbedding
+            ?? $this->embeddingCache->generate([$query])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
+        $tenantId = app(TenantContext::class)->current();
 
         // Over-retrieve for reranking
         $rerankEnabled = config('kb.reranking.enabled', true);
@@ -222,6 +367,7 @@ class KbSearchService
 
         // ── Semantic search (pgvector) ───────────────────────────
         $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
@@ -242,7 +388,7 @@ class KbSearchService
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
 
         if ($hybridEnabled) {
-            $ftsChunks = $this->fullTextSearch($query, $projectKey, $candidateCount);
+            $ftsChunks = $this->fullTextSearch($query, $projectKey, $candidateCount, $tenantId);
 
             // Merge via Reciprocal Rank Fusion (RRF)
             $semanticChunks = $this->reciprocalRankFusion(
@@ -306,11 +452,12 @@ class KbSearchService
      * Uses plainto_tsquery for safe query parsing (no syntax errors).
      * Searches chunk_text with the configured FTS language.
      */
-    private function fullTextSearch(string $query, ?string $projectKey, int $limit): Collection
+    private function fullTextSearch(string $query, ?string $projectKey, int $limit, string $tenantId): Collection
     {
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
         $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw(
                 "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), plainto_tsquery(?, ?)) as fts_score",

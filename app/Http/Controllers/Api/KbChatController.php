@@ -219,6 +219,14 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                // v8.0/W3.1 — Why-not-cited: surface the runner-up
+                // chunks (considered but not used in primary) so the
+                // chat UI can render the "Considered but not used"
+                // tab. R27 additive: new sibling key, never replaces
+                // existing keys; legacy clients that ignore it keep
+                // working byte-for-byte.
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 // L21 — `latency_ms` stays a flat int for back-compat;
                 // breakdown lives under `latency_ms_breakdown` as a
                 // sibling. Don't sub-objectify load-bearing keys.
@@ -312,6 +320,8 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 'latency_ms' => $latencyMs,
                 'latency_ms_breakdown' => [
                     'retrieval' => $retrievalMs,
@@ -445,6 +455,14 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                // v8.0/W3.1 — Why-not-cited: surface the runner-up
+                // chunks (considered but not used in primary) so the
+                // chat UI can render the "Considered but not used"
+                // tab. R27 additive: new sibling key, never replaces
+                // existing keys; legacy clients that ignore it keep
+                // working byte-for-byte.
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 'latency_ms' => $latencyMs,
                 'latency_ms_breakdown' => [
                     'retrieval' => $retrievalMs,
