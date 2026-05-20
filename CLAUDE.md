@@ -32,7 +32,10 @@ token.
 - Tests: PHPUnit 12 + Orchestra Testbench 11 + Vitest. SQLite is used in tests —
   `vector(N)` columns swap to JSON text via the migrations under
   `tests/database/migrations/`.
-- No AI SDKs: every provider is called via `Illuminate\Support\Facades\Http`.
+- No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter: every such
+  provider is called via `Illuminate\Support\Facades\Http`. Regolo is
+  the exception — wired through the `padosoft/laravel-ai-regolo` SDK
+  adapter on `laravel/ai` for chat + embeddings.
 
 ---
 
@@ -186,7 +189,9 @@ by design, so rows survive hard deletes for forensic access.
 4. `SearchResult { primary, expanded, rejected, meta }` → prompt composed
    from `resources/views/prompts/kb_rag.blade.php` (typed blocks: `⚠ REJECTED
    APPROACHES` + `📎 RELATED CONTEXT` + primary `## Context`).
-5. `AiManager::chat()` → provider (no SDK, raw `Http::` calls).
+5. `AiManager::chat()` → provider (raw `Http::` for OpenAI / Anthropic /
+   Gemini / OpenRouter; `padosoft/laravel-ai-regolo` SDK adapter on
+   `laravel/ai` for Regolo).
 6. `ChatLogManager::log()` in try/catch — **never** propagate logging failures.
 
 ### Ingestion
@@ -247,9 +252,14 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
 
 ## 6. Non-obvious decisions (do not unwind without asking)
 
-- **No AI SDKs.** Provider transport is `Http::`. This is intentional: full
-  control over auth, retries, timeouts, response parsing, and testability via
-  `Http::fake()`.
+- **No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter.** Provider
+  transport is raw `Http::`. This is intentional: full control over
+  auth, retries, timeouts, response parsing, and testability via
+  `Http::fake()`. Regolo is the documented exception — it is wired
+  through the `padosoft/laravel-ai-regolo` SDK adapter on
+  `laravel/ai` because that adapter is owned in-house (same author),
+  ships with its own test surface, and exposes the canonical
+  Padosoft observability / cost-rate hooks for free.
 - **Chat and embeddings providers are separate** (`AI_PROVIDER` vs
   `AI_EMBEDDINGS_PROVIDER`). Anthropic does not offer embeddings.
   OpenRouter exposes an OpenAI-compatible `/v1/embeddings` endpoint and

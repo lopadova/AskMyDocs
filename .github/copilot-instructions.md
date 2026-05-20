@@ -29,9 +29,12 @@ commands).
 - `laravel/mcp ^0.7` as a suggest (required only when exposing the
   `enterprise-kb` MCP server).
 - PostgreSQL ≥ 15 + `pgvector`. FTS GIN index migration ships pgsql-only.
-- No AI SDK — every provider is reached via `Illuminate\Support\Facades\Http`
-  (keeps auth/retries/timeouts under our control and makes `Http::fake()`
-  trivial).
+- No AI SDK for OpenAI / Anthropic / Gemini / OpenRouter — every such
+  provider is reached via `Illuminate\Support\Facades\Http` (keeps
+  auth/retries/timeouts under our control and makes `Http::fake()`
+  trivial). Regolo is the exception: it is wired through the
+  `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai` for both
+  chat and embeddings.
 - Tests: PHPUnit 12 + Orchestra Testbench 11 (SQLite) + Vitest for JS.
 
 ---
@@ -183,7 +186,9 @@ when no canonical docs exist.
 
 ## 5. Non-obvious decisions — do not unwind without asking
 
-- **No AI SDKs**, only `Http::`.
+- **No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter** — raw
+  `Http::` only. Regolo is the documented exception: wired through the
+  `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`.
 - **Chat and embeddings providers are independent** (`AI_PROVIDER` vs
   `AI_EMBEDDINGS_PROVIDER`). Anthropic has no embeddings endpoint.
   OpenRouter exposes one (OpenAI-compatible `/v1/embeddings`); default
