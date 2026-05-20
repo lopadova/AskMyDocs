@@ -247,12 +247,13 @@ function Start-DispatchChild {
     $stderr = Join-Path $LogDir "dispatch-$ts-err.log"
 
     # IMPORTANT: execute the command string, don't just emit it.
-    $wrapped = @"
-$ErrorActionPreference='Stop'
+    $wrapped = @'
+$ErrorActionPreference = 'Stop'
 Invoke-Expression @'
-$cmd
+__AUTOMODE_DISPATCH_COMMAND__
 '@
-"@
+'@
+    $wrapped = $wrapped.Replace("__AUTOMODE_DISPATCH_COMMAND__", $cmd)
 
     $tmp = Join-Path $env:TEMP ("automode-dispatch-" + [guid]::NewGuid().ToString("N") + ".ps1")
     Set-Content -Path $tmp -Value $wrapped
