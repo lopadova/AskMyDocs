@@ -8,6 +8,7 @@ use App\Flow\Compensators\RollbackChunksCompensator;
 use App\Flow\Steps\ChunkDocumentStep;
 use App\Flow\Steps\EmbedChunksStep;
 use App\Flow\Steps\MaybeDispatchCanonicalIndexerStep;
+use App\Flow\Steps\MaybeDispatchCollectionsEvaluatorStep;
 use App\Flow\Steps\ParseMarkdownStep;
 use App\Flow\Steps\PersistChunksStep;
 use Padosoft\LaravelFlow\FlowEngine;
@@ -75,6 +76,7 @@ final class IngestDocumentFlow
             ->step('persist-chunks', PersistChunksStep::class)
                 ->compensateWith(RollbackChunksCompensator::class)
             ->step('maybe-dispatch-canonical-indexer', MaybeDispatchCanonicalIndexerStep::class)
+            ->step('maybe-dispatch-collections-evaluator', MaybeDispatchCollectionsEvaluatorStep::class)
             ->register();
     }
 }

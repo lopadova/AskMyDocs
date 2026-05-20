@@ -95,6 +95,7 @@ final class IngestDocumentFlowTest extends TestCase
             'embed-chunks',
             'persist-chunks',
             'maybe-dispatch-canonical-indexer',
+            'maybe-dispatch-collections-evaluator',
         ], $stepNames);
         foreach ($stepRows as $stepRow) {
             $this->assertSame('default', $stepRow->tenant_id);
