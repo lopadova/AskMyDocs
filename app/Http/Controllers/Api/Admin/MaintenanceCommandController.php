@@ -210,10 +210,15 @@ class MaintenanceCommandController extends Controller
      * GET /api/admin/commands/scheduler-status
      *
      * Returns the effective host-side schedule as a list of
-     * `{command, cron_time, description}`. Sourced from
-     * `config('askmydocs.schedule')` so env overrides (W2.4 Tier-1)
-     * surface in the ops widget instead of drifting from the literal
-     * cron times in `bootstrap/app.php`.
+     * `{command, cron_time, cron_expression, description}`. Both
+     * `cron_time` (HH:MM for daily-at-fixed-time slots, raw 5-field
+     * cron otherwise) and `cron_expression` (always the raw 5-field
+     * cron) are populated. Sourced from `config('askmydocs.schedule')`
+     * so env overrides (W2.4 Tier-1) surface in the ops widget
+     * instead of drifting from the literal cron times in
+     * `bootstrap/app.php`. Composite-gated slots (eval_nightly,
+     * ai_act_regulatory_poll) appear only when their upstream env
+     * gate is also on — mirrors bootstrap's dual-gate behaviour.
      */
     public function schedulerStatus(Request $request): JsonResponse
     {
@@ -268,8 +273,8 @@ class MaintenanceCommandController extends Controller
         // (Copilot iter-4 — eval_nightly + ai_act_regulatory_poll
         // were missing from the response despite being part of the
         // scheduler domain).
-        foreach (\App\Scheduling\TierOneSchedulerRegistrar::compositeGatedSlots() as [$slotKey, $command, $upstreamEnv]) {
-            if (! (bool) env($upstreamEnv, false)) {
+        foreach (\App\Scheduling\TierOneSchedulerRegistrar::compositeGatedSlots() as [$slotKey, $command, $upstreamConfigKey]) {
+            if (! (bool) config($upstreamConfigKey, false)) {
                 continue;
             }
             $row = $this->buildSchedulerRow(

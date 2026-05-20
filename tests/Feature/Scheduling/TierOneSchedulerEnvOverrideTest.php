@@ -76,24 +76,21 @@ final class TierOneSchedulerEnvOverrideTest extends TestCase
 
     public function test_every_slot_in_registrar_round_trips_through_config(): void
     {
-        // Each slot key gets its own recognisable sentinel cron so the
-        // assertion can verify the registrar correctly mapped THIS
-        // slot's config entry to THIS slot's Schedule event (not just
-        // "any cron landed for any slot"). A SLOTS desync from the
-        // config / .env.example listing would surface as either a
-        // missing event or an unchanged default cron.
-        $slotMap = [
-            'kb_prune_embedding_cache' => ['kb:prune-embedding-cache', '1 1 * * *'],
-            'chat_log_prune' => ['chat-log:prune', '2 1 * * *'],
-            'kb_prune_deleted' => ['kb:prune-deleted', '3 1 * * *'],
-            'kb_rebuild_graph' => ['kb:rebuild-graph', '4 1 * * *'],
-            'queue_prune_failed' => ['queue:prune-failed --hours=48', '5 1 * * *'],
-            'admin_audit_prune' => ['admin-audit:prune', '6 1 * * *'],
-            'admin_nonces_prune' => ['admin-nonces:prune', '7 1 * * *'],
-            'notifications_prune' => ['notifications:prune', '8 1 * * *'],
-            'kb_prune_orphan_files' => ['kb:prune-orphan-files --dry-run', '9 1 * * *'],
-            'insights_compute' => ['insights:compute', '10 1 * * *'],
-        ];
+        // Derive `$slotMap` straight from the registrar's slot list
+        // (Copilot iter-5 #L90 — the prior hard-coded `$slotMap` would
+        // have happily ignored a slot newly added to the registrar).
+        // Per-slot sentinel crons are generated programmatically so
+        // every slot tests against a UNIQUE expression (no false-pass
+        // via collision with another slot's override). A SLOTS desync
+        // from the `config/askmydocs.php` + `.env.example` listing
+        // would surface either as a missing event or an unchanged
+        // default cron.
+        $slotMap = [];
+        $i = 1;
+        foreach (TierOneSchedulerRegistrar::slots() as [$slotKey, $command]) {
+            $slotMap[$slotKey] = [$command, sprintf('%d 1 * * *', $i++)];
+        }
+        $this->assertNotEmpty($slotMap, 'TierOneSchedulerRegistrar::slots() must return at least one slot');
 
         // Pre-step (Copilot iter-2): seeding `config(...)` for every
         // slot BEFORE registration would mask a missing entry in

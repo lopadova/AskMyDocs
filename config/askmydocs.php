@@ -135,6 +135,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Composite-gated scheduler upstreams (v8.0/W2.4)
+    |--------------------------------------------------------------------------
+    |
+    | Mirror of the upstream env flags `EVAL_NIGHTLY_ENABLED` and
+    | `AI_ACT_REGULATORY_FEED_ENABLED` that `bootstrap/app.php` wraps
+    | around the corresponding `registerSlot()` calls. Reading these
+    | values through `config(...)` (instead of `env(...)`) at request
+    | time keeps the ops-widget endpoint safe under
+    | `php artisan config:cache` (env() lookups bypass the cache and
+    | can return null in production after `config:cache`).
+    |
+    | Each entry is bound at config-load time to the same env source
+    | bootstrap reads, so the dual-gate semantics stay consistent
+    | between scheduler registration (bootstrap) and ops-widget
+    | rendering (request handler).
+    */
+    'composite_gates' => [
+        'eval_nightly' => (bool) env('EVAL_NIGHTLY_ENABLED', false),
+        'ai_act_regulatory_poll' => (bool) env('AI_ACT_REGULATORY_FEED_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tier-1 scheduler slots (v8.0/W2.4)
     |--------------------------------------------------------------------------
     |

@@ -77,19 +77,22 @@ final class TierOneSchedulerRegistrar
      * Composite-gated slots — `bootstrap/app.php` registers them
      * conditionally on an upstream env flag IN ADDITION to the
      * Tier-1 `SCHEDULE_*_ENABLED` knob. Returned as
-     * `[slot_key, command, upstream_env_var]` so callers (the ops
-     * widget) can mirror the same dual-gate behaviour without
-     * duplicating the slot keys (Copilot iter-4 — the scheduler
-     * status widget previously omitted `eval_nightly` /
-     * `ai_act_regulatory_poll` because they're not in SLOTS).
+     * `[slot_key, command, composite_gate_config_key]` so callers
+     * (the ops widget) can mirror the same dual-gate behaviour by
+     * reading the gate via `config(<key>)` rather than calling
+     * `env(...)` at request time (Copilot iter-5 — request-time
+     * `env()` lookups bypass `php artisan config:cache` and can
+     * return null in production after a cache build). The config
+     * value itself is bound at config-load time to the same env
+     * source bootstrap reads.
      *
      * @return array<int, array{string, string, string}>
      */
     public static function compositeGatedSlots(): array
     {
         return [
-            ['eval_nightly', 'eval:nightly', 'EVAL_NIGHTLY_ENABLED'],
-            ['ai_act_regulatory_poll', 'ai-act:regulatory-poll', 'AI_ACT_REGULATORY_FEED_ENABLED'],
+            ['eval_nightly', 'eval:nightly', 'askmydocs.composite_gates.eval_nightly'],
+            ['ai_act_regulatory_poll', 'ai-act:regulatory-poll', 'askmydocs.composite_gates.ai_act_regulatory_poll'],
         ];
     }
 
