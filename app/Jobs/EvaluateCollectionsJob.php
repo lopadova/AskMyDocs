@@ -8,6 +8,7 @@ use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Notifications\NotificationPublisher;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Retrieval\CosineCalculator;
 use App\Support\TenantContext;
@@ -96,18 +97,31 @@ final class EvaluateCollectionsJob implements ShouldQueue
                     continue;
                 }
 
-                KbCollectionMember::query()->updateOrCreate(
+                $reason = $staticMatch ? 'static_match' : 'semantic_match';
+                $member = KbCollectionMember::query()->updateOrCreate(
                     [
                         'tenant_id' => $this->tenantId,
                         'collection_id' => $collection->id,
                         'knowledge_document_id' => $document->id,
                     ],
                     [
-                        'reason' => $staticMatch ? 'static_match' : 'semantic_match',
+                        'reason' => $reason,
                         'semantic_score' => $semanticScore,
                         'manually_excluded' => false,
                     ],
                 );
+
+                if ($member->wasRecentlyCreated) {
+                    app(NotificationPublisher::class)->publishCollectionNewMember(
+                        tenantId: $this->tenantId,
+                        projectKey: (string) $document->project_key,
+                        document: $document,
+                        collectionId: (int) $collection->id,
+                        collectionName: (string) $collection->name,
+                        reason: $reason,
+                        semanticScore: $semanticScore,
+                    );
+                }
             }
         } finally {
             $tenantContext->set($previousTenant);
