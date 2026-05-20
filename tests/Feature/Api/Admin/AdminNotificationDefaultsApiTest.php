@@ -159,6 +159,19 @@ class AdminNotificationDefaultsApiTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_update_rejects_empty_payload(): void
+    {
+        // Copilot iter-3 — an empty `defaults` array used to silently
+        // no-op (the controller short-circuited at `if ($byCell === [])`).
+        // The validation now rejects at 422 so the caller knows their
+        // intent didn't land.
+        $super = $this->makeSuperAdmin();
+
+        $this->actingAs($super)
+            ->putJson('/api/admin/notifications/defaults', ['defaults' => []])
+            ->assertStatus(422);
+    }
+
     public function test_update_dedups_same_cell_last_wins(): void
     {
         $super = $this->makeSuperAdmin();

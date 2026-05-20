@@ -70,8 +70,23 @@ final class AdminNotificationDefaultsController extends Controller
         $allowedEventTypes = NotificationEvent::eventTypes();
         $allowedChannels = NotificationPreference::availableChannels();
 
+        // `min:1` rejects an empty payload at 422 (Copilot iter-3: the
+        // prior validation accepted `defaults: []` and the controller
+        // silently no-op'd). The endpoint has additive-upsert
+        // semantics by design — the cell domain is closed
+        // (`NotificationEvent::eventTypes()` × `NotificationPreference::availableChannels()`
+        // = 5 × 6 = 30 cells max), the FE always sends the full
+        // matrix, and the composite-unique `(tenant_id, event_type,
+        // channel)` upsert makes idempotent replays cheap. Replace
+        // semantics (DELETE-and-INSERT) was considered and rejected:
+        // the cell domain is enumerable from the model, no row can
+        // ever be "orphan" relative to the matrix, and the only
+        // observable difference would be `updated_at` churn on
+        // unchanged cells — already accepted as part of the
+        // idempotent contract (see NotificationPreferencesInitializer
+        // docblock).
         $validated = $request->validate([
-            'defaults' => ['required', 'array', 'max:100'],
+            'defaults' => ['required', 'array', 'min:1', 'max:100'],
             'defaults.*.event_type' => ['required', 'string', Rule::in($allowedEventTypes)],
             'defaults.*.channel' => ['required', 'string', Rule::in($allowedChannels)],
             'defaults.*.enabled' => ['required', 'boolean'],
@@ -91,6 +106,11 @@ final class AdminNotificationDefaultsController extends Controller
             }
 
             if ($byCell === []) {
+                // Defence-in-depth: `min:1` validation above already
+                // rejects this at 422, so a dedup-to-empty result is
+                // structurally impossible. Kept as a hard guard so the
+                // upsert below is never called with an empty rows
+                // array (which is undefined behaviour across drivers).
                 return;
             }
 

@@ -84,7 +84,8 @@ class UserController extends Controller
         UserStoreRequest $request,
         NotificationPreferencesInitializer $notifInitializer,
         TenantContext $tenants,
-    ): JsonResponse {
+    ): JsonResponse
+    {
         $data = $request->validated();
 
         $user = DB::transaction(function () use ($data, $notifInitializer, $tenants) {
