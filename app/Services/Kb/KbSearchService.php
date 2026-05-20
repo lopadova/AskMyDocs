@@ -562,6 +562,7 @@ class KbSearchService
         $hasDocumentLevelFilters = $f->sourceTypes !== []
             || $f->canonicalTypes !== []
             || $f->docIds !== []
+            || $f->collectionId !== null
             || $f->languages !== []
             || $f->dateFrom !== null
             || $f->dateTo !== null;
@@ -576,6 +577,16 @@ class KbSearchService
                 }
                 if ($f->docIds !== []) {
                     $docQuery->whereIn('id', $f->docIds);
+                }
+                if ($f->collectionId !== null) {
+                    $docQuery->whereExists(function ($sub) use ($f): void {
+                        $sub->select(DB::raw(1))
+                            ->from('kb_collection_members as kcm')
+                            ->whereColumn('kcm.knowledge_document_id', 'knowledge_documents.id')
+                            ->whereColumn('kcm.tenant_id', 'knowledge_documents.tenant_id')
+                            ->where('kcm.collection_id', $f->collectionId)
+                            ->where('kcm.manually_excluded', false);
+                    });
                 }
                 if ($f->languages !== []) {
                     $docQuery->whereIn('language', $f->languages);

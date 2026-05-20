@@ -13,6 +13,7 @@ import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
 
 const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
+const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
 
 /**
  * Chat feature root. Three columns:
@@ -88,6 +89,11 @@ export function ChatView(): ReactNode {
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
     const [showCounterfactual, setShowCounterfactual] = useState(true);
+    const collectionsQuery = useQuery({
+        queryKey: ['chat-collections'],
+        queryFn: () => chatApi.listCollections(),
+        staleTime: 60_000,
+    });
 
     useEffect(() => {
         const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
@@ -97,6 +103,30 @@ export function ChatView(): ReactNode {
             setShowCounterfactual(true);
         }
     }, []);
+
+    useEffect(() => {
+        if (activeId === null) {
+            return;
+        }
+        const raw = window.localStorage.getItem(`${COLLECTION_SCOPE_PREF_PREFIX}${activeId}`);
+        const parsed = raw !== null && raw !== '' ? Number(raw) : null;
+        setFilters((prev) => ({
+            ...prev,
+            collection_id: parsed !== null && Number.isFinite(parsed) ? parsed : null,
+        }));
+    }, [activeId]);
+
+    useEffect(() => {
+        if (activeId === null) {
+            return;
+        }
+        const key = `${COLLECTION_SCOPE_PREF_PREFIX}${activeId}`;
+        if (filters.collection_id == null) {
+            window.localStorage.removeItem(key);
+            return;
+        }
+        window.localStorage.setItem(key, String(filters.collection_id));
+    }, [activeId, filters.collection_id]);
 
     // Initial message history. The SDK's `useChat()` doesn't fetch
     // history from the BE — it only manages live state. This query
@@ -433,6 +463,7 @@ export function ChatView(): ReactNode {
                     projectKey={projectKey}
                     modelLabel={headerMeta}
                     onRequireConversation={requireConversation}
+                    availableCollections={collectionsQuery.data ?? []}
                     filters={filters}
                     onFiltersChange={setFilters}
                     onSend={handleSend}

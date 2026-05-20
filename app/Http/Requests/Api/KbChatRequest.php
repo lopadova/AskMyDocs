@@ -80,6 +80,7 @@ final class KbChatRequest extends FormRequest
 
             'filters.doc_ids' => ['nullable', 'array'],
             'filters.doc_ids.*' => ['integer', 'min:1'],
+            'filters.collection_id' => ['nullable', 'integer', 'min:1'],
 
             'filters.folder_globs' => ['nullable', 'array'],
             'filters.folder_globs.*' => ['string', 'max:255'],
@@ -126,6 +127,7 @@ final class KbChatRequest extends FormRequest
             canonicalTypes: array_values(array_map('strval', $f['canonical_types'] ?? [])),
             connectorTypes: array_values(array_map('strval', $f['connector_types'] ?? [])),
             docIds: array_values(array_map('intval', $f['doc_ids'] ?? [])),
+            collectionId: isset($f['collection_id']) ? (int) $f['collection_id'] : null,
             folderGlobs: array_values(array_map('strval', $f['folder_globs'] ?? [])),
             dateFrom: $this->normaliseDate($f['date_from'] ?? null),
             dateTo: $this->normaliseDate($f['date_to'] ?? null),

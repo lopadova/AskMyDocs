@@ -157,6 +157,7 @@ final class KbChatControllerFiltersTest extends TestCase
                 'canonical_types' => ['decision', 'runbook'],
                 'connector_types' => ['local', 'google-drive'],
                 'doc_ids' => [42, 99],
+                'collection_id' => 77,
                 'folder_globs' => ['hr/policies/**'],
                 'date_from' => '2026-01-01',
                 'date_to' => '2026-12-31',
@@ -174,6 +175,7 @@ final class KbChatControllerFiltersTest extends TestCase
         $this->assertSame(['decision', 'runbook'], $f->canonicalTypes);
         $this->assertSame(['local', 'google-drive'], $f->connectorTypes);
         $this->assertSame([42, 99], $f->docIds);
+        $this->assertSame(77, $f->collectionId);
         $this->assertSame(['hr/policies/**'], $f->folderGlobs);
         $this->assertSame('2026-01-01', $f->dateFrom);
         $this->assertSame('2026-12-31', $f->dateTo);
@@ -231,6 +233,15 @@ final class KbChatControllerFiltersTest extends TestCase
             'filters' => ['doc_ids' => ['not-an-int', 42]],
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['filters.doc_ids.0']);
+    }
+
+    public function test_rejects_non_integer_collection_id_with_422(): void
+    {
+        $this->postJson('/api/kb/chat', [
+            'question' => 'X',
+            'filters' => ['collection_id' => 'not-an-int'],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['filters.collection_id']);
     }
 
     public function test_rejects_date_to_before_date_from_with_422(): void
