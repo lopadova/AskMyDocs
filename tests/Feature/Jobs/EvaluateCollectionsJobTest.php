@@ -10,8 +10,13 @@ use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Models\NotificationEvent;
+use App\Models\NotificationPreference;
+use App\Models\ProjectMembership;
+use App\Models\User;
 use App\Services\Kb\EmbeddingCacheService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Mockery;
 use Tests\TestCase;
 
@@ -167,6 +172,66 @@ final class EvaluateCollectionsJobTest extends TestCase
         $this->assertSame('semantic_match', $member->reason);
         $this->assertNotNull($member->semantic_score);
         $this->assertGreaterThanOrEqual(0.80, (float) $member->semantic_score);
+    }
+
+    public function test_dispatches_collection_new_member_notification_when_membership_is_newly_created(): void
+    {
+        $subscriber = User::query()->create([
+            'tenant_id' => 'tenant-a',
+            'name' => 'collection-subscriber',
+            'email' => 'collection-subscriber@test.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        ProjectMembership::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $subscriber->id,
+            'project_key' => 'proj-a',
+            'role' => 'member',
+            'scope_allowlist' => null,
+        ]);
+        NotificationPreference::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $subscriber->id,
+            'event_type' => NotificationEvent::EVENT_COLLECTION_NEW_MEMBER,
+            'channel' => NotificationPreference::CHANNEL_IN_APP,
+            'enabled' => true,
+        ]);
+
+        $doc = KnowledgeDocument::query()->create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'proj-a',
+            'source_type' => 'markdown',
+            'title' => 'Decision Cache',
+            'source_path' => 'docs/dec-cache-v2.md',
+            'mime_type' => 'text/markdown',
+            'slug' => 'dec-cache-v2',
+            'canonical_type' => 'decision',
+            'frontmatter_json' => ['tags' => ['cache', 'infra']],
+        ]);
+
+        KbCollection::query()->create([
+            'tenant_id' => 'tenant-a',
+            'slug' => 'core-decisions',
+            'name' => 'Core Decisions',
+            'visibility' => 'private',
+            'criteria' => [
+                'projects' => ['proj-a'],
+                'tags' => ['cache'],
+                'canonical_types' => ['decision'],
+                'slug_globs' => ['dec-*'],
+            ],
+            'threshold' => 0.75,
+        ]);
+
+        $this->app->call([new EvaluateCollectionsJob($doc->id, 'tenant-a'), 'handle']);
+
+        $event = NotificationEvent::query()
+            ->where('event_type', NotificationEvent::EVENT_COLLECTION_NEW_MEMBER)
+            ->sole();
+        $this->assertSame($subscriber->id, $event->user_id);
+        $this->assertSame('Core Decisions', $event->payload['collection_name'] ?? null);
+        $this->assertSame((int) $doc->id, $event->payload['doc_id'] ?? null);
+        $this->assertSame('static_match', $event->payload['reason'] ?? null);
     }
 }
 

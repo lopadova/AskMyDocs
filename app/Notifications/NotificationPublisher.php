@@ -10,6 +10,7 @@ use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Notifications\Events\CollectionNewMember;
 use App\Notifications\Events\KbCanonicalPromoted;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Scopes\AccessScopeScope;
@@ -190,6 +191,48 @@ final class NotificationPublisher
                 'doc_id' => $docId,
                 'slug' => $slug,
                 'promoted_by' => $actor,
+            ],
+            tenantId: $tenantId,
+        ));
+    }
+
+    public function publishCollectionNewMember(
+        string $tenantId,
+        string $projectKey,
+        KnowledgeDocument $document,
+        int $collectionId,
+        string $collectionName,
+        string $reason,
+        ?float $semanticScore,
+    ): void {
+        if ($tenantId === '' || $projectKey === '') {
+            return;
+        }
+
+        $recipients = $this->streamEligibleRecipients(
+            $tenantId,
+            NotificationEvent::EVENT_COLLECTION_NEW_MEMBER,
+            fn (User $user): bool => $this->userCanViewDocumentInTenant(
+                $user,
+                $tenantId,
+                $projectKey,
+                $document,
+            ),
+        );
+        if ($recipients === []) {
+            return;
+        }
+
+        Event::dispatch(new CollectionNewMember(
+            recipients: $recipients,
+            payload: [
+                'collection_id' => $collectionId,
+                'collection_name' => $collectionName,
+                'doc_id' => (int) $document->id,
+                'doc_title' => $document->title === null ? null : (string) $document->title,
+                'project_key' => $projectKey,
+                'reason' => $reason,
+                'score' => $semanticScore,
             ],
             tenantId: $tenantId,
         ));
