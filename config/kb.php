@@ -266,6 +266,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Counterfactual mini-retrieval (v8.0/W3.4)
+    |--------------------------------------------------------------------------
+    |
+    | "If I had filtered by Y you would have cited Z" — runs a focused
+    | mini-retrieval against up to N other projects the calling user
+    | has membership in, so the chat UI can surface
+    | `meta.counterfactual = [{project_key, top_chunks: [...]}]`
+    | panels.
+    |
+    | RBAC strict: the candidate project set is derived ONLY from
+    | `project_memberships` rows scoped to the calling user's
+    | (tenant_id, user_id) pair. A project the user has no membership
+    | in NEVER surfaces — see CounterfactualServiceTest.
+    |
+    | All knobs are env-tunable; defaults match ADR 0014 §C.3.
+    */
+    'counterfactual' => [
+        'enabled' => (bool) env('KB_COUNTERFACTUAL_ENABLED', true),
+        'max_neighbors' => (int) env('KB_COUNTERFACTUAL_MAX_NEIGHBORS', 3),
+        'per_project_limit' => (int) env('KB_COUNTERFACTUAL_PER_PROJECT_LIMIT', 5),
+        'min_similarity' => (float) env('KB_COUNTERFACTUAL_MIN_SIMILARITY', 0.25),
+        'cache_ttl_seconds' => (int) env('KB_COUNTERFACTUAL_CACHE_TTL_SECONDS', 3600),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Anti-hallucination refusal (v3.0+)
     |--------------------------------------------------------------------------
     |
