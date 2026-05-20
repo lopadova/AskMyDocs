@@ -96,6 +96,9 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\NotificationDigest::class,
         // v8.0/W2.3 — per-tenant baseline preferences for new users.
         \App\Models\NotificationTenantDefault::class,
+        // v8.0/W4 — decision-debt health snapshot + tier-2 scheduler overrides.
+        \App\Models\KbCanonicalHealthSnapshot::class,
+        \App\Models\TenantSchedulerOverride::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

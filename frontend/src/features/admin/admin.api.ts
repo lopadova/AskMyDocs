@@ -381,6 +381,29 @@ export interface KbProjectsResponse {
     projects: string[];
 }
 
+export interface KbHealthRow {
+    knowledge_document_id: number;
+    project_key: string;
+    doc_slug: string | null;
+    health_score: number;
+    factors: Record<string, number>;
+    computed_at: string | null;
+}
+
+export interface KbHealthResponse {
+    data: KbHealthRow[];
+    meta: {
+        tenant_id: string;
+        project: string | null;
+        count: number;
+        total: number;
+        avg_score: number;
+        max_score: number;
+    };
+    weights: Record<string, number>;
+    threshold_event_score: number;
+}
+
 export const adminKbApi = {
     async tree(q: KbTreeQuery = {}): Promise<KbTreeResponse> {
         const { data } = await api.get<KbTreeResponse>('/api/admin/kb/tree', {
@@ -390,6 +413,12 @@ export const adminKbApi = {
     },
     async projects(): Promise<KbProjectsResponse> {
         const { data } = await api.get<KbProjectsResponse>('/api/admin/kb/projects');
+        return data;
+    },
+    async health(params: { project?: string | null; min_score?: number; limit?: number } = {}): Promise<KbHealthResponse> {
+        const { data } = await api.get<KbHealthResponse>('/api/admin/kb/health', {
+            params,
+        });
         return data;
     },
 };

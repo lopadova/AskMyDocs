@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
+use App\Http\Controllers\Api\Admin\KbHealthController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
@@ -220,6 +221,8 @@ Route::middleware([
             ->name('api.admin.kb.tree');
         Route::get('/kb/projects', [KbTreeController::class, 'projects'])
             ->name('api.admin.kb.projects');
+        Route::get('/kb/health', [KbHealthController::class, 'index'])
+            ->name('api.admin.kb.health.index');
 
         // Phase G2 — KB document detail (read-only). Admin-only binding
         // shim resolves trashed rows via `withTrashed()` — the default

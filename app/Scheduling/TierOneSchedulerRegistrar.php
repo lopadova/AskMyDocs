@@ -44,6 +44,7 @@ final class TierOneSchedulerRegistrar
         ['chat_log_prune', 'chat-log:prune'],
         ['kb_prune_deleted', 'kb:prune-deleted'],
         ['kb_rebuild_graph', 'kb:rebuild-graph'],
+        ['kb_health_recompute', 'kb:health-recompute'],
         ['queue_prune_failed', 'queue:prune-failed --hours=48'],
         ['admin_audit_prune', 'admin-audit:prune'],
         ['admin_nonces_prune', 'admin-nonces:prune'],

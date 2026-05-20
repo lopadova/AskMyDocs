@@ -199,6 +199,10 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_REBUILD_GRAPH_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_REBUILD_GRAPH_CRON', '40 3 * * *'),
         ],
+        'kb_health_recompute' => [
+            'enabled' => (bool) env('SCHEDULE_KB_HEALTH_RECOMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_HEALTH_RECOMPUTE_CRON', '50 3 * * *'),
+        ],
         'queue_prune_failed' => [
             'enabled' => (bool) env('SCHEDULE_QUEUE_PRUNE_FAILED_ENABLED', true),
             'cron' => (string) env('SCHEDULE_QUEUE_PRUNE_FAILED_CRON', '0 4 * * *'),
@@ -241,6 +245,17 @@ return [
         'ai_act_regulatory_poll' => [
             'enabled' => (bool) env('SCHEDULE_AI_ACT_REGULATORY_POLL_ENABLED', true),
             'cron' => (string) env('SCHEDULE_AI_ACT_REGULATORY_POLL_CRON', '10 4 * * *'),
+        ],
+    ],
+
+    'kb_health' => [
+        'threshold_event_score' => (int) env('KB_HEALTH_THRESHOLD_EVENT_SCORE', 70),
+        'weights' => [
+            'age_decay' => (float) env('KB_HEALTH_WEIGHT_AGE_DECAY', 0.25),
+            'repeat_questions' => (float) env('KB_HEALTH_WEIGHT_REPEAT_QUESTIONS', 0.20),
+            'supersedes_chain' => (float) env('KB_HEALTH_WEIGHT_SUPERSEDES_CHAIN', 0.20),
+            'orphan_outbound' => (float) env('KB_HEALTH_WEIGHT_ORPHAN_OUTBOUND', 0.15),
+            'status_decay' => (float) env('KB_HEALTH_WEIGHT_STATUS_DECAY', 0.20),
         ],
     ],
 
