@@ -33,7 +33,7 @@ foundation. Four sub-PRs all merged on `feature/v8.0`:
   5×6 (event_type × channel) matrix; controller GET + atomic
   `upsert()` PUT keyed on `(tenant_id, user_id, event_type, channel)`
   (R30 + R21 race-safe). R29 testid hierarchy, R17 effect-clobber
-  guard, R15 a11y aria-labels, first-save dirty semantics, unregistered-
+  guard, R15 a11y aria-labels, first-save dirty semantics, unregistered
   channel uncheck allowed. Platform `config('askmydocs.notifications.default_channel_preferences')`
   fallback for new users.
 - **W2.3** (PR #197 — merged at `bdd18c4`) — Per-tenant admin
