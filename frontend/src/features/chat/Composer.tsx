@@ -6,6 +6,7 @@ import { useChatStore } from './chat.store';
 import { VoiceInput } from './VoiceInput';
 import type { MentionResult } from './use-mention-search';
 import type { FilterState } from './chat.api';
+import type { ChatCollectionOption } from './chat.api';
 
 export interface ComposerProps {
     conversationId: number | null;
@@ -29,6 +30,7 @@ export interface ComposerProps {
      * "No projects available" hint.
      */
     availableProjects?: string[];
+    availableCollections?: ChatCollectionOption[];
     /** Tags available for the current project scope (slug + display label + optional color). */
     availableTags?: { slug: string; label: string; color?: string }[];
     /** Doc-id → title map for chip labels (mention pinning, T2.8 follow-up). */
@@ -83,6 +85,7 @@ export function Composer({
     modelLabel,
     onRequireConversation,
     availableProjects = [],
+    availableCollections = [],
     availableTags = [],
     docLabels = {},
     filters,
@@ -275,6 +278,28 @@ export function Composer({
                 />
                 <div style={{ display: 'flex', gap: 6, padding: '10px 12px 2px', flexWrap: 'wrap' }}>
                     {projectLabel && <ContextChip icon="Folder" label={projectLabel} />}
+                    <label style={{ fontSize: 11, color: 'var(--fg-2)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span>Scope</span>
+                        <select
+                            data-testid="chat-collection-picker"
+                            value={filters.collection_id ?? ''}
+                            onChange={(e) => {
+                                const raw = e.target.value;
+                                onFiltersChange((prev) => ({
+                                    ...prev,
+                                    collection_id: raw === '' ? null : Number(raw),
+                                }));
+                            }}
+                            style={{ borderRadius: 8, border: '1px solid var(--panel-border)', background: 'var(--bg-3)', color: 'var(--fg-0)', padding: '2px 6px' }}
+                        >
+                            <option value="">All documents</option>
+                            {availableCollections.map((row) => (
+                                <option key={row.id} value={row.id}>
+                                    {row.name}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
                     <ContextChip icon="Book" label="canonical only" />
                     {modelLabel && <ContextChip icon="Brain" label={modelLabel} />}
                     <span style={{ flex: 1 }} />

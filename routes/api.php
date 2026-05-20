@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
+use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
@@ -109,6 +110,8 @@ Route::middleware([
     // @mention popover (T2.7/T2.8 will consume it).
     Route::get('/kb/documents/search', KbDocumentSearchController::class)
         ->name('api.kb.documents.search');
+    Route::get('/kb/collections', KbCollectionPickerController::class)
+        ->name('api.kb.collections.index');
 
     // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
     // consumes these in T2.7-FE follow-up). Per-user authorization

@@ -39,6 +39,7 @@ export interface FilterState {
     canonical_types?: string[];
     connector_types?: string[];
     doc_ids?: number[];
+    collection_id?: number | null;
     folder_globs?: string[];
     date_from?: string | null;
     date_to?: string | null;
@@ -59,6 +60,7 @@ export function isFilterStateEmpty(f: FilterState): boolean {
         (f.canonical_types?.length ?? 0) === 0 &&
         (f.connector_types?.length ?? 0) === 0 &&
         (f.doc_ids?.length ?? 0) === 0 &&
+        (f.collection_id == null) &&
         (f.folder_globs?.length ?? 0) === 0 &&
         (f.languages?.length ?? 0) === 0 &&
         (f.date_from == null) &&
@@ -80,6 +82,7 @@ export function countSelectedFilters(f: FilterState): number {
         (f.canonical_types?.length ?? 0) > 0,
         (f.connector_types?.length ?? 0) > 0,
         (f.doc_ids?.length ?? 0) > 0,
+        f.collection_id != null,
         (f.folder_globs?.length ?? 0) > 0,
         (f.languages?.length ?? 0) > 0,
         f.date_from != null,
@@ -172,6 +175,11 @@ export interface CounterfactualPanel {
     top_chunks: RunnerUpChunk[];
 }
 
+export interface ChatCollectionOption {
+    id: number;
+    name: string;
+}
+
 export const chatApi = {
     async listConversations(): Promise<Conversation[]> {
         const { data } = await api.get<Conversation[]>('/conversations');
@@ -217,6 +225,11 @@ export const chatApi = {
             : { content };
         const { data } = await api.post<Message>(`/conversations/${conversationId}/messages`, payload);
         return data;
+    },
+
+    async listCollections(): Promise<ChatCollectionOption[]> {
+        const { data } = await api.get<{ data: ChatCollectionOption[] }>('/api/kb/collections');
+        return data.data;
     },
 
     async rateMessage(

@@ -11,17 +11,17 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:57:05Z
+- updated_at_utc: 2026-05-21T00:22:50Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 1
-- agent_state: waiting_ci_review
-- last_action: pushed commit 0cc1aeb66c9c7a5db64e1b51a454c8f75ffe8f78 to PR #209 on 2026-05-20T21:57:05Z with 5 review-finding fixes
-- next_action: wait/recheck CI + review on PR #209, then merge with closure audit when checks are green and no must-fix findings remain
+- open_pr_count: 0
+- agent_state: w6_2_ready_to_pr
+- last_action: implemented W6.2 chat collection picker and backend `filters.collection_id` scope (chat request + message + stream + retrieval filters + `/api/kb/collections`) and verified tests on 2026-05-21 (PHPUnit 14 tests, Vitest 5 tests)
+- next_action: commit W6.2 branch changes, open PR, run CI/review loop, and merge when green with no must-fix findings
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
-  - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: 0cc1aeb66c9c7a5db64e1b51a454c8f75ffe8f78, status: open)
+  - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
 
 
 
