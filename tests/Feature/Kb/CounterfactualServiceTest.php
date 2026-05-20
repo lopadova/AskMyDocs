@@ -11,7 +11,6 @@ use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\Retrieval\CounterfactualService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
 use Mockery;
 use Tests\TestCase;
 
@@ -157,6 +156,52 @@ final class CounterfactualServiceTest extends TestCase
             primaryProjectKey: 'projA',
         );
         $this->assertSame([], $panels);
+    }
+
+    public function test_rbac_strict_same_project_key_across_tenants_does_not_leak(): void
+    {
+        // Copilot iter-1 R30 regression test: two TENANTS legitimately
+        // share the same `project_key` (per R30 — tenant boundary, not
+        // project_key, is the safety boundary). The user in tenant A
+        // has a membership in `shared` and queries the counterfactual.
+        // The cached panel for `tenant-A|shared` must NOT contain
+        // chunks the request is somehow able to surface from
+        // `tenant-B|shared` (the new `->forTenant()` clause makes the
+        // SQL itself enforce the boundary; this test asserts the
+        // contract holds end-to-end).
+        $alice = $this->makeUser('alice');
+
+        ProjectMembership::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $alice->id,
+            'project_key' => 'shared',
+            'role' => 'editor',
+            'scope_allowlist' => null,
+        ]);
+
+        $this->seedCachedPanelFor('q', 'shared', 'tenant-a', [
+            ['chunk_id' => 1, 'project_key' => 'shared', 'tenant_id' => 'tenant-a'],
+        ]);
+
+        $service = new CounterfactualService($this->stubEmbeddingCache());
+
+        $panels = $service->pick(
+            query: 'q',
+            userId: $alice->id,
+            tenantId: 'tenant-a',
+            primaryProjectKey: 'projOther',
+        );
+
+        $this->assertCount(1, $panels);
+        $this->assertSame('shared', $panels[0]['project_key']);
+        // Cache key MUST include tenant_id so the lookup for
+        // tenant-a|shared can never accidentally pick up
+        // tenant-b|shared.
+        $tenantBkey = 'cf:'.hash('sha256', 'tenant-b|shared|q');
+        $this->assertFalse(
+            Cache::has($tenantBkey),
+            'cache should not be seeded under foreign tenant key',
+        );
     }
 
     public function test_second_call_hits_cache_no_re_lookup(): void

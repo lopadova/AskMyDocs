@@ -21,8 +21,9 @@ use Illuminate\Support\Facades\Cache;
  * Critical RBAC contract (ADR 0014 §C.3): the candidate project set
  * is derived STRICTLY from `project_memberships` rows scoped to the
  * (tenant_id, user_id) pair — a project the user has no membership
- * in MUST NEVER appear in the response. The architecture test
- * `CounterfactualRbacTest` pins this invariant.
+ * in MUST NEVER appear in the response. The feature test
+ * `CounterfactualServiceTest::test_rbac_strict_only_user_membership_projects_surface`
+ * pins this invariant.
  *
  * Cost shape: 1 cache lookup + 1 mini-retrieval per neighbor project
  * (up to 3); cache TTL is 1h keyed on `(query_hash, project_key)`;
@@ -79,7 +80,7 @@ final class CounterfactualService
             $top = Cache::remember(
                 $cacheKey,
                 $cacheTtl,
-                fn () => $this->miniRetrieval($query, $projectKey, $perProjectLimit, $minSimilarity)->all(),
+                fn () => $this->miniRetrieval($query, $projectKey, $tenantId, $perProjectLimit, $minSimilarity)->all(),
             );
 
             if ($top === []) {
@@ -146,6 +147,7 @@ final class CounterfactualService
     private function miniRetrieval(
         string $query,
         string $projectKey,
+        string $tenantId,
         int $limit,
         float $minSimilarity,
     ): Collection {
@@ -153,12 +155,19 @@ final class CounterfactualService
         $queryEmbedding = $embeddingsResponse->embeddings[0];
         $vectorString = '['.implode(',', $queryEmbedding).']';
 
+        // R30: `KnowledgeChunk` is `BelongsToTenant` with no global
+        // scope, and `project_key` is NOT globally unique (two tenants
+        // can legitimately share `default` / `engineering` / etc.).
+        // Without `->forTenant(...)` a chunk from another tenant that
+        // shares the same project_key would surface in the
+        // counterfactual panel — RBAC catastrophe (Copilot iter-1 fix).
         $chunks = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
             ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
-            ->where('project_key', $projectKey)
+            ->where('knowledge_chunks.project_key', $projectKey)
             ->orderByDesc('vector_score')
             ->limit($limit)
             ->get();

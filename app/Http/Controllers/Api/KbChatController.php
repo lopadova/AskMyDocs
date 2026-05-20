@@ -193,8 +193,6 @@ class KbChatController extends Controller
      * uniformity across grounded vs refused.
      *
      * @param  array<int, array<string, mixed>>  $citations
-     */
-    /**
      * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function buildSuccessResponse(
