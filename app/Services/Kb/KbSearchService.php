@@ -56,6 +56,19 @@ class KbSearchService
         $retrievalStart = microtime(true);
 
         $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters);
+        // v8.0/W3.1 — Why-not-cited: fetch up to 15 candidates that
+        // were considered but did NOT make the primary top-K cut.
+        // Each runner-up carries a `reason` field so the FE can
+        // surface "Considered but not used" with a demotion-cause
+        // badge. NOT fed to the LLM — visible only in the chat UI.
+        $runnerUp = $this->fetchRunnerUp(
+            query: $query,
+            primary: $primary,
+            projectKey: $projectKey,
+            minSimilarity: $minSimilarity,
+            filters: $effectiveFilters,
+            limit: (int) config('kb.runner_up.limit', 15),
+        );
         $expanded = $this->graphExpander->expand($primary, $effectiveProject);
         $rejected = $this->rejectedInjector->pick($query, $effectiveProject);
 
@@ -87,10 +100,12 @@ class KbSearchService
             primary: $primary,
             expanded: $expanded,
             rejected: $rejected,
+            runnerUp: $runnerUp,
             meta: [
                 'primary_count' => $primary->count(),
                 'expanded_count' => $expanded->count(),
                 'rejected_count' => $rejected->count(),
+                'runner_up_count' => $runnerUp->count(),
                 'project_key' => $effectiveProject,
                 // Operational hint: how many filter dimensions the USER
                 // selected on this query — NOT how many actually narrowed
@@ -181,6 +196,101 @@ class KbSearchService
         return $rerank
             ? $limit * (int) config('kb.reranking.candidate_multiplier', 3)
             : $limit;
+    }
+
+    /**
+     * v8.0/W3.1 — fetch up to `$limit` chunks that were retrievable for
+     * the query but did NOT survive into the top-K primary set. Used
+     * by the chat-UI "Considered but not used" tab so users can see
+     * what the retriever considered + why it was demoted.
+     *
+     * The reason categorisation is intentionally coarse for the MVP:
+     * `not_in_top_k` covers everything that the over-retrieve+rerank
+     * pipeline considered but didn't surface. Finer-grained reasons
+     * (`below_rerank_threshold` / `demoted_by_status_penalty` /
+     * `deduplicated_by_doc` / `outside_context_window`) live in the
+     * config-driven roadmap entry and follow when the operator-side
+     * value justifies the Reranker refactor.
+     *
+     * Excludes the chunk IDs already in `$primary` so the FE doesn't
+     * double-render any cell. Honours the same project + filter scope
+     * as the primary search (R30 tenant + filter contract). The
+     * `min_similarity` floor is lowered to `runner_up.min_similarity`
+     * (default 0.20) so the FE can show "near miss" candidates that
+     * fell just below the primary cutoff.
+     *
+     * @param  Collection<int, array>  $primary
+     * @return Collection<int, array>
+     */
+    private function fetchRunnerUp(
+        string $query,
+        Collection $primary,
+        ?string $projectKey,
+        float $minSimilarity,
+        RetrievalFilters $filters,
+        int $limit,
+    ): Collection {
+        if ($limit <= 0) {
+            return collect();
+        }
+
+        $primaryIds = $primary
+            ->map(fn ($c) => $c['chunk_id'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+
+        $embeddingsResponse = $this->embeddingCache->generate([$query]);
+        $queryEmbedding = $embeddingsResponse->embeddings[0];
+        $vectorString = '['.implode(',', $queryEmbedding).']';
+
+        $floor = (float) config('kb.runner_up.min_similarity', max(0.0, $minSimilarity - 0.10));
+
+        $builder = KnowledgeChunk::query()
+            ->with('document')
+            ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
+            ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $floor])
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->orderByDesc('vector_score');
+
+        if ($projectKey !== null && $projectKey !== '') {
+            $builder->where('project_key', $projectKey);
+        }
+
+        if (! $filters->isEmpty()) {
+            $this->applyFilters($builder, $filters);
+        }
+
+        if ($primaryIds !== []) {
+            $builder->whereNotIn('knowledge_chunks.id', $primaryIds);
+        }
+
+        $candidates = $builder->limit($limit)->get();
+
+        return collect($candidates)->map(function ($chunk): array {
+            return [
+                'chunk_id' => $chunk->id,
+                'project_key' => $chunk->project_key,
+                'heading_path' => $chunk->heading_path,
+                // Truncate the body — the runner-up panel renders a
+                // preview only, not the full chunk. Caps the JSON
+                // payload size when the FE pulls a message back.
+                'chunk_text' => mb_substr((string) $chunk->chunk_text, 0, 400),
+                'vector_score' => (float) ($chunk->vector_score ?? 0),
+                'reason' => 'not_in_top_k',
+                'document' => [
+                    'id' => $chunk->document?->id,
+                    'title' => $chunk->document?->title,
+                    'source_path' => $chunk->document?->source_path,
+                    'source_type' => $chunk->document?->source_type,
+                    'doc_id' => $chunk->document?->doc_id,
+                    'slug' => $chunk->document?->slug,
+                    'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
+                    'canonical_type' => $chunk->document?->canonical_type,
+                    'canonical_status' => $chunk->document?->canonical_status,
+                ],
+            ];
+        });
     }
 
     /**
