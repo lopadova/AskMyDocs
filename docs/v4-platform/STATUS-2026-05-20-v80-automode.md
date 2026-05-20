@@ -11,19 +11,20 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T23:40:29Z
+- updated_at_utc: 2026-05-20T23:42:10Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: w6_4_patch_ready_local
-- last_action: Implemented W6.4 collection_new_member integration on top of HEAD aaa9c61941fd740ce45a71440f268319a32673dc by wiring EvaluateCollectionsJob -> NotificationPublisher::publishCollectionNewMember only on newly-created membership rows; added regression coverage in EvaluateCollectionsJobTest and ran targeted suite (18 passed) on 2026-05-20
-- next_action: commit/push W6.4 patch on new branch, open PR against feature/v8.0, then continue CI/review/merge loop
+- open_pr_count: 1
+- agent_state: waiting_ci_pr_212
+- last_action: Opened PR #212 on 2026-05-20 from branch feature/v8.0-W6.4-collection-new-member-event (head f07701deb965dbaa7c1a9f9470422781d17bf620) with W6.4 collection_new_member dispatch wiring + regression tests
+- next_action: wait/recheck PR #212 CI; if green and no must-fix findings, post closure audit and merge with --merge --delete-branch
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
   - #210: https://github.com/lopadova/AskMyDocs/pull/210 (head: feature/v8.0-W6.2-chat-collection-picker-r2, sha: 3300e1b0602ea2bad8f744f6a0598a094a477fc1, status: merged, merged_at_utc: 2026-05-20T22:59:45Z)
   - #211: https://github.com/lopadova/AskMyDocs/pull/211 (head: feature/v8.0-W6.3-mcp-resource-exposure, sha: 4600fdbabb0c3683d90afda903c55d200935289c, status: merged, merged_at_utc: 2026-05-20T23:36:50Z, merge_commit: aaa9c61941fd740ce45a71440f268319a32673dc)
+  - #212: https://github.com/lopadova/AskMyDocs/pull/212 (head: feature/v8.0-W6.4-collection-new-member-event, sha: f07701deb965dbaa7c1a9f9470422781d17bf620, status: open, checks: running, review: pending)
 
 
 
