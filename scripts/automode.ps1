@@ -79,15 +79,15 @@ function Update-Checkpoint {
     $blockLines = @()
     $blockLines += "## AUTO-MODE CHECKPOINT"
     $blockLines += ""
-    $blockLines += "- `updated_at_utc`: $(Get-IsoNow)"
-    $blockLines += "- `goal`: $GoalText"
-    $blockLines += "- `base_branch`: $BaseBranch"
-    $blockLines += "- `open_pr_count`: $($Rows.Count)"
+    $blockLines += "- updated_at_utc: $(Get-IsoNow)"
+    $blockLines += "- goal: $GoalText"
+    $blockLines += "- base_branch: $BaseBranch"
+    $blockLines += "- open_pr_count: $($Rows.Count)"
     $blockLines += ""
     if ($Rows.Count -eq 0) {
-        $blockLines += "- `prs`: none"
+        $blockLines += "- prs: none"
     } else {
-        $blockLines += "- `prs`:"
+        $blockLines += "- prs:"
         foreach ($r in $Rows) {
             $blockLines += "  - #$($r.number) head=$($r.head) state=$($r.state) merge=$($r.merge) review=$($r.review) inline_on_head=$($r.inline_on_head)"
             $blockLines += "    - url: $($r.url)"
@@ -156,4 +156,3 @@ while ($true) {
 
     Start-Sleep -Seconds $PollSeconds
 }
-
