@@ -11,6 +11,32 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.0-rc3 — 2026-05-20 (W3 closure — Why-not-cited + Counterfactual)
+
+W3 closure of the **v8.0 killer-features cycle**. Ships retrieval
+transparency UX and feedback loops on top of W2:
+
+- **W3.1** (PR #200 — merged) — Why-not-cited runner-up retrieval:
+  `meta.retrieval_runner_up` + `meta.runner_up_count`, tenant-safe
+  scope across semantic + FTS retrieval paths, folder-glob parity,
+  additive response-shape alignment on refusal paths.
+- **W3.2** (PR #202 — merged) — chunk feedback ingestion:
+  `kb_chunk_feedback` table + tenant-aware model +
+  `POST /api/kb/feedback {chunk_id, signal}` endpoint.
+- **W3.3** (PR #203 — merged) — FE `RetrievalRunnerUpPanel` with
+  actions **Should have cited** / **Was not relevant** wired to
+  W3.2 endpoint.
+- **W3.4** (PR #201 — merged) — counterfactual neighbor-project
+  retrieval: tenant-safe mini-retrieval, cache/authz hardening,
+  config/docs wiring for `KB_COUNTERFACTUAL_*`.
+- **W3.5** (PR #203 — merged) — FE `CounterfactualPanel` collapsible
+  card with badge `N other projects` plus sticky user toggle (default
+  ON) in preferences UI.
+
+Plan source: [`docs/v4-platform/PLAN-v8.0-killer-features.md`](docs/v4-platform/PLAN-v8.0-killer-features.md) §C.3.
+
+---
+
 ### v8.0.0-rc2 — 2026-05-20 (W2 closure — Notification channels + preferences + Tier-1 scheduler env)
 
 W2 closure of the **v8.0 killer-features cycle**. Layers user-facing
