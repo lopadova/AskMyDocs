@@ -11,15 +11,15 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T10:36:56Z
+- updated_at_utc: 2026-05-20T10:47:56Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: working
-- last_action: opened PR #205 (head=853975673ae2546f9c68895d72e633563d7111c5) for W5.1 Living Collections foundation scaffold
-- next_action: request review + monitor CI/review loop; patch immediately on must-fix findings
+- last_action: review snapshot for PR #205 head=0aa13638cb190cc1e173081f8561d4e4b5fc886d: Copilot commented (no must-fix), PHPUnit/Vitest/RAG green, Playwright still pending
+- next_action: continue wait/recheck loop until Playwright is green, then post closure audit and merge PR #205
 
 - prs:
-  - #205 head=8539756 state=OPEN merge=UNSTABLE review= inline_on_head=0
+  - #205 head=0aa1363 state=OPEN merge=UNSTABLE review=commented inline_on_head=0
     - url: https://github.com/lopadova/AskMyDocs/pull/205
-    - checks: pending
+    - checks: PHPUnit (PHP 8.3):COMPLETED:SUCCESS; PHPUnit (PHP 8.4):COMPLETED:SUCCESS; PHPUnit (PHP 8.5):COMPLETED:SUCCESS; Vitest:COMPLETED:SUCCESS; RAG regression gate (ci):COMPLETED:SUCCESS; Playwright E2E:IN_PROGRESS
