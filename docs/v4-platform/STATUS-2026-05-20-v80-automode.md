@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T11:36:50Z
+- updated_at_utc: 2026-05-20T20:37:26Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 0
 - agent_state: working
-- last_action: completed W5.3 static collections evaluator implementation on branch feature/v8.0-W5.3-collections-evaluator
-- next_action: push branch, open PR for W5.3, run CI/review loop
+- last_action: 2026-05-20 W5.4 members API+UI contract aligned and targeted tests green (4 tests, 21 assertions), HEAD b185e76ef64c0f622b17fdd7d6584ac3e1358adf
+- next_action: commit and push W5.4 patch, open PR against feature/v8.0, monitor CI/review, patch must-fix findings if any
 
 - prs: none
 

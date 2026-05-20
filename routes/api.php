@@ -289,6 +289,16 @@ Route::middleware([
                 'update' => 'api.admin.kb.collections.update',
                 'destroy' => 'api.admin.kb.collections.destroy',
             ]);
+        Route::post('/kb/collections/{id}/members', [KbCollectionController::class, 'addMember'])
+            ->whereNumber('id')
+            ->name('api.admin.kb.collections.members.add');
+        Route::get('/kb/collections/{id}/members', [KbCollectionController::class, 'members'])
+            ->whereNumber('id')
+            ->name('api.admin.kb.collections.members.index');
+        Route::delete('/kb/collections/{id}/members/{documentId}', [KbCollectionController::class, 'removeMember'])
+            ->whereNumber('id')
+            ->whereNumber('documentId')
+            ->name('api.admin.kb.collections.members.remove');
 
         // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
         // canonical audit, application log tail, activity log
