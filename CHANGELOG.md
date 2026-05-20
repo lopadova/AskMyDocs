@@ -23,8 +23,10 @@ foundation. Four sub-PRs all merged on `feature/v8.0`:
   lockForUpdate inside DB::transaction; R14 4xx-non-retryable vs
   5xx/429 throw-to-retry; backoff `[5, 30, 120]s`). Shared
   `NotificationEventLogger` helper routes EVERY channel write
-  through atomic lockForUpdate, including the 4 baseline channels
-  (in_app/email/null/abstract-webhook) and the dispatcher fallback.
+  through atomic lockForUpdate — `InAppChannel`, `EmailChannel`,
+  the `NullChannel` fallback for un-registered adapters, plus the
+  4 W2.1 webhook channels (`discord` / `slack` / `teams` /
+  `webhook`) all going through it via `AbstractWebhookChannel`.
   Per-channel env knob (`NOTIFICATIONS_DISCORD_URL` etc.); generic
   webhook signs every request with `X-AskMyDocs-Signature` when
   `NOTIFICATIONS_WEBHOOK_SECRET` is set.
