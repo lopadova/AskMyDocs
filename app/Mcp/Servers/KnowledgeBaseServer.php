@@ -2,6 +2,8 @@
 
 namespace App\Mcp\Servers;
 
+use App\Mcp\Methods\ListCollectionResources;
+use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\KbDocumentBySlugTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
@@ -39,4 +41,10 @@ class KnowledgeBaseServer extends Server
         KbDocumentsByTypeTool::class,
         KbPromotionSuggestTool::class,
     ];
+
+    protected function boot(): void
+    {
+        $this->addMethod('resources/list', ListCollectionResources::class);
+        $this->addMethod('resources/read', ReadCollectionResource::class);
+    }
 }
