@@ -237,19 +237,36 @@ function Is-ProcessAlive {
 }
 
 function Start-DispatchChild {
-    param([string]$Dispatch, [string]$PromptFile)
+    param([string]$Dispatch, [string]$PromptFile, [string]$LogDir)
     if ([string]::IsNullOrWhiteSpace($Dispatch)) {
         return $null
     }
     $cmd = $Dispatch.Replace("{PROMPT_FILE}", $PromptFile)
+    $ts = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $stdout = Join-Path $LogDir "dispatch-$ts-out.log"
+    $stderr = Join-Path $LogDir "dispatch-$ts-err.log"
+
+    # IMPORTANT: execute the command string, don't just emit it.
     $wrapped = @"
 $ErrorActionPreference='Stop'
-& { $cmd }
+Invoke-Expression @'
+$cmd
+'@
 "@
+
     $tmp = Join-Path $env:TEMP ("automode-dispatch-" + [guid]::NewGuid().ToString("N") + ".ps1")
     Set-Content -Path $tmp -Value $wrapped
-    $p = Start-Process -FilePath "powershell" -ArgumentList @("-NoLogo","-NoProfile","-ExecutionPolicy","Bypass","-File",$tmp) -PassThru
-    return $p
+    $p = Start-Process -FilePath "powershell" `
+        -ArgumentList @("-NoLogo","-NoProfile","-ExecutionPolicy","Bypass","-File",$tmp) `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdout `
+        -RedirectStandardError $stderr `
+        -PassThru
+    return @{
+        Process = $p
+        Stdout = $stdout
+        Stderr = $stderr
+    }
 }
 
 $paths = Get-RepoStatePaths
@@ -326,12 +343,16 @@ try {
                 Write-Host "[$(Get-IsoNow)] no active child and no DispatchCommand (dry mode)."
             } else {
                 Write-Host "[$(Get-IsoNow)] child not running -> dispatch now"
-                $child = Start-DispatchChild -Dispatch $DispatchCommand -PromptFile $promptFile
+                $child = Start-DispatchChild -Dispatch $DispatchCommand -PromptFile $promptFile -LogDir $paths.Dir
                 if ($null -ne $child) {
-                    $state.child_pid = $child.Id
+                    $state.child_pid = $child.Process.Id
                     $state.child_started_at_utc = Get-IsoNow
                     $state.last_dispatch_at_utc = Get-IsoNow
-                    Write-Host "[automode] dispatched child_pid=$($child.Id)"
+                    $state.child_stdout_log = $child.Stdout
+                    $state.child_stderr_log = $child.Stderr
+                    Write-Host "[automode] dispatched child_pid=$($child.Process.Id)"
+                    Write-Host "[automode] stdout=$($child.Stdout)"
+                    Write-Host "[automode] stderr=$($child.Stderr)"
                 }
             }
         }
@@ -343,4 +364,3 @@ try {
 finally {
     Release-Lock -LockPath $paths.Lock
 }
-
