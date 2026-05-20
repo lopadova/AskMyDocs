@@ -11,16 +11,17 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:33:04Z
+- updated_at_utc: 2026-05-20T21:33:51Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: preparing_pr
-- last_action: implemented v8.0/W6.1 backend slice on feature/v8.0 HEAD f408208ebe4305db279fa8acfdb9fa3522f2ffcd (semantic prompt embedding on collection save, semantic fallback matching in EvaluateCollectionsJob, new collections:reevaluate command) and verified via PHPUnit (EvaluateCollectionsJobTest) + artisan command list
-- next_action: commit/push W6.1 slice and open PR against feature/v8.0 with reviewer copilot-pull-request-reviewer
+- open_pr_count: 1
+- agent_state: waiting_ci_review
+- last_action: opened PR #209 on 2026-05-20 for v8.0/W6.1 semantic collection evaluation from HEAD 65b35a2f5178bd5830090e6198bf5f23906a1e1f and requested review from copilot-pull-request-reviewer
+- next_action: wait/recheck CI + review on PR #209, patch must-fix findings if any, merge when green
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
+  - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: 65b35a2f5178bd5830090e6198bf5f23906a1e1f, status: open)
 
 
 
