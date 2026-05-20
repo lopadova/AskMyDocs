@@ -5,6 +5,7 @@ import {
     type NotificationPreferenceRow,
     type NotificationTenantDefaultsResponse,
 } from './notifications.api';
+import { useAuthStore } from '../../lib/auth-store';
 
 /**
  * v8.0/W2.3 — /app/admin/notifications/defaults grid.
@@ -83,6 +84,15 @@ function buildCurrentMatrix(data: NotificationTenantDefaultsResponse): Record<st
 
 export function AdminNotificationDefaultsGrid(): ReactNode {
     const qc = useQueryClient();
+
+    // BE rejects PUT for non-super-admin with 403. Mirror that in the
+    // UI so an `admin` (allowed to VIEW the route via the route ACL)
+    // doesn't see "Unsaved changes" + a Save button that's
+    // deterministically going to 403 (Copilot iter-5 #L178). The
+    // route guard already ensures `admin` is the minimum role here;
+    // `canMutate` narrows further to `super-admin`.
+    const roles = useAuthStore((s) => s.roles);
+    const canMutate = roles.includes('super-admin');
 
     const query = useQuery({
         queryKey: ['notifications', 'tenant-defaults'],
@@ -165,9 +175,13 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
 
     // Defaults are typically empty until a super-admin edits them.
     // First-save semantics mirror W2.2: an empty `defaults` array
-    // counts as dirty so the operator can persist the seeded
-    // platform defaults verbatim if that is what they want.
+    // counts as dirty so the SUPER-ADMIN operator can persist the
+    // seeded platform defaults verbatim. For read-only viewers
+    // (`admin` without super-admin), `canMutate=false` short-circuits
+    // BEFORE the dirty calculation so the grid never advertises a
+    // Save that the BE would reject with 403 (Copilot iter-5 #L178).
     const dirty = useMemo(() => {
+        if (! canMutate) return false;
         if (!query.data || edits === null) return false;
         if (query.data.defaults.length === 0) return true;
         const current = buildCurrentMatrix(query.data);
@@ -175,7 +189,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
             if (edits[k] !== current[k]) return true;
         }
         return false;
-    }, [edits, query.data]);
+    }, [edits, query.data, canMutate]);
 
     return (
         <div
@@ -209,6 +223,16 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                     >
                         Retry
                     </button>
+                </div>
+            )}
+
+            {! canMutate && dataState === 'ready' && (
+                <div
+                    data-testid="notif-defaults-readonly-banner"
+                    role="status"
+                    className="rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700"
+                >
+                    Read-only view. Only super-admins can edit tenant defaults.
                 </div>
             )}
 
@@ -270,7 +294,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                                 data-testid={`notif-defaults-column-${chan}-enable-all`}
                                                                 aria-label={`Enable all ${CHANNEL_LABELS[chan] ?? chan} defaults`}
                                                                 onClick={() => setColumn(chan, true)}
-                                                                disabled={saveMut.isPending}
+                                                                disabled={saveMut.isPending || !canMutate}
                                                                 className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                                                             >
                                                                 On
@@ -280,7 +304,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                                 data-testid={`notif-defaults-column-${chan}-disable-all`}
                                                                 aria-label={`Disable all ${CHANNEL_LABELS[chan] ?? chan} defaults`}
                                                                 onClick={() => setColumn(chan, false)}
-                                                                disabled={saveMut.isPending}
+                                                                disabled={saveMut.isPending || !canMutate}
                                                                 className="text-xs text-gray-600 hover:underline disabled:text-gray-400"
                                                             >
                                                                 Off
@@ -325,7 +349,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                         // enabled default even after the operator removes the
                                                         // adapter URL, so future user creations stop getting
                                                         // seeded with the orphan enabled-bit.
-                                                        disabled={saveMut.isPending || (!registered && !checked)}
+                                                        disabled={saveMut.isPending || !canMutate || (!registered && !checked)}
                                                         onChange={() => toggleCell(evt, chan)}
                                                         className="h-4 w-4"
                                                     />
@@ -339,7 +363,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                     data-testid={`notif-defaults-row-${evt}-enable-all`}
                                                     aria-label={`Enable all default channels for ${EVENT_TYPE_LABELS[evt] ?? evt}`}
                                                     onClick={() => setRow(evt, true)}
-                                                    disabled={saveMut.isPending}
+                                                    disabled={saveMut.isPending || !canMutate}
                                                     className="text-xs text-blue-600 hover:underline disabled:text-gray-400"
                                                 >
                                                     All on
@@ -349,7 +373,7 @@ export function AdminNotificationDefaultsGrid(): ReactNode {
                                                     data-testid={`notif-defaults-row-${evt}-disable-all`}
                                                     aria-label={`Disable all default channels for ${EVENT_TYPE_LABELS[evt] ?? evt}`}
                                                     onClick={() => setRow(evt, false)}
-                                                    disabled={saveMut.isPending}
+                                                    disabled={saveMut.isPending || !canMutate}
                                                     className="text-xs text-gray-600 hover:underline disabled:text-gray-400"
                                                 >
                                                     All off

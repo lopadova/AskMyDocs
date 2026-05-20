@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { AdminNotificationDefaultsGrid } from './AdminNotificationDefaultsGrid';
 import { api } from '../../lib/api';
+import { useAuthStore } from '../../lib/auth-store';
 
 const mockGet = vi.fn();
 const mockPut = vi.fn();
@@ -14,10 +15,27 @@ beforeEach(() => {
     mockPut.mockReset();
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'put').mockImplementation(mockPut);
+    // Default test posture: super-admin so the existing scenarios
+    // exercise the mutation surface. Per-test overrides may set a
+    // weaker role to assert the read-only path.
+    useAuthStore.setState({
+        user: { id: 1, name: 'super', email: 'super@example.test' },
+        roles: ['super-admin'],
+        permissions: [],
+        projects: [],
+        loading: false,
+    });
 });
 
 afterEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({
+        user: null,
+        roles: [],
+        permissions: [],
+        projects: [],
+        loading: false,
+    });
 });
 
 function wrapped(node: ReactNode): ReactNode {
@@ -209,5 +227,35 @@ describe('AdminNotificationDefaultsGrid', () => {
         await waitFor(() => {
             expect(screen.getByTestId('notif-defaults-save-error')).toBeInTheDocument();
         });
+    });
+
+    it('renders read-only banner + disabled save when the user is admin (not super-admin)', async () => {
+        // Copilot iter-5: admins are allowed to VIEW this route but BE
+        // rejects PUT with 403. The grid must mirror that — no
+        // "Unsaved changes", no enabled Save button — so the user is
+        // not lured into a deterministic 403.
+        useAuthStore.setState({
+            user: { id: 2, name: 'admin', email: 'admin@example.test' },
+            roles: ['admin'],
+            permissions: [],
+            projects: [],
+            loading: false,
+        });
+        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
+
+        render(wrapped(<AdminNotificationDefaultsGrid />));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('notif-defaults')).toHaveAttribute('data-state', 'ready');
+        });
+
+        expect(screen.getByTestId('notif-defaults-readonly-banner')).toBeInTheDocument();
+        expect(screen.getByTestId('notif-defaults-save')).toBeDisabled();
+        expect(screen.getByTestId('notif-defaults-discard')).toBeDisabled();
+        expect(screen.queryByTestId('notif-defaults-dirty-indicator')).toBeNull();
+        // Cell checkboxes are read-only too.
+        expect(
+            screen.getByTestId('notif-defaults-cell-kb_doc_created-in_app-toggle'),
+        ).toBeDisabled();
     });
 });
