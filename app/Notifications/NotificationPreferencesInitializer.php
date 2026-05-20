@@ -7,7 +7,6 @@ namespace App\Notifications;
 use App\Models\NotificationEvent;
 use App\Models\NotificationPreference;
 use App\Models\NotificationTenantDefault;
-use Illuminate\Support\Facades\DB;
 
 /**
  * v8.0/W2.3 — Populate `notification_preferences` for a brand-new
@@ -69,13 +68,17 @@ final class NotificationPreferencesInitializer
             return;
         }
 
-        DB::transaction(function () use ($rows): void {
-            NotificationPreference::query()->upsert(
-                $rows,
-                ['tenant_id', 'user_id', 'event_type', 'channel'],
-                ['enabled', 'updated_at'],
-            );
-        });
+        // Single-statement `upsert()` is atomic at the DB level — no
+        // inner transaction needed (Copilot iter-4: this initializer
+        // is invoked from within `UserController@store`'s existing
+        // DB::transaction, so a nested savepoint would add overhead
+        // without changing semantics). Callers that need cross-step
+        // atomicity own their own transaction boundary.
+        NotificationPreference::query()->upsert(
+            $rows,
+            ['tenant_id', 'user_id', 'event_type', 'channel'],
+            ['enabled', 'updated_at'],
+        );
     }
 
     /**

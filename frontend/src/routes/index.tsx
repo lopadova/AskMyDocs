@@ -565,13 +565,18 @@ const adminNotificationPreferencesRoute = createRoute({
 
 // v8.0/W2.3 — admin tenant-defaults grid. Read open to admin +
 // super-admin (route ACL on the BE); PUT rejected with 403 for
-// non-super-admin. Wrapped in AdminShell under the `notifications`
-// section so the rail highlight stays consistent.
+// non-super-admin. Wrapped in `RequireRole` so a viewer hitting
+// `/app/admin/notifications/defaults` directly sees the standard
+// `<AdminForbidden />` guard instead of bouncing off the BE 403
+// (Copilot iter-4 — mirrors the AdminLogsRoute / AdminMaintenanceRoute
+// pattern in this file).
 function AdminNotificationDefaultsRoute() {
     return (
-        <AdminShell section="notifications">
-            <AdminNotificationDefaultsGrid />
-        </AdminShell>
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="notifications">
+                <AdminNotificationDefaultsGrid />
+            </AdminShell>
+        </RequireRole>
     );
 }
 
