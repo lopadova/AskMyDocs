@@ -77,13 +77,13 @@ final class CounterfactualServiceTest extends TestCase
             ]);
         }
 
-        $this->seedCachedPanelFor('how do we handle X', 'projD', 'default', [
+        $this->seedCachedPanelFor('how do we handle X', 'projD', 'default', $user->id, [
             ['chunk_id' => 1, 'project_key' => 'projD'],
         ]);
-        $this->seedCachedPanelFor('how do we handle X', 'projC', 'default', [
+        $this->seedCachedPanelFor('how do we handle X', 'projC', 'default', $user->id, [
             ['chunk_id' => 2, 'project_key' => 'projC'],
         ]);
-        $this->seedCachedPanelFor('how do we handle X', 'projB', 'default', [
+        $this->seedCachedPanelFor('how do we handle X', 'projB', 'default', $user->id, [
             ['chunk_id' => 3, 'project_key' => 'projB'],
         ]);
 
@@ -120,7 +120,7 @@ final class CounterfactualServiceTest extends TestCase
             'scope_allowlist' => null,
         ]);
 
-        $this->seedCachedPanelFor('q', 'projA-alice-only', 'default', [
+        $this->seedCachedPanelFor('q', 'projA-alice-only', 'default', $alice->id, [
             ['chunk_id' => 1, 'project_key' => 'projA-alice-only'],
         ]);
 
@@ -179,7 +179,7 @@ final class CounterfactualServiceTest extends TestCase
             'scope_allowlist' => null,
         ]);
 
-        $this->seedCachedPanelFor('q', 'shared', 'tenant-a', [
+        $this->seedCachedPanelFor('q', 'shared', 'tenant-a', $alice->id, [
             ['chunk_id' => 1, 'project_key' => 'shared', 'tenant_id' => 'tenant-a'],
         ]);
 
@@ -197,11 +197,57 @@ final class CounterfactualServiceTest extends TestCase
         // Cache key MUST include tenant_id so the lookup for
         // tenant-a|shared can never accidentally pick up
         // tenant-b|shared.
-        $tenantBkey = 'cf:'.hash('sha256', 'tenant-b|shared|q');
+        $tenantBkey = 'cf:'.hash('sha256', 'tenant-b|'.$alice->id.'|shared|q');
         $this->assertFalse(
             Cache::has($tenantBkey),
             'cache should not be seeded under foreign tenant key',
         );
+    }
+
+    public function test_cache_key_includes_user_id_same_tenant_project_query(): void
+    {
+        $alice = $this->makeUser('alice');
+        $bob = $this->makeUser('bob');
+
+        ProjectMembership::query()->create([
+            'tenant_id' => 'default',
+            'user_id' => $alice->id,
+            'project_key' => 'shared',
+            'role' => 'editor',
+            'scope_allowlist' => null,
+        ]);
+        ProjectMembership::query()->create([
+            'tenant_id' => 'default',
+            'user_id' => $bob->id,
+            'project_key' => 'shared',
+            'role' => 'editor',
+            'scope_allowlist' => null,
+        ]);
+
+        $this->seedCachedPanelFor('q', 'shared', 'default', $alice->id, [
+            ['chunk_id' => 10, 'project_key' => 'shared'],
+        ]);
+        $this->seedCachedPanelFor('q', 'shared', 'default', $bob->id, [
+            ['chunk_id' => 20, 'project_key' => 'shared'],
+        ]);
+
+        $service = new CounterfactualService($this->stubEmbeddingCache());
+
+        $alicePanels = $service->pick(
+            query: 'q',
+            userId: $alice->id,
+            tenantId: 'default',
+            primaryProjectKey: 'other',
+        );
+        $bobPanels = $service->pick(
+            query: 'q',
+            userId: $bob->id,
+            tenantId: 'default',
+            primaryProjectKey: 'other',
+        );
+
+        $this->assertSame(10, $alicePanels[0]['top_chunks'][0]['chunk_id']);
+        $this->assertSame(20, $bobPanels[0]['top_chunks'][0]['chunk_id']);
     }
 
     public function test_second_call_hits_cache_no_re_lookup(): void
@@ -215,7 +261,7 @@ final class CounterfactualServiceTest extends TestCase
             'scope_allowlist' => null,
         ]);
 
-        $this->seedCachedPanelFor('q', 'projB', 'default', [
+        $this->seedCachedPanelFor('q', 'projB', 'default', $user->id, [
             ['chunk_id' => 1, 'project_key' => 'projB'],
         ]);
 
@@ -253,9 +299,9 @@ final class CounterfactualServiceTest extends TestCase
         return $mock;
     }
 
-    private function seedCachedPanelFor(string $query, string $projectKey, string $tenantId, array $topChunks): void
+    private function seedCachedPanelFor(string $query, string $projectKey, string $tenantId, int $userId, array $topChunks): void
     {
-        $key = 'cf:'.hash('sha256', $tenantId.'|'.$projectKey.'|'.$query);
+        $key = 'cf:'.hash('sha256', $tenantId.'|'.$userId.'|'.$projectKey.'|'.$query);
         Cache::put($key, $topChunks, 3600);
     }
 

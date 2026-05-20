@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Cache;
  * v8.0/W3.4 — Counterfactual retrieval ("if I had filtered by Y you
  * would have cited Z"). Runs a mini-retrieval against up to 3 OTHER
  * projects the user has membership in, so the chat UI can surface
- * "here is what is in your other tenants that loosely matched this
+ * "here is what is in your other projects that loosely matched this
  * query" — a transparency feature, never fed to the LLM, gated by
  * a user preference toggle (default ON, sticky — W3.5).
  *
@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\Cache;
  * pins this invariant.
  *
  * Cost shape: 1 cache lookup + 1 mini-retrieval per neighbor project
- * (up to 3); cache TTL is 1h keyed on `(query_hash, project_key)`;
+ * (up to 3); cache TTL is 1h keyed on
+ * `(query_hash, project_key, tenant_id, user_id)`;
  * mini-retrieval is semantic-only (no reranker, no graph expand, no
  * rejected injection) and capped at 5 chunks per project.
  */
@@ -76,7 +77,7 @@ final class CounterfactualService
 
         $out = [];
         foreach (array_slice($neighborProjects, 0, $maxNeighbors) as $projectKey) {
-            $cacheKey = $this->cacheKey($query, $projectKey, $tenantId);
+            $cacheKey = $this->cacheKey($query, $projectKey, $tenantId, $userId);
             $top = Cache::remember(
                 $cacheKey,
                 $cacheTtl,
@@ -109,10 +110,13 @@ final class CounterfactualService
         string $tenantId,
         ?string $primaryProjectKey,
     ): array {
+        $maxNeighbors = max(1, (int) config('kb.counterfactual.max_neighbors', 3));
+
         $rows = ProjectMembership::query()
             ->forTenant($tenantId)
             ->where('user_id', $userId)
             ->orderByDesc('created_at')
+            ->limit($maxNeighbors + 1)
             ->pluck('project_key')
             ->all();
 
@@ -130,9 +134,9 @@ final class CounterfactualService
      * Build a deterministic cache key. SHA-256 keeps it short + safe
      * for any cache backend (Redis key length, file-cache path).
      */
-    private function cacheKey(string $query, string $projectKey, string $tenantId): string
+    private function cacheKey(string $query, string $projectKey, string $tenantId, int $userId): string
     {
-        return 'cf:'.hash('sha256', $tenantId.'|'.$projectKey.'|'.$query);
+        return 'cf:'.hash('sha256', $tenantId.'|'.$userId.'|'.$projectKey.'|'.$query);
     }
 
     /**

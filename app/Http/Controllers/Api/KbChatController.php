@@ -257,8 +257,7 @@ class KbChatController extends Controller
      * No LLM call. The latency reported is retrieval-only — useful for
      * observability so we can tell apart "refused fast on missing data"
      * from "refused after slow over-retrieval".
-     */
-    /**
+     *
      * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function refusalResponse(
@@ -390,8 +389,7 @@ class KbChatController extends Controller
      * The user-facing answer is replaced with the i18n placeholder so the
      * FE renders the RefusalNotice (T3.7, deferred) instead of the literal
      * sentinel string.
-     */
-    /**
+     *
      * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function convertSentinelToRefusal(
