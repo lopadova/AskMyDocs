@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
+use App\Http\Controllers\Api\Admin\KbCollectionController;
 use App\Http\Controllers\Api\Admin\KbHealthController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
@@ -277,6 +278,16 @@ Route::middleware([
                 'show' => 'api.admin.kb.tags.show',
                 'update' => 'api.admin.kb.tags.update',
                 'destroy' => 'api.admin.kb.tags.destroy',
+            ]);
+
+        Route::apiResource('kb/collections', KbCollectionController::class)
+            ->parameters(['collections' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.collections.index',
+                'store' => 'api.admin.kb.collections.store',
+                'show' => 'api.admin.kb.collections.show',
+                'update' => 'api.admin.kb.collections.update',
+                'destroy' => 'api.admin.kb.collections.destroy',
             ]);
 
         // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
