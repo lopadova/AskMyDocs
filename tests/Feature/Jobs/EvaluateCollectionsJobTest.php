@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Jobs;
 
+use App\Ai\EmbeddingsResponse;
 use App\Jobs\EvaluateCollectionsJob;
 use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\EmbeddingCacheService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery;
 use Tests\TestCase;
 
 final class EvaluateCollectionsJobTest extends TestCase
@@ -99,6 +103,64 @@ final class EvaluateCollectionsJobTest extends TestCase
         $this->assertSame(1, KbCollectionMember::query()->count());
         $this->assertSame(0, KbCollectionMember::query()->where('collection_id', $nonMatching->id)->count());
         $this->assertTrue((bool) KbCollectionMember::query()->first()?->manually_excluded);
+    }
+
+    public function test_creates_semantic_match_membership_when_threshold_is_met(): void
+    {
+        $doc = KnowledgeDocument::query()->create([
+            'tenant_id' => 'tenant-a',
+            'project_key' => 'proj-a',
+            'source_type' => 'markdown',
+            'title' => 'Caching Guide',
+            'source_path' => 'docs/caching.md',
+            'mime_type' => 'text/markdown',
+            'slug' => 'caching-guide',
+            'canonical_type' => 'runbook',
+            'frontmatter_json' => ['tags' => ['ops']],
+        ]);
+
+        KnowledgeChunk::query()->create([
+            'tenant_id' => 'tenant-a',
+            'knowledge_document_id' => $doc->id,
+            'project_key' => 'proj-a',
+            'chunk_order' => 1,
+            'chunk_hash' => 'h1',
+            'heading_path' => 'H1',
+            'chunk_text' => 'Cache invalidation and TTL strategy.',
+            'metadata' => [],
+            'embedding' => [],
+        ]);
+
+        $collection = KbCollection::query()->create([
+            'tenant_id' => 'tenant-a',
+            'slug' => 'semantic-caching',
+            'name' => 'Semantic Caching',
+            'visibility' => 'private',
+            'criteria' => ['projects' => ['other-project']],
+            'semantic_prompt' => 'Documents about caching',
+            'semantic_prompt_embedding' => [1.0, 0.0],
+            'threshold' => 0.80,
+        ]);
+
+        $mock = Mockery::mock(EmbeddingCacheService::class);
+        $mock->shouldReceive('generate')
+            ->once()
+            ->andReturn(new EmbeddingsResponse(
+                embeddings: [[0.9, 0.1]],
+                provider: 'fake',
+                model: 'fake',
+                totalTokens: null,
+            ));
+        $this->app->instance(EmbeddingCacheService::class, $mock);
+
+        $this->app->call([new EvaluateCollectionsJob($doc->id, 'tenant-a'), 'handle']);
+
+        $member = KbCollectionMember::query()->first();
+        $this->assertNotNull($member);
+        $this->assertSame($collection->id, $member->collection_id);
+        $this->assertSame('semantic_match', $member->reason);
+        $this->assertNotNull($member->semantic_score);
+        $this->assertGreaterThanOrEqual(0.80, (float) $member->semantic_score);
     }
 }
 

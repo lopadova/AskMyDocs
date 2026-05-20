@@ -6,7 +6,10 @@ namespace App\Jobs;
 
 use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\EmbeddingCacheService;
+use App\Services\Kb\Retrieval\CosineCalculator;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -59,7 +62,12 @@ final class EvaluateCollectionsJob implements ShouldQueue
                 ->get();
 
             foreach ($collections as $collection) {
-                if (! $this->matchesStaticCriteria($collection->criteria ?? [], $document)) {
+                $staticMatch = $this->matchesStaticCriteria($collection->criteria ?? [], $document);
+                $semanticScore = $this->semanticScore($collection, $document);
+                $threshold = (float) $collection->threshold;
+                $semanticMatch = $semanticScore !== null && $semanticScore >= $threshold;
+
+                if (! $staticMatch && ! $semanticMatch) {
                     continue;
                 }
 
@@ -82,8 +90,8 @@ final class EvaluateCollectionsJob implements ShouldQueue
                         'knowledge_document_id' => $document->id,
                     ],
                     [
-                        'reason' => 'static_match',
-                        'semantic_score' => null,
+                        'reason' => $staticMatch ? 'static_match' : 'semantic_match',
+                        'semantic_score' => $semanticScore,
                         'manually_excluded' => false,
                     ],
                 );
@@ -182,6 +190,40 @@ final class EvaluateCollectionsJob implements ShouldQueue
         }
 
         return array_values(array_unique($out));
+    }
+
+    private function semanticScore(KbCollection $collection, KnowledgeDocument $document): ?float
+    {
+        $promptEmbedding = $collection->semantic_prompt_embedding;
+        if (! is_array($promptEmbedding) || $promptEmbedding === []) {
+            return null;
+        }
+
+        $documentText = $this->semanticDocumentText($document);
+        if ($documentText === '') {
+            return null;
+        }
+
+        $documentEmbedding = app(EmbeddingCacheService::class)->generate([$documentText])->embeddings[0] ?? null;
+        if (! is_array($documentEmbedding) || $documentEmbedding === []) {
+            return null;
+        }
+
+        return app(CosineCalculator::class)->similarity($promptEmbedding, $documentEmbedding);
+    }
+
+    private function semanticDocumentText(KnowledgeDocument $document): string
+    {
+        $title = is_string($document->title) ? trim($document->title) : '';
+        $chunkText = (string) KnowledgeChunk::query()
+            ->forTenant($this->tenantId)
+            ->where('knowledge_document_id', $document->id)
+            ->orderBy('chunk_order')
+            ->value('chunk_text');
+
+        $chunkText = trim($chunkText);
+
+        return trim($title . "\n\n" . $chunkText);
     }
 }
 
