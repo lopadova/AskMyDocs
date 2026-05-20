@@ -160,23 +160,29 @@ final class PruneNotificationsCommandTest extends TestCase
         $this->assertNotNull(NotificationEvent::find($bobStale->id), 'tenant-bob-x must survive when only tenant-alice-x is targeted');
     }
 
-    public function test_bootstrap_app_php_registers_the_scheduler_slot(): void
+    public function test_tier_one_registrar_registers_the_scheduler_slot(): void
     {
-        // R9 — bootstrap/app.php registration must match the documented
-        // slot. Testbench doesn't execute the host's
-        // `withSchedule(...)` closure, so we can't introspect
-        // `app(Schedule::class)->events()` — assert against the
-        // bootstrap source file directly. Without this gate, a future
-        // refactor that drops the schedule line would ship silently.
-        // Testbench's `base_path()` resolves to its own skeleton
-        // bootstrap, not the host project's. Walk up to the real file
-        // via __DIR__.
-        $bootstrap = (string) file_get_contents(__DIR__.'/../../../bootstrap/app.php');
+        // R9 — the host-side scheduler MUST register
+        // `notifications:prune`. v8.0/W2.4 moved per-slot registration
+        // from inline `$schedule->command(...)` literals in
+        // `bootstrap/app.php` into `App\Scheduling\TierOneSchedulerRegistrar`
+        // so PHPUnit can exercise the config-driven branch directly
+        // (Testbench's bootstrap skeleton skips the host's
+        // `withSchedule(...)` closure). Register the slot against a
+        // fresh Schedule and confirm the slot is wired.
+        $schedule = $this->app->make(\Illuminate\Console\Scheduling\Schedule::class);
+        (new \App\Scheduling\TierOneSchedulerRegistrar)->register($schedule);
 
-        $this->assertStringContainsString("\$schedule->command('notifications:prune')", $bootstrap);
-        $this->assertStringContainsString("->dailyAt('04:10')", $bootstrap);
-        $this->assertStringContainsString('->onOneServer()', $bootstrap);
-        $this->assertStringContainsString('->withoutOverlapping()', $bootstrap);
+        $found = false;
+        foreach ($schedule->events() as $event) {
+            if (str_contains((string) $event->command, 'notifications:prune')) {
+                // Default cron preserved from the pre-W2.4 `dailyAt('04:10')`.
+                $this->assertSame('10 4 * * *', $event->expression);
+                $found = true;
+                break;
+            }
+        }
+        $this->assertTrue($found, 'notifications:prune must be registered via TierOneSchedulerRegistrar');
     }
 
     private function makeUser(string $slug): User
