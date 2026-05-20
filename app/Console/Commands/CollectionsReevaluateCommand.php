@@ -46,9 +46,9 @@ final class CollectionsReevaluateCommand extends Command
                 }
 
                 $processed = 0;
-                $docsQuery->chunkById(100, function ($docs) use (&$processed, $tenantId): void {
+                $docsQuery->chunkById(100, function ($docs) use (&$processed, $tenantId, $collectionFilter): void {
                     foreach ($docs as $doc) {
-                        EvaluateCollectionsJob::dispatchSync((int) $doc->id, $tenantId);
+                        EvaluateCollectionsJob::dispatchSync((int) $doc->id, $tenantId, $collectionFilter);
                         $processed++;
                     }
                 });
@@ -90,4 +90,3 @@ final class CollectionsReevaluateCommand extends Command
         return max(1, (int) $raw);
     }
 }
-

@@ -19,6 +19,12 @@ final class EvaluateCollectionsJobTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
+    }
+
     public function test_creates_static_match_membership_when_document_matches_collection_criteria(): void
     {
         $doc = KnowledgeDocument::query()->create([

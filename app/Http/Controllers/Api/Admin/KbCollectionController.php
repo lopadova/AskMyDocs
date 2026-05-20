@@ -62,9 +62,11 @@ final class KbCollectionController extends Controller
         $tenantId = $tenantContext->current();
         $collection = $this->findForTenantOr404($id, $tenantId);
         $validated = $request->validate($this->rules($tenantId, $collection->id));
-        $validated['semantic_prompt_embedding'] = $this->semanticPromptEmbedding(
-            $validated['semantic_prompt'] ?? null
-        );
+        if (array_key_exists('semantic_prompt', $validated)) {
+            $validated['semantic_prompt_embedding'] = $this->semanticPromptEmbedding(
+                $validated['semantic_prompt']
+            );
+        }
 
         $collection->fill($validated);
         $collection->save();

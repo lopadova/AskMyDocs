@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:33:51Z
+- updated_at_utc: 2026-05-20T21:56:39Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
-- agent_state: waiting_ci_review
-- last_action: opened PR #209 on 2026-05-20 for v8.0/W6.1 semantic collection evaluation from HEAD 65b35a2f5178bd5830090e6198bf5f23906a1e1f and requested review from copilot-pull-request-reviewer
-- next_action: wait/recheck CI + review on PR #209, patch must-fix findings if any, merge when green
+- agent_state: patching_findings_ready_to_push
+- last_action: patched 5 must-fix review findings on PR #209 at 2026-05-20T21:56:39Z and validated with `php artisan test tests/Feature/Jobs/EvaluateCollectionsJobTest.php` from HEAD e0e0e2cd5d359ff8f8dfed1839964cca66a5378e
+- next_action: commit + push fixes to PR #209, recheck CI/review, then merge when green and no must-fix findings remain
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
