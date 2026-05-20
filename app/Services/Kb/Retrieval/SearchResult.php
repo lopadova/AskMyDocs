@@ -16,12 +16,16 @@ use Illuminate\Support\Collection;
  *                   These are the chunks the LLM should ground its answer on.
  *   - `runnerUp`  : the next 15 candidates that were CONSIDERED but did NOT
  *                   make the top-K cut (v8.0/W3.1 "Why-not-cited"). Each
- *                   chunk carries a `reason` key explaining WHY it was
- *                   demoted (`below_rerank_threshold` /
- *                   `outside_context_window` etc.). NOT fed to the LLM —
- *                   surfaced only in the chat UI "Considered but not used"
- *                   tab. R27 additive contract: legacy consumers that
- *                   don't know about this field keep working.
+ *                   chunk carries a `reason` key. The W3.1 MVP emits the
+ *                   coarse `not_in_top_k` for every entry; finer-grained
+ *                   reasons (`below_rerank_threshold` /
+ *                   `demoted_by_status_penalty` / `deduplicated_by_doc`
+ *                   / `outside_context_window`) follow when the Reranker
+ *                   refactor that tracks each chunk's demotion cause
+ *                   lands. NOT fed to the LLM — surfaced only in the
+ *                   chat UI "Considered but not used" tab. R27 additive
+ *                   contract: legacy consumers that don't know about
+ *                   this field keep working.
  *   - `expanded`  : 1-hop graph neighbours of the primary seeds, useful as
  *                   additional structural context. Appear under a separate
  *                   "RELATED CONTEXT" block in the prompt.

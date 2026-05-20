@@ -8,6 +8,7 @@ use App\Services\Kb\Retrieval\RejectedApproachInjector;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -250,13 +251,26 @@ class KbSearchService
             ->values()
             ->all();
 
+        // Copilot iter-1 #L256: `search()` already generated the
+        // embedding for this query; `EmbeddingCacheService::generate()`
+        // is cached on `text_hash` so the second call hits the cache,
+        // but it still adds an extra round-trip. Pull the embedding
+        // once and reuse.
         $embeddingsResponse = $this->embeddingCache->generate([$query]);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
         $vectorString = '['.implode(',', $queryEmbedding).']';
 
         $floor = (float) config('kb.runner_up.min_similarity', max(0.0, $minSimilarity - 0.10));
 
+        // Copilot iter-1 #L263: tenant scope MUST be explicit. The
+        // KnowledgeChunk model uses `BelongsToTenant` with no global
+        // scope so an unqualified `query()` would let chunks from
+        // OTHER tenants with the same `project_key` leak into the
+        // runner-up panel (R30).
+        $tenantId = app(TenantContext::class)->current();
+
         $builder = KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $floor])
@@ -264,7 +278,7 @@ class KbSearchService
             ->orderByDesc('vector_score');
 
         if ($projectKey !== null && $projectKey !== '') {
-            $builder->where('project_key', $projectKey);
+            $builder->where('knowledge_chunks.project_key', $projectKey);
         }
 
         if (! $filters->isEmpty()) {
@@ -276,6 +290,13 @@ class KbSearchService
         }
 
         $candidates = $builder->limit($limit)->get();
+
+        // Copilot iter-1 #L280: `search()` applies `filterByFolderGlobs()`
+        // post-fetch (folder globs aren't representable in portable
+        // SQL); the runner-up second-pass had skipped it, so
+        // `filters.folder_globs` could leak excluded folders into
+        // the panel. Apply the same post-fetch filter here.
+        $candidates = $this->filterByFolderGlobs($candidates, $filters->folderGlobs);
 
         return collect($candidates)->map(function ($chunk): array {
             return [
