@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  addCollectionMember,
   createCollection,
   deleteCollection,
+  listCollectionMembers,
   listCollections,
+  removeCollectionMember,
   type KbCollection,
+  type KbCollectionMember,
   type KbCollectionPayload,
   updateCollection,
 } from './collections.api';
@@ -23,6 +27,8 @@ export function CollectionsView() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<KbCollectionPayload>(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<KbCollectionMember[]>([]);
+  const [memberDocId, setMemberDocId] = useState('');
 
   useEffect(() => {
     void refresh();
@@ -45,6 +51,14 @@ export function CollectionsView() {
       threshold: selected.threshold,
     });
   }, [selected]);
+
+  useEffect(() => {
+    if (selectedId === null) {
+      setMembers([]);
+      return;
+    }
+    void refreshMembers(selectedId);
+  }, [selectedId]);
 
   async function refresh(): Promise<void> {
     setLoading(true);
@@ -77,6 +91,26 @@ export function CollectionsView() {
     if (selectedId === null) return;
     await deleteCollection(selectedId);
     await refresh();
+  }
+
+  async function refreshMembers(collectionId: number): Promise<void> {
+    const data = await listCollectionMembers(collectionId);
+    setMembers(data);
+  }
+
+  async function onAddMember(): Promise<void> {
+    if (selectedId === null) return;
+    const knowledgeDocumentId = Number(memberDocId);
+    if (!Number.isInteger(knowledgeDocumentId) || knowledgeDocumentId < 1) return;
+    await addCollectionMember(selectedId, knowledgeDocumentId);
+    setMemberDocId('');
+    await refreshMembers(selectedId);
+  }
+
+  async function onRemoveMember(knowledgeDocumentId: number): Promise<void> {
+    if (selectedId === null) return;
+    await removeCollectionMember(selectedId, knowledgeDocumentId);
+    await refreshMembers(selectedId);
   }
 
   return (
@@ -122,6 +156,41 @@ export function CollectionsView() {
           <button type="button" data-testid="admin-collections-create" onClick={() => void onCreate()}>Create</button>
           <button type="button" data-testid="admin-collections-save" onClick={() => void onSave()} disabled={selectedId === null}>Save</button>
           <button type="button" data-testid="admin-collections-delete" onClick={() => void onDelete()} disabled={selectedId === null}>Delete</button>
+        </div>
+        <div data-testid="admin-collections-members" style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          <h3>Members</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              data-testid="admin-collections-member-doc-id"
+              type="number"
+              min={1}
+              value={memberDocId}
+              onChange={(e) => setMemberDocId(e.target.value)}
+              placeholder="Knowledge document id"
+              disabled={selectedId === null}
+            />
+            <button type="button" data-testid="admin-collections-member-add" onClick={() => void onAddMember()} disabled={selectedId === null}>
+              Add member
+            </button>
+          </div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            {members.map((member) => (
+              <div key={member.id} data-testid={`admin-collections-member-row-${member.id}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <span>
+                  #{member.knowledge_document_id} {member.document?.slug ?? member.document?.title ?? 'unknown'} [{member.reason}]
+                  {member.manually_excluded ? ' (excluded)' : ''}
+                </span>
+                <button
+                  type="button"
+                  data-testid={`admin-collections-member-remove-${member.knowledge_document_id}`}
+                  onClick={() => void onRemoveMember(member.knowledge_document_id)}
+                  disabled={selectedId === null}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
     </div>

@@ -11,13 +11,14 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T11:36:50Z
+- updated_at_utc: 2026-05-20T20:38:06Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
+- open_pr_count: 1
 - agent_state: working
-- last_action: completed W5.3 static collections evaluator implementation on branch feature/v8.0-W5.3-collections-evaluator
-- next_action: push branch, open PR for W5.3, run CI/review loop
+- last_action: opened PR #207 (2026-05-20) from feature/v8.0-W5.4-manual-members-exclusion at HEAD c841aa8bb5f05ab0165c2b02ea55dfbf0456c517; CI running
+- next_action: poll PR #207 checks/reviews; patch must-fix findings on current HEAD or merge when green and no must-fix findings
 
-- prs: none
+- prs:
+  - #207 https://github.com/lopadova/AskMyDocs/pull/207 head=c841aa8bb5f05ab0165c2b02ea55dfbf0456c517 state=OPEN checks=IN_PROGRESS/QUEUED
 
