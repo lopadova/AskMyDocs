@@ -11,17 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-20T21:10:33Z
+- updated_at_utc: 2026-05-20T21:21:44Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: waiting_ci_review
-- last_action: opened PR #208 on 2026-05-20 for W5.5 threshold preview from HEAD ee60c17e498d12bf07d4ea9a5fd8882454e5090b and requested review from copilot-pull-request-reviewer
-- next_action: wait/recheck CI + review on PR #208, patch must-fix findings if any, merge when green
+- last_action: reconciled PR #208 on 2026-05-20 at HEAD 3133e7ec65632a6c6ff74851b0daef9611b2ff44; review posted 2026-05-20 contains only suppressed low-confidence comments (treated non-must-fix); awaiting Playwright completion
+- next_action: recheck CI on PR #208; if green, post closure audit and merge with --merge --delete-branch
 
 - prs:
-  - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: ee60c17e498d12bf07d4ea9a5fd8882454e5090b, status: open)
-
-
-
-
+  - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: open)
