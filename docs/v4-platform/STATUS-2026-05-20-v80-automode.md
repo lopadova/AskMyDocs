@@ -11,10 +11,12 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- `updated_at_utc`: 2026-05-20T00:00:00Z
-- `goal`: 100% roadmap completion
-- `base_branch`: feature/v8.0
-- `open_pr_count`: 0
+- updated_at_utc: 2026-05-20T09:42:07Z
+- goal: 100% roadmap completion
+- base_branch: feature/v8.0
+- open_pr_count: 1
 
-- `prs`: none
-
+- prs:
+  - #204 head=3d3d515 state=OPEN merge=UNSTABLE review= inline_on_head=0
+    - url: https://github.com/lopadova/AskMyDocs/pull/204
+    - checks: PHPUnit (PHP 8.3):IN_PROGRESS:; PHPUnit (PHP 8.3):IN_PROGRESS:; RAG regression gate (ci):COMPLETED:SUCCESS; RAG regression gate (ci):COMPLETED:SUCCESS; PHPUnit (PHP 8.4):IN_PROGRESS:; PHPUnit (PHP 8.4):IN_PROGRESS:; PHPUnit (PHP 8.5):IN_PROGRESS:; PHPUnit (PHP 8.5):IN_PROGRESS:; Vitest:COMPLETED:SUCCESS; Vitest:COMPLETED:SUCCESS
