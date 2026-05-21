@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T04:34:27Z
+- updated_at_utc: 2026-05-21T05:05:55Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 0
-- agent_state: w83_validated_pending_pr_open
-- last_action: Validated W8.3 on 2026-05-21T04:34:27Z; `php artisan test tests/Feature/Api/Admin/ComplianceReportControllerTest.php` passed (2 tests, 4 assertions) after fixing downloadJson return-type mismatch.
-- next_action: commit/push feature/v8.0-W8.3-compliance-export, open PR against feature/v8.0 with Copilot reviewer, then enter CI/review/merge loop.
+- agent_state: w84_validated_pending_pr_open
+- last_action: Validated W8.4 at 2026-05-21T05:05:55Z on branch feature/v8.0-W8.4-compliance-spa-verify: `php artisan test tests/Feature/Api/Admin/ComplianceReportControllerTest.php` PASS (5 tests, 11 assertions) and `npm run -s build` PASS.
+- next_action: commit/push W8.4 changes, open PR against feature/v8.0 with Copilot reviewer, then enter CI/review/merge loop.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
@@ -30,6 +30,7 @@ Regola fissa di aggiornamento:
   - #216: https://github.com/lopadova/AskMyDocs/pull/216 (head: feature/v8.0-W7.4-mcp-connect-helper, sha: 8a91c46982744ac3c7342fe010402d3dbd3210c2, status: merged, merged_at_utc: 2026-05-21T01:41:40Z, merge_commit: 7eb1430fdd4e11217f11afb7fc155c755ffdf180)
   - #217: https://github.com/lopadova/AskMyDocs/pull/217 (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 6dca2c820ac3a625577ff681700ad1c31195277a, status: merged, merged_at_utc: 2026-05-21T03:12:17Z, merge_commit: 10fef355d63ca3648db45b53394ac59af9bcc9b5)
   - #218: https://github.com/lopadova/AskMyDocs/pull/218 (head: feature/v8.0-W8.2-compliance-report-generator, sha: 3ffe4139ae2956d39749dba1def03fb4579cc975, status: merged, merged_at_utc: 2026-05-21T04:30:52Z, merge_commit: 047e249411d0fd496fbb5f05e991357985f9ef91)
+  - #219: https://github.com/lopadova/AskMyDocs/pull/219 (head: feature/v8.0-W8.3-compliance-export, sha: ab90a0216cc157436fc35ad497e2d3031b11fc35, status: merged, merged_at_utc: 2026-05-21T04:49:59Z, merge_commit: 48035294b1653d9897a036c6219675ef44e00a5f)
 
 
 
