@@ -15,6 +15,7 @@ use App\Console\Commands\KbIngestFolderCommand;
 use App\Console\Commands\KbPromoteCommand;
 use App\Console\Commands\KbRebuildGraphCommand;
 use App\Console\Commands\KbValidateCanonicalCommand;
+use App\Console\Commands\McpConnectCommand;
 use App\Console\Commands\PruneAdminCommandAuditCommand;
 use App\Console\Commands\PruneAdminCommandNoncesCommand;
 use App\Console\Commands\PruneChatLogsCommand;
@@ -322,6 +323,8 @@ class AppServiceProvider extends ServiceProvider
             InsightsComputeCommand::class,
             // v8.0/W6.1 — full tenant collection membership reevaluation.
             CollectionsReevaluateCommand::class,
+            // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.
+            McpConnectCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
             EvalNightlyCommand::class,
         ]);
