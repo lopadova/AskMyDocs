@@ -32,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
+            'mcp.scope' => \App\Http\Middleware\EnforceMcpScope::class,
             // v4.0/W3.1 — `auth` variant for SSE streaming routes that
             // returns JSON 401 instead of a 302 → /login redirect when
             // the session is expired. SSE clients send
