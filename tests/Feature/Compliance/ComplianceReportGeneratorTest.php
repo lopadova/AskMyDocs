@@ -49,6 +49,10 @@ final class ComplianceReportGeneratorTest extends TestCase
         $this->assertArrayHasKey('admin_command:kb:rebuild-graph', $report->payload_json['audit']['event_type_counts']);
         $this->assertNotEmpty($report->hash_sha256);
         $this->assertNotEmpty($report->hash_hmac);
+
+        $payloadJson = json_encode($report->payload_json, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $expectedHmac = hash_hmac('sha256', (string) $payloadJson.'tenant-acme2026-01-012026-03-31', 'test-compliance-secret');
+        $this->assertSame($expectedHmac, $report->hash_hmac);
     }
 
     public function test_tamper_changes_recomputed_hash(): void
@@ -67,6 +71,11 @@ final class ComplianceReportGeneratorTest extends TestCase
 
         $this->assertSame($originalHash, $report->hash_sha256);
         $this->assertNotSame($originalHash, $tamperedHash);
+
+        $originalHmac = hash_hmac('sha256', (string) $originalPayload.'tenant-acme2026-01-012026-03-31', 'test-compliance-secret');
+        $tamperedHmac = hash_hmac('sha256', $tamperedPayload.'tenant-acme2026-01-012026-03-31', 'test-compliance-secret');
+        $this->assertSame($originalHmac, $report->hash_hmac);
+        $this->assertNotSame($originalHmac, $tamperedHmac);
     }
 
     private function seedKnowledgeDocuments(string $tenantId): void

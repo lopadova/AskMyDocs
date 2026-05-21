@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T04:10:00Z
+- updated_at_utc: 2026-05-21T04:14:00Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
 - agent_state: w82_pr_open_ci_loop
-- last_action: Opened PR #218 on 2026-05-21T04:10:00Z for W8.2 from head sha cf6ebb2a469d989a99d9e29af6d087599a95897c into feature/v8.0 and requested Copilot review.
-- next_action: wait/recheck CI + review on PR #218; if no must-fix and checks green, post closure audit and merge with --merge --delete-branch.
+- last_action: Addressed Copilot review findings on PR #218 at 2026-05-21T04:14:00Z (strict JSON encode with throw, fail-fast empty compliance HMAC secret, COMPLIANCE_HMAC_SECRET env doc, duplicate PR #217 entry removed, and HMAC assertions added to tests).
+- next_action: push follow-up fix commit to PR #218, then continue wait/recheck loop for CI and merge when green and no must-fix findings remain.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
@@ -29,7 +29,7 @@ Regola fissa di aggiornamento:
   - #215: https://github.com/lopadova/AskMyDocs/pull/215 (head: feature/v8.0-W7.3-mcp-scope-guard, sha: 46c8c5321411d3db9b36edbf0036e554e37f708b, status: merged, merged_at_utc: 2026-05-21T01:15:53Z, merge_commit: d92092ad4f60b55398fd39026876600d579e1f08)
   - #216: https://github.com/lopadova/AskMyDocs/pull/216 (head: feature/v8.0-W7.4-mcp-connect-helper, sha: 8a91c46982744ac3c7342fe010402d3dbd3210c2, status: merged, merged_at_utc: 2026-05-21T01:41:40Z, merge_commit: 7eb1430fdd4e11217f11afb7fc155c755ffdf180)
   - #217: https://github.com/lopadova/AskMyDocs/pull/217 (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 6dca2c820ac3a625577ff681700ad1c31195277a, status: merged, merged_at_utc: 2026-05-21T03:12:17Z, merge_commit: 10fef355d63ca3648db45b53394ac59af9bcc9b5)
-  - #217: https://github.com/lopadova/AskMyDocs/pull/217 (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 6dca2c820ac3a625577ff681700ad1c31195277a, status: merged, merged_at_utc: 2026-05-21T03:12:17Z, merge_commit: 10fef355d63ca3648db45b53394ac59af9bcc9b5)
+
 
 
 

@@ -6,6 +6,8 @@ namespace App\Services\Compliance;
 
 use App\Models\ComplianceReport;
 use App\Models\KnowledgeDocument;
+use JsonException;
+use RuntimeException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -56,7 +58,7 @@ final class ComplianceReportGenerator
             ],
         ];
 
-        $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}';
+        $payloadJson = $this->encodePayload($payload);
         $hashSha256 = hash('sha256', $payloadJson);
         $hashHmac = hash_hmac('sha256', $payloadJson.$tenantId.$start->toDateString().$end->toDateString(), $this->hmacSecret());
 
@@ -191,7 +193,23 @@ final class ComplianceReportGenerator
 
     private function hmacSecret(): string
     {
-        return (string) config('askmydocs.compliance.hmac_secret', '');
+        $secret = (string) config('askmydocs.compliance.hmac_secret', '');
+        if ($secret === '') {
+            throw new RuntimeException('askmydocs.compliance.hmac_secret is required');
+        }
+
+        return $secret;
+    }
+
+    private function encodePayload(array $payload): string
+    {
+        try {
+            return json_encode(
+                $payload,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+            );
+        } catch (JsonException $e) {
+            throw new RuntimeException('Failed to encode compliance report payload', 0, $e);
+        }
     }
 }
-
