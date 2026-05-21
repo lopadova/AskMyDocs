@@ -24,6 +24,24 @@ import {
  */
 
 test.describe('Chat', () => {
+    const waitForWikilinkResolveResponse = async (page: Parameters<typeof test>[0]['page']) => {
+        // CI intermittently misses the first hover event after React re-renders.
+        // Retry the resolver wait with short windows to avoid one-shot flake timeouts.
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+            try {
+                return await page.waitForResponse(
+                    (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
+                    { timeout: 7_500 },
+                );
+            } catch (error) {
+                if (attempt === 3) {
+                    throw error;
+                }
+            }
+        }
+        throw new Error('unreachable');
+    };
+
     // The "user asks question..." scenario lives in a nested describe
     // so we can bump its per-test budget to 60 s without affecting the
     // 4 fast scenarios in this file. Playwright's per-test `timeout`
@@ -128,15 +146,12 @@ test.describe('Chat', () => {
         // node so the cursor sits on a detached element. dispatchEvent
         // on the LIVE node lets React's root-attached event delegation
         // catch the bubbled event regardless of mouse position.
-        const respPromise = page.waitForResponse(
-            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
-            { timeout: 15_000 },
-        );
+        await wikilink.hover({ force: true });
         await wikilink.evaluate((el) => {
             el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
             el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         });
-        const resp = await respPromise;
+        const resp = await waitForWikilinkResolveResponse(page);
         if (!resp.ok()) {
             throw new Error(
                 `GET /api/kb/resolve-wikilink returned non-OK: ${resp.status()} ${await resp.text()}`,
@@ -190,15 +205,12 @@ test.describe('Chat', () => {
         // Playwright's mouse cursor tracking which loses the React node
         // across re-renders. The route stub returns 500 so the response
         // arrives immediately; wait for it then re-dispatch.
-        const respPromise = page.waitForResponse(
-            (resp) => resp.url().includes('/api/kb/resolve-wikilink'),
-            { timeout: 15_000 },
-        );
+        await wikilink.hover({ force: true });
         await wikilink.evaluate((el) => {
             el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
             el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         });
-        await respPromise;
+        await waitForWikilinkResolveResponse(page);
         await page.locator('[data-testid="wikilink-remote-work-policy"]').first().evaluate((el) => {
             el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
             el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
