@@ -5,15 +5,19 @@ namespace App\Mcp\Servers;
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\KbDocumentBySlugTool;
+use App\Mcp\Tools\KbDetectDecisionDebtTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
 use App\Mcp\Tools\KbGraphSubgraphTool;
+use App\Mcp\Tools\KbListDanglingWikilinksTool;
+use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
 use App\Mcp\Tools\KbReadChunkTool;
 use App\Mcp\Tools\KbReadDocumentTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
+use App\Mcp\Tools\KbSuggestSupersessionChainTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -40,6 +44,11 @@ class KnowledgeBaseServer extends Server
         KbDocumentBySlugTool::class,
         KbDocumentsByTypeTool::class,
         KbPromotionSuggestTool::class,
+        // Phase 7 — propose-only MCP tools
+        KbListDanglingWikilinksTool::class,
+        KbDetectDecisionDebtTool::class,
+        KbSuggestSupersessionChainTool::class,
+        KbProposeCanonicalEditTool::class,
     ];
 
     protected function boot(): void
