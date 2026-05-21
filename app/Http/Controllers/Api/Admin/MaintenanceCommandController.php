@@ -244,6 +244,7 @@ class MaintenanceCommandController extends Controller
             'admin_audit_prune' => 'Rotate admin_command_audit (Phase H2).',
             'admin_nonces_prune' => 'Purge expired/used admin_command_nonces.',
             'notifications_prune' => 'Rotate notification_events past retention (W1.5).',
+            'compliance_digest_quarterly' => 'Quarterly compliance digest generation (W8.5).',
             'insights_compute' => 'Daily AI-insights snapshot (Phase I).',
             // Composite-gated slots — only registered when the
             // upstream env flag is also on (see bootstrap/app.php).
