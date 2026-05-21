@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
 use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
@@ -268,6 +269,10 @@ Route::middleware([
             ->name('api.admin.kb.documents.graph');
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
+        Route::get('/compliance/reports/{report}/json', [ComplianceReportController::class, 'downloadJson'])
+            ->name('api.admin.compliance.reports.download_json');
+        Route::get('/compliance/reports/{report}/pdf', [ComplianceReportController::class, 'downloadPdf'])
+            ->name('api.admin.compliance.reports.download_pdf');
 
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
