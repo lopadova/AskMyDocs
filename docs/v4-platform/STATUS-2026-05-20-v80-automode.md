@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T02:29:00Z
+- updated_at_utc: 2026-05-21T02:32:00Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: w81_local_done_ready_pr
-- last_action: Implemented W8.1 compliance_reports foundation (migration + model + factory + tenant architecture/test coverage) and verified on 2026-05-21T02:29:00Z with phpunit: tests/Feature/Compliance/ComplianceReportModelTest.php (OK 4/4) + tests/Architecture/TenantIdMandatoryTest.php (OK 2/2)
-- next_action: commit/push W8.1 branch; open PR; monitor CI/review; patch must-fix findings if any; merge with --merge --delete-branch when green
+- open_pr_count: 1
+- agent_state: w81_pr_open_ci_pending
+- last_action: Opened PR #217 on 2026-05-21T02:31:00Z (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 3b592edc33c3a46f8fbd98b1dc41c760b661f63f, url: https://github.com/lopadova/AskMyDocs/pull/217)
+- next_action: monitor PR #217 CI/review; patch must-fix findings if any; closure-audit comment; merge with --merge --delete-branch once green
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
@@ -29,6 +29,7 @@ Regola fissa di aggiornamento:
   - #214: https://github.com/lopadova/AskMyDocs/pull/214 (head: feature/v8.0-W7.2-mcp-propose-tools, sha: 29372c716785e945692d30db9616bd70d521076f, status: merged, merged_at_utc: 2026-05-21T00:44:11Z, merge_commit: a669c6965d327cfcf438c864684db05a290b32f1)
   - #215: https://github.com/lopadova/AskMyDocs/pull/215 (head: feature/v8.0-W7.3-mcp-scope-guard, sha: 46c8c5321411d3db9b36edbf0036e554e37f708b, status: merged, merged_at_utc: 2026-05-21T01:15:53Z, merge_commit: d92092ad4f60b55398fd39026876600d579e1f08)
   - #216: https://github.com/lopadova/AskMyDocs/pull/216 (head: feature/v8.0-W7.4-mcp-connect-helper, sha: 8a91c46982744ac3c7342fe010402d3dbd3210c2, status: merged, merged_at_utc: 2026-05-21T01:41:40Z, merge_commit: 7eb1430fdd4e11217f11afb7fc155c755ffdf180)
+  - #217: https://github.com/lopadova/AskMyDocs/pull/217 (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 3b592edc33c3a46f8fbd98b1dc41c760b661f63f, status: open, opened_at_utc: 2026-05-21T02:31:00Z, ci_status: pending_as_of_2026-05-21T02:32:00Z)
 
 
 
