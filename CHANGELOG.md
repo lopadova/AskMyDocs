@@ -11,6 +11,29 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.0-rc4 — 2026-05-21 (W8 closure — Compliance Differential Pack v1)
+
+W8 closure of the **v8.0 killer-features cycle**. Ships the full
+Compliance Differential Pack v1 and closes the final functional block
+before GA:
+
+- **W8.1** (PR #217 — merged) — `compliance_reports` schema foundation.
+- **W8.2** (PR #218 — merged) — `ComplianceReportGenerator` service
+  (KB delta + audit aggregate + tamper-evident hash).
+- **W8.3** (PR #219 — merged) — PDF + JSON export paths.
+- **W8.4** (PR #220 — merged) — `/app/admin/compliance/reports` SPA +
+  verify endpoint.
+- **W8.5** (PR #221 — merged) — `compliance:digest-quarterly` tenant
+  opt-in cron gate + scheduler wiring.
+
+Closure audit on PR #221 was posted on 2026-05-21 and CI was green on
+the merged head before closure.
+
+Plan source:
+[`docs/v4-platform/PLAN-v8.0-killer-features.md`](docs/v4-platform/PLAN-v8.0-killer-features.md) §C.7.
+
+---
+
 ### v8.0.0-rc3 — 2026-05-20 (W3 closure — Why-not-cited + Counterfactual)
 
 W3 closure of the **v8.0 killer-features cycle**. Ships retrieval
