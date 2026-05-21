@@ -259,4 +259,11 @@ return [
         ],
     ],
 
+    'compliance' => [
+        'hmac_secret' => (string) env(
+            'COMPLIANCE_HMAC_SECRET',
+            env('APP_ENV') === 'production' ? '' : (string) env('APP_KEY', ''),
+        ),
+    ],
+
 ];
