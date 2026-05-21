@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T08:29:12Z
+- updated_at_utc: 2026-05-21T08:35:20Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 1
-- agent_state: w85_pr221_ci_wait_loop
-- last_action: Pushed CI fix for PR #221 at 2026-05-21T08:28:29Z; new head is 3d64fd86fe8aa5ca90ecec6362e388fa2f98adf8 and checks were re-queued.
-- next_action: run wait/recheck loop on PR #221 head 3d64fd86fe8aa5ca90ecec6362e388fa2f98adf8; if checks are green and no must-fix findings remain, post closure audit and merge with --merge --delete-branch.
+- agent_state: w85_pr221_ci_patch2_ready_to_push
+- last_action: Identified new CI must-fix on PR #221 at 2026-05-21T08:33:47Z (test expected `cron_time` always HH:MM); patched `MaintenanceCommandControllerTest::test_scheduler_status_returns_static_schedule` to accept HH:MM or raw cron, and validated locally with `php artisan test --filter=MaintenanceCommandControllerTest::test_scheduler_status_returns_static_schedule` (pass at 2026-05-21T08:35:06Z).
+- next_action: push latest patch to PR #221 and re-enter wait/recheck loop; merge when checks are green and no must-fix findings remain.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
@@ -32,7 +32,7 @@ Regola fissa di aggiornamento:
   - #218: https://github.com/lopadova/AskMyDocs/pull/218 (head: feature/v8.0-W8.2-compliance-report-generator, sha: 3ffe4139ae2956d39749dba1def03fb4579cc975, status: merged, merged_at_utc: 2026-05-21T04:30:52Z, merge_commit: 047e249411d0fd496fbb5f05e991357985f9ef91)
   - #219: https://github.com/lopadova/AskMyDocs/pull/219 (head: feature/v8.0-W8.3-compliance-export, sha: ab90a0216cc157436fc35ad497e2d3031b11fc35, status: merged, merged_at_utc: 2026-05-21T04:49:59Z, merge_commit: 48035294b1653d9897a036c6219675ef44e00a5f)
   - #220: https://github.com/lopadova/AskMyDocs/pull/220 (head: feature/v8.0-W8.4-compliance-spa-verify, sha: 49d857ad289705bd3d585e0b0165adb4f2e8d8ac, status: merged, merged_at_utc: 2026-05-21T05:11:00Z, merge_commit: 68bc45e556485a685085eb44233a5411a5d2ca29)
-  - #221: https://github.com/lopadova/AskMyDocs/pull/221 (head: feature/v8.0-W8.5-compliance-digest-quarterly, sha: 3d64fd86fe8aa5ca90ecec6362e388fa2f98adf8, status: open, opened_at_utc: 2026-05-21T06:03:44Z)
+  - #221: https://github.com/lopadova/AskMyDocs/pull/221 (head: feature/v8.0-W8.5-compliance-digest-quarterly, sha: 4ea3e6f02994fb0fc1af6f4726688ac25d4f819d, status: open, opened_at_utc: 2026-05-21T06:03:44Z)
 
 
 
