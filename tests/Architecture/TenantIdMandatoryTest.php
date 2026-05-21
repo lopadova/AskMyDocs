@@ -103,6 +103,8 @@ final class TenantIdMandatoryTest extends TestCase
         // v8.0/W5.1 — Living Collections foundation schema.
         \App\Models\KbCollection::class,
         \App\Models\KbCollectionMember::class,
+        // v8.0/W8.1 — compliance differential pack foundation schema.
+        \App\Models\ComplianceReport::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
