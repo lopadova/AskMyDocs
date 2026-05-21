@@ -27,6 +27,7 @@ export type AdminSection =
     | 'tabular-reviews'
     | 'workflows'
     | 'mcp-tools'
+    | 'mcp-tokens'
     | 'collections'
     // v8.0/W1.4 — dedicated identifier so the
     // /app/admin/notifications route does NOT highlight a
@@ -73,6 +74,7 @@ const RAIL: RailEntry[] = [
     // enforces; the FE rail entry is always visible and the route
     // component renders <AdminForbidden /> on miss via <RequireRole>.
     { id: 'mcp-tools', label: 'MCP Tools', icon: 'Wrench', to: '/app/admin/mcp-tools' },
+    { id: 'mcp-tokens', label: 'MCP Tokens', icon: 'Link', to: '/app/admin/mcp/tokens' },
     { id: 'collections', label: 'Collections', icon: 'Book', to: '/app/admin/collections' },
 ];
 
