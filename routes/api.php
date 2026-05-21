@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
+use App\Http\Controllers\Api\Admin\McpTenantTokenController;
 use App\Http\Controllers\Api\Admin\McpToolCallAuditController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
@@ -519,6 +520,23 @@ Route::middleware([
 ])
     ->get('/admin/mcp-tool-call-audit', [McpToolCallAuditController::class, 'index'])
     ->name('api.admin.mcp-tool-call-audit.index');
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:manageMcpTools',
+])
+    ->prefix('admin/mcp/tokens')
+    ->group(function () {
+        Route::get('/', [McpTenantTokenController::class, 'index'])
+            ->name('api.admin.mcp.tokens.index');
+        Route::post('/', [McpTenantTokenController::class, 'store'])
+            ->name('api.admin.mcp.tokens.store');
+        Route::post('/{id}/revoke', [McpTenantTokenController::class, 'revoke'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp.tokens.revoke');
+    });
 
 /*
 |--------------------------------------------------------------------------

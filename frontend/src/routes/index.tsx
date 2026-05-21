@@ -28,6 +28,7 @@ import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallbac
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
+import { McpTokensView } from '../features/admin/mcp-tokens/McpTokensView';
 import { CollectionsView } from '../features/admin/collections/CollectionsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
@@ -533,6 +534,22 @@ const adminMcpToolsRoute = createRoute({
     component: AdminMcpToolsRoute,
 });
 
+function AdminMcpTokensRoute() {
+    return (
+        <RequireRole roles={['super-admin']}>
+            <AdminShell section="mcp-tokens">
+                <McpTokensView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminMcpTokensRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/mcp/tokens',
+    component: AdminMcpTokensRoute,
+});
+
 function AdminCollectionsRoute() {
     return (
         <RequireRole roles={['admin', 'super-admin']}>
@@ -672,6 +689,7 @@ const routeTree = rootRoute.addChildren([
         adminTabularReviewsRoute,
         adminWorkflowsRoute,
         adminMcpToolsRoute,
+        adminMcpTokensRoute,
         adminCollectionsRoute,
         adminNotificationsRoute,
         adminNotificationPreferencesRoute,

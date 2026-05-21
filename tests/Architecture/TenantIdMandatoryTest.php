@@ -90,6 +90,7 @@ final class TenantIdMandatoryTest extends TestCase
         // R31 audit caught the omission).
         \App\Models\McpServer::class,
         \App\Models\McpToolCallAudit::class,
+        \App\Models\McpTenantToken::class,
         // v8.0/W1.1 — notification system foundation (ADR 0012).
         \App\Models\NotificationEvent::class,
         \App\Models\NotificationPreference::class,
