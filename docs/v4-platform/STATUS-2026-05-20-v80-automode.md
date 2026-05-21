@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T04:34:27Z
+- updated_at_utc: 2026-05-21T04:50:35Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: w83_validated_pending_pr_open
-- last_action: Validated W8.3 on 2026-05-21T04:34:27Z; `php artisan test tests/Feature/Api/Admin/ComplianceReportControllerTest.php` passed (2 tests, 4 assertions) after fixing downloadJson return-type mismatch.
-- next_action: commit/push feature/v8.0-W8.3-compliance-export, open PR against feature/v8.0 with Copilot reviewer, then enter CI/review/merge loop.
+- open_pr_count: 1
+- agent_state: w83_pr_ready_to_merge
+- last_action: Completed CI wait/recheck loop for PR #219 at 2026-05-21T04:50:20Z on head ab90a0216cc157436fc35ad497e2d3031b11fc35; all required checks are green. Posted closure audit comment (https://github.com/lopadova/AskMyDocs/pull/219#issuecomment-4504908227) documenting suppressed low-confidence review notes as stale/non-blocking for merge gating.
+- next_action: merge PR #219 with --merge --delete-branch; initial merge attempt was blocked by local uncommitted checkpoint edit, so commit checkpoint update and retry merge immediately.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
