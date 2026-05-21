@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T09:12:30Z
+- updated_at_utc: 2026-05-21T09:19:40Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 0
-- agent_state: w85_merged_w86_in_progress
-- last_action: PR #221 merged on 2026-05-21 after green CI and closure audit; GitHub confirms merged state and branch advanced into base eature/v8.0.
-- next_action: execute W8.6 closure docs/tag (README + CHANGELOG + rc tag), then execute W8.7 GA merge feature/v8.0 -> main and tag v8.0.0.
+- open_pr_count: 1
+- agent_state: w87_pr222_ci_running
+- last_action: Completed W8.6 docs closure on feature/v8.0 (commit 3ef68c54d7a5c4ec8bd793f1adf8ac9d9a7e8d0e), pushed tag v8.0.0-rc4, opened GA PR #222 feature/v8.0 -> main at 2026-05-21T09:19:35Z.
+- next_action: wait/recheck PR #222 checks; if green and no must-fix findings, merge with --merge --delete-branch, tag v8.0.0 on merge commit, and close runtime checkpoint.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
@@ -42,3 +42,5 @@ Regola fissa di aggiornamento:
 
 
 
+
+  - #222: https://github.com/lopadova/AskMyDocs/pull/222 (head: feature/v8.0, sha: 3ef68c54d7a5c4ec8bd793f1adf8ac9d9a7e8d0e, status: open, opened_at_utc: 2026-05-21T09:19:35Z)
