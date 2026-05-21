@@ -30,6 +30,7 @@ import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularRev
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
 import { McpTokensView } from '../features/admin/mcp-tokens/McpTokensView';
 import { CollectionsView } from '../features/admin/collections/CollectionsView';
+import { ComplianceReportsView } from '../features/admin/compliance/ComplianceReportsView';
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
@@ -566,6 +567,20 @@ const adminCollectionsRoute = createRoute({
     component: AdminCollectionsRoute,
 });
 
+function AdminComplianceReportsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <ComplianceReportsView />
+        </RequireRole>
+    );
+}
+
+const adminComplianceReportsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/compliance/reports',
+    component: AdminComplianceReportsRoute,
+});
+
 // v8.0/W1.4 — full notification panel route. Accessible to any
 // authenticated user (notifications are per-user, not admin-only);
 // no RequireRole wrapper. The Topbar's NotificationBell links here
@@ -691,6 +706,7 @@ const routeTree = rootRoute.addChildren([
         adminMcpToolsRoute,
         adminMcpTokensRoute,
         adminCollectionsRoute,
+        adminComplianceReportsRoute,
         adminNotificationsRoute,
         adminNotificationPreferencesRoute,
         adminNotificationDefaultsRoute,

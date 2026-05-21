@@ -29,6 +29,7 @@ export type AdminSection =
     | 'mcp-tools'
     | 'mcp-tokens'
     | 'collections'
+    | 'compliance-reports'
     // v8.0/W1.4 — dedicated identifier so the
     // /app/admin/notifications route does NOT highlight a
     // neighbouring rail entry (Copilot iter-6 #2). Notifications
@@ -76,6 +77,7 @@ const RAIL: RailEntry[] = [
     { id: 'mcp-tools', label: 'MCP Tools', icon: 'Wrench', to: '/app/admin/mcp-tools' },
     { id: 'mcp-tokens', label: 'MCP Tokens', icon: 'Link', to: '/app/admin/mcp/tokens' },
     { id: 'collections', label: 'Collections', icon: 'Book', to: '/app/admin/collections' },
+    { id: 'compliance-reports', label: 'Compliance', icon: 'Shield', to: '/app/admin/compliance/reports' },
 ];
 
 export interface AdminShellProps {

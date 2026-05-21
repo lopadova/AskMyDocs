@@ -26,6 +26,66 @@ final class ComplianceReportControllerTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
+        config()->set('askmydocs.compliance.hmac_secret', 'test-compliance-secret');
+    }
+
+    public function test_index_lists_reports_filtered_by_tenant(): void
+    {
+        $admin = $this->makeAdmin();
+        $this->makeReport();
+        ComplianceReport::create([
+            'tenant_id' => 'tenant-other',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-03-31',
+            'payload_json' => ['delta' => [], 'audit' => [], 'period' => ['start' => '2026-01-01', 'end' => '2026-03-31']],
+            'hash_sha256' => hash('sha256', 'x'),
+            'hash_hmac' => hash('sha256', 'y'),
+            'generated_at' => now(),
+            'generated_by' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get('/api/admin/compliance/reports?tenant_id=tenant-acme')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.tenant_id', 'tenant-acme');
+    }
+
+    public function test_store_generates_report_for_period(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $response = $this->actingAs($admin)
+            ->postJson('/api/admin/compliance/reports', [
+                'tenant_id' => 'tenant-acme',
+                'period_start' => '2026-01-01',
+                'period_end' => '2026-03-31',
+            ])
+            ->assertCreated();
+
+        $this->assertDatabaseHas('compliance_reports', [
+            'id' => $response->json('data.id'),
+            'tenant_id' => 'tenant-acme',
+            'period_start' => '2026-01-01 00:00:00',
+            'period_end' => '2026-03-31 00:00:00',
+        ]);
+    }
+
+    public function test_verify_returns_valid_true_for_untampered_payload(): void
+    {
+        $admin = $this->makeAdmin();
+        $report = $this->makeReport();
+
+        $payloadJson = json_encode($report->payload_json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $report->update([
+            'hash_sha256' => hash('sha256', $payloadJson),
+            'hash_hmac' => hash_hmac('sha256', $payloadJson.'tenant-acme2026-01-012026-03-31', 'test-compliance-secret'),
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson('/api/admin/compliance/reports/'.$report->id.'/verify')
+            ->assertOk()
+            ->assertJsonPath('valid', true);
     }
 
     public function test_download_json_streams_report_payload(): void

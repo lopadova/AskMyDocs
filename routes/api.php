@@ -269,6 +269,12 @@ Route::middleware([
             ->name('api.admin.kb.documents.graph');
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
+        Route::get('/compliance/reports', [ComplianceReportController::class, 'index'])
+            ->name('api.admin.compliance.reports.index');
+        Route::post('/compliance/reports', [ComplianceReportController::class, 'store'])
+            ->name('api.admin.compliance.reports.store');
+        Route::post('/compliance/reports/{report}/verify', [ComplianceReportController::class, 'verify'])
+            ->name('api.admin.compliance.reports.verify');
         Route::get('/compliance/reports/{report}/json', [ComplianceReportController::class, 'downloadJson'])
             ->name('api.admin.compliance.reports.download_json');
         Route::get('/compliance/reports/{report}/pdf', [ComplianceReportController::class, 'downloadPdf'])
