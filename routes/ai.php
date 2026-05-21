@@ -18,7 +18,7 @@ use Laravel\Mcp\Facades\Mcp;
 
 // Variante semplice:
 Mcp::web('/mcp/kb', KnowledgeBaseServer::class)
-    ->middleware(['auth:sanctum', 'throttle:api']);
+    ->middleware(['auth:sanctum', 'mcp.scope', 'throttle:api']);
 
 // Variante enterprise (attivare se scegli Passport):
 // Mcp::oauthRoutes();
