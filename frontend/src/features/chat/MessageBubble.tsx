@@ -9,13 +9,17 @@ import { MessageActions } from './MessageActions';
 import { FeedbackButtons } from './FeedbackButtons';
 import { TokenCostMeter } from './TokenCostMeter';
 import { UserMessageEditor } from './UserMessageEditor';
+import { RetrievalRunnerUpPanel } from './RetrievalRunnerUpPanel';
+import { CounterfactualPanel } from './CounterfactualPanel';
 import {
     getCitations,
     getConfidence,
+    getCounterfactual,
     getMessageId,
     getReasoningSteps,
     getRefusalBody,
     getRefusalReason,
+    getRunnerUp,
     getTextContent,
     getToolCalls,
     isUiMessage,
@@ -51,6 +55,7 @@ export interface MessageBubbleProps {
      * Save calls `onEditSubmit(newText)`; Cancel restores the original.
      */
     onEditSubmit?: (newContent: string) => void | Promise<void>;
+    showCounterfactual?: boolean;
 }
 
 /**
@@ -82,6 +87,7 @@ export function MessageBubble({
     onRegenerate,
     onBranch,
     onEditSubmit,
+    showCounterfactual = true,
 }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
@@ -164,6 +170,8 @@ export function MessageBubble({
     const confidence = getConfidence(message);
     const isRefusal = refusalReason != null;
     const toolCalls = getToolCalls(message);
+    const runnerUp = getRunnerUp(message);
+    const counterfactual = getCounterfactual(message);
 
     return (
         <div
@@ -221,6 +229,12 @@ export function MessageBubble({
                   */}
                 {!streaming && !isRefusal && citations.length > 0 && (
                     <CitationsPopover citations={citations} />
+                )}
+                {!streaming && (
+                    <RetrievalRunnerUpPanel rows={runnerUp} />
+                )}
+                {!streaming && (
+                    <CounterfactualPanel rows={counterfactual} enabled={showCounterfactual} />
                 )}
                 {!streaming && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, marginTop: 10 }}>

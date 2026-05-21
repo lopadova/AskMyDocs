@@ -456,6 +456,53 @@ class MaintenanceCommandControllerTest extends TestCase
 
         $this->assertIsArray($res);
         $this->assertGreaterThan(0, count($res));
+
+        // v8.0/W2.4 contract: every row carries `cron_time`
+        // (HH:MM for daily fixed-time, otherwise raw cron expression)
+        // AND `cron_expression` (raw 5-field string). Both are always
+        // present so advanced ops tooling doesn't have to round-trip
+        // the conversion.
+        foreach ($res as $row) {
+            $this->assertArrayHasKey('command', $row);
+            $this->assertArrayHasKey('cron_time', $row);
+            $this->assertArrayHasKey('cron_expression', $row);
+            $this->assertArrayHasKey('description', $row);
+            $cronTime = (string) $row['cron_time'];
+            $isHumanTime = preg_match('/^\d{2}:\d{2}$/', $cronTime) === 1;
+            $isCronExpr = preg_match('/^\S+(\s+\S+){4}$/', $cronTime) === 1;
+            $this->assertTrue($isHumanTime || $isCronExpr);
+            $this->assertMatchesRegularExpression('/^\S+(\s+\S+){4}$/', (string) $row['cron_expression']);
+        }
+    }
+
+    public function test_scheduler_status_suppresses_disabled_slots(): void
+    {
+        config(['askmydocs.schedule.notifications_prune.enabled' => false]);
+        $admin = $this->makeAdmin();
+
+        $res = $this->actingAs($admin)
+            ->getJson('/api/admin/commands/scheduler-status')
+            ->assertOk()
+            ->json('data');
+
+        $commands = array_column($res, 'command');
+        $this->assertNotContains('notifications:prune', $commands);
+    }
+
+    public function test_scheduler_status_reflects_env_overridden_cron(): void
+    {
+        config(['askmydocs.schedule.kb_prune_deleted.cron' => '7 7 * * *']);
+        $admin = $this->makeAdmin();
+
+        $res = $this->actingAs($admin)
+            ->getJson('/api/admin/commands/scheduler-status')
+            ->assertOk()
+            ->json('data');
+
+        $row = collect($res)->firstWhere('command', 'kb:prune-deleted');
+        $this->assertNotNull($row);
+        $this->assertSame('07:07', $row['cron_time']);
+        $this->assertSame('7 7 * * *', $row['cron_expression']);
     }
 
     public function test_history_guest_401(): void

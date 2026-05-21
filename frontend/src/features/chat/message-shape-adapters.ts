@@ -1,5 +1,5 @@
 import type { UIMessage } from 'ai';
-import type { Message as AppMessage, MessageCitation } from './chat.api';
+import type { CounterfactualPanel, Message as AppMessage, MessageCitation, RunnerUpChunk } from './chat.api';
 
 /**
  * v4.0/W3.2 — shape adapters that let the chat renderer consume BOTH
@@ -371,6 +371,22 @@ export function getReasoningSteps(m: RenderableMessage): string[] | undefined {
         }
     }
     return steps.length === 0 ? undefined : steps;
+}
+
+export function getRunnerUp(m: RenderableMessage): RunnerUpChunk[] {
+    if (isUiMessage(m)) {
+        return [];
+    }
+    const rows = m.metadata?.retrieval_runner_up;
+    return Array.isArray(rows) ? rows : [];
+}
+
+export function getCounterfactual(m: RenderableMessage): CounterfactualPanel[] {
+    if (isUiMessage(m)) {
+        return [];
+    }
+    const rows = m.metadata?.counterfactual;
+    return Array.isArray(rows) ? rows : [];
 }
 
 /**

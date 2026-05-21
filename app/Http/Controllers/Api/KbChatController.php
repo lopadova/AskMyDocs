@@ -9,7 +9,9 @@ use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\CounterfactualService;
 use App\Services\Kb\Retrieval\SearchResult;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Collection;
@@ -32,6 +34,8 @@ class KbChatController extends Controller
         KbSearchService $search,
         ChatLogManager $chatLog,
         ConfidenceCalculator $confidence,
+        CounterfactualService $counterfactual,
+        TenantContext $tenants,
     ): JsonResponse {
         $question = (string) $request->input('question');
         // Effective single-project key for the legacy meta payload + the
@@ -50,6 +54,20 @@ class KbChatController extends Controller
             limit: config('kb.default_limit', 8),
             minSimilarity: config('kb.default_min_similarity', 0.30),
             filters: $filters,
+        );
+
+        // v8.0/W3.4 — Counterfactual mini-retrieval against up to 3
+        // other projects the user has membership in. RBAC-critical:
+        // the candidate project set comes STRICTLY from the user's
+        // `project_memberships` rows (tenant-scoped), never from the
+        // raw chunk pool — a project the user has no membership in
+        // must never appear here. Default-ON via config; per-user
+        // preference toggle lands in W3.5 (FE work).
+        $counterfactualPanels = $counterfactual->pick(
+            query: $question,
+            userId: $request->user()?->id,
+            tenantId: $tenants->current(),
+            primaryProjectKey: $projectKey,
         );
 
         // T3.3 — deterministic refusal short-circuit. If too few primary
@@ -75,6 +93,7 @@ class KbChatController extends Controller
                 result: $result,
                 startTime: $startTime,
                 reason: 'no_relevant_context',
+                counterfactual: $counterfactualPanels,
             );
         }
 
@@ -104,6 +123,7 @@ class KbChatController extends Controller
                 result: $result,
                 aiResponse: $aiResponse,
                 latencyMs: $latencyMs,
+                counterfactual: $counterfactualPanels,
             );
         }
 
@@ -158,6 +178,7 @@ class KbChatController extends Controller
             aiResponse: $aiResponse,
             result: $result,
             totalLatencyMs: $latencyMs,
+            counterfactual: $counterfactualPanels,
         ));
     }
 
@@ -172,6 +193,7 @@ class KbChatController extends Controller
      * uniformity across grounded vs refused.
      *
      * @param  array<int, array<string, mixed>>  $citations
+     * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function buildSuccessResponse(
         string $answer,
@@ -180,6 +202,7 @@ class KbChatController extends Controller
         AiResponse $aiResponse,
         SearchResult $result,
         int $totalLatencyMs,
+        array $counterfactual = [],
     ): array {
         $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? 0);
         $llmMs = max(0, $totalLatencyMs - $retrievalMs);
@@ -196,6 +219,14 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                // v8.0/W3.1 — Why-not-cited: surface the runner-up
+                // chunks (considered but not used in primary) so the
+                // chat UI can render the "Considered but not used"
+                // tab. R27 additive: new sibling key, never replaces
+                // existing keys; legacy clients that ignore it keep
+                // working byte-for-byte.
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 // L21 — `latency_ms` stays a flat int for back-compat;
                 // breakdown lives under `latency_ms_breakdown` as a
                 // sibling. Don't sub-objectify load-bearing keys.
@@ -213,6 +244,12 @@ class KbChatController extends Controller
                 // that ignore meta.* don't see undefined keys.
                 'search_strategy' => $result->meta['search_strategy'] ?? null,
                 'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
+                // v8.0/W3.4 — counterfactual neighbor-project panels.
+                // R27 additive: always present (empty array when the
+                // user has no other memberships, when the toggle is
+                // off, or when the calling user is anonymous).
+                'counterfactual' => $counterfactual,
+                'counterfactual_count' => count($counterfactual),
             ],
         ];
     }
@@ -228,6 +265,8 @@ class KbChatController extends Controller
      * No LLM call. The latency reported is retrieval-only — useful for
      * observability so we can tell apart "refused fast on missing data"
      * from "refused after slow over-retrieval".
+     *
+     * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function refusalResponse(
         KbChatRequest $request,
@@ -237,6 +276,7 @@ class KbChatController extends Controller
         SearchResult $result,
         float $startTime,
         string $reason,
+        array $counterfactual = [],
     ): JsonResponse {
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
         $answer = $this->localizedRefusalMessage($reason);
@@ -280,6 +320,8 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 'latency_ms' => $latencyMs,
                 'latency_ms_breakdown' => [
                     'retrieval' => $retrievalMs,
@@ -290,6 +332,11 @@ class KbChatController extends Controller
                 'refused_early' => true,
                 'search_strategy' => $result->meta['search_strategy'] ?? null,
                 'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
+                // v8.0/W3.4 — counterfactual is still meaningful on
+                // refusal: "no relevant context HERE — but here is
+                // what your other projects have on this query".
+                'counterfactual' => $counterfactual,
+                'counterfactual_count' => count($counterfactual),
             ],
         ]);
     }
@@ -352,6 +399,8 @@ class KbChatController extends Controller
      * The user-facing answer is replaced with the i18n placeholder so the
      * FE renders the RefusalNotice (T3.7, deferred) instead of the literal
      * sentinel string.
+     *
+     * @param  array<int, array{project_key: string, top_chunks: array<int, array<string, mixed>>}>  $counterfactual
      */
     private function convertSentinelToRefusal(
         KbChatRequest $request,
@@ -361,6 +410,7 @@ class KbChatController extends Controller
         SearchResult $result,
         AiResponse $aiResponse,
         int $latencyMs,
+        array $counterfactual = [],
     ): JsonResponse {
         $reason = 'llm_self_refusal';
         $answer = $this->localizedRefusalMessage($reason);
@@ -405,6 +455,14 @@ class KbChatController extends Controller
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
+                // v8.0/W3.1 — Why-not-cited: surface the runner-up
+                // chunks (considered but not used in primary) so the
+                // chat UI can render the "Considered but not used"
+                // tab. R27 additive: new sibling key, never replaces
+                // existing keys; legacy clients that ignore it keep
+                // working byte-for-byte.
+                'retrieval_runner_up' => $result->runnerUp()->values()->all(),
+                'runner_up_count' => $result->runnerUp()->count(),
                 'latency_ms' => $latencyMs,
                 'latency_ms_breakdown' => [
                     'retrieval' => $retrievalMs,
@@ -415,6 +473,9 @@ class KbChatController extends Controller
                 'refused_early' => false,  // LLM was called; only RETRIEVAL was sufficient.
                 'search_strategy' => $result->meta['search_strategy'] ?? null,
                 'retrieval_stats' => $result->meta['retrieval_stats'] ?? null,
+                // v8.0/W3.4 — counterfactual on LLM self-refusal too.
+                'counterfactual' => $counterfactual,
+                'counterfactual_count' => count($counterfactual),
             ],
         ]);
     }

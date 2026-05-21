@@ -209,30 +209,167 @@ class MaintenanceCommandController extends Controller
     /**
      * GET /api/admin/commands/scheduler-status
      *
-     * Returns the static schedule declared in bootstrap/app.php as a
-     * list of `{command, cron_time, description}`. Computing the next
-     * execution time would require pulling the framework scheduler
-     * into request-time, which is overkill for an ops widget.
+     * Returns the effective host-side schedule as a list of
+     * `{command, cron_time, cron_expression, description}`. Both
+     * `cron_time` (HH:MM for daily-at-fixed-time slots, raw 5-field
+     * cron otherwise) and `cron_expression` (always the raw 5-field
+     * cron) are populated. Sourced from `config('askmydocs.schedule')`
+     * so env overrides (W2.4 Tier-1) surface in the ops widget
+     * instead of drifting from the literal cron times in
+     * `bootstrap/app.php`. Composite-gated slots (eval_nightly,
+     * ai_act_regulatory_poll) appear only when their upstream env
+     * gate is also on — mirrors bootstrap's dual-gate behaviour.
      */
     public function schedulerStatus(Request $request): JsonResponse
     {
-        return response()->json([
-            'data' => [
-                ['command' => 'kb:prune-embedding-cache', 'cron_time' => '03:10', 'description' => 'Embedding cache retention (LRU).'],
-                ['command' => 'chat-log:prune', 'cron_time' => '03:20', 'description' => 'Chat log retention (default 90d).'],
-                ['command' => 'kb:prune-deleted', 'cron_time' => '03:30', 'description' => 'Hard-delete soft-deleted KB docs past retention.'],
-                ['command' => 'kb:rebuild-graph', 'cron_time' => '03:40', 'description' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.'],
-                ['command' => 'queue:prune-failed --hours=48', 'cron_time' => '04:00', 'description' => 'Rotate the failed_jobs table.'],
-                ['command' => 'kb:prune-orphan-files --dry-run', 'cron_time' => '04:40', 'description' => 'Dry-run orphan scan.'],
-                // Copilot #2 fix: bootstrap/app.php runs `admin-audit:prune`
-                // with no `--days` arg (the command reads ADMIN_AUDIT_RETENTION_DAYS
-                // from env). Previously this string said `--days=365`, so the
-                // UI schedule grid was lying about what the scheduler actually
-                // executes.
-                ['command' => 'admin-audit:prune', 'cron_time' => '04:30', 'description' => 'Rotate admin_command_audit (Phase H2).'],
-                ['command' => 'admin-nonces:prune', 'cron_time' => '04:50', 'description' => 'Purge expired/used admin_command_nonces.'],
-            ],
-        ]);
+        // Description map: operator-facing human strings, kept local
+        // to the controller (these aren't configuration values). The
+        // SLOT inventory itself comes from `TierOneSchedulerRegistrar::slots()`
+        // so a missing description map entry is the only drift surface
+        // — the registrar + config + this method now agree on the slot
+        // set (Copilot iter-3 #L242 — slot metadata duplication).
+        $descriptionMap = [
+            'kb_prune_embedding_cache' => 'Embedding cache retention (LRU).',
+            'chat_log_prune' => 'Chat log retention (default 90d).',
+            'kb_prune_deleted' => 'Hard-delete soft-deleted KB docs past retention.',
+            'kb_rebuild_graph' => 'Recompute kb_nodes + kb_edges from canonical frontmatter.',
+            'kb_health_recompute' => 'Recompute canonical health snapshot + decision-debt score.',
+            'queue_prune_failed' => 'Rotate the failed_jobs table.',
+            'kb_prune_orphan_files' => 'Dry-run orphan scan.',
+            // Copilot earlier fix: bootstrap/app.php runs `admin-audit:prune`
+            // with no `--days` arg (the command reads
+            // ADMIN_AUDIT_RETENTION_DAYS from env). Previously this string
+            // said `--days=365`, so the UI grid was lying about what the
+            // scheduler actually executes.
+            'admin_audit_prune' => 'Rotate admin_command_audit (Phase H2).',
+            'admin_nonces_prune' => 'Purge expired/used admin_command_nonces.',
+            'notifications_prune' => 'Rotate notification_events past retention (W1.5).',
+            'compliance_digest_quarterly' => 'Quarterly compliance digest generation (W8.5).',
+            'insights_compute' => 'Daily AI-insights snapshot (Phase I).',
+            // Composite-gated slots — only registered when the
+            // upstream env flag is also on (see bootstrap/app.php).
+            // Listed here so they appear in the widget when active.
+            'eval_nightly' => 'Nightly eval-harness regression run (live-mode opt-in).',
+            'ai_act_regulatory_poll' => 'EU AI Act regulatory-feed daily poll.',
+        ];
+
+        $scheduleConfig = (array) config('askmydocs.schedule', []);
+        $data = [];
+
+        // Base Tier-1 slots: always reflect `config(...enabled)`.
+        foreach (\App\Scheduling\TierOneSchedulerRegistrar::slots() as [$slotKey, $command]) {
+            $row = $this->buildSchedulerRow(
+                $slotKey,
+                $command,
+                $descriptionMap,
+                $scheduleConfig,
+            );
+            if ($row !== null) {
+                $data[] = $row;
+            }
+        }
+
+        // Composite-gated slots: ALSO require the upstream env flag.
+        // Mirrors bootstrap/app.php so the widget shows exactly what
+        // the scheduler will actually run, not just what config says
+        // (Copilot iter-4 — eval_nightly + ai_act_regulatory_poll
+        // were missing from the response despite being part of the
+        // scheduler domain).
+        foreach (\App\Scheduling\TierOneSchedulerRegistrar::compositeGatedSlots() as [$slotKey, $command, $upstreamConfigKey]) {
+            if (! (bool) config($upstreamConfigKey, false)) {
+                continue;
+            }
+            $row = $this->buildSchedulerRow(
+                $slotKey,
+                $command,
+                $descriptionMap,
+                $scheduleConfig,
+            );
+            if ($row !== null) {
+                $data[] = $row;
+            }
+        }
+
+        return response()->json(['data' => $data]);
+    }
+
+    /**
+     * Build one row of the scheduler-status response. Returns null
+     * when the slot is disabled via `config(...enabled = false)`.
+     *
+     * R14 + R18 — fails closed on missing cron or missing description
+     * (programmer error indicating a registrar / config drift).
+     *
+     * @param  array<string, string>  $descriptionMap
+     * @param  array<string, mixed>   $scheduleConfig
+     * @return array<string, mixed>|null
+     */
+    private function buildSchedulerRow(
+        string $slotKey,
+        string $command,
+        array $descriptionMap,
+        array $scheduleConfig,
+    ): ?array {
+        $slot = (array) ($scheduleConfig[$slotKey] ?? []);
+        if (! (bool) ($slot['enabled'] ?? true)) {
+            return null;
+        }
+
+        if (! array_key_exists($slotKey, $descriptionMap)) {
+            throw new \RuntimeException(
+                "schedulerStatus: slot `{$slotKey}` has no description entry in this controller — add it to `\$descriptionMap` to match the SLOT inventory."
+            );
+        }
+
+        $expression = (string) ($slot['cron'] ?? '');
+        if ($expression === '') {
+            throw new \RuntimeException(
+                "schedulerStatus: enabled Tier-1 slot `{$slotKey}` has no `cron` entry in `config('askmydocs.schedule')`. Add it to `config/askmydocs.php` and document the matching `SCHEDULE_*_CRON` env var in `.env.example`."
+            );
+        }
+
+        return [
+            'command' => $command,
+            // `cron_time` is the human-readable HH:MM string the
+            // existing 60px `SchedulerStatusCard` column was sized
+            // for. Falls back to the full expression when the cron
+            // isn't a daily-at-fixed-time pattern — operators who
+            // set a non-daily cron see the actual expression and
+            // can adjust the FE layout if needed (Copilot iter-3
+            // #L256 — UI width mismatch). `cron_expression` is
+            // always the raw 5-field string so advanced tooling
+            // doesn't have to round-trip the conversion.
+            'cron_time' => $this->cronToHumanTime($expression),
+            'cron_expression' => $expression,
+            'description' => $descriptionMap[$slotKey],
+        ];
+    }
+
+    /**
+     * Render a 5-field cron expression as `HH:MM` when it represents
+     * a fixed-time daily schedule (e.g. `10 4 * * *` → `04:10`).
+     * Returns the raw expression unchanged for any other pattern.
+     */
+    private function cronToHumanTime(string $expression): string
+    {
+        $parts = preg_split('/\s+/', trim($expression)) ?: [];
+        if (count($parts) !== 5) {
+            return $expression;
+        }
+        [$minute, $hour, $dayOfMonth, $month, $dayOfWeek] = $parts;
+        $isDailyFixed = $dayOfMonth === '*'
+            && $month === '*'
+            && $dayOfWeek === '*'
+            && ctype_digit($minute)
+            && ctype_digit($hour)
+            && (int) $minute <= 59
+            && (int) $hour <= 23;
+
+        if (! $isDailyFixed) {
+            return $expression;
+        }
+
+        return sprintf('%02d:%02d', (int) $hour, (int) $minute);
     }
 
     // ------------------------------------------------------------------

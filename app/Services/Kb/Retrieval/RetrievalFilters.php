@@ -34,6 +34,7 @@ final readonly class RetrievalFilters
      * @param  ?string       $dateFrom        ISO-8601 date string applied as `>=` against `indexed_at`.
      * @param  ?string       $dateTo          ISO-8601 date string applied as `<=` against `indexed_at`.
      * @param  list<string>  $languages       ISO 639-1 codes ('it', 'en', ...).
+     * @param  ?int          $collectionId    Restrict retrieval to one Living Collection membership set.
      */
     public function __construct(
         public array $projectKeys = [],
@@ -42,6 +43,7 @@ final readonly class RetrievalFilters
         public array $canonicalTypes = [],
         public array $connectorTypes = [],
         public array $docIds = [],
+        public ?int $collectionId = null,
         public array $folderGlobs = [],
         public ?string $dateFrom = null,
         public ?string $dateTo = null,
@@ -61,6 +63,7 @@ final readonly class RetrievalFilters
             && $this->canonicalTypes === []
             && $this->connectorTypes === []
             && $this->docIds === []
+            && $this->collectionId === null
             && $this->folderGlobs === []
             && $this->languages === []
             && $this->dateFrom === null

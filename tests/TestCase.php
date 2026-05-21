@@ -51,6 +51,11 @@ abstract class TestCase extends OrchestraTestCase
         // the vendor's DenyAllAuthorizer.
         $app->register(\Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class);
         $app->register(\App\Providers\FlowAdminIntegrationServiceProvider::class);
+        // v8.0/W1.2 — notification dispatch pipeline (ChannelRegistry
+        // singleton + Event::listen wiring for the 4 BaseNotificationEvent
+        // subclasses). Same explicit-registration reason as the other
+        // host providers above (Testbench skips bootstrap/providers.php).
+        $app->register(\App\Providers\NotificationServiceProvider::class);
 
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
@@ -185,6 +190,12 @@ abstract class TestCase extends OrchestraTestCase
         // controller's own check. Tests that exercise the wired routes
         // flip this on via config(['eval-harness-ui.enabled' => true]).
         $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
+        // v8.0/W2.2 — askmydocs.* namespace (notifications subsystem).
+        // Without this, `config('askmydocs.notifications.*')` returns
+        // null in tests and the preferences-grid endpoint ships an
+        // empty `defaults` map. Testbench doesn't auto-load project
+        // config/ files; explicit set mirrors the other configs above.
+        $app['config']->set('askmydocs', require __DIR__.'/../config/askmydocs.php');
         // v4.5/W1 — connector framework config. Without this,
         // ConnectorRegistry boots empty and the admin endpoints can't
         // resolve provider knobs.
@@ -279,6 +290,19 @@ abstract class TestCase extends OrchestraTestCase
     protected function defineRoutes($router): void
     {
         require __DIR__.'/../routes/web.php';
+        // v8.0/W1.4 — `routes/api.php` is registered with the `api/`
+        // prefix in production via withRouting; mirror that here so
+        // feature tests can hit `/api/notifications` etc. directly.
+        //
+        // Copilot iter-2 #10 — apply the `api` middleware group too,
+        // so feature tests mirror production's stack (SubstituteBindings
+        // for route-model binding + `throttle:api` for rate-limiting).
+        // Without this, /api routes under tests behave subtly different
+        // from production and tests pass against a stack that production
+        // never sees.
+        $router->prefix('api')
+            ->middleware('api')
+            ->group(__DIR__.'/../routes/api.php');
     }
 
     protected function defineDatabaseMigrations(): void

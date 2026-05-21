@@ -1,11 +1,15 @@
 <?php
 
 use App\Http\Controllers\Api\Admin\AdminInsightsController;
+use App\Http\Controllers\Api\Admin\AdminNotificationDefaultsController;
 use App\Http\Controllers\Api\Admin\ConnectorAdminController;
+use App\Http\Controllers\Api\Admin\ComplianceReportController;
 use App\Http\Controllers\Api\Admin\EvernoteEnexController;
 use App\Http\Controllers\Api\Admin\DashboardMetricsController;
 use App\Http\Controllers\Api\Admin\EvalHarnessUiBootstrapController;
 use App\Http\Controllers\Api\Admin\KbDocumentController;
+use App\Http\Controllers\Api\Admin\KbCollectionController;
+use App\Http\Controllers\Api\Admin\KbHealthController;
 use App\Http\Controllers\Api\Admin\KbTreeController;
 use App\Http\Controllers\Api\Admin\LogViewerController;
 use App\Http\Controllers\Api\Admin\MaintenanceCommandController;
@@ -13,6 +17,7 @@ use App\Http\Controllers\Api\Admin\PermissionController;
 use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
+use App\Http\Controllers\Api\Admin\McpTenantTokenController;
 use App\Http\Controllers\Api\Admin\McpToolCallAuditController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
@@ -24,6 +29,8 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
+use App\Http\Controllers\Api\KbChunkFeedbackController;
+use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
@@ -98,11 +105,15 @@ Route::middleware([
     }
     Route::post('/kb/chat', KbChatController::class)
         ->middleware($chatMiddleware);
+    Route::post('/kb/feedback', KbChunkFeedbackController::class)
+        ->name('api.kb.feedback');
     Route::post('/kb/ingest', KbIngestController::class);
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
     Route::get('/kb/documents/search', KbDocumentSearchController::class)
         ->name('api.kb.documents.search');
+    Route::get('/kb/collections', KbCollectionPickerController::class)
+        ->name('api.kb.collections.index');
 
     // T2.9 — user-owned saved filter combinations (FE FilterBar dropdown
     // consumes these in T2.7-FE follow-up). Per-user authorization
@@ -216,6 +227,8 @@ Route::middleware([
             ->name('api.admin.kb.tree');
         Route::get('/kb/projects', [KbTreeController::class, 'projects'])
             ->name('api.admin.kb.projects');
+        Route::get('/kb/health', [KbHealthController::class, 'index'])
+            ->name('api.admin.kb.health.index');
 
         // Phase G2 — KB document detail (read-only). Admin-only binding
         // shim resolves trashed rows via `withTrashed()` — the default
@@ -256,6 +269,16 @@ Route::middleware([
             ->name('api.admin.kb.documents.graph');
         Route::post('/kb/documents/{document}/export-pdf', [KbDocumentController::class, 'exportPdf'])
             ->name('api.admin.kb.documents.export_pdf');
+        Route::get('/compliance/reports', [ComplianceReportController::class, 'index'])
+            ->name('api.admin.compliance.reports.index');
+        Route::post('/compliance/reports', [ComplianceReportController::class, 'store'])
+            ->name('api.admin.compliance.reports.store');
+        Route::post('/compliance/reports/{report}/verify', [ComplianceReportController::class, 'verify'])
+            ->name('api.admin.compliance.reports.verify');
+        Route::get('/compliance/reports/{report}/json', [ComplianceReportController::class, 'downloadJson'])
+            ->name('api.admin.compliance.reports.download_json');
+        Route::get('/compliance/reports/{report}/pdf', [ComplianceReportController::class, 'downloadPdf'])
+            ->name('api.admin.compliance.reports.download_pdf');
 
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
@@ -271,6 +294,28 @@ Route::middleware([
                 'update' => 'api.admin.kb.tags.update',
                 'destroy' => 'api.admin.kb.tags.destroy',
             ]);
+
+        Route::apiResource('kb/collections', KbCollectionController::class)
+            ->parameters(['collections' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.collections.index',
+                'store' => 'api.admin.kb.collections.store',
+                'show' => 'api.admin.kb.collections.show',
+                'update' => 'api.admin.kb.collections.update',
+                'destroy' => 'api.admin.kb.collections.destroy',
+            ]);
+        Route::post('/kb/collections/{id}/members', [KbCollectionController::class, 'addMember'])
+            ->whereNumber('id')
+            ->name('api.admin.kb.collections.members.add');
+        Route::post('/kb/collections/preview', [KbCollectionController::class, 'preview'])
+            ->name('api.admin.kb.collections.preview');
+        Route::get('/kb/collections/{id}/members', [KbCollectionController::class, 'members'])
+            ->whereNumber('id')
+            ->name('api.admin.kb.collections.members.index');
+        Route::delete('/kb/collections/{id}/members/{documentId}', [KbCollectionController::class, 'removeMember'])
+            ->whereNumber('id')
+            ->whereNumber('documentId')
+            ->name('api.admin.kb.collections.members.remove');
 
         // Phase H1 — Log Viewer (read-only). Five tabs: chat logs,
         // canonical audit, application log tail, activity log
@@ -325,6 +370,17 @@ Route::middleware([
             Route::get('/{date}', [AdminInsightsController::class, 'byDate'])
                 ->where('date', '[0-9]{4}-[0-9]{2}-[0-9]{2}')
                 ->name('api.admin.insights.by-date');
+        });
+
+        // v8.0/W2.3 — Per-tenant notification defaults grid. Read open
+        // to admin + super-admin (route group ACL); the controller
+        // tightens the mutation path to super-admin only so platform
+        // admins can audit the baselines without altering them.
+        Route::prefix('notifications')->group(function () {
+            Route::get('/defaults', [AdminNotificationDefaultsController::class, 'index'])
+                ->name('api.admin.notifications.defaults.index');
+            Route::put('/defaults', [AdminNotificationDefaultsController::class, 'update'])
+                ->name('api.admin.notifications.defaults.update');
         });
 
         // Phase H2 — Maintenance command runner. Write-path actions
@@ -475,6 +531,23 @@ Route::middleware([
 ])
     ->get('/admin/mcp-tool-call-audit', [McpToolCallAuditController::class, 'index'])
     ->name('api.admin.mcp-tool-call-audit.index');
+
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'can:manageMcpTools',
+])
+    ->prefix('admin/mcp/tokens')
+    ->group(function () {
+        Route::get('/', [McpTenantTokenController::class, 'index'])
+            ->name('api.admin.mcp.tokens.index');
+        Route::post('/', [McpTenantTokenController::class, 'store'])
+            ->name('api.admin.mcp.tokens.store');
+        Route::post('/{id}/revoke', [McpTenantTokenController::class, 'revoke'])
+            ->whereNumber('id')
+            ->name('api.admin.mcp.tokens.revoke');
+    });
 
 /*
 |--------------------------------------------------------------------------
@@ -701,3 +774,45 @@ Route::middleware([
 // `MCP_INTERNAL_AUTH_TOKEN` alongside it. The native MCP transports
 // (HTTP / SSE / stdio) provided by `padosoft/askmydocs-mcp-pack` don't
 // need any host-side internal callbacks.
+
+/*
+|--------------------------------------------------------------------------
+| v8.0/W1.4 — Notification bell + /admin/notifications panel API
+|--------------------------------------------------------------------------
+|
+| Per-user notification feed driven by the React NotificationBell +
+| NotificationPanel components. Same EncryptCookies+StartSession+
+| auth:sanctum surface as the rest of the SPA — no token-bearer
+| auth path. Reads return only rows owned by the authenticated user
+| in the active tenant; tenant-wide rows (user_id IS NULL) get a
+| dedicated /api/notifications/system surface in W4 (decision-debt
+| digest).
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+])
+    ->prefix('notifications')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\NotificationsController::class, 'index'])
+            ->name('api.notifications.index');
+        Route::get('/unread-count', [\App\Http\Controllers\Api\NotificationsController::class, 'unreadCount'])
+            ->name('api.notifications.unread-count');
+        // Copilot iter-4 #1 — R18 event-type discovery endpoint.
+        Route::get('/event-types', [\App\Http\Controllers\Api\NotificationsController::class, 'eventTypes'])
+            ->name('api.notifications.event-types');
+        // v8.0/W2.2 — preferences grid backing endpoints.
+        Route::get('/preferences', [\App\Http\Controllers\Api\NotificationPreferencesController::class, 'index'])
+            ->name('api.notifications.preferences.index');
+        Route::put('/preferences', [\App\Http\Controllers\Api\NotificationPreferencesController::class, 'update'])
+            ->name('api.notifications.preferences.update');
+        Route::post('/mark-all-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markAllRead'])
+            ->name('api.notifications.mark-all-read');
+        Route::post('/{id}/mark-read', [\App\Http\Controllers\Api\NotificationsController::class, 'markRead'])
+            ->whereNumber('id')
+            ->name('api.notifications.mark-read');
+        Route::post('/{id}/dismiss', [\App\Http\Controllers\Api\NotificationsController::class, 'dismiss'])
+            ->whereNumber('id')
+            ->name('api.notifications.dismiss');
+    });

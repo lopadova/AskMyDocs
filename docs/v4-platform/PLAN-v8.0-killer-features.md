@@ -1,24 +1,24 @@
-# Plan — AskMyDocs v9.0 — Killer Features Distintive
+# Plan — AskMyDocs v8.0 — Killer Features Distintive
 
 > **Context.** Sessione brainstorming originale: `C:\Users\lopad\Documents\DocLore\obsidianlore\obsidianlore\Clippings\AskMyDocs V8.0 Killer features distintive.md` (10 idee killer + sezioni A/B/C/D/E). Lorenzo applica ora 10 osservazioni/correzioni e chiede roadmap definitiva con ADR + task atomiche + acceptance gate per ogni feature, più recap di cosa va in `askmydocs-pro` (privato a pagamento).
 >
 > **Stato corrente del repo (verificato 2026-05-18).**
-> - Notifiche nel host AskMyDocs: **assenti** (zero migration / model / controller / bell / canale). `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` non wirato.
+> - Notifiche nel host AskMyDocs: **fondazione W1.1 SHIPPED** (3 migration + 3 Eloquent model + 12 lifecycle feature test + 3 nuovi entry in `TenantIdMandatoryTest` R31). Pending: controller / event publisher / dispatcher listener / canale adapter / bell SPA / `notifications:prune` cron — coperti dai sotto-task W1.2..W1.5 + W2. `bootstrap/app.php` linee 168–172 ha placeholder commento per `notifications:prune` ancora non wirato.
 > - Scheduler: tutti i 12 slot hanno cron hard-coded in `bootstrap/app.php`; solo le retention window sono env-configurabili.
-> - Cicli aperti: v7.0 Phase B (W6.3 next) + v8.0 (mcp-pack live wire-up) greenlit 2026-05-17. Le feature qui pianificate vivono nel **nuovo ciclo v9.0**, post v7.0 GA + v8.0 GA.
+> - Cicli predecessori chiusi: v7.0.0 GA `2026-05-16` (mcp-pack host integration) + v7.1.0 GA `2026-05-18 08:54Z` (mcp-pack v1.5 + mcp-pack-admin v1.1 live wire-up — semver MINOR sopra v7.0). Le feature qui pianificate aprono il **nuovo ciclo major v8.0**, cut subito dopo v7.1.0.
 >
-> **Assumption flag.** Cycle label = **v9.0**. Se vuoi label diversa (v8.x bundle, v9.x split) lo correggiamo prima dell'apertura `feature/v9.0`.
+> **Cycle label.** v8.0 = next major (semver) post v7.1.0. Originariamente il plan fu scritto come "v9.0" sull'assunto che il wire-up mcp-pack del 2026-05-18 sarebbe stato un major bump; è uscito invece come v7.1 minor, quindi il next major è v8.0. Tutti i riferimenti sono stati riallineati 2026-05-18.
 
 ---
 
 ## §A — Risposte puntuali alle 10 osservazioni
 
 ### A1. Formula health_score con pesi configurabili
-**ACK.** I pesi della formula `health_score` vivono in `config/askmydocs.php` sotto `kb_health.weights` (5 chiavi: `age_decay`, `repeat_questions`, `supersedes_chain`, `orphan_outbound`, `status_decay`). Per-tenant override via nuova tabella `tenant_settings(tenant_id, namespace, key, value_json)` letta da `KbHealthService::weights($tenantId)` con fallback config globale. UI in `/admin/kb/health/settings` (sliders + "preview" che mostra come cambia il top-20 al variare dei pesi prima di salvare).
+**ACK.** I pesi della formula `health_score` vivono in `config/askmydocs.php` sotto `kb_health.weights` (5 chiavi: `age_decay`, `repeat_questions`, `supersedes_chain`, `orphan_outbound`, `status_decay`). Per-tenant override via nuova tabella `tenant_settings(tenant_id, namespace, key, value_json)` letta da `KbHealthService::weights($tenantId)` con fallback config globale. UI in `/app/admin/kb/health/settings` (sliders + "preview" che mostra come cambia il top-20 al variare dei pesi prima di salvare).
 
 ### A2. Scheduler tunabile per slot
 **Decisione.** Due tier:
-- **Tier 1 — per-host env config (v9.0/W1).** Ogni slot in `bootstrap/app.php` legge cron da config:
+- **Tier 1 — per-host env config (v8.0/W1).** Ogni slot in `bootstrap/app.php` legge cron da config:
   ```php
   Schedule::command('kb:prune-deleted')
       ->cron(config('askmydocs.schedule.kb_prune_deleted.cron', '30 3 * * *'))
@@ -26,16 +26,16 @@
       ->onOneServer()->withoutOverlapping();
   ```
   Env var pattern: `SCHEDULE_<SLOT>_CRON`, `SCHEDULE_<SLOT>_ENABLED`. Coprire tutti i 12 slot esistenti + i nuovi.
-- **Tier 2 — per-tenant scheduler (v9.0/W4).** SOLO per gli scheduler user-facing che hanno senso per-tenant: `notifications:digest-weekly`, `kb:health-recompute`, `collections:reevaluate`. Tabella `tenant_scheduler_overrides(tenant_id, slot_name, cron, enabled, timezone)`. Cron resolver in `App\Support\Scheduling\TenantSchedulerResolver`. Gli scheduler di **sistema** (`kb:prune-deleted`, `chat-log:prune`, `embedding-cache:prune`, `queue:prune-failed`, `admin-audit:prune`, `admin-nonces:prune`, `kb:prune-orphan-files`) restano **solo Tier 1** (per-host) — non ha senso lasciare a un tenant decidere quando pulisce la sua chat-log retention, è una decisione operativa del SaaS host.
+- **Tier 2 — per-tenant scheduler (v8.0/W4).** SOLO per gli scheduler user-facing che hanno senso per-tenant: `notifications:digest-weekly`, `kb:health-recompute`, `collections:reevaluate`. Tabella `tenant_scheduler_overrides(tenant_id, slot_name, cron, enabled, timezone)`. Cron resolver in `App\Support\Scheduling\TenantSchedulerResolver`. Gli scheduler di **sistema** (`kb:prune-deleted`, `chat-log:prune`, `embedding-cache:prune`, `queue:prune-failed`, `admin-audit:prune`, `admin-nonces:prune`, `kb:prune-orphan-files`) restano **solo Tier 1** (per-host) — non ha senso lasciare a un tenant decidere quando pulisce la sua chat-log retention, è una decisione operativa del SaaS host.
 
 ### A3. Notifiche DB-persistite + bell + per-tipo + per-canale
 **Decisione.** La sezione D originale è **rifondata e ampliata**. Default-state:
 - **DB persistence: default ON** (tabella `notification_events`, retention 90 giorni, `notifications:prune` wirato come 13° slot scheduler).
-- **In-app bell + lista "Ultime notifiche": default ON** (top-bar `<NotificationBell/>` + pannello `/admin/notifications` con tabs Unread / Read / Dismissed / All).
+- **In-app bell + lista "Ultime notifiche": default ON** (top-bar `<NotificationBell/>` + pannello `/app/admin/notifications` con tabs Unread / Read / Dismissed / All).
 - **Canali per-utente per-event-type:**
-  - Tabella `notification_preferences(user_id, event_type, channel, enabled BOOL)` — riga per ogni combinazione user × event × channel.
-  - UI `/account/notifications`: griglia event_type (righe) × channel (colonne `in_app|email|discord|slack|teams|webhook`). Toggle individuale per cella + "enable all in column" / "enable all in row" bulk.
-  - Default-policy globale in `config/askmydocs.php` (es. `kb_doc_created: in_app=on email=off slack=off discord=off`) editabile dal tenant-admin in `/admin/notifications/defaults`.
+  - Tabella `notification_preferences(tenant_id, user_id, event_type, channel, enabled BOOL)` — riga per ogni combinazione tenant × user × event × channel, con `UNIQUE(tenant_id, user_id, event_type, channel)` (R30).
+  - UI `/app/account/notifications`: griglia event_type (righe) × channel (colonne `in_app|email|discord|slack|teams|webhook`). Toggle individuale per cella + "enable all in column" / "enable all in row" bulk.
+  - Default-policy globale in `config/askmydocs.php` (es. `kb_doc_created: in_app=on email=off slack=off discord=off`) editabile dal tenant-admin in `/app/admin/notifications/defaults`.
 - **Pruning: default ON** (90gg) con env override `NOTIFICATION_RETENTION_DAYS=0` per disabilitare.
 
 ### A4. Toggle "Mostra citazioni controfattuali" default ON sticky
@@ -47,10 +47,10 @@
 
 **Scenario concreto.** Cliente Acme installa AskMyDocs interno + ha il proprio repo `acme/internal-docs` con cartella `docs/` markdown canonical (frontmatter, slug, supersedes, etc.). Sviluppatore Acme apre Claude Code sul suo laptop, lavora sul repo `acme/internal-docs`.
 
-**Senza #9 (oggi):** lo sviluppatore non sa quali docs sono "marciti", quali wikilink sono dangling, quali decisioni andrebbero unite o deprecate. Per scoprirlo deve aprire la web SPA di AskMyDocs, navigare a `/admin/kb/health`, leggere, tornare al suo IDE, modificare a mano, fare PR.
+**Senza #9 (oggi):** lo sviluppatore non sa quali docs sono "marciti", quali wikilink sono dangling, quali decisioni andrebbero unite o deprecate. Per scoprirlo deve aprire la web SPA di AskMyDocs, navigare a `/app/admin/kb/health`, leggere, tornare al suo IDE, modificare a mano, fare PR.
 
 **Con #9:**
-1. Sviluppatore Acme aggiunge `askmydocs` come MCP server nel suo `.mcp.json` del Claude Code locale, autenticandosi con un token tenant-scoped emesso da `/admin/mcp/tokens`.
+1. Sviluppatore Acme aggiunge `askmydocs` come MCP server nel suo `.mcp.json` del Claude Code locale, autenticandosi con un token tenant-scoped emesso da `/app/admin/mcp/tokens`.
 2. Claude Code carica 4 nuovi tool MCP — **tutti read-only o propose-only, MAI server-side write su AskMyDocs**:
    - `list_dangling_wikilinks(project_key)` — torna lista slug wikilinkati ma non esistenti
    - `detect_decision_debt(project_key, min_score)` — riusa #2 health service
@@ -77,41 +77,41 @@
 | **Audit trail aggregato** | Dump filtrato di `kb_canonical_audit` + `admin_command_audits` + `admin_command_nonces.consumed_at` nel trimestre. Gruppi per `event_type` con conteggi e top 20 actor |
 | **Tamper-evident hash** | SHA-256 di `(delta_payload_json + audit_payload_json + tenant_id + period_start + period_end)` HMAC-firmato con `config('askmydocs.compliance.hmac_secret')` (per-tenant in vault). Hash nel header report + endpoint `POST /api/admin/compliance/reports/{id}/verify` che ri-calcola |
 | **Export PDF + JSON** | PDF tramite Browsershot (riusa `app/Services/Admin/Pdf/`) con cover page + indice + sezioni + hash footer. JSON machine-readable per integrazioni downstream |
-| **Trigger** | (a) manuale da `/admin/compliance/reports` button "Generate Q1 2026 report"; (b) cron `compliance:digest-quarterly` (1° gennaio/aprile/luglio/ottobre alle 06:00, configurabile via Tier 2 scheduler per-tenant), default OFF |
+| **Trigger** | (a) manuale da `/app/admin/compliance/reports` button "Generate Q1 2026 report"; (b) cron `compliance:digest-quarterly` (1° gennaio/aprile/luglio/ottobre alle 06:00, configurabile via Tier 2 scheduler per-tenant), default OFF |
 
-**Non incluso in v1 (sarà v8.x+future v2):**
+**Non incluso in v1 (sarà v8.x o v9.0 — v2):**
 - Answer drift replay (richiede #1 Semantic Time Travel)
 - Cosine similarity confronto pre/post trimestre
 - Bias monitor longitudinale (vive già in `padosoft/laravel-ai-act-compliance` v6.0)
 
 ### A7. v2 → roadmap futura
-**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v9.x.+1 o v10.0**. Aggiungo riga roadmap README ma niente codice in v9.0.
+**ACK.** #1 Semantic Time Travel + #8 v2 (answer drift) parked per **v8.x o v9.0**. Aggiungo riga roadmap README ma niente codice in v8.0.
 
 ### A8. Admin panel = host AskMyDocs integrato
-**CONFERMATO.** Tutti i nuovi screen citati in questo plan (`/admin/notifications`, `/admin/notifications/defaults`, `/account/notifications`, `/admin/kb/health`, `/admin/kb/health/settings`, `/admin/collections`, `/admin/collections/{id}`, `/admin/mcp/tokens`, `/admin/compliance/reports`) vivono nella **SPA host AskMyDocs** sotto `frontend/src/features/admin/`. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v9.0.)
+**CONFERMATO.** Tutti i nuovi screen citati in questo plan vivono sotto il mount SPA host `/app/{any?}` di `app/Http/Controllers/SpaController.php` (routes/web.php). Path completi: `/app/admin/notifications`, `/app/admin/notifications/defaults`, `/app/account/notifications`, `/app/admin/kb/health`, `/app/admin/kb/health/settings`, `/app/admin/collections`, `/app/admin/collections/{id}`, `/app/admin/mcp/tokens`, `/app/admin/compliance/reports`. Componenti React per feature sotto `frontend/src/features/<feature>/` (es. `frontend/src/features/notifications/` per il bell + panel di W1.4, `frontend/src/features/admin-kb-health/` per W4.4, etc.) — la convenzione è "una folder per feature", coerente con il layout esistente del SPA. **NESSUNA** modifica ai sister `padosoft/*-admin` packages. (I sister `-admin` cross-mounted hanno il loro scope: `pii-redactor-admin`, `eval-harness-ui`, `flow-admin`, `mcp-pack-admin`, `laravel-ai-act-compliance-admin` — non si toccano in v8.0.)
 
 ### A9. Cosa va in `askmydocs-pro` (recap completo)
-Vedi §E in fondo al plan. Sintesi: tutto quello in v9.0 OSS è **gratuito**; il Pro aggiunge cap-removal + vertical agents + SSO + analytics + connector enterprise. Recap dettagliato sotto.
+Vedi §E in fondo al plan. Sintesi: tutto quello in v8.0 OSS è **gratuito**; il Pro aggiunge cap-removal + vertical agents + SSO + analytics + connector enterprise. Recap dettagliato sotto.
 
 ### A10. #1 + #8 v2 ultimi
-**ACK.** Non in v9.0. Riga "Coming in v9.x or v10.0" nel README roadmap.
+**ACK.** Non in v8.0. Riga "Coming in v8.x or v9.0" nel README roadmap.
 
 ---
 
-## §B — Roadmap v9.0 (8 settimane W1→W8)
+## §B — Roadmap v8.0 (8 settimane W1→W8)
 
-Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37 (`feature/v9.0` integration branch, sub-branch per Wn, merge to main una volta a fine ciclo) e R39 (rc-tag per Wn).
+Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37 (`feature/v8.0` integration branch, sub-branch per Wn, merge to main una volta a fine ciclo) e R39 (rc-tag per Wn).
 
 | Wn | Feature | Effort | Dipende da | Acceptance gate macro |
 |---|---|---|---|---|
-| **W1** | **D-foundation** Notification System core (schema + dispatcher + in_app channel + email channel + bell + `/admin/notifications` panel + `notifications:prune`) | M | nessuna | ≥1 evento end-to-end dispatched + visualizzato in bell + email mandata in fake + ≥1 Playwright happy + 1 failure path |
+| **W1** | **D-foundation** Notification System core (schema + dispatcher + in_app channel + email channel + bell + `/app/admin/notifications` panel + `notifications:prune`) | M | nessuna | ≥1 evento end-to-end dispatched + visualizzato in bell + email mandata in fake + ≥1 Playwright happy + 1 failure path |
 | **W2** | **D-channels** Discord + Slack + Teams + custom webhook + per-user preferences UI + per-tenant defaults UI + scheduler Tier 1 (env-configurable cron) | M | W1 | tutti i 4 canali esterni testati con fake HTTP; toggle UI per-cell + bulk; cron env override testato |
 | **W3** | **#4 Why-not-cited** + **#3 Counterfactual citations** (in parallel — entrambi additivi, S effort) | S+S | nessuna | retrieval runner-up surfaced in `messages.metadata`; counterfactual neighbor query rispetta `project_memberships` (test arch dedicato); toggle default ON sticky |
-| **W4** | **#2 Decision-Debt Heatmap** (schema + `KbHealthService` + formula con pesi configurabili + `kb:health-recompute` cron + `/admin/kb/health` SPA + `/admin/kb/health/settings` weights UI + integrazione D per `kb_decision_debt_threshold` event) + **scheduler Tier 2** (per-tenant overrides per gli scheduler user-facing) | M | D | health_score calcolato per fixture seed; weight UI preview funziona; digest weekly dispatched dopo recompute; ≥1 Playwright drill-down |
-| **W5** | **E-foundation** Living Collections (schema + CRUD API + `/admin/collections` SPA list+create+edit + static-criteria evaluator + manual-add/remove + threshold preview UI) | M | nessuna | crea collection con criteria statici → 1 ingest dispatch → membership auto-popolata + manual override testato |
+| **W4** | **#2 Decision-Debt Heatmap** (schema + `KbHealthService` + formula con pesi configurabili + `kb:health-recompute` cron + `/app/admin/kb/health` SPA + `/app/admin/kb/health/settings` weights UI + integrazione D per `kb_decision_debt_threshold` event) + **scheduler Tier 2** (per-tenant overrides per gli scheduler user-facing) | M | D | health_score calcolato per fixture seed; weight UI preview funziona; digest weekly dispatched dopo recompute; ≥1 Playwright drill-down |
+| **W5** | **E-foundation** Living Collections (schema + CRUD API + `/app/admin/collections` SPA list+create+edit + static-criteria evaluator + manual-add/remove + threshold preview UI) | M | nessuna | crea collection con criteria statici → 1 ingest dispatch → membership auto-popolata + manual override testato |
 | **W6** | **E-semantic** Living Collections semantic + retro-eval + chat scoping + MCP resource exposure + integrazione D (`collection_new_member` event) | M | W5, D | semantic prompt embedding → cosine ≥ threshold → membership; retro-eval su 100-doc fixture < 60s; chat picker funziona; resource MCP listabile da pack |
 | **W7** | **#9 MCP-as-KB-Debugger** (tenant tokens model + admin SPA mint/revoke + 4 propose-only tool + consumer playbook + test demo integration + audit hook) | M | mcp-pack v1.4 ✅ già lì | token RBAC scope test architettura; 4 tool invocati da MCP inspector → output corretto + audit row scritto; playbook README testato manualmente |
-| **W8** | **#8 v1 Compliance Differential Pack** (delta report + audit aggregate + tamper-evident hash + PDF/JSON export + `compliance:digest-quarterly` cron + `/admin/compliance/reports` SPA) + **RC + GA close** | S+close | tutte le precedenti | report Q1 fixture generato + PDF apre + JSON validato + verify endpoint conferma hash; v9.0.0 GA tag pinned |
+| **W8** | **#8 v1 Compliance Differential Pack** (delta report + audit aggregate + tamper-evident hash + PDF/JSON export + `compliance:digest-quarterly` cron + `/app/admin/compliance/reports` SPA) + **RC + GA close** | S+close | tutte le precedenti | report Q1 fixture generato + PDF apre + JSON validato + verify endpoint conferma hash; v8.0.0 GA tag pinned |
 
 **Acceptance gate trasversali (ogni Wn):**
 - CI verde (PHPUnit + Vitest + Playwright + architecture tests + verify-e2e-real-data.sh)
@@ -127,30 +127,39 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 ### §C.1 — ADR 0012 + W1 Notification System core (D-foundation)
 
 **ADR 0012 — Database-backed multi-channel notification system.**
-- **Status:** proposed
+- **Status:** Accepted 2026-05-18 (canonical record: `docs/adr/0012-v80-notification-system.md`)
 - **Context:** host AskMyDocs non ha nessuna infrastruttura notifiche; eventi di interesse (kb canonical promoted, doc created/modified, decision debt threshold, weekly digest, collection_new_member) vanno dispatched a 6 canali (in_app, email, discord, slack, teams, webhook) con preferenze per-user-per-event-per-channel.
-- **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v9.0 — defer Reverb a v9.x se serve).
+- **Decision:** tabella `notification_events` (storage + bell feed), `notification_preferences` (matrix), `notification_digests` (aggregati settimanali); dispatcher Laravel event-listener; canali implementati come `NotificationChannelInterface` con 1 adapter per canale; bell SPA con polling 30s (no WebSocket in v8.0 — defer Reverb a v8.x se serve).
 - **Consequences:** schema nuovo per 3 tabelle; tutti gli event publisher esistenti vanno wirati a `KbDocumentChanged` / `KbCanonicalPromoted` etc. via Listener; default-policy in `config/askmydocs.php` editabile da tenant-admin; `notifications:prune` aggiunto come 13° slot scheduler default 90gg.
 
-**Task W1.1 — Schema + Models + Migrations**
-- **Obiettivo:** creare tabelle + Eloquent model + factory.
-- **Cosa fa:** migration `2026_xx_xx_create_notification_events_table` con (id, tenant_id, user_id?, event_type, payload JSON, channel_dispatch_log JSON, created_at, read_at?, dismissed_at?), migration `notification_preferences` (id, tenant_id, user_id, event_type, channel, enabled BOOL, updated_at, UNIQUE(user_id, event_type, channel)), migration `notification_digests` (id, tenant_id, week_start_date, payload JSON, sent_at?, recipients_count, UNIQUE(tenant_id, week_start_date)). Aggiungi `tenant_id` con `BelongsToTenant` trait (R31). Composite uniques iniziano da `tenant_id`. Factory + seeder demo.
+**Task W1.1 — Schema + Models + Migrations** (✅ shipped commit `aee622d` su `feature/v8.0-W1.1-notif-schema` — PR #188)
+- **Obiettivo:** creare tabelle + Eloquent model.
+- **Cosa fa:** tre nuove migration con `tenant_id` mandatory (R31) + `timestamps()` su tutte:
+  - `notification_events`: `id`, `tenant_id`, `user_id` nullable + FK cascade su `users`, `event_type`, `payload` JSON, `channel_dispatch_log` JSON nullable, `read_at?`, `dismissed_at?`, `timestamps()`. Composite index `(tenant_id, user_id, dismissed_at, read_at, created_at)` per la bell-hot-path + `(tenant_id, event_type)` per admin filter + `(tenant_id, created_at)` per retention sweep.
+  - `notification_preferences`: `id`, `tenant_id`, `user_id` NOT NULL + FK cascade, `event_type`, `channel`, `enabled` BOOL default true, `timestamps()`. `UNIQUE(tenant_id, user_id, event_type, channel)` (idempotent upsert) + index `(tenant_id, event_type, channel, enabled, user_id)` per il dispatcher lookup di W2 (covering scan — `user_id` come trailing column ritorna i recipient ID dall'indice stesso, evita heap lookup per ogni pref enabled).
+  - `notification_digests`: `id`, `tenant_id`, `week_start_date` date, `payload` JSON, `sent_at?`, `recipients_count` unsigned int default 0, `timestamps()`. `UNIQUE(tenant_id, week_start_date)`. **Nessun `user_id`** — digest è per-tenant, fan-out ai recipient avviene al render dell'email in W2.
+  - I 3 model usano `BelongsToTenant` trait. Composite uniques iniziano sempre da `tenant_id` (R30).
 - **Acceptance gate:**
-  - `php artisan migrate:fresh --seed` verde
-  - Architecture test `tenants/Architecture/TenantIdMandatoryTest` enumera 3 nuovi model
-  - PHPUnit feature test crea evento, legge, mark-read, dismiss
+  - `php artisan migrate:fresh` verde (no seeder dedicato in W1.1)
+  - Architecture test `tests/Architecture/TenantIdMandatoryTest` enumera 3 nuovi model
+  - PHPUnit feature test crea evento, legge, mark-read, dismiss + cross-tenant coexistence + composite-unique enforcement
 
 **Task W1.2 — Event publisher wiring**
-- **Obiettivo:** ogni mutazione interessante emette un Laravel event.
-- **Cosa fa:** events `KbDocumentChanged`, `KbCanonicalPromoted`, `KbDecisionDebtThreshold` (placeholder per W4), `CollectionNewMember` (placeholder per W6). Listener `NotificationDispatcher` ascolta tutti, applica `notification_preferences` filter, dispatcha `NotifyUserJob` per ogni (user × channel) abilitato.
-- **Acceptance gate:** feature test ingerisce 1 doc → `KbDocumentChanged` fired → listener scrive 1 row in `notification_events` per ogni user iscritto a `kb_doc_created`
+- **Obiettivo:** ogni mutazione interessante emette un Laravel event; il dispatcher persiste l'audit row e delega ai channel adapter per le delivery side-effect.
+- **Cosa fa:** events `KbDocumentChanged`, `KbCanonicalPromoted`, `KbDecisionDebtThreshold` (placeholder per W4), `CollectionNewMember` (placeholder per W6). Listener `NotificationDispatcher`:
+  1. Per ogni user-target del evento, **se almeno un canale è abilitato in `notification_preferences`**, crea 1 sola row in `notification_events` con `channel_dispatch_log = []` iniziale (audit trail completo indipendentemente dal mix di canali abilitati — risolve la regressione di round-9 dove user con `email=on, in_app=off` non avrebbe avuto row osservabile).
+  2. Per ogni canale abilitato per quel (user × event), invoca `ChannelInterface::send($event, $user, $eventRowId)` **in modo serializzato sotto la stessa row** (sequenziale dentro un singolo listener pass — o in v8.x con channels async, dietro `Cache::lock("notif-dispatch:{$eventRowId}")` per evitare il read/append/write race su `channel_dispatch_log`); ogni canale appende `{channel, status, at, error?}` come UNA voce JSON.
+  3. **Single writer per la row** = il dispatcher. **Single writer per ogni voce di `channel_dispatch_log`** = il channel adapter relativo. Idempotency: la creazione della row è gated da una `unique(tenant_id, user_id, event_type, payload_hash)` opzionale ipotizzata in W1.5 prune o lasciata alla logica di dispatch.
+- **Acceptance gate:** feature test ingerisce 1 doc → 3 user (A in_app+email, B email-only, C in_app-only) → 3 row in `notification_events` (NO duplicates) con `channel_dispatch_log` distinto: A=[in_app delivered, email queued], B=[email queued], C=[in_app delivered]
 
 **Task W1.3 — `NotificationChannelInterface` + `InAppChannel` + `EmailChannel`**
-- **Obiettivo:** astrazione per canali + 2 implementazioni baseline.
-- **Cosa fa:** interface in `app/Notifications/Channels/`. `InAppChannel::send($event, $user)` scrive in `notification_events`. `EmailChannel::send` usa `Mail::to($user)->queue(new NotificationMail($event))` con template MJML in `resources/views/emails/notification.blade.php` + unsubscribe link HMAC-signed per (tenant, user, event_type).
-- **Acceptance gate:** feature test fired → `Mail::fake()->assertQueued(NotificationMail::class)` + `notification_events` row visibile
+- **Obiettivo:** astrazione per canali + 2 implementazioni baseline; ognuna appende il proprio dispatch log al `channel_dispatch_log` della row creata dal dispatcher.
+- **Cosa fa:** interface in `app/Notifications/Channels/` con un metodo `send($event, User $user, int $eventRowId): void`. **Nessun channel scrive righe `notification_events` (è ownership del dispatcher)**; ogni channel appende UNA voce a `channel_dispatch_log` della row passata in input.
+  - `InAppChannel::send` appende `{channel: 'in_app', status: 'delivered', at: <now>}` (la riga ESISTE già — l'append rende esplicito che il canale è "soddisfatto" dal solo fatto di esistere; il bell la mostra solo quando l'utente ha `in_app` enabled).
+  - `EmailChannel::send` chiama `Mail::to($user)->queue(new NotificationMail($event))` (template MJML in `resources/views/emails/notification.blade.php` + unsubscribe link HMAC-signed) e appende `{channel: 'email', status: 'queued', at: <now>, message_id?}` o `{status: 'failed', error: <msg>}` su eccezione.
+- **Acceptance gate:** feature test fired → `Mail::fake()->assertQueued(NotificationMail::class)` per ogni user con email enabled + `notification_events` row presente con `channel_dispatch_log` che include entrambi i canali abilitati per quell'utente (R14 — il fallimento di ogni canale è osservabile via `channel_dispatch_log[*].status='failed'` + `error`)
 
-**Task W1.4 — Bell SPA + `/admin/notifications` panel**
+**Task W1.4 — Bell SPA + `/app/admin/notifications` panel**
 - **Obiettivo:** UI integrata nel host admin shell.
 - **Cosa fa:** componenti React `frontend/src/features/notifications/NotificationBell.tsx` (top-bar bell + unread badge + dropdown ultime 5) e `frontend/src/features/notifications/NotificationPanel.tsx` (full panel con tabs Unread/Read/Dismissed/All, filter per event_type, bulk mark-read). Polling 30s via TanStack Query (no WebSocket). Testid hierarchy per R29 (`notif-bell`, `notif-panel-tab-{state}`, `notif-row-{id}-mark-read`, etc.).
 - **Acceptance gate:**
@@ -175,20 +184,20 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W2.1 — `DiscordChannel` + `SlackChannel` + `TeamsChannel` + `WebhookChannel`**
 - **Obiettivo:** 4 adapter pluggabili.
-- **Cosa fa:** ogni adapter implementa `send($event, $user)`; rate-limit interno (10 msg/sec per canale via `RateLimiter::for('notif-discord')`); retry 3× con backoff [5,30,120]s; payload formato canonical webhook (Discord embed / Slack blocks / Teams adaptive card / generic webhook con HMAC `X-AskMyDocs-Signature`).
+- **Cosa fa:** ogni adapter implementa la stessa signature di W1.3 — `send($event, User $user, int $eventRowId): void` — e appende UNA voce a `channel_dispatch_log` della row indicata da `$eventRowId` (NON crea nuove righe `notification_events`, ownership esclusiva del dispatcher per W1.2). Rate-limit interno (10 msg/sec per canale via `RateLimiter::for('notif-discord')`); retry 3× con backoff [5,30,120]s; payload formato canonical webhook (Discord embed / Slack blocks / Teams adaptive card / generic webhook con HMAC `X-AskMyDocs-Signature`). Fallimenti finali → `channel_dispatch_log` con `{status: 'failed', error: <msg>, at: <now>}` per la R14 observability.
 - **Acceptance gate:** unit test per ogni adapter con `Http::fake()` → assertion sul body POST; retry test su 503; HMAC verify test per WebhookChannel
 
-**Task W2.2 — `/account/notifications` preferences grid**
+**Task W2.2 — `/app/account/notifications` preferences grid**
 - **Obiettivo:** UI per-user-per-event-per-channel toggle matrix.
 - **Cosa fa:** React component `NotificationPreferencesGrid.tsx` con righe = event_type, colonne = channel. Ogni cella = checkbox controlled. Bulk "enable all in row" / "enable all in column". Save via TanStack Query mutation, optimistic update con R25 dedupe pattern.
 - **Acceptance gate:**
   - Vitest unit con grid 6 event × 6 channel
   - Playwright happy: utente toggla 3 cell + bulk-enable colonna → reload pagina → state persistito
 
-**Task W2.3 — `/admin/notifications/defaults` tenant defaults**
+**Task W2.3 — `/app/admin/notifications/defaults` tenant defaults**
 - **Obiettivo:** tenant-admin imposta default per nuovi utenti.
-- **Cosa fa:** controller `AdminNotificationDefaultsController` espone GET/PUT su `config('askmydocs.notifications.defaults')` (tenant-overridden in `tenant_settings`). Quando un nuovo `User` viene creato, hook `User::created` popola `notification_preferences` dai default tenant.
-- **Acceptance gate:** feature test cambia default, crea nuovo user, asserta righe pref popolate
+- **Cosa fa:** controller `AdminNotificationDefaultsController` espone GET/PUT su `config('askmydocs.notifications.defaults')` (tenant-overridden in `tenant_settings`). Per il seeding delle preferenze **NON si usa un `User::created` model hook globale** (User è cross-tenant identity — `app/Models/User.php` $fillable non ha `tenant_id`, quindi un hook globale leggerebbe la `TenantContext` attiva al momento della creazione che potrebbe non corrispondere al tenant di destinazione). Invece: ogni endpoint che crea un user (admin add-user, sign-up, invite-acceptance) chiama esplicitamente `NotificationPreferencesSeeder::seedFromTenantDefaults($user, $tenantId)` passando il tenant_id originating del flusso. Questo rende il binding user→tenant esplicito e testabile senza ambiguità di TenantContext.
+- **Acceptance gate:** feature test cambia default tenant A; admin del tenant A crea user → preferenze popolate con default tenant A; stesso user invitato da admin del tenant B → preferenze tenant B righe distinte (R30 — no leak tra tenant nelle pref iniziali)
 
 **Task W2.4 — Scheduler Tier 1 (env-configurable cron per-host)**
 - **Obiettivo:** rendere tunabili i 12+1 slot scheduler via env.
@@ -235,7 +244,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W3.5 — FE counterfactual panel + toggle ON sticky**
 - **Obiettivo:** card espandibile sotto risposta + preference user.
-- **Cosa fa:** componente `CounterfactualPanel.tsx` collapsed di default ma con badge `📂 N other projects`. Click espande mostrando chunks. Toggle globale in `/account/preferences` (default ON, sticky). Override per-messaggio via icona occhio (ephemeral).
+- **Cosa fa:** componente `CounterfactualPanel.tsx` collapsed di default ma con badge `📂 N other projects`. Click espande mostrando chunks. Toggle globale in `/app/account/preferences` (default ON, sticky). Override per-messaggio via icona occhio (ephemeral).
 - **Acceptance gate:**
   - Playwright happy: nuovo user → toggle è ON di default → chat → counterfactual panel visibile
   - Playwright sticky: toggle OFF → reload pagina → toggle ancora OFF
@@ -269,14 +278,14 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
   - PHPUnit override cron tenant A diverso da tenant B → tenant A esegue, tenant B no
   - Architecture test: solo slot whitelist (`kb:health-recompute`, `notifications:digest-weekly`, `collections:reevaluate`) possono usare Tier 2; system slot NO
 
-**Task W4.4 — API + SPA `/admin/kb/health`**
+**Task W4.4 — API + SPA `/app/admin/kb/health`**
 - **Obiettivo:** heatmap + drill-down.
 - **Cosa fa:** `GET /api/admin/kb/health` paginated con filter `project_key`, `min_score`, `older_than_days`, `canonical_type`, `suggested_action`. Componente React `KbHealthHeatmap.tsx` con matrice canonical_type × age bucket (colore = avg health_score) + tabella sotto con drill-down. Action `POST /api/admin/kb/health/{id}/ack` segna `reviewed_at` + `mute_until` (default 60d configurable). Action `POST /api/admin/kb/health/{id}/promote-deprecate` apre draft `canonical-deprecate` (riusa promotion pipeline ADR 0003).
 - **Acceptance gate:**
   - Playwright happy: filter "older than 90d" → mostra subset coerente → ack 1 doc → riga sparisce da default view → "show acked" toggle la riporta
   - R10 canonical-awareness: query usa scope `canonical()->accepted()`
 
-**Task W4.5 — Weights UI `/admin/kb/health/settings` + preview**
+**Task W4.5 — Weights UI `/app/admin/kb/health/settings` + preview**
 - **Obiettivo:** sliders pesi con preview dei top-20 risultati prima di salvare.
 - **Cosa fa:** componente `KbHealthWeightsForm.tsx` con 5 slider + form. Endpoint `POST /api/admin/kb/health/weights/preview` accetta pesi candidati e ritorna top-20 doc ricalcolati al volo (no persistenza). Save scrive su `tenant_settings`.
 - **Acceptance gate:** Playwright happy: cambia 1 slider → preview cambia top-20 → save → recompute → heatmap riflette nuovi pesi
@@ -301,7 +310,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 - **Cosa fa:** migration con campi da originale (vedi §E della sessione). UNIQUE(tenant_id, owner_user_id, name) + UNIQUE(collection_id, knowledge_document_id). Soft delete su `kb_collections`. `semantic_prompt_embedding vector(N)` su pgsql, JSON su sqlite test.
 - **Acceptance gate:** R31 architecture + factory
 
-**Task W5.2 — CRUD API + `/admin/collections` SPA list+create+edit**
+**Task W5.2 — CRUD API + `/app/admin/collections` SPA list+create+edit**
 - **Obiettivo:** UI base.
 - **Cosa fa:** controller `AdminCollectionsController` con index/show/store/update/destroy; React `CollectionsList.tsx` + `CollectionEditor.tsx` con form (name, description, criteria JSON con field-builder UI, semantic_prompt textarea opzionale, threshold slider opzionale, visibility radio).
 - **Acceptance gate:** Playwright CRUD happy + 422 validation
@@ -313,7 +322,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W5.4 — Manual add/remove + `manually_excluded` mute**
 - **Obiettivo:** override umano.
-- **Cosa fa:** endpoint `POST /api/admin/collections/{id}/members` (manual add) + `DELETE /api/admin/collections/{id}/members/{doc_id}` (segna `manually_excluded=true`, sopravvive retro-eval). UI in `/admin/collections/{id}` detail.
+- **Cosa fa:** endpoint `POST /api/admin/collections/{id}/members` (manual add) + `DELETE /api/admin/collections/{id}/members/{doc_id}` (segna `manually_excluded=true`, sopravvive retro-eval). UI in `/app/admin/collections/{id}` detail.
 - **Acceptance gate:** Playwright happy add+remove + retro-eval test conferma exclusion persiste
 
 **Task W5.5 — Threshold live preview slider**
@@ -355,7 +364,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W7.1 — `mcp_tenant_tokens` model + admin SPA mint/revoke**
 - **Obiettivo:** token tenant-scoped emessi da admin host.
-- **Cosa fa:** migration `(id, tenant_id, name, token_hash, scopes JSON ['read'|'propose'], last_used_at?, expires_at?, revoked_at?)`. Controller `AdminMcpTokensController` con index/store/revoke. SPA `/admin/mcp/tokens` con tabella + button "Mint" (modal con name + scopes + expires) + "Revoke" + token visualizzato 1 volta sola dopo mint.
+- **Cosa fa:** migration `(id, tenant_id, name, token_hash, scopes JSON ['read'|'propose'], last_used_at?, expires_at?, revoked_at?)`. Controller `AdminMcpTokensController` con index/store/revoke. SPA `/app/admin/mcp/tokens` con tabella + button "Mint" (modal con name + scopes + expires) + "Revoke" + token visualizzato 1 volta sola dopo mint.
 - **Acceptance gate:** Playwright happy mint + token mostrato + revoke + lista aggiornata
 
 **Task W7.2 — 4 nuovi MCP tool propose-only**
@@ -410,7 +419,7 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
   - R14 (surface failures loudly): Browsershot fail → 500 + payload errore, NO PDF 0-byte 200
   - Playwright happy: genera report → click "Download PDF" → file ≥1KB
 
-**Task W8.4 — `/admin/compliance/reports` SPA + verify endpoint**
+**Task W8.4 — `/app/admin/compliance/reports` SPA + verify endpoint**
 - **Obiettivo:** UI list + generate + verify.
 - **Cosa fa:** SPA mostra lista report storici per tenant; button "Generate Q? YYYY"; verify endpoint `POST /api/admin/compliance/reports/{id}/verify` ricalcola hash e torna `{valid: bool, expected_hash, actual_hash}`.
 - **Acceptance gate:** Playwright happy generate Q1 2026 → row appare → verify → green badge
@@ -422,13 +431,13 @@ Ordine ottimizzato per **fondazione first → dipendenti dopo**, allineato a R37
 
 **Task W8.6 — RC1 tag + README features update + CHANGELOG**
 - **Obiettivo:** rispetta R39 + R37.
-- **Cosa fa:** docs PR refresh `### Key Features` + `## Changelog` con v9.0.0-rc1 entry + bullet list di tutte le feature W1-W8. Tag `v9.0.0-rc1` su SHA closure-commit di W8.5.
+- **Cosa fa:** docs PR refresh `### Key Features` + `## Changelog` con v8.0.0-rc1 entry + bullet list di tutte le feature W1-W8. Tag `v8.0.0-rc1` su SHA closure-commit di W8.5.
 - **Acceptance gate:** GH Release prerelease pubblicata
 
-**Task W8.7 — GA merge feature/v9.0 → main + tag v9.0.0**
+**Task W8.7 — GA merge feature/v8.0 → main + tag v8.0.0**
 - **Obiettivo:** rispetta R37 (once-per-major).
-- **Cosa fa:** PR feature/v9.0 → main con `--merge` per preservare W1-W8 integration history; tag `v9.0.0` su merge commit; aggiorna roadmap README flip "v9.0 ⏳ planned" → "v9.0 ✅ shipped YYYY-MM-DD" + deliverables summary (rispetta R[readme_roadmap_status_flip_on_ga]); GH Release stabile.
-- **Acceptance gate:** main HEAD = v9.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v9.x or v10.0" rows aggiunte per #1 + #8 v2
+- **Cosa fa:** PR feature/v8.0 → main con `--merge` per preservare W1-W8 integration history; tag `v8.0.0` su merge commit; aggiorna roadmap README flip "v8.0 ⏳ planned" → "v8.0 ✅ shipped YYYY-MM-DD" + deliverables summary (rispetta R[readme_roadmap_status_flip_on_ga]); GH Release stabile.
+- **Acceptance gate:** main HEAD = v8.0 closure; tag pinned; CHANGELOG aggiornato; "Coming in v8.x or v9.0" rows aggiunte per #1 + #8 v2
 
 ---
 
@@ -442,16 +451,16 @@ Da rispettare in OGNI sub-PR del ciclo, in aggiunta agli acceptance gate task-sp
 4. **R31 tenant_id mandatory:** test enumerazione modelli aggiornato
 5. **R13 E2E real-data:** Playwright NON intercetta route interne (eccezione marker `R13: failure injection`)
 6. **R36 Copilot review loop:** `gh pr create --reviewer copilot-pull-request-reviewer`; loop fino a 0 must-fix + tutte CI green
-7. **R39 rc-tag per Wn:** dopo merge ultimo PR del Wn, tag `v9.0.0-rcN` su SHA closure-commit con README + CHANGELOG refresh
+7. **R39 rc-tag per Wn:** dopo merge ultimo PR del Wn, tag `v8.0.0-rcN` su SHA closure-commit con README + CHANGELOG refresh
 8. **R9 docs match code:** README/CLAUDE.md/copilot-instructions.md aggiornate se cambiano env var/schema/route/comandi
 9. **R14 surface failures loudly:** nessun 200 con body vuoto/null/NaN in error path
 10. **R11 + R29 testid hierarchy:** `feature-resource-{id}-{action[-substep]}` su ogni elemento interattivo nuovo
 
 ---
 
-## §E — Recap AskMyDocs Pro (privato, a pagamento, separato da v9.0 OSS)
+## §E — Recap AskMyDocs Pro (privato, a pagamento, separato da v8.0 OSS)
 
-Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti feature **NON entrano in OSS** e vivono nel repo privato `padosoft/askmydocs-pro`:
+Tutto in v8.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti feature **NON entrano in OSS** e vivono nel repo privato `padosoft/askmydocs-pro`:
 
 ### Connettori enterprise-specific (vs i connettori reference OSS già in v4.5)
 - **OneDrive Azure AD integration** (workspace OAuth con Entra ID, group-based ACL, Azure AD conditional access)
@@ -509,12 +518,12 @@ Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti featu
 - **Support enterprise tier** (named TAM, quarterly business review, dedicated Solutions Engineer)
 - **Professional services** (custom connector dev, custom agent training, on-site workshop)
 
-### Compliance Pack v2 — quando arriva (post-v9.0)
+### Compliance Pack v2 — quando arriva (post-v8.0)
 - **Answer drift replay** (richiede #1 Semantic Time Travel)
 - **Compliance Bundle Plus** (AI Act + SOC2 + ISO27001 + HIPAA + PCI-DSS evidence templates pre-cooked + auditor on-call quarterly review)
 - **Custom audit trail extensions** (per cliente, su richiesta — es. integrazione Splunk/Datadog)
 
-### Resta in OSS v9.0 (per chiarezza — NON Pro)
+### Resta in OSS v8.0 (per chiarezza — NON Pro)
 - Sistema notifiche completo (W1+W2 — tutti i 6 canali + DB persistence + bell + preferences UI + scheduler Tier 1)
 - Scheduler Tier 2 per-tenant (W4 — base)
 - Decision-Debt Heatmap (#2) + pesi configurabili
@@ -525,7 +534,7 @@ Tutto in v9.0 va in OSS (host AskMyDocs `lopadova/AskMyDocs`). Le seguenti featu
 
 ---
 
-## §F — Verifica end-to-end del ciclo v9.0
+## §F — Verifica end-to-end del ciclo v8.0
 
 A fine ciclo, prima del GA merge:
 
@@ -566,9 +575,11 @@ php artisan tinker
 
 # 9. Notification end-to-end
 php artisan tinker
-> event(new App\Events\KbDocumentChanged(KnowledgeDocument::first()));
-> NotificationEvent::latest()->first()
-# expected: row creata per ogni user iscritto a kb_doc_modified
+> $tenantId = app(\App\Support\TenantContext::class)->current();
+> $doc = KnowledgeDocument::forTenant($tenantId)->first(); // R30 — never read tenant-aware models unscoped
+> event(new App\Events\KbDocumentChanged($doc));
+> NotificationEvent::forTenant($tenantId)->latest()->first()
+# expected: row creata per ogni user iscritto a kb_doc_modified (R30 — tenant-scoped read end-to-end)
 
 # 10. Decision-debt heatmap end-to-end
 php artisan kb:health-recompute --tenant=test-tenant
@@ -581,12 +592,12 @@ php artisan kb:health-recompute --tenant=test-tenant
 
 Tutti risolti in `AskUserQuestion` 2026-05-18 prima dell'apertura branch:
 
-1. ✅ **Cycle label:** **v9.0** (nuovo ciclo dedicato 8w, post v8.0 GA mcp-pack live wire-up). Branch `feature/v9.0` cut da `main` dopo v8.0 GA tag.
-2. ✅ **Bell:** **polling 30s** (no Reverb in v9.0). Upgrade WebSocket parked v9.x se serve.
+1. ✅ **Cycle label:** **v8.0** (nuovo ciclo dedicato 8w, cut da `main` dopo v7.1.0 GA `2026-05-18 08:54Z` — mcp-pack v1.5 + admin v1.1 wire-up).
+2. ✅ **Bell:** **polling 30s** (no Reverb in v8.0). Upgrade WebSocket parked v8.x o v9.0 se serve.
 3. ✅ **Discord:** **webhook** (no bot). Canale default `#askmydocs-notifications` configurabile per tenant.
 4. ✅ **HMAC compliance:** **statico per-tenant** in `tenant_settings`. Rotation parked Pro/futuro.
 5. ✅ **Playbook MCP-debugger:** **solo inglese** (consumer enterprise; clienti IT capiscono inglese tech docs).
 6. ✅ **Compliance retention OSS:** **4 trimestri** (12 trimestri Pro).
 7. ✅ **Cap-removal lato Pro:** flag `config('askmydocs.tier') === 'pro'` letto dai service che enforcano cap; OSS hard-coded ai default §E.
 
-**Verde libero per apertura `feature/v9.0` quando v8.0 chiude.**
+**`feature/v8.0` aperto 2026-05-18 09:15Z; W1.1 (notification system schema + models) in flight come prima sub-PR.**
