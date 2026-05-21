@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T01:31:00Z
+- updated_at_utc: 2026-05-21T01:39:00Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
 - open_pr_count: 0
-- agent_state: w73_merged_planning_w74
-- last_action: Merged PR #215 on 2026-05-21T01:15:53Z (merge commit d92092ad4f60b55398fd39026876600d579e1f08) after closure audit comment and green CI
-- next_action: start W7.4 implementation (`askmydocs:mcp:connect` helper + `docs/mcp-debugger-playbook.md`) on a new branch and open next PR
+- agent_state: w74_implemented_local_green
+- last_action: Implemented W7.4 on branch feature/v8.0-W7.4-mcp-connect-helper with local green tests at 2026-05-21T01:39:00Z (`php artisan test tests/Feature/Commands/McpConnectCommandTest.php tests/Architecture/McpToolScopeMiddlewareCoverageTest.php`)
+- next_action: commit + push W7.4 branch, open PR, then monitor CI/review and close loop
 
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
