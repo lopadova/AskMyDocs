@@ -29,9 +29,9 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_ten_tools(): void
+    public function test_server_registers_exactly_fourteen_tools(): void
     {
-        $this->assertCount(10, $this->registeredTools());
+        $this->assertCount(14, $this->registeredTools());
     }
 
     public function test_server_registers_the_five_base_retrieval_tools(): void
@@ -52,6 +52,10 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         $this->assertContains(\App\Mcp\Tools\KbDocumentBySlugTool::class, $tools);
         $this->assertContains(\App\Mcp\Tools\KbDocumentsByTypeTool::class, $tools);
         $this->assertContains(\App\Mcp\Tools\KbPromotionSuggestTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\KbListDanglingWikilinksTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\KbDetectDecisionDebtTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\KbSuggestSupersessionChainTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\KbProposeCanonicalEditTool::class, $tools);
     }
 
     public function test_every_registered_tool_class_source_file_exists(): void
