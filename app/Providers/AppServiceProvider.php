@@ -7,6 +7,7 @@ use App\Compliance\AskMyDocsUserDataExporter;
 use App\Compliance\RagRefusalQualityMetric;
 use App\Console\Commands\AuthGrantCommand;
 use App\Console\Commands\CollectionsReevaluateCommand;
+use App\Console\Commands\ComplianceDigestQuarterlyCommand;
 use App\Console\Commands\EvalNightlyCommand;
 use App\Console\Commands\InsightsComputeCommand;
 use App\Console\Commands\KbDeleteCommand;
@@ -327,6 +328,8 @@ class AppServiceProvider extends ServiceProvider
             McpConnectCommand::class,
             // v4.3/W3 — nightly eval-harness regression sentinel.
             EvalNightlyCommand::class,
+            // v8.0/W8.5 — quarterly compliance digest (tenant opt-in).
+            ComplianceDigestQuarterlyCommand::class,
         ]);
     }
 

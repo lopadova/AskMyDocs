@@ -11,13 +11,13 @@ Regola fissa di aggiornamento:
 
 ## AUTO-MODE CHECKPOINT
 
-- updated_at_utc: 2026-05-21T05:07:40Z
+- updated_at_utc: 2026-05-21T05:57:02Z
 - goal: 100% roadmap completion
 - base_branch: feature/v8.0
-- open_pr_count: 1
-- agent_state: w84_pr_open_ci_wait_loop
-- last_action: Opened PR #220 at 2026-05-21T05:07:40Z from head bd11e6ddf9052c8573e19e7d61f7ec62ef8c83f2 (https://github.com/lopadova/AskMyDocs/pull/220) against feature/v8.0 with Copilot reviewer requested.
-- next_action: run wait/recheck loop on PR #220; if must-fix findings appear on current HEAD, patch + push; if all checks green with no must-fix findings, post closure audit and merge with --merge --delete-branch.
+- open_pr_count: 0
+- agent_state: w85_ready_to_pr
+- last_action: Completed W8.5 local validation at 2026-05-21T05:57:02Z: added feature coverage for compliance:digest-quarterly tenant opt-in + prior-quarter window; test slice green (`tests/Feature/Compliance/ComplianceDigestQuarterlyCommandTest.php`, `tests/Feature/Scheduling/TierOneSchedulerEnvOverrideTest.php`).
+- next_action: commit/push W8.5 changes, open PR against feature/v8.0, request review, and enter CI/review wait-recheck loop.
 - prs:
   - #208: https://github.com/lopadova/AskMyDocs/pull/208 (head: feature/v8.0-W5.5-threshold-preview, sha: 3133e7ec65632a6c6ff74851b0daef9611b2ff44, status: merged, merged_at_utc: 2026-05-20T21:26:17Z)
   - #209: https://github.com/lopadova/AskMyDocs/pull/209 (head: feature/v8.0-W6.1-semantic-collections, sha: cf753a8e92ec63be3b1817d68bf42bd6a67c986c, status: merged, merged_at_utc: 2026-05-20T22:12:35Z)
@@ -31,7 +31,7 @@ Regola fissa di aggiornamento:
   - #217: https://github.com/lopadova/AskMyDocs/pull/217 (head: feature/v8.0-W8.1-compliance-reports-foundation, sha: 6dca2c820ac3a625577ff681700ad1c31195277a, status: merged, merged_at_utc: 2026-05-21T03:12:17Z, merge_commit: 10fef355d63ca3648db45b53394ac59af9bcc9b5)
   - #218: https://github.com/lopadova/AskMyDocs/pull/218 (head: feature/v8.0-W8.2-compliance-report-generator, sha: 3ffe4139ae2956d39749dba1def03fb4579cc975, status: merged, merged_at_utc: 2026-05-21T04:30:52Z, merge_commit: 047e249411d0fd496fbb5f05e991357985f9ef91)
   - #219: https://github.com/lopadova/AskMyDocs/pull/219 (head: feature/v8.0-W8.3-compliance-export, sha: ab90a0216cc157436fc35ad497e2d3031b11fc35, status: merged, merged_at_utc: 2026-05-21T04:49:59Z, merge_commit: 48035294b1653d9897a036c6219675ef44e00a5f)
-  - #220: https://github.com/lopadova/AskMyDocs/pull/220 (head: feature/v8.0-W8.4-compliance-spa-verify, sha: bd11e6ddf9052c8573e19e7d61f7ec62ef8c83f2, status: open, opened_at_utc: 2026-05-21T05:07:40Z)
+  - #220: https://github.com/lopadova/AskMyDocs/pull/220 (head: feature/v8.0-W8.4-compliance-spa-verify, sha: 49d857ad289705bd3d585e0b0165adb4f2e8d8ac, status: merged, merged_at_utc: 2026-05-21T05:11:00Z, merge_commit: 68bc45e556485a685085eb44233a5411a5d2ca29)
 
 
 
