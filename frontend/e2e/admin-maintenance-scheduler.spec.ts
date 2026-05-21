@@ -54,12 +54,10 @@ test.describe('Admin Maintenance — scheduler status widget', () => {
             expect(row).toHaveProperty('cron_time');
             expect(row).toHaveProperty('cron_expression');
             expect(row).toHaveProperty('description');
-            // Every default slot is a daily-at-fixed-time cron, so
-            // `cron_time` must render as `HH:MM`. Operators who set
-            // non-daily expressions accept the fallback to the raw
-            // 5-field cron — but the defaults asserted here are
-            // covered by the W2.4 .env.example documentation.
-            expect(row.cron_time).toMatch(/^\d{2}:\d{2}$/);
+            // `cron_time` is `HH:MM` for daily-at-fixed-time slots.
+            // For non-daily schedules, the API falls back to the raw
+            // 5-field cron expression.
+            expect(row.cron_time).toMatch(/^(\d{2}:\d{2}|\S+(\s+\S+){4})$/);
             expect(row.cron_expression).toMatch(/^\S+(\s+\S+){4}$/);
         }
     });

@@ -51,6 +51,7 @@ final class TierOneSchedulerRegistrar
         ['notifications_prune', 'notifications:prune'],
         ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run'],
         ['insights_compute', 'insights:compute'],
+        ['compliance_digest_quarterly', 'compliance:digest-quarterly'],
     ];
 
     public function register(Schedule $schedule): void

@@ -457,16 +457,20 @@ class MaintenanceCommandControllerTest extends TestCase
         $this->assertIsArray($res);
         $this->assertGreaterThan(0, count($res));
 
-        // v8.0/W2.4 contract: every row carries `cron_time` (HH:MM for
-        // daily-at-fixed-time slots) AND `cron_expression` (raw
-        // 5-field string). Both are always present so advanced ops
-        // tooling doesn't have to round-trip the conversion.
+        // v8.0/W2.4 contract: every row carries `cron_time`
+        // (HH:MM for daily fixed-time, otherwise raw cron expression)
+        // AND `cron_expression` (raw 5-field string). Both are always
+        // present so advanced ops tooling doesn't have to round-trip
+        // the conversion.
         foreach ($res as $row) {
             $this->assertArrayHasKey('command', $row);
             $this->assertArrayHasKey('cron_time', $row);
             $this->assertArrayHasKey('cron_expression', $row);
             $this->assertArrayHasKey('description', $row);
-            $this->assertMatchesRegularExpression('/^\d{2}:\d{2}$/', (string) $row['cron_time']);
+            $cronTime = (string) $row['cron_time'];
+            $isHumanTime = preg_match('/^\d{2}:\d{2}$/', $cronTime) === 1;
+            $isCronExpr = preg_match('/^\S+(\s+\S+){4}$/', $cronTime) === 1;
+            $this->assertTrue($isHumanTime || $isCronExpr);
             $this->assertMatchesRegularExpression('/^\S+(\s+\S+){4}$/', (string) $row['cron_expression']);
         }
     }
