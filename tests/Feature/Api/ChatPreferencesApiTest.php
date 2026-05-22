@@ -124,6 +124,43 @@ final class ChatPreferencesApiTest extends TestCase
         ])->assertUnauthorized();
     }
 
+    /**
+     * Iter-5 (PR #223 Copilot iter-5) — hard caps on the
+     * `preferences` array prevent payload-bloat / abuse against a
+     * JSON column on the users table. Defensive only — the FE never
+     * ships malformed payloads but the BE must refuse them.
+     */
+    public function test_payload_caps_reject_excessive_keys(): void
+    {
+        $user = $this->makeUser();
+
+        $tooMany = [];
+        for ($i = 0; $i < 33; $i++) {
+            $tooMany["key_{$i}"] = '0';
+        }
+        $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
+            'preferences' => $tooMany,
+        ])->assertStatus(422);
+    }
+
+    public function test_payload_caps_reject_oversized_or_invalid_key_shape(): void
+    {
+        $user = $this->makeUser();
+
+        $oversized = str_repeat('a', 65);
+        $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
+            'preferences' => [$oversized => '0'],
+        ])->assertStatus(422);
+
+        $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
+            'preferences' => ['Invalid-Key' => '0'],
+        ])->assertStatus(422);
+
+        $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
+            'preferences' => ['1starts_with_digit' => '0'],
+        ])->assertStatus(422);
+    }
+
     public function test_malformed_body_returns_422(): void
     {
         $user = $this->makeUser();

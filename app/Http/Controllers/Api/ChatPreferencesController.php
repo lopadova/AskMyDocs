@@ -76,7 +76,35 @@ final class ChatPreferencesController extends Controller
             // boolean values (or their string equivalents) plus
             // explicit `null` to delete — anything else would bloat
             // the column or smuggle nested shape into storage.
-            'preferences' => ['required', 'array'],
+            //
+            // Hard caps (matches the pattern on
+            // NotificationPreferencesController:106):
+            //  - `max:32` on the array itself — an FE shipping more
+            //    than 32 chat-level toggles is a design smell, not a
+            //    legitimate payload.
+            //  - per-key length cap via a custom closure on
+            //    `preferences` (Laravel's wildcard rules apply to
+            //    values, not keys, so the key-shape check lives here).
+            'preferences' => [
+                'required',
+                'array',
+                'max:32',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if (! is_array($value)) {
+                        return;
+                    }
+                    foreach (array_keys($value) as $key) {
+                        if (! is_string($key) || $key === '' || strlen($key) > 64) {
+                            $fail("{$attribute} key must be a non-empty string ≤ 64 chars.");
+                            return;
+                        }
+                        if (preg_match('/^[a-z][a-z0-9_]*$/', $key) !== 1) {
+                            $fail("{$attribute} key '{$key}' must match /^[a-z][a-z0-9_]*$/.");
+                            return;
+                        }
+                    }
+                },
+            ],
             'preferences.*' => [
                 'nullable',
                 function (string $attribute, mixed $value, \Closure $fail): void {
