@@ -441,8 +441,16 @@ final class KbSearchServiceFiltersTest extends TestCase
             $rm->getEndLine() - $rm->getStartLine() + 1,
         ));
 
+        // The previous regex `\$this->fullTextSearch\([^)]*\$effectiveFilters/s`
+        // used `[^)]*` which would spuriously fail if any nested call
+        // (e.g. `min($a, $b)`) appeared in the argument list before
+        // `$effectiveFilters`. Use a non-greedy dot-all match so the
+        // assertion stays robust under future call-site refactors:
+        // we only care that `$effectiveFilters` appears somewhere
+        // between the `fullTextSearch(` opener and the next
+        // semicolon, regardless of intermediate nesting.
         $this->assertMatchesRegularExpression(
-            '/\$this->fullTextSearch\([^)]*\$effectiveFilters/s',
+            '/\$this->fullTextSearch\(.*?\$effectiveFilters.*?;/s',
             $body,
             'F3: search() must pass $effectiveFilters to fullTextSearch() so the '
             . 'hybrid branch shares the semantic branch\'s filter set.',

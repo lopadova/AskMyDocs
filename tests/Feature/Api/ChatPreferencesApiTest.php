@@ -132,7 +132,9 @@ final class ChatPreferencesApiTest extends TestCase
         $this->actingAs($user)->patchJson('/api/me/chat-preferences', [])
             ->assertStatus(422);
 
-        // Nested object as a value — rejected by `in:` rule.
+        // Nested object as a value — rejected by the controller's
+        // custom validation closure (accepts only bool, the strings
+        // '0'/'1'/'true'/'false', or null; an array is none of those).
         $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
             'preferences' => ['counterfactual_enabled' => ['nested' => true]],
         ])->assertStatus(422);

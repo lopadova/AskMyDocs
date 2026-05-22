@@ -9,6 +9,7 @@ use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -21,6 +22,14 @@ final class KbChunkFeedbackApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Reset TenantContext to the canonical default before each
+        // test — other test classes in the suite mutate it via
+        // ->set('foo'), and TenantContext is a singleton that can
+        // leak between tests under Testbench. Pinning to 'default'
+        // here keeps the chunk/doc fixtures (which hard-code
+        // tenant_id='default') and the controller (which reads
+        // TenantContext::current()) in agreement.
+        app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
     }
 

@@ -28,9 +28,16 @@ final class KbChunkFeedbackController extends Controller
         ]);
 
         $tenantId = $tenants->current();
+        // R30 defense-in-depth: the chunk → document FK is established
+        // at write time so they always share tenant_id, but eager
+        // loading via `with('document')` issues an UNSCOPED query
+        // against a tenant-aware table. We pin the eager-load to the
+        // active tenant explicitly so a corrupt-data scenario (cross-
+        // tenant FK drift) cannot lift a doc from another tenant into
+        // the access decision.
         $chunk = KnowledgeChunk::query()
             ->forTenant($tenantId)
-            ->with('document')
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->find($validated['chunk_id']);
 
         if ($chunk === null) {
