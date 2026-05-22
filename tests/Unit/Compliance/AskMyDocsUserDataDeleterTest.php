@@ -350,6 +350,51 @@ class AskMyDocsUserDataDeleterTest extends TestCase
     }
 
     /**
+     * v8.0.2 / Copilot iter-4 of PR #224 — UserTenantResolver also
+     * sweeps `mcp_tool_call_audit` so a tenant whose ONLY
+     * user-attributable footprint is mcp audit rows (package-
+     * written with `user_id=NULL` + actor string) still gets wiped.
+     * Otherwise the package's audit trail in tenant-c would
+     * survive Art. 17 — partial erasure.
+     */
+    public function test_it_deletes_mcp_audit_in_tenants_with_no_other_user_footprint(): void
+    {
+        $user = $this->makeUser();
+        app(\App\Support\TenantContext::class)->set('tenant-a');
+
+        $server = \App\Models\McpServer::query()->create([
+            'tenant_id' => 'tenant-c',
+            'name' => 'pkg-server',
+            'transport' => 'http',
+            'endpoint' => 'https://example.test/mcp',
+            'status' => 'active',
+            'created_by' => $user->id,
+        ]);
+
+        // Audit row in tenant-c authored by the package via actor —
+        // NO conversation, chat log, installation, or membership
+        // for the user in tenant-c.
+        $auditC = McpToolCallAudit::query()->create([
+            'tenant_id' => 'tenant-c',
+            'user_id' => null,
+            'actor' => 'user:'.$user->id,
+            'mcp_server_id' => $server->id,
+            'tool_name' => 'search',
+            'input_json_redacted' => ['q' => 'gamma'],
+            'result_hash' => str_repeat('c', 64),
+            'duration_ms' => 1,
+            'status' => McpToolCallAudit::STATUS_OK,
+        ]);
+
+        app(AskMyDocsUserDataDeleter::class)->delete($user);
+
+        // The load-bearing assertion: the mcp audit row in
+        // tenant-c is gone, proving the resolver included tenant-c
+        // in the sweep set despite zero other user footprint there.
+        $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $auditC->id]);
+    }
+
+    /**
      * v8.0.2 / Copilot iter-3 of PR #224 — UserTenantResolver
      * MUST also scan user-owned tenant-aware tables, not just
      * `project_memberships`. A user whose tenant-B membership was

@@ -6,6 +6,7 @@ namespace App\Compliance;
 
 use App\Models\ChatLog;
 use App\Models\Conversation;
+use App\Models\McpToolCallAudit;
 use App\Models\ProjectMembership;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -45,9 +46,15 @@ final class UserTenantResolver
     }
 
     /**
+     * @param  string|null  $userEmail  Optional — passed by callers
+     *   that have the user object (Exporter/Deleter receive an
+     *   `object` and can extract `email`). The mcp_tool_call_audit
+     *   sweep uses the email to match the package's actor
+     *   convention. Passing null only weakens the email-shaped
+     *   actor match; digit-shaped actors still match.
      * @return list<string>
      */
-    public function tenantsForUser(int $userId): array
+    public function tenantsForUser(int $userId, ?string $userEmail = null): array
     {
         $membershipTenants = ProjectMembership::query()
             ->where('user_id', $userId)
@@ -79,6 +86,25 @@ final class UserTenantResolver
             ->pluck('tenant_id')
             ->all();
 
+        // v8.0.2 / Copilot iter-4 of PR #224 — mcp_tool_call_audit
+        // is a tenant-attributable surface the Deleter wipes
+        // per-tenant via `user_id = X OR actor IN (...)`. A user
+        // whose ONLY tenant-C footprint is mcp audit rows (no
+        // conversations, no chat logs, no connector installations,
+        // no membership) would otherwise have those rows survive
+        // Art. 17. Mirror the Deleter's matcher exactly so the
+        // resolver returns a SUPERSET of "tenants that will be
+        // wiped".
+        $mcpActors = $this->mcpActorsForUser($userId, $userEmail);
+        $mcpAuditTenants = McpToolCallAudit::query()
+            ->where(function ($q) use ($userId, $mcpActors): void {
+                $q->where('user_id', $userId)
+                    ->orWhereIn('actor', $mcpActors);
+            })
+            ->distinct()
+            ->pluck('tenant_id')
+            ->all();
+
         $active = $this->tenantContext->current();
 
         return array_values(array_unique([
@@ -86,7 +112,32 @@ final class UserTenantResolver
             ...$conversationTenants,
             ...$chatLogTenants,
             ...$connectorTenants,
+            ...$mcpAuditTenants,
             $active,
         ]));
+    }
+
+    /**
+     * Mirror of the Deleter's actor set (kept inline rather than
+     * extracted again to avoid a second cross-class shared helper).
+     * Email is optional — when null we still cover the digit-shaped
+     * actors. Keep this in lockstep with
+     * AskMyDocsUserDataDeleter::resolveMcpAuditActors().
+     *
+     * @return list<string>
+     */
+    private function mcpActorsForUser(int $userId, ?string $userEmail): array
+    {
+        $actors = [
+            (string) $userId,
+            'user:'.$userId,
+        ];
+
+        if (is_string($userEmail) && $userEmail !== '') {
+            $actors[] = $userEmail;
+            $actors[] = 'user:'.$userEmail;
+        }
+
+        return array_values(array_unique($actors));
     }
 }

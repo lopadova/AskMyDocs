@@ -38,7 +38,10 @@ class AskMyDocsUserDataDeleter
         // surely as a no-op delete. Tenant set comes from the
         // shared UserTenantResolver — what the Exporter saw, this
         // wipes.
-        $tenantIds = $this->tenantResolver->tenantsForUser($userId);
+        $tenantIds = $this->tenantResolver->tenantsForUser(
+            $userId,
+            is_string($user->email ?? null) ? $user->email : null,
+        );
 
         DB::transaction(function () use ($tenantIds, $userId, $mcpActors): void {
             foreach ($tenantIds as $tenantId) {

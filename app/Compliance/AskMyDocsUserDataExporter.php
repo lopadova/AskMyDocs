@@ -31,7 +31,10 @@ class AskMyDocsUserDataExporter
         // data — Art. 15 breach in any multi-tenant deployment.
         // Tenant enumeration is shared with the Deleter via
         // UserTenantResolver so export + erase stay symmetric.
-        $tenantIds = $this->tenantResolver->tenantsForUser($userId);
+        $tenantIds = $this->tenantResolver->tenantsForUser(
+            $userId,
+            is_string($user->email ?? null) ? $user->email : null,
+        );
 
         $aggregate = [
             'conversations' => [],
