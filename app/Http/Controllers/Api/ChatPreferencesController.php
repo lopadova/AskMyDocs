@@ -14,8 +14,10 @@ use Illuminate\Routing\Controller;
  * Backs the previously browser-local `localStorage` counterfactual
  * toggle so the choice survives multi-device use, fresh sessions,
  * and cache wipes. The shape is intentionally open-ended: the BE
- * stores a JSON blob and returns it verbatim; the FE owns the keys
- * (`counterfactual_enabled` today, future toggles tomorrow). New
+ * stores a per-user JSON blob and returns it MERGED with a
+ * controller-side defaults map (`DEFAULTS`) so the FE never has to
+ * reason about missing keys. The FE owns the key names
+ * (`counterfactual_enabled` today, future toggles tomorrow) — new
  * keys land FE-first without a BE deploy.
  *
  * Endpoints (Sanctum-gated):

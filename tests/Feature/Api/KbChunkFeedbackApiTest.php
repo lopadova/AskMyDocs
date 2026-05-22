@@ -172,6 +172,50 @@ final class KbChunkFeedbackApiTest extends TestCase
         ]);
     }
 
+    /**
+     * F1-iter2 (PR #223 Copilot iter-2) — R30: a user with a
+     * `project_memberships` row in tenant A must NOT be able to
+     * feedback chunks in tenant B even when both tenants share the
+     * same `project_key`. The existing `User::hasDocumentAccess()`
+     * flow consults `project_memberships` without a `tenant_id`
+     * predicate (correct for the read path, where the global scope
+     * scopes by tenant separately), so the controller must enforce
+     * tenant scoping explicitly on this WRITE path.
+     *
+     * Simulated by:
+     *   - Active tenant = 'default'
+     *   - Chunk + doc seeded in active tenant under `project=shared`
+     *   - User membership stored under `tenant_id=other-tenant`, same
+     *     `project=shared` and same user
+     * The membership row would match `hasDocumentAccess()` (no tenant
+     * filter) but the controller's explicit tenant-scoped check
+     * refuses it.
+     */
+    public function test_membership_in_other_tenant_with_same_project_key_is_rejected(): void
+    {
+        [, $chunk] = $this->seedChunk(projectKey: 'shared');
+
+        $user = $this->makeViewer('cross-tenant');
+        // Membership in another tenant, same project_key, same user.
+        ProjectMembership::create([
+            'tenant_id' => 'other-tenant',
+            'user_id' => $user->id,
+            'project_key' => 'shared',
+            'role' => 'member',
+            'scope_allowlist' => [],
+        ]);
+
+        $this->actingAs($user)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertForbidden();
+
+        $this->assertDatabaseMissing('kb_chunk_feedback', [
+            'user_id' => $user->id,
+            'knowledge_chunk_id' => $chunk->id,
+        ]);
+    }
+
     public function test_anonymous_request_is_rejected(): void
     {
         [, $chunk] = $this->seedChunk(projectKey: 'default');

@@ -29,9 +29,10 @@ export const chatPreferencesApi = {
     /**
      * Patch one or more preference keys. Use `null` to delete a key
      * (the BE then returns the default value for it). Boolean values
-     * are serialised as `'0'`/`'1'` because the BE accepts the
-     * `in:0,1,true,false` validation rule — keeping the wire payload
-     * small + JSON-safe.
+     * are serialised as `'0'`/`'1'` because the BE's custom validator
+     * accepts BOTH native JSON booleans AND their string equivalents
+     * (`'0'`, `'1'`, `'true'`, `'false'`); strings keep the wire
+     * payload small and JSON-safe across non-strict clients.
      */
     async save(patch: Partial<Record<keyof ChatPreferences, boolean | null>>): Promise<ChatPreferencesResponse> {
         const body: Record<string, string | null> = {};
