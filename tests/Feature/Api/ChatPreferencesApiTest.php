@@ -44,6 +44,20 @@ final class ChatPreferencesApiTest extends TestCase
             ]);
     }
 
+    public function test_update_accepts_native_json_booleans(): void
+    {
+        $user = $this->makeUser();
+
+        $this->actingAs($user)->patchJson('/api/me/chat-preferences', [
+            'preferences' => ['counterfactual_enabled' => false],
+        ])->assertOk()->assertJson([
+            'preferences' => ['counterfactual_enabled' => false],
+        ]);
+
+        $user->refresh();
+        $this->assertSame(false, $user->chat_preferences['counterfactual_enabled']);
+    }
+
     public function test_update_persists_boolean_toggle_across_calls(): void
     {
         $user = $this->makeUser();

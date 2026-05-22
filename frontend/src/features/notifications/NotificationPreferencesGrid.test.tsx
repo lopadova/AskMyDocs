@@ -212,6 +212,24 @@ describe('NotificationPreferencesGrid', () => {
         expect(screen.getByTestId('notif-pref-retry')).toBeInTheDocument();
     });
 
+    it('counterfactual toggle surfaces an error banner when PATCH fails (R14)', async () => {
+        const user = userEvent.setup();
+        mockPatch.mockRejectedValueOnce(new Error('500'));
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        const toggle = await screen.findByTestId('chat-counterfactual-toggle');
+        await waitFor(() => expect(toggle).toBeChecked());
+
+        await user.click(toggle);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-counterfactual-toggle-error')).toBeInTheDocument();
+        });
+        // After refetch the toggle converges back to the BE truth.
+        await waitFor(() => expect(toggle).toBeChecked());
+    });
+
     it('counterfactual toggle persists via PATCH /api/me/chat-preferences (not localStorage) — F5', async () => {
         const user = userEvent.setup();
         mockPatch.mockResolvedValueOnce({

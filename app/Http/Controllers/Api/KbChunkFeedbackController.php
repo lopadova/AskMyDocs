@@ -36,18 +36,29 @@ final class KbChunkFeedbackController extends Controller
             abort(404);
         }
 
+        // F1 (deep-review v8.0.1) — two-layer access gate.
+        //
+        //   Layer 1: AccessScopeScope (global scope on
+        //   KnowledgeDocument) already filters the eager-loaded
+        //   document for users without `kb.read.any`. Cross-project
+        //   docs come back as `$chunk->document === null`, which we
+        //   answer with 404 — by design, to avoid leaking the
+        //   existence of a doc the user has no project membership for.
+        //
+        //   Layer 2: `hasDocumentAccess()` runs the full ACL +
+        //   scope_allowlist evaluation against any document Layer 1
+        //   admitted. This catches edge cases the scope can't express
+        //   (deny ACL rows on a doc the user otherwise can read,
+        //   scope_allowlist tag/folder mismatch). 403 here means the
+        //   user can see the doc exists but cannot interact with it;
+        //   this branch only fires when scope enforcement is disabled
+        //   (`rbac.enforced=false`) or for an admitted-then-denied ACL
+        //   shape. See KbChunkFeedbackApiTest for both code paths.
         $document = $chunk->document;
         if ($document === null) {
-            // Soft-deleted or missing document — the chunk has no
-            // canonical anchor for an access decision.
             abort(404);
         }
 
-        // F1 (deep-review v8.0.1) — explicit project + ACL gate. A
-        // chunk sharing the active tenant does NOT imply the user can
-        // access its document; hasDocumentAccess() walks the full
-        // permission + ACL + project_memberships + scope_allowlist
-        // evaluation that KbSearchService also uses.
         if (! $user->hasDocumentAccess($document)) {
             abort(403);
         }

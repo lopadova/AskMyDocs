@@ -102,6 +102,14 @@ export function NotificationPreferencesGrid(): ReactNode {
         onSuccess: (data: ChatPreferencesResponse) => {
             qc.setQueryData(CHAT_PREFERENCES_QUERY_KEY, data);
         },
+        // R14 — surface failures loudly. Without this, a 4xx/5xx on
+        // PATCH silently fails: the checkbox snaps back to its prior
+        // value with no user-visible signal. Refetch the query so
+        // the UI converges on the BE truth, and let the inline error
+        // banner below render against `counterfactualMut.error`.
+        onError: () => {
+            void counterfactualQuery.refetch();
+        },
     });
 
     // R17 — seed the local edit cache from the server snapshot ONLY on
@@ -249,6 +257,22 @@ export function NotificationPreferencesGrid(): ReactNode {
                         <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
                     </label>
                 </div>
+                {counterfactualMut.isError && (
+                    <div
+                        data-testid="chat-counterfactual-toggle-error"
+                        role="alert"
+                        className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700"
+                    >
+                        Could not save the toggle. Please try again.
+                        <button
+                            type="button"
+                            onClick={() => counterfactualMut.reset()}
+                            className="ml-2 underline"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                )}
             </div>
 
             {dataState === 'loading' && (
