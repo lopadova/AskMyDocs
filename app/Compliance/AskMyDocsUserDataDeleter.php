@@ -5,7 +5,6 @@ namespace App\Compliance;
 use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
-use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -13,7 +12,13 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 class AskMyDocsUserDataDeleter
 {
     public function __construct(
-        private readonly TenantContext $tenantContext,
+        // v8.0.2 / Copilot iter-2 — TenantContext was used directly
+        // before the C refactor; UserTenantResolver now encapsulates
+        // the active-tenant lookup, so the deleter has no direct
+        // dependency on TenantContext. Keeping the DI surface
+        // minimal makes it obvious that the deleter walks WHATEVER
+        // tenant set the resolver returns — not the active tenant
+        // specifically.
         private readonly UserTenantResolver $tenantResolver,
     ) {}
 
