@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -31,6 +32,13 @@ final class KbChunkFeedbackApiTest extends TestCase
         // TenantContext::current()) in agreement.
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        // Spatie's permission cache survives the per-test
+        // RefreshDatabase rollback (it's a service-level array
+        // under Testbench), so role/permission lookups can become
+        // order-dependent across tests if we don't flush. Matches
+        // the convention used by other feature suites that lean
+        // on RbacSeeder.
+        Cache::flush();
     }
 
     public function test_two_users_can_store_opposite_feedback_on_same_chunk(): void

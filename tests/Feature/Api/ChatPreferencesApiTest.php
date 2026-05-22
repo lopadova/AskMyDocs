@@ -7,6 +7,7 @@ namespace Tests\Feature\Api;
 use App\Models\User;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -30,6 +31,11 @@ final class ChatPreferencesApiTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        // Same rationale as KbChunkFeedbackApiTest::setUp — flush
+        // the Spatie permission cache to keep role/permission
+        // resolution deterministic across tests sharing the same
+        // process under Testbench.
+        Cache::flush();
     }
 
     public function test_show_returns_defaults_when_user_has_no_preferences(): void
