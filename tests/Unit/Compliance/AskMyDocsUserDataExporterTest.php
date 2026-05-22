@@ -290,6 +290,89 @@ class AskMyDocsUserDataExporterTest extends TestCase
         app(AskMyDocsUserDataExporter::class)->export((object) ['id' => '']);
     }
 
+    /**
+     * v8.0.2 / deep-review C — User is host-wide. A DSAR Art. 15
+     * request from a user who has membership AND data in BOTH
+     * tenant-a (active context) and tenant-b must surface BOTH
+     * tenants' rows. Prior to v8.0.2, only the active tenant's data
+     * was returned, breaching the right-of-access for the other
+     * tenant.
+     */
+    public function test_it_aggregates_data_across_every_tenant_the_user_has_membership_in(): void
+    {
+        $user = $this->makeUser();
+        app(TenantContext::class)->set('tenant-a');
+
+        \App\Models\ProjectMembership::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $user->id,
+            'project_key' => 'alpha',
+            'role' => 'member',
+            'scope_allowlist' => [],
+        ]);
+        \App\Models\ProjectMembership::query()->create([
+            'tenant_id' => 'tenant-b',
+            'user_id' => $user->id,
+            'project_key' => 'beta',
+            'role' => 'member',
+            'scope_allowlist' => [],
+        ]);
+
+        $convA = Conversation::query()->create([
+            'tenant_id' => 'tenant-a',
+            'user_id' => $user->id,
+            'title' => 'Tenant A conv',
+            'project_key' => 'alpha',
+        ]);
+        $convB = Conversation::query()->create([
+            'tenant_id' => 'tenant-b',
+            'user_id' => $user->id,
+            'title' => 'Tenant B conv',
+            'project_key' => 'beta',
+        ]);
+
+        ChatLog::query()->create([
+            'tenant_id' => 'tenant-a',
+            'session_id' => (string) \Illuminate\Support\Str::uuid(),
+            'user_id' => $user->id,
+            'question' => 'Q A',
+            'answer' => 'A A',
+            'project_key' => 'alpha',
+            'ai_provider' => 'mock',
+            'ai_model' => 'mock',
+            'latency_ms' => 10,
+        ]);
+        ChatLog::query()->create([
+            'tenant_id' => 'tenant-b',
+            'session_id' => (string) \Illuminate\Support\Str::uuid(),
+            'user_id' => $user->id,
+            'question' => 'Q B',
+            'answer' => 'A B',
+            'project_key' => 'beta',
+            'ai_provider' => 'mock',
+            'ai_model' => 'mock',
+            'latency_ms' => 10,
+        ]);
+
+        $export = app(AskMyDocsUserDataExporter::class)->export($user);
+
+        $conversationIds = array_values(array_column($export['conversations'], 'id'));
+        $this->assertContains($convA->id, $conversationIds);
+        $this->assertContains(
+            $convB->id,
+            $conversationIds,
+            'C: DSAR export must aggregate rows across every tenant the user has membership in.',
+        );
+        $this->assertCount(2, $export['chat_logs']);
+
+        $this->assertArrayHasKey('_dsar_meta', $export);
+        $this->assertEqualsCanonicalizing(
+            ['tenant-a', 'tenant-b'],
+            $export['_dsar_meta']['tenants_scanned'],
+        );
+        $this->assertSame('tenant-a', $export['_dsar_meta']['active_tenant']);
+    }
+
     private function makeUser(): User
     {
         return User::create([

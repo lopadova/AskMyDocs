@@ -8,6 +8,7 @@ use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
+use App\Models\ProjectMembership;
 use App\Support\TenantContext;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -23,8 +24,55 @@ class AskMyDocsUserDataExporter
         $userId = $this->resolveUserId($user);
         $auditActors = $this->resolveAuditActors($user, $userId);
         $mcpActors = $this->resolveMcpAuditActors($user, $userId);
-        $tenantId = $this->tenantContext->current();
 
+        // v8.0.2 / deep-review C — User is host-wide (no tenant_id).
+        // A user with `project_memberships` in tenants A + B running
+        // DSAR while session-bound to tenant A previously got A-only
+        // data — Art. 15 breach in any multi-tenant deployment. We
+        // now enumerate every tenant the user has membership in
+        // PLUS the active tenant (legacy users without memberships
+        // still get their active-tenant data), then aggregate the
+        // result categories ACROSS tenants. Each category preserves
+        // its per-tenant shape because the rows themselves carry
+        // `tenant_id`.
+        $tenantIds = $this->resolveTenantsForUser($userId);
+
+        $aggregate = [
+            'conversations' => [],
+            'messages' => [],
+            'chat_logs' => [],
+            'chat_log_provenance' => [],
+            'kb_canonical_audit' => [],
+            'connector_installations' => [],
+            'mcp_tool_call_audit' => [],
+        ];
+
+        foreach ($tenantIds as $tenantId) {
+            $perTenant = $this->exportForTenant($userId, $tenantId, $auditActors, $mcpActors);
+            foreach ($perTenant as $category => $rows) {
+                $aggregate[$category] = array_merge($aggregate[$category], $rows);
+            }
+        }
+
+        // v8.0.2 / deep-review C — surface the tenant set in the
+        // top-level envelope so the DSAR consumer (operator,
+        // auditor, or the user themselves) can verify coverage at a
+        // glance without re-deriving from row contents.
+        $aggregate['_dsar_meta'] = [
+            'tenants_scanned' => array_values($tenantIds),
+            'active_tenant' => $this->tenantContext->current(),
+        ];
+
+        return $aggregate;
+    }
+
+    /**
+     * @param  list<string>  $auditActors
+     * @param  list<string>  $mcpActors
+     * @return array<string, array<int, mixed>>
+     */
+    private function exportForTenant(int $userId, string $tenantId, array $auditActors, array $mcpActors): array
+    {
         $conversationIds = Conversation::query()
             ->forTenant($tenantId)
             ->select('id')
@@ -80,6 +128,29 @@ class AskMyDocsUserDataExporter
                 ->get()
                 ->toArray(),
         ];
+    }
+
+    /**
+     * Enumerate the tenant_id set the user belongs to (via
+     * `project_memberships`) UNIONED with the active tenant. The
+     * active tenant fallback covers legacy seeded users that have
+     * data but no membership rows, AND the brand-new-user case
+     * where the user just signed up and hasn't been onboarded into
+     * any project yet.
+     *
+     * @return list<string>
+     */
+    private function resolveTenantsForUser(int $userId): array
+    {
+        $membershipTenants = ProjectMembership::query()
+            ->where('user_id', $userId)
+            ->distinct()
+            ->pluck('tenant_id')
+            ->all();
+
+        $active = $this->tenantContext->current();
+
+        return array_values(array_unique([...$membershipTenants, $active]));
     }
 
     private function resolveUserId(object $user): int

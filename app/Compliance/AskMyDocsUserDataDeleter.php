@@ -5,6 +5,7 @@ namespace App\Compliance;
 use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
+use App\Models\ProjectMembership;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -20,39 +21,80 @@ class AskMyDocsUserDataDeleter
     {
         $userId = $this->resolveUserId($user);
         $mcpActors = $this->resolveMcpAuditActors($user, $userId);
-        $tenantId = $this->tenantContext->current();
 
-        DB::transaction(function () use ($tenantId, $userId, $mcpActors): void {
-            // v7.0/W6.3 — the package writes audit rows with
-            // `user_id=null` and an opaque `actor` string (e.g.
-            // `"user:42"` or the user's email). DSAR delete MUST cover
-            // both the legacy `user_id` join AND the package's actor
-            // convention, otherwise package-written rows survive the
-            // erasure request and silently breach the GDPR Art. 17
-            // contract.
-            McpToolCallAudit::query()
-                ->forTenant($tenantId)
-                ->where(function ($q) use ($userId, $mcpActors): void {
-                    $q->where('user_id', $userId)
-                        ->orWhereIn('actor', $mcpActors);
-                })
-                ->delete();
+        // v8.0.2 / deep-review C — DSAR erasure (Art. 17) MUST cover
+        // every tenant the user has data in. User is host-wide (no
+        // tenant_id), so the active TenantContext misses any other
+        // tenant the user has membership in.
+        //
+        // Wrap the per-tenant deletes in a SINGLE outer transaction
+        // so the erasure is either fully complete or fully rolled
+        // back — a half-deleted user violates Art. 17 just as
+        // surely as a no-op delete.
+        $tenantIds = $this->resolveTenantsForUser($userId);
 
-            ConnectorInstallation::query()
-                ->forTenant($tenantId)
-                ->where('created_by', $userId)
-                ->delete();
-
-            ChatLog::query()
-                ->forTenant($tenantId)
-                ->where('user_id', $userId)
-                ->delete();
-
-            Conversation::query()
-                ->forTenant($tenantId)
-                ->where('user_id', $userId)
-                ->delete();
+        DB::transaction(function () use ($tenantIds, $userId, $mcpActors): void {
+            foreach ($tenantIds as $tenantId) {
+                $this->deleteForTenant($tenantId, $userId, $mcpActors);
+            }
         });
+    }
+
+    /**
+     * @param  list<string>  $mcpActors
+     */
+    private function deleteForTenant(string $tenantId, int $userId, array $mcpActors): void
+    {
+        // v7.0/W6.3 — the package writes audit rows with
+        // `user_id=null` and an opaque `actor` string (e.g.
+        // `"user:42"` or the user's email). DSAR delete MUST cover
+        // both the legacy `user_id` join AND the package's actor
+        // convention, otherwise package-written rows survive the
+        // erasure request and silently breach the GDPR Art. 17
+        // contract.
+        McpToolCallAudit::query()
+            ->forTenant($tenantId)
+            ->where(function ($q) use ($userId, $mcpActors): void {
+                $q->where('user_id', $userId)
+                    ->orWhereIn('actor', $mcpActors);
+            })
+            ->delete();
+
+        ConnectorInstallation::query()
+            ->forTenant($tenantId)
+            ->where('created_by', $userId)
+            ->delete();
+
+        ChatLog::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->delete();
+
+        Conversation::query()
+            ->forTenant($tenantId)
+            ->where('user_id', $userId)
+            ->delete();
+    }
+
+    /**
+     * Enumerate the tenant_id set the user belongs to (via
+     * `project_memberships`) UNIONED with the active tenant. Same
+     * shape as AskMyDocsUserDataExporter::resolveTenantsForUser so
+     * export + erase stay symmetric — what export saw, erase wipes.
+     *
+     * @return list<string>
+     */
+    private function resolveTenantsForUser(int $userId): array
+    {
+        $membershipTenants = ProjectMembership::query()
+            ->where('user_id', $userId)
+            ->distinct()
+            ->pluck('tenant_id')
+            ->all();
+
+        $active = $this->tenantContext->current();
+
+        return array_values(array_unique([...$membershipTenants, $active]));
     }
 
     private function resolveUserId(object $user): int
