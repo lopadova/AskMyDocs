@@ -107,15 +107,37 @@ export function ChatView(): ReactNode {
         staleTime: 5 * 60_000,
         refetchOnWindowFocus: false,
     });
-    // Default to HIDDEN until the BE confirms `enabled=true`. A
-    // simple `?? true` would briefly render the panel ON during
-    // the load window for a user who saved `false`, then snap it
-    // OFF when the query resolves — a visible flicker that leaks
-    // their hidden preference for ~100ms each session. Strict
-    // equality means the panel only appears once the user's
-    // confirmed preference is true; the default-true case waits
-    // ~one round-trip before the panel appears.
-    const showCounterfactual = preferencesQuery.data?.preferences.counterfactual_enabled === true;
+    // UX trade-off (iter-10 vs iter-11 of Copilot review on PR
+    // #223 deep-review hotfix): two failure modes are in tension —
+    //
+    //   (A) `?? true` defaults to ON during loading/error → a
+    //       user who saved `false` sees a brief panel flash
+    //       (~one GET round-trip) before the BE confirms.
+    //   (B) `=== true` defaults to HIDDEN during loading/error →
+    //       a user with the default-ON preference (everyone
+    //       except those who flipped it off) waits one GET for
+    //       the panel to appear, AND a degraded-network user
+    //       sees no panel + no error/retry indicator (the
+    //       retry surface lives in NotificationPreferencesGrid,
+    //       not in chat).
+    //
+    // (B) leaks LESS user preference (no flash of a hidden
+    // panel) but is more conservative on the default UX. (A)
+    // matches the BE-side DEFAULTS map literally but flashes.
+    //
+    // We split the difference: during the very first load
+    // (`isLoading=true`, no data yet, no error) we OPTIMISTICALLY
+    // assume the BE default (TRUE) so degraded-network users
+    // and first-paint match the historical UX. Once data
+    // arrives — or the query errors — we switch to strict mode:
+    // show iff `=== true`. Background refetches don't reset
+    // `data`, so the cached value stays stable and no second
+    // flicker fires. The remaining saved-false-flash window is
+    // the SINGLE first GET round trip per fresh session.
+    const showCounterfactual =
+        preferencesQuery.data !== undefined
+            ? preferencesQuery.data.preferences.counterfactual_enabled === true
+            : ! preferencesQuery.isError;
 
     useEffect(() => {
         if (activeId === null) {
