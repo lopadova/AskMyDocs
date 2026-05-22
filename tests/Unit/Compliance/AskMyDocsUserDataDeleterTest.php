@@ -180,15 +180,15 @@ class AskMyDocsUserDataDeleterTest extends TestCase
         $this->assertDatabaseMissing('chat_logs', ['id' => $tenantBLog->id]);
         $this->assertDatabaseMissing('mcp_tool_call_audit', ['id' => $tenantBAudit->id]);
         $this->assertDatabaseMissing('connector_installations', ['id' => $tenantBInstallation->id]);
-        // connector_credentials in tenant-b survives because the
-        // deleter doesn't have a `created_by` predicate on that
-        // table — it cascades from installation FK. The cascade
-        // fires for tenant-b too because tenant-b's installation
-        // is wiped above. If `connector_credentials` is FK-cascaded
-        // from `connector_installations`, this row is gone too;
-        // if not, it survives by design. Assertion left out to
-        // avoid coupling to package-level FK semantics that aren't
-        // in scope for v8.0.2.
+        // connector_credentials.connector_installation_id is
+        // `cascadeOnDelete()` in the test schema (mirror of the
+        // package migration), so wiping the tenant-b installation
+        // above transitively wipes its credential rows. Assert the
+        // cascade explicitly — the v8.0.2 contract is that DSAR
+        // erasure covers EVERY tenant-b row, regardless of whether
+        // the deleter touches the table directly or the database
+        // FK does.
+        $this->assertDatabaseMissing('connector_credentials', ['id' => $tenantBCredential->id]);
     }
 
     public function test_it_deletes_mcp_audit_rows_written_by_the_package_via_actor(): void
