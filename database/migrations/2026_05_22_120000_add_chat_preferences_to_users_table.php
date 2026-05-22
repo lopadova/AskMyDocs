@@ -31,7 +31,13 @@ return new class extends Migration
             // (the test driver). The column is nullable so existing
             // rows skip a backfill — a null value is read as "no
             // preferences set, use defaults" by the controller.
-            $table->json('chat_preferences')->nullable()->after('password');
+            //
+            // `after()` is intentionally omitted: only MySQL
+            // honours column-ordering modifiers; PostgreSQL +
+            // SQLite ignore them silently, so implying an order
+            // would be a false guarantee across the drivers this
+            // repo targets.
+            $table->json('chat_preferences')->nullable();
         });
     }
 

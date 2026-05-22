@@ -37,6 +37,16 @@ export const chatPreferencesApi = {
     async save(patch: Partial<Record<keyof ChatPreferences, boolean | null>>): Promise<ChatPreferencesResponse> {
         const body: Record<string, string | null> = {};
         for (const [key, value] of Object.entries(patch)) {
+            // Partial<...> means the type still admits `undefined`
+            // values (esp. without `exactOptionalPropertyTypes`).
+            // Treat undefined as "no change" — skipping the key
+            // entirely — so callers passing
+            // `{ counterfactual_enabled: undefined }` don't
+            // unintentionally flip the setting to false. Use null
+            // explicitly to request deletion of a key.
+            if (value === undefined) {
+                continue;
+            }
             if (value === null) {
                 body[key] = null;
                 continue;

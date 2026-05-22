@@ -17,7 +17,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table): void {
-            $table->json('chat_preferences')->nullable()->after('password');
+            // SQLite ignores `after()`; keep the column shape identical
+            // to the production migration (no ordering modifier).
+            $table->json('chat_preferences')->nullable();
         });
     }
 

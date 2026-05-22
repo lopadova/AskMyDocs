@@ -212,6 +212,27 @@ describe('NotificationPreferencesGrid', () => {
         expect(screen.getByTestId('notif-pref-retry')).toBeInTheDocument();
     });
 
+    it('counterfactual toggle disables and surfaces a load-error banner when GET fails', async () => {
+        // Override the beforeEach default so the chat-prefs URL
+        // rejects while notif prefs still resolve. The toggle must
+        // then be disabled (cannot infer real state) AND a
+        // load-error banner must surface.
+        mockGet.mockImplementation((url: string) => {
+            if (url === '/api/me/chat-preferences') {
+                return Promise.reject(new Error('500'));
+            }
+            return Promise.resolve(DEFAULT_RESPONSE);
+        });
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        const toggle = await screen.findByTestId('chat-counterfactual-toggle');
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-counterfactual-load-error')).toBeInTheDocument();
+        });
+        expect(toggle).toBeDisabled();
+    });
+
     it('counterfactual toggle surfaces an error banner when PATCH fails (R14)', async () => {
         const user = userEvent.setup();
         mockPatch.mockRejectedValueOnce(new Error('500'));

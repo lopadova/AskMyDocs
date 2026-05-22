@@ -250,13 +250,42 @@ export function NotificationPreferencesGrid(): ReactNode {
                             type="checkbox"
                             checked={counterfactualEnabled}
                             onChange={toggleCounterfactual}
-                            disabled={counterfactualQuery.isLoading || counterfactualMut.isPending}
+                            // Disabled while the query is loading, while
+                            // the mutation is in flight, AND when the
+                            // GET errors out: in the error case the
+                            // displayed "On" state is the FALLBACK
+                            // default, NOT a confirmed BE value — letting
+                            // the user toggle from a possibly-wrong
+                            // baseline would spray PATCH traffic against
+                            // unknown state.
+                            disabled={
+                                counterfactualQuery.isLoading
+                                || counterfactualQuery.isError
+                                || counterfactualMut.isPending
+                            }
                             data-testid="chat-counterfactual-toggle"
                             aria-label="Show counterfactual panel in chat"
                         />
                         <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
                     </label>
                 </div>
+                {counterfactualQuery.isError && (
+                    <div
+                        data-testid="chat-counterfactual-load-error"
+                        role="alert"
+                        className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700"
+                    >
+                        Could not load your saved preference. The toggle shows
+                        the default until the next successful load.
+                        <button
+                            type="button"
+                            onClick={() => void counterfactualQuery.refetch()}
+                            className="ml-2 underline"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
                 {counterfactualMut.isError && (
                     <div
                         data-testid="chat-counterfactual-toggle-error"
