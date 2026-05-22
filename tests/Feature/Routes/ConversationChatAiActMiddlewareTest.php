@@ -115,13 +115,38 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
         // R-deep-review B preserves the existing redact-chat-pii layer
         // — disclosure/consent operate at the auth/response layer
         // and the redaction must still pre-process the inbound body
-        // BEFORE the controller reads it.
-        $this->assertMiddlewareIncludesAlias(
+        // BEFORE the controller reads it. Order is load-bearing:
+        // if disclosure ran first it would observe a non-redacted
+        // body in any downstream hook (and we'd quietly change the
+        // contract of every future addition that hooks into either
+        // layer). Assert relative index, not just presence.
+        $piiIndex = $this->middlewareIndex(
             $middleware,
             'redact-chat-pii',
             \App\Http\Middleware\RedactChatPii::class,
-            'B (deep-review v8.0.2): redact-chat-pii must remain on the messages '
-            . 'POST so the AI Act gates do not unwind PII protection.',
+        );
+        $disclosureIndex = $this->middlewareIndex(
+            $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
+        );
+
+        $this->assertNotSame(
+            -1,
+            $piiIndex,
+            'B (deep-review v8.0.2): redact-chat-pii must remain on the messages POST.',
+        );
+        $this->assertNotSame(
+            -1,
+            $disclosureIndex,
+            'B (deep-review v8.0.2): ai.disclosure must be mounted on the messages POST.',
+        );
+        $this->assertLessThan(
+            $disclosureIndex,
+            $piiIndex,
+            'B (deep-review v8.0.2): redact-chat-pii must run BEFORE ai.disclosure. '
+            . 'Reversing the order would let downstream observers see a non-redacted body. '
+            . 'Got middleware: ' . json_encode($middleware),
         );
     }
 
@@ -169,6 +194,28 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
             . "Expected middleware alias '{$alias}' (or FQCN '{$fqcn}') "
             . 'but found: ' . json_encode($middleware),
         );
+    }
+
+    /**
+     * Find the index of a middleware entry by alias OR FQCN.
+     * Returns -1 when not found (caller asserts the index is
+     * positive AND below another middleware's index for ordering
+     * assertions).
+     *
+     * @param  array<int, string>  $middleware
+     */
+    private function middlewareIndex(array $middleware, string $alias, string $fqcn): int
+    {
+        foreach ($middleware as $index => $entry) {
+            if ($entry === $alias || str_starts_with($entry, $alias . ':')) {
+                return $index;
+            }
+            if ($entry === $fqcn || str_starts_with($entry, $fqcn . ':')) {
+                return $index;
+            }
+        }
+
+        return -1;
     }
 
     /**

@@ -24,8 +24,21 @@ class AskMyDocsUserDataExporterTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_it_exports_only_the_current_tenant_rows_for_the_user(): void
+    public function test_it_exports_all_user_owned_rows_across_tenants_even_without_explicit_memberships(): void
     {
+        // v8.0.2 / Copilot iter-3 on PR #224 — UserTenantResolver
+        // now data-derives the tenant set from user-owned tables
+        // (conversations, chat_logs, connector_installations) IN
+        // ADDITION to project_memberships, so a DSAR export pick
+        // up tenant-b rows even when the user never had (or had
+        // revoked) a membership there. This was a real Art. 15
+        // gap pre-v8.0.2.
+        //
+        // The test name + assertions were originally written to
+        // ENCODE the buggy "active-tenant-only" behaviour. Updated
+        // here to assert the corrected "every tenant the user has
+        // data in" behaviour, which is the actual GDPR contract.
+
         $user = $this->makeUser();
 
         app(TenantContext::class)->set('tenant-a');
@@ -51,7 +64,7 @@ class AskMyDocsUserDataExporterTest extends TestCase
             'content' => 'hello from tenant A',
         ]);
 
-        Message::query()->create([
+        $tenantBMessage = Message::query()->create([
             'tenant_id' => 'tenant-b',
             'conversation_id' => $tenantBConversation->id,
             'role' => 'user',
@@ -70,7 +83,7 @@ class AskMyDocsUserDataExporterTest extends TestCase
             'latency_ms' => 10,
         ]);
 
-        ChatLog::query()->create([
+        $tenantBLog = ChatLog::query()->create([
             'tenant_id' => 'tenant-b',
             'session_id' => (string) \Illuminate\Support\Str::uuid(),
             'user_id' => $user->id,
@@ -102,7 +115,7 @@ class AskMyDocsUserDataExporterTest extends TestCase
             'created_by' => $user->id,
         ]);
 
-        ConnectorInstallation::query()->create([
+        $tenantBInstallation = ConnectorInstallation::query()->create([
             'tenant_id' => 'tenant-b',
             'connector_name' => 'notion',
             'status' => ConnectorInstallation::STATUS_ACTIVE,
@@ -195,16 +208,49 @@ class AskMyDocsUserDataExporterTest extends TestCase
 
         $export = app(AskMyDocsUserDataExporter::class)->export($user);
 
-        $this->assertSame([$tenantAConversation->id], array_values(array_column($export['conversations'], 'id')));
-        $this->assertSame([$tenantAMessage->id], array_values(array_column($export['messages'], 'id')));
-        $this->assertSame([$tenantALog->id], array_values(array_column($export['chat_logs'], 'id')));
-        $this->assertCount(1, $export['chat_log_provenance']);
-        $this->assertSame([$tenantAInstallation->id], array_values(array_column($export['connector_installations'], 'id')));
+        // Conversations / messages / chat_logs / connector_installations
+        // / mcp_tool_call_audit: BOTH tenants present (Art. 15 full
+        // surface). Use canonicalised comparison since the per-tenant
+        // loop order is not contractual.
         $this->assertEqualsCanonicalizing(
-            [$user->email, (string) $user->id],
+            [$tenantAConversation->id, $tenantBConversation->id],
+            array_values(array_column($export['conversations'], 'id')),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$tenantAMessage->id, $tenantBMessage->id],
+            array_values(array_column($export['messages'], 'id')),
+        );
+        $this->assertEqualsCanonicalizing(
+            [$tenantALog->id, $tenantBLog->id],
+            array_values(array_column($export['chat_logs'], 'id')),
+        );
+        // chat_log_provenance: only seeded in tenant-a.
+        $this->assertCount(1, $export['chat_log_provenance']);
+        $this->assertEqualsCanonicalizing(
+            [$tenantAInstallation->id, $tenantBInstallation->id],
+            array_values(array_column($export['connector_installations'], 'id')),
+        );
+        // kb_canonical_audit: tenant-a (email + id) + tenant-b (email).
+        // `system` actor is NOT user-attributable → must NOT appear.
+        $this->assertEqualsCanonicalizing(
+            [$user->email, (string) $user->id, $user->email],
             array_values(array_column($export['kb_canonical_audit'], 'actor')),
         );
-        $this->assertSame([$serverA->id], array_values(array_column($export['mcp_tool_call_audit'], 'mcp_server_id')));
+        $this->assertEqualsCanonicalizing(
+            [$serverA->id, $serverB->id],
+            array_values(array_column($export['mcp_tool_call_audit'], 'mcp_server_id')),
+        );
+
+        // _dsar_meta envelope must surface the tenant set actually
+        // scanned. The user has NO project_memberships in either
+        // tenant, so the set comes from the data-derived sweep + the
+        // active tenant fallback. Both tenants must appear.
+        $this->assertArrayHasKey('_dsar_meta', $export);
+        $this->assertEqualsCanonicalizing(
+            ['tenant-a', 'tenant-b'],
+            $export['_dsar_meta']['tenants_scanned'],
+        );
+        $this->assertSame('tenant-a', $export['_dsar_meta']['active_tenant']);
     }
 
     public function test_it_exports_mcp_audit_rows_written_by_the_package_via_actor(): void
