@@ -11,6 +11,69 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.1 — 2026-05-22 (Deep-review hotfix)
+
+Patch release on top of the v8.0.0 GA tag closing six findings from a
+post-merge deep comparative review across rc1/rc2/rc3. No new features,
+no schema migration breaking changes — the cumulative diff against
+v8.0.0 is small but two of the findings are security-class and ship
+before any consumer adopts v8.0.0.
+
+- **F1 — HIGH (Security)**. `POST /api/kb/feedback` now resolves the
+  chunk's owning document and runs the full
+  `User::hasDocumentAccess()` gate before writing. The prior path
+  validated only `tenant_id + chunk_id`; an authenticated user could
+  feedback chunks belonging to other projects within the same tenant
+  (IDOR-class within the trust boundary). Cross-project denials
+  surface as 404 (no existence leak) — see
+  [`tests/Feature/Api/KbChunkFeedbackApiTest.php`](tests/Feature/Api/KbChunkFeedbackApiTest.php).
+- **F2 — HIGH (Correctness)**. `KbChunkFeedbackController` replaces
+  `updateOrCreate` (select-then-write) with an atomic `upsert()` on
+  the `(tenant_id, user_id, knowledge_chunk_id)` UNIQUE.
+  Double-click / retry traffic no longer produces duplicate-key
+  500s; the row stays single and the signal flips deterministically.
+- **F3 — MEDIUM (Retrieval correctness)**. `KbSearchService::fullTextSearch`
+  now applies the same `RetrievalFilters` DTO the semantic branch
+  applies. The hybrid RRF merge previously re-introduced chunks
+  excluded by `source_types` / `canonical_types` / `doc_ids` /
+  `languages` / `date_*` / `tag_slugs` when `KB_HYBRID_SEARCH_ENABLED=true`.
+  Three structural tests in
+  [`KbSearchServiceFiltersTest`](tests/Feature/Kb/KbSearchServiceFiltersTest.php)
+  lock the signature, the dispatch, and the call site.
+- **F4 — MEDIUM (Governance gap, R31)**. `App\Models\KbChunkFeedback`
+  joins the `TENANT_AWARE_MODELS` enum so the
+  `TenantIdMandatoryTest` architecture gate fails on any future drop
+  of the trait or `tenant_id` fillable.
+- **F5 — MEDIUM (Product consistency)**. The chat counterfactual
+  toggle moves from browser-local `localStorage` to a server-side
+  per-user preference. New `users.chat_preferences` JSON column +
+  `GET/PATCH /api/me/chat-preferences`. The shape is open-ended:
+  the FE owns keys (counterfactual today, future chat toggles
+  tomorrow) without a BE deploy. Multi-device / fresh-session usage
+  now keeps the user's choice.
+- **F6 — MEDIUM (Doc drift)**. The W1.2 dispatcher entry in this
+  CHANGELOG previously claimed
+  `(tenant_id, user_id, event_type, payload_hash)` idempotency
+  UNIQUE; the migration shipped without that column. Reconciled the
+  prose: in-batch dedup is what ships; cross-batch idempotency is
+  intentionally parked for a follow-up release (matches the
+  comment block on `NotificationDispatcher`).
+
+Tests: 1971 PHPUnit + 478 Vitest green on the patch HEAD. New
+coverage: 6 `KbChunkFeedbackApiTest` cases + 3 structural
+`KbSearchServiceFiltersTest` cases + 6 `ChatPreferencesApiTest`
+cases + 1 vitest scenario asserting the toggle calls
+`PATCH /api/me/chat-preferences`.
+
+---
+
+### v8.0.0 — 2026-05-21 (GA — v8.0 killer-features cycle complete)
+
+R37 once-per-major merge of `feature/v8.0` into `main` after W8
+closure (rc4 above) with all CI gates green.
+
+---
+
 ### v8.0.0-rc4 — 2026-05-21 (W8 closure — Compliance Differential Pack v1)
 
 W8 closure of the **v8.0 killer-features cycle**. Ships the full
@@ -163,11 +226,16 @@ events through a working transport.
 - **Dispatcher (PR #189 — W1.2)**. Laravel events + `NotificationDispatcher`
   listener. Single writer for `notification_events` rows (the
   dispatcher); single writer per voice of `channel_dispatch_log` (the
-  per-channel adapter). Idempotency gated by
-  `(tenant_id, user_id, event_type, payload_hash)`. Event publishers
-  wired for `KbDocumentChanged` + `KbCanonicalPromoted` +
-  `KbDecisionDebtThreshold` (placeholder for W4) +
-  `CollectionNewMember` (placeholder for W6).
+  per-channel adapter). Idempotency: **in-batch only** —
+  `uniqueRecipients()` collapses duplicate recipients (and a single
+  `__tenant_wide__` slot for null recipients) per event invocation.
+  **Cross-batch idempotency** (queue retry, manual replay) requires a
+  `payload_hash` column + UNIQUE on `notification_events` and is
+  intentionally **parked for a follow-up release** alongside the
+  audit-retention semantics — the dispatcher source documents the
+  scope. Event publishers wired for `KbDocumentChanged` +
+  `KbCanonicalPromoted` + `KbDecisionDebtThreshold` (placeholder for
+  W4) + `CollectionNewMember` (placeholder for W6).
 - **In-app + Email channels (PR #190 — W1.3)**.
   `NotificationChannelInterface` + `InAppChannel` (append `delivered`
   voice; bell-feed driver) + `EmailChannel` (queue

@@ -382,6 +382,74 @@ final class KbSearchServiceFiltersTest extends TestCase
     }
 
     /**
+     * F3 (deep-review v8.0.1) — `fullTextSearch()` MUST forward the
+     * filter DTO to `applyFilters()`. Without this, the hybrid RRF
+     * merge re-introduces FTS-only chunks that the caller's filter
+     * set was supposed to exclude (source_types / canonical_types /
+     * doc_ids / languages / dates / tag_slugs).
+     *
+     * The check is structural (signature + body grep) because
+     * `fullTextSearch` runs PostgreSQL-only `to_tsvector` /
+     * `plainto_tsquery` SQL that SQLite cannot execute end-to-end.
+     * The structural assertion fails the moment a refactor drops
+     * either the parameter or the dispatch.
+     */
+    public function test_full_text_search_signature_accepts_filters_dto(): void
+    {
+        $rm = new ReflectionMethod(KbSearchService::class, 'fullTextSearch');
+        $names = array_map(static fn ($p) => $p->getName(), $rm->getParameters());
+
+        $this->assertContains(
+            'filters',
+            $names,
+            'F3: fullTextSearch() must accept the $filters DTO so the hybrid branch '
+            . 'cannot bypass source_types / canonical_types / doc_ids / languages / '
+            . 'dates / tag_slugs.',
+        );
+    }
+
+    public function test_full_text_search_body_invokes_apply_filters(): void
+    {
+        $rm = new ReflectionMethod(KbSearchService::class, 'fullTextSearch');
+        $lines = file($rm->getFileName());
+        $body = implode('', array_slice(
+            $lines,
+            $rm->getStartLine() - 1,
+            $rm->getEndLine() - $rm->getStartLine() + 1,
+        ));
+
+        $this->assertStringContainsString(
+            '$this->applyFilters(',
+            $body,
+            'F3: fullTextSearch() body must call $this->applyFilters($builder, $filters) '
+            . 'so the hybrid RRF merge stays consistent with the semantic branch. '
+            . 'A regression here re-opens the deep-review finding.',
+        );
+    }
+
+    public function test_search_passes_filters_into_full_text_search_when_hybrid_enabled(): void
+    {
+        // Inspect the search() method body to confirm the call site
+        // forwards $effectiveFilters into fullTextSearch(). Pairs with
+        // the two structural tests above: signature + dispatch +
+        // call-site form the full propagation chain.
+        $rm = new ReflectionMethod(KbSearchService::class, 'search');
+        $lines = file($rm->getFileName());
+        $body = implode('', array_slice(
+            $lines,
+            $rm->getStartLine() - 1,
+            $rm->getEndLine() - $rm->getStartLine() + 1,
+        ));
+
+        $this->assertMatchesRegularExpression(
+            '/\$this->fullTextSearch\([^)]*\$effectiveFilters/s',
+            $body,
+            'F3: search() must pass $effectiveFilters to fullTextSearch() so the '
+            . 'hybrid branch shares the semantic branch\'s filter set.',
+        );
+    }
+
+    /**
      * Construct a KnowledgeChunk::query(), invoke the private applyFilters
      * via reflection, return the resulting SQL + bindings. This is the
      * cleanest way to test query construction without executing pgvector

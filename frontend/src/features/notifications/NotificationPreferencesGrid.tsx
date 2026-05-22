@@ -6,8 +6,11 @@ import {
     type NotificationPreferencesResponse,
 } from './notifications.api';
 import { EVENT_TYPE_LABELS, CHANNEL_LABELS } from './labels';
-
-const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
+import {
+    chatPreferencesApi,
+    CHAT_PREFERENCES_QUERY_KEY,
+    type ChatPreferencesResponse,
+} from '../chat/chat-preferences.api';
 
 /**
  * v8.0/W2.2 — /app/admin/notifications/preferences grid.
@@ -80,12 +83,26 @@ export function NotificationPreferencesGrid(): ReactNode {
     // (Copilot iter-1 #2 — initial-render flicker / flaky test
     // assertions against a momentarily-unchecked grid).
     const [edits, setEdits] = useState<Record<string, boolean> | null>(null);
-    const [counterfactualEnabled, setCounterfactualEnabled] = useState(true);
 
-    useEffect(() => {
-        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
-        setCounterfactualEnabled(raw !== '0');
-    }, []);
+    // v8.0.1 / deep-review F5 — counterfactual toggle is now a
+    // per-user server-persisted preference (was browser-local
+    // localStorage). Multi-device / fresh-session usage keeps the
+    // user's choice. Default-true while loading so the first paint
+    // matches the prior localStorage default.
+    const counterfactualQuery = useQuery({
+        queryKey: CHAT_PREFERENCES_QUERY_KEY,
+        queryFn: () => chatPreferencesApi.load(),
+        staleTime: 5 * 60_000,
+        refetchOnWindowFocus: false,
+    });
+    const counterfactualEnabled =
+        counterfactualQuery.data?.preferences.counterfactual_enabled ?? true;
+    const counterfactualMut = useMutation({
+        mutationFn: (next: boolean) => chatPreferencesApi.save({ counterfactual_enabled: next }),
+        onSuccess: (data: ChatPreferencesResponse) => {
+            qc.setQueryData(CHAT_PREFERENCES_QUERY_KEY, data);
+        },
+    });
 
     // R17 — seed the local edit cache from the server snapshot ONLY on
     // the very first load (when `edits` is still null). A naive seed
@@ -195,9 +212,7 @@ export function NotificationPreferencesGrid(): ReactNode {
     }, [edits, query.data]);
 
     const toggleCounterfactual = () => {
-        const next = !counterfactualEnabled;
-        setCounterfactualEnabled(next);
-        window.localStorage.setItem(COUNTERFACTUAL_PREF_KEY, next ? '1' : '0');
+        counterfactualMut.mutate(!counterfactualEnabled);
     };
 
     return (
@@ -218,7 +233,8 @@ export function NotificationPreferencesGrid(): ReactNode {
                     <div>
                         <p className="text-sm font-medium text-gray-800">Counterfactual panel in chat</p>
                         <p className="text-xs text-gray-600">
-                            Show/hide “N other projects” counterfactual citations. Sticky per browser, default ON.
+                            Show/hide “N other projects” counterfactual citations. Saved on the
+                            server, follows you across devices and sessions. Default ON.
                         </p>
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm">
@@ -226,7 +242,9 @@ export function NotificationPreferencesGrid(): ReactNode {
                             type="checkbox"
                             checked={counterfactualEnabled}
                             onChange={toggleCounterfactual}
+                            disabled={counterfactualQuery.isLoading || counterfactualMut.isPending}
                             data-testid="chat-counterfactual-toggle"
+                            aria-label="Show counterfactual panel in chat"
                         />
                         <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
                     </label>

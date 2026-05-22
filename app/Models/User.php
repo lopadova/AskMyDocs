@@ -36,6 +36,12 @@ class User extends Authenticatable
         'email',
         'password',
         'is_active',
+        // v8.0.1 / deep-review F5 — chat-level preferences (e.g.
+        // `counterfactual_enabled`) persisted per user. Cross-tenant
+        // by design — the same identity carries the same chat
+        // ergonomics regardless of which tenant they are operating
+        // in.
+        'chat_preferences',
     ];
 
     // Mirror the `default(true)` on the migration so newly created
@@ -57,6 +63,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'chat_preferences' => 'array',
         ];
     }
 

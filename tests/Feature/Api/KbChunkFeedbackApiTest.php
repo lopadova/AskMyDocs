@@ -7,50 +7,29 @@ namespace Tests\Feature\Api;
 use App\Models\KbChunkFeedback;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Models\ProjectMembership;
 use App\Models\User;
+use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 final class KbChunkFeedbackApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RbacSeeder::class);
+    }
+
     public function test_two_users_can_store_opposite_feedback_on_same_chunk(): void
     {
-        $doc = KnowledgeDocument::create([
-            'project_key' => 'default',
-            'source_type' => 'markdown',
-            'title' => 'Doc',
-            'source_path' => 'docs/demo.md',
-            'language' => 'it',
-            'access_scope' => 'internal',
-            'status' => 'active',
-            'document_hash' => hash('sha256', 'doc'),
-            'version_hash' => hash('sha256', 'doc-v1'),
-            'metadata' => [],
-            'indexed_at' => now(),
-        ]);
+        [$doc, $chunk] = $this->seedChunk(projectKey: 'default');
 
-        $chunk = KnowledgeChunk::create([
-            'knowledge_document_id' => $doc->id,
-            'project_key' => 'default',
-            'chunk_order' => 0,
-            'chunk_hash' => hash('sha256', 'chunk-1'),
-            'chunk_text' => 'Sample chunk',
-            'metadata' => [],
-            'embedding' => [0.1],
-        ]);
-
-        $alice = User::create([
-            'name' => 'alice',
-            'email' => 'alice+'.uniqid().'@demo.local',
-            'password' => 'hash',
-        ]);
-        $bob = User::create([
-            'name' => 'bob',
-            'email' => 'bob+'.uniqid().'@demo.local',
-            'password' => 'hash',
-        ]);
+        $alice = $this->makeAdmin('alice');
+        $bob = $this->makeAdmin('bob');
 
         $this->actingAs($alice)->postJson('/api/kb/feedback', [
             'chunk_id' => $chunk->id,
@@ -81,5 +60,213 @@ final class KbChunkFeedbackApiTest extends TestCase
             'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
         ]);
     }
-}
 
+    /**
+     * F1 (deep-review v8.0.1) — a user with NO project membership and
+     * no global kb.read.any permission cannot feedback chunks even
+     * when the chunk is in the active tenant.
+     *
+     * The controller answers 404 rather than 403 because the existing
+     * AccessScopeScope on KnowledgeDocument hides documents the user
+     * cannot read, so the chunk → document eager-load resolves to null
+     * and the controller treats it as missing. 404 is also the
+     * preferred posture for IDOR-like cases — it does not leak
+     * existence of the protected resource. The key security invariant
+     * is "no DB row persisted", which the assertDatabaseMissing below
+     * pins down.
+     */
+    public function test_user_without_project_membership_cannot_feedback(): void
+    {
+        [, $chunk] = $this->seedChunk(projectKey: 'restricted');
+
+        $stranger = $this->makeViewer('stranger');
+
+        $this->actingAs($stranger)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertNotFound();
+
+        $this->assertDatabaseMissing('kb_chunk_feedback', [
+            'user_id' => $stranger->id,
+            'knowledge_chunk_id' => $chunk->id,
+        ]);
+    }
+
+    /**
+     * F1 (deep-review v8.0.1) — a user with membership in project A
+     * cannot feedback chunks belonging to project B in the same tenant.
+     */
+    public function test_user_with_membership_in_other_project_cannot_feedback_cross_project(): void
+    {
+        [, $chunkA] = $this->seedChunk(projectKey: 'project-a', source: 'a');
+        [, $chunkB] = $this->seedChunk(projectKey: 'project-b', source: 'b');
+
+        $userA = $this->makeViewer('user-a');
+        ProjectMembership::create([
+            'tenant_id' => 'default',
+            'user_id' => $userA->id,
+            'project_key' => 'project-a',
+            'role' => 'member',
+            'scope_allowlist' => [],
+        ]);
+
+        // Feedback on own project: allowed.
+        $this->actingAs($userA)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunkA->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertOk();
+
+        // Feedback on someone else's project: blocked even within the
+        // same tenant. AccessScopeScope hides the foreign doc on
+        // eager-load so the controller surfaces 404 (no existence
+        // leak); the DB-missing assertion below is the load-bearing
+        // security check.
+        $this->actingAs($userA)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunkB->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertNotFound();
+
+        $this->assertDatabaseMissing('kb_chunk_feedback', [
+            'user_id' => $userA->id,
+            'knowledge_chunk_id' => $chunkB->id,
+        ]);
+    }
+
+    /**
+     * F2 (deep-review v8.0.1) — repeating the same call (idempotent
+     * double-click) MUST NOT throw a duplicate-key error or 500. The
+     * upsert overwrites the prior signal and the database holds
+     * exactly one row.
+     */
+    public function test_repeated_feedback_is_idempotent_and_updates_signal(): void
+    {
+        [, $chunk] = $this->seedChunk(projectKey: 'default');
+
+        $user = $this->makeAdmin('user');
+
+        $this->actingAs($user)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_SHOULD_HAVE_CITED,
+        ])->assertOk();
+
+        $this->actingAs($user)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertOk()->assertJson([
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ]);
+
+        $this->assertSame(
+            1,
+            KbChunkFeedback::query()
+                ->where('user_id', $user->id)
+                ->where('knowledge_chunk_id', $chunk->id)
+                ->count(),
+            'upsert must keep exactly one row per (tenant_id, user_id, chunk_id)',
+        );
+        $this->assertDatabaseHas('kb_chunk_feedback', [
+            'user_id' => $user->id,
+            'knowledge_chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ]);
+    }
+
+    public function test_anonymous_request_is_rejected(): void
+    {
+        [, $chunk] = $this->seedChunk(projectKey: 'default');
+
+        $this->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertUnauthorized();
+    }
+
+    public function test_invalid_signal_is_rejected(): void
+    {
+        [, $chunk] = $this->seedChunk(projectKey: 'default');
+
+        $user = $this->makeAdmin('user');
+
+        $this->actingAs($user)->postJson('/api/kb/feedback', [
+            'chunk_id' => $chunk->id,
+            'signal' => 'bogus',
+        ])->assertStatus(422);
+    }
+
+    public function test_missing_chunk_returns_404(): void
+    {
+        $user = $this->makeAdmin('user');
+
+        $this->actingAs($user)->postJson('/api/kb/feedback', [
+            'chunk_id' => 999999,
+            'signal' => KbChunkFeedback::SIGNAL_NOT_RELEVANT,
+        ])->assertNotFound();
+    }
+
+    /**
+     * @return array{0: KnowledgeDocument, 1: KnowledgeChunk}
+     */
+    private function seedChunk(string $projectKey, string $source = 'demo'): array
+    {
+        $doc = KnowledgeDocument::create([
+            'tenant_id' => 'default',
+            'project_key' => $projectKey,
+            'source_type' => 'markdown',
+            'title' => "Doc {$source}",
+            'source_path' => "docs/{$source}.md",
+            'language' => 'it',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => hash('sha256', "doc-{$source}"),
+            'version_hash' => hash('sha256', "doc-{$source}-v1"),
+            'metadata' => [],
+            'indexed_at' => now(),
+        ]);
+
+        $chunk = KnowledgeChunk::create([
+            'tenant_id' => 'default',
+            'knowledge_document_id' => $doc->id,
+            'project_key' => $projectKey,
+            'chunk_order' => 0,
+            'chunk_hash' => hash('sha256', "chunk-{$source}"),
+            'chunk_text' => "Sample chunk {$source}",
+            'metadata' => [],
+            'embedding' => [0.1],
+        ]);
+
+        return [$doc, $chunk];
+    }
+
+    private function makeAdmin(string $label): User
+    {
+        $u = User::create([
+            'name' => $label,
+            'email' => $label.'-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $u->assignRole('admin');
+
+        return $u;
+    }
+
+    /**
+     * A user with no kb.read.any permission. The dpo role has
+     * `admin.access` + `logs.view` + `pii.detokenize` but intentionally
+     * no `kb.*` global wildcard, which makes it the right role for
+     * exercising the project-membership-only access path. Users without
+     * a matching project_memberships row are denied at the controller's
+     * hasDocumentAccess() gate.
+     */
+    private function makeViewer(string $label): User
+    {
+        $u = User::create([
+            'name' => $label,
+            'email' => $label.'-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $u->assignRole('dpo');
+
+        return $u;
+    }
+}

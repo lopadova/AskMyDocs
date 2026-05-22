@@ -11,8 +11,8 @@ import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
+import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
 
-const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
 const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
 
 /**
@@ -88,21 +88,27 @@ export function ChatView(): ReactNode {
     // request body. Composer is now a controlled component for
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
-    const [showCounterfactual, setShowCounterfactual] = useState(true);
     const collectionsQuery = useQuery({
         queryKey: ['chat-collections'],
         queryFn: () => chatApi.listCollections(),
         staleTime: 60_000,
     });
 
-    useEffect(() => {
-        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
-        if (raw === '0') {
-            setShowCounterfactual(false);
-        } else {
-            setShowCounterfactual(true);
-        }
-    }, []);
+    // v8.0.1 / deep-review F5 — counterfactual toggle is now a
+    // per-user server-persisted preference (was browser-local
+    // localStorage). Read the merged (defaults + stored) view from
+    // the BE so multi-device / fresh-session usage keeps the user's
+    // choice. Default-true while loading so the first paint matches
+    // the prior localStorage default.
+    const preferencesQuery = useQuery({
+        queryKey: CHAT_PREFERENCES_QUERY_KEY,
+        queryFn: () => chatPreferencesApi.load(),
+        // Preferences rarely change; staleTime keeps the bell from
+        // hammering the endpoint while the user is in chat.
+        staleTime: 5 * 60_000,
+        refetchOnWindowFocus: false,
+    });
+    const showCounterfactual = preferencesQuery.data?.preferences.counterfactual_enabled ?? true;
 
     useEffect(() => {
         if (activeId === null) {
