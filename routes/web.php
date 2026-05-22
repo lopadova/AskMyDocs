@@ -46,14 +46,34 @@ Route::middleware('auth')->group(function () {
     })->name('chat');
     Route::get('/chat-legacy/{conversation?}', [ChatController::class, 'index'])->name('chat.legacy');
 
+    // v8.0.2 — AI Act gates (R-deep-review B): the same stack
+    // applied to `POST /api/kb/chat` (routes/api.php) must hold on
+    // the SPA's real chat endpoints (`POST /conversations/{id}/messages`
+    // + the SSE stream variant). Without this the AI Act Art. 50
+    // disclosure header is absent on the actual UX path and the
+    // optional consent gate is bypassed. The `redact-chat-pii`
+    // middleware stays first because it operates on the inbound
+    // body BEFORE controllers, while disclosure/consent operate on
+    // the response/authorization layer.
+    //
+    // Resolution is dynamic (config-driven) so the two route files
+    // stay in lockstep: any future addition to the chat middleware
+    // stack lands here once.
+    $aiActConsentFeature = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
+    $chatPostMiddleware = ['redact-chat-pii', 'ai.disclosure'];
+    if ($aiActConsentFeature !== '') {
+        $chatPostMiddleware[] = 'ai.consent:' . $aiActConsentFeature;
+    }
+
     // Conversation AJAX endpoints (session auth, no Sanctum needed)
-    Route::prefix('conversations')->group(function () {
+    Route::prefix('conversations')->group(function () use ($chatPostMiddleware) {
         Route::get('/', [ConversationController::class, 'index']);
         Route::post('/', [ConversationController::class, 'store']);
         Route::patch('/{conversation}', [ConversationController::class, 'update']);
         Route::delete('/{conversation}', [ConversationController::class, 'destroy']);
         Route::get('/{conversation}/messages', [MessageController::class, 'index']);
-        Route::post('/{conversation}/messages', [MessageController::class, 'store'])->middleware('redact-chat-pii');
+        Route::post('/{conversation}/messages', [MessageController::class, 'store'])
+            ->middleware($chatPostMiddleware);
         Route::post('/{conversation}/generate-title', [ConversationController::class, 'generateTitle']);
         Route::post('/{conversation}/messages/{message}/feedback', [FeedbackController::class, 'store']);
 
@@ -87,8 +107,19 @@ Route::middleware('auth')->group(function () {
 // `/login` (302 + HTML) which the streaming client can't parse.
 // `auth.sse` (see bootstrap/app.php) returns JSON 401 instead so the
 // SPA's auth bootstrap can re-establish the session and retry.
+// v8.0.2 — AI Act gates (R-deep-review B): same conditional stack
+// as the synchronous variant above, plus `auth.sse` instead of
+// the implicit `auth` from the parent group. The middleware
+// resolution is duplicated here (instead of lifted) because this
+// route lives OUTSIDE the `auth` group so the `use ($chatPostMiddleware)`
+// binding from the closure above is not in scope.
+$aiActConsentFeatureSse = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
+$chatSseMiddleware = ['auth.sse', 'redact-chat-pii', 'ai.disclosure'];
+if ($aiActConsentFeatureSse !== '') {
+    $chatSseMiddleware[] = 'ai.consent:' . $aiActConsentFeatureSse;
+}
 Route::post('/conversations/{conversation}/messages/stream', [MessageStreamController::class, 'store'])
-    ->middleware(['auth.sse', 'redact-chat-pii']);
+    ->middleware($chatSseMiddleware);
 
 /*
 |--------------------------------------------------------------------------

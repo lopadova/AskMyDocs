@@ -69,17 +69,21 @@ EXTERNAL_PATTERNS=(
 # Allowed even though they look "internal", because the external
 # call is the reason for stubbing. Keep in sync with the skill
 # documentation.
+#
+# v8.0.2 / deep-review E — `/api/admin/ai-act-compliance/` was
+# previously allowlisted on the "sister package" rationale. The
+# deep review flagged this as a QA-coverage gap: every cross-mount
+# auth / route / version-drift bug at the host↔package boundary
+# could hide behind a Playwright stub. Allowlist removed; admin
+# AI Act specs now exercise the real cross-mount (the audit found
+# zero specs were actually stubbing these endpoints, so the
+# removal is safe). If a future spec needs failure injection
+# against a host↔package endpoint, mark it with the same
+# `R13: failure injection` comment used elsewhere.
 EXTERNAL_PROXY_PATTERNS=(
   '/conversations/[^"]*/messages'   # POST triggers AI provider
   '/api/kb/promotion/promote'       # dispatches ingestion → embeddings
   '/api/kb/ingest'                  # embeddings via provider
-  # v6.1.1 — sister-package endpoints owned by `padosoft/laravel-ai-act-compliance`,
-  # cross-mounted under the host's `/admin/ai-act-compliance/` route group.
-  # The sister package is external to THIS repo's boundary (separate git
-  # repo, separate test harness, separate release cycle) — admin-SPA specs
-  # that stub these endpoints are NOT defeating real-data E2E, they're
-  # decoupling the host shape check from sister-package migration ordering.
-  '/api/admin/ai-act-compliance/'
 )
 
 if [[ ! -d "${TARGET_GLOB}" && ! -f "${TARGET_GLOB}" ]]; then

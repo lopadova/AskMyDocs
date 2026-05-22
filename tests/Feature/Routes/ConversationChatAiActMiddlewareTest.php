@@ -1,0 +1,259 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Routes;
+
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
+
+/**
+ * v8.0.2 / deep-review B — the REAL SPA chat path goes through
+ * `POST /conversations/{conversation}/messages` (synchronous) and
+ * `POST /conversations/{conversation}/messages/stream` (SSE).
+ *
+ * The AI Act middleware stack (`ai.disclosure` + optional
+ * `ai.consent:<feature>`) was previously mounted ONLY on
+ * `POST /api/kb/chat`, which is the stateless JSON API surface,
+ * not the path the SPA actually uses. That left Art. 50 disclosure
+ * AND the consent gate bypassable for every chat turn in the
+ * user-facing UX — a regulatory exposure.
+ *
+ * These tests inspect the registered routes (NOT a unit-style
+ * inline Route::post() stub like KbChatAiActMiddlewareTest) so
+ * they fail the moment a future refactor drops the middleware
+ * from either endpoint.
+ *
+ * Structural focus: the runtime AI Act behaviour itself
+ * (disclosure header content, consent denial codes) is exercised
+ * by KbChatAiActMiddlewareTest against the same alias map. Here
+ * we lock the WIRE-UP — which routes get the gates.
+ */
+final class ConversationChatAiActMiddlewareTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_conversation_messages_post_carries_ai_disclosure_middleware(): void
+    {
+        $middleware = $this->resolveMiddlewareFor('POST', 'conversations/{conversation}/messages');
+
+        $this->assertMiddlewareIncludesAlias(
+            $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
+            'B (deep-review v8.0.2): POST /conversations/{id}/messages must carry '
+            . 'the ai.disclosure middleware — same gate as /api/kb/chat.',
+        );
+    }
+
+    public function test_conversation_messages_stream_post_carries_ai_disclosure_middleware(): void
+    {
+        $middleware = $this->resolveMiddlewareFor(
+            'POST',
+            'conversations/{conversation}/messages/stream',
+        );
+
+        $this->assertMiddlewareIncludesAlias(
+            $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
+            'B (deep-review v8.0.2): POST /conversations/{id}/messages/stream must '
+            . 'carry the ai.disclosure middleware — the SSE chat variant is the '
+            . 'primary UX path for the SPA.',
+        );
+    }
+
+    public function test_conversation_messages_post_mounts_consent_gate_when_host_opts_in(): void
+    {
+        // Structural assertion against routes/web.php: re-loading the
+        // route file mid-test is brittle under Testbench (base_path()
+        // points at Testbench's dummy laravel dir), so we assert the
+        // CONDITIONAL itself is wired correctly via a source grep.
+        // The runtime behaviour (consent denial 403 / allow on grant)
+        // is exercised by KbChatAiActMiddlewareTest against the same
+        // alias map; here we only verify the SPA endpoints share the
+        // wiring.
+        $source = file_get_contents($this->routesWebPath());
+
+        $this->assertNotFalse($source, 'routes/web.php must be readable.');
+        $this->assertMatchesRegularExpression(
+            '/ai-act-compliance\.consent\.gate_chat_feature/',
+            $source,
+            'B (deep-review v8.0.2): routes/web.php must read the host opt-in '
+            . 'config key (same conditional as routes/api.php) so the SPA chat '
+            . 'endpoints mount the consent gate when the host opts in.',
+        );
+        $this->assertMatchesRegularExpression(
+            '/[\$]chatPostMiddleware\[\][[:space:]]*=[[:space:]]*[\'"]ai\.consent:/',
+            $source,
+            'B (deep-review v8.0.2): the consent middleware alias must be '
+            . 'appended to the chat-post stack when the config gate is set, '
+            . 'mirroring routes/api.php.',
+        );
+    }
+
+    public function test_conversation_messages_stream_mounts_consent_gate_when_host_opts_in(): void
+    {
+        $source = file_get_contents($this->routesWebPath());
+
+        $this->assertNotFalse($source, 'routes/web.php must be readable.');
+        $this->assertMatchesRegularExpression(
+            '/[\$]chatSseMiddleware\[\][[:space:]]*=[[:space:]]*[\'"]ai\.consent:/',
+            $source,
+            'B (deep-review v8.0.2): the SSE stream variant must also append '
+            . 'the consent alias to its middleware stack when the config gate '
+            . 'is set — otherwise the streaming UX path bypasses the gate the '
+            . 'synchronous path now enforces.',
+        );
+    }
+
+    public function test_conversation_messages_post_keeps_redact_chat_pii_first(): void
+    {
+        $middleware = $this->resolveMiddlewareFor('POST', 'conversations/{conversation}/messages');
+
+        // R-deep-review B preserves the existing redact-chat-pii layer
+        // — disclosure/consent operate at the auth/response layer
+        // and the redaction must still pre-process the inbound body
+        // BEFORE the controller reads it. Order is load-bearing:
+        // if disclosure ran first it would observe a non-redacted
+        // body in any downstream hook (and we'd quietly change the
+        // contract of every future addition that hooks into either
+        // layer). Assert relative index, not just presence.
+        $piiIndex = $this->middlewareIndex(
+            $middleware,
+            'redact-chat-pii',
+            \App\Http\Middleware\RedactChatPii::class,
+        );
+        $disclosureIndex = $this->middlewareIndex(
+            $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
+        );
+
+        $this->assertNotSame(
+            -1,
+            $piiIndex,
+            'B (deep-review v8.0.2): redact-chat-pii must remain on the messages POST.',
+        );
+        $this->assertNotSame(
+            -1,
+            $disclosureIndex,
+            'B (deep-review v8.0.2): ai.disclosure must be mounted on the messages POST.',
+        );
+        // PHPUnit signature is `assertLessThan(mixed $maximum, mixed $actual)`
+        // — asserts `$actual < $maximum`. Here:
+        //   maximum = $disclosureIndex
+        //   actual  = $piiIndex
+        // so this asserts `$piiIndex < $disclosureIndex` => the
+        // redact-chat-pii middleware appears EARLIER in the gathered
+        // stack than ai.disclosure. Earlier-index = runs first in
+        // Laravel's pipeline order, so PII redaction sees the inbound
+        // body before disclosure observes it. Copilot iter-8 flagged
+        // this as reversed; the assertion is correct per the PHPUnit
+        // `(maximum, actual)` argument order — keeping as-is with this
+        // expanded comment to short-circuit future re-flagging.
+        $this->assertLessThan(
+            $disclosureIndex,
+            $piiIndex,
+            'B (deep-review v8.0.2): redact-chat-pii must run BEFORE ai.disclosure. '
+            . 'Reversing the order would let downstream observers see a non-redacted body. '
+            . 'Got middleware: ' . json_encode($middleware),
+        );
+    }
+
+    /**
+     * `Route::gatherMiddleware()` can return EITHER the raw alias
+     * (e.g. `'ai.disclosure'`) OR the resolved fully-qualified
+     * middleware class (e.g.
+     * `Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware`),
+     * depending on whether the alias resolution has flushed at
+     * test time (Testbench's alias-bootstrap is lazy).
+     *
+     * Accept BOTH shapes so the assertion stays meaningful under
+     * either resolution order. Parametrised aliases like
+     * `'ai.consent:chat'` are matched by prefix (the parameter
+     * resolves to a class call on the same middleware).
+     *
+     * @param  array<int, string>  $middleware
+     */
+    private function assertMiddlewareIncludesAlias(
+        array $middleware,
+        string $alias,
+        string $fqcn,
+        string $message = '',
+    ): void {
+        $matched = false;
+        foreach ($middleware as $entry) {
+            // Alias prefix match handles both `'ai.consent'` and
+            // `'ai.consent:chat'`-style parameterised aliases.
+            if ($entry === $alias || str_starts_with($entry, $alias . ':')) {
+                $matched = true;
+                break;
+            }
+            // FQCN match — possibly with `:parameter` suffix if the
+            // alias resolution preserved the parameter past the
+            // class swap.
+            if ($entry === $fqcn || str_starts_with($entry, $fqcn . ':')) {
+                $matched = true;
+                break;
+            }
+        }
+
+        $this->assertTrue(
+            $matched,
+            ($message !== '' ? $message . ' ' : '')
+            . "Expected middleware alias '{$alias}' (or FQCN '{$fqcn}') "
+            . 'but found: ' . json_encode($middleware),
+        );
+    }
+
+    /**
+     * Find the index of a middleware entry by alias OR FQCN.
+     * Returns -1 when not found (caller asserts the index is
+     * positive AND below another middleware's index for ordering
+     * assertions).
+     *
+     * @param  array<int, string>  $middleware
+     */
+    private function middlewareIndex(array $middleware, string $alias, string $fqcn): int
+    {
+        foreach ($middleware as $index => $entry) {
+            if ($entry === $alias || str_starts_with($entry, $alias . ':')) {
+                return $index;
+            }
+            if ($entry === $fqcn || str_starts_with($entry, $fqcn . ':')) {
+                return $index;
+            }
+        }
+
+        return -1;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveMiddlewareFor(string $method, string $uri): array
+    {
+        foreach (Route::getRoutes()->getRoutes() as $route) {
+            if (! in_array(strtoupper($method), $route->methods(), true)) {
+                continue;
+            }
+            if ($route->uri() !== $uri) {
+                continue;
+            }
+
+            return $route->gatherMiddleware();
+        }
+
+        $this->fail("Route {$method} /{$uri} not registered.");
+    }
+
+    private function routesWebPath(): string
+    {
+        // Avoid base_path() — under Testbench it resolves to the
+        // dummy laravel directory, not the host project. The test
+        // file's known relative location is the stable anchor.
+        return dirname(__DIR__, 3) . '/routes/web.php';
+    }
+}

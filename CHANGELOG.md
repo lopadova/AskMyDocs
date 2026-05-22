@@ -11,6 +11,71 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.2 — 2026-05-22 (Cross-release deep-review hotfix)
+
+Patch release on top of v8.0.1 closing four cross-release findings
+surfaced by a separate deep comparative review on tags v5.0.0 →
+v7.1.0. Three of the four landed on `main` HEAD post-v8.0.0 GA;
+the fourth (`/api/mcp/credentials` decrypted exposure) was already
+fixed in v7.0/W6.3.B+C and verified absent from main.
+
+**One HIGH (regulatory), three MEDIUM (compliance hardening).**
+
+| # | Severity | Class |
+|---|---|---|
+| B | HIGH | AI Act middleware was mounted on `/api/kb/chat` only — the SPA's real chat path (`/conversations/{id}/messages` + `/messages/stream`) was bypassing Art. 50 disclosure + the optional consent gate |
+| C | MEDIUM | DSAR exporter + deleter walked only `TenantContext::current()` — users with `project_memberships` across tenants had Art. 15 + Art. 17 silently incomplete |
+| D | MEDIUM | `ResolveTenant` swallowed `TenantContextBridge` failures with a bare `catch (Throwable) {}` — fail-open compliance posture with no operator-visible log |
+| E | MEDIUM | `verify-e2e-real-data.sh` allowlisted `/api/admin/ai-act-compliance/` as an "external proxy" — every host↔package mount / auth / route-drift bug could hide behind a Playwright stub |
+
+**Per-finding rationale**
+
+- **B (AI Act middleware on real chat path)** — `routes/web.php`
+  now applies the same conditional `ai.disclosure` +
+  `ai.consent:<feature>` stack used by `routes/api.php` to both
+  the synchronous `POST /conversations/{id}/messages` and the SSE
+  `POST /conversations/{id}/messages/stream` endpoints. The
+  `redact-chat-pii` middleware stays first (operates on inbound
+  body). Five-test structural suite in
+  `tests/Feature/Routes/ConversationChatAiActMiddlewareTest`
+  locks the wire-up so a future refactor cannot drop the gates
+  silently. Existing `KbChatAiActMiddlewareTest` continues to
+  exercise the runtime behaviour against the same alias map.
+- **C (DSAR multi-tenant)** —
+  `AskMyDocsUserDataExporter::export()` and
+  `AskMyDocsUserDataDeleter::delete()` now enumerate every
+  `tenant_id` the user has in `project_memberships` (UNION the
+  active TenantContext for legacy users without memberships) and
+  loop the existing per-tenant query block. Deleter wraps the
+  loop in a single outer `DB::transaction` so multi-tenant
+  erasure is atomic. Exporter envelope grows a `_dsar_meta` block
+  with `tenants_scanned` + `active_tenant` so auditors can
+  verify coverage. Two new tests assert two-tenant export and
+  two-tenant erasure explicitly.
+- **D (ResolveTenant bridge fail-loud)** — `catch (Throwable)`
+  becomes `catch (Throwable $e) { report($e); Log::warning(...) }`
+  with `tenant_id` + exception class + message in the context
+  array. Request still succeeds (the bridge is best-effort by
+  design — host tenant scoping continues) but a silent operator
+  blind spot is now observable. New
+  `tests/Feature/Middleware/ResolveTenantBridgeFailureTest`
+  asserts the `report()` call + the `Log::warning()` call + the
+  request-still-succeeds invariant.
+- **E (E2E gate allowlist removed)** — `EXTERNAL_PROXY_PATTERNS`
+  no longer includes `/api/admin/ai-act-compliance/`. Audit
+  confirmed zero existing specs were actually stubbing those
+  endpoints, so removal is a silent tightening. Future failure
+  injections against host↔package endpoints must use the
+  documented `R13: failure injection` marker comment.
+
+Tests: **1984 PHPUnit green** (+13 net: 5 structural middleware +
+2 multi-tenant DSAR + 2 bridge failure + 4 follow-on coverage).
+
+Tagged at the merge SHA; published as the recommended adoption
+target — supersedes v8.0.0 and v8.0.1 for new deployments.
+
+---
+
 ### v8.0.1 — 2026-05-22 (Deep-review hotfix)
 
 Patch release on top of the v8.0.0 GA tag closing six findings from a

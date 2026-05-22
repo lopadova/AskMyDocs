@@ -8,6 +8,7 @@ use App\Compliance\TenantContextBridge;
 use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -45,15 +46,28 @@ final class ResolveTenant
 
         // v6.1.1 — propagate the resolved tenant id into the
         // sister-package's v1.5 TenantContext (if a matching
-        // `tenants` row exists). Best-effort: any error here is
-        // swallowed so a misconfigured DB / missing package binding
-        // does not break the request — the host tenant scoping
+        // `tenants` row exists). Best-effort: an error here MUST
+        // NOT break the request — the host tenant scoping
         // continues to work, the package-side just falls back to
-        // the host config block as if multi-tenancy were unconfigured.
+        // the host config block as if multi-tenancy were
+        // unconfigured.
+        //
+        // v8.0.2 / deep-review D — but failure MUST be observable.
+        // The previous bare `catch (Throwable) {}` was fail-open
+        // compliance: a DB outage / schema drift / package bug
+        // silently dropped per-tenant policy enforcement and left
+        // no breadcrumb for the operator. report() routes through
+        // the configured error pipeline (Sentry, log, etc.); the
+        // Log::warning() ensures at minimum a local trace exists.
         try {
             app(TenantContextBridge::class)->syncFromHost();
-        } catch (Throwable) {
-            // intentionally swallow — bridge is best-effort
+        } catch (Throwable $e) {
+            report($e);
+            Log::warning('ResolveTenant: TenantContextBridge::syncFromHost() failed; package-side falling back to host config.', [
+                'tenant_id' => $tenantId,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
         }
 
         return $next($request);
