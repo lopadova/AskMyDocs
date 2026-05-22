@@ -8,7 +8,6 @@ use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
-use App\Models\ProjectMembership;
 use App\Support\TenantContext;
 use InvalidArgumentException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -17,6 +16,7 @@ class AskMyDocsUserDataExporter
 {
     public function __construct(
         private readonly TenantContext $tenantContext,
+        private readonly UserTenantResolver $tenantResolver,
     ) {}
 
     public function export(object $user): array
@@ -28,14 +28,10 @@ class AskMyDocsUserDataExporter
         // v8.0.2 / deep-review C — User is host-wide (no tenant_id).
         // A user with `project_memberships` in tenants A + B running
         // DSAR while session-bound to tenant A previously got A-only
-        // data — Art. 15 breach in any multi-tenant deployment. We
-        // now enumerate every tenant the user has membership in
-        // PLUS the active tenant (legacy users without memberships
-        // still get their active-tenant data), then aggregate the
-        // result categories ACROSS tenants. Each category preserves
-        // its per-tenant shape because the rows themselves carry
-        // `tenant_id`.
-        $tenantIds = $this->resolveTenantsForUser($userId);
+        // data — Art. 15 breach in any multi-tenant deployment.
+        // Tenant enumeration is shared with the Deleter via
+        // UserTenantResolver so export + erase stay symmetric.
+        $tenantIds = $this->tenantResolver->tenantsForUser($userId);
 
         $aggregate = [
             'conversations' => [],
@@ -128,29 +124,6 @@ class AskMyDocsUserDataExporter
                 ->get()
                 ->toArray(),
         ];
-    }
-
-    /**
-     * Enumerate the tenant_id set the user belongs to (via
-     * `project_memberships`) UNIONED with the active tenant. The
-     * active tenant fallback covers legacy seeded users that have
-     * data but no membership rows, AND the brand-new-user case
-     * where the user just signed up and hasn't been onboarded into
-     * any project yet.
-     *
-     * @return list<string>
-     */
-    private function resolveTenantsForUser(int $userId): array
-    {
-        $membershipTenants = ProjectMembership::query()
-            ->where('user_id', $userId)
-            ->distinct()
-            ->pluck('tenant_id')
-            ->all();
-
-        $active = $this->tenantContext->current();
-
-        return array_values(array_unique([...$membershipTenants, $active]));
     }
 
     private function resolveUserId(object $user): int

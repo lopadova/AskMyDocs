@@ -26,12 +26,18 @@ use Tests\TestCase;
  * These tests bind a fake TenantContextBridge that throws, drive
  * one request through the middleware, and assert:
  *   - the request still succeeds (best-effort behaviour preserved);
- *   - report() was invoked (asserted indirectly via Log::shouldReceive
- *     on the warning level, since report() forwards to the configured
- *     handler — testing it directly requires mocking the global helper);
+ *   - report() was invoked — asserted via
+ *     `Exceptions::fake()` + `Exceptions::assertReported(RuntimeException::class)`,
+ *     which captures the routed exception class on Laravel 11+'s
+ *     exception-handler fake. This avoids leaving the real
+ *     exception handler hooked across tests (PHPUnit risky-test
+ *     warning) and avoids the brittleness of mocking the global
+ *     `report()` helper directly;
  *   - the Log::warning() entry carries the tenant_id + exception
  *     class + message in its context array so the operator can
- *     correlate the silent fall-back to a real root cause.
+ *     correlate the silent fall-back to a real root cause —
+ *     asserted via `Log::shouldReceive('warning')` with a
+ *     callback inspecting the message text and the context shape.
  */
 final class ResolveTenantBridgeFailureTest extends TestCase
 {

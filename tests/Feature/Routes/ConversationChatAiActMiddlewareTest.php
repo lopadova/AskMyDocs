@@ -38,9 +38,10 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
     {
         $middleware = $this->resolveMiddlewareFor('POST', 'conversations/{conversation}/messages');
 
-        $this->assertContains(
-            'ai.disclosure',
+        $this->assertMiddlewareIncludesAlias(
             $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
             'B (deep-review v8.0.2): POST /conversations/{id}/messages must carry '
             . 'the ai.disclosure middleware — same gate as /api/kb/chat.',
         );
@@ -53,9 +54,10 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
             'conversations/{conversation}/messages/stream',
         );
 
-        $this->assertContains(
-            'ai.disclosure',
+        $this->assertMiddlewareIncludesAlias(
             $middleware,
+            'ai.disclosure',
+            \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class,
             'B (deep-review v8.0.2): POST /conversations/{id}/messages/stream must '
             . 'carry the ai.disclosure middleware — the SSE chat variant is the '
             . 'primary UX path for the SPA.',
@@ -114,11 +116,58 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
         // — disclosure/consent operate at the auth/response layer
         // and the redaction must still pre-process the inbound body
         // BEFORE the controller reads it.
-        $this->assertContains(
-            'redact-chat-pii',
+        $this->assertMiddlewareIncludesAlias(
             $middleware,
+            'redact-chat-pii',
+            \App\Http\Middleware\RedactChatPii::class,
             'B (deep-review v8.0.2): redact-chat-pii must remain on the messages '
             . 'POST so the AI Act gates do not unwind PII protection.',
+        );
+    }
+
+    /**
+     * `Route::gatherMiddleware()` can return EITHER the raw alias
+     * (e.g. `'ai.disclosure'`) OR the resolved fully-qualified
+     * middleware class (e.g.
+     * `Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware`),
+     * depending on whether the alias resolution has flushed at
+     * test time (Testbench's alias-bootstrap is lazy).
+     *
+     * Accept BOTH shapes so the assertion stays meaningful under
+     * either resolution order. Parametrised aliases like
+     * `'ai.consent:chat'` are matched by prefix (the parameter
+     * resolves to a class call on the same middleware).
+     *
+     * @param  array<int, string>  $middleware
+     */
+    private function assertMiddlewareIncludesAlias(
+        array $middleware,
+        string $alias,
+        string $fqcn,
+        string $message = '',
+    ): void {
+        $matched = false;
+        foreach ($middleware as $entry) {
+            // Alias prefix match handles both `'ai.consent'` and
+            // `'ai.consent:chat'`-style parameterised aliases.
+            if ($entry === $alias || str_starts_with($entry, $alias . ':')) {
+                $matched = true;
+                break;
+            }
+            // FQCN match — possibly with `:parameter` suffix if the
+            // alias resolution preserved the parameter past the
+            // class swap.
+            if ($entry === $fqcn || str_starts_with($entry, $fqcn . ':')) {
+                $matched = true;
+                break;
+            }
+        }
+
+        $this->assertTrue(
+            $matched,
+            ($message !== '' ? $message . ' ' : '')
+            . "Expected middleware alias '{$alias}' (or FQCN '{$fqcn}') "
+            . 'but found: ' . json_encode($middleware),
         );
     }
 

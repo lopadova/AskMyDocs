@@ -5,7 +5,6 @@ namespace App\Compliance;
 use App\Models\Conversation;
 use App\Models\ChatLog;
 use App\Models\McpToolCallAudit;
-use App\Models\ProjectMembership;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -15,6 +14,7 @@ class AskMyDocsUserDataDeleter
 {
     public function __construct(
         private readonly TenantContext $tenantContext,
+        private readonly UserTenantResolver $tenantResolver,
     ) {}
 
     public function delete(object $user): void
@@ -30,8 +30,10 @@ class AskMyDocsUserDataDeleter
         // Wrap the per-tenant deletes in a SINGLE outer transaction
         // so the erasure is either fully complete or fully rolled
         // back — a half-deleted user violates Art. 17 just as
-        // surely as a no-op delete.
-        $tenantIds = $this->resolveTenantsForUser($userId);
+        // surely as a no-op delete. Tenant set comes from the
+        // shared UserTenantResolver — what the Exporter saw, this
+        // wipes.
+        $tenantIds = $this->tenantResolver->tenantsForUser($userId);
 
         DB::transaction(function () use ($tenantIds, $userId, $mcpActors): void {
             foreach ($tenantIds as $tenantId) {
@@ -74,27 +76,6 @@ class AskMyDocsUserDataDeleter
             ->forTenant($tenantId)
             ->where('user_id', $userId)
             ->delete();
-    }
-
-    /**
-     * Enumerate the tenant_id set the user belongs to (via
-     * `project_memberships`) UNIONED with the active tenant. Same
-     * shape as AskMyDocsUserDataExporter::resolveTenantsForUser so
-     * export + erase stay symmetric — what export saw, erase wipes.
-     *
-     * @return list<string>
-     */
-    private function resolveTenantsForUser(int $userId): array
-    {
-        $membershipTenants = ProjectMembership::query()
-            ->where('user_id', $userId)
-            ->distinct()
-            ->pluck('tenant_id')
-            ->all();
-
-        $active = $this->tenantContext->current();
-
-        return array_values(array_unique([...$membershipTenants, $active]));
     }
 
     private function resolveUserId(object $user): int
