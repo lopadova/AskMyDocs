@@ -141,6 +141,18 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
             $disclosureIndex,
             'B (deep-review v8.0.2): ai.disclosure must be mounted on the messages POST.',
         );
+        // PHPUnit signature is `assertLessThan(mixed $maximum, mixed $actual)`
+        // — asserts `$actual < $maximum`. Here:
+        //   maximum = $disclosureIndex
+        //   actual  = $piiIndex
+        // so this asserts `$piiIndex < $disclosureIndex` => the
+        // redact-chat-pii middleware appears EARLIER in the gathered
+        // stack than ai.disclosure. Earlier-index = runs first in
+        // Laravel's pipeline order, so PII redaction sees the inbound
+        // body before disclosure observes it. Copilot iter-8 flagged
+        // this as reversed; the assertion is correct per the PHPUnit
+        // `(maximum, actual)` argument order — keeping as-is with this
+        // expanded comment to short-circuit future re-flagging.
         $this->assertLessThan(
             $disclosureIndex,
             $piiIndex,
