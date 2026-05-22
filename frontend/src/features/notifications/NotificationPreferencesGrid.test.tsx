@@ -8,12 +8,39 @@ import { api } from '../../lib/api';
 
 const mockGet = vi.fn();
 const mockPut = vi.fn();
+const mockPatch = vi.fn();
 
 beforeEach(() => {
     mockGet.mockReset();
     mockPut.mockReset();
+    mockPatch.mockReset();
     vi.spyOn(api, 'get').mockImplementation(mockGet);
     vi.spyOn(api, 'put').mockImplementation(mockPut);
+    vi.spyOn(api, 'patch').mockImplementation(mockPatch);
+
+    // Default mock for the GET path: route by URL so the grid's two
+    // independent useQuery calls (preferences + chat-preferences)
+    // both resolve to a sensible payload regardless of call order.
+    //
+    // IMPORTANT: every test in this file relies on this URL routing
+    // — DO NOT use `mockGet.mockResolvedValueOnce(...)` inside a
+    // test, because the once-queue consumes the first call REGARDLESS
+    // of URL (vitest semantics) and would re-introduce call-order
+    // dependency between the two parallel useQuery hooks. To override
+    // for a single test, replace the implementation with a URL-aware
+    // function (see the "renders the error state when the GET fails"
+    // test or "treats zero stored preferences" for examples).
+    mockGet.mockImplementation((url: string) => {
+        if (url === '/api/me/chat-preferences') {
+            return Promise.resolve({
+                data: {
+                    preferences: { counterfactual_enabled: true },
+                    defaults: { counterfactual_enabled: true },
+                },
+            });
+        }
+        return Promise.resolve(DEFAULT_RESPONSE);
+    });
 });
 
 afterEach(() => {
@@ -39,8 +66,6 @@ const DEFAULT_RESPONSE = {
 
 describe('NotificationPreferencesGrid', () => {
     it('renders the grid scaffolding seeded with defaults + stored prefs', async () => {
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -63,8 +88,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('flips a single cell and marks the grid dirty', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -86,8 +109,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('row bulk-on enables every REGISTERED channel for the event type', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -104,8 +125,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('column bulk-off disables every row for the channel', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -120,7 +139,8 @@ describe('NotificationPreferencesGrid', () => {
 
     it('save posts every cell as a row to the PUT endpoint', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
+        // GET responses come from the beforeEach URL router; only the
+        // PUT response is per-test.
         mockPut.mockResolvedValueOnce(DEFAULT_RESPONSE);
 
         render(wrapped(<NotificationPreferencesGrid />));
@@ -150,8 +170,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('discard restores the last-saved snapshot and clears dirty', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -169,7 +187,21 @@ describe('NotificationPreferencesGrid', () => {
     });
 
     it('renders the error state when the GET fails', async () => {
-        mockGet.mockRejectedValueOnce(new Error('500'));
+        // Override the beforeEach default to reject the notif-prefs URL
+        // only — the chat-prefs hook must still resolve so the
+        // unrelated counterfactual default doesn't influence the
+        // observed data-state on the grid.
+        mockGet.mockImplementation((url: string) => {
+            if (url === '/api/me/chat-preferences') {
+                return Promise.resolve({
+                    data: {
+                        preferences: { counterfactual_enabled: true },
+                        defaults: { counterfactual_enabled: true },
+                    },
+                });
+            }
+            return Promise.reject(new Error('500'));
+        });
 
         render(wrapped(<NotificationPreferencesGrid />));
 
@@ -180,20 +212,103 @@ describe('NotificationPreferencesGrid', () => {
         expect(screen.getByTestId('notif-pref-retry')).toBeInTheDocument();
     });
 
+    it('counterfactual toggle disables and surfaces a load-error banner when GET fails', async () => {
+        // Override the beforeEach default so the chat-prefs URL
+        // rejects while notif prefs still resolve. The toggle must
+        // then be disabled (cannot infer real state) AND a
+        // load-error banner must surface.
+        mockGet.mockImplementation((url: string) => {
+            if (url === '/api/me/chat-preferences') {
+                return Promise.reject(new Error('500'));
+            }
+            return Promise.resolve(DEFAULT_RESPONSE);
+        });
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        const toggle = await screen.findByTestId('chat-counterfactual-toggle');
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-counterfactual-load-error')).toBeInTheDocument();
+        });
+        expect(toggle).toBeDisabled();
+    });
+
+    it('counterfactual toggle surfaces an error banner when PATCH fails (R14)', async () => {
+        const user = userEvent.setup();
+        mockPatch.mockRejectedValueOnce(new Error('500'));
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        const toggle = await screen.findByTestId('chat-counterfactual-toggle');
+        await waitFor(() => expect(toggle).toBeChecked());
+
+        await user.click(toggle);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('chat-counterfactual-toggle-error')).toBeInTheDocument();
+        });
+        // After refetch the toggle converges back to the BE truth.
+        await waitFor(() => expect(toggle).toBeChecked());
+    });
+
+    it('counterfactual toggle persists via PATCH /api/me/chat-preferences (not localStorage) — F5', async () => {
+        const user = userEvent.setup();
+        mockPatch.mockResolvedValueOnce({
+            data: {
+                preferences: { counterfactual_enabled: false },
+                defaults: { counterfactual_enabled: true },
+            },
+        });
+
+        render(wrapped(<NotificationPreferencesGrid />));
+
+        const toggle = await screen.findByTestId('chat-counterfactual-toggle');
+        // Initial state from the server: counterfactual_enabled=true.
+        await waitFor(() => expect(toggle).toBeChecked());
+
+        await user.click(toggle);
+
+        await waitFor(() => {
+            expect(mockPatch).toHaveBeenCalledWith(
+                '/api/me/chat-preferences',
+                { preferences: { counterfactual_enabled: '0' } },
+            );
+        });
+        // The cache update from onSuccess flips the toggle off.
+        await waitFor(() => expect(toggle).not.toBeChecked());
+    });
+
     it('treats zero stored preferences as inherently dirty so the user can opt-in via Save', async () => {
         // Copilot iter-1 #1 — without this, a fresh user lands on the
         // grid, accepts the seeded defaults, and finds Save disabled —
         // the dispatcher then NEVER ships them a notification because
         // it only honours rows with `enabled=true` in the DB. Treat
         // the empty-preferences state as inherently dirty.
-        mockGet.mockResolvedValueOnce({
-            data: {
-                event_types: ['kb_doc_created'],
-                channels: ['in_app', 'email'],
-                registered_channels: ['in_app', 'email'],
-                defaults: { in_app: true, email: false },
-                preferences: [],
-            },
+        // Override the beforeEach URL-routing default for the notif
+        // prefs path with an EMPTY preferences payload. The chat-prefs
+        // URL still resolves to its default so the unrelated query
+        // doesn't interfere. Using mockImplementation (URL-aware)
+        // instead of mockResolvedValueOnce avoids the call-order
+        // dependency where the chat-prefs URL could consume the
+        // once-response by accident.
+        mockGet.mockImplementation((url: string) => {
+            if (url === '/api/me/chat-preferences') {
+                return Promise.resolve({
+                    data: {
+                        preferences: { counterfactual_enabled: true },
+                        defaults: { counterfactual_enabled: true },
+                    },
+                });
+            }
+            return Promise.resolve({
+                data: {
+                    event_types: ['kb_doc_created'],
+                    channels: ['in_app', 'email'],
+                    registered_channels: ['in_app', 'email'],
+                    defaults: { in_app: true, email: false },
+                    preferences: [],
+                },
+            });
         });
 
         render(wrapped(<NotificationPreferencesGrid />));
@@ -210,7 +325,8 @@ describe('NotificationPreferencesGrid', () => {
 
     it('renders the save error banner when the PUT fails', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
+        // GET responses come from the beforeEach URL router; only the
+        // PUT failure is per-test.
         mockPut.mockRejectedValueOnce(new Error('422'));
 
         render(wrapped(<NotificationPreferencesGrid />));

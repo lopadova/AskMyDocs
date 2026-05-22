@@ -49,6 +49,65 @@ test.describe('Notification preferences grid', () => {
         await expect(page.getByTestId('notif-pref-cell-kb_doc_created-in_app-toggle')).not.toBeChecked();
     });
 
+    // v8.0.1 / deep-review F5 — chat counterfactual toggle is
+    // now server-persisted (was browser-local localStorage).
+    // Real-data happy path against the new
+    // GET/PATCH /api/me/chat-preferences endpoint.
+    test('counterfactual toggle persists server-side across reload (F5)', async ({ page }) => {
+        await page.goto('/app/admin/notifications/preferences');
+
+        const grid = page.getByTestId('notif-pref');
+        await expect(grid).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+
+        const toggle = page.getByTestId('chat-counterfactual-toggle');
+        await expect(toggle).toBeVisible();
+        // Default-on: a fresh user has no chat_preferences row yet, BE
+        // merges the controller DEFAULTS and returns
+        // counterfactual_enabled=true.
+        await expect(toggle).toBeChecked();
+
+        // Flip it off — PATCH /api/me/chat-preferences fires + the
+        // onSuccess updates the cache so the checkbox flips.
+        await toggle.click();
+        await expect(toggle).not.toBeChecked();
+
+        // Reload → BE returns the persisted value; the toggle stays
+        // off WITHOUT any localStorage involvement.
+        await page.reload();
+        await expect(grid).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+        const toggleAfterReload = page.getByTestId('chat-counterfactual-toggle');
+        await expect(toggleAfterReload).not.toBeChecked();
+    });
+
+    test('counterfactual toggle surfaces save-error banner when PATCH fails (F5)', async ({ page }) => {
+        // R13: failure injection — paired with the happy-path
+        // scenario above (which exercises the real round-trip).
+        // This covers the R14 "surface failures loudly" contract
+        // on the chat-prefs save-error path.
+        await page.route('**/api/me/chat-preferences', async (route) => {
+            if (route.request().method() === 'PATCH') {
+                await route.fulfill({
+                    status: 500,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ message: 'simulated server error' }),
+                });
+                return;
+            }
+            await route.continue();
+        });
+
+        await page.goto('/app/admin/notifications/preferences');
+
+        const grid = page.getByTestId('notif-pref');
+        await expect(grid).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+
+        const toggle = page.getByTestId('chat-counterfactual-toggle');
+        await expect(toggle).toBeVisible();
+        await toggle.click();
+
+        await expect(page.getByTestId('chat-counterfactual-toggle-error')).toBeVisible({ timeout: 10_000 });
+    });
+
     // R13: failure injection — the happy path above already exercises
     // the real PUT round-trip; this scenario covers the R14
     // "surface failures loudly" contract on the save-error path.

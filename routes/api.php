@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetCon
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
 use App\Http\Controllers\Api\KbChatController;
+use App\Http\Controllers\Api\ChatPreferencesController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
@@ -157,6 +158,15 @@ Route::middleware([
     Route::post('/kb/promotion/promote', [KbPromotionController::class, 'promote']);
     Route::post('/kb/promotion/{approvalId}/approve', [KbPromotionController::class, 'approve']);
     Route::post('/kb/promotion/{approvalId}/reject', [KbPromotionController::class, 'reject']);
+
+    // v8.0.1 / deep-review F5 — per-user chat preferences. Server-side
+    // persistence of toggles previously held in browser localStorage
+    // (counterfactual panel today; future chat-level toggles go here
+    // without a new endpoint).
+    Route::get('/me/chat-preferences', [ChatPreferencesController::class, 'show'])
+        ->name('api.me.chat-preferences.show');
+    Route::patch('/me/chat-preferences', [ChatPreferencesController::class, 'update'])
+        ->name('api.me.chat-preferences.update');
 });
 
 /*

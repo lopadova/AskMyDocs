@@ -366,12 +366,21 @@ class KbSearchService
             : $limit;
 
         // ── Semantic search (pgvector) ───────────────────────────
+        // R30 defense-in-depth: the `document` relation (BelongsTo on
+        // KnowledgeChunk) is unscoped. With('document') and the
+        // archived-status whereHas are tenant-aware-table queries
+        // without a tenant_id predicate. In normal operation the
+        // chunk → document FK shares tenant_id, but a corrupt FK
+        // (cross-tenant write-time drift) would let a doc from
+        // another tenant be eager-loaded into search results — and
+        // its metadata bleeds into the response. Both call sites
+        // are pinned to the active tenant explicitly.
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
-            ->with('document')
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('vector_score');
 
         if ($projectKey !== null && $projectKey !== '') {
@@ -388,7 +397,21 @@ class KbSearchService
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
 
         if ($hybridEnabled) {
-            $ftsChunks = $this->fullTextSearch($query, $projectKey, $candidateCount, $tenantId);
+            // F3 (deep-review v8.0.1) — propagate the full filter DTO
+            // into the FTS branch so the hybrid RRF merge cannot
+            // smuggle chunks back in that were excluded by
+            // source_types / canonical_types / doc_ids / collection /
+            // languages / date_from / date_to / tag_slugs / folder_globs
+            // on the semantic branch. Folder globs are still applied
+            // post-fetch (after the RRF merge) — same path as the
+            // semantic results.
+            $ftsChunks = $this->fullTextSearch(
+                $query,
+                $projectKey,
+                $candidateCount,
+                $tenantId,
+                $effectiveFilters,
+            );
 
             // Merge via Reciprocal Rank Fusion (RRF)
             $semanticChunks = $this->reciprocalRankFusion(
@@ -452,13 +475,23 @@ class KbSearchService
      * Uses plainto_tsquery for safe query parsing (no syntax errors).
      * Searches chunk_text with the configured FTS language.
      */
-    private function fullTextSearch(string $query, ?string $projectKey, int $limit, string $tenantId): Collection
-    {
+    private function fullTextSearch(
+        string $query,
+        ?string $projectKey,
+        int $limit,
+        string $tenantId,
+        ?RetrievalFilters $filters = null,
+    ): Collection {
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
+        // R30 defense-in-depth — same rationale as search() above:
+        // pin both the eager-load and the whereHas to the active
+        // tenant so a corrupt cross-tenant FK on knowledge_chunks
+        // cannot drag a foreign doc into the FTS branch of the
+        // hybrid RRF merge.
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
-            ->with('document')
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->selectRaw(
                 "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), plainto_tsquery(?, ?)) as fts_score",
                 [$lang, $lang, $query]
@@ -467,11 +500,23 @@ class KbSearchService
                 "to_tsvector(?, chunk_text) @@ plainto_tsquery(?, ?)",
                 [$lang, $lang, $query]
             )
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('fts_score');
 
         if ($projectKey !== null && $projectKey !== '') {
             $builder->where('project_key', $projectKey);
+        }
+
+        // F3 (deep-review v8.0.1) — apply the same RetrievalFilters the
+        // semantic branch applies. Without this the hybrid RRF merge
+        // re-introduced chunks that the caller's filter set had
+        // excluded (source_types, canonical_types, doc_ids, languages,
+        // dates, tag_slugs, etc.). Folder globs are intentionally NOT
+        // applied here — they run post-fetch via filterByFolderGlobs
+        // against the merged candidate set in the caller, identical to
+        // the semantic-only path.
+        if ($filters !== null && ! $filters->isEmpty()) {
+            $this->applyFilters($builder, $filters);
         }
 
         return $builder->limit($limit)->get();

@@ -11,8 +11,8 @@ import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
+import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
 
-const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
 const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
 
 /**
@@ -88,21 +88,56 @@ export function ChatView(): ReactNode {
     // request body. Composer is now a controlled component for
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
-    const [showCounterfactual, setShowCounterfactual] = useState(true);
     const collectionsQuery = useQuery({
         queryKey: ['chat-collections'],
         queryFn: () => chatApi.listCollections(),
         staleTime: 60_000,
     });
 
-    useEffect(() => {
-        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
-        if (raw === '0') {
-            setShowCounterfactual(false);
-        } else {
-            setShowCounterfactual(true);
-        }
-    }, []);
+    // v8.0.1 / deep-review F5 — counterfactual toggle is now a
+    // per-user server-persisted preference (was browser-local
+    // localStorage). Read the merged (defaults + stored) view from
+    // the BE so multi-device / fresh-session usage keeps the user's
+    // choice.
+    const preferencesQuery = useQuery({
+        queryKey: CHAT_PREFERENCES_QUERY_KEY,
+        queryFn: () => chatPreferencesApi.load(),
+        // Preferences rarely change; staleTime keeps the bell from
+        // hammering the endpoint while the user is in chat.
+        staleTime: 5 * 60_000,
+        refetchOnWindowFocus: false,
+    });
+    // UX trade-off (iter-10 vs iter-11 of Copilot review on PR
+    // #223 deep-review hotfix): two failure modes are in tension —
+    //
+    //   (A) `?? true` defaults to ON during loading/error → a
+    //       user who saved `false` sees a brief panel flash
+    //       (~one GET round-trip) before the BE confirms.
+    //   (B) `=== true` defaults to HIDDEN during loading/error →
+    //       a user with the default-ON preference (everyone
+    //       except those who flipped it off) waits one GET for
+    //       the panel to appear, AND a degraded-network user
+    //       sees no panel + no error/retry indicator (the
+    //       retry surface lives in NotificationPreferencesGrid,
+    //       not in chat).
+    //
+    // (B) leaks LESS user preference (no flash of a hidden
+    // panel) but is more conservative on the default UX. (A)
+    // matches the BE-side DEFAULTS map literally but flashes.
+    //
+    // We split the difference: during the very first load
+    // (`isLoading=true`, no data yet, no error) we OPTIMISTICALLY
+    // assume the BE default (TRUE) so degraded-network users
+    // and first-paint match the historical UX. Once data
+    // arrives — or the query errors — we switch to strict mode:
+    // show iff `=== true`. Background refetches don't reset
+    // `data`, so the cached value stays stable and no second
+    // flicker fires. The remaining saved-false-flash window is
+    // the SINGLE first GET round trip per fresh session.
+    const showCounterfactual =
+        preferencesQuery.data !== undefined
+            ? preferencesQuery.data.preferences.counterfactual_enabled === true
+            : ! preferencesQuery.isError;
 
     useEffect(() => {
         if (activeId === null) {

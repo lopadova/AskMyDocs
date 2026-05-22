@@ -105,6 +105,12 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbCollectionMember::class,
         // v8.0/W8.1 — compliance differential pack foundation schema.
         \App\Models\ComplianceReport::class,
+        // v8.0/W3.4 — per-chunk thumbs-down feedback for retrieval
+        // refinement. Added during the v8.0.1 deep-review pass (F4 —
+        // governance gap caught after GA). Trait + fillable both
+        // wired since the migration shipped; this entry locks the
+        // gate so a future refactor cannot silently drop them.
+        \App\Models\KbChunkFeedback::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

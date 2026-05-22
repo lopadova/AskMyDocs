@@ -6,8 +6,11 @@ import {
     type NotificationPreferencesResponse,
 } from './notifications.api';
 import { EVENT_TYPE_LABELS, CHANNEL_LABELS } from './labels';
-
-const COUNTERFACTUAL_PREF_KEY = 'askmydocs.chat.counterfactual.enabled';
+import {
+    chatPreferencesApi,
+    CHAT_PREFERENCES_QUERY_KEY,
+    type ChatPreferencesResponse,
+} from '../chat/chat-preferences.api';
 
 /**
  * v8.0/W2.2 — /app/admin/notifications/preferences grid.
@@ -80,12 +83,34 @@ export function NotificationPreferencesGrid(): ReactNode {
     // (Copilot iter-1 #2 — initial-render flicker / flaky test
     // assertions against a momentarily-unchecked grid).
     const [edits, setEdits] = useState<Record<string, boolean> | null>(null);
-    const [counterfactualEnabled, setCounterfactualEnabled] = useState(true);
 
-    useEffect(() => {
-        const raw = window.localStorage.getItem(COUNTERFACTUAL_PREF_KEY);
-        setCounterfactualEnabled(raw !== '0');
-    }, []);
+    // v8.0.1 / deep-review F5 — counterfactual toggle is now a
+    // per-user server-persisted preference (was browser-local
+    // localStorage). Multi-device / fresh-session usage keeps the
+    // user's choice. Default-true while loading so the first paint
+    // matches the prior localStorage default.
+    const counterfactualQuery = useQuery({
+        queryKey: CHAT_PREFERENCES_QUERY_KEY,
+        queryFn: () => chatPreferencesApi.load(),
+        staleTime: 5 * 60_000,
+        refetchOnWindowFocus: false,
+    });
+    const counterfactualEnabled =
+        counterfactualQuery.data?.preferences.counterfactual_enabled ?? true;
+    const counterfactualMut = useMutation({
+        mutationFn: (next: boolean) => chatPreferencesApi.save({ counterfactual_enabled: next }),
+        onSuccess: (data: ChatPreferencesResponse) => {
+            qc.setQueryData(CHAT_PREFERENCES_QUERY_KEY, data);
+        },
+        // R14 — surface failures loudly. Without this, a 4xx/5xx on
+        // PATCH silently fails: the checkbox snaps back to its prior
+        // value with no user-visible signal. Refetch the query so
+        // the UI converges on the BE truth, and let the inline error
+        // banner below render against `counterfactualMut.error`.
+        onError: () => {
+            void counterfactualQuery.refetch();
+        },
+    });
 
     // R17 — seed the local edit cache from the server snapshot ONLY on
     // the very first load (when `edits` is still null). A naive seed
@@ -195,9 +220,7 @@ export function NotificationPreferencesGrid(): ReactNode {
     }, [edits, query.data]);
 
     const toggleCounterfactual = () => {
-        const next = !counterfactualEnabled;
-        setCounterfactualEnabled(next);
-        window.localStorage.setItem(COUNTERFACTUAL_PREF_KEY, next ? '1' : '0');
+        counterfactualMut.mutate(!counterfactualEnabled);
     };
 
     return (
@@ -218,7 +241,8 @@ export function NotificationPreferencesGrid(): ReactNode {
                     <div>
                         <p className="text-sm font-medium text-gray-800">Counterfactual panel in chat</p>
                         <p className="text-xs text-gray-600">
-                            Show/hide “N other projects” counterfactual citations. Sticky per browser, default ON.
+                            Show/hide “N other projects” counterfactual citations. Saved on the
+                            server, follows you across devices and sessions. Default ON.
                         </p>
                     </div>
                     <label className="inline-flex items-center gap-2 text-sm">
@@ -226,11 +250,58 @@ export function NotificationPreferencesGrid(): ReactNode {
                             type="checkbox"
                             checked={counterfactualEnabled}
                             onChange={toggleCounterfactual}
+                            // Disabled while the query is loading, while
+                            // the mutation is in flight, AND when the
+                            // GET errors out: in the error case the
+                            // displayed "On" state is the FALLBACK
+                            // default, NOT a confirmed BE value — letting
+                            // the user toggle from a possibly-wrong
+                            // baseline would spray PATCH traffic against
+                            // unknown state.
+                            disabled={
+                                counterfactualQuery.isLoading
+                                || counterfactualQuery.isError
+                                || counterfactualMut.isPending
+                            }
                             data-testid="chat-counterfactual-toggle"
+                            aria-label="Show counterfactual panel in chat"
                         />
                         <span>{counterfactualEnabled ? 'On' : 'Off'}</span>
                     </label>
                 </div>
+                {counterfactualQuery.isError && (
+                    <div
+                        data-testid="chat-counterfactual-load-error"
+                        role="alert"
+                        className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700"
+                    >
+                        Could not load your saved preference. The toggle shows
+                        the default until the next successful load.
+                        <button
+                            type="button"
+                            onClick={() => void counterfactualQuery.refetch()}
+                            className="ml-2 underline"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+                {counterfactualMut.isError && (
+                    <div
+                        data-testid="chat-counterfactual-toggle-error"
+                        role="alert"
+                        className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-xs text-red-700"
+                    >
+                        Could not save the toggle. Please try again.
+                        <button
+                            type="button"
+                            onClick={() => counterfactualMut.reset()}
+                            className="ml-2 underline"
+                        >
+                            Dismiss
+                        </button>
+                    </div>
+                )}
             </div>
 
             {dataState === 'loading' && (
