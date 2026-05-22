@@ -21,6 +21,15 @@ beforeEach(() => {
     // Default mock for the GET path: route by URL so the grid's two
     // independent useQuery calls (preferences + chat-preferences)
     // both resolve to a sensible payload regardless of call order.
+    //
+    // IMPORTANT: every test in this file relies on this URL routing
+    // — DO NOT use `mockGet.mockResolvedValueOnce(...)` inside a
+    // test, because the once-queue consumes the first call REGARDLESS
+    // of URL (vitest semantics) and would re-introduce call-order
+    // dependency between the two parallel useQuery hooks. To override
+    // for a single test, replace the implementation with a URL-aware
+    // function (see the "renders the error state when the GET fails"
+    // test or "treats zero stored preferences" for examples).
     mockGet.mockImplementation((url: string) => {
         if (url === '/api/me/chat-preferences') {
             return Promise.resolve({
@@ -57,8 +66,6 @@ const DEFAULT_RESPONSE = {
 
 describe('NotificationPreferencesGrid', () => {
     it('renders the grid scaffolding seeded with defaults + stored prefs', async () => {
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -81,8 +88,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('flips a single cell and marks the grid dirty', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -104,8 +109,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('row bulk-on enables every REGISTERED channel for the event type', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -122,8 +125,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('column bulk-off disables every row for the channel', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -168,8 +169,6 @@ describe('NotificationPreferencesGrid', () => {
 
     it('discard restores the last-saved snapshot and clears dirty', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
-
         render(wrapped(<NotificationPreferencesGrid />));
 
         await waitFor(() => {
@@ -284,14 +283,31 @@ describe('NotificationPreferencesGrid', () => {
         // the dispatcher then NEVER ships them a notification because
         // it only honours rows with `enabled=true` in the DB. Treat
         // the empty-preferences state as inherently dirty.
-        mockGet.mockResolvedValueOnce({
-            data: {
-                event_types: ['kb_doc_created'],
-                channels: ['in_app', 'email'],
-                registered_channels: ['in_app', 'email'],
-                defaults: { in_app: true, email: false },
-                preferences: [],
-            },
+        // Override the beforeEach URL-routing default for the notif
+        // prefs path with an EMPTY preferences payload. The chat-prefs
+        // URL still resolves to its default so the unrelated query
+        // doesn't interfere. Using mockImplementation (URL-aware)
+        // instead of mockResolvedValueOnce avoids the call-order
+        // dependency where the chat-prefs URL could consume the
+        // once-response by accident.
+        mockGet.mockImplementation((url: string) => {
+            if (url === '/api/me/chat-preferences') {
+                return Promise.resolve({
+                    data: {
+                        preferences: { counterfactual_enabled: true },
+                        defaults: { counterfactual_enabled: true },
+                    },
+                });
+            }
+            return Promise.resolve({
+                data: {
+                    event_types: ['kb_doc_created'],
+                    channels: ['in_app', 'email'],
+                    registered_channels: ['in_app', 'email'],
+                    defaults: { in_app: true, email: false },
+                    preferences: [],
+                },
+            });
         });
 
         render(wrapped(<NotificationPreferencesGrid />));
@@ -308,7 +324,8 @@ describe('NotificationPreferencesGrid', () => {
 
     it('renders the save error banner when the PUT fails', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
+        // GET responses come from the beforeEach URL router; only the
+        // PUT failure is per-test.
         mockPut.mockRejectedValueOnce(new Error('422'));
 
         render(wrapped(<NotificationPreferencesGrid />));
