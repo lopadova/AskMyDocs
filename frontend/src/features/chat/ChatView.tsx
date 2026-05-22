@@ -98,8 +98,7 @@ export function ChatView(): ReactNode {
     // per-user server-persisted preference (was browser-local
     // localStorage). Read the merged (defaults + stored) view from
     // the BE so multi-device / fresh-session usage keeps the user's
-    // choice. Default-true while loading so the first paint matches
-    // the prior localStorage default.
+    // choice.
     const preferencesQuery = useQuery({
         queryKey: CHAT_PREFERENCES_QUERY_KEY,
         queryFn: () => chatPreferencesApi.load(),
@@ -108,7 +107,15 @@ export function ChatView(): ReactNode {
         staleTime: 5 * 60_000,
         refetchOnWindowFocus: false,
     });
-    const showCounterfactual = preferencesQuery.data?.preferences.counterfactual_enabled ?? true;
+    // Default to HIDDEN until the BE confirms `enabled=true`. A
+    // simple `?? true` would briefly render the panel ON during
+    // the load window for a user who saved `false`, then snap it
+    // OFF when the query resolves — a visible flicker that leaks
+    // their hidden preference for ~100ms each session. Strict
+    // equality means the panel only appears once the user's
+    // confirmed preference is true; the default-true case waits
+    // ~one round-trip before the panel appears.
+    const showCounterfactual = preferencesQuery.data?.preferences.counterfactual_enabled === true;
 
     useEffect(() => {
         if (activeId === null) {
