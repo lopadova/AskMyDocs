@@ -441,17 +441,30 @@ final class KbSearchServiceFiltersTest extends TestCase
             $rm->getEndLine() - $rm->getStartLine() + 1,
         ));
 
-        // The previous regex `\$this->fullTextSearch\([^)]*\$effectiveFilters/s`
-        // used `[^)]*` which would spuriously fail if any nested call
-        // (e.g. `min($a, $b)`) appeared in the argument list before
-        // `$effectiveFilters`. Use a non-greedy dot-all match so the
-        // assertion stays robust under future call-site refactors:
-        // we only care that `$effectiveFilters` appears somewhere
-        // between the `fullTextSearch(` opener and the next
-        // semicolon, regardless of intermediate nesting.
-        $this->assertMatchesRegularExpression(
-            '/\$this->fullTextSearch\(.*?\$effectiveFilters.*?;/s',
-            $body,
+        // Locate the fullTextSearch call site and slice a bounded
+        // window from that offset. Regex alternatives swing between
+        // too strict (bracket-class breaks on nested calls) and too
+        // loose (dot-all spans past the call into later
+        // $effectiveFilters mentions like filterByFolderGlobs's
+        // closure capture). The bounded substring approach is both
+        // precise (the window must contain the symbol) and stable
+        // under future refactors that change argument formatting.
+        $callOffset = strpos($body, '$this->fullTextSearch(');
+        $this->assertNotFalse(
+            $callOffset,
+            'F3: search() must contain a call site to fullTextSearch().',
+        );
+
+        // The call has 5 scalar args today. 400 chars covers the
+        // full multi-line argument list with generous slack but
+        // stops well before any later $effectiveFilters mention in
+        // the same method (the next call site is hundreds of lines
+        // away in filterByFolderGlobs).
+        $callSlice = substr($body, $callOffset, 400);
+
+        $this->assertStringContainsString(
+            '$effectiveFilters',
+            $callSlice,
             'F3: search() must pass $effectiveFilters to fullTextSearch() so the '
             . 'hybrid branch shares the semantic branch\'s filter set.',
         );

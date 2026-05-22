@@ -139,7 +139,8 @@ describe('NotificationPreferencesGrid', () => {
 
     it('save posts every cell as a row to the PUT endpoint', async () => {
         const user = userEvent.setup();
-        mockGet.mockResolvedValueOnce(DEFAULT_RESPONSE);
+        // GET responses come from the beforeEach URL router; only the
+        // PUT response is per-test.
         mockPut.mockResolvedValueOnce(DEFAULT_RESPONSE);
 
         render(wrapped(<NotificationPreferencesGrid />));
