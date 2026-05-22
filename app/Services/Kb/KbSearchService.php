@@ -366,12 +366,21 @@ class KbSearchService
             : $limit;
 
         // ── Semantic search (pgvector) ───────────────────────────
+        // R30 defense-in-depth: the `document` relation (BelongsTo on
+        // KnowledgeChunk) is unscoped. With('document') and the
+        // archived-status whereHas are tenant-aware-table queries
+        // without a tenant_id predicate. In normal operation the
+        // chunk → document FK shares tenant_id, but a corrupt FK
+        // (cross-tenant write-time drift) would let a doc from
+        // another tenant be eager-loaded into search results — and
+        // its metadata bleeds into the response. Both call sites
+        // are pinned to the active tenant explicitly.
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
-            ->with('document')
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
             ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('vector_score');
 
         if ($projectKey !== null && $projectKey !== '') {
@@ -475,9 +484,14 @@ class KbSearchService
     ): Collection {
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
+        // R30 defense-in-depth — same rationale as search() above:
+        // pin both the eager-load and the whereHas to the active
+        // tenant so a corrupt cross-tenant FK on knowledge_chunks
+        // cannot drag a foreign doc into the FTS branch of the
+        // hybrid RRF merge.
         $builder = KnowledgeChunk::query()
             ->forTenant($tenantId)
-            ->with('document')
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->selectRaw(
                 "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), plainto_tsquery(?, ?)) as fts_score",
                 [$lang, $lang, $query]
@@ -486,7 +500,7 @@ class KbSearchService
                 "to_tsvector(?, chunk_text) @@ plainto_tsquery(?, ?)",
                 [$lang, $lang, $query]
             )
-            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'archived'))
+            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('fts_score');
 
         if ($projectKey !== null && $projectKey !== '') {
