@@ -108,8 +108,14 @@ final class ResolveTenantBridgeFailureTest extends TestCase
 
     private function bindHealthyBridge(): void
     {
+        // Stub return type mirrors the real
+        // TenantContextBridge::syncFromHost() signature
+        // (`?Padosoft\AiActCompliance\MultiTenancy\Models\Tenant`)
+        // so a future change to that signature surfaces here as
+        // a type error instead of silently passing under a
+        // mismatched `?\stdClass`.
         $this->app->instance(TenantContextBridge::class, new class {
-            public function syncFromHost(): ?\stdClass
+            public function syncFromHost(): ?\Padosoft\AiActCompliance\MultiTenancy\Models\Tenant
             {
                 return null;
             }

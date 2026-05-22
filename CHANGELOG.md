@@ -71,8 +71,8 @@ fixed in v7.0/W6.3.B+C and verified absent from main.
 Tests: **1984 PHPUnit green** (+13 net: 5 structural middleware +
 2 multi-tenant DSAR + 2 bridge failure + 4 follow-on coverage).
 
-Tagged at the merge SHA; published as the recommended adopt
-target ahead of v8.0.0 and v8.0.1.
+Tagged at the merge SHA; published as the recommended adoption
+target — supersedes v8.0.0 and v8.0.1 for new deployments.
 
 ---
 
