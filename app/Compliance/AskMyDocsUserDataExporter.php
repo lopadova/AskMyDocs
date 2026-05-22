@@ -22,19 +22,20 @@ class AskMyDocsUserDataExporter
     public function export(object $user): array
     {
         $userId = $this->resolveUserId($user);
-        $auditActors = $this->resolveAuditActors($user, $userId);
-        $mcpActors = $this->resolveMcpAuditActors($user, $userId);
+        $userEmail = is_string($user->email ?? null) ? $user->email : null;
+
+        // v8.0.2 / Copilot iter-5 of PR #224 — actor sets are now
+        // sourced from the single-source-of-truth UserTenantResolver
+        // so a future shape change (e.g. a new opaque actor format
+        // the package starts emitting) lands in one place and stays
+        // aligned across resolver / exporter / deleter.
+        $auditActors = $this->tenantResolver->canonicalAuditActorsForUser($userId, $userEmail);
+        $mcpActors = $this->tenantResolver->mcpActorsForUser($userId, $userEmail);
 
         // v8.0.2 / deep-review C — User is host-wide (no tenant_id).
-        // A user with `project_memberships` in tenants A + B running
-        // DSAR while session-bound to tenant A previously got A-only
-        // data — Art. 15 breach in any multi-tenant deployment.
         // Tenant enumeration is shared with the Deleter via
         // UserTenantResolver so export + erase stay symmetric.
-        $tenantIds = $this->tenantResolver->tenantsForUser(
-            $userId,
-            is_string($user->email ?? null) ? $user->email : null,
-        );
+        $tenantIds = $this->tenantResolver->tenantsForUser($userId, $userEmail);
 
         $aggregate = [
             'conversations' => [],
@@ -144,43 +145,8 @@ class AskMyDocsUserDataExporter
         throw new InvalidArgumentException('AskMyDocsUserDataExporter requires a user object with a positive integer id.');
     }
 
-    /**
-     * @return list<string>
-     */
-    private function resolveAuditActors(object $user, int $userId): array
-    {
-        $actors = [(string) $userId];
-        $email = $user->email ?? null;
-
-        if (is_string($email) && $email !== '') {
-            $actors[] = $email;
-        }
-
-        return array_values(array_unique($actors));
-    }
-
-    /**
-     * Audit actors for `mcp_tool_call_audit`. Wider than the
-     * `kb_canonical_audit` set because the package casts an opaque
-     * `$context['actor']` to string; common shapes include bare
-     * id, `"user:{id}"`, email, and `"user:{email}"`. Mirrored from
-     * the deleter so DSAR export and erasure stay in lockstep.
-     *
-     * @return list<string>
-     */
-    private function resolveMcpAuditActors(object $user, int $userId): array
-    {
-        $actors = [
-            (string) $userId,
-            'user:'.$userId,
-        ];
-
-        $email = $user->email ?? null;
-        if (is_string($email) && $email !== '') {
-            $actors[] = $email;
-            $actors[] = 'user:'.$email;
-        }
-
-        return array_values(array_unique($actors));
-    }
+    // v8.0.2 / Copilot iter-5 of PR #224 — resolveAuditActors
+    // and resolveMcpAuditActors removed; the canonical actor sets
+    // live on UserTenantResolver (single source of truth, used by
+    // exporter / deleter / resolver-internal tenant sweep).
 }

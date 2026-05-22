@@ -25,7 +25,11 @@ class AskMyDocsUserDataDeleter
     public function delete(object $user): void
     {
         $userId = $this->resolveUserId($user);
-        $mcpActors = $this->resolveMcpAuditActors($user, $userId);
+        $userEmail = is_string($user->email ?? null) ? $user->email : null;
+
+        // v8.0.2 / Copilot iter-5 of PR #224 — actor set comes
+        // from UserTenantResolver (single source of truth).
+        $mcpActors = $this->tenantResolver->mcpActorsForUser($userId, $userEmail);
 
         // v8.0.2 / deep-review C — DSAR erasure (Art. 17) MUST cover
         // every tenant the user has data in. User is host-wide (no
@@ -38,10 +42,7 @@ class AskMyDocsUserDataDeleter
         // surely as a no-op delete. Tenant set comes from the
         // shared UserTenantResolver — what the Exporter saw, this
         // wipes.
-        $tenantIds = $this->tenantResolver->tenantsForUser(
-            $userId,
-            is_string($user->email ?? null) ? $user->email : null,
-        );
+        $tenantIds = $this->tenantResolver->tenantsForUser($userId, $userEmail);
 
         DB::transaction(function () use ($tenantIds, $userId, $mcpActors): void {
             foreach ($tenantIds as $tenantId) {
@@ -101,39 +102,8 @@ class AskMyDocsUserDataDeleter
         throw new InvalidArgumentException('AskMyDocsUserDataDeleter requires a user object with a positive integer id.');
     }
 
-    /**
-     * Build the set of `mcp_tool_call_audit.actor` strings that may
-     * identify this user. The package casts whatever the host hands
-     * it via `$context['actor']` to a string; common host wirings:
-     *
-     *   - `(string) $userId`         (bare numeric id, matches the
-     *                                 package README's bridge example)
-     *   - `"user:{$userId}"`         (prefixed id, used by the host's
-     *                                 integration tests)
-     *   - the user's email           (legacy host audit convention,
-     *                                 still in use by `kb_canonical_audit`)
-     *   - `"user:{$email}"`          (prefixed-email variant, defensive)
-     *
-     * We over-include rather than under-include — a false-positive
-     * delete here would only erase a row a different user-as-actor
-     * shape happens to match (vanishingly small for digit / email
-     * inputs), while a false-negative is a GDPR breach.
-     *
-     * @return list<string>
-     */
-    private function resolveMcpAuditActors(object $user, int $userId): array
-    {
-        $actors = [
-            (string) $userId,
-            'user:'.$userId,
-        ];
-
-        $email = $user->email ?? null;
-        if (is_string($email) && $email !== '') {
-            $actors[] = $email;
-            $actors[] = 'user:'.$email;
-        }
-
-        return array_values(array_unique($actors));
-    }
+    // v8.0.2 / Copilot iter-5 of PR #224 — resolveMcpAuditActors
+    // removed; the canonical mcp actor set lives on
+    // UserTenantResolver (single source of truth, used by
+    // exporter / deleter / resolver-internal tenant sweep).
 }

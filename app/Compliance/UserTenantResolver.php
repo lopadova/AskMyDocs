@@ -6,6 +6,7 @@ namespace App\Compliance;
 
 use App\Models\ChatLog;
 use App\Models\Conversation;
+use App\Models\KbCanonicalAudit;
 use App\Models\McpToolCallAudit;
 use App\Models\ProjectMembership;
 use App\Support\TenantContext;
@@ -13,30 +14,19 @@ use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 /**
  * v8.0.2 / deep-review C — single source of truth for "every
- * tenant a host-wide User has data in".
+ * tenant a host-wide User has data in" + "every actor shape the
+ * user maps to in audit tables".
  *
  * AskMyDocsUserDataExporter (Art. 15) and
- * AskMyDocsUserDataDeleter (Art. 17) both need the same answer:
- * the deduped UNION of (a) every tenant the user has a
- * `project_memberships` row in PLUS (b) every tenant the user has
- * actual data rows in (memberships can be revoked while data
- * persists — audit retention, conversation history) PLUS (c) the
- * active TenantContext (legacy users without memberships still
- * get their active-tenant data, AND a brand-new user who just
- * signed up has their active tenant covered).
+ * AskMyDocsUserDataDeleter (Art. 17) both need:
+ *   - the deduped UNION of tenants the user has footprint in
+ *     (memberships + data-derived + active TenantContext);
+ *   - the actor sets used to match audit rows that carry
+ *     opaque actor strings instead of user_id FKs.
  *
- * The data-derived sweep (Copilot iter-3 of PR #224) closes the
- * "membership revoked but data retained" gap: a user whose
- * `project_memberships` row in tenant-B was removed but whose
- * `conversations` / `chat_logs` / `connector_installations`
- * rows in tenant-B remain (legitimate under common retention
- * policies) would otherwise have those tenant-B rows silently
- * survive DSAR Art. 17 erasure.
- *
- * Centralising the resolution prevents drift — if a future
- * tenant-attribution source is added (e.g. a `user_tenants`
- * association table), only this class changes and both DSAR
- * paths stay aligned.
+ * Centralising both prevents drift — if a future tenant-attribution
+ * source or audit actor shape is added, only this class changes
+ * and both DSAR paths stay aligned.
  */
 final class UserTenantResolver
 {
@@ -46,12 +36,28 @@ final class UserTenantResolver
     }
 
     /**
+     * Every tenant the user has data in:
+     *   (a) project_memberships rows
+     *   (b) data-derived sweep across user-owned tenant-aware
+     *       tables (conversations + chat_logs +
+     *       connector_installations + mcp_tool_call_audit +
+     *       kb_canonical_audit)
+     *   (c) active TenantContext (fallback for new users / no
+     *       data yet AND legacy seeded users)
+     *
+     * Keep the data-derived block in lockstep with the Exporter's
+     * AND Deleter's per-tenant query blocks: every tenant-aware
+     * table touched there must contribute its tenant_id here so
+     * the resolver returns a SUPERSET of "tenants that will be
+     * scanned/wiped". A table missing here = a tenant that
+     * survives erasure or escapes the export envelope.
+     *
      * @param  string|null  $userEmail  Optional — passed by callers
      *   that have the user object (Exporter/Deleter receive an
-     *   `object` and can extract `email`). The mcp_tool_call_audit
-     *   sweep uses the email to match the package's actor
-     *   convention. Passing null only weakens the email-shaped
-     *   actor match; digit-shaped actors still match.
+     *   `object` and can extract `email`). Used for the
+     *   mcp_tool_call_audit + kb_canonical_audit actor matching.
+     *   Passing null only weakens the email-shaped actor match;
+     *   digit-shaped actors still match.
      * @return list<string>
      */
     public function tenantsForUser(int $userId, ?string $userEmail = null): array
@@ -62,12 +68,6 @@ final class UserTenantResolver
             ->pluck('tenant_id')
             ->all();
 
-        // Data-derived sweep across the user-owned tenant-aware
-        // tables. Keep this set in lockstep with the Deleter's
-        // delete-per-tenant block — every table touched there must
-        // contribute its tenant_id here so the resolver returns a
-        // SUPERSET (or equal) of "tenants that will be wiped". A
-        // table missing here = a tenant that survives erasure.
         $conversationTenants = Conversation::query()
             ->where('user_id', $userId)
             ->distinct()
@@ -86,21 +86,25 @@ final class UserTenantResolver
             ->pluck('tenant_id')
             ->all();
 
-        // v8.0.2 / Copilot iter-4 of PR #224 — mcp_tool_call_audit
-        // is a tenant-attributable surface the Deleter wipes
-        // per-tenant via `user_id = X OR actor IN (...)`. A user
-        // whose ONLY tenant-C footprint is mcp audit rows (no
-        // conversations, no chat logs, no connector installations,
-        // no membership) would otherwise have those rows survive
-        // Art. 17. Mirror the Deleter's matcher exactly so the
-        // resolver returns a SUPERSET of "tenants that will be
-        // wiped".
         $mcpActors = $this->mcpActorsForUser($userId, $userEmail);
         $mcpAuditTenants = McpToolCallAudit::query()
             ->where(function ($q) use ($userId, $mcpActors): void {
                 $q->where('user_id', $userId)
                     ->orWhereIn('actor', $mcpActors);
             })
+            ->distinct()
+            ->pluck('tenant_id')
+            ->all();
+
+        // v8.0.2 / Copilot iter-5 of PR #224 — kb_canonical_audit
+        // is exported by the DSAR Art. 15 path (NOT deleted —
+        // forensic trail by design). A user whose only footprint
+        // in tenant-d is kb_canonical_audit rows (e.g. they
+        // promoted a doc there as actor + lost membership later)
+        // would otherwise miss tenant-d from the export envelope.
+        $canonicalActors = $this->canonicalAuditActorsForUser($userId, $userEmail);
+        $canonicalAuditTenants = KbCanonicalAudit::query()
+            ->whereIn('actor', $canonicalActors)
             ->distinct()
             ->pluck('tenant_id')
             ->all();
@@ -113,20 +117,25 @@ final class UserTenantResolver
             ...$chatLogTenants,
             ...$connectorTenants,
             ...$mcpAuditTenants,
+            ...$canonicalAuditTenants,
             $active,
         ]));
     }
 
     /**
-     * Mirror of the Deleter's actor set (kept inline rather than
-     * extracted again to avoid a second cross-class shared helper).
-     * Email is optional — when null we still cover the digit-shaped
-     * actors. Keep this in lockstep with
-     * AskMyDocsUserDataDeleter::resolveMcpAuditActors().
+     * Actor strings that may identify this user in
+     * `mcp_tool_call_audit.actor`. The package casts whatever the
+     * host hands it via `$context['actor']` to a string; common
+     * shapes are: bare id, `"user:{id}"`, email, `"user:{email}"`.
+     *
+     * Single source of truth for the matcher: both
+     * AskMyDocsUserDataExporter and AskMyDocsUserDataDeleter call
+     * this method directly so the set cannot drift across the
+     * three locations that previously each held a copy.
      *
      * @return list<string>
      */
-    private function mcpActorsForUser(int $userId, ?string $userEmail): array
+    public function mcpActorsForUser(int $userId, ?string $userEmail): array
     {
         $actors = [
             (string) $userId,
@@ -136,6 +145,26 @@ final class UserTenantResolver
         if (is_string($userEmail) && $userEmail !== '') {
             $actors[] = $userEmail;
             $actors[] = 'user:'.$userEmail;
+        }
+
+        return array_values(array_unique($actors));
+    }
+
+    /**
+     * Actor strings that may identify this user in
+     * `kb_canonical_audit.actor`. Narrower than the mcp set —
+     * canonical audit is host-written, the host's convention is
+     * the bare numeric id OR the user's email. No `user:` prefix
+     * is in use today.
+     *
+     * @return list<string>
+     */
+    public function canonicalAuditActorsForUser(int $userId, ?string $userEmail): array
+    {
+        $actors = [(string) $userId];
+
+        if (is_string($userEmail) && $userEmail !== '') {
+            $actors[] = $userEmail;
         }
 
         return array_values(array_unique($actors));
