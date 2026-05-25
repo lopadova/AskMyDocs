@@ -26,6 +26,13 @@ use Tests\TestCase;
  *
  * HTTP requests carry `X-Tenant-Id: ...` so ResolveTenant middleware
  * pins the context to the test's tenant before the controller runs.
+ *
+ * v8.0.3 (C1) — switching the active tenant via X-Tenant-Id now requires
+ * the `tenant.cross-access` permission (AuthorizeTenantHeader rejects a
+ * foreign header with 403 otherwise). The cross-tenant actor here is
+ * therefore a super-admin; the isolation guarantee under test
+ * (forTenant scoping → cross-tenant rows are 404/invisible) is
+ * unchanged and orthogonal to the actor's role.
  */
 final class TabularReviewTenantIsolationTest extends TestCase
 {
@@ -172,7 +179,9 @@ final class TabularReviewTenantIsolationTest extends TestCase
             'email' => 'a-'.uniqid().'@demo.local',
             'password' => Hash::make('secret'),
         ]);
-        $u->assignRole('admin');
+        // super-admin holds tenant.cross-access, the only role allowed to
+        // operate across tenants via the X-Tenant-Id header (C1).
+        $u->assignRole('super-admin');
         return $u;
     }
 }

@@ -51,7 +51,10 @@ final class KbDocumentSearchController extends Controller
             'project_keys.*' => ['string', 'max:120'],
         ]);
 
+        // R30 — scope autocomplete to the active tenant; project_keys alone
+        // is not a tenant boundary (two tenants can share a project_key).
         $query = KnowledgeDocument::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->where('status', '!=', 'archived');
 
         $projectKeys = $validated['project_keys'] ?? [];

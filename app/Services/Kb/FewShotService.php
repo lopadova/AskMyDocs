@@ -3,6 +3,7 @@
 namespace App\Services\Kb;
 
 use App\Models\Message;
+use App\Support\TenantContext;
 use Illuminate\Support\Collection;
 
 /**
@@ -19,8 +20,14 @@ class FewShotService
      */
     public function getExamples(int $userId, ?string $projectKey = null, int $limit = 3): array
     {
+        // R30 — a user may have conversations across tenants; scope to the
+        // active tenant so few-shot examples never leak another tenant's
+        // Q&A into this tenant's prompt.
+        $tenantId = app(TenantContext::class)->current();
+
         // Find assistant messages rated positively
         $positiveMessages = Message::query()
+            ->forTenant($tenantId)
             ->where('rating', 'positive')
             ->where('role', 'assistant')
             ->whereHas('conversation', function ($q) use ($userId, $projectKey) {
@@ -38,7 +45,9 @@ class FewShotService
 
         foreach ($positiveMessages as $assistantMsg) {
             // Find the preceding user message in the same conversation
-            $userMsg = Message::where('conversation_id', $assistantMsg->conversation_id)
+            $userMsg = Message::query()
+                ->forTenant($tenantId)
+                ->where('conversation_id', $assistantMsg->conversation_id)
                 ->where('role', 'user')
                 ->where(function ($q) use ($assistantMsg) {
                     $q->where('created_at', '<', $assistantMsg->created_at)

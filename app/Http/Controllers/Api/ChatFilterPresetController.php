@@ -36,7 +36,10 @@ final class ChatFilterPresetController extends Controller
     {
         $userId = (int) $request->user()->id;
 
+        // R30 — presets are per (tenant, user); scope to the active tenant
+        // so a user's presets from one tenant don't surface in another.
         $presets = ChatFilterPreset::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->where('user_id', $userId)
             ->orderBy('name')
             ->get(['id', 'name', 'filters', 'created_at', 'updated_at']);
@@ -130,6 +133,7 @@ final class ChatFilterPresetController extends Controller
         $userId = (int) $request->user()->id;
 
         $preset = ChatFilterPreset::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->where('user_id', $userId)
             ->find($id);
 
