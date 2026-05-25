@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\UserUpdateRequest;
 use App\Http\Resources\Admin\UserResource;
 use App\Models\User;
 use App\Notifications\NotificationPreferencesInitializer;
+use App\Support\LikeEscaper;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,10 +49,12 @@ class UserController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $like = '%'.str_replace('%', '\\%', mb_strtolower($search)).'%';
+            // R19 — escape ALL LIKE meta-chars (%, _, \) and pair with an
+            // explicit ESCAPE clause (SQLite has no default escape char).
+            $like = LikeEscaper::contains(mb_strtolower($search));
             $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
+                $q->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$like])
+                    ->orWhereRaw("LOWER(email) LIKE ? ESCAPE '\\'", [$like]);
             });
         }
 

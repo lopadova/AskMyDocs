@@ -243,7 +243,11 @@ class User extends Authenticatable
     private function matchesAnyGlob(string $path, array $globs): bool
     {
         foreach ($globs as $glob) {
-            if (fnmatch($glob, $path)) {
+            // R19 — FNM_PATHNAME makes `*` stop at `/`, so a one-level glob
+            // like `hr/policies/*` does NOT match `hr/policies/deep/secret.md`.
+            // Without it the scope_allowlist silently grants access to
+            // arbitrarily deep paths.
+            if (fnmatch($glob, $path, FNM_PATHNAME)) {
                 return true;
             }
         }
@@ -256,9 +260,13 @@ class User extends Authenticatable
      */
     private function documentHasAnyTag(KnowledgeDocument $doc, array $tagSlugs): bool
     {
+        // R30 — tag slugs are unique only per (tenant_id, project_key); a
+        // same-named slug in another tenant must not satisfy this access
+        // check, so constrain the join to the document's own tenant.
         return DB::table('knowledge_document_tags')
             ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
             ->where('knowledge_document_tags.knowledge_document_id', $doc->getKey())
+            ->where('kb_tags.tenant_id', $doc->tenant_id)
             ->whereIn('kb_tags.slug', $tagSlugs)
             ->exists();
     }

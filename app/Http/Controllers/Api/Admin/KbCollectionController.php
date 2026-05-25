@@ -8,6 +8,7 @@ use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
+use App\Support\LikeEscaper;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,9 +26,11 @@ final class KbCollectionController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $query->where(function ($q) use ($search): void {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('slug', 'like', '%' . $search . '%');
+            // R19 — escape all LIKE meta-chars (%, _, \) + explicit ESCAPE.
+            $like = LikeEscaper::contains($search);
+            $query->where(function ($q) use ($like): void {
+                $q->whereRaw("name LIKE ? ESCAPE '\\'", [$like])
+                    ->orWhereRaw("slug LIKE ? ESCAPE '\\'", [$like]);
             });
         }
 

@@ -6,6 +6,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
 use App\Support\KbPath;
+use App\Support\LikeEscaper;
 use DateTimeInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -127,8 +128,13 @@ class DocumentDeleter
         }
 
         if ($base !== '') {
-            $query->where(function ($q) use ($base) {
-                $q->where('source_path', 'like', $base.'/%')
+            // R19 — $base is a folder prefix that can contain LIKE
+            // meta-chars (% / _). Escape them and pair with an explicit
+            // ESCAPE clause so a stray meta-char can't widen the match and
+            // cascade-delete unintended documents.
+            $escapedBase = LikeEscaper::escape($base);
+            $query->where(function ($q) use ($base, $escapedBase) {
+                $q->whereRaw("source_path LIKE ? ESCAPE '\\'", [$escapedBase.'/%'])
                     ->orWhere('source_path', $base);
             });
         }

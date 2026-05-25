@@ -7,6 +7,7 @@ use App\Http\Requests\Admin\MembershipUpdateRequest;
 use App\Http\Resources\Admin\MembershipResource;
 use App\Models\ProjectMembership;
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controller;
@@ -37,8 +38,13 @@ class ProjectMembershipController extends Controller
     {
         $data = $request->validated();
 
+        // R30/R31 — the upsert match keys MUST include tenant_id; otherwise
+        // an upsert in tenant A for (user_id, project_key) overwrites the
+        // tenant-B row that shares the same pair. BelongsToTenant auto-fills
+        // tenant_id only on insert, so it cannot rescue the match clause.
         $membership = ProjectMembership::updateOrCreate(
             [
+                'tenant_id' => app(TenantContext::class)->current(),
                 'user_id' => $user->id,
                 'project_key' => $data['project_key'],
             ],

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\KbTag;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -34,6 +35,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  */
 final class TagController extends Controller
 {
+    public function __construct(private readonly TenantContext $tenant) {}
+
     /**
      * GET /api/admin/kb/tags?project_keys[]=...
      *
@@ -49,7 +52,10 @@ final class TagController extends Controller
 
         $projectKeys = $validated['project_keys'] ?? [];
 
+        // R30 — kb_tags is tenant-aware; without forTenant the list leaks
+        // every tenant's tags to any admin.
         $query = KbTag::query()
+            ->forTenant($this->tenant->current())
             ->orderBy('project_key')
             ->orderBy('slug');
 
@@ -81,8 +87,14 @@ final class TagController extends Controller
                 // Slug shape: lowercase alphanumeric + hyphens. Mirrors
                 // the canonical-slug rules the BE applies elsewhere.
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
+                // R30/R31 — uniqueness is per (tenant_id, project_key, slug).
+                // The DB composite-unique rebuild is deliberately deferred
+                // (see 2026_04_28_000001_add_tenant_id_to_v3_tables.php), so
+                // the application layer carries the tenant scope here.
                 Rule::unique('kb_tags', 'slug')
-                    ->where(fn ($q) => $q->where('project_key', $request->input('project_key'))),
+                    ->where(fn ($q) => $q
+                        ->where('tenant_id', $this->tenant->current())
+                        ->where('project_key', $request->input('project_key'))),
             ],
             'label' => ['required', 'string', 'max:120'],
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -129,7 +141,9 @@ final class TagController extends Controller
                 'max:120',
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
                 Rule::unique('kb_tags', 'slug')
-                    ->where(fn ($q) => $q->where('project_key', $tag->project_key))
+                    ->where(fn ($q) => $q
+                        ->where('tenant_id', $tag->tenant_id)
+                        ->where('project_key', $tag->project_key))
                     ->ignore($tag->id),
             ],
             'label' => ['sometimes', 'string', 'max:120'],
@@ -176,7 +190,9 @@ final class TagController extends Controller
      */
     private function findOr404(int $id): KbTag
     {
-        $tag = KbTag::query()->find($id);
+        // R30 — scope by tenant so an admin in tenant A cannot read/update/
+        // delete a tag owned by tenant B by guessing its id (IDOR).
+        $tag = KbTag::query()->forTenant($this->tenant->current())->find($id);
         if ($tag === null) {
             throw new NotFoundHttpException('Tag not found.');
         }

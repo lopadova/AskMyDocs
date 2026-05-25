@@ -67,8 +67,30 @@ class GeminiProviderTest extends TestCase
                 && $body['contents'][1]['role'] === 'model'
                 && $body['contents'][2]['role'] === 'user'
                 && str_contains($req->url(), 'models/gemini-2.0-flash:generateContent')
-                && str_contains($req->url(), 'key=AIzaTest');
+                // H6 — the API key now travels in the header, NOT the URL.
+                && $req->hasHeader('x-goog-api-key', 'AIzaTest')
+                && ! str_contains($req->url(), 'key=');
         });
+    }
+
+    public function test_api_key_is_sent_as_header_not_url_query_string(): void
+    {
+        // H6 regression guard — query-string secrets leak into access /
+        // proxy logs + APM traces. Assert on BOTH chat and embeddings.
+        Http::fake([
+            '*' => Http::response([
+                'candidates' => [['content' => ['parts' => [['text' => 'x']]], 'finishReason' => 'STOP']],
+                'embeddings' => [['values' => [0.1]]],
+            ], 200),
+        ]);
+
+        $p = new GeminiProvider($this->config());
+        $p->chat('sys', 'q');
+        $p->generateEmbeddings(['one']);
+
+        Http::assertSent(fn (Request $req) => $req->hasHeader('x-goog-api-key', 'AIzaTest')
+            && ! str_contains($req->url(), 'AIzaTest')
+            && ! str_contains($req->url(), 'key='));
     }
 
     public function test_generate_embeddings_batches_into_requests(): void
