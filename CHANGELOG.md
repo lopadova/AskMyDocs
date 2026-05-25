@@ -11,6 +11,59 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.0.3 — 2026-05-26 (Multi-tenant isolation + security deep-review hotfix)
+
+Patch release on top of v8.0.2 closing **26 confirmed findings** from an
+enterprise deep review (5 CRITICAL, 9 HIGH, plus MEDIUM/LOW), and **7
+additional cross-tenant leaks** surfaced by a new architecture test that
+the manual review had missed. The dominant theme is multi-tenant
+isolation (R30/R31): `BelongsToTenant` adds no global READ scope, so every
+read query is the author's responsibility — and many were unscoped.
+
+**5 CRITICAL — cross-tenant data exposure (GDPR-class in multi-tenant):**
+
+| # | Class |
+|---|-------|
+| C1 | `X-Tenant-Id` header trusted with zero authorization — any authenticated client could operate in another tenant. New post-auth `AuthorizeTenantHeader` middleware + `tenant.cross-access` permission (super-admin only) |
+| C2 | `{document}` route binding resolved by global id (IDOR across every KbDocument action) — now tenant-scoped |
+| C3 | LogViewer chat / chatShow / canonicalAudit returned every tenant's rows — now scoped |
+| C4 | ComplianceReportController read/generate/download accepted a client `tenant_id` — now derived from `TenantContext`; `{report}` binding scoped |
+| C5 | KbTree project list + tree leaked every tenant's `project_key` — now scoped |
+
+**9 HIGH:** tag IDOR (H1), membership upsert/binding tenant gaps (H2/H3),
+`fnmatch` without `FNM_PATHNAME` (H4), incomplete LIKE escaping (H5),
+Gemini API key in URL query-string (H6), batch-ingest partial-failure
+inconsistency (H7), role-deny ACL ignored by the global scope (H8),
+maintenance-command history leak (H9).
+
+**MEDIUM/LOW:** last-super-admin race made atomic (M2/R21), embeddings
+auto-select dimension-mismatch warning (M5), collection pagination (M7),
+honest `resendInvite` (M1/L7), `KbPath::normalize` on stored ingest path
+(L1), Content-Disposition sanitisation (L5), `strict_types` on five core
+files (L6). Five reported items were verified **false positives** and
+documented as such.
+
+**Bonus (architecture test):** `tests/Architecture/TenantReadScopeTest`
+caught 7 more unscoped reads — `KbDocumentSearchController`,
+`KbResolveWikilinkController`, `AdminInsightsController`,
+`ChatFilterPresetController`, `FewShotService`, and the graph/audit
+queries in `KbDocumentController` — all now scoped.
+
+**Tenant-scoped uniques (R31):** migration `2026_05_26_000001` rebuilds
+the `kb_tags` and `project_memberships` composite uniques to start with
+`tenant_id` (the FK-entangled `kb_nodes`/`kb_edges` rebuild stays deferred
+per the original v4.0 note).
+
+**Behavioural change:** switching tenants via `X-Tenant-Id` now requires
+the `tenant.cross-access` permission (super-admin). Regular admins are
+pinned to their resolved tenant. Per-user tenant binding beyond the
+super-admin bypass is tracked in
+[`docs/ENTERPRISE-COMPLETENESS-ROADMAP.md`](docs/ENTERPRISE-COMPLETENESS-ROADMAP.md).
+
+Full suite: 2012 tests, 6353 assertions, green.
+
+---
+
 ### v8.0.2 — 2026-05-22 (Cross-release deep-review hotfix)
 
 Patch release on top of v8.0.1 closing four cross-release findings

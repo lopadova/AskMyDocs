@@ -1213,5 +1213,7 @@ including commercial use.
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for detailed release notes from
-v1.0 through v8.0.2 (deep-review hotfix chain on top of the
-v8.0.0 GA — recommended adoption target).
+v1.0 through v8.0.3 (deep-review hotfix chain on top of the
+v8.0.0 GA — recommended adoption target). v8.0.3 closes a 26-finding
+multi-tenant isolation + security review (5 CRITICAL) and adds a
+tenant-read-scope architecture test.
