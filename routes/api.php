@@ -266,6 +266,15 @@ Route::middleware([
                 ->findOrFail($id);
         });
 
+        // C4 (R30) — compliance reports are tenant-scoped at the binding so
+        // verify / downloadJson / downloadPdf cannot resolve another
+        // tenant's report by id.
+        Route::bind('report', function ($id) {
+            return \App\Models\ComplianceReport::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+
         Route::apiResource('kb/documents', KbDocumentController::class)
             ->only(['show', 'destroy'])
             ->names([

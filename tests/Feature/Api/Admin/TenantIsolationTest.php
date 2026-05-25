@@ -129,6 +129,29 @@ final class TenantIsolationTest extends TestCase
         $this->assertDatabaseHas('kb_tags', ['id' => $foreignTagId, 'tenant_id' => 'umbrella']);
     }
 
+    public function test_cannot_verify_a_compliance_report_owned_by_another_tenant(): void
+    {
+        // C4 (R30) — the {report} binding is tenant-scoped.
+        $super = $this->makeUser('super-admin');
+        $foreignReportId = (int) DB::table('compliance_reports')->insertGetId([
+            'tenant_id' => 'umbrella',
+            'period_start' => '2026-01-01',
+            'period_end' => '2026-03-31',
+            'payload_json' => json_encode(['delta' => [], 'audit' => [], 'period' => []]),
+            'hash_sha256' => hash('sha256', 'x'),
+            'hash_hmac' => hash('sha256', 'y'),
+            'generated_at' => now(),
+            'generated_by' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->actingAs($super)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->postJson("/api/admin/compliance/reports/{$foreignReportId}/verify")
+            ->assertStatus(404);
+    }
+
     public function test_same_slug_and_project_coexist_across_tenants(): void
     {
         // R30/R31 — two tenants legitimately share (project_key, slug).

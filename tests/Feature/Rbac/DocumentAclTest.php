@@ -58,6 +58,32 @@ class DocumentAclTest extends TestCase
         $this->assertSame(0, KnowledgeDocument::query()->count());
     }
 
+    public function test_role_deny_acl_excludes_the_row_from_the_global_scope(): void
+    {
+        // H8 — a deny ACL whose subject is a ROLE the user holds must
+        // remove the doc from the cheap global scope (bulk read paths:
+        // search, tree), not only from the per-row policy check. Before
+        // the fix, the global scope only filtered subject_type='user'.
+        [$user, $doc] = $this->provisionMemberWithDoc();
+
+        // A role WITHOUT kb.read.any (otherwise the scope would be bypassed).
+        \Spatie\Permission\Models\Role::create(['name' => 'restricted-team', 'guard_name' => 'web']);
+        $user->assignRole('restricted-team');
+
+        KnowledgeDocumentAcl::create([
+            'knowledge_document_id' => $doc->id,
+            'subject_type' => KnowledgeDocumentAcl::SUBJECT_ROLE,
+            'subject_id' => 'restricted-team',
+            'permission' => KnowledgeDocumentAcl::PERMISSION_VIEW,
+            'effect' => KnowledgeDocumentAcl::EFFECT_DENY,
+        ]);
+
+        $this->actingAs($user->fresh());
+
+        $this->assertSame(0, KnowledgeDocument::query()->count());
+        $this->assertFalse($user->fresh()->hasDocumentAccess($doc, 'view'));
+    }
+
     public function test_deny_wins_over_allow_when_both_exist_for_same_subject(): void
     {
         [$user, $doc] = $this->provisionMemberWithDoc();

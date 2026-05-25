@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Jobs\IngestDocumentJob;
@@ -58,90 +60,134 @@ class KbIngestController extends Controller
         $defaultProject = (string) config('kb.ingest.default_project', 'default');
 
         $storage = Storage::disk($disk);
-        $results = [];
 
+        // H7 — PHASE 1: validate + decode EVERY document before writing a
+        // single byte. A bad mime / non-base64 / traversal path on document
+        // N now rejects the whole batch with 422 and nothing has been
+        // written or queued — no partial-batch inconsistency.
+        $prepared = [];
         foreach ($validated['documents'] as $doc) {
-            $projectKey = (string) ($doc['project_key'] ?? $defaultProject);
-            try {
-                $sourcePath = KbPath::normalize((string) $doc['source_path']);
-            } catch (\InvalidArgumentException $e) {
-                throw ValidationException::withMessages([
-                    'documents' => [$e->getMessage()],
-                ]);
-            }
+            $prepared[] = $this->prepareDocument($doc, $defaultProject, $prefix);
+        }
 
-            $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
-            $sourceType = SourceType::fromMime($mimeType);
-            if ($sourceType === SourceType::UNKNOWN) {
-                throw ValidationException::withMessages([
-                    'documents' => [sprintf(
-                        'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
-                        $mimeType,
-                        $sourcePath,
-                        // Use the SourceType-owned authoritative list so
-                        // ALIASES like text/x-markdown are advertised too —
-                        // SourceType::cases()->toMime() would only emit
-                        // canonical forms and silently exclude accepted
-                        // aliases the validator actually recognises.
-                        implode(', ', SourceType::supportedMimes()),
-                    )],
-                ]);
-            }
-
-            // Binary MIMEs land here as base64; decode-or-422 before writing
-            // the bytes to disk. strict=true rejects whitespace + non-b64
-            // chars so we never persist garbage that the converter would
-            // then choke on.
-            $bytes = (string) $doc['content'];
-            if ($sourceType->isBinary()) {
-                $decoded = base64_decode($bytes, true);
-                if ($decoded === false) {
-                    throw ValidationException::withMessages([
-                        'documents' => [sprintf(
-                            'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
-                            $mimeType,
-                            $sourcePath,
-                        )],
-                    ]);
-                }
-                $bytes = $decoded;
-            }
-
-            $storedPath = ltrim($prefix.'/'.$sourcePath, '/');
-
+        // H7 — PHASE 2: write + dispatch. A disk write can still fail here
+        // (I/O, quota) AFTER earlier documents were queued. Instead of
+        // aborting with a bare 500 that hides what already happened, record
+        // a per-document status and report the full picture so the caller
+        // can retry only the failures (DocumentIngestor is idempotent).
+        $results = [];
+        $anyFailed = false;
+        foreach ($prepared as $item) {
             // The kb disk is configured with throw => false, so put() returns
-            // false on failure instead of raising. Check explicitly so we
-            // don't enqueue a job that will immediately fail with "not found".
-            if ($storage->put($storedPath, $bytes) === false) {
-                return response()->json([
+            // false on failure instead of raising.
+            $written = $storage->put($item['stored_path'], $item['bytes']) !== false;
+
+            if (! $written) {
+                $anyFailed = true;
+                $results[] = [
+                    'project_key' => $item['project_key'],
+                    'source_path' => $item['source_path'],
+                    'source_type' => $item['source_type'],
+                    'status' => 'failed',
                     'error' => 'Failed to write document to KB disk.',
-                    'source_path' => $sourcePath,
-                ], 500);
+                ];
+
+                continue;
             }
 
             // PR #115 review iteration 1 — capture TenantContext at
             // dispatch time so the queue worker re-binds the right
             // tenant before any tenant-aware Eloquent query runs (R30/R31).
             IngestDocumentJob::dispatchForCurrentTenant(
-                projectKey: $projectKey,
-                relativePath: $sourcePath,
+                projectKey: $item['project_key'],
+                relativePath: $item['source_path'],
                 disk: $disk,
-                title: $doc['title'] ?? null,
-                metadata: is_array($doc['metadata'] ?? null) ? $doc['metadata'] : [],
-                mimeType: $mimeType,
+                title: $item['title'],
+                metadata: $item['metadata'],
+                mimeType: $item['mime_type'],
             );
 
             $results[] = [
-                'project_key' => $projectKey,
-                'source_path' => $sourcePath,
-                'source_type' => $sourceType->value,
+                'project_key' => $item['project_key'],
+                'source_path' => $item['source_path'],
+                'source_type' => $item['source_type'],
                 'status' => 'queued',
             ];
         }
 
+        $queued = count(array_filter($results, static fn (array $r): bool => $r['status'] === 'queued'));
+
         return response()->json([
-            'queued' => count($results),
+            'queued' => $queued,
+            'failed' => count($results) - $queued,
             'documents' => $results,
-        ], 202);
+            // H7 — surface the partial-failure state loudly (R14): a caller
+            // must be able to tell "all queued" (202) from "some writes
+            // failed" (207 Multi-Status).
+        ], $anyFailed ? 207 : 202);
+    }
+
+    /**
+     * Validate + decode a single document into a write-ready descriptor.
+     * Throws ValidationException (422) on any problem so PHASE 1 can reject
+     * the whole batch before any disk write happens (H7).
+     *
+     * @param  array<string, mixed>  $doc
+     * @return array{project_key:string, source_path:string, source_type:string, mime_type:string, bytes:string, stored_path:string, title:?string, metadata:array<string,mixed>}
+     */
+    private function prepareDocument(array $doc, string $defaultProject, string $prefix): array
+    {
+        $projectKey = (string) ($doc['project_key'] ?? $defaultProject);
+
+        try {
+            $sourcePath = KbPath::normalize((string) $doc['source_path']);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['documents' => [$e->getMessage()]]);
+        }
+
+        $mimeType = trim((string) ($doc['mime_type'] ?? 'text/markdown'));
+        $sourceType = SourceType::fromMime($mimeType);
+        if ($sourceType === SourceType::UNKNOWN) {
+            throw ValidationException::withMessages([
+                'documents' => [sprintf(
+                    'Unsupported mime_type "%s" for source_path "%s". Supported: %s.',
+                    $mimeType,
+                    $sourcePath,
+                    implode(', ', SourceType::supportedMimes()),
+                )],
+            ]);
+        }
+
+        // Binary MIMEs arrive base64-encoded; decode-or-422 before writing.
+        $bytes = (string) $doc['content'];
+        if ($sourceType->isBinary()) {
+            $decoded = base64_decode($bytes, true);
+            if ($decoded === false) {
+                throw ValidationException::withMessages([
+                    'documents' => [sprintf(
+                        'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
+                        $mimeType,
+                        $sourcePath,
+                    )],
+                ]);
+            }
+            $bytes = $decoded;
+        }
+
+        return [
+            'project_key' => $projectKey,
+            'source_path' => $sourcePath,
+            'source_type' => $sourceType->value,
+            'mime_type' => $mimeType,
+            'bytes' => $bytes,
+            // L1 — normalise the prefixed stored path through KbPath instead
+            // of a hand-rolled ltrim, so a trailing-slash prefix can't yield
+            // a double-slash path that diverges from the delete flow.
+            'stored_path' => $prefix === ''
+                ? $sourcePath
+                : KbPath::normalize($prefix.'/'.$sourcePath),
+            'title' => $doc['title'] ?? null,
+            'metadata' => is_array($doc['metadata'] ?? null) ? $doc['metadata'] : [],
+        ];
     }
 }

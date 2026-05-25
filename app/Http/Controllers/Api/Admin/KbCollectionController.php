@@ -34,8 +34,21 @@ final class KbCollectionController extends Controller
             });
         }
 
+        // M7 (R3) — paginate instead of ->get() so a tenant with many
+        // collections can't balloon memory. `data` stays an array of the
+        // current page; `meta` is additive (R27).
+        $paginator = $query->paginate(50);
+
         return response()->json([
-            'data' => $query->get()->map(fn (KbCollection $c): array => $this->serialize($c))->all(),
+            'data' => collect($paginator->items())
+                ->map(fn (KbCollection $c): array => $this->serialize($c))
+                ->all(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+            ],
         ]);
     }
 
