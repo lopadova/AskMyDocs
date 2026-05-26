@@ -102,7 +102,16 @@ final class TenantReadScopeTest extends TestCase
         $violations = [];
 
         foreach ($this->phpFiles($roots) as $file) {
-            $code = (string) file_get_contents($file);
+            // Strip // # and /* */ comments BEFORE any detection (Copilot:
+            // a `forTenant(` or `'tenant_id' =>` marker that lived only in a
+            // comment used to falsely satisfy the scope check, and a
+            // `Model::query(` in a commented-out line used to falsely trip
+            // the read check). Scanning comment-free code makes both the
+            // read pattern AND the scope markers reflect real executable
+            // statements only. String literals are intentionally KEPT — the
+            // `'tenant_id' =>` write-stamp marker and `where('tenant_id'`
+            // read filter are themselves string literals.
+            $code = $this->stripComments((string) file_get_contents($file));
             if (preg_match($readPattern, $code) !== 1) {
                 continue;
             }
@@ -113,7 +122,7 @@ final class TenantReadScopeTest extends TestCase
             //    writes (create/insert/updateOrCreate match keys), e.g. the
             //    MCP tool-call audit + token-level provenance inserts, where
             //    the matched `::query()->create/insert` is a write, not a
-            //    read. A bare `'tenant_id'` substring (comment) is NOT enough.
+            //    read.
             $scoped = str_contains($code, 'forTenant(')
                 || preg_match('/where\(\s*[\'"]tenant_id[\'"]/', $code) === 1
                 || preg_match('/[\'"]tenant_id[\'"]\s*=>/', $code) === 1;
@@ -162,6 +171,33 @@ final class TenantReadScopeTest extends TestCase
             ."Missing from the list: ".implode(', ', array_diff($actual, $declared)).'. '
             .'Extra in the list: '.implode(', ', array_diff($declared, $actual)).'.',
         );
+    }
+
+    /**
+     * Return the source with all comments (// # /* *​/ and doc-blocks)
+     * removed, so the read + scope-marker detection only sees executable
+     * code. String literals are preserved on purpose.
+     */
+    private function stripComments(string $code): string
+    {
+        $out = '';
+        foreach (token_get_all($code) as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                    // Keep a newline so line-based structure (and the `m`
+                    // regex anchors elsewhere) is not disturbed.
+                    $out .= "\n";
+
+                    continue;
+                }
+                $out .= $token[1];
+
+                continue;
+            }
+            $out .= $token;
+        }
+
+        return $out;
     }
 
     /**

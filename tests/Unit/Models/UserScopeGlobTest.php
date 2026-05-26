@@ -9,8 +9,12 @@ use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 
 /**
- * R19 / H4 — scope_allowlist folder globs must use FNM_PATHNAME so a
- * one-level glob does not match arbitrarily deep paths.
+ * R19 / H4 — scope_allowlist folder globs must enforce the
+ * `*`-doesn't-cross-`/` invariant so a one-level glob does not match
+ * arbitrarily deep paths, while `**` DOES cross segments. The matching is
+ * delegated to KbPath::matchesAnyGlob (a glob→PCRE compiler); raw
+ * fnmatch(FNM_PATHNAME) enforced the first invariant but could not honour
+ * `**`, which is why the implementation no longer uses it directly.
  *
  * Drives the private matchesAnyGlob() via reflection — it is the exact
  * unit under fix, and exercising it directly avoids standing up the full
