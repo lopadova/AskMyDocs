@@ -77,6 +77,25 @@ class StreamChunkTest extends TestCase
         $this->assertSame('#doc-7', $chunk->payload['url']);
     }
 
+    public function test_source_url_factory_includes_provider_metadata_when_non_empty(): void
+    {
+        // v8.1 P2 — citation provenance rides on the SDK-standard
+        // `providerMetadata` field so streamed chips match the sync channel.
+        $meta = ['origin' => 'rejected', 'headings' => ['Decision'], 'chunks_used' => 2, 'source_type' => 'markdown'];
+        $chunk = StreamChunk::sourceUrl('doc-9', '/kb/9', 'ADR', $meta);
+
+        $this->assertSame($meta, $chunk->payload['providerMetadata']);
+    }
+
+    public function test_source_url_factory_omits_provider_metadata_when_empty(): void
+    {
+        // Empty provenance → keep the wire compact (and legacy frames
+        // without the field still coerce to defaults on the FE).
+        $chunk = StreamChunk::sourceUrl('doc-7', '#doc-7', 'T');
+
+        $this->assertArrayNotHasKey('providerMetadata', $chunk->payload);
+    }
+
     public function test_data_confidence_factory_wraps_payload_under_data_key(): void
     {
         $chunk = StreamChunk::dataConfidence(82, 'high');
