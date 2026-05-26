@@ -686,6 +686,58 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Structured chat logging | DB driver (extensible to BigQuery / CloudWatch); `session_id` / `user_id` / `question` / `answer` / `project_key` / `ai_provider` / `ai_model` / `chunks_count` / `sources` / `prompt_tokens` / `completion_tokens` / `total_tokens` / `latency_ms` / `client_ip` / `user_agent` / `extra` columns; try/catch — never propagates failures | v1.0 |
 | 39 codified review rules (R1–R39) | Distilled from ~110+ live Copilot findings across PR #4–#142; mirrored in `CLAUDE.md` + `.github/copilot-instructions.md` + per-rule `.claude/skills/<rule>/`; auto-loaded by Claude Code when trigger conditions match; pre-push agent at `.claude/agents/copilot-review-anticipator.md` | v3.0 |
 | ADR set (ADR 0001 → 0010) | Architectural decisions records: 0001 ingestion path, 0002 storage agnostic, 0003 human-gated promotion, 0004 v4.2 sister-package integration, 0005 React 19 host bump + iframe→cross-mount deferral, 0006 nightly eval cron, 0007 adversarial nightly opt-in, 0008 v4.5 universal connectors + source-aware ingestion + modern chat surface, 0009 v4.6 connector package extraction, 0010 v4.7 tabular review + workflows architecture | v3.0 |
+| Retrieval-quality benchmark (`kb:benchmark`) | A 5-doc labelled corpus (markdown + PDF + DOCX, graph-linked + rejected-approach) under `resources/benchmark/` + 14 gold queries scored on **nDCG@k / MRR / precision@k / citation-precision / graph-recall / rejected-recall / refusal-accuracy** via `RetrievalQualityMetrics`. `--stub` runs anywhere (SQLite + PHP-cosine, no key); LIVE uses real embeddings + pgvector. Dated JSON+MD scorecards in `storage/app/kb-benchmark/`. The deterministic `RetrievalPipelineScenarioTest` runs the FULL pipeline (ingest → per-type chunk → embed → graph → search → citations → refusal) in CI with **no mocks** — closing the gap that let search bugs ship green | v8.2 |
+
+---
+
+#### Running the retrieval-quality benchmark
+
+The benchmark measures the *real* quality of search / vector / rerank /
+citations / graph / rejected-injection / refusal end-to-end, and produces a
+dated scorecard you can re-run after any retrieval change (or at a milestone
+close) to catch regressions.
+
+**1. Deterministic (no key, runs anywhere — CI-safe):**
+
+```bash
+php artisan kb:benchmark --stub
+# SQLite + PHP-cosine + a deterministic embedder. Exercises the full pipeline
+# wiring + lexical ranking. (Also runs as a PHPUnit feature test:
+# vendor/bin/phpunit tests/Feature/Benchmark/)
+```
+
+**2. LIVE (real embeddings + LLM — true semantic quality):**
+
+```bash
+# a) Postgres + pgvector. A throwaway durable container (host port 5433,
+#    leaves your local PostgreSQL untouched):
+docker run -d --name askmydocs-pgvector --restart unless-stopped \
+  -e POSTGRES_DB=askmydocs -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=aaaa \
+  -p 5433:5432 -v askmydocs-pgvector-data:/var/lib/postgresql/data \
+  pgvector/pgvector:pg16
+# later just: docker start askmydocs-pgvector  /  docker stop askmydocs-pgvector
+
+# b) Point the app at it + an embeddings provider, then migrate + run:
+DB_PORT=5433 php artisan migrate --force
+DB_PORT=5433 php artisan kb:benchmark        # uses AI_EMBEDDINGS_PROVIDER (e.g. openrouter)
+```
+
+`.env` for LIVE: `AI_EMBEDDINGS_PROVIDER=openrouter` (or `openai`) with the
+key set — **Anthropic has no embeddings API**, so it can drive chat
+(`AI_PROVIDER`) but not the vector side. `text-embedding-3-small` is 1536-dim
+= the stock pgvector column (no migration).
+
+**Reading the scorecard.** The command prints a per-query table + an
+aggregate block and writes `storage/app/kb-benchmark/<timestamp>.{json,md}`.
+Enterprise pass thresholds (gate with `--gate`, exit non-zero on miss):
+`nDCG@5 ≥ 0.80`, `MRR ≥ 0.85`, `citation-precision ≥ 0.90`,
+`refusal-accuracy ≥ 0.95` (tunable via `kb.benchmark.*`).
+
+**Milestone ritual.** Run `php artisan kb:benchmark --stub` (deterministic)
+at the close of any retrieval-touching milestone, and the LIVE run before
+shipping a retrieval change — if a knob (rerank weights,
+`KB_RERANK_NORMALIZE_SCORES`, `kb.refusal.*`, `kb.mentions.mode`,
+`kb.diversification.*`) moves the scorecard, you'll see it.
 
 ---
 
