@@ -99,8 +99,11 @@ class KbSearchService
 
         // T3.5 — vector_score is set on EVERY primary chunk by search();
         // these min/max are retrieval-quality signals the dashboard uses
-        // to flag "everything just barely passed" outlier queries.
-        $primaryScores = $primary->map(fn ($c) => (float) ($c->vector_score ?? 0));
+        // to flag "everything just barely passed" outlier queries. v8.1 —
+        // read via data_get: search() returns ARRAYS, so the prior
+        // `$c->vector_score` object read collapsed every score to 0 and the
+        // dashboard's min/max score range was silently always 0..0.
+        $primaryScores = $primary->map(fn ($c) => (float) (data_get($c, 'vector_score') ?? 0));
         $minScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->min();
         $maxScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->max();
 

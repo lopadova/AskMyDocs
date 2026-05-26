@@ -13,6 +13,7 @@ use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
@@ -105,16 +106,13 @@ class MessageController extends Controller
         );
 
         // 3b. T3.3 — deterministic refusal short-circuit. Mirrors the
-        // KbChatController behaviour for the conversation flow: if the
-        // retrieved chunks don't pass the similarity floor, save a
-        // refusal assistant message and return WITHOUT calling the LLM.
-        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
-        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
-        $grounded = $chunks->filter(
-            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
-        );
-
-        if ($grounded->count() < $refusalMinChunks) {
+        // KbChatController behaviour for the conversation flow: if too few
+        // retrieved chunks pass the grounding gate, save a refusal assistant
+        // message and return WITHOUT calling the LLM. v8.1 — shared
+        // RetrievalGrounding gate: shape-agnostic (search() returns ARRAYS;
+        // the old `$c->vector_score` object read collapsed to 0 and disabled
+        // this gate in production) + grounds on rerank_score OR vector floor.
+        if (RetrievalGrounding::shouldRefuse($chunks)) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,

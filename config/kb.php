@@ -307,10 +307,24 @@ return [
     | (0.30) — the search step over-retrieves, but the refusal step
     | requires evidence strong enough to stake an answer on.
     |
+    | v8.1 — the gate now considers the FINAL ranking signal too. A chunk
+    | grounds an answer when its `rerank_score` clears `min_rerank_score`
+    | OR its raw `vector_score` clears `min_chunk_similarity`. The rerank
+    | floor admits lexically/heading-strong matches the reranker promotes
+    | even when their raw vector similarity is modest — they used to be
+    | wrongly refused. The default 0.25 is calibrated to a vector-only chunk
+    | sitting AT the 0.45 similarity floor (vector_weight 0.55 × 0.45 ≈
+    | 0.247): a pure-vector chunk BELOW the floor still refuses, but a chunk
+    | whose rerank score is lifted above 0.25 by keyword/heading/canonical
+    | signal grounds even on a modest vector score. Lower it to refuse less,
+    | raise it to refuse more. The OR keeps the well-understood semantic
+    | floor as a safety net. See {@see App\Services\Kb\Retrieval\RetrievalGrounding}.
+    |
     */
 
     'refusal' => [
         'min_chunk_similarity' => (float) env('KB_REFUSAL_MIN_SIMILARITY', 0.45),
+        'min_rerank_score' => (float) env('KB_REFUSAL_MIN_RERANK_SCORE', 0.25),
         'min_chunks_required' => (int) env('KB_REFUSAL_MIN_CHUNKS', 1),
     ],
 

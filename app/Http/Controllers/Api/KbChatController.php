@@ -10,6 +10,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\CounterfactualService;
+use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -71,20 +72,15 @@ class KbChatController extends Controller
         );
 
         // T3.3 — deterministic refusal short-circuit. If too few primary
-        // chunks pass the refusal threshold, we don't call the LLM at all
-        // and return a refusal payload that the FE can render distinctly
-        // (see ConfidenceBadge / RefusalNotice — T3.6/T3.7, deferred).
-        // Threshold is intentionally above `default_min_similarity` so
-        // the search step over-retrieves but only confident chunks
-        // qualify for grounding.
-        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
-        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
-
-        $grounded = $result->primary->filter(
-            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
-        );
-
-        if ($grounded->count() < $refusalMinChunks) {
+        // chunks pass the grounding gate, we don't call the LLM at all and
+        // return a refusal payload the FE renders distinctly (ConfidenceBadge
+        // / RefusalNotice). v8.1 — the gate lives in RetrievalGrounding so
+        // all three chat surfaces decide identically, reads the score
+        // shape-agnostically (search() returns ARRAYS — object syntax read
+        // null → 0 and silently disabled this gate in production), and
+        // grounds on the FINAL rerank_score OR the vector floor so
+        // lexically-strong matches aren't wrongly refused.
+        if (RetrievalGrounding::shouldRefuse($result->primary)) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
