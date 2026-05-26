@@ -61,34 +61,39 @@ final class KbChatRequest extends FormRequest
             'project_key' => ['nullable', 'string', 'max:120'],
 
             // New rich-filters payload (v3.0+). Every dimension is optional.
+            // Each array carries a `max:N` cardinality cap (R3 + DoS guard):
+            // without it a caller could post a 100k-element doc_ids array and
+            // blow up the `whereIn (...)` IN-list / request memory. doc_ids
+            // gets a higher cap (collection-style bulk pins); the taxonomy
+            // dimensions are small by nature.
             'filters' => ['nullable', 'array'],
 
-            'filters.project_keys' => ['nullable', 'array'],
+            'filters.project_keys' => ['nullable', 'array', 'max:50'],
             'filters.project_keys.*' => ['string', 'max:120'],
 
-            'filters.tag_slugs' => ['nullable', 'array'],
+            'filters.tag_slugs' => ['nullable', 'array', 'max:50'],
             'filters.tag_slugs.*' => ['string', 'max:120'],
 
-            'filters.source_types' => ['nullable', 'array'],
+            'filters.source_types' => ['nullable', 'array', 'max:50'],
             'filters.source_types.*' => ['string', $sourceTypeRule],
 
-            'filters.canonical_types' => ['nullable', 'array'],
+            'filters.canonical_types' => ['nullable', 'array', 'max:50'],
             'filters.canonical_types.*' => ['string', $canonicalTypeRule],
 
-            'filters.connector_types' => ['nullable', 'array'],
+            'filters.connector_types' => ['nullable', 'array', 'max:50'],
             'filters.connector_types.*' => ['string', 'max:120'],
 
-            'filters.doc_ids' => ['nullable', 'array'],
+            'filters.doc_ids' => ['nullable', 'array', 'max:1000'],
             'filters.doc_ids.*' => ['integer', 'min:1'],
             'filters.collection_id' => ['nullable', 'integer', 'min:1'],
 
-            'filters.folder_globs' => ['nullable', 'array'],
+            'filters.folder_globs' => ['nullable', 'array', 'max:50'],
             'filters.folder_globs.*' => ['string', 'max:255'],
 
             'filters.date_from' => ['nullable', 'date'],
             'filters.date_to' => ['nullable', 'date', 'after_or_equal:filters.date_from'],
 
-            'filters.languages' => ['nullable', 'array'],
+            'filters.languages' => ['nullable', 'array', 'max:50'],
             'filters.languages.*' => ['string', 'size:2'],
         ];
     }

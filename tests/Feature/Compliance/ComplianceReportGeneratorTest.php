@@ -42,6 +42,13 @@ final class ComplianceReportGeneratorTest extends TestCase
         $this->assertSame(2, count($report->payload_json['delta']['added']));
         $this->assertSame(1, count($report->payload_json['delta']['removed']));
         $this->assertSame(1, count($report->payload_json['delta']['superseded']));
+        // Audit#4 — `promoted` derives from the kb_canonical_audit
+        // 'promoted' event (a real is_canonical false→true flip), NOT
+        // `is_canonical=true AND updated_at-in-period`. Only doc-1 has a
+        // 'promoted' audit row; doc-2 + doc-3 are canonical AND updated
+        // in-period but must NOT be counted as promoted.
+        $this->assertSame(1, count($report->payload_json['delta']['promoted']));
+        $this->assertSame('doc-1', $report->payload_json['delta']['promoted'][0]['doc_id']);
         $this->assertNotEmpty($report->payload_json['delta']['canonical_diff_snippets']);
         $this->assertSame(3, count($report->payload_json['audit']['kb_canonical_audit']));
         $this->assertSame(2, count($report->payload_json['audit']['admin_command_audits']));

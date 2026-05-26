@@ -59,6 +59,23 @@ leaks — all **10 MCP tools** now `forTenant`-scope their reads;
 (covers the chat message/stream controllers); `KbValidateCanonicalCommand`
 scoped.
 
+**Fourth audit (retrieval/embedding/compliance):** fixed an embedding-cache
+crash (duplicate text in one batch hit the composite UNIQUE — now deduped +
+`firstOrCreate`); added `max:N` cardinality caps to every `KbChatRequest`
+filter array (DoS guard); corrected the compliance `promoted` delta to
+derive from the `kb_canonical_audit` `promoted` event instead of `updated_at`
+(was over-counting any touched canonical doc); refreshed two stale
+notification-event docblocks. A backslash-`ESCAPE`-clause guard
+(`NoBackslashLikeEscapeTest`) was also added after the HY093 fix below.
+Larger search-quality items (FTS multilang, hybrid score normalisation,
+connector_types filter, runner-up reasons) are tracked in the roadmap.
+
+**LIKE ESCAPE char (Postgres+PDO HY093):** the R19 escaping shipped with a
+backslash `ESCAPE` clause, which crashes on PostgreSQL via PDO (the parser
+swallows the next `?` placeholder → `SQLSTATE[HY093]`) while passing on
+SQLite. Switched `LikeEscaper` to a `~` escape char (`ESCAPE_SQL` constant)
+across all LIKE sites; `NoBackslashLikeEscapeTest` enforces it.
+
 **Tenant-scoped uniques (R31):** migration `2026_05_26_000001` rebuilds
 the `kb_tags` and `project_memberships` composite uniques to start with
 `tenant_id` (the FK-entangled `kb_nodes`/`kb_edges` rebuild stays deferred

@@ -78,6 +78,33 @@ security PR, not this roadmap (same R30 theme):
 
 ---
 
+## 🔎 Retrieval & search quality (audit round 4)
+
+Round-4 surfaced search-engine depth gaps. The **correctness/crash/security**
+items were fixed in v8.0.3 (embedding-cache batch dedupe + `firstOrCreate`;
+`KbChatRequest` filter `max:N` caps; compliance `promoted` now derived from
+the `kb_canonical_audit` `promoted` event, not `updated_at`; stale
+notification-event docblocks refreshed). The items below are larger
+search-quality / perf investments for a future cycle.
+
+| # | Item | Current state | Scope | Effort |
+|---|------|---------------|-------|--------|
+| R23 | **`connector_types` retrieval filter** | accepted + validated in `KbChatRequest` but `KbSearchService::applyFilters` applies NO clause (silent no-op; deferred "until a `connector_type` column exists" — currently in `metadata.connector` JSON) | Add a `connector_type` column + backfill, then wire the filter; until then reject or surface "unsupported" in `meta` | M |
+| R24 | **Per-document FTS language** | `KbSearchService` feeds a single `config('kb.hybrid_search.fts_language')` (italian default) to `to_tsvector`/`plainto_tsquery`; the `knowledge_documents.language` column is ignored → wrong stemming on mixed IT/EN corpora | Per-row tsvector language (generated column) + per-query language detection | L |
+| R25 | **Hybrid score normalisation before rerank** | after RRF merge, `vector_score` is set to the RRF magnitude (~0.016) for FTS-only hits, then re-enters the reranker with cosine-tuned weights (`0.6·vec`) → FTS-only hits suppressed | Min-max / rank-normalise scores into 0–1 before the reranker fusion | M |
+| R26 | **Runner-up demotion reason granularity** | every runner-up gets `reason='not_in_top_k'` (documented MVP); no `below_rerank_threshold` / `demoted_by_status_penalty` | Compute the real demotion cause per runner-up for search-auditing UX | M |
+| R27 | **MarkdownChunker oversize-paragraph split** | a single paragraph over the hard cap is emitted whole; the embedding provider then silently truncates it | Sub-split on sentence/char boundary when a paragraph exceeds the cap | S |
+| R28 | **DocumentIngestor batched chunk upsert** | `updateOrCreate` per chunk in a loop → N×2 round-trips on large docs (correct but slow) | Batched upsert keyed on `(knowledge_document_id, chunk_hash)` | M |
+| R29 | **Compliance Reports FE hardening** | `runVerify` has no try/catch (R14 silent failure); the tenant/quarter/year controls lack `<label>`/`aria-label` (R15) | try/catch → error state per row; accessible labels; bundle with the R3 compliance-FE rework | S |
+
+> Round-4 already-fixed-in-v8.0.3: embedding-cache batch dedupe (crash),
+> filter `max:N` caps (DoS), compliance `promoted` semantics, notification
+> docblock drift. Already-fixed-earlier-in-PR: chat-filter-preset +
+> Conversation tenant scoping, GraphExpander/RejectedApproachInjector.
+> New tests added: duplicate-text embedding batch; compliance promoted-delta.
+
+---
+
 ## Corrections (reported but overstated)
 
 - **"ActivityLog package not installed"** — FALSE. `spatie/laravel-activitylog`

@@ -7,7 +7,7 @@ namespace App\Notifications\Events;
 use App\Models\NotificationEvent;
 
 /**
- * v8.0/W1.2 — placeholder for v8.0/W4 decision-debt heatmap event.
+ * v8.0 decision-debt heatmap event.
  *
  * Dual-mode: depending on tenant policy the dispatcher can either
  * (a) fan out one row per DPO / editor recipient, or
@@ -15,9 +15,9 @@ use App\Models\NotificationEvent;
  * See ADR 0012 + `NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD`
  * docblock for the dual-mode contract.
  *
- * W1.2 only registers the event class so the dispatcher map is
- * complete; the publisher wiring lands in v8.0/W4 alongside the
- * `kb:health-recompute` cron.
+ * Publisher is LIVE: `KbHealthRecomputeCommand` fires this event when a
+ * canonical doc crosses the decision-debt threshold (the `kb:health-recompute`
+ * cron, `--emit-events`). No longer a placeholder.
  */
 final class KbDecisionDebtThreshold extends BaseNotificationEvent
 {

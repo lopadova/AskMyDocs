@@ -114,11 +114,30 @@ final class ComplianceReportGenerator
 
     private function promotedDocs(string $tenantId, Carbon $start, Carbon $end): array
     {
+        // Spec (PLAN-v8.0 §promoted): a doc is "promoted" when is_canonical
+        // flips false→true in the period. The previous
+        // `is_canonical=true AND updated_at-in-period` over-counted EVERY
+        // canonical doc merely touched in the window (a title fix, a
+        // re-ingest, a frontmatter tweak). The actual flip is recorded in
+        // kb_canonical_audit as event_type='promoted', so we derive the
+        // promoted set from that audit trail.
+        $promotedDocIds = DB::table('kb_canonical_audit')
+            ->where('tenant_id', $tenantId)
+            ->where('event_type', 'promoted')
+            ->whereBetween('created_at', [$start, $end])
+            ->whereNotNull('doc_id')
+            ->distinct()
+            ->pluck('doc_id')
+            ->all();
+
+        if ($promotedDocIds === []) {
+            return [];
+        }
+
         return KnowledgeDocument::query()
             ->withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
-            ->where('is_canonical', true)
-            ->whereBetween('updated_at', [$start, $end])
+            ->whereIn('doc_id', $promotedDocIds)
             ->orderBy('id')
             ->get(['id', 'doc_id', 'slug', 'project_key'])
             ->map(fn ($row): array => $row->toArray())
