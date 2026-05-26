@@ -136,7 +136,7 @@ class DocumentDeleter
             // cascade-delete unintended documents.
             $escapedBase = LikeEscaper::escape($base);
             $query->where(function ($q) use ($base, $escapedBase) {
-                $q->whereRaw("source_path LIKE ? ESCAPE '\\'", [$escapedBase.'/%'])
+                $q->whereRaw('source_path LIKE ? '.LikeEscaper::ESCAPE_SQL, [$escapedBase.'/%'])
                     ->orWhere('source_path', $base);
             });
         }

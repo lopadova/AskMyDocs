@@ -50,12 +50,13 @@ class UserController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            // R19 — escape ALL LIKE meta-chars (%, _, \) and pair with an
-            // explicit ESCAPE clause (SQLite has no default escape char).
+            // R19 — escape ALL LIKE meta-chars (%, _, ~) + explicit ESCAPE.
+            // The escape char is `~`, not `\`: a backslash ESCAPE clause
+            // triggers SQLSTATE[HY093] on Postgres+PDO (see LikeEscaper).
             $like = LikeEscaper::contains(mb_strtolower($search));
             $query->where(function ($q) use ($like) {
-                $q->whereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$like])
-                    ->orWhereRaw("LOWER(email) LIKE ? ESCAPE '\\'", [$like]);
+                $q->whereRaw('LOWER(name) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
+                    ->orWhereRaw('LOWER(email) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
             });
         }
 

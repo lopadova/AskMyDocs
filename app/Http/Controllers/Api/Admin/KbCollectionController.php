@@ -26,11 +26,12 @@ final class KbCollectionController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            // R19 — escape all LIKE meta-chars (%, _, \) + explicit ESCAPE.
+            // R19 — escape all LIKE meta-chars (%, _, ~) + explicit ESCAPE.
+            // `~` escape char, not `\` (Postgres+PDO HY093 — see LikeEscaper).
             $like = LikeEscaper::contains($search);
             $query->where(function ($q) use ($like): void {
-                $q->whereRaw("name LIKE ? ESCAPE '\\'", [$like])
-                    ->orWhereRaw("slug LIKE ? ESCAPE '\\'", [$like]);
+                $q->whereRaw('name LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
+                    ->orWhereRaw('slug LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
             });
         }
 
