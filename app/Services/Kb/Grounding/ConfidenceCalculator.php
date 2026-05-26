@@ -54,11 +54,13 @@ final class ConfidenceCalculator
     private const WEIGHT_DENSITY = 0.20;
 
     /**
-     * @param  Collection<int, object|array{vector_score: float, knowledge_document_id: int}>  $primaryChunks
+     * @param  Collection<int, object|array{vector_score: float}>  $primaryChunks
      *   Ordered ranked-and-thresholded primary chunks. Each entry must
-     *   expose `vector_score` (0..1) and `knowledge_document_id` (for
-     *   diversity counting). Object or array — both shapes are accepted
-     *   so callers don't need to materialize a DTO just for the score.
+     *   expose `vector_score` (0..1) and a document identity for diversity
+     *   counting — read shape-agnostically (data_get) from the production
+     *   nested `document.id`, falling back to the legacy flat
+     *   `knowledge_document_id`, then `chunk_id`. Object or array — both
+     *   shapes are accepted so callers don't need to materialize a DTO.
      * @param  float  $minThreshold
      *   The min similarity that the chunks had to pass (KbSearchService
      *   threshold, typically 0.45). Used to compute the safety margin.

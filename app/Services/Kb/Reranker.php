@@ -206,7 +206,15 @@ class Reranker
 
         return $ranked
             ->filter(function (array $chunk) use (&$perDoc, $maxPerDoc): bool {
-                $docKey = (string) (data_get($chunk, 'document.id') ?? data_get($chunk, 'chunk_id'));
+                // Document-scoped key: prefer document.id, then source_path
+                // (still doc-scoped) so chunks of the same doc cap together
+                // even when the id is absent; chunk_id is only a last resort
+                // (chunk-scoped → effectively uncapped for that lone chunk).
+                $docKey = (string) (
+                    data_get($chunk, 'document.id')
+                    ?? data_get($chunk, 'document.source_path')
+                    ?? data_get($chunk, 'chunk_id')
+                );
                 $perDoc[$docKey] = ($perDoc[$docKey] ?? 0) + 1;
 
                 return $perDoc[$docKey] <= $maxPerDoc;
