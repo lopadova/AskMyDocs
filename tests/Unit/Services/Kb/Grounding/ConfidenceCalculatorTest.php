@@ -138,6 +138,43 @@ final class ConfidenceCalculatorTest extends TestCase
         $this->assertLessThan($threeDocs, $oneDoc);
     }
 
+    public function test_diversity_reads_production_array_shape_nested_document_id(): void
+    {
+        // R13/R16 — the chunks KbSearchService::search() emits are ARRAYS
+        // with a NESTED `document.id`, NOT objects with a flat
+        // `knowledge_document_id`. The old read (`knowledge_document_id`
+        // via fieldOf, no dot resolution) returned 0 for every production
+        // chunk → diversity collapsed to ~1/n on every real query. This
+        // pins the fix against the real shape: 3 distinct nested doc ids
+        // must score strictly higher than the same 3 chunks all sharing a
+        // doc id.
+        $calc = new ConfidenceCalculator();
+
+        $oneDoc = $calc->compute(
+            primaryChunks: collect([
+                ['vector_score' => 0.85, 'chunk_id' => 1, 'document' => ['id' => 7]],
+                ['vector_score' => 0.85, 'chunk_id' => 2, 'document' => ['id' => 7]],
+                ['vector_score' => 0.85, 'chunk_id' => 3, 'document' => ['id' => 7]],
+            ]),
+            minThreshold: 0.45,
+            answerWords: 100,
+            citationsCount: 1,
+        );
+
+        $threeDocs = $calc->compute(
+            primaryChunks: collect([
+                ['vector_score' => 0.85, 'chunk_id' => 1, 'document' => ['id' => 7]],
+                ['vector_score' => 0.85, 'chunk_id' => 2, 'document' => ['id' => 8]],
+                ['vector_score' => 0.85, 'chunk_id' => 3, 'document' => ['id' => 9]],
+            ]),
+            minThreshold: 0.45,
+            answerWords: 100,
+            citationsCount: 1,
+        );
+
+        $this->assertLessThan($threeDocs, $oneDoc);
+    }
+
     public function test_citation_density_caps_at_one(): void
     {
         // 5 citations on a 100-word (1 segment) answer → density would

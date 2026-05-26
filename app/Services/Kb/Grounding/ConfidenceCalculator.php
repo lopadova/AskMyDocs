@@ -83,7 +83,18 @@ final class ConfidenceCalculator
         }
 
         $scores = $primaryChunks->map(fn ($c) => (float) $this->fieldOf($c, 'vector_score'));
-        $docIds = $primaryChunks->map(fn ($c) => (int) $this->fieldOf($c, 'knowledge_document_id'));
+        // v8.1 — read the doc id from the REAL chunk shape. search() emits
+        // a nested `document.id` (not a flat `knowledge_document_id`), and
+        // fieldOf() doesn't resolve dot paths, so the old read returned 0
+        // for every chunk → unique()->count() == 1 → diversity collapsed to
+        // ~1/n on every query, silently deflating confidence. data_get
+        // resolves the nested path on arrays AND objects; fall back to the
+        // legacy flat key, then chunk_id so distinct chunks never collapse.
+        $docIds = $primaryChunks->map(fn ($c) => (string) (
+            data_get($c, 'document.id')
+            ?? data_get($c, 'knowledge_document_id')
+            ?? data_get($c, 'chunk_id')
+        ));
 
         $meanSim = $this->clamp01($scores->avg() ?? 0.0);
 

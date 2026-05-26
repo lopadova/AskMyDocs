@@ -156,6 +156,25 @@ return [
         'mode' => env('KB_MENTIONS_MODE', 'boost'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Result diversification (v8.1)
+    |--------------------------------------------------------------------------
+    |
+    | `max_chunks_per_doc` caps how many chunks from a SINGLE document may
+    | occupy the reranked top-k, so one verbose document can't crowd out
+    | every other source (the "6 chunks from the same doc" problem). The cap
+    | is applied AFTER reranking, by descending score, BEFORE the top-k cut —
+    | so a doc keeps its strongest chunks and the freed slots go to the next
+    | best chunks from OTHER docs. 0 disables the cap. Default 3 guarantees
+    | at least ceil(limit / 3) distinct documents in an 8-chunk context.
+    |
+    */
+
+    'diversification' => [
+        'max_chunks_per_doc' => (int) env('KB_DIVERSIFICATION_MAX_CHUNKS_PER_DOC', 3),
+    ],
+
     'chunking' => [
         'target_tokens' => env('KB_CHUNK_TARGET_TOKENS', 512),
         'hard_cap_tokens' => env('KB_CHUNK_HARD_CAP_TOKENS', 1024),

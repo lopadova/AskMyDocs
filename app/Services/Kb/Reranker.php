@@ -117,7 +117,7 @@ class Reranker
         $queryTags = $this->queryTagExtractor->extract($query);
         $preambleSignal = $this->preambleDetector->score($query);
 
-        return $chunks
+        $ranked = $chunks
             ->map(function (array $chunk) use (
                 $queryTokens,
                 $vectorWeight,
@@ -181,7 +181,38 @@ class Reranker
 
                 return $chunk;
             })
-            ->sortByDesc('rerank_score')
+            ->sortByDesc('rerank_score');
+
+        return $this->capPerDocument($ranked, $limit);
+    }
+
+    /**
+     * v8.1 — diversification: keep at most `kb.diversification.max_chunks_per_doc`
+     * chunks from any single document in the top-k, applied by descending
+     * score BEFORE the top-k cut so a verbose document keeps its strongest
+     * chunks while freed slots go to the next best chunks from OTHER docs.
+     * 0 disables the cap (straight top-k).
+     *
+     * @param  Collection<int, array>  $ranked  reranked, score-desc.
+     * @return Collection<int, array>
+     */
+    private function capPerDocument(Collection $ranked, int $limit): Collection
+    {
+        $maxPerDoc = (int) config('kb.diversification.max_chunks_per_doc', 3);
+
+        if ($maxPerDoc <= 0) {
+            return $ranked->take($limit)->values();
+        }
+
+        $perDoc = [];
+
+        return $ranked
+            ->filter(function (array $chunk) use (&$perDoc, $maxPerDoc): bool {
+                $docKey = (string) (data_get($chunk, 'document.id') ?? data_get($chunk, 'chunk_id'));
+                $perDoc[$docKey] = ($perDoc[$docKey] ?? 0) + 1;
+
+                return $perDoc[$docKey] <= $maxPerDoc;
+            })
             ->take($limit)
             ->values();
     }

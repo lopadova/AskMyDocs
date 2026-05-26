@@ -74,6 +74,32 @@ final class RerankerLayer4Test extends TestCase
     }
 
     #[Test]
+    public function doc_cap_limits_chunks_per_document_in_topk(): void
+    {
+        $chunks = collect([
+            ['chunk_id' => 1, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.95, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 2, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.94, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 3, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.93, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 4, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.92, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 5, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.50, 'metadata' => [], 'document' => ['id' => 2]],
+            ['chunk_id' => 6, 'chunk_text' => 'a', 'heading_path' => '', 'vector_score' => 0.49, 'metadata' => [], 'document' => ['id' => 2]],
+        ]);
+
+        // Cap 2 → doc 1 (4 strong chunks) contributes only its top 2; the
+        // freed slots go to doc 2. Total = 2 + 2 = 4 (not 6).
+        config()->set('kb.diversification.max_chunks_per_doc', 2);
+        $capped = (new Reranker())->rerank('cache', $chunks, 8);
+        $this->assertSame(2, $capped->filter(fn ($c) => $c['document']['id'] === 1)->count());
+        $this->assertSame(2, $capped->filter(fn ($c) => $c['document']['id'] === 2)->count());
+        $this->assertSame(4, $capped->count());
+
+        // Cap 0 disables → straight top-k keeps all 6.
+        config()->set('kb.diversification.max_chunks_per_doc', 0);
+        $uncapped = (new Reranker())->rerank('cache', $chunks, 8);
+        $this->assertSame(6, $uncapped->count());
+    }
+
+    #[Test]
     public function mention_boost_floats_mentioned_doc_to_top_without_dropping_others(): void
     {
         config()->set('kb.reranking.mention_boost_weight', 0.50);
