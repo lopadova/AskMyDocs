@@ -110,18 +110,18 @@ final class RetrievalPipelineScenarioTest extends TestCase
     {
         $this->ingestCorpus();
 
-        $this->assertSame(5, KnowledgeDocument::count(), 'all 5 corpus docs ingested');
-        $this->assertSame(3, KnowledgeDocument::where('is_canonical', true)->count(), '3 canonical markdown docs');
+        $this->assertSame(5, KnowledgeDocument::query()->forTenant('default')->count(), 'all 5 corpus docs ingested');
+        $this->assertSame(3, KnowledgeDocument::query()->forTenant('default')->where('is_canonical', true)->count(), '3 canonical markdown docs');
 
         // Per-type chunking: the PDF (2 pages) must produce >= 2 chunks via
         // PdfPageChunker; every chunk must carry a 256-dim embedding.
-        $pdf = KnowledgeDocument::where('source_path', 'incident-runbook.pdf')->firstOrFail();
+        $pdf = KnowledgeDocument::query()->forTenant('default')->where('source_path', 'incident-runbook.pdf')->firstOrFail();
         $this->assertGreaterThanOrEqual(2, $pdf->chunks()->count(), 'PDF split per page');
 
-        $docx = KnowledgeDocument::where('source_path', 'onboarding-guide.docx')->firstOrFail();
+        $docx = KnowledgeDocument::query()->forTenant('default')->where('source_path', 'onboarding-guide.docx')->firstOrFail();
         $this->assertGreaterThanOrEqual(1, $docx->chunks()->count());
 
-        $sample = KnowledgeChunk::query()->firstOrFail();
+        $sample = KnowledgeChunk::query()->forTenant('default')->firstOrFail();
         $this->assertCount(DeterministicEmbedder::DEFAULT_DIM, (array) $sample->embedding, 'embedding persisted');
     }
 
@@ -131,11 +131,11 @@ final class RetrievalPipelineScenarioTest extends TestCase
 
         // Canonical docs become nodes; the [[wikilink]] between the cache
         // decision and its runbook becomes an edge.
-        $this->assertTrue(KbNode::where('node_uid', 'cache-invalidation')->exists());
-        $this->assertTrue(KbNode::where('node_uid', 'cache-purge-runbook')->exists());
+        $this->assertTrue(KbNode::query()->forTenant('default')->where('node_uid', 'cache-invalidation')->exists());
+        $this->assertTrue(KbNode::query()->forTenant('default')->where('node_uid', 'cache-purge-runbook')->exists());
         $this->assertGreaterThanOrEqual(
             1,
-            KbEdge::where(fn ($q) => $q->where('from_node_uid', 'cache-invalidation')->orWhere('to_node_uid', 'cache-invalidation'))->count(),
+            KbEdge::query()->forTenant('default')->where(fn ($q) => $q->where('from_node_uid', 'cache-invalidation')->orWhere('to_node_uid', 'cache-invalidation'))->count(),
             'cache-invalidation is graph-linked',
         );
     }
@@ -198,6 +198,30 @@ final class RetrievalPipelineScenarioTest extends TestCase
         $this->assertArrayHasKey('origin', $first);
         $this->assertArrayHasKey('chunks', $first);
         $this->assertNotEmpty($first['chunks'][0]['evidence_hash'], 'citation carries an evidence hash');
+    }
+
+    public function test_hybrid_search_with_string_config_does_not_typeerror(): void
+    {
+        // Regression (caught by the LIVE benchmark, v8.2 WS5): rrf_k + weights
+        // arrive from env as STRINGS; under strict_types reciprocalRankFusion
+        // (int $k, float ...) TypeErrors. The suite runs hybrid OFF by default
+        // so it never exercised this — pin it with explicit string config.
+        config([
+            'kb.hybrid_search.enabled' => true,
+            'kb.hybrid_search.rrf_k' => '60',
+            'kb.hybrid_search.semantic_weight' => '0.70',
+            'kb.hybrid_search.fts_weight' => '0.30',
+        ]);
+        $this->ingestCorpus();
+
+        $result = app(KbSearchService::class)->searchWithContext(
+            query: 'What TTL and event-based purge does our cache invalidation use?',
+            projectKey: 'benchmark',
+            limit: 5,
+            minSimilarity: 0.05,
+        );
+
+        $this->assertGreaterThan(0, $result->primary->count(), 'hybrid search returns results without a TypeError');
     }
 
     public function test_refusal_gate_refuses_a_query_with_no_grounding_document(): void

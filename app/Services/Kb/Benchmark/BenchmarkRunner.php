@@ -152,7 +152,11 @@ final class BenchmarkRunner
             'precision' => $expectRefusal ? null : round(Metrics::precisionAtK($rankedDocKeys, $relevantKeys, $k), 4),
             'rr' => $expectRefusal ? null : round(Metrics::reciprocalRank($rankedDocKeys, $relevantKeys), 4),
             'citation_ok' => $expectCitation === null ? null : in_array($expectCitation, $citationKeys, true),
-            'related_hit' => $expectRelated === [] ? null : count(array_intersect($expectRelated, $expandedKeys)),
+            // Related context counts whether it surfaced in primary OR via
+            // graph expansion — what matters is that the LLM SAW it. (With a
+            // small corpus the partner is often already in primary, so
+            // expansion correctly doesn't duplicate it.)
+            'related_hit' => $expectRelated === [] ? null : count(array_intersect($expectRelated, array_merge($rankedDocKeys, $expandedKeys))),
             'related_expected' => count($expectRelated),
             'rejected_hit' => $expectRejected === [] ? null : count(array_intersect($expectRejected, $rejectedKeys)),
             'rejected_expected' => count($expectRejected),

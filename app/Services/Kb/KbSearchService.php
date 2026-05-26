@@ -405,13 +405,17 @@ class KbSearchService
                 $effectiveFilters,
             );
 
-            // Merge via Reciprocal Rank Fusion (RRF)
+            // Merge via Reciprocal Rank Fusion (RRF). Cast the config values:
+            // env() yields STRINGS ("60", "0.70"), which under strict_types
+            // are a TypeError against the int/float params. Tests never hit
+            // this (hybrid is off by default) — the live benchmark with
+            // hybrid ON surfaced it.
             $semanticChunks = $this->reciprocalRankFusion(
                 $semanticChunks,
                 $ftsChunks,
-                config('kb.hybrid_search.rrf_k', 60),
-                config('kb.hybrid_search.semantic_weight', 0.7),
-                config('kb.hybrid_search.fts_weight', 0.3),
+                (int) config('kb.hybrid_search.rrf_k', 60),
+                (float) config('kb.hybrid_search.semantic_weight', 0.7),
+                (float) config('kb.hybrid_search.fts_weight', 0.3),
             );
         }
 
