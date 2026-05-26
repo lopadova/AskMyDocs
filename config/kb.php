@@ -185,6 +185,38 @@ return [
         'max_chunks_per_doc' => (int) env('KB_DIVERSIFICATION_MAX_CHUNKS_PER_DOC', 3),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Vector-search internals (v8.2)
+    |--------------------------------------------------------------------------
+    |
+    | `php_cosine_prefetch_cap` bounds how many candidate chunks the non-pgsql
+    | (SQLite test/benchmark) PHP-cosine fallback pre-fetches before scoring,
+    | keeping memory sane. Production (pgsql + native pgvector) ignores it.
+    |
+    */
+
+    'search' => [
+        'php_cosine_prefetch_cap' => (int) env('KB_SEARCH_PHP_COSINE_PREFETCH_CAP', 2000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retrieval-quality benchmark thresholds (v8.2)
+    |--------------------------------------------------------------------------
+    |
+    | Enterprise pass thresholds for `kb:benchmark --gate`. The aggregate
+    | scorecard must meet ALL of these for the gate to pass.
+    |
+    */
+
+    'benchmark' => [
+        'threshold_ndcg' => (float) env('KB_BENCHMARK_THRESHOLD_NDCG', 0.80),
+        'threshold_mrr' => (float) env('KB_BENCHMARK_THRESHOLD_MRR', 0.85),
+        'threshold_citation_precision' => (float) env('KB_BENCHMARK_THRESHOLD_CITATION_PRECISION', 0.90),
+        'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
+    ],
+
     'chunking' => [
         'target_tokens' => env('KB_CHUNK_TARGET_TOKENS', 512),
         'hard_cap_tokens' => env('KB_CHUNK_HARD_CAP_TOKENS', 1024),

@@ -114,7 +114,8 @@ final class RetrievalPipelineScenarioTest extends TestCase
         $this->assertSame(3, KnowledgeDocument::query()->forTenant('default')->where('is_canonical', true)->count(), '3 canonical markdown docs');
 
         // Per-type chunking: the PDF (2 pages) must produce >= 2 chunks via
-        // PdfPageChunker; every chunk must carry a 256-dim embedding.
+        // PdfPageChunker; every chunk must carry a DeterministicEmbedder
+        // (4096-dim) embedding.
         $pdf = KnowledgeDocument::query()->forTenant('default')->where('source_path', 'incident-runbook.pdf')->firstOrFail();
         $this->assertGreaterThanOrEqual(2, $pdf->chunks()->count(), 'PDF split per page');
 
