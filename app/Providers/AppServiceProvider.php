@@ -330,6 +330,9 @@ class AppServiceProvider extends ServiceProvider
             EvalNightlyCommand::class,
             // v8.0/W8.5 — quarterly compliance digest (tenant opt-in).
             ComplianceDigestQuarterlyCommand::class,
+            // v8.2 — retrieval-quality benchmark + reproducible fixtures.
+            \App\Console\Commands\Benchmark\RunBenchmarkCommand::class,
+            \App\Console\Commands\Benchmark\MakeBenchmarkFixturesCommand::class,
         ]);
     }
 
