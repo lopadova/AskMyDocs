@@ -35,21 +35,17 @@ final class KbCollectionController extends Controller
             });
         }
 
-        // M7 (R3) — paginate instead of ->get() so a tenant with many
-        // collections can't balloon memory. `data` stays an array of the
-        // current page; `meta` is additive (R27).
-        $paginator = $query->paginate(50);
-
+        // M7 (R3) — bound the result so a tenant with a pathological number
+        // of collections can't balloon memory, WITHOUT switching to a
+        // paginated envelope: the SPA client (collections.api.ts) consumes
+        // the full `data` array and has no page handling, so real pagination
+        // would silently truncate. Collections are a low-cardinality admin
+        // taxonomy; a 500-row cap is far above any real tenant yet keeps the
+        // query bounded. (Full pagination is a roadmap item alongside the FE.)
         return response()->json([
-            'data' => collect($paginator->items())
+            'data' => $query->limit(500)->get()
                 ->map(fn (KbCollection $c): array => $this->serialize($c))
                 ->all(),
-            'meta' => [
-                'current_page' => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total' => $paginator->total(),
-                'last_page' => $paginator->lastPage(),
-            ],
         ]);
     }
 

@@ -122,8 +122,10 @@ class InsightsComputeCommand extends Command
             return [$explicit];
         }
 
-        // Tenant-enumeration query: intentionally unscoped (it discovers the
-        // tenant set). Allowlisted in TenantReadScopeTest.
+        // Tenant-enumeration query: intentionally unscoped (its whole job is
+        // to DISCOVER the tenant set). The per-tenant compute + snapshot
+        // upsert below ARE forTenant-scoped, so TenantReadScopeTest passes
+        // this file on the forTenant marker (no allowlist entry needed).
         $tenantIds = KnowledgeDocument::query()
             ->withTrashed()
             ->distinct()

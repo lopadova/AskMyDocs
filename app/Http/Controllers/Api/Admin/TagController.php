@@ -88,9 +88,10 @@ final class TagController extends Controller
                 // the canonical-slug rules the BE applies elsewhere.
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
                 // R30/R31 — uniqueness is per (tenant_id, project_key, slug).
-                // The DB composite-unique rebuild is deliberately deferred
-                // (see 2026_04_28_000001_add_tenant_id_to_v3_tables.php), so
-                // the application layer carries the tenant scope here.
+                // The DB composite unique IS tenant-scoped (migration
+                // 2026_05_26_000001 rebuilt it to (tenant_id, project_key,
+                // slug)); this validation rule mirrors that scope so the
+                // user gets a 422 instead of a raw DB integrity error.
                 Rule::unique('kb_tags', 'slug')
                     ->where(fn ($q) => $q
                         ->where('tenant_id', $this->tenant->current())

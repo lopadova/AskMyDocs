@@ -245,7 +245,17 @@ class UserController extends Controller
         // R21 — lockForUpdate so a concurrent demotion/delete of another
         // super-admin is serialized against this check (callers run this
         // inside a DB::transaction). On SQLite this is a no-op (whole-DB
-        // lock) but on Postgres/MySQL it holds the row lock for the txn.
-        return $role->users()->where('users.id', '!=', $user->id)->lockForUpdate()->count() === 0;
+        // lock); on Postgres/MySQL it holds the row locks for the txn.
+        //
+        // NOTE: must NOT combine FOR UPDATE with an aggregate — PostgreSQL
+        // rejects `SELECT count(*) ... FOR UPDATE` ("FOR UPDATE is not
+        // allowed with aggregate functions"). So we lock the actual rows
+        // (pluck ids under lockForUpdate) and count in PHP.
+        $otherSuperAdminIds = $role->users()
+            ->where('users.id', '!=', $user->id)
+            ->lockForUpdate()
+            ->pluck('users.id');
+
+        return $otherSuperAdminIds->isEmpty();
     }
 }

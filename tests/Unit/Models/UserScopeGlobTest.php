@@ -40,8 +40,19 @@ final class UserScopeGlobTest extends TestCase
 
     public function test_recursive_glob_still_matches_deep_path(): void
     {
-        // An operator who genuinely wants recursive access uses `**`/`*/*`.
+        // An explicit per-level glob (`*/*`) matches a 2-level-deep path.
         $this->assertTrue($this->globMatches('hr/policies/deep/secret.md', ['hr/policies/*/*']));
+    }
+
+    public function test_double_star_glob_matches_across_segments(): void
+    {
+        // `**` IS the recursive wildcard (handled by KbPath::matchesAnyGlob,
+        // which raw fnmatch(FNM_PATHNAME) could not do). A `docs/**`-style
+        // allowlist entry must match arbitrarily deep paths — but stays
+        // scoped to its prefix.
+        $this->assertTrue($this->globMatches('hr/policies/deep/nested/secret.md', ['hr/policies/**']));
+        $this->assertTrue($this->globMatches('hr/policies/x.md', ['hr/**']));
+        $this->assertFalse($this->globMatches('finance/secret.md', ['hr/policies/**']));
     }
 
     public function test_no_globs_never_matches(): void

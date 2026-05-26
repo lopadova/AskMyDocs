@@ -78,9 +78,15 @@ class KbIngestController extends Controller
         $results = [];
         $anyFailed = false;
         foreach ($prepared as $item) {
+            // Decode lazily, one document at a time (bounded memory). base64
+            // validity was already proven in PHASE 1, so this won't fail.
+            $bytes = $item['is_binary']
+                ? (string) base64_decode($item['content'], true)
+                : $item['content'];
+
             // The kb disk is configured with throw => false, so put() returns
             // false on failure instead of raising.
-            $written = $storage->put($item['stored_path'], $item['bytes']) !== false;
+            $written = $storage->put($item['stored_path'], $bytes) !== false;
 
             if (! $written) {
                 $anyFailed = true;
@@ -133,7 +139,7 @@ class KbIngestController extends Controller
      * the whole batch before any disk write happens (H7).
      *
      * @param  array<string, mixed>  $doc
-     * @return array{project_key:string, source_path:string, source_type:string, mime_type:string, bytes:string, stored_path:string, title:?string, metadata:array<string,mixed>}
+     * @return array{project_key:string, source_path:string, source_type:string, mime_type:string, content:string, is_binary:bool, stored_path:string, title:?string, metadata:array<string,mixed>}
      */
     private function prepareDocument(array $doc, string $defaultProject, string $prefix): array
     {
@@ -158,20 +164,22 @@ class KbIngestController extends Controller
             ]);
         }
 
-        // Binary MIMEs arrive base64-encoded; decode-or-422 before writing.
-        $bytes = (string) $doc['content'];
-        if ($sourceType->isBinary()) {
-            $decoded = base64_decode($bytes, true);
-            if ($decoded === false) {
-                throw ValidationException::withMessages([
-                    'documents' => [sprintf(
-                        'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
-                        $mimeType,
-                        $sourcePath,
-                    )],
-                ]);
-            }
-            $bytes = $decoded;
+        // Binary MIMEs arrive base64-encoded. VALIDATE decodability here
+        // (decode + discard) so a non-base64 payload still 422s the whole
+        // batch in PHASE 1 — but do NOT retain the decoded bytes. Holding a
+        // decoded copy of every document (up to max:100 × ~5 MB) alongside
+        // the raw request payload risked OOM on large batches (Copilot
+        // review). PHASE 2 re-decodes one document at a time at write time,
+        // so peak memory stays bounded to a single decoded document.
+        $isBinary = $sourceType->isBinary();
+        if ($isBinary && base64_decode((string) $doc['content'], true) === false) {
+            throw ValidationException::withMessages([
+                'documents' => [sprintf(
+                    'documents.*.content for binary mime_type "%s" must be valid base64 (source_path: %s).',
+                    $mimeType,
+                    $sourcePath,
+                )],
+            ]);
         }
 
         return [
@@ -179,7 +187,9 @@ class KbIngestController extends Controller
             'source_path' => $sourcePath,
             'source_type' => $sourceType->value,
             'mime_type' => $mimeType,
-            'bytes' => $bytes,
+            // Raw content + a flag; PHASE 2 decodes binaries lazily.
+            'content' => (string) $doc['content'],
+            'is_binary' => $isBinary,
             // L1 — normalise the prefixed stored path through KbPath instead
             // of a hand-rolled ltrim, so a trailing-slash prefix can't yield
             // a double-slash path that diverges from the delete flow.

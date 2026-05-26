@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\KbPath;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -242,17 +243,12 @@ class User extends Authenticatable
      */
     private function matchesAnyGlob(string $path, array $globs): bool
     {
-        foreach ($globs as $glob) {
-            // R19 — FNM_PATHNAME makes `*` stop at `/`, so a one-level glob
-            // like `hr/policies/*` does NOT match `hr/policies/deep/secret.md`.
-            // Without it the scope_allowlist silently grants access to
-            // arbitrarily deep paths.
-            if (fnmatch($glob, $path, FNM_PATHNAME)) {
-                return true;
-            }
-        }
-
-        return false;
+        // R19 — delegate to KbPath::matchesAnyGlob, the single segment-aware
+        // implementation: `*` matches within ONE path segment (never crosses
+        // `/`), `**` matches ACROSS segments (recursive). Raw
+        // fnmatch(FNM_PATHNAME) fixed the `*`-crosses-`/` leak but silently
+        // broke documented `docs/**` recursive globs (fnmatch has no `**`).
+        return KbPath::matchesAnyGlob($path, $globs);
     }
 
     /**

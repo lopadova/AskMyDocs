@@ -49,6 +49,21 @@ final class TenantReadScopeTest extends TestCase
         // kb:prune-deleted / chat-log:prune; the scheduler runs it
         // instance-wide, not per-tenant). NOT a user-facing cross-tenant read.
         'app/Console/Commands/PruneAdminCommandAuditCommand.php' => 'Global audit-retention prune; intentionally instance-wide.',
+
+        // Maintenance commands that ENUMERATE tenants (the only tenant-aware
+        // read here is the distinct-tenant_id discovery query) then set the
+        // TenantContext per tenant and delegate the actual scoped work to a
+        // Flow / DocumentDeleter that IS tenant-scoped. The enumeration must
+        // be cross-tenant by definition.
+        'app/Console/Commands/KbRebuildGraphCommand.php' => 'Tenant enumeration → per-tenant RebuildGraphFlow (scoped in the flow).',
+        'app/Console/Commands/PruneChatLogsCommand.php' => 'Tenant enumeration → per-tenant prune flow (scoped downstream).',
+        'app/Console/Commands/PruneDeletedDocumentsCommand.php' => 'Tenant enumeration → per-tenant DocumentDeleter (scoped downstream).',
+        'app/Console/Commands/PruneOrphanFilesCommand.php' => 'Orphan-file maintenance sweep; reconciles disk vs DB by design.',
+
+        // User→tenant DISCOVERY for DSAR/compliance: its whole job is to find
+        // EVERY tenant a user touched (memberships, conversations, chat logs,
+        // connectors). Inherently cross-tenant — the inverse of a leak.
+        'app/Compliance/UserTenantResolver.php' => 'Resolves the full set of tenants a user belongs to (DSAR); cross-tenant by design.',
     ];
 
     public function test_tenant_aware_reads_are_scoped(): void
@@ -64,9 +79,13 @@ final class TenantReadScopeTest extends TestCase
         ];
 
         $modelAlternation = implode('|', self::TENANT_AWARE_MODELS);
-        // Match `Model::query(` / `Model::where(` / `Model::find(` /
-        // `Model::findOrFail(` for a tenant-aware model.
-        $readPattern = '/\b('.$modelAlternation.')::(query|where|find|findOrFail|whereNotNull|distinct|pluck)\s*\(/';
+        // Match a static read entry point on a tenant-aware model, including
+        // the soft-delete / global-scope-bypass entry points
+        // (withTrashed/onlyTrashed/withoutGlobalScopes) that also START a
+        // query — Copilot flagged these as previously-missed openings.
+        // `\\?` tolerates a leading backslash on a fully-qualified
+        // `\App\Models\X::query(` reference.
+        $readPattern = '/(?:\\\\App\\\\Models\\\\)?\b('.$modelAlternation.')::(query|where|find|findOrFail|whereNotNull|distinct|pluck|withTrashed|onlyTrashed|withoutGlobalScopes)\s*\(/';
 
         $violations = [];
 
@@ -76,10 +95,13 @@ final class TenantReadScopeTest extends TestCase
                 continue;
             }
             // Accepted scope markers: the forTenant() scope OR an explicit
-            // `where('tenant_id', ...)` filter (R30 permits both). The
-            // latter covers services like ComplianceReportGenerator that
-            // scope by a passed tenant id under withoutGlobalScopes().
-            if (str_contains($code, 'forTenant(') || str_contains($code, "'tenant_id'")) {
+            // `where('tenant_id', ...)` filter (R30 permits both). Require the
+            // marker in a real WHERE/scope form — a bare `'tenant_id'`
+            // substring (e.g. in a comment or array key) is NOT enough
+            // (Copilot: avoid false-negatives).
+            $scoped = str_contains($code, 'forTenant(')
+                || preg_match('/where\(\s*[\'"]tenant_id[\'"]/', $code) === 1;
+            if ($scoped) {
                 continue;
             }
             $rel = $this->relative($file);
