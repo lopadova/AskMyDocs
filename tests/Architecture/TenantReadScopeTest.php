@@ -23,13 +23,24 @@ use PHPUnit\Framework\TestCase;
  */
 final class TenantReadScopeTest extends TestCase
 {
-    /** Basenames of models that expose the forTenant() scope (BelongsToTenant). */
+    /**
+     * EVERY model that uses the BelongsToTenant trait (i.e. exposes the
+     * forTenant() scope). Keep this in lockstep with `grep -rl
+     * "use BelongsToTenant" app/Models` — the completeness test below
+     * asserts they match, so a new tenant-aware model can't silently escape
+     * this guard (Copilot caught ChatLogProvenance + 16 others missing).
+     */
     private const TENANT_AWARE_MODELS = [
-        'ChatLog', 'KbCanonicalAudit', 'KbTag', 'AdminCommandAudit',
-        'ComplianceReport', 'KnowledgeDocument', 'KnowledgeChunk', 'KbNode',
-        'KbEdge', 'ProjectMembership', 'Conversation', 'Message',
-        'AdminInsightsSnapshot', 'ChatFilterPreset', 'KbCollection',
-        'KbCollectionMember',
+        'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot',
+        'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport',
+        'Conversation', 'HiddenWorkflow', 'KbCanonicalAudit',
+        'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
+        'KbCollectionMember', 'KbEdge', 'KbNode', 'KbTag', 'KnowledgeChunk',
+        'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
+        'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
+        'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
+        'ProjectMembership', 'TabularCell', 'TabularReview',
+        'TenantSchedulerOverride', 'Workflow',
     ];
 
     /**
@@ -49,6 +60,7 @@ final class TenantReadScopeTest extends TestCase
         // kb:prune-deleted / chat-log:prune; the scheduler runs it
         // instance-wide, not per-tenant). NOT a user-facing cross-tenant read.
         'app/Console/Commands/PruneAdminCommandAuditCommand.php' => 'Global audit-retention prune; intentionally instance-wide.',
+        'app/Console/Commands/PruneAdminCommandNoncesCommand.php' => 'Global expired-nonce retention prune; intentionally instance-wide.',
 
         // Maintenance commands that ENUMERATE tenants (the only tenant-aware
         // read here is the distinct-tenant_id discovery query) then set the
@@ -94,13 +106,17 @@ final class TenantReadScopeTest extends TestCase
             if (preg_match($readPattern, $code) !== 1) {
                 continue;
             }
-            // Accepted scope markers: the forTenant() scope OR an explicit
-            // `where('tenant_id', ...)` filter (R30 permits both). Require the
-            // marker in a real WHERE/scope form — a bare `'tenant_id'`
-            // substring (e.g. in a comment or array key) is NOT enough
-            // (Copilot: avoid false-negatives).
+            // Accepted scope markers (R30 permits all three):
+            //  - forTenant(...) scope;
+            //  - an explicit where('tenant_id', ...) read filter;
+            //  - a `'tenant_id' => ...` assignment — covers tenant-STAMPED
+            //    writes (create/insert/updateOrCreate match keys), e.g. the
+            //    MCP tool-call audit + token-level provenance inserts, where
+            //    the matched `::query()->create/insert` is a write, not a
+            //    read. A bare `'tenant_id'` substring (comment) is NOT enough.
             $scoped = str_contains($code, 'forTenant(')
-                || preg_match('/where\(\s*[\'"]tenant_id[\'"]/', $code) === 1;
+                || preg_match('/where\(\s*[\'"]tenant_id[\'"]/', $code) === 1
+                || preg_match('/[\'"]tenant_id[\'"]\s*=>/', $code) === 1;
             if ($scoped) {
                 continue;
             }
@@ -117,6 +133,34 @@ final class TenantReadScopeTest extends TestCase
             "These files query a tenant-aware model without forTenant() (R30). "
             ."Add ->forTenant(\$ctx->current()) or justify an ALLOWLIST entry:\n  - "
             .implode("\n  - ", $violations),
+        );
+    }
+
+    public function test_tenant_aware_models_list_is_complete(): void
+    {
+        // The guard above is only as good as TENANT_AWARE_MODELS. Assert it
+        // matches EVERY model using BelongsToTenant, so a new tenant-aware
+        // model can't silently escape the scope check (Copilot: the list was
+        // missing ChatLogProvenance + 16 others).
+        $modelsDir = dirname(__DIR__, 2).'/app/Models';
+        $actual = [];
+        foreach (glob($modelsDir.'/*.php') ?: [] as $file) {
+            $code = (string) file_get_contents($file);
+            if (preg_match('/^\s*use [\w\\\\]*BelongsToTenant;/m', $code) === 1) {
+                $actual[] = basename($file, '.php');
+            }
+        }
+        sort($actual);
+
+        $declared = self::TENANT_AWARE_MODELS;
+        sort($declared);
+
+        $this->assertSame(
+            $actual,
+            $declared,
+            'TENANT_AWARE_MODELS is out of sync with the BelongsToTenant models in app/Models. '
+            ."Missing from the list: ".implode(', ', array_diff($actual, $declared)).'. '
+            .'Extra in the list: '.implode(', ', array_diff($declared, $actual)).'.',
         );
     }
 
