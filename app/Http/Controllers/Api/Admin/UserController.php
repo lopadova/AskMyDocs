@@ -237,25 +237,25 @@ class UserController extends Controller
             return false;
         }
 
-        $role = Role::query()->where('name', 'super-admin')->first();
+        // R21 — serialize concurrent demotions/deletes on a COMMON row: the
+        // super-admin role row itself. Locking `$role->users()` excluding
+        // self does NOT serialize — two requests demoting two DIFFERENT
+        // super-admins lock DISJOINT user sets ({B} vs {A}), so both pass and
+        // both succeed, leaving zero super-admins (Copilot caught this).
+        // Locking the single role row makes the second request block until
+        // the first commits, so its count reflects the first's removal.
+        // Bonus: with the lock on the role row, the count below is a plain
+        // aggregate — avoiding PostgreSQL's "FOR UPDATE not allowed with
+        // aggregate functions" rejection. Callers run this inside a
+        // DB::transaction so the lock is held until commit.
+        $role = Role::query()
+            ->where('name', 'super-admin')
+            ->lockForUpdate()
+            ->first();
         if ($role === null) {
             return false;
         }
 
-        // R21 — lockForUpdate so a concurrent demotion/delete of another
-        // super-admin is serialized against this check (callers run this
-        // inside a DB::transaction). On SQLite this is a no-op (whole-DB
-        // lock); on Postgres/MySQL it holds the row locks for the txn.
-        //
-        // NOTE: must NOT combine FOR UPDATE with an aggregate — PostgreSQL
-        // rejects `SELECT count(*) ... FOR UPDATE` ("FOR UPDATE is not
-        // allowed with aggregate functions"). So we lock the actual rows
-        // (pluck ids under lockForUpdate) and count in PHP.
-        $otherSuperAdminIds = $role->users()
-            ->where('users.id', '!=', $user->id)
-            ->lockForUpdate()
-            ->pluck('users.id');
-
-        return $otherSuperAdminIds->isEmpty();
+        return $role->users()->where('users.id', '!=', $user->id)->count() === 0;
     }
 }
