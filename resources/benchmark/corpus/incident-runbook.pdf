@@ -1,0 +1,69 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 482 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Database Incident Response Runbook) Tj
+T* () Tj
+T* (This runbook covers responding to a database incident in) Tj
+T* (production: connection exhaustion, replication lag, and a) Tj
+T* (primary failover. It is distinct from the cache runbook.) Tj
+T* () Tj
+T* (Connection exhaustion: when the pool is saturated, new) Tj
+T* (requests time out. Raise the pool ceiling, kill idle-in-) Tj
+T* (transaction sessions, and shed non-critical background jobs.) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 486 >>
+stream
+BT
+/F1 12 Tf
+14 TL
+72 720 Td
+(Replication lag and failover) Tj
+T* () Tj
+T* (Replication lag: if a read replica falls behind by more than) Tj
+T* (thirty seconds, route reads back to the primary until the) Tj
+T* (replica catches up. Alert the on-call database engineer.) Tj
+T* () Tj
+T* (Primary failover: promote the healthiest replica, repoint the) Tj
+T* (connection string, and run a post-incident review within two) Tj
+T* (business days. Record the timeline in the incident log.) Tj
+ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000000850 00000 n 
+0000000976 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1513
+%%EOF

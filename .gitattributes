@@ -1,0 +1,14 @@
+# Treat binary documents as binary so git never applies EOL (CRLF/LF)
+# conversion — that would corrupt the benchmark PDF/DOCX fixtures.
+*.pdf  binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
