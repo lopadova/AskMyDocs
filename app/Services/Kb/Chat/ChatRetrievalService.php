@@ -75,7 +75,7 @@ final class ChatRetrievalService
      * (primary | related | rejected) so the UI can label them distinctly.
      * Shape-agnostic reads via data_get (chunks are arrays in production).
      *
-     * @return list<array{document_id: ?int, title: string, source_path: ?string, headings: list<string>, chunks_used: int, origin: string}>
+     * @return list<array{document_id: ?int, title: string, source_path: ?string, source_type: ?string, headings: list<string>, chunks_used: int, origin: string, chunks: list<array{chunk_id: mixed, heading: ?string, score: float, snippet: string, evidence_hash: ?string}>}>
      */
     public function buildCitations(SearchResult $result): array
     {

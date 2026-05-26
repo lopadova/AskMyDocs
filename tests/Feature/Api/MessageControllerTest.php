@@ -60,6 +60,13 @@ final class MessageControllerTest extends TestCase
         config()->set('kb.refusal.min_chunks_required', 1);
         config()->set('chat-log.enabled', false);
 
+        // Pin the active tenant explicitly: Conversation::resolveRouteBinding()
+        // scopes by TenantContext::current(), and the conversation below is
+        // tenant-stamped from the same context on create. Setting it here
+        // (rather than leaning on the global default) keeps route binding
+        // deterministic and immune to cross-test tenant leakage.
+        app(\App\Support\TenantContext::class)->set('default');
+
         $this->user = User::create([
             'name' => 'Sync',
             'email' => 'sync-' . uniqid() . '@demo.local',
