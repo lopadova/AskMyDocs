@@ -40,7 +40,14 @@ final class TabularReviewTenantIsolationTest extends TestCase
 
     protected function defineRoutes($router): void
     {
-        $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../routes/api.php');
+        // Production prepends ResolveTenant globally (bootstrap/app.php);
+        // Testbench doesn't run that file, so wire it onto the api group here
+        // so the X-Tenant-Id header actually drives the active tenant — as
+        // the class docblock describes — rather than the header being
+        // silently ignored (which would leave the context at 'default').
+        $router->middleware(['api', \App\Http\Middleware\ResolveTenant::class])
+            ->prefix('api')
+            ->group(__DIR__.'/../../../routes/api.php');
     }
 
     protected function setUp(): void

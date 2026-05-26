@@ -15,11 +15,11 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * T2.10 — Admin RESTful CRUD on `kb_tags`.
  *
- * Tags are scoped per project: a slug is unique within a single
- * project_key but the SAME slug can legitimately exist on other
- * projects (per-tenant taxonomy isolation). Listing accepts an
- * optional `project_keys[]` filter — admins typically narrow to the
- * project they're managing.
+ * Tags are scoped per (tenant_id, project_key): a slug is unique within a
+ * single project of a single tenant, but the SAME slug can legitimately
+ * exist in another project OR another tenant. Listing accepts an optional
+ * `project_keys[]` filter — admins typically narrow to the project they're
+ * managing.
  *
  * The pivot table `knowledge_document_tags` cascades on tag delete
  * (per `2026_04_23_000003_create_knowledge_document_tags_table.php`),
@@ -28,10 +28,12 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * are visible to the admin via the document-side audit trail.
  *
  * Auth: `auth:sanctum` + `role:admin|super-admin` (route group at
- * routes/api.php). Each tag is project-scoped, but the controller
- * doesn't enforce per-tenant isolation on admins — admins can curate
- * tags across every project they oversee. Per-user authorization is
- * not relevant here (tags are admin-curated, not user-owned).
+ * routes/api.php). R30 — every read/write here IS tenant-scoped via
+ * `forTenant($this->tenant->current())` (index + findOr404), so an admin
+ * only ever sees/edits tags of the active tenant; cross-tenant tag access
+ * is structurally impossible. Within that tenant, admins curate tags
+ * across every project they oversee (tags are admin-curated, not
+ * user-owned, so per-user authorization is not relevant).
  */
 final class TagController extends Controller
 {
