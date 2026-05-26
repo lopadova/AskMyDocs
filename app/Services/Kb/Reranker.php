@@ -69,15 +69,13 @@ class Reranker
      *   - vector_score (float, 0-1)
      *
      * @param  Collection<int, array>  $chunks  Over-retrieved candidates.
-     * @return Collection<int, array>  Top $limit chunks, sorted by rerank_score desc.
-     */
-    /**
      * @param  list<int>  $boostDocIds  document ids the user @mentioned;
-     *                                   chunks from these docs receive an
-     *                                   additive `mention_boost_weight` so
-     *                                   they float to the top without
-     *                                   excluding other relevant results
-     *                                   (v8.1, `kb.mentions.mode = boost`).
+     *                                  chunks from these docs receive an
+     *                                  additive `mention_boost_weight` so they
+     *                                  float to the top without excluding
+     *                                  other relevant results (v8.1,
+     *                                  `kb.mentions.mode = boost`).
+     * @return Collection<int, array>  Top $limit chunks, sorted by rerank_score desc.
      */
     public function rerank(string $query, Collection $chunks, int $limit, array $boostDocIds = []): Collection
     {
