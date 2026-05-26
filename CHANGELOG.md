@@ -11,6 +11,39 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.2.0 — 2026-05-26 (Retrieval-quality benchmark + live-validated calibration)
+
+Minor release that makes retrieval quality **measurable + repeatable** and
+the whole RAG pipeline **testable end-to-end with no mocks**. PRs #233..#236
+on integration branch `feature/v8.2`.
+
+- **Benchmark.** `resources/benchmark/` — 5-doc labelled corpus (markdown +
+  PDF + DOCX, graph-linked + rejected-approach) + 14 gold queries.
+  `kb:benchmark` ingests through the REAL pipeline, runs each query via the
+  same `searchWithContext()` the chat uses, scores nDCG@k / MRR / precision@k
+  / citation-precision / graph-recall / rejected-recall / refusal-accuracy
+  (`RetrievalQualityMetrics`). `--stub` (no key) + LIVE; dated scorecards in
+  `storage/app/kb-benchmark/`.
+- **No-mock pipeline.** Driver-aware PHP-cosine fallback in `KbSearchService`
+  (pgsql keeps native pgvector) so vector search runs on SQLite in CI;
+  `RetrievalPipelineScenarioTest` exercises ingest → per-type chunk → embed →
+  graph → search → citations → refusal. `DeterministicEmbedder` (4096-dim).
+- **Rerank scale-calibration (#7/#9).** `KB_RERANK_NORMALIZE_SCORES` min-max
+  normalises the candidate vector signal (separate field; raw vector_score
+  untouched).
+- **Live-validated calibration** (real OpenRouter embeddings + pgvector),
+  three defaults tuned + measured: `KB_CANONICAL_PRIORITY_WEIGHT` 0.003 →
+  0.001, `KB_RERANK_NORMALIZE_SCORES` → true, `KB_REJECTED_MIN_SIMILARITY`
+  0.45 → 0.40. Scorecard nDCG 0.855 → **0.997**, MRR 0.833 → **1.000**,
+  citation/refusal/graph/rejected all **1.000** — PASSED. The live run caught
+  a `strict_types` RRF bug (string env config when hybrid is on) the mocked
+  suite never hit — fixed + regression-tested.
+- **Docs + ritual.** README "Running the retrieval-quality benchmark" +
+  durable `askmydocs-pgvector` container (host 5433) + manual CI workflow.
+  +30 tests.
+
+---
+
 ### v8.1.0 — 2026-05-26 (Retrieval-quality: refusal gate, unified path, mention boost, evidence citations, IR metrics)
 
 Minor release from a focused review on result extraction + citations /

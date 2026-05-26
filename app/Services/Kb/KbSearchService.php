@@ -370,33 +370,20 @@ class KbSearchService
             ? $limit * (int) config('kb.reranking.candidate_multiplier', 3)
             : $limit;
 
-        // ── Semantic search (pgvector) ───────────────────────────
-        // R30 defense-in-depth: the `document` relation (BelongsTo on
-        // KnowledgeChunk) is unscoped. With('document') and the
-        // archived-status whereHas are tenant-aware-table queries
-        // without a tenant_id predicate. In normal operation the
-        // chunk → document FK shares tenant_id, but a corrupt FK
-        // (cross-tenant write-time drift) would let a doc from
-        // another tenant be eager-loaded into search results — and
-        // its metadata bleeds into the response. Both call sites
-        // are pinned to the active tenant explicitly.
-        $builder = KnowledgeChunk::query()
-            ->forTenant($tenantId)
-            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
-            ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
-            ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
-            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
-            ->orderByDesc('vector_score');
-
-        if ($projectKey !== null && $projectKey !== '') {
-            $builder->where('project_key', $projectKey);
-        }
-
-        if (! $effectiveFilters->isEmpty()) {
-            $this->applyFilters($builder, $effectiveFilters);
-        }
-
-        $semanticChunks = $builder->limit($candidateCount)->get();
+        // ── Semantic search ──────────────────────────────────────
+        // Driver-aware: PostgreSQL uses native pgvector (`<=>`); any other
+        // driver (SQLite in tests/benchmark) computes cosine similarity in
+        // PHP. This lets the FULL RAG pipeline run end-to-end in CI without
+        // mocking search() — the gap that let the P0.1 shape bug ship green.
+        $semanticChunks = $this->semanticCandidates(
+            $tenantId,
+            $queryEmbedding,
+            $vectorString,
+            $projectKey,
+            $minSimilarity,
+            $effectiveFilters,
+            $candidateCount,
+        );
 
         // ── Hybrid: merge full-text results if enabled ───────────
         $hybridEnabled = config('kb.hybrid_search.enabled', false);
@@ -418,13 +405,17 @@ class KbSearchService
                 $effectiveFilters,
             );
 
-            // Merge via Reciprocal Rank Fusion (RRF)
+            // Merge via Reciprocal Rank Fusion (RRF). Cast the config values:
+            // env() yields STRINGS ("60", "0.70"), which under strict_types
+            // are a TypeError against the int/float params. Tests never hit
+            // this (hybrid is off by default) — the live benchmark with
+            // hybrid ON surfaced it.
             $semanticChunks = $this->reciprocalRankFusion(
                 $semanticChunks,
                 $ftsChunks,
-                config('kb.hybrid_search.rrf_k', 60),
-                config('kb.hybrid_search.semantic_weight', 0.7),
-                config('kb.hybrid_search.fts_weight', 0.3),
+                (int) config('kb.hybrid_search.rrf_k', 60),
+                (float) config('kb.hybrid_search.semantic_weight', 0.7),
+                (float) config('kb.hybrid_search.fts_weight', 0.3),
             );
         }
 
@@ -471,6 +462,19 @@ class KbSearchService
             ];
         });
 
+        // v8.2 (finding #7/#9) — rerank scale calibration. In hybrid mode a
+        // chunk's vector_score is a cosine (0..1) for semantic hits but the
+        // tiny RRF score (~0.01) for FTS-only hits, so the reranker's vector
+        // component is on incompatible scales between (and within) modes,
+        // drowning lexically-strong hybrid hits. When enabled, min-max
+        // normalise the candidate vector signal to 0..1 in a SEPARATE field
+        // the reranker prefers — the raw vector_score is untouched, so the
+        // refusal floor + citation evidence keep their absolute semantics.
+        // Default OFF; the LIVE benchmark decides whether it improves nDCG.
+        if ((bool) config('kb.reranking.normalize_candidate_scores', false)) {
+            $chunks = $this->normalizeCandidateScores($chunks);
+        }
+
         // v8.1 — in `boost` mode the @mentioned doc ids are not a hard
         // filter (applyFilters skipped them); pass them to the reranker so
         // their chunks float to the top of the candidate set instead.
@@ -482,10 +486,128 @@ class KbSearchService
     }
 
     /**
+     * Min-max normalise `vector_score` across the candidate set into a
+     * `rerank_vector_signal` field (0..1), leaving `vector_score` intact.
+     * A flat set (all-equal, or a single chunk) maps to 1.0 so it neither
+     * inflates nor zeroes the signal.
+     *
+     * @param  Collection<int, array<string,mixed>>  $chunks
+     * @return Collection<int, array<string,mixed>>
+     */
+    private function normalizeCandidateScores(Collection $chunks): Collection
+    {
+        $scores = $chunks->map(fn (array $c): float => (float) ($c['vector_score'] ?? 0.0));
+        $min = (float) ($scores->min() ?? 0.0);
+        $max = (float) ($scores->max() ?? 0.0);
+        $range = $max - $min;
+
+        return $chunks->map(function (array $c) use ($min, $range): array {
+            $v = (float) ($c['vector_score'] ?? 0.0);
+            $c['rerank_vector_signal'] = $range > 0.0 ? ($v - $min) / $range : 1.0;
+
+            return $c;
+        });
+    }
+
+    /**
+     * Driver-aware semantic candidate fetch. PostgreSQL uses native pgvector
+     * (`1 - (embedding <=> q)` = cosine similarity). Any other driver
+     * (SQLite in tests/benchmark) computes the SAME cosine similarity in PHP
+     * — `embedding` is cast to `array` on the model so it decodes to
+     * list<float> on every driver. The non-pgsql path is what makes the
+     * whole RAG pipeline runnable end-to-end without mocking search().
+     *
+     * @param  list<float>  $queryEmbedding
+     * @return Collection<int, KnowledgeChunk>  chunks with `vector_score` set
+     */
+    private function semanticCandidates(
+        string $tenantId,
+        array $queryEmbedding,
+        string $vectorString,
+        ?string $projectKey,
+        float $minSimilarity,
+        RetrievalFilters $filters,
+        int $candidateCount,
+    ): Collection {
+        $base = KnowledgeChunk::query()
+            ->forTenant($tenantId)
+            ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
+            ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'));
+
+        if ($projectKey !== null && $projectKey !== '') {
+            $base->where('knowledge_chunks.project_key', $projectKey);
+        }
+        if (! $filters->isEmpty()) {
+            $this->applyFilters($base, $filters);
+        }
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            return $base
+                ->selectRaw('knowledge_chunks.*, (1 - (embedding <=> ?::vector)) as vector_score', [$vectorString])
+                ->whereRaw('(1 - (embedding <=> ?::vector)) >= ?', [$vectorString, $minSimilarity])
+                ->orderByDesc('vector_score')
+                ->limit($candidateCount)
+                ->get();
+        }
+
+        // Non-pgsql: compute cosine in PHP. Bounded prefetch keeps memory
+        // sane; the test/benchmark corpus is tiny.
+        $prefetchCap = (int) config('kb.search.php_cosine_prefetch_cap', 2000);
+
+        return $base
+            ->limit($prefetchCap)
+            ->get()
+            ->map(function (KnowledgeChunk $chunk) use ($queryEmbedding) {
+                $chunk->vector_score = $this->cosineSimilarity($queryEmbedding, (array) ($chunk->embedding ?? []));
+
+                return $chunk;
+            })
+            ->filter(fn (KnowledgeChunk $chunk) => (float) $chunk->vector_score >= $minSimilarity)
+            ->sortByDesc('vector_score')
+            ->take($candidateCount)
+            ->values();
+    }
+
+    /**
+     * Cosine similarity in [-1, 1] (≈ 0..1 for embedding models). Matches
+     * pgvector's `1 - (a <=> b)`. Returns 0.0 on mismatched/empty/zero
+     * vectors so a degenerate row never floats to the top.
+     *
+     * @param  list<float>  $a
+     * @param  list<float>  $b
+     */
+    private function cosineSimilarity(array $a, array $b): float
+    {
+        $n = count($a);
+        if ($n === 0 || $n !== count($b)) {
+            return 0.0;
+        }
+
+        $dot = 0.0;
+        $normA = 0.0;
+        $normB = 0.0;
+        foreach ($a as $i => $x) {
+            $x = (float) $x;
+            $y = (float) ($b[$i] ?? 0.0);
+            $dot += $x * $y;
+            $normA += $x * $x;
+            $normB += $y * $y;
+        }
+
+        if ($normA <= 0.0 || $normB <= 0.0) {
+            return 0.0;
+        }
+
+        return $dot / (sqrt($normA) * sqrt($normB));
+    }
+
+    /**
      * PostgreSQL full-text search using ts_rank.
      *
      * Uses plainto_tsquery for safe query parsing (no syntax errors).
-     * Searches chunk_text with the configured FTS language.
+     * Searches chunk_text with the configured FTS language. No-op on
+     * non-pgsql drivers (SQLite has no tsvector) — hybrid degrades to
+     * semantic-only there, which is fine for the deterministic test path.
      */
     private function fullTextSearch(
         string $query,
@@ -494,6 +616,10 @@ class KbSearchService
         string $tenantId,
         ?RetrievalFilters $filters = null,
     ): Collection {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return collect();
+        }
+
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
         // R30 defense-in-depth — same rationale as search() above:

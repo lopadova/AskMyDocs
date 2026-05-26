@@ -1,0 +1,44 @@
+name: kb-benchmark
+
+# Manual, on-demand only (NOT per-push). Runs the DETERMINISTIC retrieval-
+# quality scenario + the stub benchmark command — no API key, no pgvector
+# (SQLite + PHP-cosine). The LIVE benchmark (real embeddings + pgvector) is
+# run locally on demand; see the README "Running the retrieval-quality
+# benchmark" section.
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    name: Retrieval-quality benchmark (deterministic)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, xml, sqlite, pdo_sqlite, intl, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-php8.4-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: ${{ runner.os }}-php8.4-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Prepare test bootstrap dirs
+        run: |
+          mkdir -p vendor/orchestra/testbench-core/laravel/bootstrap/cache
+          mkdir -p bootstrap/cache
+
+      - name: Deterministic benchmark scenario (PHPUnit)
+        run: vendor/bin/phpunit tests/Feature/Benchmark/

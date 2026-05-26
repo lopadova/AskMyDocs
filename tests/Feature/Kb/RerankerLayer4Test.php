@@ -74,6 +74,45 @@ final class RerankerLayer4Test extends TestCase
     }
 
     #[Test]
+    public function rerank_prefers_the_normalized_vector_signal_when_present(): void
+    {
+        // v8.2 — when KbSearchService scale-normalisation is on it sets
+        // `rerank_vector_signal` (0..1); the reranker must fuse THAT, not the
+        // raw vector_score. A chunk with a tiny raw score but the top
+        // normalised signal must outrank one with a high raw score but the
+        // bottom signal.
+        $chunks = collect([
+            ['chunk_id' => 1, 'chunk_text' => 'x', 'heading_path' => '', 'vector_score' => 0.02, 'rerank_vector_signal' => 1.0, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 2, 'chunk_text' => 'x', 'heading_path' => '', 'vector_score' => 0.90, 'rerank_vector_signal' => 0.0, 'metadata' => [], 'document' => ['id' => 2]],
+        ]);
+
+        $ranked = (new Reranker())->rerank('cache policy', $chunks, 2);
+        $this->assertSame(1, $ranked->first()['chunk_id']);
+    }
+
+    #[Test]
+    public function normalized_signal_removes_cross_mode_rerank_drift(): void
+    {
+        // Same relative order, different absolute scales (semantic cosine
+        // 0.9/0.6 vs hybrid RRF 0.03/0.02). With equal normalised signals,
+        // the fused rerank_score is identical → toggling hybrid no longer
+        // shifts the score (finding #9).
+        $mk = static fn (array $raw) => collect([
+            ['chunk_id' => 1, 'chunk_text' => 'x', 'heading_path' => '', 'vector_score' => $raw[0], 'rerank_vector_signal' => 1.0, 'metadata' => [], 'document' => ['id' => 1]],
+            ['chunk_id' => 2, 'chunk_text' => 'x', 'heading_path' => '', 'vector_score' => $raw[1], 'rerank_vector_signal' => 0.5, 'metadata' => [], 'document' => ['id' => 2]],
+        ]);
+
+        $semantic = (new Reranker())->rerank('cache policy', $mk([0.9, 0.6]), 2);
+        $rrf = (new Reranker())->rerank('cache policy', $mk([0.03, 0.02]), 2);
+
+        $this->assertEqualsWithDelta(
+            $semantic->firstWhere('chunk_id', 1)['rerank_score'],
+            $rrf->firstWhere('chunk_id', 1)['rerank_score'],
+            0.0001,
+        );
+    }
+
+    #[Test]
     public function doc_cap_limits_chunks_per_document_in_topk(): void
     {
         $chunks = collect([

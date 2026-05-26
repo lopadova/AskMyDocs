@@ -134,6 +134,16 @@ return [
         // default). Large enough to float a mentioned doc to the top of the
         // candidate set without hard-excluding other relevant results.
         'mention_boost_weight'  => (float) env('KB_RERANK_MENTION_BOOST_WEIGHT', 0.50),
+
+        // v8.2 (finding #7/#9) — min-max normalise the candidate vector
+        // signal to 0..1 before fusion, so semantic (cosine 0..1) and hybrid
+        // (RRF ~0.01) scores are comparable and lexically-strong hybrid hits
+        // aren't drowned. The raw vector_score (refusal floor + citation
+        // evidence) is untouched. v8.2 — flipped ON by default after the LIVE
+        // kb:benchmark validated it (hybrid on + priority_weight 0.001:
+        // nDCG@5 0.969 → 0.997, MRR 0.958 → 1.000, no regressions). Set
+        // false to revert to raw-score fusion.
+        'normalize_candidate_scores' => (bool) env('KB_RERANK_NORMALIZE_SCORES', true),
     ],
 
     /*
@@ -173,6 +183,38 @@ return [
 
     'diversification' => [
         'max_chunks_per_doc' => (int) env('KB_DIVERSIFICATION_MAX_CHUNKS_PER_DOC', 3),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Vector-search internals (v8.2)
+    |--------------------------------------------------------------------------
+    |
+    | `php_cosine_prefetch_cap` bounds how many candidate chunks the non-pgsql
+    | (SQLite test/benchmark) PHP-cosine fallback pre-fetches before scoring,
+    | keeping memory sane. Production (pgsql + native pgvector) ignores it.
+    |
+    */
+
+    'search' => [
+        'php_cosine_prefetch_cap' => (int) env('KB_SEARCH_PHP_COSINE_PREFETCH_CAP', 2000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retrieval-quality benchmark thresholds (v8.2)
+    |--------------------------------------------------------------------------
+    |
+    | Enterprise pass thresholds for `kb:benchmark --gate`. The aggregate
+    | scorecard must meet ALL of these for the gate to pass.
+    |
+    */
+
+    'benchmark' => [
+        'threshold_ndcg' => (float) env('KB_BENCHMARK_THRESHOLD_NDCG', 0.80),
+        'threshold_mrr' => (float) env('KB_BENCHMARK_THRESHOLD_MRR', 0.85),
+        'threshold_citation_precision' => (float) env('KB_BENCHMARK_THRESHOLD_CITATION_PRECISION', 0.90),
+        'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
     ],
 
     'chunking' => [
@@ -262,7 +304,14 @@ return [
     'canonical' => [
         'enabled' => env('KB_CANONICAL_ENABLED', true),
         'default_type' => env('KB_CANONICAL_DEFAULT_TYPE', null),
-        'priority_weight' => (float) env('KB_CANONICAL_PRIORITY_WEIGHT', 0.003),
+        // v8.2 — calibrated 0.003 → 0.001 against the live retrieval
+        // benchmark: at 0.003 the canonical priority boost (max ~0.27 for
+        // priority 90) drowned semantic relevance, floating canonical docs
+        // above genuinely more-relevant non-canonical ones (e.g. a DB query
+        // returned cache docs instead of the DB runbook). 0.001 keeps a
+        // canonical tie-breaker nudge (max ~0.09) while relevance wins.
+        // Benchmark: MRR 0.833 → 0.958, nDCG@5 0.855 → 0.969.
+        'priority_weight' => (float) env('KB_CANONICAL_PRIORITY_WEIGHT', 0.001),
         'superseded_penalty' => (float) env('KB_CANONICAL_SUPERSEDED_PENALTY', 0.40),
         'deprecated_penalty' => (float) env('KB_CANONICAL_DEPRECATED_PENALTY', 0.40),
         'archived_penalty' => (float) env('KB_CANONICAL_ARCHIVED_PENALTY', 0.60),
@@ -306,7 +355,11 @@ return [
     'rejected' => [
         'injection_enabled' => env('KB_REJECTED_INJECTION_ENABLED', true),
         'injection_max_docs' => (int) env('KB_REJECTED_INJECTION_MAX_DOCS', 3),
-        'min_similarity' => (float) env('KB_REJECTED_MIN_SIMILARITY', 0.45),
+        // v8.2 — calibrated 0.45 → 0.40 against the live benchmark so a
+        // strategy query surfaces its related rejected-approach context
+        // (rejected-recall 0.5 → 1.0) without over-injecting (refusal +
+        // citation precision stayed 1.0).
+        'min_similarity' => (float) env('KB_REJECTED_MIN_SIMILARITY', 0.40),
     ],
 
     /*

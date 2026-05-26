@@ -1,0 +1,113 @@
+# AskMyDocs retrieval-quality benchmark — labelled query set (v8.2).
+#
+# The benchmark runner (kb:benchmark) ingests resources/benchmark/corpus/*,
+# runs each query through the SAME searchWithContext() path the chat uses,
+# and scores the results against these labels with RetrievalQualityMetrics.
+#
+# Doc keys = source_path basename WITHOUT extension:
+#   cache-invalidation | cache-purge-runbook | rejected-clientside-caching
+#   incident-runbook (PDF) | onboarding-guide (DOCX)
+#
+# Per query:
+#   relevance      map of doc-key => graded relevance (0..3; omit = irrelevant).
+#                  Drives nDCG@k / precision@k / MRR.
+#   expect_citation the doc that MUST appear in the answer's citations.
+#   expect_related  docs that should surface via graph expansion (kb_edges).
+#   expect_rejected rejected-approach docs that should be injected (⚠ block).
+#   expect_refusal  true => the system MUST refuse (no grounded answer).
+#
+# Enterprise pass thresholds (aggregate): nDCG@5 >= 0.80, MRR >= 0.85,
+# citation-precision >= 0.90, refusal-accuracy >= 0.95.
+
+queries:
+  # ---- cache decision (md, canonical) + graph + rejected ----
+  - id: cache-strategy
+    query: "What is our cache invalidation strategy?"
+    relevance: { cache-invalidation: 3, cache-purge-runbook: 1 }
+    expect_citation: cache-invalidation
+    expect_related: [cache-purge-runbook]
+    expect_rejected: [rejected-clientside-caching]
+    expect_refusal: false
+
+  - id: cache-ttl
+    query: "How long does a cached entry live before it expires?"
+    relevance: { cache-invalidation: 3 }
+    expect_citation: cache-invalidation
+    expect_refusal: false
+
+  - id: cache-event-purge
+    query: "How is the cache purged when a document changes?"
+    relevance: { cache-invalidation: 3, cache-purge-runbook: 1 }
+    expect_citation: cache-invalidation
+    expect_refusal: false
+
+  # ---- cache runbook (md, canonical) — graph partner ----
+  - id: cache-recovery
+    query: "How do I recover when the Redis cache is unreachable?"
+    relevance: { cache-purge-runbook: 3, cache-invalidation: 1 }
+    expect_citation: cache-purge-runbook
+    expect_related: [cache-invalidation]
+    expect_refusal: false
+
+  - id: cache-purge-command
+    query: "Which artisan command flushes the cache for a single project?"
+    relevance: { cache-purge-runbook: 3 }
+    expect_citation: cache-purge-runbook
+    expect_refusal: false
+
+  # ---- rejected approach (md, canonical) ----
+  - id: clientside-only
+    query: "Should we cache query results only in the browser and keep the server stateless?"
+    relevance: { rejected-clientside-caching: 3, cache-invalidation: 1 }
+    expect_citation: rejected-clientside-caching
+    expect_rejected: [rejected-clientside-caching]
+    expect_refusal: false
+
+  # ---- database incident runbook (PDF, non-canonical) ----
+  - id: db-connection-exhaustion
+    query: "What do we do when the database connection pool is exhausted?"
+    relevance: { incident-runbook: 3 }
+    expect_citation: incident-runbook
+    expect_refusal: false
+
+  - id: db-failover
+    query: "What is the procedure for a primary database failover?"
+    relevance: { incident-runbook: 3 }
+    expect_citation: incident-runbook
+    expect_refusal: false
+
+  - id: db-replication-lag
+    query: "What should we do when a read replica falls behind?"
+    relevance: { incident-runbook: 3 }
+    expect_citation: incident-runbook
+    expect_refusal: false
+
+  # ---- onboarding guide (DOCX, non-canonical) ----
+  - id: onboarding-week1
+    query: "What should a new engineer do in their first week?"
+    relevance: { onboarding-guide: 3 }
+    expect_citation: onboarding-guide
+    expect_refusal: false
+
+  - id: onboarding-2fa
+    query: "Do I need two-factor authentication before production access?"
+    relevance: { onboarding-guide: 3 }
+    expect_citation: onboarding-guide
+    expect_refusal: false
+
+  - id: onboarding-review
+    query: "What is the pull request review workflow for engineers?"
+    relevance: { onboarding-guide: 3 }
+    expect_citation: onboarding-guide
+    expect_refusal: false
+
+  # ---- refusal cases (no grounding doc exists) ----
+  - id: refusal-parental-leave
+    query: "What is the company's parental leave policy?"
+    relevance: {}
+    expect_refusal: true
+
+  - id: refusal-salary-bands
+    query: "How much is a senior engineer paid and what are the salary bands?"
+    relevance: {}
+    expect_refusal: true
