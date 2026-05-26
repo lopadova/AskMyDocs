@@ -9,11 +9,10 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
+use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
-use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
-use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
@@ -50,7 +49,7 @@ class MessageController extends Controller
         Conversation $conversation,
         AiManager $ai,
         McpToolCallingService $toolCallingService,
-        KbSearchService $search,
+        ChatRetrievalService $retrieval,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -92,27 +91,21 @@ class MessageController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // 3. RAG: search KB for context. T2.7 threads the user-selected
-        // filters into the search; when no filters are surfaced (legacy
-        // composer or the new composer with empty FilterBar), filters
-        // is the legacy single-project DTO so retrieval behaviour
-        // matches the pre-filters baseline.
-        $chunks = $search->search(
-            query: $question,
-            projectKey: $projectKey,
-            limit: config('kb.default_limit', 8),
-            minSimilarity: config('kb.default_min_similarity', 0.30),
-            filters: $filters,
-        );
+        // 3. RAG: v8.1 P0.2 — unified retrieval. The conversation flow now
+        // runs the SAME searchWithContext() path as /api/kb/chat (primary +
+        // graph-expanded + rejected-approach context) via the shared
+        // ChatRetrievalService, so the same question yields identical
+        // grounding context + citations across the sync / stream / chat
+        // channels. T2.7 threads the user-selected filters; with no filters
+        // it falls back to the legacy single-project DTO.
+        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        $chunks = $result->primary;
 
-        // 3b. T3.3 — deterministic refusal short-circuit. Mirrors the
-        // KbChatController behaviour for the conversation flow: if too few
-        // retrieved chunks pass the grounding gate, save a refusal assistant
-        // message and return WITHOUT calling the LLM. v8.1 — shared
-        // RetrievalGrounding gate: shape-agnostic (search() returns ARRAYS;
-        // the old `$c->vector_score` object read collapsed to 0 and disabled
-        // this gate in production) + grounds on rerank_score OR vector floor.
-        if (RetrievalGrounding::shouldRefuse($chunks)) {
+        // 3b. T3.3 — deterministic refusal short-circuit. If too few chunks
+        // pass the shared grounding gate (rerank_score OR vector floor, read
+        // shape-agnostically — see RetrievalGrounding), save a refusal
+        // assistant message and return WITHOUT calling the LLM.
+        if ($retrieval->shouldRefuse($result)) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -128,12 +121,14 @@ class MessageController extends Controller
         // 4. Get few-shot examples from positively-rated past answers
         $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
 
-        // 5. Build system prompt with RAG context + few-shot examples
-        $systemPrompt = view('prompts.kb_rag', [
-            'chunks' => $chunks,
-            'projectKey' => $projectKey,
-            'fewShotExamples' => $fewShotExamples,
-        ])->render();
+        // 5. Build system prompt with RAG context + few-shot examples.
+        // v8.1 P0.2 — pass the typed blocks (expanded + rejected) so the
+        // conversation prompt renders the ⚠ REJECTED / 📎 RELATED sections
+        // identically to /api/kb/chat.
+        $systemPrompt = view('prompts.kb_rag', array_merge(
+            $retrieval->promptContext($result),
+            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+        ))->render();
 
         // 6. Send full history to AI provider
         $aiResponse = $toolCallingService->chatWithTools(
@@ -170,8 +165,8 @@ class MessageController extends Controller
             );
         }
 
-        // 7. Build citations
-        $citations = $this->buildCitations($chunks);
+        // 7. Build citations (shared origin-aware builder).
+        $citations = $retrieval->buildCitations($result);
 
         // 7b. T3.5 — composite confidence score for the grounded answer.
         // Same formula as KbChatController; identical signal across both
@@ -545,26 +540,6 @@ class MessageController extends Controller
         }
         $trimmed = trim($raw);
         return $trimmed === '' ? null : $trimmed;
-    }
-
-    private function buildCitations(\Illuminate\Support\Collection $chunks): array
-    {
-        return $chunks
-            ->groupBy('document.source_path')
-            ->map(function ($group) {
-                $first = $group->first();
-
-                return [
-                    'document_id' => data_get($first, 'document.id'),
-                    'title' => data_get($first, 'document.title', 'Untitled'),
-                    'source_path' => data_get($first, 'document.source_path'),
-                    'source_type' => data_get($first, 'document.source_type'),
-                    'headings' => $group->pluck('heading_path')->filter()->unique()->values()->all(),
-                    'chunks_used' => $group->count(),
-                ];
-            })
-            ->values()
-            ->all();
     }
 
     /**
