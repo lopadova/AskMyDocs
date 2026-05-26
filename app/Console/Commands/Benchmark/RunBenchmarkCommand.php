@@ -117,7 +117,12 @@ final class RunBenchmarkCommand extends Command
         $this->line('  refusal-accuracy : '.number_format($agg['refusal_accuracy'], 4).$mark('refusal_accuracy'));
         $this->line('  graph-recall     : '.number_format($agg['graph_recall'], 4));
         $this->line('  rejected-recall  : '.number_format($agg['rejected_recall'], 4));
-        if (($agg['answer_faithfulness'] ?? 0.0) > 0.0) {
+        // Show whenever --with-answers actually ran (any query carries a
+        // non-null faithfulness), NOT only when the mean is > 0 — a run where
+        // every answer refused/anti-correlated has a legitimate 0.0 mean that
+        // must still be reported, otherwise the metric silently vanishes.
+        $scored = array_filter($card['queries'], static fn (array $r): bool => ($r['faithfulness'] ?? null) !== null);
+        if ($scored !== []) {
             $this->line('  answer-faithful. : '.number_format($agg['answer_faithfulness'], 4).' (real LLM answers)');
         }
     }

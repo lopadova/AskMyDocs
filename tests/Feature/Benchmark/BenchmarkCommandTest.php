@@ -104,7 +104,9 @@ final class BenchmarkCommandTest extends TestCase
         Http::assertSent(fn ($req) => str_contains($req->url(), '/chat/completions'));
 
         $files = Storage::disk('local')->allFiles('kb-benchmark');
+        $this->assertNotEmpty($files, 'a benchmark report was written');
         $json = collect($files)->first(fn ($f) => str_ends_with($f, '.json'));
+        $this->assertNotNull($json, 'a JSON report file exists before decoding it');
         $card = json_decode(Storage::disk('local')->get($json), true);
 
         $this->assertArrayHasKey('answer_faithfulness', $card['aggregate']);

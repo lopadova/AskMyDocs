@@ -191,8 +191,9 @@ final class BenchmarkRunner
     /**
      * Generate the REAL chat answer for a query (same kb_rag prompt + the
      * same AiManager::chat the app uses) and score faithfulness as the cosine
-     * similarity between the answer and the cited-chunk text. A fluent answer
-     * that drifts from its grounding scores low; a self-refusal scores 0.
+     * similarity between the answer and the GROUNDING text the LLM actually
+     * saw. A fluent answer that drifts from its grounding scores low; a
+     * self-refusal scores 0.
      */
     private function answerFaithfulness(string $query, \App\Services\Kb\Retrieval\SearchResult $result): float
     {
@@ -206,15 +207,22 @@ final class BenchmarkRunner
             return 0.0; // refused / empty despite grounding present
         }
 
-        $citedText = $result->primary
+        // Compare against EVERY context bucket rendered into the prompt —
+        // primary + graph-expanded + rejected-approach — not just primary,
+        // so an answer grounded in expanded/rejected context isn't penalised
+        // for tracking text the LLM was legitimately given (Copilot #238).
+        $groundingText = collect()
+            ->concat($result->primary)
+            ->concat($result->expanded)
+            ->concat($result->rejected)
             ->map(fn ($c) => (string) data_get($c, 'chunk_text', ''))
             ->filter()
             ->implode("\n\n");
-        if ($citedText === '') {
+        if ($groundingText === '') {
             return 0.0;
         }
 
-        $vecs = $this->embeddings->generate([$answer, $citedText])->embeddings;
+        $vecs = $this->embeddings->generate([$answer, $groundingText])->embeddings;
 
         // Reuse the canonical CosineCalculator (IoC, test-substitutable).
         // Negatives floor at 0.0: a faithfulness score is a 0..1 grounding
