@@ -139,9 +139,11 @@ return [
         // signal to 0..1 before fusion, so semantic (cosine 0..1) and hybrid
         // (RRF ~0.01) scores are comparable and lexically-strong hybrid hits
         // aren't drowned. The raw vector_score (refusal floor + citation
-        // evidence) is untouched. Default OFF — flip on only once the LIVE
-        // kb:benchmark shows it improves nDCG/MRR for your corpus.
-        'normalize_candidate_scores' => (bool) env('KB_RERANK_NORMALIZE_SCORES', false),
+        // evidence) is untouched. v8.2 — flipped ON by default after the LIVE
+        // kb:benchmark validated it (hybrid on + priority_weight 0.001:
+        // nDCG@5 0.969 → 0.997, MRR 0.958 → 1.000, no regressions). Set
+        // false to revert to raw-score fusion.
+        'normalize_candidate_scores' => (bool) env('KB_RERANK_NORMALIZE_SCORES', true),
     ],
 
     /*
@@ -270,7 +272,14 @@ return [
     'canonical' => [
         'enabled' => env('KB_CANONICAL_ENABLED', true),
         'default_type' => env('KB_CANONICAL_DEFAULT_TYPE', null),
-        'priority_weight' => (float) env('KB_CANONICAL_PRIORITY_WEIGHT', 0.003),
+        // v8.2 — calibrated 0.003 → 0.001 against the live retrieval
+        // benchmark: at 0.003 the canonical priority boost (max ~0.27 for
+        // priority 90) drowned semantic relevance, floating canonical docs
+        // above genuinely more-relevant non-canonical ones (e.g. a DB query
+        // returned cache docs instead of the DB runbook). 0.001 keeps a
+        // canonical tie-breaker nudge (max ~0.09) while relevance wins.
+        // Benchmark: MRR 0.833 → 0.958, nDCG@5 0.855 → 0.969.
+        'priority_weight' => (float) env('KB_CANONICAL_PRIORITY_WEIGHT', 0.001),
         'superseded_penalty' => (float) env('KB_CANONICAL_SUPERSEDED_PENALTY', 0.40),
         'deprecated_penalty' => (float) env('KB_CANONICAL_DEPRECATED_PENALTY', 0.40),
         'archived_penalty' => (float) env('KB_CANONICAL_ARCHIVED_PENALTY', 0.60),
@@ -314,7 +323,11 @@ return [
     'rejected' => [
         'injection_enabled' => env('KB_REJECTED_INJECTION_ENABLED', true),
         'injection_max_docs' => (int) env('KB_REJECTED_INJECTION_MAX_DOCS', 3),
-        'min_similarity' => (float) env('KB_REJECTED_MIN_SIMILARITY', 0.45),
+        // v8.2 — calibrated 0.45 → 0.40 against the live benchmark so a
+        // strategy query surfaces its related rejected-approach context
+        // (rejected-recall 0.5 → 1.0) without over-injecting (refusal +
+        // citation precision stayed 1.0).
+        'min_similarity' => (float) env('KB_REJECTED_MIN_SIMILARITY', 0.40),
     ],
 
     /*
