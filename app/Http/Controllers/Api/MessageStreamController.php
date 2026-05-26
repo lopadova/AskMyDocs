@@ -13,9 +13,8 @@ use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
-use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
-use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
@@ -98,7 +97,7 @@ class MessageStreamController extends Controller
         Conversation $conversation,
         AiManager $ai,
         McpToolCallingService $toolCallingService,
-        KbSearchService $search,
+        ChatRetrievalService $retrieval,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -154,21 +153,14 @@ class MessageStreamController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // RAG search — same call shape as MessageController so retrieval
-        // behaviour is identical between sync and stream paths.
-        $chunks = $search->search(
-            query: $question,
-            projectKey: $projectKey,
-            limit: config('kb.default_limit', 8),
-            minSimilarity: config('kb.default_min_similarity', 0.30),
-            filters: $filters,
-        );
+        // RAG: v8.1 P0.2 — unified retrieval via ChatRetrievalService, the
+        // SAME searchWithContext() path as /api/kb/chat + MessageController
+        // (primary + graph-expanded + rejected). $chunks stays the primary
+        // set so the downstream streaming/persistence logic is unchanged.
+        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        $chunks = $result->primary;
 
-        // v8.1 — shared RetrievalGrounding gate (this controller already
-        // read shape-agnostically via data_get; now it also honours
-        // rerank_score so all three chat surfaces refuse identically and a
-        // lexically-strong match isn't refused on a modest vector score).
-        $shouldRefuse = RetrievalGrounding::shouldRefuse($chunks);
+        $shouldRefuse = $retrieval->shouldRefuse($result);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -196,13 +188,14 @@ class MessageStreamController extends Controller
 
         $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
 
-        $systemPrompt = view('prompts.kb_rag', [
-            'chunks' => $chunks,
-            'projectKey' => $projectKey,
-            'fewShotExamples' => $fewShotExamples,
-        ])->render();
+        // v8.1 P0.2 — typed-block prompt context (chunks + expanded +
+        // rejected) so the stream prompt matches the sync + chat channels.
+        $systemPrompt = view('prompts.kb_rag', array_merge(
+            $retrieval->promptContext($result),
+            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+        ))->render();
 
-        $citations = $this->buildCitations($chunks);
+        $citations = $retrieval->buildCitations($result);
         $toolResponse = null;
         if ($toolCallingService->canHandleToolCalling($request->user())) {
             $toolResponse = $toolCallingService->chatWithTools(
@@ -929,28 +922,5 @@ class MessageStreamController extends Controller
         }
         $trimmed = trim($raw);
         return $trimmed === '' ? null : $trimmed;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function buildCitations(Collection $chunks): array
-    {
-        return $chunks
-            ->groupBy('document.source_path')
-            ->map(function ($group) {
-                $first = $group->first();
-
-                return [
-                    'document_id' => data_get($first, 'document.id'),
-                    'title' => data_get($first, 'document.title', 'Untitled'),
-                    'source_path' => data_get($first, 'document.source_path'),
-                    'source_type' => data_get($first, 'document.source_type'),
-                    'headings' => $group->pluck('heading_path')->filter()->unique()->values()->all(),
-                    'chunks_used' => $group->count(),
-                ];
-            })
-            ->values()
-            ->all();
     }
 }

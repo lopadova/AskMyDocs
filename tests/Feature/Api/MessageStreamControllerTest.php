@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\MessageStreamController;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
@@ -265,11 +266,18 @@ final class MessageStreamControllerTest extends TestCase
     {
         $capturedFilters = null;
         $search = Mockery::mock(KbSearchService::class);
-        $search->shouldReceive('search')->andReturnUsing(
+        // v8.1 P0.2 — the stream controller now runs the unified
+        // searchWithContext() path (via ChatRetrievalService). filters is
+        // still the 5th argument, so $args[4] captures it.
+        $search->shouldReceive('searchWithContext')->andReturnUsing(
             function (...$args) use (&$capturedFilters) {
                 $capturedFilters = $args[4] ?? null;
-                // Return one grounded chunk so the path goes through happy.
-                return $this->groundedChunkCollection();
+
+                return new SearchResult(
+                    primary: $this->groundedChunkCollection(),
+                    expanded: collect(),
+                    rejected: collect(),
+                );
             }
         );
         $this->app->instance(KbSearchService::class, $search);
@@ -489,7 +497,11 @@ final class MessageStreamControllerTest extends TestCase
     private function mockSearchWithGroundedChunks(): void
     {
         $search = Mockery::mock(KbSearchService::class);
-        $search->shouldReceive('search')->andReturn($this->groundedChunkCollection());
+        $search->shouldReceive('searchWithContext')->andReturn(new SearchResult(
+            primary: $this->groundedChunkCollection(),
+            expanded: collect(),
+            rejected: collect(),
+        ));
         $this->app->instance(KbSearchService::class, $search);
     }
 
@@ -498,7 +510,8 @@ final class MessageStreamControllerTest extends TestCase
         $search = Mockery::mock(KbSearchService::class);
         // Production-shape associative array — `vector_score` below
         // the 0.45 threshold forces the refusal short-circuit.
-        $search->shouldReceive('search')->andReturn(collect([
+        $search->shouldReceive('searchWithContext')->andReturn(new SearchResult(
+            primary: collect([
             [
                 'chunk_id' => 1,
                 'project_key' => 'hr-portal',
@@ -518,7 +531,10 @@ final class MessageStreamControllerTest extends TestCase
                     'canonical_status' => null,
                 ],
             ],
-        ]));
+            ]),
+            expanded: collect(),
+            rejected: collect(),
+        ));
         $this->app->instance(KbSearchService::class, $search);
     }
 
