@@ -46,6 +46,24 @@ final class KbDocumentSearchControllerTest extends TestCase
         $this->assertSame(['Policy Alpha', 'Policy Beta'], $titles);
     }
 
+    public function test_v81_relevance_ranks_title_prefix_then_mid_then_path_only(): void
+    {
+        // All three match "cache" (the WHERE is a contains), but at
+        // different strengths. Seeded path-only FIRST to prove the relevance
+        // rank overrides insertion order: title-prefix (3) > title-contains
+        // (2) > path-contains (1). Distinct ranks → curation tie-breakers
+        // never apply between them, so the order is deterministic.
+        $this->seedDoc('hr', 'docs/cache-internals.md', 'Eviction guide'); // path-only
+        $this->seedDoc('hr', 'docs/lru.md', 'LRU cache tuning');           // title mid
+        $this->seedDoc('hr', 'docs/cp.md', 'Cache policy');                // title prefix
+
+        $resp = $this->getJson('/api/kb/documents/search?q=cache');
+
+        $resp->assertOk()->assertJsonCount(3, 'data');
+        $titles = collect($resp->json('data'))->pluck('title')->values()->all();
+        $this->assertSame(['Cache policy', 'LRU cache tuning', 'Eviction guide'], $titles);
+    }
+
     public function test_search_substring_also_matches_source_path(): void
     {
         $this->seedDoc('hr', 'docs/hidden-policy.md', 'Untitled');

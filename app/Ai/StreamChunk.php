@@ -170,10 +170,18 @@ final readonly class StreamChunk
      * surface; not worth the complexity for a UI grouping that today
      * is mostly cosmetic.
      */
+    /**
+     * @param  array<string, mixed>  $providerMetadata  v8.1 — citation
+     *         provenance (origin / headings / chunks_used) carried on the
+     *         SDK-standard `providerMetadata` field of a source-url part so
+     *         streamed citation chips reach parity with the sync channel's
+     *         rich citations instead of the FE inferring defaults.
+     */
     public static function sourceUrl(
         string $sourceId,
         string $url,
         ?string $title = null,
+        array $providerMetadata = [],
     ): self {
         $payload = [
             'sourceId' => $sourceId,
@@ -181,6 +189,9 @@ final readonly class StreamChunk
         ];
         if ($title !== null) {
             $payload['title'] = $title;
+        }
+        if ($providerMetadata !== []) {
+            $payload['providerMetadata'] = $providerMetadata;
         }
 
         return new self(self::TYPE_SOURCE_URL, $payload);

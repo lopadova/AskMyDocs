@@ -418,6 +418,16 @@ class MessageStreamController extends Controller
                     sourceId: 'doc-' . ($citation['document_id'] ?? 'unknown'),
                     url: $url,
                     title: (string) ($citation['title'] ?? 'Untitled'),
+                    // v8.1 P2 — stream/sync citation parity (#6): carry the
+                    // origin marker + headings + chunk count so the live SSE
+                    // chip is as rich as the persisted sync citation, instead
+                    // of the FE defaulting origin to 'primary'.
+                    providerMetadata: [
+                        'origin' => $citation['origin'] ?? 'primary',
+                        'headings' => $citation['headings'] ?? [],
+                        'chunks_used' => $citation['chunks_used'] ?? 0,
+                        'source_type' => $citation['source_type'] ?? null,
+                    ],
                 ));
             }
 
