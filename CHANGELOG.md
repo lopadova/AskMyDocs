@@ -49,6 +49,16 @@ caught 7 more unscoped reads — `KbDocumentSearchController`,
 `ChatFilterPresetController`, `FewShotService`, and the graph/audit
 queries in `KbDocumentController` — all now scoped.
 
+**Third audit (deeper R30 sweep):** extended the architecture test to scan
+`app/Mcp` + `app/Console` + `app/Compliance` and closed the remaining
+leaks — all **10 MCP tools** now `forTenant`-scope their reads;
+`AiInsightsService` is fully tenant-scoped (+ promotion N+1 batched) and
+`InsightsComputeCommand` writes **one snapshot per tenant** (new
+`(tenant_id, snapshot_date)` unique via `2026_05_26_000002`);
+`ProvenanceChain` scoped; `Conversation::resolveRouteBinding` tenant-scoped
+(covers the chat message/stream controllers); `KbValidateCanonicalCommand`
+scoped.
+
 **Tenant-scoped uniques (R31):** migration `2026_05_26_000001` rebuilds
 the `kb_tags` and `project_memberships` composite uniques to start with
 `tenant_id` (the FK-entangled `kb_nodes`/`kb_edges` rebuild stays deferred
