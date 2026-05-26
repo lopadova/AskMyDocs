@@ -131,7 +131,10 @@ class Reranker
                 $boostSet,
                 $mentionBoostWeight,
             ) {
-                $vectorScore = (float) ($chunk['vector_score'] ?? 0.0);
+                // v8.2 — prefer the min-max normalised candidate signal when
+                // KbSearchService produced one (scale calibration), else the
+                // raw vector_score. Absent field → identical to pre-v8.2.
+                $vectorScore = (float) ($chunk['rerank_vector_signal'] ?? $chunk['vector_score'] ?? 0.0);
                 $keywordScore = $this->keywordScore($queryTokens, $chunk['chunk_text'] ?? '');
                 $headingScore = $this->keywordScore($queryTokens, $chunk['heading_path'] ?? '');
 
