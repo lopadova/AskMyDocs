@@ -28,6 +28,7 @@ final class RunBenchmarkCommand extends Command
 {
     protected $signature = 'kb:benchmark
         {--stub : Use deterministic stub embeddings (no API key / provider)}
+        {--with-answers : Generate REAL chat answers + score answer-faithfulness (LIVE; costs LLM calls)}
         {--gate : Exit non-zero when aggregate metrics miss the thresholds}
         {--project=benchmark : Project key to ingest the corpus under}
         {--k=5 : Cut-off k for nDCG@k / precision@k}
@@ -61,6 +62,7 @@ final class RunBenchmarkCommand extends Command
             queriesFile: $queries,
             projectKey: (string) $this->option('project'),
             k: max(1, (int) $this->option('k')),
+            withAnswers: (bool) $this->option('with-answers'),
         );
 
         $this->renderScorecard($card);
@@ -115,6 +117,9 @@ final class RunBenchmarkCommand extends Command
         $this->line('  refusal-accuracy : '.number_format($agg['refusal_accuracy'], 4).$mark('refusal_accuracy'));
         $this->line('  graph-recall     : '.number_format($agg['graph_recall'], 4));
         $this->line('  rejected-recall  : '.number_format($agg['rejected_recall'], 4));
+        if (($agg['answer_faithfulness'] ?? 0.0) > 0.0) {
+            $this->line('  answer-faithful. : '.number_format($agg['answer_faithfulness'], 4).' (real LLM answers)');
+        }
     }
 
     /** @param  array<string,mixed>  $card @return string absolute-ish report path */

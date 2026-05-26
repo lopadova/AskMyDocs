@@ -107,18 +107,18 @@ return [
             'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
             'chat_model' => env('OPENAI_CHAT_MODEL', 'gpt-4o'),
             'embeddings_model' => env('OPENAI_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
-            'temperature' => env('OPENAI_TEMPERATURE', 0.2),
-            'max_tokens' => env('OPENAI_MAX_TOKENS', 4096),
-            'timeout' => env('OPENAI_TIMEOUT', 120),
+            'temperature' => (float) env('OPENAI_TEMPERATURE', 0.2),
+            'max_tokens' => (int) env('OPENAI_MAX_TOKENS', 4096),
+            'timeout' => (int) env('OPENAI_TIMEOUT', 120),
         ],
 
         'anthropic' => [
             'api_key' => env('ANTHROPIC_API_KEY'),
             'api_version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
             'chat_model' => env('ANTHROPIC_CHAT_MODEL', 'claude-sonnet-4-20250514'),
-            'temperature' => env('ANTHROPIC_TEMPERATURE', 0.2),
-            'max_tokens' => env('ANTHROPIC_MAX_TOKENS', 4096),
-            'timeout' => env('ANTHROPIC_TIMEOUT', 120),
+            'temperature' => (float) env('ANTHROPIC_TEMPERATURE', 0.2),
+            'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 4096),
+            'timeout' => (int) env('ANTHROPIC_TIMEOUT', 120),
         ],
 
         'gemini' => [
@@ -126,9 +126,9 @@ return [
             'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
             'chat_model' => env('GEMINI_CHAT_MODEL', 'gemini-2.0-flash'),
             'embeddings_model' => env('GEMINI_EMBEDDINGS_MODEL', 'text-embedding-004'),
-            'temperature' => env('GEMINI_TEMPERATURE', 0.2),
-            'max_tokens' => env('GEMINI_MAX_TOKENS', 4096),
-            'timeout' => env('GEMINI_TIMEOUT', 120),
+            'temperature' => (float) env('GEMINI_TEMPERATURE', 0.2),
+            'max_tokens' => (int) env('GEMINI_MAX_TOKENS', 4096),
+            'timeout' => (int) env('GEMINI_TIMEOUT', 120),
         ],
 
         'openrouter' => [
@@ -138,9 +138,9 @@ return [
             'embeddings_model' => env('OPENROUTER_EMBEDDINGS_MODEL', 'openai/text-embedding-3-small'),
             'app_name' => env('OPENROUTER_APP_NAME', 'AskMyDocs'),
             'site_url' => env('OPENROUTER_SITE_URL'),
-            'temperature' => env('OPENROUTER_TEMPERATURE', 0.2),
-            'max_tokens' => env('OPENROUTER_MAX_TOKENS', 4096),
-            'timeout' => env('OPENROUTER_TIMEOUT', 120),
+            'temperature' => (float) env('OPENROUTER_TEMPERATURE', 0.2),
+            'max_tokens' => (int) env('OPENROUTER_MAX_TOKENS', 4096),
+            'timeout' => (int) env('OPENROUTER_TIMEOUT', 120),
         ],
 
         // Regolo entry uses the laravel/ai SDK shape because AskMyDocs's
@@ -152,7 +152,7 @@ return [
             'name' => 'regolo',
             'key' => env('REGOLO_API_KEY'),
             'url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
-            'timeout' => env('REGOLO_TIMEOUT', 120),
+            'timeout' => (int) env('REGOLO_TIMEOUT', 120),
             // Provider-level defaults for every chat call. Per-call
             // overrides via `$options['max_tokens']` / `$options['temperature']`
             // (e.g. `ConversationController::generateTitle` capping

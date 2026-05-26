@@ -41,6 +41,9 @@ final class BenchmarkRunner
         private readonly DocumentIngestor $ingestor,
         private readonly KbSearchService $search,
         private readonly ChatRetrievalService $retrieval,
+        private readonly \App\Ai\AiManager $ai,
+        private readonly \App\Services\Kb\EmbeddingCacheService $embeddings,
+        private readonly \App\Services\Kb\Retrieval\CosineCalculator $cosineCalc,
     ) {}
 
     /**
@@ -49,18 +52,18 @@ final class BenchmarkRunner
      *   queries: list<array<string,mixed>>,
      *   aggregate: array{ndcg_at_k: float, mrr: float, precision_at_k: float,
      *     citation_precision: float, refusal_accuracy: float, graph_recall: float,
-     *     rejected_recall: float},
+     *     rejected_recall: float, answer_faithfulness: float},
      *   thresholds: array<string,float>, passed: bool
      * }
      */
-    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5): array
+    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false): array
     {
         $corpusCount = $this->ingestCorpus($corpusDir, $projectKey);
         $queries = $this->loadQueries($queriesFile);
 
         $rows = [];
         foreach ($queries as $q) {
-            $rows[] = $this->scoreQuery($q, $projectKey, $k);
+            $rows[] = $this->scoreQuery($q, $projectKey, $k, $withAnswers);
         }
 
         $aggregate = $this->aggregate($rows, $k);
@@ -116,7 +119,7 @@ final class BenchmarkRunner
      * @param  array<string,mixed>  $q
      * @return array<string,mixed>
      */
-    private function scoreQuery(array $q, string $projectKey, int $k): array
+    private function scoreQuery(array $q, string $projectKey, int $k, bool $withAnswers = false): array
     {
         $result = $this->search->searchWithContext(
             query: (string) $q['query'],
@@ -131,6 +134,26 @@ final class BenchmarkRunner
 
         $expectRefusal = (bool) ($q['expect_refusal'] ?? false);
         $refused = RetrievalGrounding::shouldRefuse($result->primary);
+
+        // --with-answers: generate the REAL chat answer + score faithfulness
+        // (cosine of the answer vs the cited-chunk text — catches a fluent
+        // answer that doesn't track its own grounding). Skipped on refusal
+        // queries (no answer) and when not requested (retrieval-only run).
+        // Exceptions (API errors, 429, timeouts) are caught so a single
+        // failing LLM call doesn't abort the run and discard all retrieval
+        // scores already computed for previous queries (R4).
+        $faithfulness = null;
+        if ($withAnswers && ! $expectRefusal && ! $refused) {
+            try {
+                $faithfulness = round($this->answerFaithfulness((string) $q['query'], $result), 4);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('benchmark: answerFaithfulness failed', [
+                    'query_id' => $q['id'] ?? '?',
+                    'error'    => $e->getMessage(),
+                ]);
+                // faithfulness stays null — query keeps its retrieval scores
+            }
+        }
 
         $citationKeys = $this->docKeys(
             collect($this->retrieval->buildCitations($result))->pluck('source_path'),
@@ -160,8 +183,43 @@ final class BenchmarkRunner
             'related_expected' => count($expectRelated),
             'rejected_hit' => $expectRejected === [] ? null : count(array_intersect($expectRejected, $rejectedKeys)),
             'rejected_expected' => count($expectRejected),
+            'faithfulness' => $faithfulness,
             'top' => $rankedDocKeys[0] ?? null,
         ];
+    }
+
+    /**
+     * Generate the REAL chat answer for a query (same kb_rag prompt + the
+     * same AiManager::chat the app uses) and score faithfulness as the cosine
+     * similarity between the answer and the cited-chunk text. A fluent answer
+     * that drifts from its grounding scores low; a self-refusal scores 0.
+     */
+    private function answerFaithfulness(string $query, \App\Services\Kb\Retrieval\SearchResult $result): float
+    {
+        $prompt = view('prompts.kb_rag', array_merge(
+            $this->retrieval->promptContext($result),
+            ['projectKey' => null, 'fewShotExamples' => []],
+        ))->render();
+
+        $answer = trim($this->ai->chat($prompt, $query)->content);
+        if ($answer === '' || $answer === '__NO_GROUNDED_ANSWER__') {
+            return 0.0; // refused / empty despite grounding present
+        }
+
+        $citedText = $result->primary
+            ->map(fn ($c) => (string) data_get($c, 'chunk_text', ''))
+            ->filter()
+            ->implode("\n\n");
+        if ($citedText === '') {
+            return 0.0;
+        }
+
+        $vecs = $this->embeddings->generate([$answer, $citedText])->embeddings;
+
+        // Reuse the canonical CosineCalculator (IoC, test-substitutable).
+        // Negatives floor at 0.0: a faithfulness score is a 0..1 grounding
+        // signal, so an anti-correlated answer is "not grounded", not -0.3.
+        return max(0.0, $this->cosineCalc->similarity($vecs[0] ?? [], $vecs[1] ?? []));
     }
 
     /**
@@ -247,6 +305,9 @@ final class BenchmarkRunner
                 fn ($r) => $r['rejected_hit'] !== null,
                 fn ($r) => $r['rejected_hit'] > 0,
             ), 4),
+            // Mean answer-faithfulness over answered queries (only populated
+            // on a --with-answers run; 0.0 when none were scored).
+            'answer_faithfulness' => round($mean($answerable, 'faithfulness'), 4),
         ];
     }
 
