@@ -69,10 +69,11 @@ final class BenchmarkCommandTest extends TestCase
     public function test_with_answers_generates_real_chat_and_scores_answer_faithfulness(): void
     {
         // --with-answers drives a REAL chat call per answerable query and
-        // scores cosine(answer, cited-chunks). Fake the LLM (the only
-        // external boundary) so the wiring is deterministic; embeddings stay
-        // on the stub. The faked answer shares cache vocabulary with the
-        // cited chunks so faithfulness is provably > 0.
+        // scores cosine(answer, rendered grounding text = primary + expanded
+        // + rejected). Fake the LLM (the only external boundary) so the
+        // wiring is deterministic; embeddings stay on the stub. The faked
+        // answer shares cache vocabulary with the grounding chunks so
+        // faithfulness is provably > 0.
         config([
             'ai.default' => 'openai',
             'ai.providers.openai.api_key' => 'sk-test',

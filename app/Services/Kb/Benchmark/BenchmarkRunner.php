@@ -136,20 +136,24 @@ final class BenchmarkRunner
         $refused = RetrievalGrounding::shouldRefuse($result->primary);
 
         // --with-answers: generate the REAL chat answer + score faithfulness
-        // (cosine of the answer vs the cited-chunk text — catches a fluent
-        // answer that doesn't track its own grounding). Skipped on refusal
-        // queries (no answer) and when not requested (retrieval-only run).
-        // Exceptions (API errors, 429, timeouts) are caught so a single
+        // (cosine of the answer vs the grounding text rendered into the
+        // prompt — catches a fluent answer that doesn't track its own
+        // grounding). Skipped on refusal queries (no answer) and when not
+        // requested (retrieval-only run). Exceptions (API errors, 429,
+        // timeouts, a short embeddings response) are caught so a single
         // failing LLM call doesn't abort the run and discard all retrieval
-        // scores already computed for previous queries (R4).
+        // scores already computed for previous queries (R4). On failure the
+        // score stays null — NOT a misleading 0.0 — so the aggregate mean
+        // (which skips nulls) isn't biased downward by an infra hiccup.
         $faithfulness = null;
         if ($withAnswers && ! $expectRefusal && ! $refused) {
             try {
-                $faithfulness = round($this->answerFaithfulness((string) $q['query'], $result), 4);
+                $faithfulness = round($this->answerFaithfulness((string) $q['query'], $projectKey, $result), 4);
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('benchmark: answerFaithfulness failed', [
-                    'query_id' => $q['id'] ?? '?',
-                    'error'    => $e->getMessage(),
+                    'query_id'  => $q['id'] ?? '?',
+                    'error'     => $e->getMessage(),
+                    'exception' => $e, // preserve class + stack trace for diagnosis
                 ]);
                 // faithfulness stays null — query keeps its retrieval scores
             }
@@ -190,16 +194,20 @@ final class BenchmarkRunner
 
     /**
      * Generate the REAL chat answer for a query (same kb_rag prompt + the
-     * same AiManager::chat the app uses) and score faithfulness as the cosine
-     * similarity between the answer and the GROUNDING text the LLM actually
-     * saw. A fluent answer that drifts from its grounding scores low; a
-     * self-refusal scores 0.
+     * same AiManager::chat the app uses, scoped to the same project) and
+     * score faithfulness as the cosine similarity between the answer and the
+     * GROUNDING text the LLM actually saw (primary + expanded + rejected). A
+     * fluent answer that drifts from its grounding scores low; a self-refusal
+     * scores 0.
      */
-    private function answerFaithfulness(string $query, \App\Services\Kb\Retrieval\SearchResult $result): float
+    private function answerFaithfulness(string $query, string $projectKey, \App\Services\Kb\Retrieval\SearchResult $result): float
     {
         $prompt = view('prompts.kb_rag', array_merge(
             $this->retrieval->promptContext($result),
-            ['projectKey' => null, 'fewShotExamples' => []],
+            // Pass the real project key (not null) so the rendered prompt
+            // matches what the controllers build — null renders "Project:
+            // all" and would diverge from production fidelity.
+            ['projectKey' => $projectKey, 'fewShotExamples' => []],
         ))->render();
 
         $answer = trim($this->ai->chat($prompt, $query)->content);
@@ -223,11 +231,18 @@ final class BenchmarkRunner
         }
 
         $vecs = $this->embeddings->generate([$answer, $groundingText])->embeddings;
+        // A short/empty embeddings response is an infra failure (API blip,
+        // dimension mismatch), NOT a 0.0-faithful answer. Throw so the outer
+        // try/catch leaves this query's faithfulness null instead of silently
+        // biasing the aggregate downward with a fake zero.
+        if (count($vecs) < 2 || ($vecs[0] ?? []) === [] || ($vecs[1] ?? []) === []) {
+            throw new \RuntimeException('benchmark: embeddings provider returned fewer than two non-empty vectors.');
+        }
 
         // Reuse the canonical CosineCalculator (IoC, test-substitutable).
         // Negatives floor at 0.0: a faithfulness score is a 0..1 grounding
         // signal, so an anti-correlated answer is "not grounded", not -0.3.
-        return max(0.0, $this->cosineCalc->similarity($vecs[0] ?? [], $vecs[1] ?? []));
+        return max(0.0, $this->cosineCalc->similarity($vecs[0], $vecs[1]));
     }
 
     /**
