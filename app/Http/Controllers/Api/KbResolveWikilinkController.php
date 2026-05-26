@@ -31,7 +31,10 @@ class KbResolveWikilinkController extends Controller
             'slug' => ['required', 'string', 'max:240'],
         ]);
 
+        // R30 — slug+project is NOT unique across tenants; scope to the
+        // active tenant so a wikilink can't resolve another tenant's doc.
         $doc = KnowledgeDocument::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->bySlug($validated['project'], $validated['slug'])
             ->first();
 
@@ -53,6 +56,7 @@ class KbResolveWikilinkController extends Controller
     private function previewFor(KnowledgeDocument $doc): string
     {
         $chunk = KnowledgeChunk::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->where('knowledge_document_id', $doc->id)
             ->orderBy('chunk_order')
             ->value('chunk_text');

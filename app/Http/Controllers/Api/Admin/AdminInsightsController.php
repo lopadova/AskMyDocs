@@ -49,7 +49,9 @@ class AdminInsightsController extends Controller
      */
     public function latest(): JsonResponse
     {
+        // R30 — insights snapshots are per-tenant; scope to the active one.
         $row = AdminInsightsSnapshot::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->orderByDesc('snapshot_date')
             ->first();
 
@@ -105,6 +107,7 @@ class AdminInsightsController extends Controller
         }
 
         $row = AdminInsightsSnapshot::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->whereDate('snapshot_date', $parsed->toDateString())
             ->first();
 

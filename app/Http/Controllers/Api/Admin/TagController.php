@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\KbTag;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -14,11 +15,11 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 /**
  * T2.10 — Admin RESTful CRUD on `kb_tags`.
  *
- * Tags are scoped per project: a slug is unique within a single
- * project_key but the SAME slug can legitimately exist on other
- * projects (per-tenant taxonomy isolation). Listing accepts an
- * optional `project_keys[]` filter — admins typically narrow to the
- * project they're managing.
+ * Tags are scoped per (tenant_id, project_key): a slug is unique within a
+ * single project of a single tenant, but the SAME slug can legitimately
+ * exist in another project OR another tenant. Listing accepts an optional
+ * `project_keys[]` filter — admins typically narrow to the project they're
+ * managing.
  *
  * The pivot table `knowledge_document_tags` cascades on tag delete
  * (per `2026_04_23_000003_create_knowledge_document_tags_table.php`),
@@ -27,13 +28,17 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * are visible to the admin via the document-side audit trail.
  *
  * Auth: `auth:sanctum` + `role:admin|super-admin` (route group at
- * routes/api.php). Each tag is project-scoped, but the controller
- * doesn't enforce per-tenant isolation on admins — admins can curate
- * tags across every project they oversee. Per-user authorization is
- * not relevant here (tags are admin-curated, not user-owned).
+ * routes/api.php). R30 — every read/write here IS tenant-scoped via
+ * `forTenant($this->tenant->current())` (index + findOr404), so an admin
+ * only ever sees/edits tags of the active tenant; cross-tenant tag access
+ * is structurally impossible. Within that tenant, admins curate tags
+ * across every project they oversee (tags are admin-curated, not
+ * user-owned, so per-user authorization is not relevant).
  */
 final class TagController extends Controller
 {
+    public function __construct(private readonly TenantContext $tenant) {}
+
     /**
      * GET /api/admin/kb/tags?project_keys[]=...
      *
@@ -49,7 +54,10 @@ final class TagController extends Controller
 
         $projectKeys = $validated['project_keys'] ?? [];
 
+        // R30 — kb_tags is tenant-aware; without forTenant the list leaks
+        // every tenant's tags to any admin.
         $query = KbTag::query()
+            ->forTenant($this->tenant->current())
             ->orderBy('project_key')
             ->orderBy('slug');
 
@@ -81,8 +89,15 @@ final class TagController extends Controller
                 // Slug shape: lowercase alphanumeric + hyphens. Mirrors
                 // the canonical-slug rules the BE applies elsewhere.
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
+                // R30/R31 — uniqueness is per (tenant_id, project_key, slug).
+                // The DB composite unique IS tenant-scoped (migration
+                // 2026_05_26_000001 rebuilt it to (tenant_id, project_key,
+                // slug)); this validation rule mirrors that scope so the
+                // user gets a 422 instead of a raw DB integrity error.
                 Rule::unique('kb_tags', 'slug')
-                    ->where(fn ($q) => $q->where('project_key', $request->input('project_key'))),
+                    ->where(fn ($q) => $q
+                        ->where('tenant_id', $this->tenant->current())
+                        ->where('project_key', $request->input('project_key'))),
             ],
             'label' => ['required', 'string', 'max:120'],
             'color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
@@ -129,7 +144,9 @@ final class TagController extends Controller
                 'max:120',
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
                 Rule::unique('kb_tags', 'slug')
-                    ->where(fn ($q) => $q->where('project_key', $tag->project_key))
+                    ->where(fn ($q) => $q
+                        ->where('tenant_id', $tag->tenant_id)
+                        ->where('project_key', $tag->project_key))
                     ->ignore($tag->id),
             ],
             'label' => ['sometimes', 'string', 'max:120'],
@@ -176,7 +193,9 @@ final class TagController extends Controller
      */
     private function findOr404(int $id): KbTag
     {
-        $tag = KbTag::query()->find($id);
+        // R30 — scope by tenant so an admin in tenant A cannot read/update/
+        // delete a tag owned by tenant B by guessing its id (IDOR).
+        $tag = KbTag::query()->forTenant($this->tenant->current())->find($id);
         if ($tag === null) {
             throw new NotFoundHttpException('Tag not found.');
         }

@@ -32,6 +32,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'tenant.resolve' => \App\Http\Middleware\ResolveTenant::class,
+            // C1 (R30) — post-auth guard that rejects an X-Tenant-Id header
+            // pointing at a tenant the authenticated user does not own
+            // (unless they hold `tenant.cross-access`). Mounted after
+            // `auth:sanctum` on every authenticated route group; ResolveTenant
+            // runs too early (pre-auth) to validate the header itself.
+            'tenant.authorize' => \App\Http\Middleware\AuthorizeTenantHeader::class,
             'mcp.scope' => \App\Http\Middleware\EnforceMcpScope::class,
             // v4.0/W3.1 — `auth` variant for SSE streaming routes that
             // returns JSON 401 instead of a 302 → /login redirect when

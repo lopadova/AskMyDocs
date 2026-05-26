@@ -59,7 +59,12 @@ class LogViewerController extends Controller
      */
     public function chat(Request $request): AnonymousResourceCollection
     {
-        $query = ChatLog::query()->orderByDesc('created_at');
+        // R30 — chat_logs is tenant-aware; BelongsToTenant adds NO global
+        // read scope, so the active tenant must be applied explicitly or
+        // this tab leaks every tenant's chat history to any admin.
+        $query = ChatLog::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->orderByDesc('created_at');
 
         $project = $this->trimString($request->query('project'));
         if ($project !== null) {
@@ -102,7 +107,11 @@ class LogViewerController extends Controller
      */
     public function chatShow(int $id): ChatLogResource
     {
-        $log = ChatLog::query()->findOrFail($id);
+        // R30 — scope the row lookup so an admin in tenant A cannot read a
+        // chat row owned by tenant B by guessing its id (IDOR).
+        $log = ChatLog::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->findOrFail($id);
 
         return new ChatLogResource($log);
     }
@@ -112,7 +121,10 @@ class LogViewerController extends Controller
      */
     public function canonicalAudit(Request $request): AnonymousResourceCollection
     {
-        $query = KbCanonicalAudit::query()->orderByDesc('created_at');
+        // R30 — kb_canonical_audit is tenant-aware; scope explicitly.
+        $query = KbCanonicalAudit::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->orderByDesc('created_at');
 
         $project = $this->trimString($request->query('project'));
         if ($project !== null) {

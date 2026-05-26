@@ -73,10 +73,17 @@ class AiManager
         $fallback = $this->autoSelectEmbeddingsProvider();
 
         if ($fallback !== null) {
-            Log::info('ai.embeddings_provider auto-selected fallback', [
+            // M5 — warning, not info: an auto-selected embeddings provider
+            // can have a DIFFERENT vector dimension than the configured
+            // pgvector column (e.g. gemini 768 vs the 1536-dim schema). That
+            // silently corrupts ingest writes, so this must be visible at
+            // the default log level, with the expected dimension surfaced
+            // for the operator to cross-check against KB_EMBEDDINGS_DIMENSIONS.
+            Log::warning('ai.embeddings_provider auto-selected fallback — verify the vector dimension matches the pgvector column.', [
                 'chat_provider' => $defaultName,
                 'embeddings_provider' => $fallback->name(),
                 'reason' => "chat provider [{$defaultName}] does not support embeddings",
+                'expected_dimensions' => config('kb.embeddings_dimensions'),
             ]);
 
             return $fallback;

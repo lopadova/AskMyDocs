@@ -78,39 +78,66 @@ class EmbeddingCacheService
             ->get()
             ->keyBy('text_hash');
 
-        // Separate hits and misses
+        // Separate hits and misses. Critical: DEDUPE misses by hash within
+        // the batch. The same text can legitimately appear 2+ times in one
+        // generate() call (repeated boilerplate chunks). Embedding each
+        // duplicate separately wasted a provider call AND the second
+        // EmbeddingCache::create() hit the (text_hash, provider, model)
+        // UNIQUE → the whole batch crashed. We now embed each distinct text
+        // once and fan the result back out to every index that needs it.
         $results = [];
-        $missIndices = [];
-        $missTexts = [];
+        /** @var array<int, string> $missHashByIndex  result-index => hash */
+        $missHashByIndex = [];
+        /** @var array<string, string> $uniqueMissText  hash => text (first seen) */
+        $uniqueMissText = [];
 
         foreach ($hashes as $i => $hash) {
             if ($cached->has($hash)) {
                 $results[$i] = $cached->get($hash)->embedding;
 
-                // Touch last_used_at (batch later)
+                // Touch last_used_at (LRU bookkeeping).
                 $cached->get($hash)->update(['last_used_at' => now()]);
-            } else {
-                $missIndices[] = $i;
-                $missTexts[] = $texts[$i];
+
+                continue;
+            }
+
+            $missHashByIndex[$i] = $hash;
+            if (! isset($uniqueMissText[$hash])) {
+                $uniqueMissText[$hash] = $texts[$i];
             }
         }
 
-        // Generate embeddings only for cache misses
-        if (! empty($missTexts)) {
-            $apiResponse = $this->ai->generateEmbeddings($missTexts);
+        // Generate embeddings only for the DISTINCT cache misses.
+        if ($uniqueMissText !== []) {
+            $orderedHashes = array_keys($uniqueMissText);
+            $apiResponse = $this->ai->generateEmbeddings(array_values($uniqueMissText));
 
-            foreach ($missIndices as $j => $originalIndex) {
-                $embedding = $apiResponse->embeddings[$j];
-                $results[$originalIndex] = $embedding;
+            // Map each distinct hash to its freshly-generated embedding.
+            $embeddingByHash = [];
+            foreach ($orderedHashes as $k => $hash) {
+                $embeddingByHash[$hash] = $apiResponse->embeddings[$k];
+            }
 
-                // Store in cache
-                EmbeddingCache::create([
-                    'text_hash' => $hashes[$originalIndex],
-                    'provider' => $providerName,
-                    'model' => $apiResponse->model,
-                    'embedding' => $embedding,
-                    'last_used_at' => now(),
-                ]);
+            // Fan results out to EVERY missing index (duplicates included).
+            foreach ($missHashByIndex as $i => $hash) {
+                $results[$i] = $embeddingByHash[$hash];
+            }
+
+            // Persist once per distinct hash. firstOrCreate also narrows the
+            // cross-request race where two requests embed the same text
+            // concurrently (the loser reads the winner's row).
+            foreach ($orderedHashes as $hash) {
+                EmbeddingCache::firstOrCreate(
+                    [
+                        'text_hash' => $hash,
+                        'provider' => $providerName,
+                        'model' => $apiResponse->model,
+                    ],
+                    [
+                        'embedding' => $embeddingByHash[$hash],
+                        'last_used_at' => now(),
+                    ],
+                );
             }
 
             $modelName = $apiResponse->model;

@@ -39,8 +39,12 @@ final class GeminiProvider implements AiProviderInterface
             ];
         }
 
+        // R-logging-security — the API key travels in the x-goog-api-key
+        // header, NOT the URL query string. Query-string secrets leak into
+        // access logs, proxy logs, Referer headers and APM traces.
         $response = Http::timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/models/{$model}:generateContent?key={$this->config['api_key']}", [
+            ->withHeaders(['x-goog-api-key' => $this->config['api_key']])
+            ->post("{$this->baseUrl}/models/{$model}:generateContent", [
                 'system_instruction' => [
                     'parts' => [['text' => $systemPrompt]],
                 ],
@@ -75,7 +79,8 @@ final class GeminiProvider implements AiProviderInterface
         ], $texts);
 
         $response = Http::timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/models/{$model}:batchEmbedContents?key={$this->config['api_key']}", [
+            ->withHeaders(['x-goog-api-key' => $this->config['api_key']])
+            ->post("{$this->baseUrl}/models/{$model}:batchEmbedContents", [
                 'requests' => $requests,
             ]);
 

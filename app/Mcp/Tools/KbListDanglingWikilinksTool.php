@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Models\KbNode;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -33,6 +34,7 @@ class KbListDanglingWikilinksTool extends Tool
 
         $limit = max(1, min((int) ($request->get('limit') ?? 100), 500));
         $rows = KbNode::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->forProject($projectKey)
             ->where('payload_json->dangling', true)
             ->limit($limit)

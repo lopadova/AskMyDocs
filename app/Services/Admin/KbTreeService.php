@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -49,6 +50,8 @@ class KbTreeService
     public const MODE_ALL = 'all';
     public const MODE_CANONICAL = 'canonical';
     public const MODE_RAW = 'raw';
+
+    public function __construct(private readonly TenantContext $tenant) {}
 
     /**
      * Build the tree + aggregate counts.
@@ -101,7 +104,10 @@ class KbTreeService
      */
     private function baseQuery(?string $projectKey, string $mode, bool $withTrashed): Builder
     {
-        $query = KnowledgeDocument::query();
+        // R30 — KnowledgeDocument is tenant-aware and BelongsToTenant adds
+        // no global read scope; without this the tree would mix documents
+        // from every tenant that shares a project_key.
+        $query = KnowledgeDocument::query()->forTenant($this->tenant->current());
 
         if ($withTrashed) {
             $query->withTrashed();

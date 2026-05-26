@@ -68,13 +68,32 @@ class AccessScopeScope implements Scope
 
     private function excludeDeniedDocuments(Builder $builder, Model $model, User $user): void
     {
+        // H8 — the cheap global scope must mirror the policy's
+        // evaluateAclDecision(): a deny applies whether the subject is the
+        // USER or any ROLE the user holds. Previously only user-subject
+        // denies were filtered here, so a role-level deny leaked the doc
+        // into every bulk read path (search, tree) and was only caught by
+        // the per-row policy check — which the hot retrieval path skips.
+        $roleNames = $user->getRoleNames()->all();
+
         $builder->whereNotIn(
             $model->qualifyColumn('id'),
             DB::table('knowledge_document_acl')
-                ->where('subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
-                ->where('subject_id', (string) $user->getKey())
                 ->where('effect', KnowledgeDocumentAcl::EFFECT_DENY)
                 ->where('permission', KnowledgeDocumentAcl::PERMISSION_VIEW)
+                ->where(function ($q) use ($user, $roleNames) {
+                    $q->where(function ($sub) use ($user) {
+                        $sub->where('subject_type', KnowledgeDocumentAcl::SUBJECT_USER)
+                            ->where('subject_id', (string) $user->getKey());
+                    });
+
+                    if ($roleNames !== []) {
+                        $q->orWhere(function ($sub) use ($roleNames) {
+                            $sub->where('subject_type', KnowledgeDocumentAcl::SUBJECT_ROLE)
+                                ->whereIn('subject_id', $roleNames);
+                        });
+                    }
+                })
                 ->select('knowledge_document_id'),
         );
     }

@@ -90,6 +90,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
 ])->group(function () {
     // v6.0 — AI Act compliance gates on the chat path:
     //  • `ai.disclosure` appends an X-AI-Disclosure response header
@@ -183,6 +184,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'role:admin|super-admin',
 ])
     ->prefix('admin')
@@ -245,8 +247,32 @@ Route::middleware([
         // Eloquent binding would 404 on a soft-deleted doc (R2). The
         // shim is registered inside the admin group so user-facing
         // routes continue to see the default-scoped model.
+        // R30 — the binding MUST scope to the active tenant; otherwise an
+        // admin in tenant A can resolve (show/raw/updateRaw/download/print/
+        // history/graph/exportPdf/restore/destroy) a document owned by
+        // tenant B by guessing its global id (IDOR). BelongsToTenant adds
+        // no global read scope, so forTenant() is applied explicitly here.
         Route::bind('document', function ($id) {
-            return \App\Models\KnowledgeDocument::withTrashed()->findOrFail($id);
+            return \App\Models\KnowledgeDocument::withTrashed()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+
+        // R30 — same IDOR guard for project memberships, which otherwise
+        // resolve via the default (unscoped) implicit binding.
+        Route::bind('membership', function ($id) {
+            return \App\Models\ProjectMembership::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+
+        // C4 (R30) — compliance reports are tenant-scoped at the binding so
+        // verify / downloadJson / downloadPdf cannot resolve another
+        // tenant's report by id.
+        Route::bind('report', function ($id) {
+            return \App\Models\ComplianceReport::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
         });
 
         Route::apiResource('kb/documents', KbDocumentController::class)
@@ -440,6 +466,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:viewPiiRedactorAdmin',
 ])
     ->prefix('admin/pii')
@@ -469,6 +496,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:manageConnectors',
 ])
     ->prefix('admin/connectors')
@@ -511,6 +539,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:manageMcpTools',
 ])
     ->prefix('admin/mcp-servers')
@@ -537,6 +566,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:viewMcpAudit',
 ])
     ->get('/admin/mcp-tool-call-audit', [McpToolCallAuditController::class, 'index'])
@@ -546,6 +576,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:manageMcpTools',
 ])
     ->prefix('admin/mcp/tokens')
@@ -596,6 +627,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:eval-harness.viewer',
 ])
     ->prefix('admin/eval-harness')
@@ -619,6 +651,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:viewTabularReviews',
 ])
     ->prefix('admin/tabular-reviews')
@@ -736,6 +769,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
     'can:viewWorkflows',
 ])
     ->prefix('admin/workflows')
@@ -802,6 +836,7 @@ Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
     'auth:sanctum',
+    'tenant.authorize',
 ])
     ->prefix('notifications')
     ->group(function () {

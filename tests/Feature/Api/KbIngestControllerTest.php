@@ -222,12 +222,15 @@ class KbIngestControllerTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_returns_500_when_disk_write_fails_and_does_not_queue_job(): void
+    public function test_reports_disk_write_failure_per_document_and_does_not_queue_job(): void
     {
+        // H7 — a disk write failure no longer aborts with a bare 500 that
+        // hides what happened. The batch returns 207 Multi-Status with a
+        // per-document `failed` status, and the failed doc's job is NOT
+        // queued (DocumentIngestor is idempotent, so the caller can retry
+        // just the failures).
         Queue::fake();
 
-        // Swap the kb disk for a stub that simulates a silent write failure
-        // (the kb disk is configured with throw => false in production).
         $fake = new class
         {
             public function put(string $path, string $contents): bool
@@ -241,9 +244,32 @@ class KbIngestControllerTest extends TestCase
             'documents' => [
                 ['source_path' => 'docs/a.md', 'content' => 'hello'],
             ],
-        ])->assertStatus(500)
-            ->assertJson(['source_path' => 'docs/a.md']);
+        ])->assertStatus(207)
+            ->assertJsonPath('queued', 0)
+            ->assertJsonPath('failed', 1)
+            ->assertJsonPath('documents.0.status', 'failed')
+            ->assertJsonPath('documents.0.source_path', 'docs/a.md');
 
         Queue::assertNothingPushed();
+    }
+
+    public function test_invalid_document_in_batch_rejects_whole_batch_before_any_write(): void
+    {
+        // H7 — PHASE 1 validates every document before writing a single
+        // byte: a bad mime on doc #2 must 422 the batch and leave doc #1
+        // unwritten + unqueued (no partial-batch inconsistency).
+        Queue::fake();
+        Storage::fake('kb');
+
+        $this->postJson('/api/kb/ingest', [
+            'documents' => [
+                ['source_path' => 'docs/ok.md', 'content' => 'hello'],
+                ['source_path' => 'docs/bad.md', 'content' => 'x', 'mime_type' => 'application/x-not-supported'],
+            ],
+        ])->assertStatus(422)
+            ->assertJsonValidationErrors(['documents']);
+
+        Queue::assertNothingPushed();
+        Storage::disk('kb')->assertMissing('docs/ok.md');
     }
 }

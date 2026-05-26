@@ -7,6 +7,7 @@ namespace App\Services\Kb\Retrieval;
 use App\Models\KbEdge;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Support\Collection;
 
 /**
@@ -134,7 +135,11 @@ class GraphExpander
      */
     private function loadNeighbourEdges(string $projectKey, array $seedSlugs, array $allowedEdgeTypes): Collection
     {
+        // R30 — project_key is NOT a tenant boundary (two tenants may share
+        // one); scope to the active tenant so the graph never expands across
+        // tenants that happen to share a project_key + slug.
         return KbEdge::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->whereIn('from_node_uid', $seedSlugs)
             ->whereIn('edge_type', $allowedEdgeTypes)
@@ -199,6 +204,7 @@ class GraphExpander
     private function loadRetrievableTargets(string $projectKey, array $slugs): Collection
     {
         return KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->whereIn('slug', $slugs)
             ->where('is_canonical', true)
@@ -259,6 +265,7 @@ class GraphExpander
             return [];
         }
         return KnowledgeChunk::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->whereIn('knowledge_document_id', $docIds)
             ->orderBy('knowledge_document_id')
             ->orderBy('chunk_order')

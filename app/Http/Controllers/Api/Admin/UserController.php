@@ -7,12 +7,14 @@ use App\Http\Requests\Admin\UserUpdateRequest;
 use App\Http\Resources\Admin\UserResource;
 use App\Models\User;
 use App\Notifications\NotificationPreferencesInitializer;
+use App\Support\LikeEscaper;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -48,10 +50,13 @@ class UserController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $like = '%'.str_replace('%', '\\%', mb_strtolower($search)).'%';
+            // R19 — escape ALL LIKE meta-chars (%, _, ~) + explicit ESCAPE.
+            // The escape char is `~`, not `\`: a backslash ESCAPE clause
+            // triggers SQLSTATE[HY093] on Postgres+PDO (see LikeEscaper).
+            $like = LikeEscaper::contains(mb_strtolower($search));
             $query->where(function ($q) use ($like) {
-                $q->whereRaw('LOWER(name) LIKE ?', [$like])
-                    ->orWhereRaw('LOWER(email) LIKE ?', [$like]);
+                $q->whereRaw('LOWER(name) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
+                    ->orWhereRaw('LOWER(email) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
             });
         }
 
@@ -119,14 +124,14 @@ class UserController extends Controller
     {
         $data = $request->validated();
 
-        $response = DB::transaction(function () use ($data, $user, $request) {
-            // Business rule: removing the super-admin role from the LAST
-            // super-admin (globally) is forbidden. 409 Conflict.
+        // M2 (R21) — the last-super-admin guard + the role mutation run in
+        // ONE transaction with a row lock, so two concurrent demotions
+        // cannot both pass the check and leave zero super-admins. L2 — the
+        // guard aborts with 409 instead of returning a JsonResponse from
+        // inside the closure (which mixed HTTP concerns into the txn).
+        DB::transaction(function () use ($data, $user, $request) {
             if ($request->has('roles') && $this->wouldRemoveLastSuperAdmin($user, $data['roles'] ?? [])) {
-                return response()->json(
-                    ['message' => 'Cannot remove the last super-admin role.'],
-                    Response::HTTP_CONFLICT,
-                );
+                abort(Response::HTTP_CONFLICT, 'Cannot remove the last super-admin role.');
             }
 
             $fields = array_intersect_key($data, array_flip(['name', 'email', 'is_active']));
@@ -142,13 +147,7 @@ class UserController extends Controller
             if (array_key_exists('roles', $data)) {
                 $user->syncRoles($data['roles']);
             }
-
-            return null;
         });
-
-        if ($response instanceof JsonResponse) {
-            return $response;
-        }
 
         return (new UserResource($user->fresh(['roles'])))->response();
     }
@@ -162,23 +161,24 @@ class UserController extends Controller
             );
         }
 
-        if ($this->wouldRemoveLastSuperAdmin($user, [])) {
-            return response()->json(
-                ['message' => 'Cannot delete the last super-admin user.'],
-                Response::HTTP_CONFLICT,
-            );
-        }
-
         $force = $request->boolean('force');
 
-        if ($force) {
-            // Re-resolve through the trashed scope in case the model was
-            // already soft-deleted (R2 — a double-delete should still hard-kill).
-            $target = User::withTrashed()->findOrFail($user->id);
-            $target->forceDelete();
-        } else {
-            $user->delete();
-        }
+        // M2 (R21) — guard + delete inside one locked transaction so two
+        // concurrent deletes of different super-admins can't both pass.
+        DB::transaction(function () use ($user, $force) {
+            if ($this->wouldRemoveLastSuperAdmin($user, [])) {
+                abort(Response::HTTP_CONFLICT, 'Cannot delete the last super-admin user.');
+            }
+
+            if ($force) {
+                // Re-resolve through the trashed scope in case the model was
+                // already soft-deleted (R2 — a double-delete should still hard-kill).
+                $target = User::withTrashed()->findOrFail($user->id);
+                $target->forceDelete();
+            } else {
+                $user->delete();
+            }
+        });
 
         return response()->json(null, Response::HTTP_NO_CONTENT);
     }
@@ -205,13 +205,19 @@ class UserController extends Controller
 
     public function resendInvite(User $user): JsonResponse
     {
-        // The real invite-mail integration lands in Phase B2 (2FA / invite
-        // flow). For PR7 we acknowledge the request with 202 so the admin
-        // UI flow can be wired now without waiting for the mail template.
-        return response()->json([
-            'message' => 'Invite queued for resend.',
+        // M1 — invite-mail delivery is NOT implemented yet (roadmap: admin
+        // invite resend email). Do not pretend an email went out: log a
+        // warning so operators can see the no-op, and return an honest
+        // message. L7 — the user's email is dropped from the response (PII
+        // the caller already has + would otherwise land in access logs).
+        Log::warning('resendInvite acknowledged but no invite email was sent — mail delivery is not yet enabled on this deployment.', [
             'user_id' => $user->id,
-            'email' => $user->email,
+        ]);
+
+        return response()->json([
+            'message' => 'Invite resend acknowledged. Email delivery is not yet enabled on this deployment.',
+            'user_id' => $user->id,
+            'email_sent' => false,
         ], Response::HTTP_ACCEPTED);
     }
 
@@ -231,7 +237,21 @@ class UserController extends Controller
             return false;
         }
 
-        $role = Role::query()->where('name', 'super-admin')->first();
+        // R21 — serialize concurrent demotions/deletes on a COMMON row: the
+        // super-admin role row itself. Locking `$role->users()` excluding
+        // self does NOT serialize — two requests demoting two DIFFERENT
+        // super-admins lock DISJOINT user sets ({B} vs {A}), so both pass and
+        // both succeed, leaving zero super-admins (Copilot caught this).
+        // Locking the single role row makes the second request block until
+        // the first commits, so its count reflects the first's removal.
+        // Bonus: with the lock on the role row, the count below is a plain
+        // aggregate — avoiding PostgreSQL's "FOR UPDATE not allowed with
+        // aggregate functions" rejection. Callers run this inside a
+        // DB::transaction so the lock is held until commit.
+        $role = Role::query()
+            ->where('name', 'super-admin')
+            ->lockForUpdate()
+            ->first();
         if ($role === null) {
             return false;
         }

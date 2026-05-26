@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api;
 
 use App\Models\KnowledgeDocument;
+use App\Support\LikeEscaper;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -21,11 +22,11 @@ use Illuminate\Routing\Controller;
  *
  * Title + source_path are searched with `LIKE` (substring match,
  * case-insensitive on most dialects). Per R19 (input-escape-complete),
- * the user-supplied query string is escaped for `%`, `_`, and `\`
- * AND combined with an explicit `ESCAPE '\\'` clause so a literal
- * `_` in the query doesn't accidentally act as a wildcard (SQLite's
- * default LIKE has NO escape character; PostgreSQL respects the
- * ESCAPE clause portably).
+ * the user-supplied query string is escaped via App\Support\LikeEscaper
+ * (escape char `~`, not backslash — see that class) AND combined with its
+ * ESCAPE clause so a literal `_` in the query doesn't act as a wildcard
+ * (SQLite's default LIKE has NO escape character; Postgres/MySQL respect
+ * the explicit clause portably).
  *
  * Soft-deleted documents are excluded by the model's global scope;
  * archived rows are excluded with an explicit `status != 'archived'`
@@ -51,7 +52,10 @@ final class KbDocumentSearchController extends Controller
             'project_keys.*' => ['string', 'max:120'],
         ]);
 
+        // R30 — scope autocomplete to the active tenant; project_keys alone
+        // is not a tenant boundary (two tenants can share a project_key).
         $query = KnowledgeDocument::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
             ->where('status', '!=', 'archived');
 
         $projectKeys = $validated['project_keys'] ?? [];
@@ -59,39 +63,21 @@ final class KbDocumentSearchController extends Controller
             $query->whereIn('project_key', $projectKeys);
         }
 
-        // R19: escape `\` first (it's the escape char itself), then `%`
-        // and `_` (the LIKE wildcards). Combine with an explicit
-        // `ESCAPE '\\'` clause via whereRaw so the dialect actually
-        // honours our backslash escapes — without the clause, SQLite's
-        // default LIKE has NO escape character at all (our pattern
-        // `Policy\_v2` would then match the literal 9-char string
-        // including the backslash, NOT `Policy_v2`). PostgreSQL respects
-        // the same `ESCAPE '\\'` clause, so the query is portable.
-        // Laravel's `where('col', 'LIKE', $val)` does NOT support
-        // tacking ESCAPE on the operator side, so whereRaw is the
-        // only portable path.
+        // R19 — escape %, _, and the escape char via LikeEscaper. The
+        // escape char is `~`, NOT backslash: a backslash escape clause
+        // crashes on Postgres+PDO with SQLSTATE[HY093] when another bound
+        // `?` follows (PDO swallows the next placeholder). This path runs
+        // against pgsql in the E2E job, so it MUST use the LikeEscaper
+        // clause. See LikeEscaper for the full rationale.
         //
-        // Case-folding portability: SQLite's LIKE is case-INSENSITIVE
-        // by default while PostgreSQL's LIKE is case-SENSITIVE. To get
-        // consistent autocomplete behaviour across both dialects (a
-        // user typing `policy` MUST match `Policy Alpha`), we lowercase
-        // BOTH sides — title/source_path via `LOWER(...)` and the
-        // user's pattern via PHP's `mb_strtolower`. PostgreSQL's
-        // `LOWER(text)` is index-friendly when paired with a functional
-        // index; in v3.0 the autocomplete table is small enough that
-        // the seq-scan cost is acceptable, and we can add the
-        // functional index in v3.1 if profiling justifies it.
-        $needle = mb_strtolower((string) $validated['q']);
-        $escaped = str_replace(
-            ['\\', '%', '_'],
-            ['\\\\', '\\%', '\\_'],
-            $needle,
-        );
-        $like = "%{$escaped}%";
+        // Case-folding portability: SQLite's LIKE is case-INSENSITIVE by
+        // default while PostgreSQL's is case-SENSITIVE, so we lowercase BOTH
+        // sides — the columns via LOWER(...) and the pattern via mb_strtolower.
+        $like = LikeEscaper::contains(mb_strtolower((string) $validated['q']));
 
         $query->where(function ($w) use ($like): void {
-            $w->whereRaw("LOWER(title) LIKE ? ESCAPE '\\'", [$like])
-                ->orWhereRaw("LOWER(source_path) LIKE ? ESCAPE '\\'", [$like]);
+            $w->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
+                ->orWhereRaw('LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
         });
 
         // Deterministic ordering BEFORE the limit so the same query

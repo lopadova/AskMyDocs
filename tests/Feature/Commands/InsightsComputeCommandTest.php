@@ -7,6 +7,7 @@ namespace Tests\Feature\Commands;
 use App\Models\AdminInsightsSnapshot;
 use App\Models\KnowledgeDocument;
 use App\Services\Admin\AiInsightsService;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -129,6 +130,39 @@ class InsightsComputeCommandTest extends TestCase
         $row = AdminInsightsSnapshot::first();
         // Unchanged.
         $this->assertSame([['marker' => 'should-survive']], $row->suggest_promotions);
+    }
+
+    public function test_computes_one_isolated_snapshot_per_tenant(): void
+    {
+        // Audit#3 CRITICAL-3 — the command iterates tenants and writes ONE
+        // snapshot per tenant (previously a single cross-tenant snapshot
+        // under 'default'). Also exercises the (tenant_id, snapshot_date)
+        // composite unique: two snapshots for the same date coexist.
+        Http::fake();
+        $ctx = app(TenantContext::class);
+
+        foreach (['acme', 'umbrella'] as $tenant) {
+            $ctx->set($tenant);
+            KnowledgeDocument::create([
+                'project_key' => 'hr',
+                'source_type' => 'markdown',
+                'title' => 'D',
+                'source_path' => "d-{$tenant}.md",
+                'document_hash' => str_repeat('a', 64),
+                'version_hash' => str_repeat('b', 64),
+                'metadata' => [],
+                'status' => 'indexed',
+            ]);
+        }
+        $ctx->set('default');
+
+        $this->artisan('insights:compute')->assertSuccessful();
+
+        $this->assertSame(1, AdminInsightsSnapshot::forTenant('acme')->count());
+        $this->assertSame(1, AdminInsightsSnapshot::forTenant('umbrella')->count());
+        $this->assertSame(2, AdminInsightsSnapshot::count());
+        $today = Carbon::today()->toDateString();
+        $this->assertSame($today, AdminInsightsSnapshot::forTenant('acme')->first()->snapshot_date->toDateString());
     }
 
     public function test_invalid_date_option_returns_failure(): void

@@ -95,11 +95,48 @@ KnowledgeDocument::with('chunks')->get();
 //  if you query KnowledgeChunk directly later, you must scope again)
 ```
 
+## BelongsToTenant has NO global read scope (load-bearing)
+
+`BelongsToTenant` only auto-fills `tenant_id` on `creating`. It does **not**
+register a global query scope, so the READ side is each query author's
+responsibility. This is why the 2026-05 deep review found unscoped reads in
+five controllers — and why the architecture test below found seven MORE the
+review missed (`KbDocumentSearchController`, `KbResolveWikilinkController`,
+`AdminInsightsController`, `ChatFilterPresetController`, `FewShotService`,
+and the graph/audit queries in `KbDocumentController`). Never assume "the
+model handles it" — it does not.
+
+## Route-model bindings must be scoped too
+
+Implicit binding (`function show(KnowledgeDocument $document)`) resolves by
+**global id**, so an admin in tenant A can resolve tenant B's row by
+guessing the id (IDOR). Scope the binding in the closure:
+
+```php
+Route::bind('document', fn ($id) => KnowledgeDocument::withTrashed()
+    ->forTenant(app(TenantContext::class)->current())
+    ->findOrFail($id));
+```
+
+Applied to `{document}`, `{membership}`, `{report}` in `routes/api.php`.
+
+## X-Tenant-Id header authorization (C1)
+
+`ResolveTenant` runs FIRST (pre-auth, prepended) so it CANNOT validate the
+header against the user. The post-auth `AuthorizeTenantHeader` middleware
+(mounted after `auth:sanctum` on every authenticated group) rejects a
+foreign `X-Tenant-Id` with 403 unless the caller holds the
+`tenant.cross-access` permission (super-admin). Never trust the header for
+tenant selection without this guard.
+
 ## Architecture test
 
-A future R30 architecture test will scan `app/Services/` for
-`Model::query()->where(` patterns missing `forTenant(` adjacent. For now,
-this is enforced via Copilot review + manual audit.
+`tests/Architecture/TenantReadScopeTest.php` scans `app/Http/Controllers`
+and `app/Services` for tenant-aware `Model::query()/where()/find()` reads
+and FAILS the build when a file has one without `forTenant(` (or an
+explicit `'tenant_id'` filter). A new unscoped read either adds the scope
+or earns a documented `ALLOWLIST` entry. Run it after ANY change touching
+persistence.
 
 ## Reference
 

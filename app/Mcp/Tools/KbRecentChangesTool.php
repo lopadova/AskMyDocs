@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -30,7 +31,11 @@ class KbRecentChangesTool extends Tool
 
     public function handle(Request $request): Response
     {
-        $query = KnowledgeDocument::query()->orderByDesc('indexed_at');
+        // R30 — EnforceMcpScope sets the active tenant; scope every query to
+        // it so an MCP client for tenant A can't read tenant B's documents.
+        $query = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->orderByDesc('indexed_at');
 
         if ($request->get('project_key')) {
             $query->where('project_key', $request->get('project_key'));

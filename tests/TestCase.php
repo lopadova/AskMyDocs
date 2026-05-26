@@ -272,6 +272,16 @@ abstract class TestCase extends OrchestraTestCase
         // sync with the bootstrap/app.php aliases.
         $router->aliasMiddleware('redact-chat-pii', \App\Http\Middleware\RedactChatPii::class);
         $router->aliasMiddleware('auth.sse', \App\Http\Middleware\AuthenticateForSse::class);
+        // C1 (R30) — tenant resolution + post-auth header authorization.
+        // routes/api.php references `tenant.authorize` on every
+        // tenant-DATA route group (chat, kb, admin, compliance) — but NOT
+        // on the identity-only `/auth/*` Sanctum group (login, 2FA, password
+        // reset), which carries no tenant-scoped data. Without this alias
+        // every feature test hitting one of the data groups throws "Target
+        // class [tenant.authorize] does not exist". Keep in sync with
+        // bootstrap/app.php.
+        $router->aliasMiddleware('tenant.resolve', \App\Http\Middleware\ResolveTenant::class);
+        $router->aliasMiddleware('tenant.authorize', \App\Http\Middleware\AuthorizeTenantHeader::class);
         // v6.0 — host-facing AI Act middleware aliases mirroring
         // bootstrap/app.php. The sister package aliases its own
         // `ai-act.*` variants in boot(); we expose them under the

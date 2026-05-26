@@ -547,7 +547,11 @@ class CommandRunnerService
         // the correct rejection audit + exception.
         $failure = DB::transaction(function () use ($tokenHash, $command, $user, $argsHash) {
             /** @var AdminCommandNonce|null $nonce */
+            // R30 — a confirm-token nonce minted in tenant A must not be
+            // consumable in tenant B's context (defense-in-depth on top of
+            // the token-hash secrecy + the user_id check below).
             $nonce = AdminCommandNonce::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
                 ->where('token_hash', $tokenHash)
                 ->lockForUpdate()
                 ->first();

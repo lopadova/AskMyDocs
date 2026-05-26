@@ -125,7 +125,7 @@ class KbRebuildGraphCommand extends Command
         if ($explicit !== '') {
             return [$explicit];
         }
-        $query = KnowledgeDocument::query()->where('is_canonical', true);
+        $query = KnowledgeDocument::query()->canonical();
         if ($projectKey !== '') {
             $query->where('project_key', $projectKey);
         }

@@ -47,6 +47,9 @@ class RbacSeederTest extends TestCase
             // dpo). Granted to dpo + super-admin in RbacSeeder.
             'pii.detokenize',
             'roles.manage',
+            // v8.0.3 security hotfix (C1) — cross-tenant override capability
+            // for the AuthorizeTenantHeader middleware. super-admin only.
+            'tenant.cross-access',
             'users.manage',
         ];
 
@@ -78,8 +81,9 @@ class RbacSeederTest extends TestCase
 
         // v4.2/W4 sub-PR 5 — 4 pre-W4 roles + `dpo` = 5.
         $this->assertSame(5, Role::count());
-        // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4) = 13.
-        $this->assertSame(13, Permission::count());
+        // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4)
+        // + `tenant.cross-access` (v8.0.3 C1) = 14.
+        $this->assertSame(14, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void

@@ -453,15 +453,22 @@ class KbDocumentController extends Controller
         // lookups (older canonical rows may have been indexed before
         // source_doc_id was populated). When neither is available we
         // return an empty graph — the SPA renders an empty-state card.
+        // R30 — node_uid/source_doc_id are unique only per (tenant, project);
+        // scope every graph query to the active tenant so the subgraph can't
+        // pull another tenant's nodes/edges that share the project_key.
+        $tenantId = app(\App\Support\TenantContext::class)->current();
+
         $seed = null;
         if ($document->doc_id !== null) {
             $seed = KbNode::query()
+                ->forTenant($tenantId)
                 ->where('project_key', $project)
                 ->where('source_doc_id', $document->doc_id)
                 ->first();
         }
         if ($seed === null && $document->slug !== null) {
             $seed = KbNode::query()
+                ->forTenant($tenantId)
                 ->where('project_key', $project)
                 ->where('node_uid', $document->slug)
                 ->first();
@@ -485,6 +492,7 @@ class KbDocumentController extends Controller
         // ordering used by GraphExpander in the retrieval pipeline
         // (CLAUDE.md §3, Retrieval/GraphExpander).
         $edges = KbEdge::query()
+            ->forTenant($tenantId)
             ->where('project_key', $project)
             ->where(function ($q) use ($seed) {
                 $q->where('from_node_uid', $seed->node_uid)
@@ -515,6 +523,7 @@ class KbDocumentController extends Controller
         // tiebreaker — deterministic across drivers. The edge filter
         // below trims any edge whose endpoint didn't make the cut.
         $nodes = KbNode::query()
+            ->forTenant($tenantId)
             ->where('project_key', $project)
             ->whereIn('node_uid', $uids)
             ->orderByRaw('CASE WHEN node_uid = ? THEN 0 ELSE 1 END', [$seed->node_uid])
@@ -673,7 +682,10 @@ class KbDocumentController extends Controller
         // is the stable identifier — audits emitted by DocumentDeleter
         // / CanonicalIndexerJob stamp both, so the stricter filter loses
         // nothing real and gains precision.
+        // R30 — audit rows are tenant-scoped; project_key+doc_id/slug can
+        // recur across tenants, so constrain to the document's own tenant.
         $query = KbCanonicalAudit::query()
+            ->forTenant($document->tenant_id)
             ->where('project_key', $document->project_key);
 
         if ($document->doc_id !== null) {

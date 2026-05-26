@@ -6,6 +6,7 @@ namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\KbHealthService;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -37,6 +38,7 @@ class KbDetectDecisionDebtTool extends Tool
         $limit = max(1, min((int) ($request->get('limit') ?? 50), 200));
 
         $docs = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->accepted()
             ->byType('decision')
             ->where('project_key', $projectKey)

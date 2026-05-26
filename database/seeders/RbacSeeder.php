@@ -73,6 +73,11 @@ class RbacSeeder extends Seeder
         // tests, future API clients) reason about who can detokenise
         // through the standard `$user->can('pii.detokenize')` channel.
         'pii.detokenize',
+        // C1 (R30) — explicit cross-tenant override capability. Lets a
+        // holder send an `X-Tenant-Id` header pointing at a tenant other
+        // than their own without being rejected by AuthorizeTenantHeader.
+        // Granted to super-admin only (super-admin syncs Permission::all()).
+        'tenant.cross-access',
     ];
 
     public function run(): void

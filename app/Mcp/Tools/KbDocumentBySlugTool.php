@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -43,7 +44,10 @@ class KbDocumentBySlugTool extends Tool
 
         $includeChunks = (bool) ($request->get('include_chunks') ?? true);
 
+        // R30 — slug is unique per (tenant, project), NOT globally; scope to
+        // the MCP-resolved tenant so a shared slug can't cross tenants.
         $doc = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->where('slug', $slug)
             ->where('is_canonical', true)

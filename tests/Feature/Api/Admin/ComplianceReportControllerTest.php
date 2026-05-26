@@ -29,8 +29,11 @@ final class ComplianceReportControllerTest extends TestCase
         config()->set('askmydocs.compliance.hmac_secret', 'test-compliance-secret');
     }
 
-    public function test_index_lists_reports_filtered_by_tenant(): void
+    public function test_index_lists_only_active_tenant_reports(): void
     {
+        // C4 (R30) — index ignores any ?tenant_id and scopes to the active
+        // tenant (a plain admin resolves to 'default'). The bystander
+        // 'tenant-other' report must NOT appear.
         $admin = $this->makeAdmin();
         $this->makeReport();
         ComplianceReport::create([
@@ -44,20 +47,23 @@ final class ComplianceReportControllerTest extends TestCase
             'generated_by' => null,
         ]);
 
+        // Even with a spoofed ?tenant_id the foreign report stays hidden.
         $this->actingAs($admin)
-            ->get('/api/admin/compliance/reports?tenant_id=tenant-acme')
+            ->get('/api/admin/compliance/reports?tenant_id=tenant-other')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.tenant_id', 'tenant-acme');
+            ->assertJsonPath('data.0.tenant_id', 'default');
     }
 
-    public function test_store_generates_report_for_period(): void
+    public function test_store_generates_report_for_active_tenant_ignoring_payload(): void
     {
+        // C4 (R30) — a tenant_id in the payload is ignored; the report is
+        // always generated for the active (resolved) tenant.
         $admin = $this->makeAdmin();
 
         $response = $this->actingAs($admin)
             ->postJson('/api/admin/compliance/reports', [
-                'tenant_id' => 'tenant-acme',
+                'tenant_id' => 'tenant-spoofed',
                 'period_start' => '2026-01-01',
                 'period_end' => '2026-03-31',
             ])
@@ -65,10 +71,11 @@ final class ComplianceReportControllerTest extends TestCase
 
         $this->assertDatabaseHas('compliance_reports', [
             'id' => $response->json('data.id'),
-            'tenant_id' => 'tenant-acme',
+            'tenant_id' => 'default',
             'period_start' => '2026-01-01 00:00:00',
             'period_end' => '2026-03-31 00:00:00',
         ]);
+        $this->assertDatabaseMissing('compliance_reports', ['tenant_id' => 'tenant-spoofed']);
     }
 
     public function test_verify_returns_valid_true_for_untampered_payload(): void
@@ -79,7 +86,7 @@ final class ComplianceReportControllerTest extends TestCase
         $payloadJson = json_encode($report->payload_json, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $report->update([
             'hash_sha256' => hash('sha256', $payloadJson),
-            'hash_hmac' => hash_hmac('sha256', $payloadJson.'tenant-acme2026-01-012026-03-31', 'test-compliance-secret'),
+            'hash_hmac' => hash_hmac('sha256', $payloadJson.'default2026-01-012026-03-31', 'test-compliance-secret'),
         ]);
 
         $this->actingAs($admin)
@@ -98,7 +105,7 @@ final class ComplianceReportControllerTest extends TestCase
             ->assertOk();
 
         $response->assertJsonPath('delta.added.0.doc_id', 'doc-1');
-        $this->assertStringContainsString('attachment; filename="compliance-report-tenant-acme-2026-01-01-2026-03-31.json"', (string) $response->headers->get('Content-Disposition'));
+        $this->assertStringContainsString('attachment; filename="compliance-report-default-2026-01-01-2026-03-31.json"', (string) $response->headers->get('Content-Disposition'));
     }
 
     public function test_download_pdf_surfaces_failures_loudly_or_streams_non_empty_pdf(): void
@@ -135,7 +142,7 @@ final class ComplianceReportControllerTest extends TestCase
     private function makeReport(): ComplianceReport
     {
         return ComplianceReport::create([
-            'tenant_id' => 'tenant-acme',
+            'tenant_id' => 'default',
             'period_start' => '2026-01-01',
             'period_end' => '2026-03-31',
             'payload_json' => [

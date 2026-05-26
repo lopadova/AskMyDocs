@@ -79,7 +79,12 @@ class KbValidateCanonicalCommand extends Command
 
     private function walkDatabase(CanonicalParser $parser, string $projectKey): int
     {
-        $query = KnowledgeDocument::query()->where('is_canonical', true);
+        // R30 — validate only the active tenant's canonical docs (this
+        // command is also reachable via the admin maintenance runner).
+        // R10 — use the canonical() scope, not inline where('is_canonical').
+        $query = KnowledgeDocument::query()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
+            ->canonical();
         if ($projectKey !== '') {
             $query->where('project_key', $projectKey);
         }

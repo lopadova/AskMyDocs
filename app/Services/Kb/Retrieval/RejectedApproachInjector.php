@@ -7,6 +7,7 @@ namespace App\Services\Kb\Retrieval;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
+use App\Support\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -95,12 +96,19 @@ class RejectedApproachInjector
      */
     private function loadCandidateChunks(string $projectKey): Collection
     {
+        // R30 — scope to the active tenant; project_key alone is not a
+        // tenant boundary, so a rejected-approach doc from another tenant
+        // sharing the project_key must never be injected into this prompt.
+        $tenantId = app(TenantContext::class)->current();
+
         return KnowledgeChunk::query()
+            ->forTenant($tenantId)
             ->with('document')
             ->where('project_key', $projectKey)
             ->where('chunk_order', 0)
-            ->whereHas('document', function ($query) use ($projectKey) {
-                $query->where('project_key', $projectKey)
+            ->whereHas('document', function ($query) use ($projectKey, $tenantId) {
+                $query->forTenant($tenantId)
+                    ->where('project_key', $projectKey)
                     ->where('is_canonical', true)
                     ->where('canonical_type', 'rejected-approach')
                     ->where('canonical_status', 'accepted')

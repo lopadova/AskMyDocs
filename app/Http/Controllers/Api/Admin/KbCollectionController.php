@@ -8,6 +8,7 @@ use App\Models\KbCollection;
 use App\Models\KbCollectionMember;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\EmbeddingCacheService;
+use App\Support\LikeEscaper;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,14 +26,26 @@ final class KbCollectionController extends Controller
 
         $search = trim((string) $request->query('q', ''));
         if ($search !== '') {
-            $query->where(function ($q) use ($search): void {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('slug', 'like', '%' . $search . '%');
+            // R19 — escape all LIKE meta-chars (%, _, ~) + explicit ESCAPE.
+            // `~` escape char, not `\` (Postgres+PDO HY093 — see LikeEscaper).
+            $like = LikeEscaper::contains($search);
+            $query->where(function ($q) use ($like): void {
+                $q->whereRaw('name LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
+                    ->orWhereRaw('slug LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
             });
         }
 
+        // M7 (R3) — bound the result so a tenant with a pathological number
+        // of collections can't balloon memory, WITHOUT switching to a
+        // paginated envelope: the SPA client (collections.api.ts) consumes
+        // the full `data` array and has no page handling, so real pagination
+        // would silently truncate. Collections are a low-cardinality admin
+        // taxonomy; a 500-row cap is far above any real tenant yet keeps the
+        // query bounded. (Full pagination is a roadmap item alongside the FE.)
         return response()->json([
-            'data' => $query->get()->map(fn (KbCollection $c): array => $this->serialize($c))->all(),
+            'data' => $query->limit(500)->get()
+                ->map(fn (KbCollection $c): array => $this->serialize($c))
+                ->all(),
         ]);
     }
 

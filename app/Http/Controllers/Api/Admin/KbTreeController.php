@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\KnowledgeDocument;
 use App\Services\Admin\KbTreeService;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -62,7 +63,11 @@ class KbTreeController extends Controller
      */
     public function projects(): JsonResponse
     {
+        // R30 — only this tenant's project_key values may surface in the
+        // dropdown; KnowledgeDocument is tenant-aware and BelongsToTenant
+        // adds no global read scope, so apply the active tenant explicitly.
         $projects = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->withTrashed()
             ->whereNotNull('project_key')
             ->distinct()

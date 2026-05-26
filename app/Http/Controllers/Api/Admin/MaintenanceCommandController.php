@@ -9,6 +9,7 @@ use App\Services\Admin\CommandRunnerForbidden;
 use App\Services\Admin\CommandRunnerService;
 use App\Services\Admin\CommandRunnerUnknown;
 use App\Services\Admin\CommandRunnerValidation;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -172,7 +173,11 @@ class MaintenanceCommandController extends Controller
      */
     public function history(Request $request): AnonymousResourceCollection|JsonResponse
     {
-        $query = AdminCommandAudit::query()->orderByDesc('id');
+        // R30 — admin_command_audit is tenant-aware; without forTenant the
+        // history tab leaks every tenant's command audit trail.
+        $query = AdminCommandAudit::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->orderByDesc('id');
 
         $command = $this->trim($request->query('command'));
         if ($command !== null) {

@@ -8,6 +8,7 @@ use App\Models\ChatLog;
 use App\Models\ChatLogProvenance;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 
 /**
  * v6.0/W7 — Cross-system provenance chain helper.
@@ -68,8 +69,12 @@ final class ProvenanceChain
      */
     public function forChatLog(int $chatLogId): array
     {
-        $log = ChatLog::query()->find($chatLogId);
-        $tenantId = $log?->getAttribute('tenant_id');
+        // R30 — every read here is scoped to the active tenant so a guessed
+        // chat-log / chunk / document id from another tenant can't bleed into
+        // the provenance chain (forensic/compliance integrity).
+        $tenantId = app(TenantContext::class)->current();
+
+        $log = ChatLog::query()->forTenant($tenantId)->find($chatLogId);
 
         $spans = ChatLogProvenance::query()
             ->where('chat_log_id', $chatLogId)
@@ -80,10 +85,11 @@ final class ProvenanceChain
         $chunks = collect();
         $documents = collect();
         if ($chunkIds !== []) {
-            $chunks = KnowledgeChunk::query()->whereIn('id', $chunkIds)->get()->keyBy('id');
+            $chunks = KnowledgeChunk::query()->forTenant($tenantId)->whereIn('id', $chunkIds)->get()->keyBy('id');
             $documentIds = $chunks->pluck('knowledge_document_id')->filter()->unique()->all();
             if ($documentIds !== []) {
                 $documents = KnowledgeDocument::query()
+                    ->forTenant($tenantId)
                     ->withTrashed()
                     ->whereIn('id', $documentIds)
                     ->get()

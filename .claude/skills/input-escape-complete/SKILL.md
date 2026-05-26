@@ -158,12 +158,37 @@ final class EnvList
 - R21 — bad input escaping is one path to an injection; R21 covers
   the concurrency side of security invariants.
 
+## LIKE escaping: use `App\Support\LikeEscaper`, escape char `~` NOT `\`
+
+Always escape LIKE operands through `App\Support\LikeEscaper::contains()`
+/ `escape()` and append `LikeEscaper::ESCAPE_SQL` to the `whereRaw`. The
+escape character is **`~`, never backslash**.
+
+A backslash `ESCAPE` clause is a Postgres landmine: PDO's emulated-prepare
+parser reads the backslash-before-closing-quote as an escaped quote,
+swallows the NEXT `?` placeholder, and the statement dies with
+`SQLSTATE[HY093]: Invalid parameter number` whenever another bound `?`
+follows in the same query. It works fine on SQLite — so PHPUnit (SQLite)
+NEVER catches it; only the Postgres E2E job does. Shipped this exact bug
+in v8.0.3: `KbDocumentSearchController` + `UserController` searches 500'd
+on the pgsql E2E job after R19 escaping was added with a `\` escape char.
+
+```php
+// correct, PDO-safe on SQLite + Postgres + MySQL
+$like = LikeEscaper::contains(mb_strtolower($q));
+$builder->whereRaw('LOWER(name) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
+// HY093 on Postgres when a second ? follows: do NOT hand-write a
+// backslash ESCAPE clause.
+```
+
 ## Enforcement
 
+- `tests/Architecture/NoBackslashLikeEscapeTest` fails the build on ANY
+  backslash `ESCAPE` clause in `app/` — the PHPUnit-level guard for the
+  Postgres-only HY093 bug above.
 - `copilot-review-anticipator` sub-agent greps for the four
-  symptoms above. Currently no dedicated CI script — the false
-  positive rate of "does this LIKE have a `_`?" is high enough that
-  agent-assisted review is more ergonomic than a blanket gate.
+  symptoms above. The false positive rate of "does this LIKE have a `_`?"
+  is high enough that agent-assisted review complements the gate.
 
 ## Counter-example
 

@@ -6,6 +6,22 @@ on:
   pull_request:
     branches: [main, 'feature/v*', 'feature/v*/**']
 
+# A pushed PR branch fires BOTH the `push` and `pull_request` events, so
+# without this the full suite (incl. the long Playwright job) ran TWICE
+# concurrently on every commit. The doubled load amplified pre-existing
+# E2E flakiness (stateful-Sanctum 419 / render-timing races under
+# `php artisan serve`) into consistent failures on PR branches while
+# `main` (single push run, no open PR) stayed green.
+#
+# The group key resolves to the SAME head-commit SHA for both events
+# (`pull_request.head.sha` on PR events; `github.sha` on push events),
+# so the two runs share one group and the later one cancels the earlier
+# — exactly one run per commit. Rapid successive pushes also supersede
+# their in-flight predecessor.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   phpunit:
     name: PHPUnit (PHP ${{ matrix.php }})

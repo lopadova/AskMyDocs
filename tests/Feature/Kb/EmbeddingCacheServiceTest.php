@@ -80,6 +80,31 @@ class EmbeddingCacheServiceTest extends TestCase
         );
     }
 
+    public function test_duplicate_text_in_one_batch_is_embedded_once_and_does_not_crash(): void
+    {
+        // Audit#4 Critical-2 — the same text appearing 2+ times in one
+        // batch used to crash: both occurrences missed the cache, then the
+        // SECOND EmbeddingCache::create() violated the
+        // (text_hash, provider, model) UNIQUE. Now the misses are deduped:
+        // the provider is called ONCE for the distinct text, the result is
+        // fanned back to every index, and exactly one cache row is written.
+        config()->set('kb.embedding_cache.enabled', true);
+        config()->set('ai.providers.openai.embeddings_model', 'text-embedding-3-small');
+
+        $service = $this->makeService(
+            apiResponse: new EmbeddingsResponse(
+                embeddings: [[0.5, 0.6]], // one embedding for the one distinct miss
+                provider: 'openai',
+                model: 'text-embedding-3-small',
+            ),
+        );
+
+        $result = $service->generate(['dup', 'dup']);
+
+        $this->assertSame([[0.5, 0.6], [0.5, 0.6]], $result->embeddings);
+        $this->assertSame(1, EmbeddingCache::count());
+    }
+
     public function test_uses_cache_on_second_call_without_api(): void
     {
         config()->set('kb.embedding_cache.enabled', true);

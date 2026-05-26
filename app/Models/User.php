@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\KbPath;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -242,13 +243,12 @@ class User extends Authenticatable
      */
     private function matchesAnyGlob(string $path, array $globs): bool
     {
-        foreach ($globs as $glob) {
-            if (fnmatch($glob, $path)) {
-                return true;
-            }
-        }
-
-        return false;
+        // R19 — delegate to KbPath::matchesAnyGlob, the single segment-aware
+        // implementation: `*` matches within ONE path segment (never crosses
+        // `/`), `**` matches ACROSS segments (recursive). Raw
+        // fnmatch(FNM_PATHNAME) fixed the `*`-crosses-`/` leak but silently
+        // broke documented `docs/**` recursive globs (fnmatch has no `**`).
+        return KbPath::matchesAnyGlob($path, $globs);
     }
 
     /**
@@ -256,9 +256,13 @@ class User extends Authenticatable
      */
     private function documentHasAnyTag(KnowledgeDocument $doc, array $tagSlugs): bool
     {
+        // R30 — tag slugs are unique only per (tenant_id, project_key); a
+        // same-named slug in another tenant must not satisfy this access
+        // check, so constrain the join to the document's own tenant.
         return DB::table('knowledge_document_tags')
             ->join('kb_tags', 'kb_tags.id', '=', 'knowledge_document_tags.kb_tag_id')
             ->where('knowledge_document_tags.knowledge_document_id', $doc->getKey())
+            ->where('kb_tags.tenant_id', $doc->tenant_id)
             ->whereIn('kb_tags.slug', $tagSlugs)
             ->exists();
     }

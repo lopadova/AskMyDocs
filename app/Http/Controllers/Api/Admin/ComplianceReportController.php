@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\ComplianceReport;
 use App\Services\Compliance\ComplianceReportGenerator;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -16,17 +17,16 @@ use Throwable;
 
 final class ComplianceReportController
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, TenantContext $tenant): JsonResponse
     {
-        $tenantId = (string) $request->query('tenant_id', '');
-
+        // C4 (R30) — tenant comes from the resolved context, NOT a
+        // client-supplied ?tenant_id. Previously any admin could read
+        // another tenant's reports by passing its id (or omit it to read
+        // every tenant's reports).
         $query = ComplianceReport::query()
+            ->forTenant($tenant->current())
             ->orderByDesc('generated_at')
             ->orderByDesc('id');
-
-        if ($tenantId !== '') {
-            $query->where('tenant_id', $tenantId);
-        }
 
         $rows = $query
             ->limit(100)
@@ -49,16 +49,19 @@ final class ComplianceReportController
         ]);
     }
 
-    public function store(Request $request, ComplianceReportGenerator $generator): JsonResponse
+    public function store(Request $request, ComplianceReportGenerator $generator, TenantContext $tenant): JsonResponse
     {
         $validated = $request->validate([
-            'tenant_id' => ['required', 'string', 'max:255'],
             'period_start' => ['required', 'date_format:Y-m-d'],
             'period_end' => ['required', 'date_format:Y-m-d', 'after_or_equal:period_start'],
         ]);
 
+        // C4 (R30) — the report is always generated for the active tenant.
+        // A `tenant_id` in the payload is ignored; cross-tenant generation
+        // is only possible by switching the active tenant via X-Tenant-Id,
+        // which AuthorizeTenantHeader gates on the tenant.cross-access perm.
         $report = $generator->generate(
-            (string) $validated['tenant_id'],
+            $tenant->current(),
             (string) $validated['period_start'],
             (string) $validated['period_end'],
             auth()->id(),
@@ -116,7 +119,7 @@ final class ComplianceReportController
     {
         $filename = sprintf(
             'compliance-report-%s-%s-%s.json',
-            $report->tenant_id,
+            $this->safeSegment($report->tenant_id, 'tenant'),
             $report->period_start?->toDateString() ?? 'start',
             $report->period_end?->toDateString() ?? 'end',
         );
@@ -165,7 +168,7 @@ final class ComplianceReportController
 
         $filename = sprintf(
             'compliance-report-%s-%s-%s.pdf',
-            $report->tenant_id,
+            $this->safeSegment($report->tenant_id, 'tenant'),
             $report->period_start?->toDateString() ?? 'start',
             $report->period_end?->toDateString() ?? 'end',
         );
@@ -175,6 +178,17 @@ final class ComplianceReportController
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'Content-Length' => (string) strlen($pdfBytes),
         ]);
+    }
+
+    /**
+     * L5 — sanitise a value before it lands in a Content-Disposition
+     * filename, so a stray quote / CRLF can never break out of the header.
+     */
+    private function safeSegment(?string $value, string $fallback): string
+    {
+        $clean = preg_replace('/[^A-Za-z0-9._-]/', '', (string) $value) ?? '';
+
+        return $clean !== '' ? $clean : $fallback;
     }
 
     private function hmacSecret(): string
