@@ -6,6 +6,7 @@ namespace App\Mcp\Tools;
 
 use App\Models\KbEdge;
 use App\Models\KbNode;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -55,7 +56,9 @@ class KbGraphSubgraphTool extends Tool
 
         [$visitedNodes, $collectedEdges, $truncated] = $this->walkBfs($projectKey, $seed, $hops, $maxNodes);
 
-        $nodeRows = KbNode::where('project_key', $projectKey)
+        $nodeRows = KbNode::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->where('project_key', $projectKey)
             ->whereIn('node_uid', array_keys($visitedNodes))
             ->get()
             ->map(fn (KbNode $n) => [
@@ -97,7 +100,9 @@ class KbGraphSubgraphTool extends Tool
             if ($frontier === []) {
                 break;
             }
-            $edges = KbEdge::where('project_key', $projectKey)
+            $edges = KbEdge::query()
+                ->forTenant(app(TenantContext::class)->current())
+                ->where('project_key', $projectKey)
                 ->whereIn('from_node_uid', $frontier)
                 ->orderByDesc('weight')
                 ->limit($maxNodes * 5)

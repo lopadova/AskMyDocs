@@ -90,6 +90,18 @@ class AiInsightsService
         private readonly AiManager $ai,
     ) {}
 
+    /**
+     * R30 — the active tenant for every DB read in this service. The
+     * service is always invoked inside a tenant context: the scheduled
+     * `InsightsComputeCommand` sets `TenantContext` per tenant before
+     * each compute pass, and the controller runs inside the HTTP request
+     * scope where `ResolveTenant` has already populated it.
+     */
+    private function tenantId(): string
+    {
+        return app(TenantContext::class)->current();
+    }
+
     // ------------------------------------------------------------------
     // 1) suggestPromotions — non-canonical docs that appear in citations
     // ------------------------------------------------------------------
@@ -108,6 +120,7 @@ class AiInsightsService
         // portability is limited (sqlite vs pgsql divergence).
         $counts = [];
         ChatLog::query()
+            ->forTenant($this->tenantId())
             ->where('created_at', '>=', $since)
             ->whereNotNull('sources')
             ->select(['id', 'sources'])
@@ -150,14 +163,17 @@ class AiInsightsService
      */
     private function collectPromotionCandidates(array $top, int $limit): array
     {
+        // R3 + R30 — fetch every candidate doc in ONE tenant-scoped query
+        // instead of one query per key (the previous N+1). Build a
+        // grouped OR over the (project_key, source_path) pairs, then key
+        // the result by "project::path" for O(1) lookup in the loop.
+        // Behaviour is identical: only non-canonical (`raw()`) docs are
+        // considered, same fields surfaced.
+        $docMap = $this->fetchPromotionDocs(array_keys($top));
+
         $out = [];
         foreach ($top as $key => $score) {
-            [$project, $path] = explode('::', $key, 2);
-            $doc = KnowledgeDocument::query()
-                ->raw()
-                ->where('project_key', $project)
-                ->where('source_path', $path)
-                ->first();
+            $doc = $docMap[$key] ?? null;
             if ($doc === null) {
                 continue;
             }
@@ -175,6 +191,47 @@ class AiInsightsService
         }
 
         return $out;
+    }
+
+    /**
+     * Fetch every non-canonical doc matching the given "project::path"
+     * keys in a SINGLE tenant-scoped query, keyed back by the same
+     * "project::path" string for O(1) lookup. Replaces the prior
+     * per-key N+1.
+     *
+     * @param  list<string>  $keys  list of "project::path"
+     * @return array<string, KnowledgeDocument>
+     */
+    private function fetchPromotionDocs(array $keys): array
+    {
+        $pairs = [];
+        foreach ($keys as $key) {
+            [$project, $path] = explode('::', $key, 2);
+            $pairs[] = ['project' => $project, 'path' => $path];
+        }
+        if ($pairs === []) {
+            return [];
+        }
+
+        $docs = KnowledgeDocument::query()
+            ->forTenant($this->tenantId())
+            ->raw()
+            ->where(function ($q) use ($pairs): void {
+                foreach ($pairs as $pair) {
+                    $q->orWhere(function ($inner) use ($pair): void {
+                        $inner->where('project_key', $pair['project'])
+                            ->where('source_path', $pair['path']);
+                    });
+                }
+            })
+            ->get();
+
+        $map = [];
+        foreach ($docs as $doc) {
+            $map[(string) $doc->project_key.'::'.(string) $doc->source_path] = $doc;
+        }
+
+        return $map;
     }
 
     // ------------------------------------------------------------------
@@ -201,6 +258,7 @@ class AiInsightsService
 
         $out = [];
         KnowledgeDocument::query()
+            ->forTenant($this->tenantId())
             ->canonical()
             ->select(['id', 'project_key', 'slug', 'title', 'source_path', 'doc_id', 'source_updated_at'])
             ->withCount('chunks')
@@ -240,6 +298,7 @@ class AiInsightsService
     {
         $map = [];
         KbEdge::query()
+            ->forTenant($this->tenantId())
             // `id` is required by chunkById — it drives the cursor.
             // Include it alongside the fields we actually consume.
             ->select(['id', 'project_key', 'from_node_uid', 'to_node_uid'])
@@ -266,6 +325,7 @@ class AiInsightsService
     {
         $keys = [];
         ChatLog::query()
+            ->forTenant($this->tenantId())
             ->where('created_at', '>=', $since)
             ->whereNotNull('sources')
             ->select(['id', 'sources'])
@@ -319,6 +379,7 @@ class AiInsightsService
         // is small enough (canonical docs only) that PHP filtering is
         // simpler than driver-aware SQL.
         $allCanonical = KnowledgeDocument::query()
+            ->forTenant($this->tenantId())
             ->canonical()
             ->select(['id', 'project_key', 'slug', 'title', 'metadata'])
             ->orderBy('id')
@@ -386,6 +447,7 @@ class AiInsightsService
     private function suggestTagsForDoc(KnowledgeDocument $doc): array
     {
         $chunk = KnowledgeChunk::query()
+            ->forTenant($this->tenantId())
             ->where('knowledge_document_id', $doc->id)
             ->orderBy('chunk_order')
             ->limit(1)
@@ -704,6 +766,7 @@ PROMPT;
 
         $out = [];
         KnowledgeDocument::query()
+            ->forTenant($this->tenantId())
             ->canonical()
             ->where(function ($q) use ($cutoff): void {
                 $q->whereNull('indexed_at')
@@ -744,6 +807,7 @@ PROMPT;
         $pos = [];
         $neg = [];
         Message::query()
+            ->forTenant($this->tenantId())
             ->whereNotNull('rating')
             ->whereNotNull('metadata')
             ->select(['id', 'rating', 'metadata'])
@@ -818,6 +882,9 @@ PROMPT;
         // fallback via SUM). Load is constant regardless of corpus
         // size.
         $row = (array) DB::table('knowledge_chunks')
+            // R30 — raw query builder bypasses the model's BelongsToTenant
+            // global scope, so scope the tenant explicitly here.
+            ->where('tenant_id', $this->tenantId())
             ->selectRaw(
                 'COUNT(*) AS total,
                  SUM(CASE WHEN LENGTH(chunk_text) < 30   THEN 1 ELSE 0 END) AS outlier_short,
@@ -841,11 +908,12 @@ PROMPT;
         $outlierLong = (int) ($row['outlier_long'] ?? 0);
         $totalChunks = (int) ($row['total'] ?? 0);
 
-        $totalDocs = KnowledgeDocument::query()->count();
+        $totalDocs = KnowledgeDocument::query()->forTenant($this->tenantId())->count();
         // Docs whose `frontmatter_json` is null are "missing frontmatter"
         // — either non-canonical by design or canonical-but-broken. The
         // SPA card segments them in its caption.
         $missingFrontmatter = KnowledgeDocument::query()
+            ->forTenant($this->tenantId())
             ->canonical()
             ->whereNull('frontmatter_json')
             ->count();

@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\AdminInsightsSnapshot;
+use App\Models\KnowledgeDocument;
 use App\Services\Admin\AiInsightsService;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -28,11 +30,12 @@ class InsightsComputeCommand extends Command
 {
     protected $signature = 'insights:compute
         {--date=today : Target snapshot_date (YYYY-MM-DD or "today")}
+        {--tenant= : Restrict the compute to a single tenant}
         {--force : Replace an existing row for the target date}';
 
-    protected $description = 'Compute the daily AI insights snapshot (promotions / orphans / tags / gaps / stale / quality).';
+    protected $description = 'Compute the daily AI insights snapshot (promotions / orphans / tags / gaps / stale / quality), one row PER TENANT.';
 
-    public function handle(AiInsightsService $insights): int
+    public function handle(AiInsightsService $insights, TenantContext $tenants): int
     {
         $targetDate = $this->resolveDate();
         if ($targetDate === null) {
@@ -41,54 +44,95 @@ class InsightsComputeCommand extends Command
             return self::FAILURE;
         }
 
-        $existing = AdminInsightsSnapshot::query()
-            ->whereDate('snapshot_date', $targetDate->toDateString())
-            ->first();
-        if ($existing !== null && ! $this->option('force')) {
-            $this->warn("Snapshot for {$targetDate->toDateString()} already exists. Use --force to replace.");
-
-            return self::SUCCESS;
-        }
-
-        $startedAt = microtime(true);
-        $payloads = [
-            'suggest_promotions' => $this->runInsight('suggest_promotions', fn () => $insights->suggestPromotions()),
-            'orphan_docs' => $this->runInsight('orphan_docs', fn () => $insights->detectOrphans()),
-            'suggested_tags' => $this->runInsight('suggested_tags', fn () => $insights->suggestTagsBatch()),
-            'coverage_gaps' => $this->runInsight('coverage_gaps', fn () => $insights->coverageGaps()),
-            'stale_docs' => $this->runInsight('stale_docs', fn () => $insights->detectStaleDocs()),
-            'quality_report' => $this->runInsight('quality_report', fn () => $insights->qualityReport()),
-        ];
-        $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
-
-        $attributes = array_merge($payloads, [
-            'computed_at' => Carbon::now(),
-            'computed_duration_ms' => $durationMs,
-        ]);
-
-        // Upsert keyed on `snapshot_date`. Use `whereDate()` on the
-        // lookup side because the `date` Eloquent cast round-trips
-        // the column through Carbon — on SQLite the stored TEXT value
-        // preserves the Y-m-d shape, but mixing Carbon and string
-        // comparisons in a plain `where()` can miss the match. Branch
-        // explicitly on existence so we never fall back to INSERT
-        // against a unique-index collision.
+        // R30/CRITICAL-3 — compute ONE snapshot per tenant. Previously the
+        // command ran AiInsightsService once with no tenant context, writing
+        // a single snapshot whose CONTENT aggregated every tenant's data
+        // (cross-tenant leak) under tenant_id='default'. Now we iterate the
+        // tenants and set TenantContext so each tenant's snapshot only
+        // contains its own data (AiInsightsService scopes by the active
+        // tenant). Mirrors KbHealthRecomputeCommand.
+        $previousTenant = $tenants->current();
         $dateString = $targetDate->toDateString();
-        $row = AdminInsightsSnapshot::query()
-            ->whereDate('snapshot_date', $dateString)
-            ->first();
-        if ($row !== null) {
-            $row->update($attributes);
-        } else {
-            AdminInsightsSnapshot::create(array_merge(
-                ['snapshot_date' => $dateString],
-                $attributes,
-            ));
-        }
 
-        $this->info("Insights snapshot for {$targetDate->toDateString()} written in {$durationMs} ms.");
+        try {
+            foreach ($this->resolveTenantIds() as $tenantId) {
+                $tenants->set($tenantId);
+
+                $existing = AdminInsightsSnapshot::query()
+                    ->forTenant($tenantId)
+                    ->whereDate('snapshot_date', $dateString)
+                    ->first();
+                if ($existing !== null && ! $this->option('force')) {
+                    $this->warn("[{$tenantId}] snapshot for {$dateString} already exists. Use --force to replace.");
+
+                    continue;
+                }
+
+                $startedAt = microtime(true);
+                $payloads = [
+                    'suggest_promotions' => $this->runInsight('suggest_promotions', fn () => $insights->suggestPromotions()),
+                    'orphan_docs' => $this->runInsight('orphan_docs', fn () => $insights->detectOrphans()),
+                    'suggested_tags' => $this->runInsight('suggested_tags', fn () => $insights->suggestTagsBatch()),
+                    'coverage_gaps' => $this->runInsight('coverage_gaps', fn () => $insights->coverageGaps()),
+                    'stale_docs' => $this->runInsight('stale_docs', fn () => $insights->detectStaleDocs()),
+                    'quality_report' => $this->runInsight('quality_report', fn () => $insights->qualityReport()),
+                ];
+                $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+                $attributes = array_merge($payloads, [
+                    'computed_at' => Carbon::now(),
+                    'computed_duration_ms' => $durationMs,
+                ]);
+
+                // Upsert scoped to the tenant + date. `existing` was fetched
+                // forTenant above, so we never collide with another tenant's
+                // same-date row (the composite unique is (tenant_id, snapshot_date)).
+                if ($existing !== null) {
+                    $existing->update($attributes);
+                } else {
+                    // BelongsToTenant auto-fills tenant_id from the active
+                    // TenantContext (set to $tenantId above) on create.
+                    AdminInsightsSnapshot::create(array_merge(
+                        ['snapshot_date' => $dateString],
+                        $attributes,
+                    ));
+                }
+
+                $this->info("[{$tenantId}] insights snapshot for {$dateString} written in {$durationMs} ms.");
+            }
+        } finally {
+            $tenants->set($previousTenant);
+        }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Tenants to compute snapshots for. Explicit --tenant wins; otherwise
+     * every tenant that owns at least one knowledge document. Falls back to
+     * the active tenant (typically 'default') on a fresh install with no
+     * documents, so single-tenant deployments still get a daily snapshot.
+     *
+     * @return list<string>
+     */
+    private function resolveTenantIds(): array
+    {
+        $explicit = trim((string) ($this->option('tenant') ?? ''));
+        if ($explicit !== '') {
+            return [$explicit];
+        }
+
+        // Tenant-enumeration query: intentionally unscoped (it discovers the
+        // tenant set). Allowlisted in TenantReadScopeTest.
+        $tenantIds = KnowledgeDocument::query()
+            ->withTrashed()
+            ->distinct()
+            ->pluck('tenant_id')
+            ->filter(static fn ($v): bool => is_string($v) && $v !== '')
+            ->values()
+            ->all();
+
+        return $tenantIds === [] ? [app(TenantContext::class)->current()] : $tenantIds;
     }
 
     /**

@@ -42,6 +42,40 @@ Status: ⏳ planned · 🔧 partially mitigated · ✅ shipped.
 | R12 | **Evernote ENEX import UI** | BE OAuth connector + `.enex` bulk-import endpoint **exist and work**; only the admin SPA upload affordance is missing | Upload form in the connector admin screen wired to the import endpoint with progress/result display | S |
 | R13 | **Tabular Reviews + Workflows pagination** | Both hardcode `per_page=100` with no Prev/Next; fine until 100 rows | Thread `current_page` through the api clients + a shared Prev/Next pager bound to `meta.last_page` | S |
 
+## 🖥️ Frontend shell completeness (audit round 2)
+
+The chat + app-shell still lean on dev-only seed data and local-only state.
+All verified CONFIRMED against current code.
+
+| # | Item | Current state | Scope | Effort |
+|---|------|---------------|-------|--------|
+| R14 | **Dev-only seed in production runtime** | `frontend/src/lib/seed.ts` ("Dev-only seed data") is imported at runtime by `AppShell.tsx` + `ChatView.tsx` (`PROJECTS`, `USERS`) | Replace with the backend project list + auth-store user; remove `seed.ts` from the runtime path | M |
+| R15 | **Chat pinned to first seeded project** | `ChatView.tsx` `const project = PROJECTS[0]` drives conversation create + sidebar + thread + composer — ignores the Topbar switcher | Consume a shared active-project context as `projectKey` across the chat surface | M |
+| R16 | **Project switcher is cosmetic** | Selection lives only in `AppShell` local `projectIndex` state; no shared store; features ignore it | Lift active project to a context/store consumed by chat + admin filters | M |
+| R17 | **Hardcoded chat model label** | `ChatView.tsx` `useState('claude-sonnet-4.5')` shown in header + composer; not derived from backend | Derive from config or per-turn response metadata | S |
+| R18 | **Conversation list not project-scoped** | `ConversationList.tsx` uses `projectKey` only on create; `listConversations` is global | Add a `project_key` filter param + query-key dimension | S/M |
+| R19 | **Users drawer hardcoded project keys** | `UsersView.tsx` `DEFAULT_PROJECT_KEYS = ['hr-portal','engineering']` feeds the membership editor (R18-rule violation) | Fetch real project keys from a distinct-keys endpoint | S |
+| R20 | **Users role filter hardcoded** | `UsersView.tsx` filter uses a 4-item literal while `useRoles()` data is fetched but unused for it | Derive filter options from the roles query | S |
+| R21 | **Seed-user fallback in shell** | `AppShell.tsx` backs the sidebar identity with `USERS[0]` ("Elena Ricci"); role/color always seeded | Render only the real auth-store user; skeleton/empty when absent | S |
+| R22 | **Static shell indicators** | Topbar "All systems operational", Sidebar insights badge `5`, palette version `v2.4.0` all hardcoded | Wire to `/api/admin/health`, unread-insights count, build version | S |
+
+> Round-2 overlaps already tracked above: command palette → R1, compliance
+> tenant input → R3, KB Health orphan route → R4, Evernote ENEX UI → R12.
+
+## ⚙️ Backend cross-tenant (Audit #3) — status
+
+The third audit's cross-tenant findings were folded into the **v8.0.3**
+security PR, not this roadmap (same R30 theme):
+- **Fixed in v8.0.3:** all 10 MCP tools `forTenant`-scoped; `AiInsightsService`
+  scoped + N+1 batched; `InsightsComputeCommand` now writes one snapshot
+  per tenant (new `(tenant_id, snapshot_date)` unique); `ProvenanceChain`
+  scoped; `Conversation` route-binding tenant-scoped; `KbValidateCanonical`
+  scoped. The architecture test now also scans `app/Mcp` + `app/Console` +
+  `app/Compliance`.
+- **Already fixed earlier in the same PR:** ComplianceReport index/store,
+  KbTree, AdminInsights, GraphExpander/RejectedApproachInjector (the audit
+  was run against `main`).
+
 ---
 
 ## Corrections (reported but overstated)

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mcp\Tools;
 
 use App\Models\KbEdge;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -40,6 +41,7 @@ class KbSuggestSupersessionChainTool extends Tool
 
         for ($i = 0; $i < $maxHops; $i++) {
             $next = KbEdge::query()
+                ->forTenant(app(TenantContext::class)->current())
                 ->forProject($projectKey)
                 ->where('edge_type', 'supersedes')
                 ->where('from_node_uid', $cursor)

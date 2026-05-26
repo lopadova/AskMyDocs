@@ -7,6 +7,7 @@ namespace App\Mcp\Tools;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Support\MarkdownDiff;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -34,7 +35,9 @@ class KbProposeCanonicalEditTool extends Tool
             return Response::json(['error' => 'doc_id and suggested_md are required', 'valid' => false, 'errors' => ['missing_input']]);
         }
 
+        // R30 — doc_id is unique per (tenant, project), not globally.
         $doc = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->canonical()
             ->where('doc_id', $docId)
             ->first();

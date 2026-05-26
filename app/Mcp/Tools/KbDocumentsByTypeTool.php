@@ -6,6 +6,7 @@ namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
 use App\Support\Canonical\CanonicalType;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -58,9 +59,12 @@ class KbDocumentsByTypeTool extends Tool
         $rawLimit = (int) ($request->get('limit') ?? self::DEFAULT_LIMIT);
         $limit = max(1, min($rawLimit, self::MAX_LIMIT));
 
+        // R30 — scope to the MCP-resolved tenant. R10 — use the canonical()
+        // scope instead of an inline where('is_canonical', true).
         $query = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
-            ->where('is_canonical', true)
+            ->canonical()
             ->where('canonical_type', $type)
             ->where('status', '!=', 'archived');
 

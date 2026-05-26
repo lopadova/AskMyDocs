@@ -7,6 +7,7 @@ namespace App\Mcp\Tools;
 use App\Models\KbEdge;
 use App\Models\KbNode;
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -63,7 +64,12 @@ class KbGraphNeighborsTool extends Tool
             return Response::json(['neighbours' => [], 'count' => 0]);
         }
 
+        // R30 — project_key is not a tenant boundary; scope every graph
+        // read to the MCP-resolved tenant.
+        $tenantId = app(TenantContext::class)->current();
+
         $edges = KbEdge::query()
+            ->forTenant($tenantId)
             ->where('project_key', $projectKey)
             ->where('from_node_uid', $nodeUid)
             ->whereIn('edge_type', $edgeTypes)
@@ -75,11 +81,15 @@ class KbGraphNeighborsTool extends Tool
         }
 
         $targetSlugs = $edges->pluck('to_node_uid')->unique()->values()->all();
-        $nodesBySlug = KbNode::where('project_key', $projectKey)
+        $nodesBySlug = KbNode::query()
+            ->forTenant($tenantId)
+            ->where('project_key', $projectKey)
             ->whereIn('node_uid', $targetSlugs)
             ->get()
             ->keyBy('node_uid');
-        $docsBySlug = KnowledgeDocument::where('project_key', $projectKey)
+        $docsBySlug = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->where('project_key', $projectKey)
             ->whereIn('slug', $targetSlugs)
             ->where('is_canonical', true)
             ->get()

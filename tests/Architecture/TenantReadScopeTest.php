@@ -43,7 +43,12 @@ final class TenantReadScopeTest extends TestCase
         // legacy unscoped sweep both log/justify the cross-tenant access
         // inline, and DocumentDeleter applies forTenant CONDITIONALLY
         // (it contains forTenant, so it would pass anyway — listed for clarity).
-        // (intentionally left mostly empty — additions require a reason.)
+        //
+        // Global retention/maintenance sweep — deletes rows older than a
+        // retention window across ALL tenants by design (same posture as
+        // kb:prune-deleted / chat-log:prune; the scheduler runs it
+        // instance-wide, not per-tenant). NOT a user-facing cross-tenant read.
+        'app/Console/Commands/PruneAdminCommandAuditCommand.php' => 'Global audit-retention prune; intentionally instance-wide.',
     ];
 
     public function test_tenant_aware_reads_are_scoped(): void
@@ -51,6 +56,11 @@ final class TenantReadScopeTest extends TestCase
         $roots = [
             dirname(__DIR__, 2).'/app/Http/Controllers',
             dirname(__DIR__, 2).'/app/Services',
+            // Audit#3 — these were NOT scanned originally and harboured the
+            // MCP-tool / insights-command / provenance cross-tenant leaks.
+            dirname(__DIR__, 2).'/app/Mcp',
+            dirname(__DIR__, 2).'/app/Console',
+            dirname(__DIR__, 2).'/app/Compliance',
         ];
 
         $modelAlternation = implode('|', self::TENANT_AWARE_MODELS);
