@@ -135,7 +135,7 @@ final class RetrievalPipelineScenarioTest extends TestCase
         $this->assertTrue(KbNode::where('node_uid', 'cache-purge-runbook')->exists());
         $this->assertGreaterThanOrEqual(
             1,
-            KbEdge::where('from_node_uid', 'cache-invalidation')->orWhere('to_node_uid', 'cache-invalidation')->count(),
+            KbEdge::where(fn ($q) => $q->where('from_node_uid', 'cache-invalidation')->orWhere('to_node_uid', 'cache-invalidation'))->count(),
             'cache-invalidation is graph-linked',
         );
     }
