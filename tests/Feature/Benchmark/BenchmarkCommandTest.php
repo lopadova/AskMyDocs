@@ -101,9 +101,6 @@ final class BenchmarkCommandTest extends TestCase
             '--k' => 5,
         ])->assertExitCode(0);
 
-        // The chat boundary was actually exercised.
-        Http::assertSent(fn ($req) => str_contains($req->url(), '/chat/completions'));
-
         $files = Storage::disk('local')->allFiles('kb-benchmark');
         $this->assertNotEmpty($files, 'a benchmark report was written');
         $json = collect($files)->first(fn ($f) => str_ends_with($f, '.json'));
@@ -118,6 +115,13 @@ final class BenchmarkCommandTest extends TestCase
         // pass if the mean helper silently skipped everything (R16).
         $scored = array_filter($card['queries'], fn ($r) => isset($r['faithfulness']) && $r['faithfulness'] !== null);
         $this->assertNotEmpty($scored, 'at least one query must have a per-query faithfulness score');
+
+        // The chat boundary must be hit EXACTLY once per scored query — not
+        // just "at least once". A regression that called the LLM a single time
+        // (or hoisted it out of the per-query loop) would still produce a
+        // non-empty $scored, so pin the call count to the scored-row count.
+        $chatCalls = Http::recorded(fn ($req) => str_contains($req->url(), '/chat/completions'))->count();
+        $this->assertSame(count($scored), $chatCalls, 'one real chat call per scored query');
 
         // The faked answer shares cache vocabulary (TTL, purge, Redis, cache)
         // with the cache-topic corpus chunks, so cache queries score > 0.

@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Benchmark;
 
+use App\Ai\AiManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\DocumentIngestor;
+use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\KbSearchService;
-use App\Services\Kb\Pipeline\SourceDocument;
-use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Services\Kb\Metrics\RetrievalQualityMetrics as Metrics;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Retrieval\CosineCalculator;
+use App\Services\Kb\Retrieval\RetrievalGrounding;
+use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Collection;
 use Symfony\Component\Yaml\Yaml;
 
@@ -41,9 +45,9 @@ final class BenchmarkRunner
         private readonly DocumentIngestor $ingestor,
         private readonly KbSearchService $search,
         private readonly ChatRetrievalService $retrieval,
-        private readonly \App\Ai\AiManager $ai,
-        private readonly \App\Services\Kb\EmbeddingCacheService $embeddings,
-        private readonly \App\Services\Kb\Retrieval\CosineCalculator $cosineCalc,
+        private readonly AiManager $ai,
+        private readonly EmbeddingCacheService $embeddings,
+        private readonly CosineCalculator $cosineCalc,
     ) {}
 
     /**
@@ -200,7 +204,7 @@ final class BenchmarkRunner
      * fluent answer that drifts from its grounding scores low; a self-refusal
      * scores 0.
      */
-    private function answerFaithfulness(string $query, string $projectKey, \App\Services\Kb\Retrieval\SearchResult $result): float
+    private function answerFaithfulness(string $query, string $projectKey, SearchResult $result): float
     {
         $prompt = view('prompts.kb_rag', array_merge(
             $this->retrieval->promptContext($result),
@@ -240,9 +244,10 @@ final class BenchmarkRunner
         }
 
         // Reuse the canonical CosineCalculator (IoC, test-substitutable).
-        // Negatives floor at 0.0: a faithfulness score is a 0..1 grounding
-        // signal, so an anti-correlated answer is "not grounded", not -0.3.
-        return max(0.0, $this->cosineCalc->similarity($vecs[0], $vecs[1]));
+        // Clamp to [0,1]: a faithfulness score is a 0..1 grounding signal —
+        // negatives (anti-correlated) floor at 0, and float error that nudges
+        // cosine just past 1.0 is capped so aggregates never read 1.0001.
+        return min(1.0, max(0.0, $this->cosineCalc->similarity($vecs[0], $vecs[1])));
     }
 
     /**
