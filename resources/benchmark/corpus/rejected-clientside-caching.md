@@ -1,7 +1,7 @@
 ---
 id: REJ-CACHE-001
 slug: rejected-clientside-caching
-type: rejected_approach
+type: rejected-approach
 status: accepted
 retrieval_priority: 70
 tags: [cache, rejected, client-side]
