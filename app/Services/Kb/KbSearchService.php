@@ -99,8 +99,11 @@ class KbSearchService
 
         // T3.5 — vector_score is set on EVERY primary chunk by search();
         // these min/max are retrieval-quality signals the dashboard uses
-        // to flag "everything just barely passed" outlier queries.
-        $primaryScores = $primary->map(fn ($c) => (float) ($c->vector_score ?? 0));
+        // to flag "everything just barely passed" outlier queries. v8.1 —
+        // read via data_get: search() returns ARRAYS, so the prior
+        // `$c->vector_score` object read collapsed every score to 0 and the
+        // dashboard's min/max score range was silently always 0..0.
+        $primaryScores = $primary->map(fn ($c) => (float) (data_get($c, 'vector_score') ?? 0));
         $minScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->min();
         $maxScoreUsed = $primary->isEmpty() ? null : (float) $primaryScores->max();
 
@@ -468,7 +471,14 @@ class KbSearchService
             ];
         });
 
-        return $this->reranker->rerank($query, $chunks, $limit);
+        // v8.1 — in `boost` mode the @mentioned doc ids are not a hard
+        // filter (applyFilters skipped them); pass them to the reranker so
+        // their chunks float to the top of the candidate set instead.
+        $boostDocIds = config('kb.mentions.mode', 'boost') === 'boost'
+            ? $effectiveFilters->docIds
+            : [];
+
+        return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
     }
 
     /**
@@ -606,23 +616,29 @@ class KbSearchService
             $q->whereIn('knowledge_chunks.project_key', $f->projectKeys);
         }
 
+        // v8.1 — @mention doc ids are a HARD filter only in `filter` mode;
+        // in the default `boost` mode they don't constrain retrieval (they
+        // become a reranker boost in search()), so recall is preserved.
+        $mentionAsFilter = config('kb.mentions.mode', 'boost') === 'filter';
+        $applyDocIdFilter = $mentionAsFilter && $f->docIds !== [];
+
         $hasDocumentLevelFilters = $f->sourceTypes !== []
             || $f->canonicalTypes !== []
-            || $f->docIds !== []
+            || $applyDocIdFilter
             || $f->collectionId !== null
             || $f->languages !== []
             || $f->dateFrom !== null
             || $f->dateTo !== null;
 
         if ($hasDocumentLevelFilters) {
-            $q->whereHas('document', function ($docQuery) use ($f): void {
+            $q->whereHas('document', function ($docQuery) use ($f, $applyDocIdFilter): void {
                 if ($f->sourceTypes !== []) {
                     $docQuery->whereIn('source_type', $f->sourceTypes);
                 }
                 if ($f->canonicalTypes !== []) {
                     $docQuery->whereIn('canonical_type', $f->canonicalTypes);
                 }
-                if ($f->docIds !== []) {
+                if ($applyDocIdFilter) {
                     $docQuery->whereIn('id', $f->docIds);
                 }
                 if ($f->collectionId !== null) {

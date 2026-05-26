@@ -32,7 +32,11 @@ interface UseMentionSearchArgs {
     projectKeys?: string[];
     /** When false, the hook stays idle (used to gate by popover open state). */
     enabled?: boolean;
-    /** Minimum query length before issuing the request. Default 1. */
+    /**
+     * Minimum query length before issuing the request. Default 2 to match
+     * the backend `KbDocumentSearchController` rule (`q` => `min:2`); a
+     * 1-char query would 422 server-side and surface a useless error.
+     */
     minQueryLength?: number;
 }
 
@@ -42,7 +46,7 @@ export function useMentionSearch({
     query,
     projectKeys,
     enabled = true,
-    minQueryLength = 1,
+    minQueryLength = 2,
 }: UseMentionSearchArgs) {
     const trimmed = query.trim();
     const isLongEnough = trimmed.length >= minQueryLength;

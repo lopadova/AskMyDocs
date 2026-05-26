@@ -104,15 +104,13 @@ function readDataPartField<T = unknown>(
  * translates that to `related` on the synchronous JSON path
  * (`'expanded' => 'related'`) — see `app/Http/Controllers/Api/KbChatController.php`.
  *
- * The W3.1 streaming controller currently hard-codes `origin: 'primary'`
- * for every citation chunk (see `MessageStreamController::store()`),
- * so today this mapping only ever sees `'primary'`. The fallback
- * branches are present so a future W3.1 fix that threads the real
- * group label into the chunk doesn't require a paired FE patch —
- * the adapter accepts both legacy (`related`) and BE-internal
+ * v8.1 P2 — the streaming controller now threads the real per-citation
+ * origin through `source-url`'s `providerMetadata.origin`, so this mapping
+ * receives `primary` / `related` / `rejected` live (parity with the sync
+ * path). The adapter accepts both the legacy (`related`) and BE-internal
  * (`expanded`) spellings.
  *
- * Unknown values default to `'primary'` so the existing
+ * Unknown / missing values default to `'primary'` so the existing
  * `CitationsPopover` always has a valid bucket to render into.
  */
 type CitationOrigin = NonNullable<MessageCitation['origin']>;
@@ -171,6 +169,15 @@ function sourcePartToCitation(part: {
     title?: string;
     url?: string | null;
     origin?: string;
+    // v8.1 P2 — the streaming controller now carries citation provenance
+    // (origin / headings / chunks_used / source_type) on the SDK-standard
+    // `providerMetadata` field so the live chip matches the sync citation.
+    providerMetadata?: {
+        origin?: string;
+        headings?: string[];
+        chunks_used?: number;
+        source_type?: string | null;
+    };
 }): MessageCitation {
     // Strip the BE `doc-` prefix (see MessageStreamController::store()
     // line 369 — `'doc-' . ($citation['document_id'] ?? 'unknown')`).
@@ -188,14 +195,17 @@ function sourcePartToCitation(part: {
     const numeric = Number(idTail);
     const documentId = Number.isInteger(numeric) && numeric > 0 ? numeric : null;
     const label = part.title ?? part.url ?? part.sourceId;
+    const meta = part.providerMetadata;
     return {
         document_id: documentId,
         title: label,
         source_path: null,
-        source_type: null,
-        headings: [],
-        chunks_used: 1,
-        origin: coerceCitationOrigin(part.origin),
+        source_type: meta?.source_type ?? null,
+        headings: meta?.headings ?? [],
+        chunks_used: meta?.chunks_used ?? 1,
+        // Prefer the provenance from providerMetadata; fall back to a
+        // top-level origin (older frames) then 'primary'.
+        origin: coerceCitationOrigin(meta?.origin ?? part.origin),
     };
 }
 

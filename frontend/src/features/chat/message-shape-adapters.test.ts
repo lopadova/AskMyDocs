@@ -113,6 +113,33 @@ describe('getCitations', () => {
         expect(citations[1].title).toBe('Onboarding');
     });
 
+    it('reads provenance (origin/headings/chunks_used/source_type) from providerMetadata (v8.1 P2 stream parity)', () => {
+        const m = uiMsg({
+            parts: [
+                {
+                    type: 'source-url',
+                    sourceId: 'doc-9',
+                    title: 'Rejected ADR',
+                    url: '/kb/9',
+                    providerMetadata: {
+                        origin: 'rejected',
+                        headings: ['Decision', 'Alternatives'],
+                        chunks_used: 3,
+                        source_type: 'markdown',
+                    },
+                } as never,
+            ],
+        });
+
+        const [c] = getCitations(m);
+        // Provenance must come from providerMetadata, NOT the default
+        // 'primary'/[]/1 the adapter used before stream parity landed.
+        expect(c.origin).toBe('rejected');
+        expect(c.headings).toEqual(['Decision', 'Alternatives']);
+        expect(c.chunks_used).toBe(3);
+        expect(c.source_type).toBe('markdown');
+    });
+
     it('strips BE doc- prefix from sourceId before parsing document_id', () => {
         // Pin the BE wire shape: MessageStreamController::store() emits
         // `'doc-' . $document->id`. The adapter MUST strip this before

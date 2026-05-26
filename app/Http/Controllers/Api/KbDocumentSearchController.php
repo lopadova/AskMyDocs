@@ -73,20 +73,35 @@ final class KbDocumentSearchController extends Controller
         // Case-folding portability: SQLite's LIKE is case-INSENSITIVE by
         // default while PostgreSQL's is case-SENSITIVE, so we lowercase BOTH
         // sides — the columns via LOWER(...) and the pattern via mb_strtolower.
-        $like = LikeEscaper::contains(mb_strtolower((string) $validated['q']));
+        $qLower = mb_strtolower((string) $validated['q']);
+        $escaped = LikeEscaper::escape($qLower);
+        $prefixPat = $escaped.'%';
+        $containsPat = '%'.$escaped.'%';
 
-        $query->where(function ($w) use ($like): void {
-            $w->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like])
-                ->orWhereRaw('LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$like]);
+        $query->where(function ($w) use ($containsPat): void {
+            $w->whereRaw('LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat])
+                ->orWhereRaw('LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL, [$containsPat]);
         });
 
-        // Deterministic ordering BEFORE the limit so the same query
-        // returns the same 20 rows under both dialects and as the
-        // table grows. Priority: canonical docs first (more
-        // authoritative for citations), then by retrieval_priority
-        // DESC (admin-curated weight), then by recency (indexed_at),
-        // and finally by title + id as a stable tie-breaker.
+        // v8.1 P2 — RELEVANCE ranking first, curation second. A title that
+        // exactly equals or starts with the query is a far better @mention
+        // hit than one where the query only appears mid-title or buried in
+        // the path. Rank: title-exact (4) > title-prefix (3) >
+        // title-contains (2) > path-contains (1). Within a rank we keep the
+        // prior deterministic tie-breakers (canonical, curated weight,
+        // recency, title, id) so results stay stable across dialects and as
+        // the table grows. orderByRaw (not selectRaw) keeps the response
+        // shape unchanged — the match rank never leaks to the FE.
         $results = $query
+            ->orderByRaw(
+                'CASE '
+                .'WHEN LOWER(title) = ? THEN 4 '
+                .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 3 '
+                .'WHEN LOWER(title) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 2 '
+                .'WHEN LOWER(source_path) LIKE ? '.LikeEscaper::ESCAPE_SQL.' THEN 1 '
+                .'ELSE 0 END DESC',
+                [$qLower, $prefixPat, $containsPat, $containsPat],
+            )
             ->orderByDesc('is_canonical')
             ->orderByDesc('retrieval_priority')
             ->orderByDesc('indexed_at')

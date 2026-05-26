@@ -7,14 +7,13 @@ use App\Ai\AiResponse;
 use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
+use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
-use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\CounterfactualService;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class KbChatController extends Controller
@@ -31,7 +30,7 @@ class KbChatController extends Controller
     public function __invoke(
         KbChatRequest $request,
         AiManager $ai,
-        KbSearchService $search,
+        ChatRetrievalService $retrieval,
         ChatLogManager $chatLog,
         ConfidenceCalculator $confidence,
         CounterfactualService $counterfactual,
@@ -48,13 +47,7 @@ class KbChatController extends Controller
 
         $startTime = microtime(true);
 
-        $result = $search->searchWithContext(
-            query: $question,
-            projectKey: $projectKey,
-            limit: config('kb.default_limit', 8),
-            minSimilarity: config('kb.default_min_similarity', 0.30),
-            filters: $filters,
-        );
+        $result = $retrieval->retrieve($question, $projectKey, $filters);
 
         // v8.0/W3.4 — Counterfactual mini-retrieval against up to 3
         // other projects the user has membership in. RBAC-critical:
@@ -71,20 +64,15 @@ class KbChatController extends Controller
         );
 
         // T3.3 — deterministic refusal short-circuit. If too few primary
-        // chunks pass the refusal threshold, we don't call the LLM at all
-        // and return a refusal payload that the FE can render distinctly
-        // (see ConfidenceBadge / RefusalNotice — T3.6/T3.7, deferred).
-        // Threshold is intentionally above `default_min_similarity` so
-        // the search step over-retrieves but only confident chunks
-        // qualify for grounding.
-        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
-        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
-
-        $grounded = $result->primary->filter(
-            fn ($c) => (float) ($c->vector_score ?? 0) >= $refusalThreshold
-        );
-
-        if ($grounded->count() < $refusalMinChunks) {
+        // chunks pass the grounding gate, we don't call the LLM at all and
+        // return a refusal payload the FE renders distinctly (ConfidenceBadge
+        // / RefusalNotice). v8.1 — the gate lives in RetrievalGrounding so
+        // all three chat surfaces decide identically, reads the score
+        // shape-agnostically (search() returns ARRAYS — object syntax read
+        // null → 0 and silently disabled this gate in production), and
+        // grounds on the FINAL rerank_score OR the vector floor so
+        // lexically-strong matches aren't wrongly refused.
+        if ($retrieval->shouldRefuse($result)) {
             return $this->refusalResponse(
                 request: $request,
                 chatLog: $chatLog,
@@ -118,6 +106,7 @@ class KbChatController extends Controller
             return $this->convertSentinelToRefusal(
                 request: $request,
                 chatLog: $chatLog,
+                retrieval: $retrieval,
                 question: $question,
                 projectKey: $projectKey,
                 result: $result,
@@ -127,8 +116,8 @@ class KbChatController extends Controller
             );
         }
 
-        $citations = $this->buildCitations($result);
-        $sources = $this->collectSources($result);
+        $citations = $retrieval->buildCitations($result);
+        $sources = $retrieval->collectSources($result);
 
         // T3.5 — composite confidence score for the grounded answer. Wires
         // the ConfidenceCalculator (T3.2) into the hot path. citationsCount
@@ -405,6 +394,7 @@ class KbChatController extends Controller
     private function convertSentinelToRefusal(
         KbChatRequest $request,
         ChatLogManager $chatLog,
+        ChatRetrievalService $retrieval,
         string $question,
         ?string $projectKey,
         SearchResult $result,
@@ -424,7 +414,7 @@ class KbChatController extends Controller
             aiProvider: $aiResponse->provider,
             aiModel: $aiResponse->model,
             chunksCount: $result->totalChunks(),
-            sources: $this->collectSources($result),
+            sources: $retrieval->collectSources($result),
             promptTokens: $aiResponse->promptTokens,
             completionTokens: $aiResponse->completionTokens,
             totalTokens: $aiResponse->totalTokens,
@@ -480,50 +470,4 @@ class KbChatController extends Controller
         ]);
     }
 
-    /**
-     * Build citations grouped by source document with an `origin` marker so
-     * the UI can label primary / related / rejected differently.
-     *
-     * @return array<int, array{document_id: ?int, title: string, source_path: ?string, headings: list<string>, chunks_used: int, origin: string}>
-     */
-    private function buildCitations(SearchResult $result): array
-    {
-        $citations = [];
-        $this->appendCitationsFor($result->primary, 'primary', $citations);
-        $this->appendCitationsFor($result->expanded, 'related', $citations);
-        $this->appendCitationsFor($result->rejected, 'rejected', $citations);
-        return array_values($citations);
-    }
-
-    /**
-     * @param  Collection<int, array>  $chunks
-     * @param  array<string, array>  $citations
-     */
-    private function appendCitationsFor(Collection $chunks, string $origin, array &$citations): void
-    {
-        foreach ($chunks->groupBy('document.source_path') as $sourcePath => $group) {
-            $key = $origin . ':' . $sourcePath;
-            if (isset($citations[$key])) {
-                continue;
-            }
-            $first = $group->first();
-            $citations[$key] = [
-                'document_id' => data_get($first, 'document.id'),
-                'title' => data_get($first, 'document.title', 'Untitled'),
-                'source_path' => data_get($first, 'document.source_path'),
-                'headings' => $group->pluck('heading_path')->filter()->unique()->values()->all(),
-                'chunks_used' => $group->count(),
-                'origin' => $origin,
-            ];
-        }
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function collectSources(SearchResult $result): array
-    {
-        $all = $result->primary->concat($result->expanded)->concat($result->rejected);
-        return $all->pluck('document.source_path')->filter()->unique()->values()->all();
-    }
 }

@@ -69,9 +69,15 @@ class Reranker
      *   - vector_score (float, 0-1)
      *
      * @param  Collection<int, array>  $chunks  Over-retrieved candidates.
+     * @param  list<int>  $boostDocIds  document ids the user @mentioned;
+     *                                  chunks from these docs receive an
+     *                                  additive `mention_boost_weight` so they
+     *                                  float to the top without excluding
+     *                                  other relevant results (v8.1,
+     *                                  `kb.mentions.mode = boost`).
      * @return Collection<int, array>  Top $limit chunks, sorted by rerank_score desc.
      */
-    public function rerank(string $query, Collection $chunks, int $limit): Collection
+    public function rerank(string $query, Collection $chunks, int $limit, array $boostDocIds = []): Collection
     {
         if ($chunks->isEmpty()) {
             return $chunks;
@@ -86,6 +92,10 @@ class Reranker
         if (empty($queryTokens)) {
             return $chunks->take($limit)->values();
         }
+
+        // O(1) membership test for the @mention boost.
+        $boostSet = array_flip(array_map('intval', $boostDocIds));
+        $mentionBoostWeight = (float) config('kb.reranking.mention_boost_weight', 0.50);
 
         $vectorWeight = (float) config('kb.reranking.vector_weight', 0.55);
         $keywordWeight = (float) config('kb.reranking.keyword_weight', 0.25);
@@ -105,7 +115,7 @@ class Reranker
         $queryTags = $this->queryTagExtractor->extract($query);
         $preambleSignal = $this->preambleDetector->score($query);
 
-        return $chunks
+        $ranked = $chunks
             ->map(function (array $chunk) use (
                 $queryTokens,
                 $vectorWeight,
@@ -118,6 +128,8 @@ class Reranker
                 $statusActiveWeight,
                 $queryTags,
                 $preambleSignal,
+                $boostSet,
+                $mentionBoostWeight,
             ) {
                 $vectorScore = (float) ($chunk['vector_score'] ?? 0.0);
                 $keywordScore = $this->keywordScore($queryTokens, $chunk['chunk_text'] ?? '');
@@ -142,8 +154,14 @@ class Reranker
                     + ($recencyWeight * $recencyScore)
                     + ($statusActiveWeight * ($statusActive ? 1.0 : 0.0));
 
-                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'] + $sourceAwareDelta;
+                // v8.1 — additive @mention boost (kb.mentions.mode=boost).
+                $mentionDelta = isset($boostSet[(int) data_get($chunk, 'document.id')])
+                    ? $mentionBoostWeight
+                    : 0.0;
+
+                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'] + $sourceAwareDelta + $mentionDelta;
                 $chunk['rerank_detail'] = [
+                    'mention_boost' => round($mentionDelta, 4),
                     'vector' => round($vectorScore, 4),
                     'keyword' => round($keywordScore, 4),
                     'heading' => round($headingScore, 4),
@@ -161,7 +179,46 @@ class Reranker
 
                 return $chunk;
             })
-            ->sortByDesc('rerank_score')
+            ->sortByDesc('rerank_score');
+
+        return $this->capPerDocument($ranked, $limit);
+    }
+
+    /**
+     * v8.1 — diversification: keep at most `kb.diversification.max_chunks_per_doc`
+     * chunks from any single document in the top-k, applied by descending
+     * score BEFORE the top-k cut so a verbose document keeps its strongest
+     * chunks while freed slots go to the next best chunks from OTHER docs.
+     * 0 disables the cap (straight top-k).
+     *
+     * @param  Collection<int, array>  $ranked  reranked, score-desc.
+     * @return Collection<int, array>
+     */
+    private function capPerDocument(Collection $ranked, int $limit): Collection
+    {
+        $maxPerDoc = (int) config('kb.diversification.max_chunks_per_doc', 3);
+
+        if ($maxPerDoc <= 0) {
+            return $ranked->take($limit)->values();
+        }
+
+        $perDoc = [];
+
+        return $ranked
+            ->filter(function (array $chunk) use (&$perDoc, $maxPerDoc): bool {
+                // Document-scoped key: prefer document.id, then source_path
+                // (still doc-scoped) so chunks of the same doc cap together
+                // even when the id is absent; chunk_id is only a last resort
+                // (chunk-scoped → effectively uncapped for that lone chunk).
+                $docKey = (string) (
+                    data_get($chunk, 'document.id')
+                    ?? data_get($chunk, 'document.source_path')
+                    ?? data_get($chunk, 'chunk_id')
+                );
+                $perDoc[$docKey] = ($perDoc[$docKey] ?? 0) + 1;
+
+                return $perDoc[$docKey] <= $maxPerDoc;
+            })
             ->take($limit)
             ->values();
     }

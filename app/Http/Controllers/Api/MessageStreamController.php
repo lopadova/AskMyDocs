@@ -13,7 +13,7 @@ use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
-use App\Services\Kb\KbSearchService;
+use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
@@ -97,7 +97,7 @@ class MessageStreamController extends Controller
         Conversation $conversation,
         AiManager $ai,
         McpToolCallingService $toolCallingService,
-        KbSearchService $search,
+        ChatRetrievalService $retrieval,
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
@@ -153,26 +153,14 @@ class MessageStreamController extends Controller
             ->map(fn (Message $m) => ['role' => $m->role, 'content' => $m->content])
             ->all();
 
-        // RAG search — same call shape as MessageController so retrieval
-        // behaviour is identical between sync and stream paths.
-        $chunks = $search->search(
-            query: $question,
-            projectKey: $projectKey,
-            limit: config('kb.default_limit', 8),
-            minSimilarity: config('kb.default_min_similarity', 0.30),
-            filters: $filters,
-        );
+        // RAG: v8.1 P0.2 — unified retrieval via ChatRetrievalService, the
+        // SAME searchWithContext() path as /api/kb/chat + MessageController
+        // (primary + graph-expanded + rejected). $chunks stays the primary
+        // set so the downstream streaming/persistence logic is unchanged.
+        $result = $retrieval->retrieve($question, $projectKey, $filters);
+        $chunks = $result->primary;
 
-        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
-        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
-        // Use `data_get` so the predicate works whether each chunk is
-        // an array (KbSearchService::search() return shape) or an
-        // object (test fixtures sometimes pass stdClass instances).
-        // Same defensive read pattern as the rest of this controller's
-        // chunk-touching code.
-        $grounded = $chunks->filter(
-            fn ($c) => (float) (data_get($c, 'vector_score') ?? 0) >= $refusalThreshold
-        );
+        $shouldRefuse = $retrieval->shouldRefuse($result);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -182,7 +170,7 @@ class MessageStreamController extends Controller
         $clientIp = $request->ip();
         $userAgent = $request->userAgent();
 
-        if ($grounded->count() < $refusalMinChunks) {
+        if ($shouldRefuse) {
             return $this->streamRefusal(
                 request: $request,
                 conversation: $conversation,
@@ -200,13 +188,14 @@ class MessageStreamController extends Controller
 
         $fewShotExamples = $fewShot->getExamples($userId, $projectKey);
 
-        $systemPrompt = view('prompts.kb_rag', [
-            'chunks' => $chunks,
-            'projectKey' => $projectKey,
-            'fewShotExamples' => $fewShotExamples,
-        ])->render();
+        // v8.1 P0.2 — typed-block prompt context (chunks + expanded +
+        // rejected) so the stream prompt matches the sync + chat channels.
+        $systemPrompt = view('prompts.kb_rag', array_merge(
+            $retrieval->promptContext($result),
+            ['projectKey' => $projectKey, 'fewShotExamples' => $fewShotExamples],
+        ))->render();
 
-        $citations = $this->buildCitations($chunks);
+        $citations = $retrieval->buildCitations($result);
         $toolResponse = null;
         if ($toolCallingService->canHandleToolCalling($request->user())) {
             $toolResponse = $toolCallingService->chatWithTools(
@@ -429,6 +418,16 @@ class MessageStreamController extends Controller
                     sourceId: 'doc-' . ($citation['document_id'] ?? 'unknown'),
                     url: $url,
                     title: (string) ($citation['title'] ?? 'Untitled'),
+                    // v8.1 P2 — stream/sync citation parity (#6): carry the
+                    // origin marker + headings + chunk count so the live SSE
+                    // chip is as rich as the persisted sync citation, instead
+                    // of the FE defaulting origin to 'primary'.
+                    providerMetadata: [
+                        'origin' => $citation['origin'] ?? 'primary',
+                        'headings' => $citation['headings'] ?? [],
+                        'chunks_used' => $citation['chunks_used'] ?? 0,
+                        'source_type' => $citation['source_type'] ?? null,
+                    ],
                 ));
             }
 
@@ -933,28 +932,5 @@ class MessageStreamController extends Controller
         }
         $trimmed = trim($raw);
         return $trimmed === '' ? null : $trimmed;
-    }
-
-    /**
-     * @return list<array<string, mixed>>
-     */
-    private function buildCitations(Collection $chunks): array
-    {
-        return $chunks
-            ->groupBy('document.source_path')
-            ->map(function ($group) {
-                $first = $group->first();
-
-                return [
-                    'document_id' => data_get($first, 'document.id'),
-                    'title' => data_get($first, 'document.title', 'Untitled'),
-                    'source_path' => data_get($first, 'document.source_path'),
-                    'source_type' => data_get($first, 'document.source_type'),
-                    'headings' => $group->pluck('heading_path')->filter()->unique()->values()->all(),
-                    'chunks_used' => $group->count(),
-                ];
-            })
-            ->values()
-            ->all();
     }
 }

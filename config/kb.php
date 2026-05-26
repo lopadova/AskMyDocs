@@ -128,6 +128,51 @@ return [
         'preamble_match_weight' => (float) env('KB_RERANK_PREAMBLE_WEIGHT', 0.05),
         'recency_weight'        => (float) env('KB_RERANK_RECENCY_WEIGHT', 0.02),
         'status_active_weight'  => (float) env('KB_RERANK_STATUS_WEIGHT', 0.02),
+
+        // v8.1 — additive boost applied to chunks whose document was
+        // @mentioned by the user, when `kb.mentions.mode = boost` (the
+        // default). Large enough to float a mentioned doc to the top of the
+        // candidate set without hard-excluding other relevant results.
+        'mention_boost_weight'  => (float) env('KB_RERANK_MENTION_BOOST_WEIGHT', 0.50),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | @mention handling (v8.1)
+    |--------------------------------------------------------------------------
+    |
+    | When a user @mentions documents in the composer, their ids arrive as
+    | `filters.doc_ids`. Two modes:
+    |   - `boost`  (default): mentioned docs are NOT a hard filter — every
+    |     relevant chunk is still retrieved, and the reranker floats the
+    |     mentioned docs to the top via `reranking.mention_boost_weight`.
+    |     Preserves recall (a mention is a hint, not an allowlist).
+    |   - `filter`: legacy behaviour — restrict retrieval to the mentioned
+    |     docs only (hard `WHERE id IN (...)`).
+    |
+    */
+
+    'mentions' => [
+        'mode' => env('KB_MENTIONS_MODE', 'boost'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Result diversification (v8.1)
+    |--------------------------------------------------------------------------
+    |
+    | `max_chunks_per_doc` caps how many chunks from a SINGLE document may
+    | occupy the reranked top-k, so one verbose document can't crowd out
+    | every other source (the "6 chunks from the same doc" problem). The cap
+    | is applied AFTER reranking, by descending score, BEFORE the top-k cut —
+    | so a doc keeps its strongest chunks and the freed slots go to the next
+    | best chunks from OTHER docs. 0 disables the cap. Default 3 guarantees
+    | at least ceil(limit / 3) distinct documents in an 8-chunk context.
+    |
+    */
+
+    'diversification' => [
+        'max_chunks_per_doc' => (int) env('KB_DIVERSIFICATION_MAX_CHUNKS_PER_DOC', 3),
     ],
 
     'chunking' => [
@@ -307,10 +352,24 @@ return [
     | (0.30) — the search step over-retrieves, but the refusal step
     | requires evidence strong enough to stake an answer on.
     |
+    | v8.1 — the gate now considers the FINAL ranking signal too. A chunk
+    | grounds an answer when its `rerank_score` clears `min_rerank_score`
+    | OR its raw `vector_score` clears `min_chunk_similarity`. The rerank
+    | floor admits lexically/heading-strong matches the reranker promotes
+    | even when their raw vector similarity is modest — they used to be
+    | wrongly refused. The default 0.25 is calibrated to a vector-only chunk
+    | sitting AT the 0.45 similarity floor (vector_weight 0.55 × 0.45 ≈
+    | 0.247): a pure-vector chunk BELOW the floor still refuses, but a chunk
+    | whose rerank score is lifted above 0.25 by keyword/heading/canonical
+    | signal grounds even on a modest vector score. Lower it to refuse less,
+    | raise it to refuse more. The OR keeps the well-understood semantic
+    | floor as a safety net. See {@see App\Services\Kb\Retrieval\RetrievalGrounding}.
+    |
     */
 
     'refusal' => [
         'min_chunk_similarity' => (float) env('KB_REFUSAL_MIN_SIMILARITY', 0.45),
+        'min_rerank_score' => (float) env('KB_REFUSAL_MIN_RERANK_SCORE', 0.25),
         'min_chunks_required' => (int) env('KB_REFUSAL_MIN_CHUNKS', 1),
     ],
 

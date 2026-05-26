@@ -11,6 +11,75 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.1.0 — 2026-05-26 (Retrieval-quality: refusal gate, unified path, mention boost, evidence citations, IR metrics)
+
+Minor release from a focused review on result extraction + citations /
+mentions + rerank. Five sub-PRs (#227..#231) on integration branch
+`feature/v8.1`, each gated locally by the full suite + the R40 copilot-cli
+critic. +21 tests (2023 → 2044 backend; FE chat 199).
+
+**P0.1 — the headline bug: the refusal gate was non-functional in
+production.** `KbSearchService::search()` returns a Collection of ARRAYS
+(the Reranker uses `$chunk['vector_score']`), but the chat controllers read
+`$c->vector_score` with OBJECT syntax — which on a PHP array yields `null`,
+collapses to `0`, and made every chunk score 0 at the anti-hallucination
+gate. With the default `min_chunks_required >= 1` that refuses every query;
+with `0` it never refuses. Only `MessageStreamController` had been patched.
+The feature suite stayed green because every chat test mocked the search
+service with `(object)` chunks — a shape production never produces (R13/R16).
+Fixed with `App\Services\Kb\Retrieval\RetrievalGrounding`: a single
+shape-agnostic gate (data_get) shared by all three chat surfaces that grounds
+on the FINAL `rerank_score` OR the raw `vector_score` floor
+(`kb.refusal.min_rerank_score`, default 0.25), so lexically/heading-strong
+matches a vector-only gate wrongly refused now pass.
+
+**P0.2 — one retrieval path.** `/api/kb/chat` ran `searchWithContext()`
+(primary + graph-expanded + rejected) while the conversation + stream
+endpoints ran the bare `search()`; the same question produced different
+context + citations per channel. New `App\Services\Kb\Chat\ChatRetrievalService`
+is the single path (retrieve → grounding gate → origin-aware citations →
+prompt context) used by all three. Citations group by `document_id` (was
+`source_path`, which collided on null/duplicate paths).
+
+**P0.3 — `@mention` is a boost, not a hard filter.** Mentioned doc ids used
+to become a `WHERE document.id IN (...)`, collapsing retrieval to only those
+docs (recall destroyed). New `kb.mentions.mode` (default `boost`): mentioned
+docs get an additive rerank boost (`kb.reranking.mention_boost_weight`, 0.50)
+and float to the top WITHOUT excluding other results; `filter` preserves the
+legacy hard-restrict. FE mention autocomplete min length aligned 1 → 2 to
+match the backend `min:2`.
+
+**P1 — evidence + diversification + confidence.** Citations gain a `chunks[]`
+sub-array of per-chunk provenance (`chunk_id`, `heading`, `score`, `snippet`,
+`evidence_hash`; R27 additive). New `kb.diversification.max_chunks_per_doc`
+(default 3) caps single-document dominance of the reranked top-k.
+ConfidenceCalculator diversity fix: it read flat `knowledge_document_id` but
+production chunks nest `document.id`, so `unique()->count()` was always 1 and
+diversity collapsed to ~1/n, deflating confidence (same R13/R16 shape
+divergence that hid P0.1).
+
+**P2 — stream parity + mention ranking + IR metrics.** SSE `source-url`
+frames now carry `{origin, headings, chunks_used, source_type}` on the
+SDK-standard `providerMetadata`, and the FE adapter reads it (live chips
+match the sync citations). Mention-search ranks title-exact > title-prefix >
+title-contains > path-contains (relevance first, curation as tie-breaker).
+New `App\Services\Kb\Metrics\RetrievalQualityMetrics` (precision@k, MRR,
+nDCG@k with graded relevance + log discount) — exact, deterministic,
+unit-tested.
+
+New config knobs (all documented in `.env.example`):
+`KB_REFUSAL_MIN_RERANK_SCORE`, `KB_MENTIONS_MODE`,
+`KB_RERANK_MENTION_BOOST_WEIGHT`, `KB_DIVERSIFICATION_MAX_CHUNKS_PER_DOC`.
+
+**Deferred follow-up (not blind-shipped):** the rerank scale-calibration
+(findings #7/#9 — `vector_score` vs `rrf_score` scale drift between
+semantic-only and hybrid) changes ALL hybrid ranking and must be validated
+against a labelled benchmark using the new IR metrics before shipping; the
+labelled corpus + a benchmark artisan command + eval-harness trend wiring is
+the next increment.
+
+---
+
 ### v8.0.3 — 2026-05-26 (Multi-tenant isolation + security deep-review hotfix)
 
 Patch release on top of v8.0.2 closing **26 confirmed findings** from an

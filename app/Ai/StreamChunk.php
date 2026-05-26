@@ -161,19 +161,24 @@ final readonly class StreamChunk
      * FE chip still renders, never `null`. `title` is optional per
      * the SDK; we pass it whenever the upstream citation has one.
      *
-     * The `origin` grouping concept (primary / expanded / rejected)
-     * is intentionally dropped on the wire — the SDK's `source-url`
-     * type doesn't carry it, and the FE adapter
-     * (`coerceCitationOrigin` in `message-shape-adapters.ts`) defaults
-     * to `'primary'` for any source-url chunk. Re-introducing origin
-     * would require a custom data-* chunk and a parallel FE adapter
-     * surface; not worth the complexity for a UI grouping that today
-     * is mostly cosmetic.
+     * v8.1 P2 — citation provenance (origin: primary / related / rejected,
+     * plus headings / chunks_used / source_type) IS now carried on the wire,
+     * on the SDK-standard `providerMetadata` field of the source-url part.
+     * The FE adapter (`sourcePartToCitation` in `message-shape-adapters.ts`)
+     * reads it so the streamed citation chips reach parity with the sync
+     * channel's rich citations instead of defaulting `origin` to `'primary'`.
+     * Legacy frames without `providerMetadata` still coerce to sensible
+     * defaults, so the change is backward-compatible (R27).
+     *
+     * @param  array<string, mixed>  $providerMetadata  the citation
+     *         provenance map ({origin, headings, chunks_used, source_type});
+     *         omitted from the payload when empty.
      */
     public static function sourceUrl(
         string $sourceId,
         string $url,
         ?string $title = null,
+        array $providerMetadata = [],
     ): self {
         $payload = [
             'sourceId' => $sourceId,
@@ -181,6 +186,9 @@ final readonly class StreamChunk
         ];
         if ($title !== null) {
             $payload['title'] = $title;
+        }
+        if ($providerMetadata !== []) {
+            $payload['providerMetadata'] = $providerMetadata;
         }
 
         return new self(self::TYPE_SOURCE_URL, $payload);

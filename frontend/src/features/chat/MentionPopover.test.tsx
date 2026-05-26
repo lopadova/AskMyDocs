@@ -101,7 +101,7 @@ describe('MentionPopover', () => {
         });
         render(
             withQueryClient(
-                <MentionPopover query="x" open onSelect={() => {}} onClose={() => {}} />,
+                <MentionPopover query="xx" open onSelect={() => {}} onClose={() => {}} />,
             ),
         );
         await waitFor(() => expect(screen.getByTestId('mention-option-10')).toBeVisible());
@@ -121,7 +121,7 @@ describe('MentionPopover', () => {
         });
         render(
             withQueryClient(
-                <MentionPopover query="x" open excludeIds={[1]} onSelect={() => {}} onClose={() => {}} />,
+                <MentionPopover query="xx" open excludeIds={[1]} onSelect={() => {}} onClose={() => {}} />,
             ),
         );
         await waitFor(() => expect(screen.getByTestId('mention-option-2')).toBeVisible());
@@ -142,7 +142,7 @@ describe('MentionPopover', () => {
         mockGet.mockResolvedValue({ data: { data } });
         render(
             withQueryClient(
-                <MentionPopover query="x" open limit={2} onSelect={() => {}} onClose={() => {}} />,
+                <MentionPopover query="xx" open limit={2} onSelect={() => {}} onClose={() => {}} />,
             ),
         );
         await waitFor(() => expect(screen.getByTestId('mention-option-100')).toBeVisible());
@@ -160,7 +160,7 @@ describe('MentionPopover', () => {
         });
         render(
             withQueryClient(
-                <MentionPopover query="x" open onSelect={() => {}} onClose={() => {}} />,
+                <MentionPopover query="xx" open onSelect={() => {}} onClose={() => {}} />,
             ),
         );
         await waitFor(() => expect(screen.getByTestId('mention-option-7')).toBeVisible());

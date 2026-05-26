@@ -49,6 +49,12 @@ final class KbSearchServiceFiltersTest extends TestCase
         ));
         $this->app->instance(EmbeddingCacheService::class, $cache);
 
+        // v8.1 — these tests assert the FILTER-mode SQL that applyFilters
+        // builds for doc_ids (a hard WHERE id IN). The default mode is now
+        // `boost`, under which doc_ids is NOT a filter at all (it becomes a
+        // reranker boost — see test_doc_ids_in_boost_mode_does_not_filter).
+        config()->set('kb.mentions.mode', 'filter');
+
         $this->svc = app(KbSearchService::class);
     }
 
@@ -121,6 +127,21 @@ final class KbSearchServiceFiltersTest extends TestCase
         $this->assertStringContainsString('"id" in (?, ?)', $sql['sql']);
         $this->assertContains(42, $sql['bindings']);
         $this->assertContains(99, $sql['bindings']);
+    }
+
+    public function test_doc_ids_in_boost_mode_does_not_filter(): void
+    {
+        // v8.1 — under the default `boost` mode, @mentioned doc_ids must NOT
+        // constrain retrieval (recall-preserving). The SQL must carry no
+        // `id in (...)` clause and no binding for the mentioned ids; the
+        // boost is applied later in the reranker, not here.
+        config()->set('kb.mentions.mode', 'boost');
+
+        $sql = $this->buildFilteredSql(new RetrievalFilters(docIds: [42, 99]));
+
+        $this->assertStringNotContainsString('"id" in', $sql['sql']);
+        $this->assertNotContains(42, $sql['bindings']);
+        $this->assertNotContains(99, $sql['bindings']);
     }
 
     public function test_apply_filters_doc_ids_empty_array_is_true_no_op_not_a_zero_eq_one_clause(): void

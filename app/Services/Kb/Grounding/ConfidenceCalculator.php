@@ -54,11 +54,13 @@ final class ConfidenceCalculator
     private const WEIGHT_DENSITY = 0.20;
 
     /**
-     * @param  Collection<int, object|array{vector_score: float, knowledge_document_id: int}>  $primaryChunks
+     * @param  Collection<int, object|array{vector_score: float}>  $primaryChunks
      *   Ordered ranked-and-thresholded primary chunks. Each entry must
-     *   expose `vector_score` (0..1) and `knowledge_document_id` (for
-     *   diversity counting). Object or array — both shapes are accepted
-     *   so callers don't need to materialize a DTO just for the score.
+     *   expose `vector_score` (0..1) and a document identity for diversity
+     *   counting — read shape-agnostically (data_get) from the production
+     *   nested `document.id`, falling back to the legacy flat
+     *   `knowledge_document_id`, then `chunk_id`. Object or array — both
+     *   shapes are accepted so callers don't need to materialize a DTO.
      * @param  float  $minThreshold
      *   The min similarity that the chunks had to pass (KbSearchService
      *   threshold, typically 0.45). Used to compute the safety margin.
@@ -83,7 +85,18 @@ final class ConfidenceCalculator
         }
 
         $scores = $primaryChunks->map(fn ($c) => (float) $this->fieldOf($c, 'vector_score'));
-        $docIds = $primaryChunks->map(fn ($c) => (int) $this->fieldOf($c, 'knowledge_document_id'));
+        // v8.1 — read the doc id from the REAL chunk shape. search() emits
+        // a nested `document.id` (not a flat `knowledge_document_id`), and
+        // fieldOf() doesn't resolve dot paths, so the old read returned 0
+        // for every chunk → unique()->count() == 1 → diversity collapsed to
+        // ~1/n on every query, silently deflating confidence. data_get
+        // resolves the nested path on arrays AND objects; fall back to the
+        // legacy flat key, then chunk_id so distinct chunks never collapse.
+        $docIds = $primaryChunks->map(fn ($c) => (string) (
+            data_get($c, 'document.id')
+            ?? data_get($c, 'knowledge_document_id')
+            ?? data_get($c, 'chunk_id')
+        ));
 
         $meanSim = $this->clamp01($scores->avg() ?? 0.0);
 
