@@ -41,7 +41,11 @@ final class MakeBenchmarkFixturesCommand extends Command
         $pdfPath = $dir.'/incident-runbook.pdf';
         $docxPath = $dir.'/onboarding-guide.docx';
 
-        file_put_contents($pdfPath, $this->buildPdf($this->pdfPages()));
+        if (file_put_contents($pdfPath, $this->buildPdf($this->pdfPages())) === false) {
+            $this->error("Cannot write {$pdfPath}");
+
+            return self::FAILURE;
+        }
         $this->info("Wrote {$pdfPath} (".filesize($pdfPath)." bytes)");
 
         $this->buildDocx($docxPath);

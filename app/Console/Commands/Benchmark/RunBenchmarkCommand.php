@@ -7,6 +7,7 @@ namespace App\Console\Commands\Benchmark;
 use App\Services\Kb\Benchmark\BenchmarkRunner;
 use App\Services\Kb\Benchmark\StubEmbeddingCache;
 use App\Services\Kb\EmbeddingCacheService;
+use App\Support\TenantContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -37,6 +38,10 @@ final class RunBenchmarkCommand extends Command
 
     public function handle(): int
     {
+        // R30: every ingest and search call inside BenchmarkRunner operates on
+        // tenant-aware tables; the tenant must be set before any DB work starts.
+        app(TenantContext::class)->set(config('kb.default_tenant', 'default'));
+
         if ($this->option('stub')) {
             $this->laravel->instance(EmbeddingCacheService::class, new StubEmbeddingCache());
             $this->warn('Running with DETERMINISTIC STUB embeddings (no semantic quality — wiring/ranking only).');
@@ -117,8 +122,14 @@ final class RunBenchmarkCommand extends Command
     {
         $stamp = now()->format('Y-m-d_His');
         $dir = 'kb-benchmark';
-        Storage::disk('local')->put("{$dir}/{$stamp}.json", json_encode($card, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-        Storage::disk('local')->put("{$dir}/{$stamp}.md", $this->markdownReport($card));
+        $disk = Storage::disk('local');
+
+        if ($disk->put("{$dir}/{$stamp}.json", json_encode($card, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)) === false) {
+            throw new \RuntimeException("Failed to write benchmark JSON report to [{$dir}/{$stamp}.json].");
+        }
+        if ($disk->put("{$dir}/{$stamp}.md", $this->markdownReport($card)) === false) {
+            throw new \RuntimeException("Failed to write benchmark markdown report to [{$dir}/{$stamp}.md].");
+        }
 
         return storage_path("app/{$dir}/{$stamp}.md");
     }
