@@ -63,18 +63,30 @@ final class KbChatRefusalTest extends TestCase
      * supplied primary chunks. Each chunk must expose `vector_score` and
      * `document` for citation building.
      *
-     * @param  array<int, array{score: float, doc_id?: int}>  $primarySpecs
+     * v8.1 (R13/R16) — chunks are ARRAYS, matching exactly what the real
+     * `KbSearchService::search()` + Reranker emit. They used to be
+     * `(object)` casts, a shape production never produces; that divergence
+     * is precisely why the suite stayed green while the controllers' old
+     * `$c->vector_score` object read silently disabled the refusal gate on
+     * real array data. Keep these fixtures array-shaped.
+     *
+     * @param  array<int, array{score: float, doc_id?: int, rerank?: float}>  $primarySpecs
      */
     private function mockSearchWithChunks(array $primarySpecs): void
     {
         $primary = collect($primarySpecs)->map(function (array $spec, int $i) {
-            return (object) [
-                'id' => $i + 1,
+            return [
+                'chunk_id' => $i + 1,
                 'knowledge_document_id' => $spec['doc_id'] ?? ($i + 1),
                 'vector_score' => $spec['score'],
+                // The Reranker stamps rerank_score on every real chunk. When
+                // a spec doesn't pin one, mirror production: a chunk that
+                // barely clears the vector floor reranks to ~vector_weight ×
+                // score, so default it to a value that tracks the score.
+                'rerank_score' => $spec['rerank'] ?? ($spec['score'] * 0.55),
                 'heading_path' => 'Heading',
                 'chunk_text' => 'lorem ipsum',
-                'document' => (object) [
+                'document' => [
                     'id' => $spec['doc_id'] ?? ($i + 1),
                     'title' => 'Doc ' . ($i + 1),
                     'source_path' => 'docs/test-' . ($i + 1) . '.md',
@@ -263,8 +275,13 @@ final class KbChatRefusalTest extends TestCase
 
     public function test_threshold_is_configurable_via_kb_refusal_config(): void
     {
-        // Tighten threshold to 0.80 — chunks at 0.70 now refuse.
+        // v8.1 — the gate has TWO floors (vector + rerank); a chunk grounds
+        // if EITHER clears. To prove the threshold is operator-configurable
+        // we tighten BOTH: vector 0.80 and rerank 0.50. The fixtures'
+        // rerank defaults to score×0.55 (0.385 / 0.33), so chunks at
+        // 0.70/0.60 now clear neither floor and refuse.
         config()->set('kb.refusal.min_chunk_similarity', 0.80);
+        config()->set('kb.refusal.min_rerank_score', 0.50);
 
         $this->mockSearchWithChunks([
             ['score' => 0.70],

@@ -15,6 +15,7 @@ use App\Services\Kb\FewShotService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Support\Canonical\CanonicalType;
 use App\Support\Kb\SourceType;
 use Illuminate\Http\JsonResponse;
@@ -163,16 +164,11 @@ class MessageStreamController extends Controller
             filters: $filters,
         );
 
-        $refusalThreshold = (float) config('kb.refusal.min_chunk_similarity', 0.45);
-        $refusalMinChunks = (int) config('kb.refusal.min_chunks_required', 1);
-        // Use `data_get` so the predicate works whether each chunk is
-        // an array (KbSearchService::search() return shape) or an
-        // object (test fixtures sometimes pass stdClass instances).
-        // Same defensive read pattern as the rest of this controller's
-        // chunk-touching code.
-        $grounded = $chunks->filter(
-            fn ($c) => (float) (data_get($c, 'vector_score') ?? 0) >= $refusalThreshold
-        );
+        // v8.1 — shared RetrievalGrounding gate (this controller already
+        // read shape-agnostically via data_get; now it also honours
+        // rerank_score so all three chat surfaces refuse identically and a
+        // lexically-strong match isn't refused on a modest vector score).
+        $shouldRefuse = RetrievalGrounding::shouldRefuse($chunks);
 
         // Capture session id at controller entry — header() reads from
         // request state which we want to lock before the streaming
@@ -182,7 +178,7 @@ class MessageStreamController extends Controller
         $clientIp = $request->ip();
         $userAgent = $request->userAgent();
 
-        if ($grounded->count() < $refusalMinChunks) {
+        if ($shouldRefuse) {
             return $this->streamRefusal(
                 request: $request,
                 conversation: $conversation,
