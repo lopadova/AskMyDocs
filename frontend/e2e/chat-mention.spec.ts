@@ -55,6 +55,27 @@ test.describe('Mention popover + saved filter presets', () => {
         await expect(page.getByTestId('mention-popover')).not.toBeVisible();
     });
 
+    test('single-char query after @ keeps popover hidden; two-char query opens it (v8.1 minQueryLength=2)', async ({ page }) => {
+        // v8.1 P0.3 — minQueryLength raised 1 → 2 in use-mention-search.ts so a
+        // 1-char query no longer issues a /api/kb/documents/search request (which
+        // would 422 server-side). This test covers both the failure path (1 char →
+        // no popover) and the happy path (2 chars → popover opens).
+        await page.goto('/app/chat');
+        const { input } = composer(page);
+        await input.click();
+
+        // Failure path: single char after @ — hook stays idle, popover stays hidden.
+        await input.pressSequentially('@p');
+        const popover = page.getByTestId('mention-popover');
+        await expect(popover).not.toBeVisible();
+
+        // Happy path: second char crosses the threshold — popover opens.
+        // "@po" matches DemoSeeder's policy-related document titles.
+        await input.pressSequentially('o');
+        await expect(popover).toBeVisible({ timeout: 10_000 });
+        await expect(popover).toHaveAttribute('data-state', /ready|empty|loading/, { timeout: 10_000 });
+    });
+
     test('@ at start-of-message triggers popover; @ in middle of word does NOT', async ({ page }) => {
         await page.goto('/app/chat');
         const { input } = composer(page);

@@ -471,7 +471,14 @@ class KbSearchService
             ];
         });
 
-        return $this->reranker->rerank($query, $chunks, $limit);
+        // v8.1 — in `boost` mode the @mentioned doc ids are not a hard
+        // filter (applyFilters skipped them); pass them to the reranker so
+        // their chunks float to the top of the candidate set instead.
+        $boostDocIds = config('kb.mentions.mode', 'boost') === 'boost'
+            ? $effectiveFilters->docIds
+            : [];
+
+        return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
     }
 
     /**
@@ -609,23 +616,29 @@ class KbSearchService
             $q->whereIn('knowledge_chunks.project_key', $f->projectKeys);
         }
 
+        // v8.1 — @mention doc ids are a HARD filter only in `filter` mode;
+        // in the default `boost` mode they don't constrain retrieval (they
+        // become a reranker boost in search()), so recall is preserved.
+        $mentionAsFilter = config('kb.mentions.mode', 'boost') === 'filter';
+        $applyDocIdFilter = $mentionAsFilter && $f->docIds !== [];
+
         $hasDocumentLevelFilters = $f->sourceTypes !== []
             || $f->canonicalTypes !== []
-            || $f->docIds !== []
+            || $applyDocIdFilter
             || $f->collectionId !== null
             || $f->languages !== []
             || $f->dateFrom !== null
             || $f->dateTo !== null;
 
         if ($hasDocumentLevelFilters) {
-            $q->whereHas('document', function ($docQuery) use ($f): void {
+            $q->whereHas('document', function ($docQuery) use ($f, $applyDocIdFilter): void {
                 if ($f->sourceTypes !== []) {
                     $docQuery->whereIn('source_type', $f->sourceTypes);
                 }
                 if ($f->canonicalTypes !== []) {
                     $docQuery->whereIn('canonical_type', $f->canonicalTypes);
                 }
-                if ($f->docIds !== []) {
+                if ($applyDocIdFilter) {
                     $docQuery->whereIn('id', $f->docIds);
                 }
                 if ($f->collectionId !== null) {
