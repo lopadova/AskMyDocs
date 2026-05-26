@@ -71,7 +71,15 @@ class Reranker
      * @param  Collection<int, array>  $chunks  Over-retrieved candidates.
      * @return Collection<int, array>  Top $limit chunks, sorted by rerank_score desc.
      */
-    public function rerank(string $query, Collection $chunks, int $limit): Collection
+    /**
+     * @param  list<int>  $boostDocIds  document ids the user @mentioned;
+     *                                   chunks from these docs receive an
+     *                                   additive `mention_boost_weight` so
+     *                                   they float to the top without
+     *                                   excluding other relevant results
+     *                                   (v8.1, `kb.mentions.mode = boost`).
+     */
+    public function rerank(string $query, Collection $chunks, int $limit, array $boostDocIds = []): Collection
     {
         if ($chunks->isEmpty()) {
             return $chunks;
@@ -86,6 +94,10 @@ class Reranker
         if (empty($queryTokens)) {
             return $chunks->take($limit)->values();
         }
+
+        // O(1) membership test for the @mention boost.
+        $boostSet = array_flip(array_map('intval', $boostDocIds));
+        $mentionBoostWeight = (float) config('kb.reranking.mention_boost_weight', 0.50);
 
         $vectorWeight = (float) config('kb.reranking.vector_weight', 0.55);
         $keywordWeight = (float) config('kb.reranking.keyword_weight', 0.25);
@@ -118,6 +130,8 @@ class Reranker
                 $statusActiveWeight,
                 $queryTags,
                 $preambleSignal,
+                $boostSet,
+                $mentionBoostWeight,
             ) {
                 $vectorScore = (float) ($chunk['vector_score'] ?? 0.0);
                 $keywordScore = $this->keywordScore($queryTokens, $chunk['chunk_text'] ?? '');
@@ -142,8 +156,14 @@ class Reranker
                     + ($recencyWeight * $recencyScore)
                     + ($statusActiveWeight * ($statusActive ? 1.0 : 0.0));
 
-                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'] + $sourceAwareDelta;
+                // v8.1 — additive @mention boost (kb.mentions.mode=boost).
+                $mentionDelta = isset($boostSet[(int) data_get($chunk, 'document.id')])
+                    ? $mentionBoostWeight
+                    : 0.0;
+
+                $chunk['rerank_score'] = $baseScore + $canonicalAdjustment['delta'] + $sourceAwareDelta + $mentionDelta;
                 $chunk['rerank_detail'] = [
+                    'mention_boost' => round($mentionDelta, 4),
                     'vector' => round($vectorScore, 4),
                     'keyword' => round($keywordScore, 4),
                     'heading' => round($headingScore, 4),

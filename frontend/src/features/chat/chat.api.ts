@@ -22,7 +22,10 @@ import { api } from '../../lib/api';
  *   tagSlugs        → kb_tags pivot whereExists subquery
  *   sourceTypes     → document.source_type WHERE-IN
  *   canonicalTypes  → document.canonical_type WHERE-IN (pre-validated enum)
- *   docIds          → document.id WHERE-IN (powers @mention pinning)
+ *   docIds          → @mentioned docs. Default (kb.mentions.mode=boost):
+ *                     a reranker boost that floats them to the top without
+ *                     excluding other results. `filter` mode: document.id
+ *                     WHERE-IN (hard restrict).
  *   folderGlobs     → fnmatch-with-** post-fetch filter via KbPath
  *   dateFrom/dateTo → document.indexed_at BETWEEN
  *   languages       → document.language WHERE-IN

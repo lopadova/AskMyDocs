@@ -74,6 +74,30 @@ final class RerankerLayer4Test extends TestCase
     }
 
     #[Test]
+    public function mention_boost_floats_mentioned_doc_to_top_without_dropping_others(): void
+    {
+        config()->set('kb.reranking.mention_boost_weight', 0.50);
+
+        $chunks = collect([
+            ['chunk_id' => 1, 'chunk_text' => 'body', 'heading_path' => '', 'vector_score' => 0.80, 'metadata' => [], 'document' => ['id' => 10]],
+            ['chunk_id' => 2, 'chunk_text' => 'body', 'heading_path' => '', 'vector_score' => 0.50, 'metadata' => [], 'document' => ['id' => 20]],
+        ]);
+
+        // No boost → the higher-vector chunk (doc 10) ranks first.
+        $plain = (new Reranker())->rerank('cache policy', $chunks, 2);
+        $this->assertSame(1, $plain->first()['chunk_id']);
+
+        // @mention doc 20 → its lower-vector chunk floats to the top…
+        $boosted = (new Reranker())->rerank('cache policy', $chunks, 2, [20]);
+        $this->assertSame(2, $boosted->first()['chunk_id']);
+        $this->assertEqualsWithDelta(0.50, $boosted->first()['rerank_detail']['mention_boost'], 0.0001);
+
+        // …WITHOUT excluding the non-mentioned chunk (recall preserved).
+        $this->assertCount(2, $boosted);
+        $this->assertEqualsWithDelta(0.0, $boosted->last()['rerank_detail']['mention_boost'], 0.0001);
+    }
+
+    #[Test]
     public function preamble_match_boosts_property_panel_chunks_only_on_property_queries(): void
     {
         // Status query → preamble chunk wins.
