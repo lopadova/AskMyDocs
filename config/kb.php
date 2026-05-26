@@ -134,6 +134,14 @@ return [
         // default). Large enough to float a mentioned doc to the top of the
         // candidate set without hard-excluding other relevant results.
         'mention_boost_weight'  => (float) env('KB_RERANK_MENTION_BOOST_WEIGHT', 0.50),
+
+        // v8.2 (finding #7/#9) — min-max normalise the candidate vector
+        // signal to 0..1 before fusion, so semantic (cosine 0..1) and hybrid
+        // (RRF ~0.01) scores are comparable and lexically-strong hybrid hits
+        // aren't drowned. The raw vector_score (refusal floor + citation
+        // evidence) is untouched. Default OFF — flip on only once the LIVE
+        // kb:benchmark shows it improves nDCG/MRR for your corpus.
+        'normalize_candidate_scores' => (bool) env('KB_RERANK_NORMALIZE_SCORES', false),
     ],
 
     /*

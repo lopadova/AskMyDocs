@@ -458,6 +458,19 @@ class KbSearchService
             ];
         });
 
+        // v8.2 (finding #7/#9) — rerank scale calibration. In hybrid mode a
+        // chunk's vector_score is a cosine (0..1) for semantic hits but the
+        // tiny RRF score (~0.01) for FTS-only hits, so the reranker's vector
+        // component is on incompatible scales between (and within) modes,
+        // drowning lexically-strong hybrid hits. When enabled, min-max
+        // normalise the candidate vector signal to 0..1 in a SEPARATE field
+        // the reranker prefers — the raw vector_score is untouched, so the
+        // refusal floor + citation evidence keep their absolute semantics.
+        // Default OFF; the LIVE benchmark decides whether it improves nDCG.
+        if ((bool) config('kb.reranking.normalize_candidate_scores', false)) {
+            $chunks = $this->normalizeCandidateScores($chunks);
+        }
+
         // v8.1 — in `boost` mode the @mentioned doc ids are not a hard
         // filter (applyFilters skipped them); pass them to the reranker so
         // their chunks float to the top of the candidate set instead.
@@ -466,6 +479,30 @@ class KbSearchService
             : [];
 
         return $this->reranker->rerank($query, $chunks, $limit, $boostDocIds);
+    }
+
+    /**
+     * Min-max normalise `vector_score` across the candidate set into a
+     * `rerank_vector_signal` field (0..1), leaving `vector_score` intact.
+     * A flat set (all-equal, or a single chunk) maps to 1.0 so it neither
+     * inflates nor zeroes the signal.
+     *
+     * @param  Collection<int, array<string,mixed>>  $chunks
+     * @return Collection<int, array<string,mixed>>
+     */
+    private function normalizeCandidateScores(Collection $chunks): Collection
+    {
+        $scores = $chunks->map(fn (array $c): float => (float) ($c['vector_score'] ?? 0.0));
+        $min = (float) ($scores->min() ?? 0.0);
+        $max = (float) ($scores->max() ?? 0.0);
+        $range = $max - $min;
+
+        return $chunks->map(function (array $c) use ($min, $range): array {
+            $v = (float) ($c['vector_score'] ?? 0.0);
+            $c['rerank_vector_signal'] = $range > 0.0 ? ($v - $min) / $range : 1.0;
+
+            return $c;
+        });
     }
 
     /**
