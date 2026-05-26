@@ -41,6 +41,14 @@ final class MessageControllerTest extends TestCase
     {
         parent::setUp();
 
+        // Register the route inline (mirrors MessageStreamControllerTest):
+        // Testbench does NOT auto-load routes/web.php, so the production
+        // route + its middleware stack (redact-chat-pii, ai.* gates, auth)
+        // aren't present here. This is deliberate and sufficient — these
+        // tests exercise the controller's unified-retrieval + refusal logic,
+        // NOT the middleware stack (those are covered by the dedicated
+        // middleware-scope tests). SubstituteBindings is added explicitly so
+        // the `Conversation` route-model binding (+ its tenant scope) runs.
         Route::post(
             '/conversations/{conversation}/messages',
             [MessageController::class, 'store'],

@@ -42,8 +42,20 @@ final class RetrievalGrounding
      */
     public static function isGrounded(mixed $chunk, float $minRerankScore, float $minVectorScore): bool
     {
+        // Ground on the INTRINSIC relevance, not the @mention-boosted score.
+        // The reranker adds `mention_boost_weight` (0.50) directly into
+        // rerank_score for @mentioned docs; if the refusal gate compared the
+        // boosted score to min_rerank_score (0.25) it would ground EVERY
+        // chunk of a mentioned doc purely from the boost — even an
+        // intrinsically irrelevant one — silently disabling the
+        // anti-hallucination gate for mentioned docs (Copilot caught this
+        // P0.3 × P0.1 interaction). Subtracting the recorded mention boost
+        // keeps the boost's effect on RANKING while requiring real relevance
+        // to clear the refusal floor.
         $rerank = (float) (data_get($chunk, 'rerank_score') ?? 0.0);
-        if ($rerank >= $minRerankScore) {
+        $mentionBoost = (float) (data_get($chunk, 'rerank_detail.mention_boost') ?? 0.0);
+        $intrinsicRerank = $rerank - $mentionBoost;
+        if ($intrinsicRerank >= $minRerankScore) {
             return true;
         }
 

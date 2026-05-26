@@ -79,6 +79,25 @@ final class RetrievalGroundingTest extends TestCase
         $this->assertTrue(RetrievalGrounding::isGrounded($obj, 0.25, 0.45));
     }
 
+    public function test_mention_boost_alone_does_not_ground_an_irrelevant_chunk(): void
+    {
+        // P0.3 × P0.1 interaction: a mentioned doc's chunk whose rerank_score
+        // (0.50) comes PURELY from the mention boost, with low intrinsic
+        // signal (vector 0.10). Intrinsic = 0.50 - 0.50 = 0 < 0.25 and
+        // vector < 0.45 → must NOT ground (the boost must not disable the
+        // refusal gate).
+        $chunk = ['vector_score' => 0.10, 'rerank_score' => 0.50, 'rerank_detail' => ['mention_boost' => 0.50]];
+        $this->assertFalse(RetrievalGrounding::isGrounded($chunk, 0.25, 0.45));
+    }
+
+    public function test_mentioned_and_intrinsically_relevant_chunk_grounds(): void
+    {
+        // Mentioned AND genuinely relevant: rerank 0.80 includes the 0.50
+        // boost → intrinsic 0.30 >= 0.25 → grounds.
+        $chunk = ['vector_score' => 0.20, 'rerank_score' => 0.80, 'rerank_detail' => ['mention_boost' => 0.50]];
+        $this->assertTrue(RetrievalGrounding::isGrounded($chunk, 0.25, 0.45));
+    }
+
     public function test_should_refuse_when_all_chunks_weak(): void
     {
         $chunks = new Collection([
