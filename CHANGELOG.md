@@ -11,6 +11,43 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.5.0 — 2026-05-27 (Definitive browser streaming E2E)
+
+Quality + test-hardening release. Closes the coverage gap behind the v8.4
+chat crashes: the only layer that validates each `UIMessageChunk` against the
+`@ai-sdk` zod schema — the real `/messages/stream` SSE driven through the real
+browser SDK transport — had **zero** automated coverage (the streaming E2E
+were all `test.skip`; the unskipped chat specs stubbed the AI boundary).
+
+- **`chat-stream-browser.spec.ts`** — the definitive browser E2E. Two real
+  end-to-end turns, nothing stubbed (R13): (1) a **grounded** turn asserting
+  the answer streams, the citation chip renders (the `source-url` frame parses
+  cleanly — v8.4 crash #1), and the thread reaches `ready` (the `finish` frame
+  parses — v8.4 crash #2); (2) a **refusal** turn on empty retrieval asserting
+  `RefusalNotice` renders with `data-reason="no_relevant_context"`, no citation
+  chip, and the stream still reaches `ready`. Both assert **no
+  "Type validation failed" pageerror** fires on any frame.
+- **`FakeProvider`** — deterministic offline AI provider (canned streamed
+  answer via `FallbackStreaming` + a constant embedding vector so every chunk
+  and query map to the same vector → cosine 1.0 → retrieval always returns the
+  seeded doc). Hard-gated to the testing/local environments by
+  `AiManager::resolveFakeProvider()` (throws in any other env, so a production
+  `AI_PROVIDER=fake` misconfig can never ship canned answers). Model strings
+  read from `config/ai.providers.fake` (single source of truth for the
+  chat-log model column + embedding-cache lookup key).
+- **`E2eStreamSeeder`** — ingests one `hr-portal` doc through the **real**
+  `DocumentIngestor` path inline (via `/testing/seed`), so its chunk is
+  embedded with the fake constant vector and is genuinely vector-searchable —
+  `DemoSeeder` chunks have a NULL embedding, which is exactly why every other
+  chat spec stubs retrieval.
+- **CI**: the workflow's `Start Laravel server` step runs with
+  `AI_PROVIDER=fake` / `AI_EMBEDDINGS_PROVIDER=fake` (the in-CI server bypasses
+  `playwright.config.ts`'s webServer block via `E2E_SKIP_WEBSERVER=1`).
+- +3 PHPUnit (2063→2066): a no-browser retrieval de-risk + the fake-provider
+  prod-gate (resolves in testing, throws in production).
+
+---
+
 ### v8.4.0 — 2026-05-27 (Security + correctness hardening)
 
 Hardening release. The new RBAC access-control matrix caught a real
