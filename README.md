@@ -28,9 +28,9 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v8.2.0-blueviolet?style=flat-square" alt="Release v8.2.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v8.3.0-blueviolet?style=flat-square" alt="Release v8.3.0"></a>
   <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
-  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-2058%20PHPUnit%20%2B%20481%20Vitest-brightgreen?style=flat-square" alt="2058 PHPUnit + 481 Vitest"></a>
+  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-2060%20PHPUnit%20%2B%20481%20Vitest-brightgreen?style=flat-square" alt="2060 PHPUnit + 481 Vitest"></a>
 </p>
 
 <p align="center">
@@ -727,11 +727,67 @@ key set — **Anthropic has no embeddings API**, so it can drive chat
 (`AI_PROVIDER`) but not the vector side. `text-embedding-3-small` is 1536-dim
 = the stock pgvector column (no migration).
 
+**3. Answer faithfulness (real LLM answers — v8.3):**
+
+```bash
+# Adds answer-faithfulness to the scorecard: per answerable query it
+# generates the REAL chat answer (same kb_rag prompt the app uses) and
+# scores cosine(answer, grounding-text) — catching a fluent answer that
+# drifts from its own grounding.
+DB_PORT=5433 php artisan kb:benchmark --with-answers
+```
+
+`--with-answers` makes LIVE chat **and** embeddings calls (even under
+`--stub`, which only stubs the *retrieval* ranking) — it needs a configured
+chat + embeddings provider; the command warns early if the chat provider has
+no key. Faithfulness embeddings bypass `embedding_cache` so a benchmark never
+mutates production cache state.
+
 **Reading the scorecard.** The command prints a per-query table + an
 aggregate block and writes `storage/app/kb-benchmark/<timestamp>.{json,md}`.
 Enterprise pass thresholds (gate with `--gate`, exit non-zero on miss):
 `nDCG@5 ≥ 0.80`, `MRR ≥ 0.85`, `citation-precision ≥ 0.90`,
-`refusal-accuracy ≥ 0.95` (tunable via `kb.benchmark.*`).
+`refusal-accuracy ≥ 0.95` (tunable via `kb.benchmark.*`). When
+`--with-answers` ran, an `answer-faithful.` line is added.
+
+**Validating faithfulness with the eval-harness (live LLM-as-judge).** The
+benchmark scores faithfulness with embedding cosine; for an independent
+judge-graded read, the `eval:nightly` cron runs the golden Q&A
+(`tests/Eval/golden/`) through the real RAG pipeline and the
+`padosoft/eval-harness` LLM-as-judge + groundedness metrics. To run it LIVE
+against a real model (otherwise it uses a deterministic fake):
+
+```bash
+# Point the judge + embeddings metrics at any OpenAI-compatible endpoint
+# (OpenRouter shown) and flip the three live gates:
+EVAL_LIVE_AI=1 EVAL_NIGHTLY_ENABLED=true EVAL_NIGHTLY_LIVE=true \
+EVAL_HARNESS_JUDGE_ENDPOINT=https://openrouter.ai/api/v1/chat/completions \
+EVAL_HARNESS_JUDGE_MODEL=openai/gpt-4o-mini EVAL_HARNESS_JUDGE_API_KEY=$OPENROUTER_API_KEY \
+EVAL_HARNESS_EMBEDDINGS_ENDPOINT=https://openrouter.ai/api/v1/embeddings \
+EVAL_HARNESS_EMBEDDINGS_MODEL=openai/text-embedding-3-small \
+EVAL_HARNESS_EMBEDDINGS_API_KEY=$OPENROUTER_API_KEY \
+DB_PORT=5433 php artisan eval:nightly
+# Reports land in storage/app/eval-harness/nightly/<date>.{json,md}.
+```
+
+A live run on the seeded corpus scores **citation-groundedness ≈ 0.98** and
+cosine-groundedness ≈ 0.62 (p95 1.0) — the answers track their citations.
+(The `contains` metric reads ~0 by design: it is a verbatim-substring check,
+and a real LLM paraphrases rather than echoing the gold string — that is what
+the cosine + judge metrics exist to measure.)
+
+**Seeing compliance + PII live in your own runs.** The data-mutating
+observability features (chat logging + PII redaction) ship **default-OFF** for
+production safety; the AI Act disclosure header (`X-AI-Disclosure`, Art. 50)
+and token-level explainability are **on by default** (they add no data
+mutation). To watch the opt-in ones fire locally, flip the relevant flags in
+`.env` (mask strategy needs no salt):
+`CHAT_LOG_ENABLED=true`, `KB_PII_REDACTOR_ENABLED=true` +
+`KB_PII_REDACT_PERSIST=true` + `KB_PII_REDACT_ANSWERS=true` +
+`PII_REDACTOR_ENABLED=true` + `PII_REDACTOR_STRATEGY=mask`. The consolidated
+`KbChatFullStackComplianceTest` proves one
+chat turn fires grounded citations + the disclosure header + a `chat_logs` row
++ PII answer-redaction together.
 
 **Milestone ritual.** Run `php artisan kb:benchmark --stub` (deterministic)
 at the close of any retrieval-touching milestone, and the LIVE run before
@@ -1125,6 +1181,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.1.0** | ✅ shipped 2026-05-26 | Retrieval-quality minor release (focused review on result extraction + citations/mentions + rerank; PRs #227..#231). **P0.1** — fixed a production-broken anti-hallucination refusal gate: the controllers read chunk scores via object syntax on array-shaped data (`$c->vector_score` → `null` → `0`), so the gate was non-functional on `/api/kb/chat` + the sync conversation path (only the stream path was patched), and the suite stayed green because every chat test mocked `(object)` chunks production never emits (R13/R16). New shape-agnostic `RetrievalGrounding` gate (grounds on `rerank_score` OR the vector floor). **P0.2** — unified all three chat channels onto one `ChatRetrievalService` (one `searchWithContext` path, one grounding gate, one origin-aware citation builder; grouped by `document_id`). **P0.3** — `@mention` is now a recall-safe rerank **boost** (`kb.mentions.mode=boost`) instead of a hard `WHERE id IN` filter; FE mention-min aligned to the BE `min:2`. **P1** — evidence-grade citations (`chunks[]` with `chunk_id`/`evidence_hash`/`heading`/`score`/`snippet`, R27 additive), doc-cap diversification (`kb.diversification.max_chunks_per_doc=3`), and a ConfidenceCalculator diversity fix (read nested `document.id`, was always ~1/n). **P2** — stream/sync citation parity via `source-url` `providerMetadata`, mention-search relevance ranking (title-exact > prefix > contains > path), and an IR-metrics core (`RetrievalQualityMetrics`: nDCG@k / MRR / precision@k). +21 tests. Follow-up: rerank scale-calibration (findings #7/#9) deferred to validate against a labelled benchmark using the new metrics. |
 | **v8.2.0** | ✅ shipped 2026-05-26 | Retrieval-quality benchmark + live-validated calibration (PRs #233..#236). A reproducible, repeatable quality gate: a 5-doc labelled corpus (markdown + PDF + DOCX, graph-linked + rejected-approach) + 14 gold queries scored on **nDCG@k / MRR / precision@k / citation-precision / graph-recall / rejected-recall / refusal-accuracy** by `RetrievalQualityMetrics`, via the `kb:benchmark` runner (`--stub` no-key + LIVE). **The whole RAG pipeline is now testable end-to-end with NO mocks** — `KbSearchService` gained a driver-aware **PHP-cosine fallback** so vector search runs on SQLite in CI (pgsql keeps native pgvector), closing the structural gap that let the v8.1 P0.1 search bug ship green; the deterministic `RetrievalPipelineScenarioTest` exercises ingest → per-type chunk → embed → graph → search → citations → refusal. **Rerank scale-calibration** (findings #7/#9) implemented (`KB_RERANK_NORMALIZE_SCORES`) and **validated on the LIVE benchmark** (real OpenRouter embeddings + pgvector) which drove a measured calibration of three defaults (`KB_CANONICAL_PRIORITY_WEIGHT` 0.003→0.001, normalize on, `KB_REJECTED_MIN_SIMILARITY` 0.45→0.40): scorecard **nDCG 0.855→0.997, MRR 0.833→1.000, citation/refusal/graph/rejected all 1.000 — PASSED**. The live run also caught a real `strict_types` RRF bug invisible to the mocked suite. README "Running the retrieval-quality benchmark" + milestone ritual + manual CI workflow. +30 tests. |
 | **v8.0.3** | ✅ shipped 2026-05-26 | Multi-tenant isolation + security deep-review hotfix (PR #226). Four audits: the 31-finding review (26 confirmed — 5 CRITICAL incl. **C1** `X-Tenant-Id` header now gated by a post-auth `AuthorizeTenantHeader` + `tenant.cross-access` permission, **C2-C5** `{document}`/`{membership}`/`{report}` bindings + LogViewer + ComplianceReport + KbTree scoped; 5 false positives), **7 bonus leaks** caught by the new `TenantReadScopeTest`; **Audit #3** all 10 MCP tools + `AiInsightsService` (+ per-tenant `insights:compute` & `(tenant_id,snapshot_date)` unique) + `ProvenanceChain` + `Conversation` binding; **Audit #4** embedding-cache batch crash, filter `max:N` caps, compliance `promoted`-delta via the audit event. Plus the **HY093** root-cause (`ESCAPE '\\'` → `~` across all LIKE sites, the deterministic Postgres E2E blocker) + the `lockForUpdate()->count()` Postgres FOR-UPDATE crash. New guards: `TenantReadScopeTest` (all 33 BelongsToTenant models, scans Http/Services/Mcp/Console/Compliance) + `NoBackslashLikeEscapeTest`. Behavioural change: tenant switching via header is super-admin-only. Feature-completeness backlog in [`docs/ENTERPRISE-COMPLETENESS-ROADMAP.md`](docs/ENTERPRISE-COMPLETENESS-ROADMAP.md) (R1-R29). **Adopt v8.0.3** — C1-C5 are cross-tenant data-exposure blockers. |
+| **v8.3.0** | ✅ shipped 2026-05-27 | Full-stack live verification. **WS-A** — `kb:benchmark --with-answers` scores **answer-faithfulness** = cosine(real chat answer, the grounding text the LLM saw) via `AiManager` (no cache pollution), mirroring the kb_rag per-bucket rendering; live-validated **0.68** with every retrieval metric still at ceiling (also caught + fixed a real OpenRouter `temperature` string→400 bug, hardened with `is_numeric()` guards on every numeric provider env). **WS-C** — the `eval:nightly` LLM-as-judge path validated LIVE against OpenRouter (real judge + embeddings): **citation-groundedness 0.976**, cosine-groundedness 0.621 (p95 1.0). **WS-B** — consolidated `KbChatFullStackComplianceTest` proving one chat turn fires grounded citations + AI-Act disclosure header + `chat_logs` row + PII answer-redaction together; README documents the `--with-answers` + live eval-harness commands + the local feature-flag recipe. +2 PHPUnit tests across the cycle — WS-A `--with-answers` + WS-B full-stack smoke (2058→2060). |
 | **Future** | ⏳ planned for v8.x or v9.0 | #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 per A7/A10 of the killer-features plan |
 
 For the strategic reasoning behind v4.5+ see
@@ -1268,8 +1325,14 @@ including commercial use.
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for detailed release notes from
-v1.0 through v8.2.0. **v8.2.0** ships a reproducible retrieval-quality
-benchmark (`kb:benchmark`) + makes the full RAG pipeline testable
+v1.0 through v8.3.0. **v8.3.0** adds full-stack live verification:
+`kb:benchmark --with-answers` scores real-LLM **answer-faithfulness**
+(cosine of the answer vs the grounding the LLM saw), the `eval:nightly`
+LLM-as-judge path is validated LIVE against a real model
+(citation-groundedness ≈ 0.98), and a consolidated full-stack test proves
+grounded citations + AI-Act disclosure + chat logging + PII answer-redaction
+all fire on one chat turn. **v8.2.0** shipped a reproducible retrieval-quality
+benchmark (`kb:benchmark`) + made the full RAG pipeline testable
 end-to-end with no mocks (SQLite PHP-cosine fallback), and a
 **live-validated calibration** (real embeddings + pgvector) that took the
 scorecard to nDCG 0.997 / MRR 1.000 / citation 1.000 / refusal 1.000.
