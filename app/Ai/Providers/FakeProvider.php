@@ -29,9 +29,11 @@ use App\Ai\Providers\Concerns\FallbackStreaming;
  *     always returns the seeded chunk → the controller always emits a
  *     `source-url` citation frame.
  *
- * Activated via `AI_PROVIDER=fake` + `AI_EMBEDDINGS_PROVIDER=fake`
- * (see playwright.config.ts webServer env). NEVER selected in production —
- * it's only resolvable when those env vars name it.
+ * Selected by pointing `ai.default` / `ai.embeddings_provider` at 'fake'
+ * — the E2E/local path does that via `AI_PROVIDER=fake` +
+ * `AI_EMBEDDINGS_PROVIDER=fake` (see playwright.config.ts webServer env).
+ * NEVER usable in production: AiManager::resolveFakeProvider() throws unless
+ * the app is in the testing or local environment, regardless of config.
  */
 final class FakeProvider implements AiProviderInterface
 {

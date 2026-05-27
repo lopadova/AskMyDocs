@@ -196,16 +196,21 @@ return [
 
         // Deterministic OFFLINE provider for E2E / local demo — no external
         // calls, canned chat answer, constant embedding vector. Resolvable
-        // ONLY in the testing/local environments (AiManager::resolveFakeProvider
-        // throws otherwise) when AI_PROVIDER=fake / AI_EMBEDDINGS_PROVIDER=fake.
+        // ONLY in the testing/local environments: AiManager::resolveFakeProvider()
+        // throws in any other environment regardless of how it is named. It is
+        // selected by pointing `ai.default` / `ai.embeddings_provider` at 'fake'
+        // (the E2E/local path does that via AI_PROVIDER / AI_EMBEDDINGS_PROVIDER).
         // NOT a user-facing provider — absent from the "Supported:" list above
         // on purpose. See app/Ai/Providers/FakeProvider.php + playwright.config.ts.
         'fake' => [
             'name' => 'fake',
             'dimensions' => is_numeric($v = env('KB_EMBEDDINGS_DIMENSIONS')) ? (int) $v : 1536,
-            // Must match the model string FakeProvider stamps on its
-            // EmbeddingsResponse so EmbeddingCacheService::resolveModelName()
-            // builds a lookup key that hits the insert path's row.
+            // Both keys must match the model string FakeProvider stamps on its
+            // AiResponse / EmbeddingsResponse so the chat-log model column and
+            // EmbeddingCacheService::resolveModelName() lookup key stay
+            // consistent (otherwise streaming turns record 'unknown' and every
+            // cache read misses).
+            'chat_model' => 'fake-deterministic',
             'embeddings_model' => 'fake-deterministic',
         ],
 
