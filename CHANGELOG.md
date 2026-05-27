@@ -11,6 +11,46 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.3.0 — 2026-05-27 (Full-stack live verification)
+
+Minor release that closes the loop between the v8.2 benchmark and a
+**real, judge-graded** read of answer quality + a single test proving the
+enterprise features fire together. Integration branch `feature/v8.3`
+(PRs #238 + #239).
+
+- **Answer faithfulness (`kb:benchmark --with-answers`).** Per answerable
+  query the runner generates the REAL chat answer (same `kb_rag` prompt the
+  app uses, scoped to the same project) and scores faithfulness as
+  cosine(answer, the grounding text the LLM saw) via `CosineCalculator` —
+  mirroring the blade's per-bucket rendering (primary + expanded full
+  `chunk_text`; rejected uses `rejected_summary ?? Str::limit(chunk_text,
+  240)`). Embeddings go through `AiManager` directly (no `embedding_cache`
+  pollution). Per-query LLM errors are caught (the score stays null, not a
+  misleading 0.0); the aggregate gains `answer_faithfulness`. Live-validated
+  against OpenRouter: **0.68** with every retrieval metric still at ceiling.
+- **Provider numeric-env hardening.** `config/ai.php` now guards every
+  numeric provider env (`temperature` / `max_tokens` / `timeout`, all five
+  providers) with `is_numeric($v = env(...)) ? cast($v) : default` — a plain
+  cast turned `""`/`"abc"` into `0` and silently overrode the default. Caught
+  via a LIVE run where OpenRouter rejected a string `temperature` with a 400.
+- **Live eval-harness (LLM-as-judge).** Validated the `eval:nightly` path
+  against a real model (OpenRouter judge + embeddings, `EVAL_LIVE_AI=1` +
+  `EVAL_NIGHTLY_LIVE=true`): citation-groundedness **0.976**,
+  cosine-groundedness 0.621 (p95 1.0). README documents the env wiring.
+- **Consolidated full-stack smoke.** `KbChatFullStackComplianceTest` drives
+  one chat turn through the REAL `POST /api/kb/chat` route (full middleware
+  chain) with chat-log + PII redaction enabled, asserting grounded evidence
+  citations + the AI Act Art. 50 `X-AI-Disclosure` header + a persisted
+  `chat_logs` row + PII (an LLM-echoed email) masked in the stored answer all
+  fire together. Uses the production chunk shape (`chunk_id` /
+  `rerank_score` / nested `document.*`) so it catches the v8.1 P0.1 shape
+  regression class.
+- **Docs.** README documents `--with-answers`, the live eval-harness recipe,
+  and the local feature-flag recipe to see compliance/PII fire live. +2
+  PHPUnit tests across the cycle (2058 → 2060).
+
+---
+
 ### v8.2.0 — 2026-05-26 (Retrieval-quality benchmark + live-validated calibration)
 
 Minor release that makes retrieval quality **measurable + repeatable** and
