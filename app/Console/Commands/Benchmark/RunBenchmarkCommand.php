@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Storage;
 final class RunBenchmarkCommand extends Command
 {
     protected $signature = 'kb:benchmark
-        {--stub : Use deterministic stub embeddings (no API key / provider)}
+        {--stub : Use deterministic stub embeddings for retrieval ranking (no API key / provider) — EXCEPT --with-answers, which always makes LIVE chat + embeddings calls}
         {--with-answers : Score answer-faithfulness via REAL chat + embeddings calls (LIVE even under --stub, which only stubs the retrieval embeddings; needs a configured chat+embeddings provider)}
         {--gate : Exit non-zero when aggregate metrics miss the thresholds}
         {--project=benchmark : Project key to ingest the corpus under}
@@ -46,6 +46,19 @@ final class RunBenchmarkCommand extends Command
         if ($this->option('stub')) {
             $this->laravel->instance(EmbeddingCacheService::class, new StubEmbeddingCache());
             $this->warn('Running with DETERMINISTIC STUB embeddings (no semantic quality — wiring/ranking only).');
+        }
+
+        // --with-answers ALWAYS makes LIVE chat + embeddings calls (even under
+        // --stub, which only stubs retrieval ranking). Warn early if the chat
+        // provider has no key, otherwise every faithfulness score silently
+        // ends up null and the operator can't tell why.
+        if ($this->option('with-answers')) {
+            $provider = (string) config('ai.default');
+            $hasKey = (bool) (config("ai.providers.{$provider}.api_key")
+                ?: config("ai.providers.{$provider}.key"));
+            if (! $hasKey) {
+                $this->warn("--with-answers makes LIVE chat + embeddings calls, but no API key is configured for the chat provider [{$provider}] — answer-faithfulness will be skipped (null).");
+            }
         }
 
         $corpus = (string) ($this->option('corpus') ?: base_path('resources/benchmark/corpus'));
