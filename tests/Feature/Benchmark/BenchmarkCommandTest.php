@@ -68,25 +68,36 @@ final class BenchmarkCommandTest extends TestCase
 
     public function test_with_answers_generates_real_chat_and_scores_answer_faithfulness(): void
     {
-        // --with-answers drives a REAL chat call per answerable query and
-        // scores cosine(answer, rendered grounding text = primary + expanded
-        // + rejected). Fake the LLM (the only external boundary) so the
-        // wiring is deterministic; embeddings stay on the stub. The faked
-        // answer shares cache vocabulary with the grounding chunks so
-        // faithfulness is provably > 0.
+        // --with-answers drives REAL chat + embeddings calls per answerable
+        // query and scores cosine(answer, rendered grounding text = primary +
+        // expanded + rejected). Fake BOTH provider endpoints (the only
+        // external boundaries) so the wiring is deterministic — the retrieval
+        // embeddings still run on the --stub deterministic embedder. The
+        // faithfulness embeddings are faked to an identical vector for the
+        // answer and the grounding text, so cosine = 1.0 and faithfulness is
+        // provably > 0.
         config([
             'ai.default' => 'openai',
+            'ai.embeddings_provider' => 'openai',
             'ai.providers.openai.api_key' => 'sk-test',
             'ai.providers.openai.chat_model' => 'gpt-4o-mini',
         ]);
         Http::fake([
-            'api.openai.com/*' => Http::response([
+            'api.openai.com/v1/chat/completions' => Http::response([
                 'model' => 'gpt-4o-mini',
                 'choices' => [[
                     'message' => ['content' => 'Cache invalidation uses a TTL and an event-based purge of Redis keys, per the runbook.'],
                     'finish_reason' => 'stop',
                 ]],
                 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
+            ], 200),
+            'api.openai.com/v1/embeddings' => Http::response([
+                'model' => 'text-embedding-3-small',
+                'data' => [
+                    ['index' => 0, 'embedding' => [0.1, 0.2, 0.3, 0.4]],
+                    ['index' => 1, 'embedding' => [0.1, 0.2, 0.3, 0.4]],
+                ],
+                'usage' => ['total_tokens' => 2],
             ], 200),
         ]);
 

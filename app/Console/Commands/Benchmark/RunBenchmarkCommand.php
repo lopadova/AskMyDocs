@@ -28,7 +28,7 @@ final class RunBenchmarkCommand extends Command
 {
     protected $signature = 'kb:benchmark
         {--stub : Use deterministic stub embeddings (no API key / provider)}
-        {--with-answers : Generate REAL chat answers + score answer-faithfulness (LIVE; costs LLM calls)}
+        {--with-answers : Score answer-faithfulness via REAL chat + embeddings calls (LIVE even under --stub, which only stubs the retrieval embeddings; needs a configured chat+embeddings provider)}
         {--gate : Exit non-zero when aggregate metrics miss the thresholds}
         {--project=benchmark : Project key to ingest the corpus under}
         {--k=5 : Cut-off k for nDCG@k / precision@k}

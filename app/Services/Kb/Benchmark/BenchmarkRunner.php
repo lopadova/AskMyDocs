@@ -7,7 +7,6 @@ namespace App\Services\Kb\Benchmark;
 use App\Ai\AiManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\DocumentIngestor;
-use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Metrics\RetrievalQualityMetrics as Metrics;
 use App\Services\Kb\Pipeline\SourceDocument;
@@ -46,7 +45,6 @@ final class BenchmarkRunner
         private readonly KbSearchService $search,
         private readonly ChatRetrievalService $retrieval,
         private readonly AiManager $ai,
-        private readonly EmbeddingCacheService $embeddings,
         private readonly CosineCalculator $cosineCalc,
     ) {}
 
@@ -234,7 +232,11 @@ final class BenchmarkRunner
             return 0.0;
         }
 
-        $vecs = $this->embeddings->generate([$answer, $groundingText])->embeddings;
+        // Embed via AiManager directly (NOT the caching EmbeddingCacheService):
+        // the answer + concatenated grounding text are benchmark-only, low-reuse
+        // strings — caching them would bloat the shared embedding_cache and
+        // persist hashes of generated answers into production state.
+        $vecs = $this->ai->generateEmbeddings([$answer, $groundingText])->embeddings;
         // A short/empty embeddings response is an infra failure (API blip,
         // dimension mismatch), NOT a 0.0-faithful answer. Throw so the outer
         // try/catch leaves this query's faithfulness null instead of silently
