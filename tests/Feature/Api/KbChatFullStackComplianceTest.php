@@ -61,7 +61,8 @@ final class KbChatFullStackComplianceTest extends TestCase
         config()->set('chat-log.enabled', true);                  // persist the turn
         config()->set('kb.pii_redactor.enabled', true);           // PII master switch
         config()->set('kb.pii_redactor.redact_answers', true);    // mask LLM-echoed PII
-        // disclosure.enabled defaults true → X-AI-Disclosure header always on.
+        // ai-act-compliance.disclosure.enabled defaults true → X-AI-Disclosure
+        // header always on.
 
         // Retrieval knobs: keep the stubbed single-chunk result deterministic.
         config()->set('kb.refusal.min_chunk_similarity', 0.0);
