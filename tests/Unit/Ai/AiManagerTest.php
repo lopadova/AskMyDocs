@@ -46,8 +46,8 @@ class AiManagerTest extends TestCase
 
     public function test_fake_provider_is_blocked_outside_testing_local(): void
     {
-        $original = $this->app['env'];
-        $this->app['env'] = 'production';
+        $original = $this->app->environment();
+        $this->app->detectEnvironment(fn () => 'production');
 
         try {
             $this->expectException(InvalidArgumentException::class);
@@ -55,7 +55,8 @@ class AiManagerTest extends TestCase
 
             (new AiManager())->provider('fake');
         } finally {
-            $this->app['env'] = $original;
+            // Restore so later tests in the suite see the real env (R16).
+            $this->app->detectEnvironment(fn () => $original);
         }
     }
 
