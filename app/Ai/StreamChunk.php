@@ -188,7 +188,15 @@ final readonly class StreamChunk
             $payload['title'] = $title;
         }
         if ($providerMetadata !== []) {
-            $payload['providerMetadata'] = $providerMetadata;
+            // The SDK's `source-url` UIMessageChunk types `providerMetadata`
+            // as `ProviderMetadata` = Record<string, Record<string, JSONValue>>
+            // (a provider-name → metadata-object map). A FLAT map
+            // (`{origin:"primary", ...}`) is REJECTED by the @ai-sdk zod schema
+            // in the browser ("expected record at providerMetadata.origin") —
+            // which crashes the entire stream on the first frame. Namespace the
+            // AskMyDocs provenance under a provider key so the frame is
+            // schema-valid; the FE adapter reads `providerMetadata.askmydocs.*`.
+            $payload['providerMetadata'] = ['askmydocs' => $providerMetadata];
         }
 
         return new self(self::TYPE_SOURCE_URL, $payload);

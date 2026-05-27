@@ -77,14 +77,26 @@ class StreamChunkTest extends TestCase
         $this->assertSame('#doc-7', $chunk->payload['url']);
     }
 
-    public function test_source_url_factory_includes_provider_metadata_when_non_empty(): void
+    public function test_source_url_factory_nests_provider_metadata_under_a_provider_key(): void
     {
-        // v8.1 P2 — citation provenance rides on the SDK-standard
-        // `providerMetadata` field so streamed chips match the sync channel.
+        // v8.4 — the SDK `source-url` chunk types `providerMetadata` as
+        // ProviderMetadata = Record<string, Record<string, JSONValue>>. A FLAT
+        // map crashed the @ai-sdk zod validator in the browser ("expected
+        // record at providerMetadata.origin") on the FIRST frame. The factory
+        // MUST namespace the provenance under a provider key.
         $meta = ['origin' => 'rejected', 'headings' => ['Decision'], 'chunks_used' => 2, 'source_type' => 'markdown'];
         $chunk = StreamChunk::sourceUrl('doc-9', '/kb/9', 'ADR', $meta);
 
-        $this->assertSame($meta, $chunk->payload['providerMetadata']);
+        $this->assertSame(['askmydocs' => $meta], $chunk->payload['providerMetadata']);
+
+        // The SDK invariant the bug violated: EVERY top-level value under
+        // providerMetadata must itself be a record (array), never a scalar.
+        foreach ($chunk->payload['providerMetadata'] as $providerKey => $providerMeta) {
+            $this->assertIsArray(
+                $providerMeta,
+                "providerMetadata.{$providerKey} must be a record (Record<string,JSONValue>), not a scalar — the SDK zod schema rejects scalars here.",
+            );
+        }
     }
 
     public function test_source_url_factory_omits_provider_metadata_when_empty(): void

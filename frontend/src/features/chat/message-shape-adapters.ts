@@ -164,20 +164,28 @@ function coerceCitationOrigin(value: unknown): CitationOrigin {
  * in the SDK's source part — they land as `null` / sensible defaults
  * so the existing `CitationsPopover` still renders.
  */
+/** AskMyDocs citation provenance carried on a `source-url` part. */
+interface ProvenanceMeta {
+    origin?: string;
+    headings?: string[];
+    chunks_used?: number;
+    source_type?: string | null;
+}
+
 function sourcePartToCitation(part: {
     sourceId: string;
     title?: string;
     url?: string | null;
     origin?: string;
-    // v8.1 P2 — the streaming controller now carries citation provenance
+    // v8.1 P2 — the streaming controller carries citation provenance
     // (origin / headings / chunks_used / source_type) on the SDK-standard
     // `providerMetadata` field so the live chip matches the sync citation.
+    // The SDK shape is Record<string, Record<string, JSONValue>>, so the BE
+    // namespaces the provenance under the `askmydocs` provider key. We also
+    // accept the legacy FLAT shape (older persisted frames) as a fallback.
     providerMetadata?: {
-        origin?: string;
-        headings?: string[];
-        chunks_used?: number;
-        source_type?: string | null;
-    };
+        askmydocs?: ProvenanceMeta;
+    } & ProvenanceMeta;
 }): MessageCitation {
     // Strip the BE `doc-` prefix (see MessageStreamController::store()
     // line 369 — `'doc-' . ($citation['document_id'] ?? 'unknown')`).
@@ -195,7 +203,9 @@ function sourcePartToCitation(part: {
     const numeric = Number(idTail);
     const documentId = Number.isInteger(numeric) && numeric > 0 ? numeric : null;
     const label = part.title ?? part.url ?? part.sourceId;
-    const meta = part.providerMetadata;
+    // BE namespaces provenance under the `askmydocs` provider key (SDK
+    // ProviderMetadata shape); fall back to a flat map for legacy frames.
+    const meta = part.providerMetadata?.askmydocs ?? part.providerMetadata;
     return {
         document_id: documentId,
         title: label,
