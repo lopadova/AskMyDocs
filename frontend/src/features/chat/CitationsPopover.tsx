@@ -3,6 +3,14 @@ import type { MessageCitation } from './chat.api';
 
 export interface CitationsPopoverProps {
     citations: MessageCitation[];
+    /**
+     * Click handler for a citation chip — wired by ChatView to navigate to
+     * the KB document detail (`/app/admin/kb?doc=<id>`). Passed ONLY when the
+     * current user can reach the KB admin surface (admin / super-admin); for
+     * other roles the chip stays hover-only so it never dead-ends on a 403.
+     * Called only for citations that carry a `document_id`.
+     */
+    onOpenSource?: (citation: MessageCitation) => void;
 }
 
 const ORIGIN_PALETTE: Record<string, { label: string; color: string }> = {
@@ -20,7 +28,7 @@ const ORIGIN_PALETTE: Record<string, { label: string; color: string }> = {
  * chip is `chat-citation-<idx>` and the popover for the chip is
  * `chat-citations-popover` (opened state via `data-state="open"`).
  */
-export function CitationsPopover({ citations }: CitationsPopoverProps): ReactNode {
+export function CitationsPopover({ citations, onOpenSource }: CitationsPopoverProps): ReactNode {
     const [openIdx, setOpenIdx] = useState<number | null>(null);
 
     return (
@@ -36,6 +44,7 @@ export function CitationsPopover({ citations }: CitationsPopoverProps): ReactNod
                     index={i}
                     open={openIdx === i}
                     onHover={(open) => setOpenIdx(open ? i : null)}
+                    onOpenSource={onOpenSource}
                 />
             ))}
         </div>
@@ -47,12 +56,17 @@ interface CitationChipProps {
     index: number;
     open: boolean;
     onHover: (open: boolean) => void;
+    onOpenSource?: (citation: MessageCitation) => void;
 }
 
-function CitationChip({ citation, index, open, onHover }: CitationChipProps): ReactNode {
+function CitationChip({ citation, index, open, onHover, onOpenSource }: CitationChipProps): ReactNode {
     const origin = citation.origin ?? 'primary';
     const palette = ORIGIN_PALETTE[origin] ?? ORIGIN_PALETTE.primary;
     const short = citation.source_path ?? citation.title ?? `#${index + 1}`;
+    // The chip opens its source only when a handler is wired AND the citation
+    // resolves to a concrete document (rejected-approach citations / legacy
+    // rows may have a null document_id and have nothing to open).
+    const canOpen = onOpenSource !== undefined && citation.document_id != null;
 
     return (
         <span
@@ -64,7 +78,13 @@ function CitationChip({ citation, index, open, onHover }: CitationChipProps): Re
                 type="button"
                 data-testid={`chat-citation-${index}`}
                 data-origin={origin}
-                aria-label={`Citation ${index + 1}: ${short}`}
+                data-openable={canOpen ? 'true' : 'false'}
+                aria-label={
+                    canOpen
+                        ? `Open source ${index + 1}: ${short}`
+                        : `Citation ${index + 1}: ${short}`
+                }
+                onClick={canOpen ? () => onOpenSource?.(citation) : undefined}
                 style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -73,7 +93,7 @@ function CitationChip({ citation, index, open, onHover }: CitationChipProps): Re
                     background: 'var(--bg-2)',
                     border: '1px solid var(--panel-border)',
                     borderRadius: 99,
-                    cursor: 'pointer',
+                    cursor: canOpen ? 'pointer' : 'default',
                     color: 'var(--fg-1)',
                     fontSize: 11.5,
                 }}

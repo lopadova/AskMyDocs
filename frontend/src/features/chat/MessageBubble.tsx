@@ -56,6 +56,11 @@ export interface MessageBubbleProps {
      */
     onEditSubmit?: (newContent: string) => void | Promise<void>;
     showCounterfactual?: boolean;
+    /**
+     * Click handler for a citation chip — opens the cited KB document.
+     * Wired by ChatView (admin-gated). Forwarded to CitationsPopover.
+     */
+    onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
 }
 
 /**
@@ -88,6 +93,7 @@ export function MessageBubble({
     onBranch,
     onEditSubmit,
     showCounterfactual = true,
+    onOpenSource,
 }: MessageBubbleProps): ReactNode {
     const isUser = message.role === 'user';
     const thinking = getReasoningSteps(message);
@@ -228,7 +234,7 @@ export function MessageBubble({
                   * that surfaces stale citations under a refusal body.
                   */}
                 {!streaming && !isRefusal && citations.length > 0 && (
-                    <CitationsPopover citations={citations} />
+                    <CitationsPopover citations={citations} onOpenSource={onOpenSource} />
                 )}
                 {!streaming && (
                     <RetrievalRunnerUpPanel rows={runnerUp} />
