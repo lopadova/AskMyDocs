@@ -39,3 +39,7 @@ composer.lock
 # Local SQLite dev artefacts (tests use in-memory; prod is pgsql)
 /database/*.sqlite
 /database/*.sqlite-journal
+
+# v8.4 — local dev helper for `php -S` on a project path with spaces (Herd shim
+# mangles spaced args). Not part of the app; do not commit.
+public/_serve_router.php

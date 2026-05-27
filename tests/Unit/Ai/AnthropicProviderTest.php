@@ -134,6 +134,9 @@ class AnthropicProviderTest extends TestCase
         // Anthropic's `end_turn` normalizes to SDK union `'stop'` —
         // see StreamChunk::normalizeFinishReason().
         $this->assertSame('stop', $chunks[3]->payload['finishReason']);
+        // v8.4 — `usage` stays on the chunk PAYLOAD (the controller reads it
+        // for token telemetry); StreamChunk::toSseFrame() strips it from the
+        // WIRE so the SDK accepts the finish chunk. See StreamChunk::finish().
         $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
         $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
     }

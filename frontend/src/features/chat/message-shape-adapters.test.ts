@@ -113,7 +113,12 @@ describe('getCitations', () => {
         expect(citations[1].title).toBe('Onboarding');
     });
 
-    it('reads provenance (origin/headings/chunks_used/source_type) from providerMetadata (v8.1 P2 stream parity)', () => {
+    it('reads provenance from providerMetadata.askmydocs (SDK record-of-records shape, v8.4 fix)', () => {
+        // The SDK `source-url` chunk types providerMetadata as
+        // Record<string, Record<string, JSONValue>>, so the BE namespaces
+        // the AskMyDocs provenance under the `askmydocs` provider key. A FLAT
+        // map crashes the @ai-sdk zod validator in the browser — this fixture
+        // mirrors the REAL nested wire shape the BE now emits.
         const m = uiMsg({
             parts: [
                 {
@@ -122,22 +127,38 @@ describe('getCitations', () => {
                     title: 'Rejected ADR',
                     url: '/kb/9',
                     providerMetadata: {
-                        origin: 'rejected',
-                        headings: ['Decision', 'Alternatives'],
-                        chunks_used: 3,
-                        source_type: 'markdown',
+                        askmydocs: {
+                            origin: 'rejected',
+                            headings: ['Decision', 'Alternatives'],
+                            chunks_used: 3,
+                            source_type: 'markdown',
+                        },
                     },
                 } as never,
             ],
         });
 
         const [c] = getCitations(m);
-        // Provenance must come from providerMetadata, NOT the default
-        // 'primary'/[]/1 the adapter used before stream parity landed.
         expect(c.origin).toBe('rejected');
         expect(c.headings).toEqual(['Decision', 'Alternatives']);
         expect(c.chunks_used).toBe(3);
         expect(c.source_type).toBe('markdown');
+    });
+
+    it('still reads provenance from a legacy FLAT providerMetadata (backward-compat fallback)', () => {
+        const m = uiMsg({
+            parts: [
+                {
+                    type: 'source-url',
+                    sourceId: 'doc-9',
+                    url: '/kb/9',
+                    providerMetadata: { origin: 'related', headings: ['H'], chunks_used: 2, source_type: 'pdf' },
+                } as never,
+            ],
+        });
+        const [c] = getCitations(m);
+        expect(c.origin).toBe('related');
+        expect(c.chunks_used).toBe(2);
     });
 
     it('strips BE doc- prefix from sourceId before parsing document_id', () => {

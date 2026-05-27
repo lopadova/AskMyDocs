@@ -11,6 +11,47 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.4.0 — 2026-05-27 (Security + correctness hardening)
+
+Hardening release. The new RBAC access-control matrix caught a real
+unauthenticated-access vulnerability on its first run, and two chat-stream
+wire-format crashes were fixed + guarded.
+
+- **RBAC authorization matrix (R32).** `tests/Feature/Security/AdminAuthorizationMatrixTest`
+  — one data-driven matrix asserting 21 protected admin endpoints × 5 roles
+  (super-admin / admin / dpo / editor / viewer) + guest: wrong role → exactly
+  403, allowed role → anything-but-403, guest → 401. New `R32` rule in CLAUDE.md
+  + `.claude/skills/rbac-authorization-matrix` skill: every new protected
+  route / API / screen / Gate / role MUST be added in the same PR.
+- **AI Act API auth vulnerability (CRITICAL, fixed).** The
+  `padosoft/laravel-ai-act-compliance` package mounts its routes with
+  `routes.middleware => ['api']` (no auth) and the host never published a
+  config to override it — so `api/admin/ai-act-compliance/*` (DSAR / incidents
+  / bias / risk register / consent / attestations / tenants) was reachable
+  UNAUTHENTICATED. Fixed via host `config/ai-act-compliance.php` gating with
+  `auth:sanctum` + `tenant.authorize` + `ai-act.tenant-context` +
+  `can:viewAiActCompliance`, loaded in `tests/TestCase.php` so the matrix
+  verifies the secure config. **Adopt v8.4.0** — unauthenticated
+  data-exposure blocker.
+- **Per-role E2E.** `frontend/e2e/role-access.spec.ts` drives the per-role API
+  access matrix through the real served app + real Sanctum session, plus a
+  guest case; `dpo` + `editor` demo users added to `DemoSeeder`.
+- **Chat stream crash fixes (SDK wire format).** The SSE `source-url` frame
+  emitted `providerMetadata` as a FLAT map, but the `@ai-sdk` schema requires
+  `Record<string, Record<string, JSONValue>>` — rejected in the browser,
+  aborting the stream on the FIRST frame. The terminal `finish` frame carried a
+  `usage` key the SDK also rejects, crashing on the LAST frame. Fixed
+  (`source-url.providerMetadata` namespaced under `askmydocs`; `finish` carries
+  `finishReason` only). New `frontend/src/features/chat/stream-contract.test.ts`
+  EXHAUSTIVELY validates every BE frame against the real `uiMessageChunkSchema`
+  (via `safeValidateTypes`) and asserts the legacy buggy shapes are rejected —
+  the guard that was missing (the streaming E2E were all `test.skip`).
+- **Repo default.** `.env.example` `CACHE_STORE` database→file (the app ships
+  no `cache` table migration, so the `database` default crashed Spatie
+  permission caching with "relation cache does not exist").
+
+---
+
 ### v8.3.0 — 2026-05-27 (Full-stack live verification)
 
 Minor release that closes the loop between the v8.2 benchmark and a

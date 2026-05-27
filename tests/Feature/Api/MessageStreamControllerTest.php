@@ -165,6 +165,18 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertNotFalse($textStartIdx, 'text-start chunk must be present before ordering is asserted');
         $this->assertLessThan($textStartIdx, $sourceIdx, 'source-url should precede text-start');
 
+        // v8.4 — the emitted `source-url` frame MUST carry providerMetadata in
+        // the SDK record-of-records shape ({provider: {keys}}). A FLAT map
+        // ({origin: "primary"}) is rejected by the @ai-sdk zod validator in the
+        // browser and crashes the whole stream on the first frame. Validate the
+        // REAL emitted frame (not just the factory) so the wire contract holds.
+        $sourcePayload = $this->findChunkByType($chunks, StreamChunk::TYPE_SOURCE_URL)->payload;
+        $this->assertArrayHasKey('providerMetadata', $sourcePayload, 'source-url frame carries provenance');
+        $this->assertArrayHasKey('askmydocs', $sourcePayload['providerMetadata'], 'provenance is namespaced under a provider key');
+        foreach ($sourcePayload['providerMetadata'] as $providerKey => $providerMeta) {
+            $this->assertIsArray($providerMeta, "providerMetadata.{$providerKey} must be a record, not a scalar (SDK zod invariant).");
+        }
+
         // Text envelope is well-formed: text-start + text-end carry
         // the same id, and every text-delta in between matches that
         // id (SDK stitches deltas back into one rendered part by id).

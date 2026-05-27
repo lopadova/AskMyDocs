@@ -77,14 +77,26 @@ class StreamChunkTest extends TestCase
         $this->assertSame('#doc-7', $chunk->payload['url']);
     }
 
-    public function test_source_url_factory_includes_provider_metadata_when_non_empty(): void
+    public function test_source_url_factory_nests_provider_metadata_under_a_provider_key(): void
     {
-        // v8.1 P2 — citation provenance rides on the SDK-standard
-        // `providerMetadata` field so streamed chips match the sync channel.
+        // v8.4 — the SDK `source-url` chunk types `providerMetadata` as
+        // ProviderMetadata = Record<string, Record<string, JSONValue>>. A FLAT
+        // map crashed the @ai-sdk zod validator in the browser ("expected
+        // record at providerMetadata.origin") on the FIRST frame. The factory
+        // MUST namespace the provenance under a provider key.
         $meta = ['origin' => 'rejected', 'headings' => ['Decision'], 'chunks_used' => 2, 'source_type' => 'markdown'];
         $chunk = StreamChunk::sourceUrl('doc-9', '/kb/9', 'ADR', $meta);
 
-        $this->assertSame($meta, $chunk->payload['providerMetadata']);
+        $this->assertSame(['askmydocs' => $meta], $chunk->payload['providerMetadata']);
+
+        // The SDK invariant the bug violated: EVERY top-level value under
+        // providerMetadata must itself be a record (array), never a scalar.
+        foreach ($chunk->payload['providerMetadata'] as $providerKey => $providerMeta) {
+            $this->assertIsArray(
+                $providerMeta,
+                "providerMetadata.{$providerKey} must be a record (Record<string,JSONValue>), not a scalar — the SDK zod schema rejects scalars here.",
+            );
+        }
     }
 
     public function test_source_url_factory_omits_provider_metadata_when_empty(): void
@@ -135,8 +147,12 @@ class StreamChunkTest extends TestCase
         $this->assertNull($chunk->payload['data']['hint']);
     }
 
-    public function test_finish_factory_carries_finish_reason_and_usage(): void
+    public function test_finish_payload_carries_usage_for_server_side_telemetry(): void
     {
+        // v8.4 — `usage` STAYS on the chunk PAYLOAD: the streaming controller
+        // reads `$finishChunk->payload['usage']` to persist per-turn token
+        // telemetry. It is the only channel the provider's counts reach the
+        // controller through.
         $chunk = StreamChunk::finish(
             finishReason: 'stop',
             promptTokens: 1234,
@@ -148,14 +164,15 @@ class StreamChunkTest extends TestCase
         $this->assertSame(['promptTokens' => 1234, 'completionTokens' => 56], $chunk->payload['usage']);
     }
 
-    public function test_finish_factory_accepts_null_token_counts(): void
+    public function test_finish_wire_frame_strips_usage_so_the_sdk_accepts_it(): void
     {
-        // Provider didn't return usage (e.g. some open-source models).
-        // Frame must still serialize cleanly.
-        $chunk = StreamChunk::finish('stop');
+        // ...but `usage` is NOT part of the SDK `finish` UIMessageChunk, so the
+        // WIRE frame (what the browser parses) must NOT contain it — else the
+        // @ai-sdk zod validator rejects the chunk and crashes the stream.
+        $frame = StreamChunk::finish('stop', 1234, 56)->toSseFrame();
 
-        $this->assertNull($chunk->payload['usage']['promptTokens']);
-        $this->assertNull($chunk->payload['usage']['completionTokens']);
+        $this->assertStringContainsString('"finishReason":"stop"', $frame);
+        $this->assertStringNotContainsString('usage', $frame, 'finish WIRE frame must not contain usage (SDK rejects it).');
     }
 
     /**

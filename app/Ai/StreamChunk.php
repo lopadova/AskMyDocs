@@ -188,7 +188,15 @@ final readonly class StreamChunk
             $payload['title'] = $title;
         }
         if ($providerMetadata !== []) {
-            $payload['providerMetadata'] = $providerMetadata;
+            // The SDK's `source-url` UIMessageChunk types `providerMetadata`
+            // as `ProviderMetadata` = Record<string, Record<string, JSONValue>>
+            // (a provider-name → metadata-object map). A FLAT map
+            // (`{origin:"primary", ...}`) is REJECTED by the @ai-sdk zod schema
+            // in the browser ("expected record at providerMetadata.origin") —
+            // which crashes the entire stream on the first frame. Namespace the
+            // AskMyDocs provenance under a provider key so the frame is
+            // schema-valid; the FE adapter reads `providerMetadata.askmydocs.*`.
+            $payload['providerMetadata'] = ['askmydocs' => $providerMetadata];
         }
 
         return new self(self::TYPE_SOURCE_URL, $payload);
@@ -301,6 +309,14 @@ final readonly class StreamChunk
      *
      * @throws InvalidArgumentException When `$finishReason` is not in
      *         {@see self::FINISH_REASONS}.
+     *
+     * `usage` is retained on the chunk PAYLOAD because the streaming
+     * controller reads `$finishChunk->payload['usage']` server-side to persist
+     * per-turn token telemetry (Message metadata + ChatLog). It is the only
+     * channel the provider's token counts reach the controller through. It is
+     * NOT, however, part of the SDK `finish` UIMessageChunk — so {@see
+     * self::toSseFrame()} STRIPS it from the WIRE (the @ai-sdk zod schema
+     * rejects an extra `usage` key and would crash the browser stream).
      */
     public static function finish(
         string $finishReason = 'stop',
@@ -371,9 +387,20 @@ final readonly class StreamChunk
      */
     public function toSseFrame(): string
     {
+        $wirePayload = $this->payload;
+
+        // `finish.usage` is a SERVER-SIDE-ONLY field (token telemetry the
+        // controller persists). The SDK `finish` UIMessageChunk has no `usage`
+        // key, so leaving it on the wire crashes the @ai-sdk zod validator in
+        // the browser. Strip it from the wire while keeping it on the payload
+        // object for server-side reads.
+        if ($this->type === self::TYPE_FINISH) {
+            unset($wirePayload['usage']);
+        }
+
         try {
             $json = json_encode(
-                ['type' => $this->type, ...$this->payload],
+                ['type' => $this->type, ...$wirePayload],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
             );
         } catch (JsonException $e) {
