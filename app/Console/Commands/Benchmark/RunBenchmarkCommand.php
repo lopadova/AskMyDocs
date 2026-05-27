@@ -82,6 +82,22 @@ final class RunBenchmarkCommand extends Command
         $reportPath = $this->persist($card);
         $this->line("\nReport: {$reportPath}");
 
+        // --with-answers requested but nothing scored → every faithfulness row
+        // came back null. The pre-run check only covers a missing chat key;
+        // this catch-all also surfaces a missing/failing EMBEDDINGS provider
+        // (e.g. an Anthropic-only chat setup with no embeddings fallback) or
+        // any other reason the LLM/embeddings calls failed, so the operator
+        // isn't left with a silently faithfulness-free scorecard.
+        if ($this->option('with-answers')) {
+            $scored = array_filter(
+                $card['queries'],
+                static fn (array $r): bool => ($r['faithfulness'] ?? null) !== null,
+            );
+            if ($scored === []) {
+                $this->warn('--with-answers was requested but NO query scored answer-faithfulness — the chat or EMBEDDINGS provider calls all failed (check both provider keys + the embeddings endpoint). See storage/logs for the per-query errors.');
+            }
+        }
+
         if ($this->option('gate') && ! $card['passed']) {
             $this->error('Benchmark BELOW enterprise thresholds — gate failed.');
 
