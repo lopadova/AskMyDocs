@@ -218,11 +218,14 @@ final class BenchmarkRunner
             return 0.0; // refused / empty despite grounding present
         }
 
-        // Compare against EXACTLY the text each bucket renders into the
-        // prompt (resources/views/prompts/kb_rag.blade.php), so the score
-        // reflects what the LLM actually saw (Copilot #238):
+        // Compare against the substantive GROUNDING CONTENT each bucket
+        // contributes to the prompt (resources/views/prompts/kb_rag.blade.php):
         //  - primary + graph-expanded → full chunk_text,
-        //  - rejected-approach → `rejected_summary ?? Str::limit(chunk_text, 240)`.
+        //  - rejected-approach → `rejected_summary ?? Str::limit(chunk_text, 240)`
+        //    (the exact rejected snippet the LLM received).
+        // We deliberately exclude prompt scaffolding (titles, paths, heading
+        // breadcrumbs, edge-provenance lines, separators): those are framing,
+        // not grounding, and would add noise to the answer-vs-grounding cosine.
         // Using full chunk_text for the rejected bucket would mis-score an
         // answer that legitimately tracks the shorter rejected text.
         $mainText = $result->primary
