@@ -289,9 +289,19 @@ const adminRolesRoute = createRoute({
     component: AdminRolesRoute,
 });
 
+// `doc` + `tab` deep-link into a specific KB document detail (e.g. when a
+// chat citation chip is clicked). Declared here so TanStack preserves the
+// query string on navigation; KbView reads it via window.location.search
+// (parseInitialUrl) to open the document on mount.
+const adminKbSearchSchema = z.object({
+    doc: z.coerce.number().int().positive().optional(),
+    tab: z.enum(['preview', 'source', 'meta', 'history', 'graph']).optional(),
+});
+
 const adminKbRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb',
+    validateSearch: adminKbSearchSchema,
     component: AdminKbRoute,
 });
 

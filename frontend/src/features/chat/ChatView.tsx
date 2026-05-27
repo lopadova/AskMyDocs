@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { ConversationList } from './ConversationList';
+import { ConversationTitle } from './ConversationTitle';
 import { MessageThread } from './MessageThread';
 import { Composer } from './Composer';
-import { chatApi, type Conversation, type FilterState, type Message as AppMessage } from './chat.api';
+import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
+import { useAuthStore } from '../../lib/auth-store';
 import { PROJECTS } from '../../lib/seed';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
@@ -82,6 +84,55 @@ export function ChatView(): ReactNode {
     const projectKey = project?.key ?? null;
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
+
+    // Citation chips navigate to the KB document detail, which lives behind
+    // the admin/super-admin RBAC gate. Only wire the click for those roles so
+    // a viewer/editor chip stays hover-only instead of dead-ending on a 403.
+    const roles = useAuthStore((s) => s.roles);
+    const canViewKb = roles.includes('admin') || roles.includes('super-admin');
+
+    // Conversations list (shared cache with the sidebar) — drives the header
+    // title + the auto-generated/renamed name. TanStack dedupes the identical
+    // queryKey so this does not double-fetch.
+    const conversationsQuery = useQuery<Conversation[]>({
+        queryKey: ['conversations'],
+        queryFn: chatApi.listConversations,
+    });
+    const activeConversation =
+        activeId !== null ? conversationsQuery.data?.find((c) => c.id === activeId) ?? null : null;
+
+    // One auto-title attempt per conversation id (the BE generateTitle is a
+    // real LLM call; never fire it twice for the same thread).
+    const titleRequestedRef = useRef<Set<number>>(new Set());
+
+    const handleOpenSource = (citation: MessageCitation) => {
+        if (citation.document_id == null) {
+            return;
+        }
+        navigate({ to: '/app/admin/kb', search: { doc: citation.document_id, tab: 'preview' } });
+    };
+
+    // After a turn settles, if the conversation is still untitled, ask the BE
+    // to generate a title from the transcript, then refetch the list so the
+    // header + sidebar show the persisted name.
+    const maybeGenerateTitle = async (id: number) => {
+        if (titleRequestedRef.current.has(id)) {
+            return;
+        }
+        const list = qc.getQueryData<Conversation[]>(['conversations']);
+        const current = list?.find((c) => c.id === id)?.title;
+        if (current != null && current.trim() !== '') {
+            return;
+        }
+        titleRequestedRef.current.add(id);
+        try {
+            await chatApi.generateTitle(id);
+            await qc.invalidateQueries({ queryKey: ['conversations'] });
+        } catch {
+            // Allow a retry on the next settled turn.
+            titleRequestedRef.current.delete(id);
+        }
+    };
 
     // v4.0/W3.2: filters lifted from Composer to ChatView so the
     // streaming hook can read them when building each turn's
@@ -212,6 +263,8 @@ export function ChatView(): ReactNode {
             void qc.invalidateQueries({ queryKey: ['conversations'] });
             if (activeId !== null) {
                 void qc.invalidateQueries({ queryKey: ['messages', activeId] });
+                // Auto-name the thread from the transcript on first settle.
+                void maybeGenerateTitle(activeId);
             }
             // v4.5/W7 — trigger suggested-followups refetch.
             setTurnSettleId((n) => n + 1);
@@ -444,9 +497,20 @@ export function ChatView(): ReactNode {
                     }}
                 >
                     <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--fg-0)' }}>
-                            {activeId ? `Conversation #${activeId}` : 'New chat'}
-                        </div>
+                        {activeId !== null ? (
+                            <ConversationTitle
+                                conversationId={activeId}
+                                title={
+                                    activeConversation?.title?.trim()
+                                        ? activeConversation.title
+                                        : `Conversation #${activeId}`
+                                }
+                            />
+                        ) : (
+                            <div style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--fg-0)' }}>
+                                New chat
+                            </div>
+                        )}
                         <div
                             style={{
                                 fontSize: 11,
@@ -483,6 +547,7 @@ export function ChatView(): ReactNode {
                     onBranchAt={handleBranchAt}
                     onEditUserMessage={handleEditUserMessage}
                     showCounterfactual={showCounterfactual}
+                    onOpenSource={canViewKb ? handleOpenSource : undefined}
                 />
 
                 <SuggestedFollowups

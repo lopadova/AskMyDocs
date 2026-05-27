@@ -11,6 +11,38 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.6.0 — 2026-05-27 (Live chat actions)
+
+Wired up chat UI surfaces that looked interactive but did nothing — the
+components and BE endpoints existed, the click-wiring/triggers did not.
+
+- **Citation chips → KB document.** Clicking a cited source now navigates to
+  the KB document detail (`/app/admin/kb?doc=<id>`). Admin-gated via the
+  auth-store role: `viewer`/`editor` chips stay hover-only so they never
+  dead-end on a 403; citations with a null `document_id` aren't openable
+  (`data-openable="false"`). The `admin/kb` route gained a `validateSearch`
+  (`doc`, `tab`) so the deep-link survives a TanStack navigation; `KbView`
+  already opens `?doc` on mount.
+- **Auto-title.** ChatView calls the existing BE `generateTitle` once per
+  thread on first turn-settle (`onFinish`), then refetches the conversations
+  list — the header stops showing the `Conversation #N` fallback and the
+  sidebar stops showing `Untitled`.
+- **Inline rename.** New `ConversationTitle` component renders the title +
+  a pencil; clicking it swaps to an input with Save/Cancel backed by the
+  existing `PATCH /conversations/{id}`, updating the `['conversations']`
+  cache so the sidebar reflects the new name immediately.
+- **Feedback thumbs.** Already wired (`FeedbackButtons` → `/feedback`); they
+  appear once the answer persists. No code change — now covered by E2E.
+- **Tests.** +9 Vitest (`CitationsPopover` openable/click/null-doc;
+  `ConversationTitle` rename/cancel/blank/error). Two E2E specs (R13,
+  FakeProvider + E2eStreamSeeder, nothing stubbed): `chat-actions.spec.ts`
+  drives feedback toggle + auto-title + rename + citation→KB nav on a real
+  grounded turn plus an R13-marked rename-500 failure injection;
+  `app-smoke.spec.ts` walks every admin-accessible screen asserting zero
+  uncaught exceptions ("boot + navigate, no errors").
+
+---
+
 ### v8.5.0 — 2026-05-27 (Definitive browser streaming E2E)
 
 Quality + test-hardening release. Closes the coverage gap behind the v8.4

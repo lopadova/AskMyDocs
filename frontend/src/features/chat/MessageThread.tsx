@@ -55,6 +55,11 @@ export interface MessageThreadProps {
      */
     onEditUserMessage?: (messageIndex: number, messageId: number | null, newContent: string) => void | Promise<void>;
     showCounterfactual?: boolean;
+    /**
+     * Click handler for a citation chip — opens the cited KB document.
+     * Wired by ChatView (admin-gated); forwarded to each MessageBubble.
+     */
+    onOpenSource?: (citation: import('./chat.api').MessageCitation) => void;
 }
 
 /**
@@ -83,6 +88,7 @@ export function MessageThread({
     onBranchAt,
     onEditUserMessage,
     showCounterfactual = true,
+    onOpenSource,
 }: MessageThreadProps): ReactNode {
     const threadRef = useRef<HTMLDivElement>(null);
 
@@ -214,6 +220,7 @@ export function MessageThread({
                                 onBranch={branchHandler}
                                 onEditSubmit={editHandler}
                                 showCounterfactual={showCounterfactual}
+                                onOpenSource={onOpenSource}
                             />
                         );
                     });
