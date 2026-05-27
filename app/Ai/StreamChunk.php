@@ -310,10 +310,13 @@ final readonly class StreamChunk
      * @throws InvalidArgumentException When `$finishReason` is not in
      *         {@see self::FINISH_REASONS}.
      *
-     * @param  ?int  $promptTokens      @deprecated v8.4 — no longer emitted on
-     *         the wire (the SDK `finish` chunk has no `usage` key); token
-     *         counts are persisted server-side. Retained for caller BC.
-     * @param  ?int  $completionTokens  @deprecated v8.4 — see $promptTokens.
+     * `usage` is retained on the chunk PAYLOAD because the streaming
+     * controller reads `$finishChunk->payload['usage']` server-side to persist
+     * per-turn token telemetry (Message metadata + ChatLog). It is the only
+     * channel the provider's token counts reach the controller through. It is
+     * NOT, however, part of the SDK `finish` UIMessageChunk — so {@see
+     * self::toSseFrame()} STRIPS it from the WIRE (the @ai-sdk zod schema
+     * rejects an extra `usage` key and would crash the browser stream).
      */
     public static function finish(
         string $finishReason = 'stop',
@@ -328,17 +331,12 @@ final readonly class StreamChunk
             ));
         }
 
-        // The SDK v6 `finish` UIMessageChunk is `{type:'finish', finishReason?,
-        // messageMetadata?}` — it does NOT allow a `usage` key. Emitting one
-        // is rejected by the @ai-sdk zod schema in the browser ("unrecognized
-        // key usage") and crashes the stream on the terminal frame. Token
-        // counts are persisted server-side (ChatLogManager) and read from the
-        // persisted message metadata by the FE cost meter, so they are NOT
-        // needed on the wire. The params are retained for caller BC.
-        unset($promptTokens, $completionTokens);
-
         return new self(self::TYPE_FINISH, [
             'finishReason' => $finishReason,
+            'usage' => [
+                'promptTokens' => $promptTokens,
+                'completionTokens' => $completionTokens,
+            ],
         ]);
     }
 
@@ -389,9 +387,20 @@ final readonly class StreamChunk
      */
     public function toSseFrame(): string
     {
+        $wirePayload = $this->payload;
+
+        // `finish.usage` is a SERVER-SIDE-ONLY field (token telemetry the
+        // controller persists). The SDK `finish` UIMessageChunk has no `usage`
+        // key, so leaving it on the wire crashes the @ai-sdk zod validator in
+        // the browser. Strip it from the wire while keeping it on the payload
+        // object for server-side reads.
+        if ($this->type === self::TYPE_FINISH) {
+            unset($wirePayload['usage']);
+        }
+
         try {
             $json = json_encode(
-                ['type' => $this->type, ...$this->payload],
+                ['type' => $this->type, ...$wirePayload],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
             );
         } catch (JsonException $e) {

@@ -147,14 +147,12 @@ class StreamChunkTest extends TestCase
         $this->assertNull($chunk->payload['data']['hint']);
     }
 
-    public function test_finish_factory_carries_finish_reason_without_a_usage_key(): void
+    public function test_finish_payload_carries_usage_for_server_side_telemetry(): void
     {
-        // v8.4 — the SDK v6 `finish` UIMessageChunk is
-        // {type:'finish', finishReason?, messageMetadata?}. A `usage` key is
-        // REJECTED by the @ai-sdk zod schema in the browser ("unrecognized
-        // key usage") and crashes the stream on the terminal frame. The
-        // factory must carry finishReason only; token counts live on the
-        // persisted message metadata (server-side), not the wire.
+        // v8.4 — `usage` STAYS on the chunk PAYLOAD: the streaming controller
+        // reads `$finishChunk->payload['usage']` to persist per-turn token
+        // telemetry. It is the only channel the provider's counts reach the
+        // controller through.
         $chunk = StreamChunk::finish(
             finishReason: 'stop',
             promptTokens: 1234,
@@ -163,14 +161,18 @@ class StreamChunkTest extends TestCase
 
         $this->assertSame(StreamChunk::TYPE_FINISH, $chunk->type);
         $this->assertSame('stop', $chunk->payload['finishReason']);
-        $this->assertArrayNotHasKey('usage', $chunk->payload, 'finish frame must NOT carry a usage key (SDK rejects it).');
+        $this->assertSame(['promptTokens' => 1234, 'completionTokens' => 56], $chunk->payload['usage']);
     }
 
-    public function test_finish_factory_emits_no_usage_even_without_token_counts(): void
+    public function test_finish_wire_frame_strips_usage_so_the_sdk_accepts_it(): void
     {
-        $chunk = StreamChunk::finish('stop');
+        // ...but `usage` is NOT part of the SDK `finish` UIMessageChunk, so the
+        // WIRE frame (what the browser parses) must NOT contain it — else the
+        // @ai-sdk zod validator rejects the chunk and crashes the stream.
+        $frame = StreamChunk::finish('stop', 1234, 56)->toSseFrame();
 
-        $this->assertSame(['finishReason' => 'stop'], $chunk->payload);
+        $this->assertStringContainsString('"finishReason":"stop"', $frame);
+        $this->assertStringNotContainsString('usage', $frame, 'finish WIRE frame must not contain usage (SDK rejects it).');
     }
 
     /**
