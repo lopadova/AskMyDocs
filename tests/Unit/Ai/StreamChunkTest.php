@@ -147,8 +147,14 @@ class StreamChunkTest extends TestCase
         $this->assertNull($chunk->payload['data']['hint']);
     }
 
-    public function test_finish_factory_carries_finish_reason_and_usage(): void
+    public function test_finish_factory_carries_finish_reason_without_a_usage_key(): void
     {
+        // v8.4 — the SDK v6 `finish` UIMessageChunk is
+        // {type:'finish', finishReason?, messageMetadata?}. A `usage` key is
+        // REJECTED by the @ai-sdk zod schema in the browser ("unrecognized
+        // key usage") and crashes the stream on the terminal frame. The
+        // factory must carry finishReason only; token counts live on the
+        // persisted message metadata (server-side), not the wire.
         $chunk = StreamChunk::finish(
             finishReason: 'stop',
             promptTokens: 1234,
@@ -157,17 +163,14 @@ class StreamChunkTest extends TestCase
 
         $this->assertSame(StreamChunk::TYPE_FINISH, $chunk->type);
         $this->assertSame('stop', $chunk->payload['finishReason']);
-        $this->assertSame(['promptTokens' => 1234, 'completionTokens' => 56], $chunk->payload['usage']);
+        $this->assertArrayNotHasKey('usage', $chunk->payload, 'finish frame must NOT carry a usage key (SDK rejects it).');
     }
 
-    public function test_finish_factory_accepts_null_token_counts(): void
+    public function test_finish_factory_emits_no_usage_even_without_token_counts(): void
     {
-        // Provider didn't return usage (e.g. some open-source models).
-        // Frame must still serialize cleanly.
         $chunk = StreamChunk::finish('stop');
 
-        $this->assertNull($chunk->payload['usage']['promptTokens']);
-        $this->assertNull($chunk->payload['usage']['completionTokens']);
+        $this->assertSame(['finishReason' => 'stop'], $chunk->payload);
     }
 
     /**

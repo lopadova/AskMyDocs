@@ -323,12 +323,17 @@ final readonly class StreamChunk
             ));
         }
 
+        // The SDK v6 `finish` UIMessageChunk is `{type:'finish', finishReason?,
+        // messageMetadata?}` — it does NOT allow a `usage` key. Emitting one
+        // is rejected by the @ai-sdk zod schema in the browser ("unrecognized
+        // key usage") and crashes the stream on the terminal frame. Token
+        // counts are persisted server-side (ChatLogManager) and read from the
+        // persisted message metadata by the FE cost meter, so they are NOT
+        // needed on the wire. The params are retained for caller BC.
+        unset($promptTokens, $completionTokens);
+
         return new self(self::TYPE_FINISH, [
             'finishReason' => $finishReason,
-            'usage' => [
-                'promptTokens' => $promptTokens,
-                'completionTokens' => $completionTokens,
-            ],
         ]);
     }
 
