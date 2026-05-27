@@ -55,7 +55,7 @@ final class FakeProvider implements AiProviderInterface
         return new AiResponse(
             content: self::ANSWER,
             provider: 'fake',
-            model: 'fake-deterministic',
+            model: $this->modelName('chat_model'),
             promptTokens: 11,
             completionTokens: 17,
             totalTokens: 28,
@@ -72,11 +72,22 @@ final class FakeProvider implements AiProviderInterface
     {
         $dimensions = (int) ($this->config['dimensions'] ?? config('kb.embeddings_dimensions', 1536));
 
+        // Fail loudly on a misconfigured dimension rather than silently
+        // clamping with max(1, …) — a 0/negative value means a broken
+        // KB_EMBEDDINGS_DIMENSIONS, which would otherwise surface much later
+        // as a confusing pgvector dimension-mismatch on the first write.
+        if ($dimensions < 1) {
+            throw new \InvalidArgumentException(
+                "FakeProvider requires a positive embedding dimension; got {$dimensions}. "
+                . 'Check KB_EMBEDDINGS_DIMENSIONS / ai.providers.fake.dimensions.'
+            );
+        }
+
         // Constant unit vector — [1, 0, 0, …]. Every text (corpus chunk OR
         // query) maps to the same vector, so cosine similarity is always 1.0
         // and retrieval deterministically returns whatever was ingested. No
         // external call; no randomness.
-        $vector = array_fill(0, max(1, $dimensions), 0.0);
+        $vector = array_fill(0, $dimensions, 0.0);
         $vector[0] = 1.0;
 
         $embeddings = array_map(static fn () => $vector, $texts);
@@ -84,7 +95,7 @@ final class FakeProvider implements AiProviderInterface
         return new EmbeddingsResponse(
             embeddings: $embeddings,
             provider: 'fake',
-            model: 'fake-deterministic',
+            model: $this->modelName('embeddings_model'),
             totalTokens: 0,
         );
     }
@@ -92,6 +103,21 @@ final class FakeProvider implements AiProviderInterface
     public function name(): string
     {
         return 'fake';
+    }
+
+    /**
+     * Single source of truth for the model string stamped on responses:
+     * the injected config (ai.providers.fake.{chat_model,embeddings_model}),
+     * falling back to the canonical default when constructed bare (e.g. a
+     * unit test that `new FakeProvider()`s without config). Keeps the
+     * chat-log model column + EmbeddingCacheService::resolveModelName() lookup
+     * key aligned with what is actually persisted.
+     */
+    private function modelName(string $key): string
+    {
+        $model = $this->config[$key] ?? null;
+
+        return is_string($model) && $model !== '' ? $model : 'fake-deterministic';
     }
 
     public function supportsEmbeddings(): bool

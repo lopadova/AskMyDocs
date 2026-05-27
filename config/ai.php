@@ -205,11 +205,11 @@ return [
         'fake' => [
             'name' => 'fake',
             'dimensions' => is_numeric($v = env('KB_EMBEDDINGS_DIMENSIONS')) ? (int) $v : 1536,
-            // Both keys must match the model string FakeProvider stamps on its
-            // AiResponse / EmbeddingsResponse so the chat-log model column and
-            // EmbeddingCacheService::resolveModelName() lookup key stay
-            // consistent (otherwise streaming turns record 'unknown' and every
-            // cache read misses).
+            // Authoritative model strings — FakeProvider reads these (via
+            // modelName()) when stamping its AiResponse / EmbeddingsResponse,
+            // and EmbeddingCacheService::resolveModelName() reads
+            // `embeddings_model` for its lookup key. Single source of truth, so
+            // streaming turns never record 'unknown' and cache reads always hit.
             'chat_model' => 'fake-deterministic',
             'embeddings_model' => 'fake-deterministic',
         ],
