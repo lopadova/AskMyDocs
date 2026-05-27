@@ -1,6 +1,7 @@
-import { expect, type Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
+import { seedDb } from './setup-helpers';
 
 /*
  * v8.5 — the DEFINITIVE browser streaming E2E.
@@ -11,13 +12,19 @@ import { composer, thread, waitForThreadReady } from './helpers';
  * validates each UIMessageChunk against the SDK zod schema, which is exactly
  * where those wire-format bugs fired ("Type validation failed …").
  *
- * Determinism without a live LLM: the Playwright webServer runs with
- * AI_PROVIDER=fake / AI_EMBEDDINGS_PROVIDER=fake (see playwright.config.ts).
- * FakeProvider streams a canned answer and returns a constant embedding
- * vector, so a doc ingested into `hr-portal` is ALWAYS retrieved → the
- * controller ALWAYS emits a real `source-url` citation frame. The fresh
- * `/app/chat` turn scopes to PROJECTS[0] = `hr-portal` (ChatView), so the
- * ingested doc is in scope.
+ * Determinism without a live LLM: the server runs with AI_PROVIDER=fake /
+ * AI_EMBEDDINGS_PROVIDER=fake (CI: the workflow's "Start Laravel server"
+ * step; local: playwright.config.ts's webServer block). FakeProvider streams
+ * a canned answer and returns a constant embedding vector.
+ *
+ * The `E2eStreamSeeder` ingests ONE hr-portal doc through the REAL
+ * DocumentIngestor path (inline, via /testing/seed) so its chunk is embedded
+ * with the same constant vector — DemoSeeder's chunks have a NULL embedding
+ * and are NOT vector-searchable, which is exactly why every other chat spec
+ * stubs retrieval. With the fake provider, the query embeds to the same
+ * vector → cosine 1.0 → the doc is ALWAYS retrieved → the controller ALWAYS
+ * emits a real `source-url` citation frame. The fresh `/app/chat` turn scopes
+ * to PROJECTS[0] = `hr-portal` (ChatView), so the seeded doc is in scope.
  *
  * NOTHING is stubbed here (R13): no `page.route` on internal routes. The whole
  * round-trip — auth, retrieval, the real SSE frames, the real SDK transport,
@@ -27,31 +34,6 @@ import { composer, thread, waitForThreadReady } from './helpers';
  */
 
 test.describe.configure({ timeout: 60_000 });
-
-async function ingestHrPortalDoc(page: Page): Promise<void> {
-    await page.request.get('/sanctum/csrf-cookie');
-    const xsrf = (await page.context().cookies()).find((c) => c.name === 'XSRF-TOKEN');
-    if (!xsrf) {
-        throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
-    }
-    const res = await page.request.post('/api/kb/ingest', {
-        headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
-        data: {
-            documents: [
-                {
-                    project_key: 'hr-portal',
-                    source_path: 'policies/e2e-remote-work.md',
-                    title: 'Remote Work Policy',
-                    mime_type: 'text/markdown',
-                    content: '# Remote Work Policy\n\nEmployees may work remotely up to 3 days per week with manager approval.',
-                },
-            ],
-        },
-    });
-    if (!res.ok()) {
-        throw new Error(`ingest failed: ${res.status()} ${await res.text()}`);
-    }
-}
 
 test.describe('Chat streaming — real SSE through the real @ai-sdk transport', () => {
     test('a grounded chat turn streams text + a citation chip + completes, with NO SDK validation error', async ({ page }) => {
@@ -66,9 +48,11 @@ test.describe('Chat streaming — real SSE through the real @ai-sdk transport', 
             }
         });
 
-        // Queue is sync (testing env) so the ingest job runs inline; the
-        // fake embeddings make this doc retrievable for any hr-portal query.
-        await ingestHrPortalDoc(page);
+        // Seed one vector-searchable hr-portal doc through the REAL ingest
+        // path (inline, fake embeddings) so the chat turn below retrieves it.
+        // The `seeded` auto-fixture already ran DemoSeeder + logged us in;
+        // this is purely additive (db:seed --class, no migrate:fresh).
+        await seedDb(page, 'E2eStreamSeeder');
 
         await page.goto('/app/chat');
         const { input, send } = composer(page);

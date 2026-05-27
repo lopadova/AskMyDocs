@@ -44,6 +44,9 @@ class TestingController extends Controller
         // PR14 / Phase I — one deterministic snapshot row for the
         // /app/admin/insights happy-path E2E.
         'AdminInsightsSeeder' => \Database\Seeders\AdminInsightsSeeder::class,
+        // v8.5 — one vector-searchable hr-portal doc (real DocumentIngestor
+        // path, fake embeddings) for chat-stream-browser.spec.ts.
+        'E2eStreamSeeder' => \Database\Seeders\E2eStreamSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

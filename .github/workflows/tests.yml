@@ -323,6 +323,20 @@ jobs:
       - name: Start Laravel server (testing)
         env:
           APP_ENV: testing
+          # Deterministic OFFLINE AI for the Playwright run. The PHP built-in
+          # dev server reads these at runtime (no config:cache here), so
+          # chat + embeddings resolve to FakeProvider — no external LLM, no
+          # API key. chat-stream-browser.spec.ts depends on this: it drives
+          # the REAL /messages/stream SSE through the REAL @ai-sdk transport.
+          # FakeProvider streams a canned answer + a constant embedding
+          # vector, so the E2eStreamSeeder doc is always retrieved and the
+          # real `source-url` citation frame is exercised. Every other chat
+          # spec stubs the AI boundary, so this is harmless for them. (The
+          # same env lives in playwright.config.ts's webServer block for the
+          # LOCAL `npm run e2e` path, which is bypassed in CI via
+          # E2E_SKIP_WEBSERVER=1.)
+          AI_PROVIDER: fake
+          AI_EMBEDDINGS_PROVIDER: fake
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.
