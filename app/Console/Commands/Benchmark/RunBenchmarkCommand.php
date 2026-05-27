@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\Storage;
 final class RunBenchmarkCommand extends Command
 {
     protected $signature = 'kb:benchmark
-        {--stub : Use deterministic stub embeddings (no API key / provider)}
+        {--stub : Use deterministic stub embeddings for retrieval ranking (no API key / provider) — EXCEPT --with-answers, which always makes LIVE chat + embeddings calls}
+        {--with-answers : Score answer-faithfulness via REAL chat + embeddings calls (LIVE even under --stub, which only stubs the retrieval embeddings; needs a configured chat+embeddings provider)}
         {--gate : Exit non-zero when aggregate metrics miss the thresholds}
         {--project=benchmark : Project key to ingest the corpus under}
         {--k=5 : Cut-off k for nDCG@k / precision@k}
@@ -47,6 +48,19 @@ final class RunBenchmarkCommand extends Command
             $this->warn('Running with DETERMINISTIC STUB embeddings (no semantic quality — wiring/ranking only).');
         }
 
+        // --with-answers ALWAYS makes LIVE chat + embeddings calls (even under
+        // --stub, which only stubs retrieval ranking). Warn early if the chat
+        // provider has no key, otherwise every faithfulness score silently
+        // ends up null and the operator can't tell why.
+        if ($this->option('with-answers')) {
+            $provider = (string) config('ai.default');
+            $hasKey = (bool) (config("ai.providers.{$provider}.api_key")
+                ?: config("ai.providers.{$provider}.key"));
+            if (! $hasKey) {
+                $this->warn("--with-answers makes LIVE chat + embeddings calls, but no API key is configured for the chat provider [{$provider}] — answer-faithfulness will be skipped (null).");
+            }
+        }
+
         $corpus = (string) ($this->option('corpus') ?: base_path('resources/benchmark/corpus'));
         $queries = (string) ($this->option('queries') ?: base_path('resources/benchmark/queries.yaml'));
 
@@ -61,11 +75,28 @@ final class RunBenchmarkCommand extends Command
             queriesFile: $queries,
             projectKey: (string) $this->option('project'),
             k: max(1, (int) $this->option('k')),
+            withAnswers: (bool) $this->option('with-answers'),
         );
 
         $this->renderScorecard($card);
         $reportPath = $this->persist($card);
         $this->line("\nReport: {$reportPath}");
+
+        // --with-answers requested but nothing scored → every faithfulness row
+        // came back null. The pre-run check only covers a missing chat key;
+        // this catch-all also surfaces a missing/failing EMBEDDINGS provider
+        // (e.g. an Anthropic-only chat setup with no embeddings fallback) or
+        // any other reason the LLM/embeddings calls failed, so the operator
+        // isn't left with a silently faithfulness-free scorecard.
+        if ($this->option('with-answers')) {
+            $scored = array_filter(
+                $card['queries'],
+                static fn (array $r): bool => ($r['faithfulness'] ?? null) !== null,
+            );
+            if ($scored === []) {
+                $this->warn('--with-answers was requested but NO query scored answer-faithfulness — the chat or EMBEDDINGS provider calls all failed (check both provider keys + the embeddings endpoint). See storage/logs for the per-query errors.');
+            }
+        }
 
         if ($this->option('gate') && ! $card['passed']) {
             $this->error('Benchmark BELOW enterprise thresholds — gate failed.');
@@ -115,6 +146,14 @@ final class RunBenchmarkCommand extends Command
         $this->line('  refusal-accuracy : '.number_format($agg['refusal_accuracy'], 4).$mark('refusal_accuracy'));
         $this->line('  graph-recall     : '.number_format($agg['graph_recall'], 4));
         $this->line('  rejected-recall  : '.number_format($agg['rejected_recall'], 4));
+        // Show whenever --with-answers actually ran (any query carries a
+        // non-null faithfulness), NOT only when the mean is > 0 — a run where
+        // every answer refused/anti-correlated has a legitimate 0.0 mean that
+        // must still be reported, otherwise the metric silently vanishes.
+        $scored = array_filter($card['queries'], static fn (array $r): bool => ($r['faithfulness'] ?? null) !== null);
+        if ($scored !== []) {
+            $this->line('  answer-faithful. : '.number_format($agg['answer_faithfulness'], 4).' (real LLM answers)');
+        }
     }
 
     /** @param  array<string,mixed>  $card @return string absolute-ish report path */

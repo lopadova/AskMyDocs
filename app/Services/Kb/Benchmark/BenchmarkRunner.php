@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace App\Services\Kb\Benchmark;
 
+use App\Ai\AiManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\DocumentIngestor;
 use App\Services\Kb\KbSearchService;
-use App\Services\Kb\Pipeline\SourceDocument;
-use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Services\Kb\Metrics\RetrievalQualityMetrics as Metrics;
+use App\Services\Kb\Pipeline\SourceDocument;
+use App\Services\Kb\Retrieval\CosineCalculator;
+use App\Services\Kb\Retrieval\RetrievalGrounding;
+use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -41,6 +45,8 @@ final class BenchmarkRunner
         private readonly DocumentIngestor $ingestor,
         private readonly KbSearchService $search,
         private readonly ChatRetrievalService $retrieval,
+        private readonly AiManager $ai,
+        private readonly CosineCalculator $cosineCalc,
     ) {}
 
     /**
@@ -49,18 +55,18 @@ final class BenchmarkRunner
      *   queries: list<array<string,mixed>>,
      *   aggregate: array{ndcg_at_k: float, mrr: float, precision_at_k: float,
      *     citation_precision: float, refusal_accuracy: float, graph_recall: float,
-     *     rejected_recall: float},
+     *     rejected_recall: float, answer_faithfulness: float},
      *   thresholds: array<string,float>, passed: bool
      * }
      */
-    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5): array
+    public function run(string $corpusDir, string $queriesFile, string $projectKey, int $k = 5, bool $withAnswers = false): array
     {
         $corpusCount = $this->ingestCorpus($corpusDir, $projectKey);
         $queries = $this->loadQueries($queriesFile);
 
         $rows = [];
         foreach ($queries as $q) {
-            $rows[] = $this->scoreQuery($q, $projectKey, $k);
+            $rows[] = $this->scoreQuery($q, $projectKey, $k, $withAnswers);
         }
 
         $aggregate = $this->aggregate($rows, $k);
@@ -116,7 +122,7 @@ final class BenchmarkRunner
      * @param  array<string,mixed>  $q
      * @return array<string,mixed>
      */
-    private function scoreQuery(array $q, string $projectKey, int $k): array
+    private function scoreQuery(array $q, string $projectKey, int $k, bool $withAnswers = false): array
     {
         $result = $this->search->searchWithContext(
             query: (string) $q['query'],
@@ -131,6 +137,30 @@ final class BenchmarkRunner
 
         $expectRefusal = (bool) ($q['expect_refusal'] ?? false);
         $refused = RetrievalGrounding::shouldRefuse($result->primary);
+
+        // --with-answers: generate the REAL chat answer + score faithfulness
+        // (cosine of the answer vs the grounding text rendered into the
+        // prompt — catches a fluent answer that doesn't track its own
+        // grounding). Skipped on refusal queries (no answer) and when not
+        // requested (retrieval-only run). Exceptions (API errors, 429,
+        // timeouts, a short embeddings response) are caught so a single
+        // failing LLM call doesn't abort the run and discard all retrieval
+        // scores already computed for previous queries (R4). On failure the
+        // score stays null — NOT a misleading 0.0 — so the aggregate mean
+        // (which skips nulls) isn't biased downward by an infra hiccup.
+        $faithfulness = null;
+        if ($withAnswers && ! $expectRefusal && ! $refused) {
+            try {
+                $faithfulness = round($this->answerFaithfulness((string) $q['query'], $projectKey, $result), 4);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('benchmark: answerFaithfulness failed', [
+                    'query_id'  => $q['id'] ?? '?',
+                    'error'     => $e->getMessage(),
+                    'exception' => $e, // preserve class + stack trace for diagnosis
+                ]);
+                // faithfulness stays null — query keeps its retrieval scores
+            }
+        }
 
         $citationKeys = $this->docKeys(
             collect($this->retrieval->buildCitations($result))->pluck('source_path'),
@@ -160,8 +190,74 @@ final class BenchmarkRunner
             'related_expected' => count($expectRelated),
             'rejected_hit' => $expectRejected === [] ? null : count(array_intersect($expectRejected, $rejectedKeys)),
             'rejected_expected' => count($expectRejected),
+            'faithfulness' => $faithfulness,
             'top' => $rankedDocKeys[0] ?? null,
         ];
+    }
+
+    /**
+     * Generate the REAL chat answer for a query (same kb_rag prompt + the
+     * same AiManager::chat the app uses, scoped to the same project) and
+     * score faithfulness as the cosine similarity between the answer and the
+     * GROUNDING text the LLM actually saw (primary + expanded + rejected). A
+     * fluent answer that drifts from its grounding scores low; a self-refusal
+     * scores 0.
+     */
+    private function answerFaithfulness(string $query, string $projectKey, SearchResult $result): float
+    {
+        $prompt = view('prompts.kb_rag', array_merge(
+            $this->retrieval->promptContext($result),
+            // Pass the real project key (not null) so the rendered prompt
+            // matches what the controllers build — null renders "Project:
+            // all" and would diverge from production fidelity.
+            ['projectKey' => $projectKey, 'fewShotExamples' => []],
+        ))->render();
+
+        $answer = trim($this->ai->chat($prompt, $query)->content);
+        if ($answer === '' || $answer === '__NO_GROUNDED_ANSWER__') {
+            return 0.0; // refused / empty despite grounding present
+        }
+
+        // Compare against the substantive GROUNDING CONTENT each bucket
+        // contributes to the prompt (resources/views/prompts/kb_rag.blade.php):
+        //  - primary + graph-expanded → full chunk_text,
+        //  - rejected-approach → `rejected_summary ?? Str::limit(chunk_text, 240)`
+        //    (the exact rejected snippet the LLM received).
+        // We deliberately exclude prompt scaffolding (titles, paths, heading
+        // breadcrumbs, edge-provenance lines, separators): those are framing,
+        // not grounding, and would add noise to the answer-vs-grounding cosine.
+        // Using full chunk_text for the rejected bucket would mis-score an
+        // answer that legitimately tracks the shorter rejected text.
+        $mainText = $result->primary
+            ->concat($result->expanded)
+            ->map(fn ($c) => (string) data_get($c, 'chunk_text', ''));
+        $rejectedText = $result->rejected->map(
+            fn ($r) => (string) (data_get($r, 'document.rejected_summary')
+                ?? Str::limit((string) data_get($r, 'chunk_text', ''), 240)),
+        );
+        $groundingText = $mainText->concat($rejectedText)->filter()->implode("\n\n");
+        if ($groundingText === '') {
+            return 0.0;
+        }
+
+        // Embed via AiManager directly (NOT the caching EmbeddingCacheService):
+        // the answer + concatenated grounding text are benchmark-only, low-reuse
+        // strings — caching them would bloat the shared embedding_cache and
+        // persist hashes of generated answers into production state.
+        $vecs = $this->ai->generateEmbeddings([$answer, $groundingText])->embeddings;
+        // A short/empty embeddings response is an infra failure (API blip,
+        // dimension mismatch), NOT a 0.0-faithful answer. Throw so the outer
+        // try/catch leaves this query's faithfulness null instead of silently
+        // biasing the aggregate downward with a fake zero.
+        if (count($vecs) < 2 || ($vecs[0] ?? []) === [] || ($vecs[1] ?? []) === []) {
+            throw new \RuntimeException('benchmark: embeddings provider returned fewer than two non-empty vectors.');
+        }
+
+        // Reuse the canonical CosineCalculator (IoC, test-substitutable).
+        // Clamp to [0,1]: a faithfulness score is a 0..1 grounding signal —
+        // negatives (anti-correlated) floor at 0, and float error that nudges
+        // cosine just past 1.0 is capped so aggregates never read 1.0001.
+        return min(1.0, max(0.0, $this->cosineCalc->similarity($vecs[0], $vecs[1])));
     }
 
     /**
@@ -247,6 +343,9 @@ final class BenchmarkRunner
                 fn ($r) => $r['rejected_hit'] !== null,
                 fn ($r) => $r['rejected_hit'] > 0,
             ), 4),
+            // Mean answer-faithfulness over answered queries (only populated
+            // on a --with-answers run; 0.0 when none were scored).
+            'answer_faithfulness' => round($mean($answerable, 'faithfulness'), 4),
         ];
     }
 
