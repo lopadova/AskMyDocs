@@ -173,6 +173,9 @@ class AiManager
             'gemini' => new GeminiProvider($config),
             'openrouter' => new OpenRouterProvider($config),
             'regolo' => new RegoloProvider($config),
+            // Deterministic offline provider — only resolvable when AI_PROVIDER
+            // / AI_EMBEDDINGS_PROVIDER name it (E2E / local demo). Never in prod.
+            'fake' => new \App\Ai\Providers\FakeProvider($config),
             default => throw new InvalidArgumentException("Unknown AI provider [{$name}]."),
         };
     }

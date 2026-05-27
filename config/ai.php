@@ -194,6 +194,15 @@ return [
             ],
         ],
 
+        // Deterministic OFFLINE provider for E2E / local demo — no external
+        // calls, canned chat answer, constant embedding vector. Only selected
+        // when AI_PROVIDER=fake / AI_EMBEDDINGS_PROVIDER=fake (never in prod).
+        // See app/Ai/Providers/FakeProvider.php + playwright.config.ts.
+        'fake' => [
+            'name' => 'fake',
+            'dimensions' => is_numeric($v = env('KB_EMBEDDINGS_DIMENSIONS')) ? (int) $v : 1536,
+        ],
+
     ],
 
 ];
