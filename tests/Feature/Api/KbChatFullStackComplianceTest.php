@@ -93,11 +93,18 @@ final class KbChatFullStackComplianceTest extends TestCase
         $response = $this->actingAs($user, 'sanctum')
             ->postJson('/api/kb/chat', ['question' => 'What is the cache TTL and who do I contact?']);
 
-        // 1 — grounded answer + evidence citations.
+        // 1 — grounded answer + evidence citations built from the REAL chunk
+        // shape (source_path resolved from document.*, not null) — proving the
+        // citation builder ran on representative data, not a degraded shape.
         $response->assertOk();
         $response->assertJsonStructure(['answer', 'citations']);
         self::assertNotEmpty($response->json('answer'), 'a grounded answer is returned');
         self::assertNotEmpty($response->json('citations'), 'evidence citations are returned');
+        self::assertSame(
+            'policies/remote-work-policy.md',
+            $response->json('citations.0.source_path'),
+            'the citation resolves source_path from the nested document.* shape',
+        );
 
         // 2 — AI Act Art. 50 disclosure header on the live response.
         self::assertNotEmpty(
@@ -127,12 +134,26 @@ final class KbChatFullStackComplianceTest extends TestCase
     {
         $kb = Mockery::mock(KbSearchService::class);
         $kb->shouldReceive('searchWithContext')->andReturn(new SearchResult(
+            // Production chunk shape (v8.1): flat chunk_id + rerank_score/
+            // vector_score + nested document.* — NOT the legacy
+            // knowledge_chunk_id / top-level source_path / similarity. Using
+            // the real shape so the citation builder + grounding gate run on
+            // representative data and this smoke actually catches the
+            // array-shape regressions v8.1 P0.1 fixed.
             primary: new Collection([
                 [
-                    'knowledge_chunk_id' => 1,
-                    'source_path' => 'policies/remote-work-policy.md',
+                    'chunk_id' => 1,
                     'chunk_text' => 'Cache TTL is 10 minutes by default; flushing is manual.',
-                    'similarity' => 0.9,
+                    'chunk_hash' => str_repeat('a', 64),
+                    'heading_path' => 'Caching',
+                    'rerank_score' => 0.92,
+                    'vector_score' => 0.88,
+                    'document' => [
+                        'id' => 101,
+                        'title' => 'Remote Work Policy',
+                        'source_path' => 'policies/remote-work-policy.md',
+                        'source_type' => 'md',
+                    ],
                 ],
             ]),
             expanded: new Collection(),
