@@ -14,6 +14,7 @@ use App\Services\Kb\Retrieval\CosineCalculator;
 use App\Services\Kb\Retrieval\RetrievalGrounding;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -217,17 +218,21 @@ final class BenchmarkRunner
             return 0.0; // refused / empty despite grounding present
         }
 
-        // Compare against EVERY context bucket rendered into the prompt —
-        // primary + graph-expanded + rejected-approach — not just primary,
-        // so an answer grounded in expanded/rejected context isn't penalised
-        // for tracking text the LLM was legitimately given (Copilot #238).
-        $groundingText = collect()
-            ->concat($result->primary)
+        // Compare against EXACTLY the text each bucket renders into the
+        // prompt (resources/views/prompts/kb_rag.blade.php), so the score
+        // reflects what the LLM actually saw (Copilot #238):
+        //  - primary + graph-expanded → full chunk_text,
+        //  - rejected-approach → `rejected_summary ?? Str::limit(chunk_text, 240)`.
+        // Using full chunk_text for the rejected bucket would mis-score an
+        // answer that legitimately tracks the shorter rejected text.
+        $mainText = $result->primary
             ->concat($result->expanded)
-            ->concat($result->rejected)
-            ->map(fn ($c) => (string) data_get($c, 'chunk_text', ''))
-            ->filter()
-            ->implode("\n\n");
+            ->map(fn ($c) => (string) data_get($c, 'chunk_text', ''));
+        $rejectedText = $result->rejected->map(
+            fn ($r) => (string) (data_get($r, 'document.rejected_summary')
+                ?? Str::limit((string) data_get($r, 'chunk_text', ''), 240)),
+        );
+        $groundingText = $mainText->concat($rejectedText)->filter()->implode("\n\n");
         if ($groundingText === '') {
             return 0.0;
         }
