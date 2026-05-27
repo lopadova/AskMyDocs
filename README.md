@@ -776,14 +776,16 @@ cosine-groundedness ≈ 0.62 (p95 1.0) — the answers track their citations.
 and a real LLM paraphrases rather than echoing the gold string — that is what
 the cosine + judge metrics exist to measure.)
 
-**Seeing compliance + PII live in your own runs.** Every observability /
-safety feature ships **default-OFF** for production safety. To watch them fire
-locally, flip the relevant flags in `.env` (mask strategy needs no salt):
+**Seeing compliance + PII live in your own runs.** The data-mutating
+observability features (chat logging + PII redaction) ship **default-OFF** for
+production safety; the AI Act disclosure header (`X-AI-Disclosure`, Art. 50)
+and token-level explainability are **on by default** (they add no data
+mutation). To watch the opt-in ones fire locally, flip the relevant flags in
+`.env` (mask strategy needs no salt):
 `CHAT_LOG_ENABLED=true`, `KB_PII_REDACTOR_ENABLED=true` +
 `KB_PII_REDACT_PERSIST=true` + `KB_PII_REDACT_ANSWERS=true` +
-`PII_REDACTOR_ENABLED=true` + `PII_REDACTOR_STRATEGY=mask`. The AI Act
-disclosure header (`X-AI-Disclosure`, Art. 50) and token-level explainability
-are on by default. The consolidated `KbChatFullStackComplianceTest` proves one
+`PII_REDACTOR_ENABLED=true` + `PII_REDACTOR_STRATEGY=mask`. The consolidated
+`KbChatFullStackComplianceTest` proves one
 chat turn fires grounded citations + the disclosure header + a `chat_logs` row
 + PII answer-redaction together.
 

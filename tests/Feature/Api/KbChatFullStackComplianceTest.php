@@ -112,8 +112,11 @@ final class KbChatFullStackComplianceTest extends TestCase
             'AI Act disclosure header must be present',
         );
 
-        // 3 — the turn was persisted to chat_logs (logging enabled).
-        $log = ChatLog::query()->latest('id')->first();
+        // 3 — the turn was persisted to chat_logs (logging enabled). Scope the
+        // read to the active tenant (R30) — ChatLog is tenant-aware and has no
+        // global read scope, so an unscoped latest() could pick up a row from
+        // another tenant if fixtures ever share the connection.
+        $log = ChatLog::query()->forTenant('default')->latest('id')->first();
         self::assertNotNull($log, 'the chat turn must be logged to chat_logs');
 
         // 4 — PII the LLM echoed into the answer is masked in the persisted
