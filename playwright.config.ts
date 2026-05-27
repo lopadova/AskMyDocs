@@ -89,6 +89,14 @@ export default defineConfig({
               timeout: 120_000,
               env: {
                   APP_ENV: 'testing',
+                  // Deterministic OFFLINE AI for E2E — chat-stream-browser.spec.ts
+                  // drives the real /messages/stream SSE through the real
+                  // @ai-sdk transport. The fake provider streams a canned
+                  // answer + a constant embedding vector (so retrieval always
+                  // returns the ingested chunk → the real `source-url` citation
+                  // frame is exercised). No external LLM call, no API key.
+                  AI_PROVIDER: 'fake',
+                  AI_EMBEDDINGS_PROVIDER: 'fake',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var
