@@ -134,8 +134,10 @@ class AnthropicProviderTest extends TestCase
         // Anthropic's `end_turn` normalizes to SDK union `'stop'` —
         // see StreamChunk::normalizeFinishReason().
         $this->assertSame('stop', $chunks[3]->payload['finishReason']);
-        $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
-        $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
+        // v8.4 — the `finish` chunk carries finishReason ONLY; `usage` is NOT
+        // on the wire (the SDK rejects it). Token counts are persisted
+        // server-side. See StreamChunk::finish().
+        $this->assertArrayNotHasKey('usage', $chunks[3]->payload);
     }
 
     public function test_chat_stream_skips_text_envelope_on_empty_response(): void

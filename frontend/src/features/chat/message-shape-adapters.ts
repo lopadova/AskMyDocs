@@ -175,6 +175,9 @@ interface ProvenanceMeta {
 function sourcePartToCitation(part: {
     sourceId: string;
     title?: string;
+    // The SSE wire enforces a non-null `url` (SDK `source-url` schema), but a
+    // citation re-hydrated from a PERSISTED message may carry a null url — keep
+    // the null branch so persisted-citation rendering doesn't break.
     url?: string | null;
     origin?: string;
     // v8.1 P2 — the streaming controller carries citation provenance

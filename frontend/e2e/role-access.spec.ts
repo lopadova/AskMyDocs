@@ -45,6 +45,12 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
 
 const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
 
+// DemoSeeder seeds the super-admin as `super@demo.local` (NOT
+// `super-admin@demo.local`); every other role uses `<role>@demo.local`.
+function roleEmail(role: string): string {
+    return role === 'super-admin' ? 'super@demo.local' : `${role}@demo.local`;
+}
+
 async function loginAs(page: Page, email: string): Promise<void> {
     await page.request.get('/sanctum/csrf-cookie');
     const cookies = await page.context().cookies();
@@ -68,7 +74,7 @@ test.describe('R32 per-role admin API access control', () => {
 
     for (const role of ALL_ROLES) {
         test(`role [${role}] reaches exactly its allowed admin endpoints`, async ({ page }) => {
-            await loginAs(page, `${role}@demo.local`);
+            await loginAs(page, roleEmail(role));
 
             for (const { uri, allowed } of ENDPOINTS) {
                 const status = (await page.request.get(uri)).status();

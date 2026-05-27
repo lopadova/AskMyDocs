@@ -309,6 +309,11 @@ final readonly class StreamChunk
      *
      * @throws InvalidArgumentException When `$finishReason` is not in
      *         {@see self::FINISH_REASONS}.
+     *
+     * @param  ?int  $promptTokens      @deprecated v8.4 — no longer emitted on
+     *         the wire (the SDK `finish` chunk has no `usage` key); token
+     *         counts are persisted server-side. Retained for caller BC.
+     * @param  ?int  $completionTokens  @deprecated v8.4 — see $promptTokens.
      */
     public static function finish(
         string $finishReason = 'stop',

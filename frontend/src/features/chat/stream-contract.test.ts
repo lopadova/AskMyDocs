@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { readUIMessageStream, uiMessageChunkSchema, type UIMessageChunk } from 'ai';
+import { readUIMessageStream, uiMessageChunkSchema, type UIMessage, type UIMessageChunk } from 'ai';
 import { safeValidateTypes } from '@ai-sdk/provider-utils';
 import { getCitations, getTextContent } from './message-shape-adapters';
 
@@ -84,16 +84,16 @@ describe('SSE wire contract — every BE frame validates against the real @ai-sd
             },
         });
 
-        let assembled: { parts: unknown[] } | undefined;
+        let assembled: UIMessage | undefined;
         for await (const message of readUIMessageStream({ stream, onError })) {
-            assembled = message as unknown as { parts: unknown[] };
+            assembled = message;
         }
 
         expect(onError).not.toHaveBeenCalled();
         expect(assembled).toBeDefined();
-        const citations = getCitations(assembled as never);
+        const citations = getCitations(assembled!);
         expect(citations).toHaveLength(1);
         expect(citations[0].origin).toBe('primary');
-        expect(getTextContent(assembled as never)).toBe('Up to 3 days.');
+        expect(getTextContent(assembled!)).toBe('Up to 3 days.');
     });
 });
