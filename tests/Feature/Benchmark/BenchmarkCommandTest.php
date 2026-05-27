@@ -132,6 +132,9 @@ final class BenchmarkCommandTest extends TestCase
         // so the aggregation path is exercised correctly too.
         $faithValues = array_map(fn ($r) => (float) $r['faithfulness'], $scored);
         $expectedMean = round(array_sum($faithValues) / count($faithValues), 4);
-        $this->assertSame($expectedMean, $card['aggregate']['answer_faithfulness'], 'aggregate equals mean of per-query faithfulness');
+        // Delta (not assertSame): JSON round-trips 1.0 → int 1 and float
+        // serialization can shift the binary representation, so compare
+        // numerically with tolerance rather than by strict type+value.
+        $this->assertEqualsWithDelta($expectedMean, (float) $card['aggregate']['answer_faithfulness'], 0.0001, 'aggregate equals mean of per-query faithfulness');
     }
 }
