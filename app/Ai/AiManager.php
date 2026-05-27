@@ -173,10 +173,30 @@ class AiManager
             'gemini' => new GeminiProvider($config),
             'openrouter' => new OpenRouterProvider($config),
             'regolo' => new RegoloProvider($config),
-            // Deterministic offline provider — only resolvable when AI_PROVIDER
-            // / AI_EMBEDDINGS_PROVIDER name it (E2E / local demo). Never in prod.
-            'fake' => new \App\Ai\Providers\FakeProvider($config),
+            // Deterministic offline provider for E2E / local demo. Hard-gated
+            // to testing/local so a production misconfig (AI_PROVIDER=fake)
+            // can NEVER silently ship canned answers — it throws loudly
+            // instead. The earlier "never in prod" comment was only a
+            // convention; this makes it an enforced invariant.
+            'fake' => $this->resolveFakeProvider($config),
             default => throw new InvalidArgumentException("Unknown AI provider [{$name}]."),
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function resolveFakeProvider(array $config): AiProviderInterface
+    {
+        if (! app()->environment(['testing', 'local'])) {
+            throw new InvalidArgumentException(
+                'The [fake] AI provider is only available in the testing/local '
+                . 'environments. Unset AI_PROVIDER / AI_EMBEDDINGS_PROVIDER=fake '
+                . '(it ships canned answers + a constant embedding vector and must '
+                . 'never run in production).'
+            );
+        }
+
+        return new \App\Ai\Providers\FakeProvider($config);
     }
 }

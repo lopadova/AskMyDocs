@@ -4,6 +4,7 @@ namespace Tests\Unit\Ai;
 
 use App\Ai\AiManager;
 use App\Ai\Providers\AnthropicProvider;
+use App\Ai\Providers\FakeProvider;
 use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
@@ -32,6 +33,30 @@ class AiManagerTest extends TestCase
         $this->assertInstanceOf(GeminiProvider::class, $manager->provider('gemini'));
         $this->assertInstanceOf(OpenRouterProvider::class, $manager->provider('openrouter'));
         $this->assertInstanceOf(RegoloProvider::class, $manager->provider('regolo'));
+    }
+
+    public function test_resolves_fake_provider_in_testing_environment(): void
+    {
+        // The test suite runs under APP_ENV=testing, so the gate allows it.
+        $manager = new AiManager();
+
+        $this->assertInstanceOf(FakeProvider::class, $manager->provider('fake'));
+        $this->assertSame('fake', $manager->provider('fake')->name());
+    }
+
+    public function test_fake_provider_is_blocked_outside_testing_local(): void
+    {
+        $original = $this->app['env'];
+        $this->app['env'] = 'production';
+
+        try {
+            $this->expectException(InvalidArgumentException::class);
+            $this->expectExceptionMessage('only available in the testing/local');
+
+            (new AiManager())->provider('fake');
+        } finally {
+            $this->app['env'] = $original;
+        }
     }
 
     public function test_regolo_supports_embeddings(): void
