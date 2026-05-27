@@ -99,9 +99,29 @@ class DemoSeeder extends Seeder
             $super->assignRole('super-admin');
         }
 
+        // R32 — the dpo + editor accounts complete the five-role set so the
+        // per-role access-control E2E (role-access.spec.ts) and the
+        // AdminAuthorizationMatrixTest can exercise every distinct allow-set.
+        // dpo = privacy role (PII tooling + AI Act, no system admin);
+        // editor = content role (KB edit/promote + eval-harness, no admin shell).
+        $roleUsers = [];
+        foreach (['dpo', 'editor'] as $roleName) {
+            $roleUser = User::firstOrCreate(
+                ['email' => $roleName.'@demo.local'],
+                ['name' => 'Demo '.ucfirst($roleName), 'password' => Hash::make('password')],
+            );
+            if (! $roleUser->hasRole($roleName)) {
+                $roleUser->assignRole($roleName);
+            }
+            $roleUsers[] = $roleUser;
+        }
+
         $this->seedProjectMemberships($admin);
         $this->seedProjectMemberships($viewer);
         $this->seedProjectMemberships($super);
+        foreach ($roleUsers as $roleUser) {
+            $this->seedProjectMemberships($roleUser);
+        }
         $this->seedKnowledgeDocuments();
         $this->seedCanonicalGraph();
         $this->seedConversations($admin);

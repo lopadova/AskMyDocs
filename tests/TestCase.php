@@ -173,6 +173,20 @@ abstract class TestCase extends OrchestraTestCase
         // can't read the golden dataset paths under
         // `eval-harness.askmydocs.golden.*` and the registrar throws.
         $app['config']->set('eval-harness', require __DIR__.'/../config/eval-harness.php');
+        // v6.0 / R32 — host override of the AI Act compliance package config.
+        // CRITICAL: the package default `routes.middleware` is `['api']` (no
+        // auth, no gate), which leaves DSAR / incidents / bias / risk-register
+        // / consent endpoints reachable UNAUTHENTICATED. Loading the host
+        // config here (the same file production loads) applies the
+        // auth:sanctum + viewAiActCompliance gate so AdminAuthorizationMatrixTest
+        // verifies the SECURE configuration, not the insecure package default.
+        // array_merge keeps the package's other top-level keys (the SP's
+        // mergeConfigFrom already populated them at register-time, line ~87)
+        // while the host's complete `routes` block wins.
+        $app['config']->set('ai-act-compliance', array_merge(
+            (array) $app['config']->get('ai-act-compliance', []),
+            require __DIR__.'/../config/ai-act-compliance.php',
+        ));
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on

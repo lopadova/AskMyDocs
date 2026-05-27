@@ -849,6 +849,36 @@ and start composite uniques with `tenant_id`. Architecture test
 and gates new entries.
 → See `.claude/skills/tenant-id-mandatory/SKILL.md`.
 
+### R32 — RBAC access-control is a regression gate (authorization matrix)
+Every new **protected route / API / admin SPA screen / `Gate::define` /
+role / permission / feature-flagged route group** MUST be added, in the
+SAME PR, to the canonical access-control matrix:
+
+- **API:** `tests/Feature/Security/AdminAuthorizationMatrixTest.php` — the
+  `matrix()` array maps a representative no-path-param endpoint per group
+  → the EXACT allow-set of roles. The test asserts, for all five roles
+  (super-admin / admin / dpo / editor / viewer) + the guest:
+  role-NOT-in-set → **exactly 403**; role-in-set → **anything-but-403**
+  (authz passed; the controller may still 200/404/422/500 on data);
+  guest → **401**.
+- **UI:** `frontend/e2e/role-access.spec.ts` — per-role nav/screen
+  visibility + reachability.
+
+Per-controller tests each cover one endpoint for one or two roles, so a
+new route that forgets its `role:` / `can:` gate — or a vendor package
+that mounts routes with a permissive `middleware => ['api']` default —
+ships **green**. This rule is graded on **blast radius, not frequency**:
+the matrix's first run (v8.4) caught `api/admin/ai-act-compliance/*`
+mounted with NO auth, exposing DSAR / incidents / bias / risk-register /
+consent data **unauthenticated** — one missing config key = a public data
+breach. Package-registered admin routes MUST be gated by overriding the
+host `config/<pkg>.php` `routes.middleware` with the authenticated admin
+stack (`auth:sanctum` + `tenant.authorize` + `can:<gate>`), and that host
+config MUST be loaded in `tests/TestCase.php::getEnvironmentSetUp`
+(Testbench does NOT auto-load host `config/`) so the matrix verifies the
+SECURE config, not the package default.
+→ See `.claude/skills/rbac-authorization-matrix/SKILL.md`.
+
 ### R37 — Branching strategy: `feature/v4.x` integration branches → main
 For AskMyDocs, `main` holds the **stable production release** (v3 today,
 v4.0 when v4.0 RC ships, v4.1 when v4.1 ships, etc.). Each major
@@ -1265,7 +1295,7 @@ must run retroactively.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R31 + R36–R40 are the populated set; R32–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R40 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

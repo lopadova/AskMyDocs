@@ -139,7 +139,7 @@ export default defineConfig({
             // state; every *-super-admin.spec.ts under the super-admin
             // one. Keep the ignore list a single regex so new RBAC
             // denial / elevation specs don't need this config touched.
-            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/],
+            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/, /role-access\.spec\.ts/],
         },
         {
             // Non-admin project — runs ONLY the *-viewer scenarios.
@@ -164,6 +164,21 @@ export default defineConfig({
             },
             dependencies: ['super-admin-setup'],
             testMatch: /.*-super-admin\.spec\.ts/,
+        },
+        {
+            // R32 — per-role access-control gate. Runs role-access.spec.ts in a
+            // CLEAN (unauthenticated) context: the spec logs in as each of the
+            // five roles inline + asserts the API allow-set, plus a guest case.
+            // No pre-auth storage state may leak in. Depends on `setup` only to
+            // serialise the boot-time DB migrate; the spec's own beforeEach
+            // reseeds via resetAndSeed.
+            name: 'chromium-role-access',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: { cookies: [], origins: [] },
+            },
+            dependencies: ['setup'],
+            testMatch: /role-access\.spec\.ts/,
         },
     ],
 });
