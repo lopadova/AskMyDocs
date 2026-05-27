@@ -152,7 +152,7 @@ return [
             'name' => 'regolo',
             'key' => env('REGOLO_API_KEY'),
             'url' => env('REGOLO_BASE_URL', 'https://api.regolo.ai/v1'),
-            'timeout' => (int) env('REGOLO_TIMEOUT', 120),
+            'timeout' => is_numeric($v = env('REGOLO_TIMEOUT')) ? (int) $v : 120,
             // Provider-level defaults for every chat call. Per-call
             // overrides via `$options['max_tokens']` / `$options['temperature']`
             // (e.g. `ConversationController::generateTitle` capping
