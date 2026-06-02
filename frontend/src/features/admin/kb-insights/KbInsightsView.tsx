@@ -53,9 +53,10 @@ export function KbInsightsView(): ReactNode {
                 </select>
             </header>
             <p style={{ margin: '0 0 16px', color: 'var(--fg-3)', fontSize: 11.5, maxWidth: 640 }}>
-                When a document is ingested or modified, an AI pass suggests how to strengthen it, surfaces
-                cross-references, and flags which other docs the change may have made obsolete. Advice only —
-                nothing here edits a document.
+                When a document is ingested, modified, or deleted, an AI pass suggests how to strengthen it,
+                surfaces cross-references, and flags which other docs the change may have made obsolete (for a
+                deletion, which remaining docs now have a dangling reference). Advice only — nothing here edits
+                a document.
             </p>
 
             {query.isLoading && (
@@ -79,7 +80,7 @@ export function KbInsightsView(): ReactNode {
                     data-state="empty"
                     style={{ color: 'var(--fg-3)', padding: 24, textAlign: 'center', border: '1px dashed var(--panel-border)', borderRadius: 8 }}
                 >
-                    No document analyses yet. They appear automatically after canonical documents are ingested or modified.
+                    No document analyses yet. They appear automatically after canonical documents are ingested, modified, or deleted.
                 </p>
             )}
 

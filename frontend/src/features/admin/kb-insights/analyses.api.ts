@@ -29,7 +29,7 @@ export interface DocAnalysis {
     knowledge_document_id: number;
     document_title: string | null;
     doc_slug: string | null;
-    trigger: 'ingested' | 'modified';
+    trigger: 'ingested' | 'modified' | 'deleted';
     analysis_json: AnalysisJson;
     suggestion_count: number;
     impacted_count: number;

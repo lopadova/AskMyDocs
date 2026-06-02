@@ -30,6 +30,7 @@ class KbDocAnalysis extends Model
 
     public const TRIGGER_INGESTED = 'ingested';
     public const TRIGGER_MODIFIED = 'modified';
+    public const TRIGGER_DELETED = 'deleted';
 
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_FAILED = 'failed';
