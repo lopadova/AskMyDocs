@@ -92,7 +92,7 @@ final class KbStaleReviewSweepCommand extends Command
                     });
             })
             ->orderBy('id')
-            ->chunkById(100, function ($docs) use ($publisher, &$flagged, $limit, $dryRun): bool {
+            ->chunkById(100, function ($docs) use ($publisher, &$flagged, $limit, $dryRun, $tenantId): bool {
                 foreach ($docs as $doc) {
                     if ($flagged >= $limit) {
                         return false; // stop chunking once the per-run cap is hit
@@ -115,9 +115,9 @@ final class KbStaleReviewSweepCommand extends Command
                     // R21: check + publish + mark-notified all happen inside a single
                     // DB::transaction with lockForUpdate so two concurrent sweeps cannot
                     // both read stale_review_notified_at as absent and double-notify.
-                    $notified = DB::transaction(function () use ($doc, $lastTouched, $publisher): bool {
+                    $notified = DB::transaction(function () use ($doc, $lastTouched, $publisher, $tenantId): bool {
                         /** @var KnowledgeDocument|null $fresh */
-                        $fresh = KnowledgeDocument::query()->lockForUpdate()->find($doc->id);
+                        $fresh = KnowledgeDocument::query()->forTenant($tenantId)->lockForUpdate()->find($doc->id);
                         if ($fresh === null || $this->alreadyNotifiedForVersion($fresh, $lastTouched)) {
                             return false;
                         }
