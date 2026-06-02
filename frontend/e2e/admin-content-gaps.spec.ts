@@ -18,7 +18,8 @@ test.describe('Admin Content Gaps', () => {
         await seedDb(request, 'KbContentGapSeeder');
 
         await page.goto('/app/admin/kb/content-gaps');
-        await expect(page.getByTestId('admin-content-gaps-view')).toBeVisible({ timeout: 15_000 });
+        // Wait on the root data-state (deterministic) rather than mere visibility.
+        await expect(page.getByTestId('admin-content-gaps-view')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         const list = page.getByTestId('admin-content-gaps-list');
         await expect(list).toBeVisible({ timeout: 15_000 });
 
