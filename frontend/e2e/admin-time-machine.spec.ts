@@ -14,19 +14,15 @@ test.describe.configure({ timeout: 90_000 });
 
 test.describe('Admin Time Machine', () => {
     test('opens a real document timeline and never crashes', async ({ page }) => {
-        // Resolve a real document id from the admin docs list.
-        const resp = await page.request.get('/api/admin/kb/documents?per_page=1');
-        expect(resp.ok()).toBeTruthy();
-        const body = await resp.json();
-        const docId = body?.data?.[0]?.id;
-        test.skip(!docId, 'No KB documents seeded to drive the Time Machine timeline.');
-
-        await page.goto(`/app/admin/kb/time-machine/${docId}`);
+        // The DemoSeeder seeds KB documents, so document id 1 exists; the
+        // Time Machine reads its real `/versions` family (a document is always
+        // a version of itself, so the timeline is non-empty). R12: the happy
+        // path asserts the real-data SUCCESS state (timeline | empty), NOT the
+        // error branch — that's covered by the second test below.
+        await page.goto('/app/admin/kb/time-machine/1');
         await expect(page.getByTestId('kb-time-machine-view')).toBeVisible({ timeout: 15_000 });
         const timeline = page.getByTestId('kb-time-machine-timeline');
         const empty = page.getByTestId('kb-time-machine-empty');
-        // R12: happy path must NOT accept the error state as a valid outcome —
-        // the error branch is covered by the second test below.
         await expect(timeline.or(empty)).toBeVisible({ timeout: 15_000 });
     });
 

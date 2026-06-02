@@ -106,7 +106,9 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                             <p data-testid="kb-time-machine-diff-summary" style={{ fontSize: 12, color: 'var(--fg-2)' }}>
                                 +{diff.data.added} / −{diff.data.removed}
                             </p>
-                            <pre data-testid="kb-time-machine-diff-body" style={{ background: 'var(--bg-2, rgba(255,255,255,.02))', border: '1px solid var(--panel-border)', borderRadius: 8, padding: 12, fontSize: 12, overflowX: 'auto', margin: 0 }}>
+                            {/* A styled <div> (not <pre>) — block-level <div>
+                                children are invalid inside <pre> (Copilot review). */}
+                            <div data-testid="kb-time-machine-diff-body" style={{ background: 'var(--bg-2, rgba(255,255,255,.02))', border: '1px solid var(--panel-border)', borderRadius: 8, padding: 12, fontSize: 12, fontFamily: 'var(--font-mono, monospace)', overflowX: 'auto', margin: 0 }}>
                                 {diff.data.rows.map((r, i) => (
                                     <div
                                         key={i}
@@ -119,7 +121,7 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                                         {r.type === 'add' ? '+ ' : r.type === 'remove' ? '- ' : '  '}{r.text}
                                     </div>
                                 ))}
-                            </pre>
+                            </div>
                         </>
                     )}
                 </section>
@@ -159,15 +161,15 @@ function VersionRow({
                 {v.is_live ? 'live' : v.status}
             </span>
             <span style={{ flex: 1 }} />
-            <button type="button" data-testid={`kb-time-machine-version-${v.id}-from`} onClick={onPickFrom} aria-pressed={isFrom} style={pill(isFrom)}>From</button>
-            <button type="button" data-testid={`kb-time-machine-version-${v.id}-to`} onClick={onPickTo} aria-pressed={isTo} style={pill(isTo)}>To</button>
+            <button type="button" data-testid={`kb-time-machine-version-${v.id}-from`} onClick={onPickFrom} aria-pressed={isFrom} aria-label={`Diff from ${versionLabel(v)}`} style={pill(isFrom)}>From</button>
+            <button type="button" data-testid={`kb-time-machine-version-${v.id}-to`} onClick={onPickTo} aria-pressed={isTo} aria-label={`Diff to ${versionLabel(v)}`} style={pill(isTo)}>To</button>
             {!v.is_live && (
                 <button
                     type="button"
                     data-testid={`kb-time-machine-version-${v.id}-restore`}
                     onClick={onRestore}
                     disabled={restoring}
-                    aria-label={`Restore version ${v.id}`}
+                    aria-label={`Restore ${versionLabel(v)}`}
                     style={{ ...pill(false), border: '1px solid var(--accent, #6366f1)', color: 'var(--accent, #6366f1)' }}
                 >
                     Restore
@@ -175,6 +177,13 @@ function VersionRow({
             )}
         </div>
     );
+}
+
+/** A human-readable, unique label for a version (for SR aria-labels). */
+function versionLabel(v: DocVersion): string {
+    const hash = (v.version_hash ?? '').slice(0, 8);
+    const name = v.title ?? `version ${v.id}`;
+    return hash ? `${name} (${hash}${v.is_live ? ', live' : ''})` : `${name}${v.is_live ? ' (live)' : ''}`;
 }
 
 function pill(active: boolean): React.CSSProperties {

@@ -75,7 +75,7 @@ final class KbDocumentVersionController extends Controller
     }
 
     /**
-     * POST /api/admin/kb/documents/{id}/restore
+     * POST /api/admin/kb/documents/{id}/restore-version
      *
      * Restores version `{id}` to live (archives the current live version,
      * transfers its canonical identity when canonical). Refuses if `{id}`

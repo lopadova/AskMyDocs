@@ -68,34 +68,46 @@ final class PruneArchivedVersionsCommand extends Command
 
         $pruned = 0;
         foreach ($families as $family) {
-            // Surplus = every archived version after the newest `keep`.
-            $surplusIds = KnowledgeDocument::query()
-                ->forTenant($tenantId)
-                ->where('status', 'archived')
-                ->where('project_key', $family->project_key)
-                ->where('source_path', $family->source_path)
-                ->orderByDesc('indexed_at')
-                ->orderByDesc('id')
-                ->skip($keep)
-                ->take(10_000)
-                ->pluck('id')
-                ->all();
-
-            if ($surplusIds === []) {
+            $surplusCount = max(0, (int) $family->version_count - $keep);
+            if ($surplusCount === 0) {
                 continue;
             }
-            $pruned += count($surplusIds);
 
+            // Dry-run reports the full surplus from the grouped count without
+            // touching the DB.
             if ($dryRun) {
+                $pruned += $surplusCount;
                 continue;
             }
 
-            // Hard delete (chunks cascade via FK ON DELETE CASCADE). Bulk
-            // forceDelete in id-chunks keeps the IN list parser-friendly (R3).
-            foreach (array_chunk($surplusIds, 500) as $chunk) {
+            // Loop in batches until the cap is enforced, so a family with
+            // more than `keep + batch` archived versions still converges in a
+            // single run (a fixed `take(N)` could leave the cap violated until
+            // future runs — Copilot review). Each pass skips the newest `keep`
+            // and deletes the next-oldest batch; the kept set never moves.
+            $batch = 500;
+            while (true) {
+                $surplusIds = KnowledgeDocument::query()
+                    ->forTenant($tenantId)
+                    ->where('status', 'archived')
+                    ->where('project_key', $family->project_key)
+                    ->where('source_path', $family->source_path)
+                    ->orderByDesc('indexed_at')
+                    ->orderByDesc('id')
+                    ->skip($keep)
+                    ->take($batch)
+                    ->pluck('id')
+                    ->all();
+
+                if ($surplusIds === []) {
+                    break;
+                }
+                $pruned += count($surplusIds);
+
+                // Hard delete (chunks cascade via FK ON DELETE CASCADE).
                 KnowledgeDocument::query()
                     ->forTenant($tenantId)
-                    ->whereIn('id', $chunk)
+                    ->whereIn('id', $surplusIds)
                     ->forceDelete();
             }
         }
