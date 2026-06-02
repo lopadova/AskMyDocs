@@ -6,6 +6,7 @@ namespace App\Services\Kb;
 
 use App\Models\KnowledgeChunk;
 use App\Services\Kb\Retrieval\GraphExpander;
+use App\Services\Kb\Retrieval\QueryLanguageDetector;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
@@ -21,6 +22,7 @@ class KbSearchService
     private readonly GraphExpander $graphExpander;
     private readonly RejectedApproachInjector $rejectedInjector;
     private readonly SynonymExpander $synonymExpander;
+    private readonly QueryLanguageDetector $languageDetector;
 
     public function __construct(
         private readonly EmbeddingCacheService $embeddingCache,
@@ -28,14 +30,37 @@ class KbSearchService
         ?GraphExpander $graphExpander = null,
         ?RejectedApproachInjector $rejectedInjector = null,
         ?SynonymExpander $synonymExpander = null,
+        ?QueryLanguageDetector $languageDetector = null,
     ) {
-        // GraphExpander, RejectedApproachInjector and SynonymExpander are
-        // default-constructed when not wired explicitly so legacy
-        // resolutions of KbSearchService (tests / older bindings) keep
-        // working without signature churn.
+        // GraphExpander, RejectedApproachInjector, SynonymExpander and
+        // QueryLanguageDetector are default-constructed when not wired
+        // explicitly so legacy resolutions of KbSearchService (tests / older
+        // bindings) keep working without signature churn.
         $this->graphExpander = $graphExpander ?? new GraphExpander();
         $this->rejectedInjector = $rejectedInjector ?? new RejectedApproachInjector($this->embeddingCache);
         $this->synonymExpander = $synonymExpander ?? new SynonymExpander();
+        $this->languageDetector = $languageDetector ?? new QueryLanguageDetector();
+    }
+
+    /**
+     * v8.8/W5 — resolve the PostgreSQL FTS dictionary for a query. When
+     * per-query detection is enabled the query language is detected among the
+     * configured supported set; on no/ambiguous signal (or when detection is
+     * off) it falls back to the fixed config language — R14: never silently
+     * stem with the WRONG dictionary.
+     */
+    private function resolveFtsLanguage(string $query): string
+    {
+        $default = (string) config('kb.hybrid_search.fts_language', 'italian');
+
+        if (! (bool) config('kb.hybrid_search.fts_language_detection', false)) {
+            return $default;
+        }
+
+        $supported = config('kb.hybrid_search.fts_supported_languages', ['english', 'italian']);
+        $supported = is_array($supported) ? array_values(array_filter($supported, 'is_string')) : [];
+
+        return $this->languageDetector->detect($query, $supported) ?? $default;
     }
 
     /**
@@ -666,7 +691,9 @@ class KbSearchService
             return collect();
         }
 
-        $lang = config('kb.hybrid_search.fts_language', 'italian');
+        // v8.8/W5 — per-query language: detect among the supported set, else
+        // fall back to the fixed config language.
+        $lang = $this->resolveFtsLanguage($query);
 
         // v8.7/W1 — OR-expand the tsquery with registered synonyms so a
         // lexical query for an in-house term also matches docs that only
