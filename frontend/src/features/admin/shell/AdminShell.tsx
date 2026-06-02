@@ -32,6 +32,7 @@ export type AdminSection =
     | 'synonyms'
     | 'kb-insights'
     | 'analysis-settings'
+    | 'content-gaps'
     | 'time-machine'
     | 'compliance-reports'
     // v8.0/W1.4 — dedicated identifier so the
@@ -85,6 +86,8 @@ const RAIL: RailEntry[] = [
     { id: 'kb-insights', label: 'Doc Insights', icon: 'Sparkles', to: '/app/admin/kb/insights' },
     // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
     { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Wrench', to: '/app/admin/kb/analysis-settings' },
+    // v8.8/W4 — content-gap analytics (unanswered questions).
+    { id: 'content-gaps', label: 'Content Gaps', icon: 'Sparkles', to: '/app/admin/kb/content-gaps' },
     { id: 'compliance-reports', label: 'Compliance', icon: 'Shield', to: '/app/admin/compliance/reports' },
 ];
 

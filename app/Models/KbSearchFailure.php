@@ -28,8 +28,9 @@ class KbSearchFailure extends Model
 {
     use BelongsToTenant;
 
+    // Mirror the refusal reasons KbChatController / MessageController emit.
     public const REASON_NO_CONTEXT = 'no_relevant_context';
-    public const REASON_SELF_REFUSAL = 'self_refusal';
+    public const REASON_SELF_REFUSAL = 'llm_self_refusal';
 
     protected $table = 'kb_search_failures';
 
