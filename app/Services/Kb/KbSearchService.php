@@ -9,6 +9,7 @@ use App\Services\Kb\Retrieval\GraphExpander;
 use App\Services\Kb\Retrieval\RejectedApproachInjector;
 use App\Services\Kb\Retrieval\RetrievalFilters;
 use App\Services\Kb\Retrieval\SearchResult;
+use App\Services\Kb\Retrieval\SynonymExpander;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,18 +20,34 @@ class KbSearchService
 {
     private readonly GraphExpander $graphExpander;
     private readonly RejectedApproachInjector $rejectedInjector;
+    private readonly SynonymExpander $synonymExpander;
 
     public function __construct(
         private readonly EmbeddingCacheService $embeddingCache,
         private readonly Reranker $reranker,
         ?GraphExpander $graphExpander = null,
         ?RejectedApproachInjector $rejectedInjector = null,
+        ?SynonymExpander $synonymExpander = null,
     ) {
-        // GraphExpander and RejectedApproachInjector are default-constructed
-        // when not wired explicitly so legacy resolutions of KbSearchService
-        // (tests / older bindings) keep working without signature churn.
+        // GraphExpander, RejectedApproachInjector and SynonymExpander are
+        // default-constructed when not wired explicitly so legacy
+        // resolutions of KbSearchService (tests / older bindings) keep
+        // working without signature churn.
         $this->graphExpander = $graphExpander ?? new GraphExpander();
         $this->rejectedInjector = $rejectedInjector ?? new RejectedApproachInjector($this->embeddingCache);
+        $this->synonymExpander = $synonymExpander ?? new SynonymExpander();
+    }
+
+    /**
+     * v8.7/W1 — the text fed to the embedding model for a query. When
+     * synonym expansion is enabled and the (tenant, project) has matching
+     * synonym groups, the query is enriched with the equivalent jargon so
+     * the query embedding drifts toward documents that only use the
+     * in-house term. No-op (returns the query verbatim) otherwise.
+     */
+    private function embeddingTextFor(string $query, ?string $projectKey): string
+    {
+        return $this->synonymExpander->expandQueryText($query, $projectKey);
     }
 
     /**
@@ -59,7 +76,9 @@ class KbSearchService
         $retrievalStart = microtime(true);
 
         // Generate once per request and reuse across primary + runner-up.
-        $embeddingsResponse = $this->embeddingCache->generate([$query]);
+        // v8.7/W1 — embed the synonym-expanded text so jargon queries reach
+        // docs that only use the equivalent term.
+        $embeddingsResponse = $this->embeddingCache->generate([$this->embeddingTextFor($query, $projectKey)]);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
 
         $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
@@ -358,9 +377,12 @@ class KbSearchService
         $effectiveFilters = $filters ?? RetrievalFilters::forLegacyProject($projectKey);
 
         // Generate query embedding (cached), or reuse the precomputed
-        // embedding from searchWithContext() when provided.
+        // embedding from searchWithContext() when provided. v8.7/W1 — the
+        // direct-call path (legacy callers / tests) also embeds the
+        // synonym-expanded text; the searchWithContext() path already
+        // expanded before precomputing, so we never double-expand.
         $queryEmbedding = $precomputedEmbedding
-            ?? $this->embeddingCache->generate([$query])->embeddings[0];
+            ?? $this->embeddingCache->generate([$this->embeddingTextFor($query, $projectKey)])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
         $tenantId = app(TenantContext::class)->current();
 
@@ -622,6 +644,14 @@ class KbSearchService
 
         $lang = config('kb.hybrid_search.fts_language', 'italian');
 
+        // v8.7/W1 — OR-expand the tsquery with registered synonyms so a
+        // lexical query for an in-house term also matches docs that only
+        // use the equivalent jargon. `plainto_tsquery` per phrase keeps
+        // Postgres responsible for escaping; the phrases are OR'd via the
+        // tsquery `||` operator. With no synonyms this collapses to the
+        // original single `plainto_tsquery(?, ?)`.
+        [$tsqueryExpr, $tsqueryBindings] = $this->buildFtsTsquery($lang, $query, $projectKey);
+
         // R30 defense-in-depth — same rationale as search() above:
         // pin both the eager-load and the whereHas to the active
         // tenant so a corrupt cross-tenant FK on knowledge_chunks
@@ -631,12 +661,12 @@ class KbSearchService
             ->forTenant($tenantId)
             ->with(['document' => fn ($q) => $q->forTenant($tenantId)])
             ->selectRaw(
-                "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), plainto_tsquery(?, ?)) as fts_score",
-                [$lang, $lang, $query]
+                "knowledge_chunks.*, ts_rank(to_tsvector(?, chunk_text), {$tsqueryExpr}) as fts_score",
+                array_merge([$lang], $tsqueryBindings)
             )
             ->whereRaw(
-                "to_tsvector(?, chunk_text) @@ plainto_tsquery(?, ?)",
-                [$lang, $lang, $query]
+                "to_tsvector(?, chunk_text) @@ {$tsqueryExpr}",
+                array_merge([$lang], $tsqueryBindings)
             )
             ->whereHas('document', fn ($q) => $q->forTenant($tenantId)->where('status', '!=', 'archived'))
             ->orderByDesc('fts_score');
@@ -658,6 +688,35 @@ class KbSearchService
         }
 
         return $builder->limit($limit)->get();
+    }
+
+    /**
+     * v8.7/W1 — build the (possibly synonym-expanded) tsquery expression
+     * + its positional bindings for the FTS branch. Returns
+     * `[$sqlExpr, $bindings]` where `$sqlExpr` is a parenthesised OR of
+     * `plainto_tsquery(?, ?)` calls — one for the original query, one per
+     * matched synonym phrase. Each `plainto_tsquery` keeps Postgres in
+     * charge of lexeme parsing/escaping, so no user input is interpolated.
+     * Collapses to a single `plainto_tsquery(?, ?)` when no synonyms match
+     * (or expansion is disabled) — byte-identical to the legacy query.
+     *
+     * @return array{0: string, 1: list<string>}
+     */
+    private function buildFtsTsquery(string $lang, string $query, ?string $projectKey): array
+    {
+        $terms = array_merge([$query], $this->synonymExpander->expansionPhrases($query, $projectKey));
+
+        $parts = [];
+        $bindings = [];
+        foreach ($terms as $term) {
+            $parts[] = 'plainto_tsquery(?, ?)';
+            $bindings[] = $lang;
+            $bindings[] = $term;
+        }
+
+        $expr = count($parts) === 1 ? $parts[0] : '('.implode(' || ', $parts).')';
+
+        return [$expr, $bindings];
     }
 
     /**

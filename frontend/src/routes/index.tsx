@@ -17,6 +17,7 @@ import { RolesView } from '../features/admin/roles/RolesView';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
+import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
@@ -334,6 +335,24 @@ const adminTagsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb/tags',
     component: AdminTagsRoute,
+});
+
+// v8.7/W1 — Admin Synonyms. Wrapped in AdminShell (rail entry +
+// section highlight) with the same flat-RBAC RequireRole pattern.
+function AdminSynonymsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="synonyms">
+                <SynonymsList />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminSynonymsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/synonyms',
+    component: AdminSynonymsRoute,
 });
 
 // PR14 / Phase I — Admin Insights. Same flat RBAC pattern — guard
@@ -700,6 +719,7 @@ const routeTree = rootRoute.addChildren([
         adminKbRoute,
         adminKbHealthRoute,
         adminTagsRoute,
+        adminSynonymsRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
         adminInsightsRoute,
