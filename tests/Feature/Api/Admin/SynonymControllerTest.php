@@ -132,6 +132,19 @@ final class SynonymControllerTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors(['term']);
     }
 
+    public function test_store_rejects_non_string_term(): void
+    {
+        // `term: []` must 422 on the `string` rule, NOT be coerced to
+        // 'Array' and persisted (Copilot review).
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->postJson('/api/admin/kb/synonyms', [
+            'project_key' => 'eng',
+            'term' => [],
+            'synonyms' => ['kubernetes'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['term']);
+    }
+
     public function test_store_rejects_whitespace_only_term(): void
     {
         $admin = $this->makeAdmin();

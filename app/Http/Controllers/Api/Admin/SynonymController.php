@@ -73,8 +73,13 @@ final class SynonymController extends Controller
         // unique rule compares the SAME value the DB stores — otherwise
         // `K8S` would pass `Rule::unique` against an existing `k8s` row and
         // then hit the DB unique as a 500. A whitespace-only term collapses
-        // to '' and is rejected by `required` (Copilot review).
-        $request->merge(['term' => $this->lower((string) $request->input('term', ''))]);
+        // to '' and is rejected by `required` + `min:1`. Only normalize when
+        // the raw input is actually a string — a non-string (e.g. `[]`)
+        // must reach the `string` rule and 422, NOT be coerced to 'Array'
+        // (Copilot review).
+        if (is_string($request->input('term'))) {
+            $request->merge(['term' => $this->lower((string) $request->input('term'))]);
+        }
 
         $validated = $request->validate($this->rules($request, null));
 
@@ -125,8 +130,10 @@ final class SynonymController extends Controller
         }
 
         // Normalize `term` before validation (see store()) so the unique
-        // rule + the non-empty `min:1` guard run on the stored value.
-        if ($request->has('term')) {
+        // rule + the non-empty `min:1` guard run on the stored value. Only
+        // when the raw input is a string — a non-string must still reach
+        // the `string` rule and 422 (Copilot review).
+        if (is_string($request->input('term'))) {
             $request->merge(['term' => $this->lower((string) $request->input('term'))]);
         }
 
