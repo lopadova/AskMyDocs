@@ -115,7 +115,10 @@ final class SynonymController extends Controller
             throw new \Illuminate\Validation\ValidationException(
                 validator(
                     ['project_key' => $request->input('project_key')],
-                    ['project_key' => 'in:' . $synonym->project_key],
+                    // Rule::in (array form) — exact match regardless of
+                    // commas/meta-chars in the value, unlike the string
+                    // `in:` rule which is comma-delimited (Copilot review).
+                    ['project_key' => [Rule::in([$synonym->project_key])]],
                     ['project_key.in' => 'Cannot move a synonym group between projects. Delete and recreate instead.'],
                 )
             );

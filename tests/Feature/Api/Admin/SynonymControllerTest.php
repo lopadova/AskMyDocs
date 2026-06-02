@@ -34,6 +34,10 @@ final class SynonymControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // TenantContext is a mutable singleton; pin it to 'default' so a
+        // prior test that switched tenants can't make these CRUD
+        // assertions order-dependent (Copilot review).
+        app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
         Cache::flush();
     }

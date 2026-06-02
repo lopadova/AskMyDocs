@@ -27,6 +27,10 @@ final class SynonymExpanderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // TenantContext is a mutable singleton; pin it to 'default' so a
+        // prior test class that switched tenants can't scope this test's
+        // seeded rows / queries to the wrong tenant (Copilot review).
+        app(TenantContext::class)->reset();
         // Disable the per-(tenant, project) cache so each test sees its
         // own freshly-seeded rows without TTL interference.
         config()->set('kb.synonyms.cache_ttl_seconds', 0);

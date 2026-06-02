@@ -10,6 +10,7 @@ use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Reranker;
 use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -31,6 +32,10 @@ final class SynonymExpansionRetrievalTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Pin the mutable TenantContext singleton to 'default' so prior
+        // tenant-switching tests can't scope this test to the wrong
+        // tenant (Copilot review).
+        app(TenantContext::class)->reset();
         config()->set('kb.synonyms.cache_ttl_seconds', 0);
         config()->set('kb.synonyms.enabled', true);
         Cache::flush();
