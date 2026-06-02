@@ -41,7 +41,8 @@ return new class extends Migration
             $table->unique(['tenant_id', 'project_key', 'term'], 'uq_kb_synonyms_tenant_project_term');
             // Hot-path lookup: the expander loads all enabled rows for the
             // active (tenant, project) on each query (cached); this index
-            // keeps that scan covering.
+            // narrows that scan to the matching (tenant, project, enabled)
+            // rows (term/synonyms are still read from the heap).
             $table->index(['tenant_id', 'project_key', 'enabled'], 'ix_kb_synonyms_tenant_project_enabled');
         });
     }

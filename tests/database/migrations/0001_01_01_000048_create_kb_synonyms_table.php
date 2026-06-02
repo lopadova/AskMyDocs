@@ -11,8 +11,9 @@ use Illuminate\Support\Facades\Schema;
  * `database/migrations/2026_06_02_000001_create_kb_synonyms_table.php`.
  * `tests/database/migrations/` is the only migration path the SQLite test
  * runner loads (see TestCase::loadMigrationsFrom), so every production
- * create-table migration needs a mirror here. No vector columns, so this
- * is byte-for-byte equivalent to the production migration.
+ * create-table migration needs a mirror here. Schema-equivalent to the
+ * production migration (no vector columns to swap for SQLite, so the
+ * table shape matches exactly).
  */
 return new class extends Migration
 {
