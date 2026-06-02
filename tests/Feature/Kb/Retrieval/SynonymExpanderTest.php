@@ -86,6 +86,23 @@ final class SynonymExpanderTest extends TestCase
         $this->assertContains('kubernetes', $phrases);
     }
 
+    public function test_matches_term_adjacent_to_punctuation(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // Trailing comma / parens must not defeat the boundary match.
+        $this->assertContains('kubernetes', $this->expander()->expansionPhrases('deploy k8s, please', 'eng'));
+        $this->assertContains('kubernetes', $this->expander()->expansionPhrases('deploy (k8s) now', 'eng'));
+    }
+
+    public function test_does_not_match_a_substring_of_a_larger_word(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // 'k8s' is a substring of 'k8sx' but not a whole token → no expansion.
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8sx', 'eng'));
+    }
+
     public function test_does_not_add_members_already_present_in_query(): void
     {
         $this->seedGroup('k8s', ['kubernetes']);

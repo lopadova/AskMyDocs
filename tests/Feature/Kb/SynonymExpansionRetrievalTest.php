@@ -9,6 +9,7 @@ use App\Models\KbSynonym;
 use App\Services\Kb\EmbeddingCacheService;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Reranker;
+use App\Services\Kb\Retrieval\RetrievalFilters;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -71,6 +72,30 @@ final class SynonymExpansionRetrievalTest extends TestCase
         $service->search('deploy k8s', 'eng');
 
         // Mockery expectations verified on tearDown.
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_search_expands_when_project_comes_from_filters_not_legacy_arg(): void
+    {
+        // The chat path passes projectKey=null and scopes via
+        // RetrievalFilters::projectKeys. Synonym expansion must still key
+        // on that effective project (Copilot review fix).
+        KbSynonym::create([
+            'project_key' => 'eng',
+            'term' => 'k8s',
+            'synonyms' => ['kubernetes'],
+            'enabled' => true,
+        ]);
+
+        $embedding = Mockery::mock(EmbeddingCacheService::class);
+        $embedding->shouldReceive('generate')
+            ->once()
+            ->with(Mockery::on(fn (array $texts): bool => isset($texts[0]) && str_contains($texts[0], 'kubernetes')))
+            ->andReturn($this->embeddingResponse());
+
+        $service = new KbSearchService($embedding, $this->rerankerStub());
+        $service->search('deploy k8s', null, 8, 0.30, new RetrievalFilters(projectKeys: ['eng']));
+
         $this->addToAssertionCount(1);
     }
 

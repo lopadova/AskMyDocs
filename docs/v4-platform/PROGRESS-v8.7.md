@@ -27,7 +27,7 @@ Running progress log for the v8.7 cycle. One section per Wn.
 - PHPUnit: `SynonymExpanderTest` (12) · `SynonymExpansionRetrievalTest` (2, Mockery embed-arg proof) ·
   `SynonymControllerTest` (15) · `TenantIdMandatoryTest` · `AdminAuthorizationMatrixTest`. Regression:
   full `tests/Feature/Kb` + `tests/Unit/Kb` + `TagControllerTest` = **370 tests / 1006 assertions OK**.
-- Vitest: `SynonymsList.test.tsx` + `parseSynonyms` = 11 green. `tsc -b` clean.
+- Vitest: `SynonymsList.test.tsx` + `parseSynonyms` = 13 green (incl. list-query-error + delete-error paths). `tsc -b` clean.
 - Playwright: `admin-synonyms.spec.ts` — lands + ARIA + full create→edit→delete round-trip + 422 duplicate.
 
 ## W2 — Weekly digest + stale-review ⏳

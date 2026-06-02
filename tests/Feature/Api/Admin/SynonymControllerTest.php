@@ -146,6 +146,34 @@ final class SynonymControllerTest extends TestCase
         $this->assertFalse($row->enabled);
     }
 
+    public function test_update_changing_term_to_collide_with_only_synonym_rejects(): void
+    {
+        // Group is {ci, continuous integration}. Renaming the term to
+        // 'continuous integration' (without sending synonyms) would leave
+        // the single existing synonym equal to the new term → 0 distinct
+        // members. Must 422, not silently persist a meaningless group.
+        $admin = $this->makeAdmin();
+        $row = KbSynonym::create(['project_key' => 'eng', 'term' => 'ci', 'synonyms' => ['continuous integration']]);
+
+        $this->actingAs($admin)->putJson("/api/admin/kb/synonyms/{$row->id}", [
+            'term' => 'continuous integration',
+        ])->assertStatus(422)->assertJsonValidationErrors(['synonyms']);
+    }
+
+    public function test_update_changing_term_keeps_remaining_distinct_synonyms(): void
+    {
+        $admin = $this->makeAdmin();
+        $row = KbSynonym::create(['project_key' => 'eng', 'term' => 'ci', 'synonyms' => ['continuous integration', 'build pipeline']]);
+
+        $this->actingAs($admin)->putJson("/api/admin/kb/synonyms/{$row->id}", [
+            'term' => 'continuous integration',
+        ])->assertOk()->assertJsonPath('data.term', 'continuous integration');
+
+        $row->refresh();
+        // The colliding synonym is dropped; the other survives.
+        $this->assertSame(['build pipeline'], $row->synonyms);
+    }
+
     public function test_update_rejects_project_key_change(): void
     {
         $admin = $this->makeAdmin();

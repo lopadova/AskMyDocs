@@ -69,14 +69,14 @@ final class SynonymExpander
             return [];
         }
 
-        $haystack = ' '.$this->normalize($query).' ';
+        $haystack = $this->normalize($query);
         $expansions = [];
 
         foreach ($groups as $members) {
             // Does the query mention ANY member of this equivalence group?
             $matched = false;
             foreach ($members as $member) {
-                if ($member !== '' && str_contains($haystack, ' '.$member.' ')) {
+                if ($member !== '' && $this->mentions($haystack, $member)) {
                     $matched = true;
                     break;
                 }
@@ -87,7 +87,7 @@ final class SynonymExpander
 
             // Add every member NOT already present in the query.
             foreach ($members as $member) {
-                if ($member === '' || str_contains($haystack, ' '.$member.' ')) {
+                if ($member === '' || $this->mentions($haystack, $member)) {
                     continue;
                 }
                 $expansions[$member] = true;
@@ -95,6 +95,21 @@ final class SynonymExpander
         }
 
         return array_keys($expansions);
+    }
+
+    /**
+     * Word/phrase-boundary match of a (normalized) member against a
+     * (normalized) query. Boundaries are non-letter/digit positions, so a
+     * member adjacent to punctuation still matches (`k8s,` / `k8s.` /
+     * `(k8s)`) while a member that is merely a substring of a larger word
+     * does not (`k8s` does NOT match `k8sx`). Internal punctuation inside a
+     * member (`gp-2.0`, `c++`) is treated literally via preg_quote.
+     */
+    private function mentions(string $haystack, string $member): bool
+    {
+        $pattern = '/(?<![\p{L}\p{N}])'.preg_quote($member, '/').'(?![\p{L}\p{N}])/u';
+
+        return preg_match($pattern, $haystack) === 1;
     }
 
     /**
@@ -116,6 +131,10 @@ final class SynonymExpander
                 ->forTenant($tenantId)
                 ->where('project_key', $project)
                 ->where('enabled', true)
+                // Deterministic order so the appended expansion-phrase order
+                // (and therefore the embedding input text) is stable across
+                // DB engines — no "same synonyms, different embedding" drift.
+                ->orderBy('term')
                 ->get(['term', 'synonyms']);
 
             $groups = [];

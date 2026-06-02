@@ -51,6 +51,24 @@ class KbSearchService
     }
 
     /**
+     * v8.7/W1 — resolve the project the synonym map should be keyed on.
+     * Legacy callers pass `?string $projectKey`; the filters-based chat
+     * path passes `projectKey = null` and scopes via
+     * `RetrievalFilters::projectKeys`. Without this fallback synonym
+     * expansion would silently no-op for every filters-based query
+     * (Copilot review). Uses the first projectKey of the filter set —
+     * the same representative project the rest of the meta payload uses.
+     */
+    private function synonymProject(?string $projectKey, RetrievalFilters $filters): ?string
+    {
+        if ($projectKey !== null && $projectKey !== '') {
+            return $projectKey;
+        }
+
+        return $filters->projectKeys[0] ?? null;
+    }
+
+    /**
      * Extended search that adds graph expansion + rejected-approach
      * injection on top of the base primary results. Used by the chat
      * controller and MCP tools that want the full retrieval context;
@@ -77,8 +95,11 @@ class KbSearchService
 
         // Generate once per request and reuse across primary + runner-up.
         // v8.7/W1 — embed the synonym-expanded text so jargon queries reach
-        // docs that only use the equivalent term.
-        $embeddingsResponse = $this->embeddingCache->generate([$this->embeddingTextFor($query, $projectKey)]);
+        // docs that only use the equivalent term. Key the synonym map on
+        // the effective project (filters-derived when projectKey is null).
+        $embeddingsResponse = $this->embeddingCache->generate([
+            $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
+        ]);
         $queryEmbedding = $embeddingsResponse->embeddings[0];
 
         $primary = $this->search($query, $projectKey, $limit, $minSimilarity, $filters, $queryEmbedding);
@@ -379,10 +400,13 @@ class KbSearchService
         // Generate query embedding (cached), or reuse the precomputed
         // embedding from searchWithContext() when provided. v8.7/W1 — the
         // direct-call path (legacy callers / tests) also embeds the
-        // synonym-expanded text; the searchWithContext() path already
-        // expanded before precomputing, so we never double-expand.
+        // synonym-expanded text, keyed on the effective project (filters
+        // fallback); the searchWithContext() path already expanded before
+        // precomputing, so we never double-expand.
         $queryEmbedding = $precomputedEmbedding
-            ?? $this->embeddingCache->generate([$this->embeddingTextFor($query, $projectKey)])->embeddings[0];
+            ?? $this->embeddingCache->generate([
+                $this->embeddingTextFor($query, $this->synonymProject($projectKey, $effectiveFilters)),
+            ])->embeddings[0];
         $vectorString = '[' . implode(',', $queryEmbedding) . ']';
         $tenantId = app(TenantContext::class)->current();
 
@@ -649,8 +673,13 @@ class KbSearchService
         // use the equivalent jargon. `plainto_tsquery` per phrase keeps
         // Postgres responsible for escaping; the phrases are OR'd via the
         // tsquery `||` operator. With no synonyms this collapses to the
-        // original single `plainto_tsquery(?, ?)`.
-        [$tsqueryExpr, $tsqueryBindings] = $this->buildFtsTsquery($lang, $query, $projectKey);
+        // original single `plainto_tsquery(?, ?)`. Key the synonym map on
+        // the effective project (filters fallback when projectKey is null).
+        $synonymProject = $this->synonymProject(
+            $projectKey,
+            $filters ?? RetrievalFilters::forLegacyProject($projectKey),
+        );
+        [$tsqueryExpr, $tsqueryBindings] = $this->buildFtsTsquery($lang, $query, $synonymProject);
 
         // R30 defense-in-depth — same rationale as search() above:
         // pin both the eager-load and the whereHas to the active

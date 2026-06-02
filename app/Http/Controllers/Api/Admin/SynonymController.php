@@ -113,6 +113,16 @@ final class SynonymController extends Controller
         }
 
         $validated = $request->validate($this->rules($request, $synonym));
+
+        // If `term` changes but `synonyms` is omitted, re-validate the
+        // EXISTING synonyms against the new term: an existing synonym equal
+        // to the new term must be dropped, and if that empties the group
+        // the request is rejected (422) so the "≥1 distinct synonym"
+        // invariant always holds (Copilot review).
+        if (array_key_exists('term', $validated) && ! array_key_exists('synonyms', $validated)) {
+            $validated['synonyms'] = $synonym->synonyms ?? [];
+        }
+
         $payload = $this->normalizePayload($validated, $request, $synonym);
 
         $synonym->update($payload);
