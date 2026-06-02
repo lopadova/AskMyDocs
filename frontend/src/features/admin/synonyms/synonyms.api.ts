@@ -56,15 +56,26 @@ export const adminSynonymsApi = {
 };
 
 /**
+ * Normalize a single term/synonym token the SAME way the backend does
+ * (lowercase + trim + collapse internal whitespace). Shared so the FE's
+ * distinct-check and the persisted `term` agree with the server and the
+ * client never thinks a value is "distinct"/"unchanged" only to be 422'd
+ * after the backend collapses whitespace.
+ */
+export function normalizeToken(raw: string): string {
+    return raw.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
  * Parse a free-text synonyms field (comma- or newline-separated) into a
- * de-duplicated, trimmed, lowercased list. Shared by the form dialog and
- * its unit test so the two never drift.
+ * de-duplicated, normalized list. Shared by the form dialog and its unit
+ * test so the two never drift.
  */
 export function parseSynonyms(raw: string): string[] {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const piece of raw.split(/[\n,]/)) {
-        const value = piece.trim().toLowerCase().replace(/\s+/g, ' ');
+        const value = normalizeToken(piece);
         if (value !== '' && !seen.has(value)) {
             seen.add(value);
             out.push(value);

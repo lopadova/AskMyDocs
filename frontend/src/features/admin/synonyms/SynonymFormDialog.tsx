@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import {
+    normalizeToken,
     parseSynonyms,
     type AdminSynonym,
     type CreateSynonymPayload,
@@ -57,15 +58,19 @@ export function SynonymFormDialog({
         return () => document.removeEventListener('keydown', onKey);
     }, [onClose]);
 
+    // Normalize the term exactly as the backend does (lowercase + trim +
+    // collapse whitespace) so the distinct-check and persisted value agree
+    // with the server — otherwise a whitespace-only difference would pass
+    // the client check and 422 server-side.
+    const normTerm = normalizeToken(term);
     const parsed = parseSynonyms(synonymsText);
-    const distinct = parsed.filter((s) => s !== term.trim().toLowerCase());
-    const canSubmit = term.trim() !== '' && distinct.length > 0 && (isEdit || projectKey.trim() !== '');
+    const distinct = parsed.filter((s) => s !== normTerm);
+    const canSubmit = normTerm !== '' && distinct.length > 0 && (isEdit || projectKey.trim() !== '');
 
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         if (isEdit) {
             const payload: UpdateSynonymPayload = {};
-            const normTerm = term.trim().toLowerCase();
             if (normTerm !== synonym.term) payload.term = normTerm;
             // Always send synonyms on edit — the textarea is the source of
             // truth for the whole list.
@@ -75,7 +80,7 @@ export function SynonymFormDialog({
         } else {
             onSubmit({
                 project_key: projectKey.trim(),
-                term: term.trim().toLowerCase(),
+                term: normTerm,
                 synonyms: distinct,
                 enabled,
             });

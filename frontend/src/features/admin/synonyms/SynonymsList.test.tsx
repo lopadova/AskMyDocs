@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { SynonymsList } from './SynonymsList';
-import { parseSynonyms } from './synonyms.api';
+import { normalizeToken, parseSynonyms } from './synonyms.api';
 import { api } from '../../../lib/api';
 
 const mockGet = vi.fn();
@@ -47,6 +47,13 @@ describe('parseSynonyms', () => {
 
     it('returns an empty list for blank input', () => {
         expect(parseSynonyms('   \n , ')).toEqual([]);
+    });
+});
+
+describe('normalizeToken', () => {
+    it('lowercases, trims, and collapses internal whitespace (matches the backend)', () => {
+        expect(normalizeToken('  Continuous   Integration ')).toBe('continuous integration');
+        expect(normalizeToken('K8S')).toBe('k8s');
     });
 });
 
