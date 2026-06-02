@@ -105,4 +105,23 @@ describe('TimeMachineView', () => {
         expect(err).toHaveAttribute('data-state', 'error');
         expect(screen.queryByTestId('kb-time-machine-empty')).not.toBeInTheDocument();
     });
+
+    it('renders a diff error state instead of blank when the diff query fails', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.includes('/diff')) {
+                return Promise.reject(new Error('diff 500'));
+            }
+            return Promise.resolve(TIMELINE);
+        });
+        render(withQueryClient(<TimeMachineView docId={22} />));
+        await waitFor(() => expect(screen.getByTestId('kb-time-machine-version-11')).toBeVisible());
+
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-11-from'));
+        await userEvent.click(screen.getByTestId('kb-time-machine-version-22-to'));
+
+        const diffErr = await screen.findByTestId('kb-time-machine-diff-error');
+        expect(diffErr).toHaveAttribute('data-state', 'error');
+        expect(diffErr).toHaveTextContent('diff 500');
+        expect(screen.queryByTestId('kb-time-machine-diff-summary')).not.toBeInTheDocument();
+    });
 });

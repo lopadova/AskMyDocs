@@ -96,6 +96,11 @@ export function TimeMachineView({ docId }: { docId: number }): ReactNode {
                 <section data-testid="kb-time-machine-diff" style={{ marginTop: 20 }}>
                     <h2 style={{ fontSize: 13, color: 'var(--fg-1)' }}>Diff</h2>
                     {diff.isLoading && <p data-testid="kb-time-machine-diff-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>Diffing…</p>}
+                    {diff.isError && (
+                        <p data-testid="kb-time-machine-diff-error" data-state="error" role="alert" style={{ color: 'var(--err)', fontSize: 12 }}>
+                            Failed to load diff. {diff.error instanceof Error ? diff.error.message : ''}
+                        </p>
+                    )}
                     {diff.data && (
                         <>
                             <p data-testid="kb-time-machine-diff-summary" style={{ fontSize: 12, color: 'var(--fg-2)' }}>

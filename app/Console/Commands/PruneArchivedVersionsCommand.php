@@ -113,6 +113,11 @@ final class PruneArchivedVersionsCommand extends Command
             return [$explicit];
         }
 
+        // R30 — DISTINCT tenant_ids with eligible rows. Iterate ONLY the
+        // tenants that have archived versions so we don't run empty sweeps
+        // for every tenant in the system. Cross-tenant enumeration is
+        // intentional here (maintenance CLI needs to discover all tenants);
+        // every subsequent query inside pruneTenant() uses forTenant().
         return KnowledgeDocument::query()
             ->where('status', 'archived')
             ->distinct()
