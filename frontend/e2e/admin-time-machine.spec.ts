@@ -25,8 +25,9 @@ test.describe('Admin Time Machine', () => {
         await expect(page.getByTestId('kb-time-machine-view')).toBeVisible({ timeout: 15_000 });
         const timeline = page.getByTestId('kb-time-machine-timeline');
         const empty = page.getByTestId('kb-time-machine-empty');
-        const error = page.getByTestId('kb-time-machine-error');
-        await expect(timeline.or(empty).or(error)).toBeVisible({ timeout: 15_000 });
+        // R12: happy path must NOT accept the error state as a valid outcome —
+        // the error branch is covered by the second test below.
+        await expect(timeline.or(empty)).toBeVisible({ timeout: 15_000 });
     });
 
     test('shows the error state for a non-existent document (real 404)', async ({ page }) => {
