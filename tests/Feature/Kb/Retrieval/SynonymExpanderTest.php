@@ -156,6 +156,18 @@ final class SynonymExpanderTest extends TestCase
         $this->assertSame('deploy nginx', $this->expander()->expandQueryText('deploy nginx', 'eng'));
     }
 
+    public function test_falsy_string_member_zero_is_not_dropped(): void
+    {
+        // A member of '0' is falsy in PHP; the group must still form so a
+        // query mentioning '0' expands to its sibling (Copilot review).
+        $this->seedGroup('0', ['zero', 'none']);
+
+        $phrases = $this->expander()->expansionPhrases('status 0 detected', 'eng');
+
+        $this->assertContains('zero', $phrases);
+        $this->assertContains('none', $phrases);
+    }
+
     public function test_groups_are_tenant_scoped(): void
     {
         $tenant = app(TenantContext::class);

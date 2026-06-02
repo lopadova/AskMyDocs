@@ -168,7 +168,12 @@ final class SynonymExpander
                     }
                 }
                 // A group needs ≥2 distinct members to be meaningful.
-                $members = array_values(array_unique(array_filter($members)));
+                // Explicit predicate (NOT bare array_filter) so a legitimate
+                // falsy-string member like '0' is not silently dropped
+                // (Copilot review).
+                $members = array_values(array_unique(
+                    array_filter($members, static fn (string $m): bool => $m !== '')
+                ));
                 if (count($members) >= 2) {
                     $groups[] = $members;
                 }
