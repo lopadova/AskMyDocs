@@ -80,6 +80,29 @@ final class KbContentGapControllerTest extends TestCase
         $this->assertGreaterThan($occ[2], $occ[1]);
     }
 
+    public function test_index_returns_available_reasons_derived_from_db(): void
+    {
+        $admin = $this->makeAdmin();
+        // R18 — the reason filter domain is derived from the DB, not hard-coded.
+        $this->seedGap('q1', 3, ['reason' => KbSearchFailure::REASON_NO_CONTEXT]);
+        $this->seedGap('q2', 5, ['reason' => KbSearchFailure::REASON_SELF_REFUSAL]);
+
+        $resp = $this->actingAs($admin)->getJson('/api/admin/kb/content-gaps');
+
+        $resp->assertOk();
+        $reasons = $resp->json('meta.available_reasons');
+        $this->assertIsArray($reasons);
+        // Both recorded reasons are present; sorted alphabetically (orderBy reason).
+        $this->assertContains(KbSearchFailure::REASON_NO_CONTEXT, $reasons);
+        $this->assertContains(KbSearchFailure::REASON_SELF_REFUSAL, $reasons);
+        // available_reasons must NOT filter by the current request filters.
+        $filteredResp = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/content-gaps?reason='.KbSearchFailure::REASON_SELF_REFUSAL);
+        $filteredReasons = $filteredResp->json('meta.available_reasons');
+        $this->assertContains(KbSearchFailure::REASON_NO_CONTEXT, $filteredReasons);
+        $this->assertContains(KbSearchFailure::REASON_SELF_REFUSAL, $filteredReasons);
+    }
+
     public function test_resolved_gaps_are_excluded_by_default_but_included_on_request(): void
     {
         $admin = $this->makeAdmin();

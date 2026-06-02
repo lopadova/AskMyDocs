@@ -22,8 +22,8 @@ function withQueryClient(node: ReactNode): ReactNode {
     return <QueryClientProvider client={qc}>{node}</QueryClientProvider>;
 }
 
-function page(rows: unknown[]) {
-    return { data: { data: rows, meta: { current_page: 1, last_page: 1, per_page: 20, total: rows.length } } };
+function page(rows: unknown[], availableReasons: string[] = []) {
+    return { data: { data: rows, meta: { current_page: 1, last_page: 1, per_page: 20, total: rows.length, available_reasons: availableReasons } } };
 }
 
 const GAPS = [
@@ -46,13 +46,25 @@ describe('ContentGapsView', () => {
     });
 
     it('renders gaps ranked with occurrences and reason label', async () => {
-        mockGet.mockResolvedValue(page(GAPS));
+        mockGet.mockResolvedValue(page(GAPS, ['no_relevant_context', 'llm_self_refusal']));
         render(withQueryClient(<ContentGapsView />));
         await waitFor(() => expect(screen.getByTestId('admin-content-gap-1')).toBeVisible());
         expect(screen.getByTestId('admin-content-gap-1-count')).toHaveTextContent('17×');
         expect(screen.getByTestId('admin-content-gap-1')).toHaveTextContent('most asked');
         expect(screen.getByTestId('admin-content-gap-2')).toHaveTextContent(/model self-refusal/i);
         expect(screen.getByTestId('admin-content-gaps-count')).toHaveTextContent('2 total');
+    });
+
+    it('reason filter options are derived from available_reasons (R18)', async () => {
+        // Only one reason in the DB — the select must NOT show a hard-coded second option.
+        mockGet.mockResolvedValue(page(GAPS.slice(0, 1), ['no_relevant_context']));
+        render(withQueryClient(<ContentGapsView />));
+        await waitFor(() => expect(screen.getByTestId('admin-content-gap-1')).toBeVisible());
+        const select = screen.getByTestId('admin-content-gaps-reason-filter') as HTMLSelectElement;
+        const optionValues = Array.from(select.options).map((o) => o.value);
+        expect(optionValues).toEqual(['', 'no_relevant_context']);
+        // llm_self_refusal must NOT appear — it's not in available_reasons.
+        expect(optionValues).not.toContain('llm_self_refusal');
     });
 
     it('resolving a gap PATCHes the resolve endpoint', async () => {
@@ -77,7 +89,7 @@ describe('ContentGapsView', () => {
     });
 
     it('changing the reason filter re-queries with the reason param', async () => {
-        mockGet.mockResolvedValue(page(GAPS));
+        mockGet.mockResolvedValue(page(GAPS, ['no_relevant_context', 'llm_self_refusal']));
         render(withQueryClient(<ContentGapsView />));
         await waitFor(() => expect(screen.getByTestId('admin-content-gap-1')).toBeVisible());
         await userEvent.selectOptions(screen.getByTestId('admin-content-gaps-reason-filter'), 'llm_self_refusal');

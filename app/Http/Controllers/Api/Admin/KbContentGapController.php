@@ -67,6 +67,16 @@ final class KbContentGapController extends Controller
             'resolved_at' => $row->resolved_at,
         ])->all();
 
+        // R18 — derive the reason filter options from the real DB domain so the
+        // FE dropdown reflects the actual set of recorded reasons, not a
+        // hard-coded literal subset that silently omits future reason codes.
+        $availableReasons = KbSearchFailure::query()
+            ->forTenant($this->tenant->current())
+            ->distinct()
+            ->orderBy('reason')
+            ->pluck('reason')
+            ->all();
+
         return response()->json([
             'data' => $data,
             'meta' => [
@@ -74,6 +84,7 @@ final class KbContentGapController extends Controller
                 'last_page' => $page->lastPage(),
                 'per_page' => $page->perPage(),
                 'total' => $page->total(),
+                'available_reasons' => $availableReasons,
             ],
         ]);
     }

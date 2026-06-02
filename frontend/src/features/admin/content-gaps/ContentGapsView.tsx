@@ -61,8 +61,12 @@ export function ContentGapsView(): ReactNode {
                         style={{ fontSize: 11.5, padding: '2px 4px' }}
                     >
                         <option value="">All</option>
-                        <option value="no_relevant_context">No relevant context</option>
-                        <option value="llm_self_refusal">Model self-refusal</option>
+                        {/* R18 — options derived from available_reasons in the API response,
+                            not a hard-coded literal subset, so new reason codes surface
+                            automatically without a FE deploy. */}
+                        {(query.data?.meta.available_reasons ?? []).map((r) => (
+                            <option key={r} value={r}>{reasonLabel(r)}</option>
+                        ))}
                     </select>
                 </label>
                 <label style={{ fontSize: 11.5, color: 'var(--fg-3)', display: 'flex', gap: 6, alignItems: 'center' }}>

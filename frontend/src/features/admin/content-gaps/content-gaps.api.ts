@@ -16,10 +16,21 @@ export interface ContentGap {
 
 export interface ContentGapsResponse {
     data: ContentGap[];
-    meta: { current_page: number; last_page: number; per_page: number; total: number };
+    meta: {
+        current_page: number;
+        last_page: number;
+        per_page: number;
+        total: number;
+        /** R18 — reason codes present in this tenant's gap table (DB-derived). */
+        available_reasons: string[];
+    };
 }
 
-/** Human-readable labels for the machine reason codes (BE stays English). */
+/**
+ * Human-readable labels for known machine reason codes. BE stays English;
+ * this is a display-only utility. Falls back to the raw code for unknown
+ * values so new reason codes render without a deploy.
+ */
 export const REASON_LABELS: Record<string, string> = {
     no_relevant_context: 'No relevant context',
     llm_self_refusal: 'Model self-refusal',
