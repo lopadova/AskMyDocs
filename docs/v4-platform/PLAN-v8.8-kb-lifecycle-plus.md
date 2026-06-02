@@ -93,6 +93,16 @@ citations via `kb_edges` / `GraphExpander`.
   none.
 
 ### W7 — RC + GA
+
+> **MANDATORY final-step gate (Lorenzo, 2026-06-02):** before the GA tag +
+> release, do a **precise section-by-section README audit** — walk EVERY
+> README section and update it with all the latest features shipped this cycle
+> (delete-trigger analysis, per-project gate, content-gap analytics, multilingual
+> FTS, chat-graph panel) AND refresh the **competitive-differentiator** content
+> (comparison tables / "why us" sections) so nothing shipped is missing and the
+> positioning vs competitors is current. This is on top of the R39 roadmap-row
+> flip + Changelog entry.
+
 - Per-Wn R39 rc-tags accumulate (`v8.8.0-rc1` after W1 … etc.).
 - README `Key Features` + `Changelog` refresh + **roadmap-row flip** (R39 anti-pattern guard).
 - R37 GA merge `feature/v8.8 → main` + `v8.8.0` tag + GitHub Release.

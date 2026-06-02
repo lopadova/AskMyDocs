@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\KbDocAnalysis;
 use App\Models\KnowledgeDocument;
 use App\Notifications\NotificationPublisher;
+use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Services\Kb\Analysis\KbChangeAnalyzer;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -52,11 +53,8 @@ final class AnalyzeDocumentChangeJob implements ShouldQueue
         TenantContext $tenants,
         KbChangeAnalyzer $analyzer,
         NotificationPublisher $publisher,
+        ChangeAnalysisGate $gate,
     ): void {
-        if (! (bool) config('kb.change_analysis.enabled', true)) {
-            return;
-        }
-
         $previousTenant = $tenants->current();
         try {
             $tenants->set($this->tenantId);
@@ -68,7 +66,8 @@ final class AnalyzeDocumentChangeJob implements ShouldQueue
                 return; // doc deleted between dispatch and run
             }
 
-            if (! $this->enabledFor($document)) {
+            // v8.8/W3 — gate resolves config + per-(tenant, project) override.
+            if (! $gate->allows($this->tenantId, (string) $document->project_key, (bool) $document->is_canonical)) {
                 return;
             }
             if ($this->recentlyAnalysed($document)) {
@@ -129,13 +128,6 @@ final class AnalyzeDocumentChangeJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    private function enabledFor(KnowledgeDocument $document): bool
-    {
-        return (bool) $document->is_canonical
-            ? (bool) config('kb.change_analysis.canonical_default', true)
-            : (bool) config('kb.change_analysis.non_canonical_default', false);
     }
 
     private function recentlyAnalysed(KnowledgeDocument $document): bool

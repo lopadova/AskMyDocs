@@ -120,7 +120,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
             ->andReturn(['analysis' => $this->sampleAnalysis(), 'provider' => 'test', 'model' => 'test-model']);
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $row = KbDocAnalysis::where('knowledge_document_id', $doc->id)->sole();
@@ -144,7 +144,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         $analyzer->shouldNotReceive('analyze');
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $this->assertSame(0, KbDocAnalysis::count());
@@ -161,7 +161,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
             ->andReturn(['analysis' => $this->sampleAnalysis(), 'provider' => 'test', 'model' => 'm']);
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $this->assertSame(1, KbDocAnalysis::count());
@@ -176,7 +176,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         $analyzer->shouldNotReceive('analyze');
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $this->assertSame(0, KbDocAnalysis::count());
@@ -198,7 +198,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         $analyzer->shouldNotReceive('analyze');
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         // Still only the pre-seeded row.
@@ -224,7 +224,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         $analyzer->shouldNotReceive('analyze');
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $this->assertSame(1, KbDocAnalysis::count());
@@ -238,7 +238,7 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         $analyzer->shouldReceive('analyze')->once()->andThrow(new \RuntimeException('provider down'));
 
         (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
-            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class), app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class)
         );
 
         $row = KbDocAnalysis::where('knowledge_document_id', $doc->id)->sole();

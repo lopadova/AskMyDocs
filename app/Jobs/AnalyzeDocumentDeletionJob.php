@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\KbDocAnalysis;
 use App\Models\KnowledgeDocument;
 use App\Notifications\NotificationPublisher;
+use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Services\Kb\Analysis\KbChangeAnalyzer;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
@@ -59,14 +60,8 @@ final class AnalyzeDocumentDeletionJob implements ShouldQueue
         TenantContext $tenants,
         KbChangeAnalyzer $analyzer,
         NotificationPublisher $publisher,
+        ChangeAnalysisGate $gate,
     ): void {
-        if (! (bool) config('kb.change_analysis.enabled', true)) {
-            return;
-        }
-        if (! (bool) config('kb.change_analysis.delete_enabled', true)) {
-            return;
-        }
-
         $tenantId = (string) ($this->snapshot['tenant_id'] ?? '');
         if ($tenantId === '') {
             return;
@@ -76,7 +71,15 @@ final class AnalyzeDocumentDeletionJob implements ShouldQueue
         try {
             $tenants->set($tenantId);
 
-            if (! $this->enabledFor((bool) ($this->snapshot['is_canonical'] ?? false))) {
+            // v8.8/W3 — gate resolves config + per-(tenant, project) override
+            // ($isDelete adds the delete_enabled knob).
+            $allowed = $gate->allows(
+                $tenantId,
+                (string) ($this->snapshot['project_key'] ?? ''),
+                (bool) ($this->snapshot['is_canonical'] ?? false),
+                isDelete: true,
+            );
+            if (! $allowed) {
                 return;
             }
 
@@ -167,10 +170,4 @@ final class AnalyzeDocumentDeletionJob implements ShouldQueue
         return $document;
     }
 
-    private function enabledFor(bool $isCanonical): bool
-    {
-        return $isCanonical
-            ? (bool) config('kb.change_analysis.canonical_default', true)
-            : (bool) config('kb.change_analysis.non_canonical_default', false);
-    }
 }
