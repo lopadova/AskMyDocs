@@ -90,6 +90,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
             app(TenantContext::class),
             app(KbChangeAnalyzer::class),
             app(NotificationPublisher::class),
+            app(\App\Services\Kb\Analysis\ChangeAnalysisGate::class),
         );
     }
 

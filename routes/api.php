@@ -350,6 +350,14 @@ Route::middleware([
         Route::get('/kb/analyses', [\App\Http\Controllers\Api\Admin\KbDocAnalysisController::class, 'index'])
             ->name('api.admin.kb.analyses.index');
 
+        // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/analysis-settings`).
+        Route::get('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'index'])
+            ->name('api.admin.kb.analysis-settings.index');
+        Route::put('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'upsert'])
+            ->name('api.admin.kb.analysis-settings.upsert');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

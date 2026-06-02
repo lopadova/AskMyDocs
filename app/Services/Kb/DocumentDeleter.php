@@ -9,6 +9,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
@@ -43,7 +44,7 @@ class DocumentDeleter
         // deletion mutates anything: a hard delete cascades the chunks, a
         // soft delete hides them. Only the user-initiated single delete opts
         // in ($analyzeImpact); bulk orphan/prune sweeps never trigger the LLM.
-        $snapshot = ($analyzeImpact && $this->deletionAnalysisEnabled())
+        $snapshot = ($analyzeImpact && $this->deletionAnalysisEnabled($document))
             ? $this->deletionSnapshot($document)
             : null;
 
@@ -64,14 +65,20 @@ class DocumentDeleter
     }
 
     /**
-     * Cheap config gate so we skip the (one-query) snapshot build entirely
-     * when deletion analysis is globally disabled. The per-doc canonical
-     * gate + per-(tenant,project) override are re-checked inside the job.
+     * Skip the (one-query) snapshot build entirely when deletion analysis is
+     * disabled for this doc's (tenant, project) — resolved through the same
+     * {@see ChangeAnalysisGate} the job re-checks authoritatively. Resolved
+     * via the container because this service is also instantiated with `new`
+     * in tests (no constructor injection).
      */
-    private function deletionAnalysisEnabled(): bool
+    private function deletionAnalysisEnabled(KnowledgeDocument $document): bool
     {
-        return (bool) config('kb.change_analysis.enabled', true)
-            && (bool) config('kb.change_analysis.delete_enabled', true);
+        return app(ChangeAnalysisGate::class)->allows(
+            (string) $document->tenant_id,
+            (string) $document->project_key,
+            (bool) $document->is_canonical,
+            isDelete: true,
+        );
     }
 
     /**

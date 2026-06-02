@@ -31,6 +31,7 @@ export type AdminSection =
     | 'collections'
     | 'synonyms'
     | 'kb-insights'
+    | 'analysis-settings'
     | 'time-machine'
     | 'compliance-reports'
     // v8.0/W1.4 — dedicated identifier so the
@@ -82,6 +83,8 @@ const RAIL: RailEntry[] = [
     { id: 'collections', label: 'Collections', icon: 'Book', to: '/app/admin/collections' },
     { id: 'synonyms', label: 'Synonyms', icon: 'Book', to: '/app/admin/kb/synonyms' },
     { id: 'kb-insights', label: 'Doc Insights', icon: 'Sparkles', to: '/app/admin/kb/insights' },
+    // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
+    { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Wrench', to: '/app/admin/kb/analysis-settings' },
     { id: 'compliance-reports', label: 'Compliance', icon: 'Shield', to: '/app/admin/compliance/reports' },
 ];
 

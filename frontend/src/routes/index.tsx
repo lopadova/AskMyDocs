@@ -19,6 +19,7 @@ import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
+import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -372,6 +373,23 @@ const adminKbInsightsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb/insights',
     component: AdminKbInsightsRoute,
+});
+
+// v8.8/W3 — per-(tenant, project) deep-analysis gate override.
+function AdminAnalysisSettingsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="analysis-settings">
+                <AnalysisSettingsView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminAnalysisSettingsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/analysis-settings',
+    component: AdminAnalysisSettingsRoute,
 });
 
 // v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
@@ -765,6 +783,7 @@ const routeTree = rootRoute.addChildren([
         adminTagsRoute,
         adminSynonymsRoute,
         adminKbInsightsRoute,
+        adminAnalysisSettingsRoute,
         adminKbTimeMachineRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
