@@ -51,10 +51,13 @@ Running lessons log. Promote durable items into CLAUDE.md R-rules / `.claude/ski
   analysis dispatch fires from `IngestDocumentJob`; with the feature on, every canonical-doc ingest
   test would make a live LLM call. Set `KB_CHANGE_ANALYSIS_ENABLED=false` in the test env and let the
   dedicated tests `config()->set` it on — production default stays ON.
-- **`forTenant` + a JOIN = ambiguous `tenant_id`.** The `BelongsToTenant::forTenant` scope adds an
-  UNQUALIFIED `where('tenant_id', …)`; joining a second tenant-aware table makes it ambiguous SQL.
-  Resolve related data with a separate tenant-scoped query (id→value map) instead of a JOIN, keeping
-  the `forTenant(` marker the R30 architecture gate looks for.
+- **A JOIN to a second tenant-aware table forces qualifying every SHARED column.** `forTenant` itself
+  is JOIN-safe — `BelongsToTenant::scopeForTenant` qualifies the predicate as `<table>.tenant_id`
+  (verified in the trait). The real friction is the OTHER shared columns (`id` / `project_key` /
+  `created_at` / `title` collide between the two tables), so the select must qualify each. Resolving
+  related data with a separate tenant-scoped id→value map is simpler AND keeps the `forTenant(` marker
+  the R30 gate looks for explicit. (Earlier draft of this lesson wrongly claimed `forTenant` emits an
+  unqualified `tenant_id` — Copilot caught it.)
 - **TWO architecture enumerations again** — `KbDocAnalysis` (BelongsToTenant) had to be added to BOTH
   `TenantIdMandatoryTest` AND `TenantReadScopeTest` (the W1 lesson, re-confirmed). The read-scope gate
   ALSO flags any tenant-aware *query* missing `forTenant(` — `KbChangeAnalyzer`'s chunk read tripped it.

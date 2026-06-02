@@ -7,9 +7,11 @@ namespace Tests\Feature\Api\Admin;
 use App\Models\KbDocAnalysis;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -27,7 +29,12 @@ final class KbDocAnalysisControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Reset cross-test global singletons (TenantContext + Spatie's
+        // cached permission map) so role/tenant state never leaks across
+        // tests under Testbench (Copilot review).
+        app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
     private function makeAnalysis(string $project, int $docId, string $status = 'completed'): KbDocAnalysis

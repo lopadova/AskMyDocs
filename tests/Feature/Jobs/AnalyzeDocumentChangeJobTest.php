@@ -184,10 +184,11 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
 
     public function test_debounce_skips_recently_analysed_doc(): void
     {
-        $doc = $this->makeCanonicalDoc();
+        $doc = $this->makeCanonicalDoc(); // slug 'dec-1'
         KbDocAnalysis::create([
             'project_key' => 'proj-an',
             'knowledge_document_id' => $doc->id,
+            'doc_slug' => 'dec-1', // debounce keys on (project, slug) for canonical docs
             'trigger' => KbDocAnalysis::TRIGGER_INGESTED,
             'analysis_json' => ['enhancement_suggestions' => [], 'cross_references' => [], 'impacted_docs' => []],
             'status' => KbDocAnalysis::STATUS_COMPLETED,
@@ -201,6 +202,31 @@ final class AnalyzeDocumentChangeJobTest extends TestCase
         );
 
         // Still only the pre-seeded row.
+        $this->assertSame(1, KbDocAnalysis::count());
+    }
+
+    public function test_debounce_keys_on_slug_so_a_reingest_is_skipped(): void
+    {
+        // A canonical re-ingest creates a NEW doc row (new id) with the SAME
+        // (project, slug). Debounce must key on the stable slug, not the row
+        // id, so the rapid re-ingest does NOT trigger a second LLM run.
+        $doc = $this->makeCanonicalDoc(); // slug 'dec-1', project 'proj-an'
+        KbDocAnalysis::create([
+            'project_key' => 'proj-an',
+            'knowledge_document_id' => 999999, // a prior version's row id
+            'doc_slug' => 'dec-1',
+            'trigger' => KbDocAnalysis::TRIGGER_INGESTED,
+            'analysis_json' => ['enhancement_suggestions' => [], 'cross_references' => [], 'impacted_docs' => []],
+            'status' => KbDocAnalysis::STATUS_COMPLETED,
+        ]);
+
+        $analyzer = $this->mockAnalyzer();
+        $analyzer->shouldNotReceive('analyze');
+
+        (new AnalyzeDocumentChangeJob($doc->id, 'default'))->handle(
+            app(TenantContext::class), $analyzer, app(\App\Notifications\NotificationPublisher::class)
+        );
+
         $this->assertSame(1, KbDocAnalysis::count());
     }
 

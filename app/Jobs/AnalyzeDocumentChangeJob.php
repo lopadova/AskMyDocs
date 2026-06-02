@@ -145,11 +145,25 @@ final class AnalyzeDocumentChangeJob implements ShouldQueue
             return false;
         }
 
-        return KbDocAnalysis::query()
+        // Key the debounce on a STABLE identifier, not the per-version row
+        // id: a re-ingest with changed content creates a NEW
+        // knowledge_documents row (new id, same project + canonical slug),
+        // so debouncing by id would never catch the rapid-re-ingest cost
+        // scenario it exists to guard (Copilot review). Canonical docs key
+        // on (project_key, doc_slug); non-canonical (no slug) fall back to
+        // the row id.
+        $query = KbDocAnalysis::query()
             ->forTenant($this->tenantId)
-            ->where('knowledge_document_id', $document->id)
-            ->where('created_at', '>=', now()->subMinutes($minutes))
-            ->exists();
+            ->where('created_at', '>=', now()->subMinutes($minutes));
+
+        if (! empty($document->slug)) {
+            $query->where('project_key', (string) $document->project_key)
+                ->where('doc_slug', (string) $document->slug);
+        } else {
+            $query->where('knowledge_document_id', $document->id);
+        }
+
+        return $query->exists();
     }
 
     /**

@@ -57,8 +57,12 @@ final class KbDocAnalysisController extends Controller
         $perPage = (int) ($validated['per_page'] ?? 20);
         $page = $query->paginate($perPage);
 
-        // Resolve doc titles in one tenant-scoped query (no JOIN, so the
-        // `forTenant` scope's unqualified `tenant_id` stays unambiguous).
+        // Resolve doc titles in one tenant-scoped query rather than a JOIN.
+        // A JOIN to knowledge_documents would force qualifying every shared
+        // column (id / project_key / created_at / title all collide); a
+        // separate id→title map keeps the query simple and leaves the R30
+        // `forTenant(` marker explicit. (`forTenant` itself qualifies
+        // `<table>.tenant_id`, so tenant scoping is JOIN-safe regardless.)
         $docIds = collect($page->items())->pluck('knowledge_document_id')->filter()->unique()->all();
         $titles = $docIds === []
             ? collect()
