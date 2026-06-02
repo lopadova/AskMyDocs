@@ -13,6 +13,7 @@ use App\Notifications\Channels\NotificationSubjects;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -80,63 +81,82 @@ final class NotificationsDigestWeeklyCommand extends Command
             return 0;
         }
 
-        // Tenant-level aggregate persisted for the record / future admin
-        // panel (one row per tenant per week, idempotent on re-run).
+        // Phase 1 — upsert the tenant-level aggregate row (idempotent).
         // `whereDate` matches the stored value regardless of the time
         // component the `date` cast appends ('Y-m-d 00:00:00'), which a
         // plain `updateOrCreate(['week_start_date' => 'Y-m-d'])` would miss
-        // and re-INSERT into the composite unique.
-        $existing = NotificationDigest::query()
+        // and re-INSERT into the composite unique. This runs OUTSIDE the lock
+        // so concurrent first-runs do not deadlock on a non-existent row.
+        $digest = NotificationDigest::query()
             ->where('tenant_id', $tenantId)
             ->whereDate('week_start_date', $weekStartDate)
             ->first();
 
-        // Mail idempotency (Copilot review): once a week's digest has been
-        // SENT, a re-run (manual operator run, missed-schedule retry) must
-        // refresh the aggregate row but NOT re-queue the per-user emails —
-        // `sent_at` is the send-once latch. `whereDate`-row idempotency
-        // alone only dedupes the row, not the `Mail::queue` loop.
-        $alreadySent = $existing !== null && $existing->sent_at !== null;
-
-        $digest = $existing ?? new NotificationDigest(['tenant_id' => $tenantId, 'week_start_date' => $weekStartDate]);
+        $digest ??= new NotificationDigest(['tenant_id' => $tenantId, 'week_start_date' => $weekStartDate]);
         $digest->payload = $this->aggregate($events);
         $digest->save();
 
-        if ($alreadySent) {
-            return (int) $digest->recipients_count;
+        // Phase 2 — R21: lock-check-stamp atomic gate. Lock the now-existing
+        // row by primary key so only one concurrent invocation (operator manual
+        // run racing the scheduler, or a retry) can pass the `sent_at = null`
+        // check. `sent_at` is stamped INSIDE the transaction so a racing runner
+        // sees it immediately on its own lockForUpdate read. Per-user mail jobs
+        // are built inside the lock window but queued AFTER the transaction
+        // commits, preventing orphaned queue entries if the transaction rolls back.
+        $pending = DB::transaction(function () use ($digest, $tenantId, $events): ?array {
+            /** @var NotificationDigest|null $locked */
+            $locked = NotificationDigest::query()
+                ->where('id', $digest->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($locked === null || $locked->sent_at !== null) {
+                return null; // row disappeared or already sent by a concurrent run
+            }
+
+            $emailUserIds = NotificationPreference::query()
+                ->where('tenant_id', $tenantId)
+                ->where('channel', NotificationPreference::CHANNEL_EMAIL)
+                ->where('enabled', true)
+                ->distinct()
+                ->pluck('user_id');
+
+            $pending = [];
+            foreach ($emailUserIds as $userId) {
+                $userEvents = $events->where('user_id', $userId);
+                if ($userEvents->isEmpty()) {
+                    continue;
+                }
+
+                $user = User::query()->find($userId);
+                if ($user === null) {
+                    continue;
+                }
+
+                $pending[] = [$user, $this->aggregate($userEvents)];
+            }
+
+            $locked->update([
+                'sent_at'          => CarbonImmutable::now(),
+                'recipients_count' => count($pending),
+            ]);
+
+            return $pending;
+        });
+
+        if ($pending === null) {
+            return 0; // concurrent run already sent this week's digest
         }
 
-        // Per-user roundups: every user with an email-enabled preference
-        // who actually had ≥1 event this window.
-        $emailUserIds = NotificationPreference::query()
-            ->where('tenant_id', $tenantId)
-            ->where('channel', NotificationPreference::CHANNEL_EMAIL)
-            ->where('enabled', true)
-            ->distinct()
-            ->pluck('user_id');
-
-        $recipients = 0;
-        foreach ($emailUserIds as $userId) {
-            $userEvents = $events->where('user_id', $userId);
-            if ($userEvents->isEmpty()) {
-                continue;
-            }
-
-            $user = User::query()->find($userId);
-            if ($user === null) {
-                continue;
-            }
-
+        // Queue mail OUTSIDE the transaction (after commit).
+        foreach ($pending as [$user, $groups]) {
             Mail::to($user)->queue(new WeeklyDigestMail(
                 weekStartDate: $weekStartDate,
-                groups: $this->aggregate($userEvents),
+                groups: $groups,
             ));
-            $recipients++;
         }
 
-        $digest->update(['sent_at' => CarbonImmutable::now(), 'recipients_count' => $recipients]);
-
-        return $recipients;
+        return count($pending);
     }
 
     /**
