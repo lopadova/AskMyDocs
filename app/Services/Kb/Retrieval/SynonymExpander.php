@@ -145,6 +145,13 @@ final class SynonymExpander
     {
         $tenantId = ($this->tenant ?? app(TenantContext::class))->current();
         $project = $projectKey ?? '';
+        // Synonym groups always carry a non-empty project_key (the admin
+        // CRUD requires it), so a null/empty project can never match. Early
+        // return avoids a pointless DB hit AND an empty-key cache entry
+        // (`kb:synonyms:<tenant>:`) — Copilot review.
+        if ($project === '') {
+            return [];
+        }
         $ttl = (int) config('kb.synonyms.cache_ttl_seconds', 300);
 
         $loader = function () use ($tenantId, $project): array {
