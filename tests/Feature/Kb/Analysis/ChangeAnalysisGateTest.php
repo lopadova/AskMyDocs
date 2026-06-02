@@ -91,6 +91,26 @@ final class ChangeAnalysisGateTest extends TestCase
         $this->assertFalse($this->gate->allows('default', 'eng', isCanonical: true, isDelete: true));
     }
 
+    public function test_resolve_zeroes_dependent_flags_when_disabled(): void
+    {
+        // enabled=off must make the effective dependent knobs net-OFF too, so
+        // the admin "effective" display agrees with allows() (Copilot review).
+        KbAnalysisSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => 'eng',
+            'enabled' => false,
+            'canonical' => true,
+            'delete_enabled' => true,
+        ]);
+
+        $resolved = $this->gate->resolve('default', 'eng');
+        $this->assertFalse($resolved['enabled']);
+        $this->assertFalse($resolved['canonical'], 'canonical is net-off when the master switch is off');
+        $this->assertFalse($resolved['non_canonical']);
+        $this->assertFalse($resolved['delete_enabled']);
+        $this->assertFalse($this->gate->allows('default', 'eng', isCanonical: true));
+    }
+
     public function test_overrides_are_tenant_scoped(): void
     {
         // tenant-a disables eng; tenant-b must be unaffected.

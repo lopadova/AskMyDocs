@@ -52,6 +52,28 @@ final class ChangeAnalysisGate
      */
     public function resolve(string $tenantId, string $projectKey): array
     {
+        $wildcard = $this->lookup($tenantId, KbAnalysisSetting::WILDCARD);
+
+        // When the caller asks for the wildcard itself, the single '*' row is
+        // the only override; otherwise '*' is the base and the exact project
+        // wins on top.
+        if ($projectKey === KbAnalysisSetting::WILDCARD) {
+            return $this->layer($wildcard);
+        }
+
+        return $this->layer($wildcard, $this->lookup($tenantId, $projectKey));
+    }
+
+    /**
+     * Layer the config defaults with the given override rows (in order,
+     * later wins, each NULL field inheriting). Pure — takes already-loaded
+     * rows so a caller listing many projects can resolve without an N+1
+     * query (Copilot review). Null rows are skipped.
+     *
+     * @return array{enabled: bool, canonical: bool, non_canonical: bool, delete_enabled: bool}
+     */
+    public function layer(?KbAnalysisSetting ...$rows): array
+    {
         $effective = [
             'enabled' => (bool) config('kb.change_analysis.enabled', true),
             'canonical' => (bool) config('kb.change_analysis.canonical_default', true),
@@ -59,14 +81,7 @@ final class ChangeAnalysisGate
             'delete_enabled' => (bool) config('kb.change_analysis.delete_enabled', true),
         ];
 
-        // tenant-wide ('*') first, then the exact project so it wins. When the
-        // caller asks for the wildcard itself, the single '*' lookup suffices.
-        $keys = $projectKey === KbAnalysisSetting::WILDCARD
-            ? [KbAnalysisSetting::WILDCARD]
-            : [KbAnalysisSetting::WILDCARD, $projectKey];
-
-        foreach ($keys as $key) {
-            $row = $this->lookup($tenantId, $key);
+        foreach ($rows as $row) {
             if ($row === null) {
                 continue;
             }
@@ -76,6 +91,16 @@ final class ChangeAnalysisGate
                     $effective[$field] = (bool) $value;
                 }
             }
+        }
+
+        // When the master switch resolves OFF, no analysis runs on ANY path,
+        // so the dependent knobs are net-OFF too. Keeping them "on" would make
+        // the admin "effective" display disagree with allows() (Copilot
+        // review). The raw per-knob override is still visible separately.
+        if (! $effective['enabled']) {
+            $effective['canonical'] = false;
+            $effective['non_canonical'] = false;
+            $effective['delete_enabled'] = false;
         }
 
         return $effective;
