@@ -159,6 +159,10 @@ final class AnalyzeDocumentDeletionJob implements ShouldQueue
         $document->project_key = (string) ($this->snapshot['project_key'] ?? '');
         $document->title = (string) ($this->snapshot['title'] ?? '');
         $document->slug = $this->snapshot['doc_slug'] ?? null;
+        // source_path is load-bearing for the publisher's scope_allowlist
+        // folder-glob ACL check — without it a scoped project member could be
+        // wrongly excluded (Copilot review). Carry it from the snapshot.
+        $document->source_path = (string) ($this->snapshot['source_path'] ?? '');
 
         return $document;
     }

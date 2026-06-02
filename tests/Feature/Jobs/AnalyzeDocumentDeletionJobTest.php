@@ -126,14 +126,14 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot());
 
-        $row = KbDocAnalysis::where('knowledge_document_id', 4242)->sole();
+        $row = KbDocAnalysis::query()->forTenant('default')->where('knowledge_document_id', 4242)->sole();
         $this->assertSame(KbDocAnalysis::TRIGGER_DELETED, $row->trigger);
         $this->assertSame(KbDocAnalysis::STATUS_COMPLETED, $row->status);
         $this->assertSame(0, $row->suggestion_count);
         $this->assertSame(1, $row->impacted_count);
         $this->assertSame('dec-gone', $row->doc_slug);
 
-        $notif = NotificationEvent::where('event_type', NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY)->sole();
+        $notif = NotificationEvent::query()->forTenant('default')->where('event_type', NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY)->sole();
         $this->assertSame($reviewer->id, $notif->user_id);
         $this->assertSame($row->id, $notif->payload['analysis_id'] ?? null);
     }
@@ -146,7 +146,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot(['is_canonical' => false]));
 
-        $this->assertSame(0, KbDocAnalysis::count());
+        $this->assertSame(0, KbDocAnalysis::query()->forTenant('default')->count());
     }
 
     public function test_non_canonical_deletion_runs_when_opted_in(): void
@@ -159,7 +159,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot(['is_canonical' => false]));
 
-        $this->assertSame(1, KbDocAnalysis::count());
+        $this->assertSame(1, KbDocAnalysis::query()->forTenant('default')->count());
     }
 
     public function test_master_kill_switch_skips_everything(): void
@@ -171,7 +171,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot());
 
-        $this->assertSame(0, KbDocAnalysis::count());
+        $this->assertSame(0, KbDocAnalysis::query()->forTenant('default')->count());
     }
 
     public function test_delete_specific_switch_skips_when_off(): void
@@ -183,7 +183,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot());
 
-        $this->assertSame(0, KbDocAnalysis::count());
+        $this->assertSame(0, KbDocAnalysis::query()->forTenant('default')->count());
     }
 
     public function test_analysis_failure_records_a_failed_row(): void
@@ -193,7 +193,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
 
         $this->runJob($this->snapshot());
 
-        $row = KbDocAnalysis::where('knowledge_document_id', 4242)->sole();
+        $row = KbDocAnalysis::query()->forTenant('default')->where('knowledge_document_id', 4242)->sole();
         $this->assertSame(KbDocAnalysis::TRIGGER_DELETED, $row->trigger);
         $this->assertSame(KbDocAnalysis::STATUS_FAILED, $row->status);
         $this->assertStringContainsString('provider down', (string) $row->error);
@@ -210,7 +210,7 @@ final class AnalyzeDocumentDeletionJobTest extends TestCase
         $analyzer->shouldReceive('analyzeDeletion')->once()
             ->andReturn(['analysis' => $this->sampleDeletionAnalysis(), 'provider' => 'test', 'model' => 'm']);
 
-        $this->assertNull(KnowledgeDocument::withTrashed()->find(4242));
+        $this->assertNull(KnowledgeDocument::withTrashed()->forTenant('default')->find(4242));
 
         $this->runJob($this->snapshot());
 

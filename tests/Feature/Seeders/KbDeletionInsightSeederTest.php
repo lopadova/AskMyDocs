@@ -36,7 +36,7 @@ final class KbDeletionInsightSeederTest extends TestCase
         $this->assertTrue($doc->trashed(), 'the seeded doc must be soft-deleted');
         $this->assertSame('default', $doc->tenant_id);
 
-        $row = KbDocAnalysis::where('knowledge_document_id', $doc->id)->sole();
+        $row = KbDocAnalysis::query()->forTenant('default')->where('knowledge_document_id', $doc->id)->sole();
         $this->assertSame(KbDocAnalysis::TRIGGER_DELETED, $row->trigger);
         $this->assertSame(KbDocAnalysis::STATUS_COMPLETED, $row->status);
         $this->assertSame(1, $row->impacted_count);
@@ -49,7 +49,7 @@ final class KbDeletionInsightSeederTest extends TestCase
         (new KbDeletionInsightSeeder())->run();
         (new KbDeletionInsightSeeder())->run();
 
-        $this->assertSame(1, KnowledgeDocument::withTrashed()->where('source_path', 'decisions/dec-cache-v1.md')->count());
-        $this->assertSame(1, KbDocAnalysis::where('trigger', KbDocAnalysis::TRIGGER_DELETED)->count());
+        $this->assertSame(1, KnowledgeDocument::withTrashed()->forTenant('default')->where('source_path', 'decisions/dec-cache-v1.md')->count());
+        $this->assertSame(1, KbDocAnalysis::query()->forTenant('default')->where('trigger', KbDocAnalysis::TRIGGER_DELETED)->count());
     }
 }

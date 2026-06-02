@@ -89,7 +89,7 @@ final class DocumentDeleterDeletionAnalysisTest extends TestCase
 
         (new DocumentDeleter())->delete($doc, force: true, analyzeImpact: true);
 
-        $this->assertSame(0, KnowledgeChunk::where('knowledge_document_id', $doc->id)->count());
+        $this->assertSame(0, KnowledgeChunk::query()->forTenant('default')->where('knowledge_document_id', $doc->id)->count());
         Bus::assertDispatched(AnalyzeDocumentDeletionJob::class, function (AnalyzeDocumentDeletionJob $job): bool {
             return str_contains($job->snapshot['doc_text'], 'Redis');
         });
