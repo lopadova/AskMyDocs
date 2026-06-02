@@ -106,6 +106,7 @@ final class NotificationsDigestWeeklyCommand extends Command
         $pending = DB::transaction(function () use ($digest, $tenantId, $events): ?array {
             /** @var NotificationDigest|null $locked */
             $locked = NotificationDigest::query()
+                ->where('tenant_id', $tenantId)
                 ->where('id', $digest->id)
                 ->lockForUpdate()
                 ->first();
