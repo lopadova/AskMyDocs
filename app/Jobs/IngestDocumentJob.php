@@ -173,6 +173,17 @@ class IngestDocumentJob implements ShouldQueue
                 'source_type' => SourceType::fromMime($mimeType)->value,
                 'disk' => $this->disk,
             ]);
+
+            // v8.7/W3–W4 — dispatch the async AI deep-analysis now that the
+            // document + chunks are committed (the analyzer reads chunks, so
+            // it must run AFTER the flow's persist step, not from the
+            // `KnowledgeDocument::created` hook which fires before chunks
+            // exist). The job is itself config-gated (canonical-default ON /
+            // non-canonical opt-in) + debounced, so dispatching
+            // unconditionally here is cheap — the gate lives in one place.
+            if ($documentId !== null && (bool) config('kb.change_analysis.enabled', true)) {
+                \App\Jobs\AnalyzeDocumentChangeJob::dispatch((int) $documentId, $this->tenantId);
+            }
         } finally {
             // Restore even on exception/throw so a failing job never leaves
             // the singleton stuck on this job's tenant for the next one.

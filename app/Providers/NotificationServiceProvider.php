@@ -18,6 +18,7 @@ use App\Notifications\Events\BaseNotificationEvent;
 use App\Notifications\Events\CollectionNewMember;
 use App\Notifications\Events\KbCanonicalPromoted;
 use App\Notifications\Events\KbDecisionDebtThreshold;
+use App\Notifications\Events\KbDocAnalysisReady;
 use App\Notifications\Events\KbDocStaleReview;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Notifications\NotificationDispatcher;
@@ -88,6 +89,7 @@ final class NotificationServiceProvider extends ServiceProvider
             KbCanonicalPromoted::class,
             KbDecisionDebtThreshold::class,
             KbDocStaleReview::class,
+            KbDocAnalysisReady::class,
             CollectionNewMember::class,
         ];
 

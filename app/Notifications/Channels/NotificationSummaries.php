@@ -34,6 +34,7 @@ final class NotificationSummaries
             NotificationEvent::EVENT_KB_CANONICAL_PROMOTED => self::kbCanonicalPromotedSummary($payload),
             NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD => self::decisionDebtSummary($payload),
             NotificationEvent::EVENT_KB_DOC_STALE_REVIEW => self::staleReviewSummary($payload),
+            NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY => self::analysisReadySummary($payload),
             NotificationEvent::EVENT_COLLECTION_NEW_MEMBER => self::collectionMemberSummary($payload),
             default => NotificationSubjects::forEventType($eventType),
         };
@@ -99,6 +100,25 @@ final class NotificationSummaries
         $how = $age === null ? '' : " (untouched for {$age} days)";
 
         return "Document \"{$title}\"{$where} may need review{$how}.";
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private static function analysisReadySummary(array $payload): string
+    {
+        $title = self::stringField($payload, 'title') ?? self::stringField($payload, 'slug') ?? 'a document';
+        $suggestions = (int) ($payload['suggestion_count'] ?? 0);
+        $impacted = (int) ($payload['impacted_count'] ?? 0);
+
+        return sprintf(
+            'AI analysis ready for "%s": %d enhancement suggestion%s, %d impacted doc%s.',
+            $title,
+            $suggestions,
+            $suggestions === 1 ? '' : 's',
+            $impacted,
+            $impacted === 1 ? '' : 's',
+        );
     }
 
     /**

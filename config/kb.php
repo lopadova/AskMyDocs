@@ -85,6 +85,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | AI deep-analysis on document change (v8.7/W3–W4)
+    |--------------------------------------------------------------------------
+    |
+    | When a document is ingested or modified, an async
+    | `AnalyzeDocumentChangeJob` asks the LLM to (a) suggest how to
+    | strengthen the doc, (b) surface its cross-references with existing
+    | docs, and (c) flag which OTHER docs this change makes obsolete /
+    | in need of revision. Results land in `kb_doc_analyses` and notify
+    | the doc's reviewers (`KbDocAnalysisReady`). Suggest-only — never
+    | mutates a doc (ADR 0003).
+    |
+    | Cost posture: ON for canonical docs by default (highest-value,
+    | lower-volume), OFF (opt-in) for non-canonical. `enabled` is the
+    | master kill-switch. `debounce_minutes` skips re-analysing a doc that
+    | was analysed within the window (rapid re-ingest guard).
+    |
+    */
+
+    'change_analysis' => [
+        'enabled' => (bool) env('KB_CHANGE_ANALYSIS_ENABLED', true),
+        'canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_CANONICAL', true),
+        'non_canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_NON_CANONICAL', false),
+        'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
+        'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
+        'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reranking
     |--------------------------------------------------------------------------
     |

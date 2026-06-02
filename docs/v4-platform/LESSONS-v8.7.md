@@ -43,6 +43,25 @@ Running lessons log. Promote durable items into CLAUDE.md R-rules / `.claude/ski
   (R18). Only the `NotificationSubjects` + `NotificationSummaries` `match` arms need a manual line, and
   the `NotificationServiceProvider` Event::listen array needs the new event class.
 
+## W3–W4 — AI deep-analysis on change
+- **`final` classes can't be Mockery-mocked.** A service that tests need to mock (to isolate a job's
+  orchestration from the LLM/embedding plumbing) must NOT be `final` — same rationale CLAUDE.md gives
+  for `AiManager`. The architecture/type story is unchanged; just drop `final` + document why.
+- **A new feature that fans out from the ingest pipeline must default OFF in `phpunit.xml`.** The
+  analysis dispatch fires from `IngestDocumentJob`; with the feature on, every canonical-doc ingest
+  test would make a live LLM call. Set `KB_CHANGE_ANALYSIS_ENABLED=false` in the test env and let the
+  dedicated tests `config()->set` it on — production default stays ON.
+- **A JOIN to a second tenant-aware table forces qualifying every SHARED column.** `forTenant` itself
+  is JOIN-safe — `BelongsToTenant::scopeForTenant` qualifies the predicate as `<table>.tenant_id`
+  (verified in the trait). The real friction is the OTHER shared columns (`id` / `project_key` /
+  `created_at` / `title` collide between the two tables), so the select must qualify each. Resolving
+  related data with a separate tenant-scoped id→value map is simpler AND keeps the `forTenant(` marker
+  the R30 gate looks for explicit. (Earlier draft of this lesson wrongly claimed `forTenant` emits an
+  unqualified `tenant_id` — Copilot caught it.)
+- **TWO architecture enumerations again** — `KbDocAnalysis` (BelongsToTenant) had to be added to BOTH
+  `TenantIdMandatoryTest` AND `TenantReadScopeTest` (the W1 lesson, re-confirmed). The read-scope gate
+  ALSO flags any tenant-aware *query* missing `forTenant(` — `KbChangeAnalyzer`'s chunk read tripped it.
+
 ## W1 — Synonym Expansion (continued)
 - **FTS synonym OR-expansion stays injection-safe** by emitting one `plainto_tsquery(?, ?)` per
   phrase joined with the tsquery `||` operator — Postgres owns all lexeme parsing; no user string is
