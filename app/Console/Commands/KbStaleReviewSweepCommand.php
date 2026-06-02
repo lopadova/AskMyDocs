@@ -9,6 +9,7 @@ use App\Notifications\NotificationPublisher;
 use App\Support\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 /**
  * v8.7/W2 — stale-document review sweep.
@@ -102,19 +103,34 @@ final class KbStaleReviewSweepCommand extends Command
                         continue;
                     }
 
-                    if ($this->alreadyNotifiedForVersion($doc, $lastTouched)) {
-                        continue;
-                    }
-
-                    $ageDays = (int) $lastTouched->diffInDays(now());
-                    $flagged++;
-
                     if ($dryRun) {
+                        // Dry-run: validate without writing. The fast-path read is
+                        // not locked — acceptable for a reporting-only mode.
+                        if (! $this->alreadyNotifiedForVersion($doc, $lastTouched)) {
+                            $flagged++;
+                        }
                         continue;
                     }
 
-                    $publisher->publishKbDocStaleReview($doc, $ageDays);
-                    $this->markNotified($doc);
+                    // R21: check + publish + mark-notified all happen inside a single
+                    // DB::transaction with lockForUpdate so two concurrent sweeps cannot
+                    // both read stale_review_notified_at as absent and double-notify.
+                    $notified = DB::transaction(function () use ($doc, $lastTouched, $publisher): bool {
+                        /** @var KnowledgeDocument|null $fresh */
+                        $fresh = KnowledgeDocument::query()->lockForUpdate()->find($doc->id);
+                        if ($fresh === null || $this->alreadyNotifiedForVersion($fresh, $lastTouched)) {
+                            return false;
+                        }
+                        $ageDays = (int) $lastTouched->diffInDays(now());
+                        $publisher->publishKbDocStaleReview($fresh, $ageDays);
+                        $this->markNotified($fresh);
+
+                        return true;
+                    });
+
+                    if ($notified) {
+                        $flagged++;
+                    }
                 }
 
                 return true;
@@ -166,6 +182,11 @@ final class KbStaleReviewSweepCommand extends Command
 
         return KnowledgeDocument::query()
             ->distinct()
+            // R30: intentionally unscoped — this bootstrap query discovers the
+            // TENANT SET by reading only the tenant_id column. All document reads
+            // and writes inside sweepTenant() are forTenant()-scoped. The
+            // TenantReadScopeTest passes this file on the forTenant marker in
+            // sweepTenant(); no ALLOWLIST entry is needed.
             ->pluck('tenant_id')
             ->filter(static fn ($v): bool => is_string($v) && $v !== '')
             ->values()

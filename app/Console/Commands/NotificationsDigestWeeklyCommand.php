@@ -171,6 +171,11 @@ final class NotificationsDigestWeeklyCommand extends Command
 
         return NotificationEvent::query()
             ->distinct()
+            // R30: intentionally unscoped — this bootstrap query discovers the
+            // TENANT SET by reading only the tenant_id column. All event reads
+            // and digest writes inside digestTenant() are tenant_id-scoped. The
+            // TenantReadScopeTest passes this file on the forTenant / where('tenant_id')
+            // markers in digestTenant(); no ALLOWLIST entry is needed.
             ->pluck('tenant_id')
             ->filter(static fn ($v): bool => is_string($v) && $v !== '')
             ->values()
