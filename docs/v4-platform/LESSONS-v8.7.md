@@ -43,6 +43,22 @@ Running lessons log. Promote durable items into CLAUDE.md R-rules / `.claude/ski
   (R18). Only the `NotificationSubjects` + `NotificationSummaries` `match` arms need a manual line, and
   the `NotificationServiceProvider` Event::listen array needs the new event class.
 
+## W3–W4 — AI deep-analysis on change
+- **`final` classes can't be Mockery-mocked.** A service that tests need to mock (to isolate a job's
+  orchestration from the LLM/embedding plumbing) must NOT be `final` — same rationale CLAUDE.md gives
+  for `AiManager`. The architecture/type story is unchanged; just drop `final` + document why.
+- **A new feature that fans out from the ingest pipeline must default OFF in `phpunit.xml`.** The
+  analysis dispatch fires from `IngestDocumentJob`; with the feature on, every canonical-doc ingest
+  test would make a live LLM call. Set `KB_CHANGE_ANALYSIS_ENABLED=false` in the test env and let the
+  dedicated tests `config()->set` it on — production default stays ON.
+- **`forTenant` + a JOIN = ambiguous `tenant_id`.** The `BelongsToTenant::forTenant` scope adds an
+  UNQUALIFIED `where('tenant_id', …)`; joining a second tenant-aware table makes it ambiguous SQL.
+  Resolve related data with a separate tenant-scoped query (id→value map) instead of a JOIN, keeping
+  the `forTenant(` marker the R30 architecture gate looks for.
+- **TWO architecture enumerations again** — `KbDocAnalysis` (BelongsToTenant) had to be added to BOTH
+  `TenantIdMandatoryTest` AND `TenantReadScopeTest` (the W1 lesson, re-confirmed). The read-scope gate
+  ALSO flags any tenant-aware *query* missing `forTenant(` — `KbChangeAnalyzer`'s chunk read tripped it.
+
 ## W1 — Synonym Expansion (continued)
 - **FTS synonym OR-expansion stays injection-safe** by emitting one `plainto_tsquery(?, ?)` per
   phrase joined with the tsquery `||` operator — Postgres owns all lexeme parsing; no user string is

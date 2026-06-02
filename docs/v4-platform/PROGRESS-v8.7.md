@@ -51,6 +51,38 @@ Running progress log for the v8.7 cycle. One section per Wn.
 **Tests (all green locally):** `KbStaleReviewSweepCommandTest` (5) + `NotificationsDigestWeeklyCommandTest` (4);
 regression: `tests/Feature/Notifications` + `tests/Feature/Console` + `tests/Architecture` = **115 tests / 376 assertions OK**.
 
-## W3–W4 — AI deep-analysis on change ⏳
+## W3–W4 — AI deep-analysis on change ✅ (implementation complete, in review)
+
+**Branch:** `feature/v8.7-W3-deep-analysis` → PR (target `feature/v8.7`). The flagship.
+
+**Delivered:**
+- Schema `kb_doc_analyses` (tenant-aware, R30/R31; registered in BOTH architecture enumerations) +
+  `KbDocAnalysis` model (+ SQLite test mirror).
+- `KbChangeAnalyzer` (NOT final, for Mockery) — gathers the doc's chunks + its semantic neighbours
+  (reuses `KbSearchService::search`), builds `prompts/kb_change_analysis.blade.php`, calls
+  `AiManager::chat`, decodes strict JSON (strips code fences) + validates the shape (drops malformed
+  entries, never throws) into `{enhancement_suggestions, cross_references, impacted_docs}`.
+- `AnalyzeDocumentChangeJob` (async, ShouldQueue) — **cost-gated** (canonical default ON,
+  non-canonical opt-in; master `KB_CHANGE_ANALYSIS_ENABLED`), **debounced** (skip re-analysis within
+  the window), resolves `ingested`/`modified` trigger, persists the analysis, fires
+  `kb_doc_analysis_ready`, and **R14**-records a `failed` row on LLM error. Suggest-only (ADR 0003).
+- Dispatched from `IngestDocumentJob` AFTER the flow persists chunks (the analyzer needs them).
+- New notification event `EVENT_KB_DOC_ANALYSIS_READY` (eventTypes() + subject + summary + publisher
+  + provider Event::listen).
+- Read API `GET /api/admin/kb/analyses` (tenant-scoped, paginated, project/status/doc filters; R32 in
+  the AdminAuthorizationMatrix) + **Doc Insights** SPA (`KbInsightsView` cards: suggestions / impacted
+  docs / cross-refs / failed-state) + route + `AdminShell` rail entry.
+- Config `kb.change_analysis.*` + `.env.example` + `KB_CHANGE_ANALYSIS_ENABLED=false` in `phpunit.xml`
+  so the ingest pipeline never fans out an LLM call in tests.
+
+**Tests (all green locally):** `AnalyzeDocumentChangeJobTest` (6, incl. R26 `shouldNotReceive` proofs for
+the cost gates) + `KbChangeAnalyzerTest` (3) + `KbDocAnalysisControllerTest` (4) + RBAC matrix;
+Vitest `KbInsightsView.test.tsx` (6); Playwright `admin-kb-insights.spec.ts`. Regression: Jobs + Kb +
+Flow + Admin + Architecture + Notifications = **699 tests / 2343 assertions OK**. `tsc` clean.
+
+**Deferred (documented):** delete-trigger analysis (analysing the impact of a *removed* doc on its
+former neighbours needs a pre-delete snapshot — separate design); per-tenant gate override (config-level
+for now).
+
 ## W5 — Cloud Time Machine ⏳
 ## W6 — RC + GA ⏳

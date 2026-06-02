@@ -12,6 +12,7 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\Events\CollectionNewMember;
 use App\Notifications\Events\KbCanonicalPromoted;
+use App\Notifications\Events\KbDocAnalysisReady;
 use App\Notifications\Events\KbDocStaleReview;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Scopes\AccessScopeScope;
@@ -179,6 +180,53 @@ final class NotificationPublisher
                 'title' => $document->title === null ? null : (string) $document->title,
                 'slug' => $document->slug,
                 'age_days' => $ageDays,
+            ],
+            tenantId: $tenantId,
+        ));
+    }
+
+    /**
+     * v8.7/W3–W4 — fires `KbDocAnalysisReady` after the async deep-analysis
+     * for a document completes. Recipients resolve through the SAME
+     * tenant-safe ACL pipeline as `publishKbDocumentChanged` so a user is
+     * only told an analysis is ready for a doc they could read.
+     */
+    public function publishKbDocAnalysisReady(
+        KnowledgeDocument $document,
+        int $analysisId,
+        int $suggestionCount,
+        int $impactedCount,
+    ): void {
+        $tenantId = (string) ($document->tenant_id ?? '');
+        $projectKey = (string) ($document->project_key ?? '');
+        if ($tenantId === '' || $projectKey === '') {
+            return;
+        }
+
+        $recipients = $this->streamEligibleRecipients(
+            $tenantId,
+            NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY,
+            fn (User $user): bool => $this->userCanViewDocumentInTenant(
+                $user,
+                $tenantId,
+                $projectKey,
+                $document,
+            ),
+        );
+        if ($recipients === []) {
+            return;
+        }
+
+        Event::dispatch(new KbDocAnalysisReady(
+            recipients: $recipients,
+            payload: [
+                'doc_id' => (int) $document->id,
+                'project_key' => $projectKey,
+                'title' => $document->title === null ? null : (string) $document->title,
+                'slug' => $document->slug,
+                'analysis_id' => $analysisId,
+                'suggestion_count' => $suggestionCount,
+                'impacted_count' => $impactedCount,
             ],
             tenantId: $tenantId,
         ));

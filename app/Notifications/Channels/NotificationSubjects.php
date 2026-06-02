@@ -34,6 +34,7 @@ final class NotificationSubjects
             NotificationEvent::EVENT_KB_CANONICAL_PROMOTED => 'A decision was promoted to canonical',
             NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD => 'Decision debt threshold reached',
             NotificationEvent::EVENT_KB_DOC_STALE_REVIEW => 'A document may need review (untouched for a while)',
+            NotificationEvent::EVENT_KB_DOC_ANALYSIS_READY => 'AI analysis ready for a document you follow',
             NotificationEvent::EVENT_COLLECTION_NEW_MEMBER => 'A new document joined a collection you follow',
             default => 'AskMyDocs notification',
         };

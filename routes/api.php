@@ -345,6 +345,11 @@ Route::middleware([
                 'destroy' => 'api.admin.kb.synonyms.destroy',
             ]);
 
+        // v8.7/W3–W4 — read-only AI document-change analyses (Doc Insights).
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/analyses`).
+        Route::get('/kb/analyses', [\App\Http\Controllers\Api\Admin\KbDocAnalysisController::class, 'index'])
+            ->name('api.admin.kb.analyses.index');
+
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])
             ->names([
