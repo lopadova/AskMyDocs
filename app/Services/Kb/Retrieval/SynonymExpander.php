@@ -37,6 +37,27 @@ final class SynonymExpander
     ) {}
 
     /**
+     * Cache key for a (tenant, project) synonym group set. Single source
+     * of truth shared by the loader and {@see forget()} so a refactor
+     * can't desync the two.
+     */
+    private static function cacheKey(string $tenantId, string $project): string
+    {
+        return "kb:synonyms:{$tenantId}:{$project}";
+    }
+
+    /**
+     * Invalidate the cached synonym groups for a (tenant, project) — the
+     * admin CRUD controller calls this after every create / update /
+     * delete so retrieval stops using a stale group set before the TTL
+     * would otherwise expire it.
+     */
+    public static function forget(string $tenantId, string $projectKey): void
+    {
+        Cache::forget(self::cacheKey($tenantId, $projectKey));
+    }
+
+    /**
      * Returns the query text enriched with any matched synonym phrases,
      * deduplicated and appended after the original query. Returns the
      * original query verbatim when expansion is disabled or yields nothing.
@@ -160,9 +181,7 @@ final class SynonymExpander
             return $loader();
         }
 
-        $key = "kb:synonyms:{$tenantId}:{$project}";
-
-        return Cache::remember($key, $ttl, $loader);
+        return Cache::remember(self::cacheKey($tenantId, $project), $ttl, $loader);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\KbSynonym;
+use App\Services\Kb\Retrieval\SynonymExpander;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -68,11 +69,19 @@ final class SynonymController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Normalize `term` BEFORE validation so the per-(tenant, project)
+        // unique rule compares the SAME value the DB stores — otherwise
+        // `K8S` would pass `Rule::unique` against an existing `k8s` row and
+        // then hit the DB unique as a 500. A whitespace-only term collapses
+        // to '' and is rejected by `required` (Copilot review).
+        $request->merge(['term' => $this->lower((string) $request->input('term', ''))]);
+
         $validated = $request->validate($this->rules($request, null));
 
         $payload = $this->normalizePayload($validated, $request);
 
         $synonym = KbSynonym::create($payload);
+        SynonymExpander::forget($synonym->tenant_id, $synonym->project_key);
 
         return response()->json([
             'data' => $synonym->only(['id', 'project_key', 'term', 'synonyms', 'enabled', 'created_at', 'updated_at']),
@@ -112,6 +121,12 @@ final class SynonymController extends Controller
             );
         }
 
+        // Normalize `term` before validation (see store()) so the unique
+        // rule + the non-empty `min:1` guard run on the stored value.
+        if ($request->has('term')) {
+            $request->merge(['term' => $this->lower((string) $request->input('term'))]);
+        }
+
         $validated = $request->validate($this->rules($request, $synonym));
 
         // If `term` changes but `synonyms` is omitted, re-validate the
@@ -126,6 +141,7 @@ final class SynonymController extends Controller
         $payload = $this->normalizePayload($validated, $request, $synonym);
 
         $synonym->update($payload);
+        SynonymExpander::forget($synonym->tenant_id, $synonym->project_key);
 
         return response()->json([
             'data' => $synonym->only(['id', 'project_key', 'term', 'synonyms', 'enabled', 'created_at', 'updated_at']),
@@ -138,7 +154,10 @@ final class SynonymController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $synonym = $this->findOr404($id);
+        $tenantId = $synonym->tenant_id;
+        $projectKey = $synonym->project_key;
         $synonym->delete();
+        SynonymExpander::forget($tenantId, $projectKey);
 
         return response()->json(null, 204);
     }
@@ -161,6 +180,9 @@ final class SynonymController extends Controller
         $termRule = $isCreate ? ['required'] : ['sometimes'];
         $termRule = array_merge($termRule, [
             'string',
+            // min:1 rejects a term that normalized to '' (e.g. a
+            // whitespace-only input merged before validation).
+            'min:1',
             'max:200',
             Rule::unique('kb_synonyms', 'term')
                 ->where(fn ($q) => $q

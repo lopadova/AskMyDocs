@@ -6,6 +6,8 @@ namespace Tests\Feature\Api\Admin;
 
 use App\Models\KbSynonym;
 use App\Models\User;
+use App\Services\Kb\Retrieval\SynonymExpander;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -110,6 +112,48 @@ final class SynonymControllerTest extends TestCase
             'term' => 'k8s',
             'synonyms' => ['container platform'],
         ])->assertStatus(422)->assertJsonValidationErrors(['term']);
+    }
+
+    public function test_store_rejects_case_insensitive_duplicate_term(): void
+    {
+        // `K8S` must collide with the existing `k8s` as a 422 on `term`,
+        // NOT slip past Rule::unique and 500 on the DB unique constraint.
+        $admin = $this->makeAdmin();
+        KbSynonym::create(['project_key' => 'eng', 'term' => 'k8s', 'synonyms' => ['kubernetes']]);
+
+        $this->actingAs($admin)->postJson('/api/admin/kb/synonyms', [
+            'project_key' => 'eng',
+            'term' => 'K8S',
+            'synonyms' => ['container platform'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['term']);
+    }
+
+    public function test_store_rejects_whitespace_only_term(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->postJson('/api/admin/kb/synonyms', [
+            'project_key' => 'eng',
+            'term' => '   ',
+            'synonyms' => ['kubernetes'],
+        ])->assertStatus(422)->assertJsonValidationErrors(['term']);
+    }
+
+    public function test_delete_invalidates_the_expander_cache(): void
+    {
+        $admin = $this->makeAdmin();
+        config()->set('kb.synonyms.cache_ttl_seconds', 300);
+        config()->set('kb.synonyms.enabled', true);
+        $row = KbSynonym::create(['project_key' => 'eng', 'term' => 'k8s', 'synonyms' => ['kubernetes']]);
+
+        $expander = new SynonymExpander(app(TenantContext::class));
+        // Prime the (tenant, project) cache.
+        $this->assertContains('kubernetes', $expander->expansionPhrases('deploy k8s', 'eng'));
+
+        $this->actingAs($admin)->deleteJson("/api/admin/kb/synonyms/{$row->id}")->assertStatus(204);
+
+        // Cache was busted by the controller → no stale expansion.
+        $this->assertSame([], $expander->expansionPhrases('deploy k8s', 'eng'));
     }
 
     public function test_store_allows_same_term_across_projects(): void
