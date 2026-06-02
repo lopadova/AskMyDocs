@@ -11,6 +11,7 @@ use App\Support\MarkdownDiff;
 use App\Support\TenantContext;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 /**
  * v8.7/W5 — Cloud Time Machine: browse + restore document versions.
@@ -81,19 +82,41 @@ final class DocumentVersionService
      * canonical) to the target, activates the target, and writes a
      * `kb_canonical_audit` row for canonical restores. Transactional so a
      * partial flip can never leave two live versions or a vacated identity.
+     *
+     * R21 — The target is re-fetched with lockForUpdate() as the FIRST
+     * statement inside the transaction so concurrent restore calls for the
+     * same version are serialised. The "already live" guard is also inside
+     * the lock boundary so a TOCTOU race between the controller check and
+     * the transaction commit cannot yield a double-restore.
      */
     public function restore(KnowledgeDocument $target, ?string $actor = null): KnowledgeDocument
     {
         $tenantId = $this->tenant->current();
 
         DB::transaction(function () use ($target, $tenantId, $actor): void {
+            // R21 — Re-read and lock the target first; the stale $target loaded
+            // by the controller cannot be trusted once we cross the lock boundary.
+            $locked = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->where('id', $target->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($locked === null) {
+                throw new UnprocessableEntityHttpException('Document not found.');
+            }
+
+            if ($locked->status === 'active') {
+                throw new UnprocessableEntityHttpException('This version is already live.');
+            }
+
             /** @var KnowledgeDocument|null $live */
             $live = KnowledgeDocument::query()
                 ->forTenant($tenantId)
-                ->where('project_key', $target->project_key)
-                ->where('source_path', $target->source_path)
+                ->where('project_key', $locked->project_key)
+                ->where('source_path', $locked->source_path)
                 ->where('status', 'active')
-                ->where('id', '!=', $target->id)
+                ->where('id', '!=', $locked->id)
                 ->lockForUpdate()
                 ->first();
 
@@ -121,22 +144,22 @@ final class DocumentVersionService
                 ]);
             }
 
-            $target->update(array_merge(['status' => 'active', 'indexed_at' => now()], $identity));
+            $locked->update(array_merge(['status' => 'active', 'indexed_at' => now()], $identity));
 
             if ($restoreCanonical && (bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
-                    'project_key' => (string) $target->project_key,
+                    'project_key' => (string) $locked->project_key,
                     'doc_id' => $identity['doc_id'] ?? null,
                     'slug' => $identity['slug'] ?? null,
                     'event_type' => 'updated',
                     'actor' => $actor ?? 'time-machine:restore',
                     'before_json' => ['restored_from_status' => 'archived', 'previous_live_id' => $live?->id],
-                    'after_json' => ['restored_version_id' => (int) $target->id, 'version_hash' => $target->version_hash],
+                    'after_json' => ['restored_version_id' => (int) $locked->id, 'version_hash' => $locked->version_hash],
                     'metadata_json' => ['action' => 'version_restore'],
                 ]);
             }
         });
 
-        return $target->fresh();
+        return $target->fresh() ?? $target;
     }
 }

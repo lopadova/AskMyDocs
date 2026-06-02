@@ -117,8 +117,11 @@ final class PruneArchivedVersionsCommand extends Command
         // tenants that have archived versions so we don't run empty sweeps
         // for every tenant in the system. Cross-tenant enumeration is
         // intentional here (maintenance CLI needs to discover all tenants);
-        // every subsequent query inside pruneTenant() uses forTenant().
-        return KnowledgeDocument::query()
+        // withoutGlobalScopes() makes the bypass explicit and future-safe
+        // so a later-added global tenant scope cannot silently narrow this
+        // to the current TenantContext. Every subsequent query inside
+        // pruneTenant() uses forTenant() for correct per-tenant isolation.
+        return KnowledgeDocument::withoutGlobalScopes()
             ->where('status', 'archived')
             ->distinct()
             ->pluck('tenant_id')

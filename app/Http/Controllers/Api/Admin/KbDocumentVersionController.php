@@ -80,16 +80,13 @@ final class KbDocumentVersionController extends Controller
      * Restores version `{id}` to live (archives the current live version,
      * transfers its canonical identity when canonical). Refuses if `{id}`
      * is already the live version (R14 — 422, not a silent no-op).
+     *
+     * The "already live" guard runs inside DocumentVersionService::restore()
+     * under a lockForUpdate() so it is atomic (R21). No pre-check here.
      */
     public function restore(Request $request, int $id): JsonResponse
     {
         $version = $this->findOr404($id);
-
-        if ($version->status === 'active') {
-            return response()->json([
-                'message' => 'This version is already live.',
-            ], 422);
-        }
 
         $actor = $request->user()?->id !== null ? 'user:'.$request->user()->id : null;
         $restored = $this->versions->restore($version, $actor);
