@@ -130,6 +130,56 @@ final class KbDocumentVersionControllerTest extends TestCase
         $this->assertFalse((bool) $live->is_canonical);
     }
 
+    /**
+     * R21 — concurrent-restore sweep.
+     *
+     * Simulates the PostgreSQL EvalPlanQual scenario where a second version
+     * was activated by a concurrent restore while *this* restore was waiting
+     * on the lock. The $live SELECT FOR UPDATE returns null in that case
+     * (formerly-active row is now archived), so without the sweep the
+     * concurrent version stays active alongside our just-activated version.
+     *
+     * SQLite does not support FOR UPDATE, so we cannot exercise the lock
+     * path directly. Instead we replicate the post-race DB state by hand
+     * (two active rows) and assert that restore() leaves exactly one active.
+     */
+    public function test_restore_sweep_archives_concurrently_activated_version(): void
+    {
+        $admin = $this->makeAdmin();
+
+        // v1 — the target we are about to restore.
+        $v1 = $this->makeVersion('v1ccc', 'archived', 'old body');
+
+        // v2 — was the live version before a concurrent restore activated v3.
+        // In the race scenario it is already archived before we reach the
+        // $live lockForUpdate, so the $live query returns null.
+        $this->makeVersion('v2ddd', 'archived', 'mid body');
+
+        // v3 — activated by the concurrent thread; its status is 'active' now.
+        // This is what the sweep must archive to restore the one-active
+        // invariant.
+        $concurrentlyActive = $this->makeVersion('v3eee', 'active', 'concurrent body');
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/kb/documents/{$v1->id}/restore-version")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active');
+
+        $v1->refresh();
+        $concurrentlyActive->refresh();
+
+        $this->assertSame('active', $v1->status, 'Target version must be active after restore');
+        $this->assertSame('archived', $concurrentlyActive->status, 'Concurrently-activated version must be swept to archived');
+
+        // Exactly one active version in the family.
+        $activeCount = KnowledgeDocument::query()
+            ->where('project_key', 'eng')
+            ->where('source_path', 'docs/dec.md')
+            ->where('status', 'active')
+            ->count();
+        $this->assertSame(1, $activeCount, 'Exactly one active version must exist after sweep');
+    }
+
     public function test_restoring_the_live_version_is_422(): void
     {
         $admin = $this->makeAdmin();

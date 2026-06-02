@@ -88,6 +88,14 @@ final class DocumentVersionService
      * same version are serialised. The "already live" guard is also inside
      * the lock boundary so a TOCTOU race between the controller check and
      * the transaction commit cannot yield a double-restore.
+     *
+     * A final sweep UPDATE after activation enforces the one-active-per-
+     * family invariant even when two threads concurrently restore different
+     * archived versions: PostgreSQL EvalPlanQual can cause the $live SELECT
+     * FOR UPDATE to return null (the previously-active row was archived by
+     * the competing transaction), leaving this thread unaware of the
+     * newly-activated version. The sweep runs at UPDATE-lock time and
+     * captures any concurrent activations that the SELECT missed.
      */
     public function restore(KnowledgeDocument $target, ?string $actor = null): KnowledgeDocument
     {
@@ -145,6 +153,30 @@ final class DocumentVersionService
             }
 
             $locked->update(array_merge(['status' => 'active', 'indexed_at' => now()], $identity));
+
+            // R21 — Sweep-archive any other active versions that may have been
+            // activated by a concurrent restore transaction. When two threads
+            // restore different archived versions concurrently, PostgreSQL
+            // EvalPlanQual re-evaluates WHERE status='active' after a blocked
+            // lock is released; the formerly-active row is now archived so
+            // $live above returns null, causing this thread to miss the version
+            // that the concurrent transaction just activated. This UPDATE runs
+            // at UPDATE-lock-acquisition time (not at SELECT scan time) so it
+            // captures any such version and upholds the one-active-per-family
+            // invariant unconditionally.
+            KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->where('project_key', $locked->project_key)
+                ->where('source_path', $locked->source_path)
+                ->where('status', 'active')
+                ->where('id', '!=', $locked->id)
+                ->update([
+                    'status' => 'archived',
+                    'is_canonical' => false,
+                    'doc_id' => null,
+                    'slug' => null,
+                    'canonical_status' => null,
+                ]);
 
             if ($restoreCanonical && (bool) config('kb.canonical.audit_enabled', true)) {
                 KbCanonicalAudit::create([
