@@ -350,6 +350,20 @@ Route::middleware([
         Route::get('/kb/analyses', [\App\Http\Controllers\Api\Admin\KbDocAnalysisController::class, 'index'])
             ->name('api.admin.kb.analyses.index');
 
+        // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/documents/1/versions`).
+        Route::get('/kb/documents/{id}/versions', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'index'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.index');
+        Route::get('/kb/documents/{id}/versions/diff', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'diff'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.diff');
+        // `restore-version` (NOT `restore`) — `POST /kb/documents/{document}/restore`
+        // already exists for un-deleting SOFT-DELETED docs (KbDocumentController);
+        // the Time Machine restore re-activates an ARCHIVED VERSION, a distinct op
+        // (R20 — route contracts must not collide).
+        Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])
             ->names([

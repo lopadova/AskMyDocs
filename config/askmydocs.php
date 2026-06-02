@@ -241,6 +241,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_CRON', '0 7 * * 1'),
         ],
+        // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
+        'kb_prune_archived_versions' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_CRON', '20 4 * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,

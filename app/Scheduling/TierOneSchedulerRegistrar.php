@@ -55,6 +55,8 @@ final class TierOneSchedulerRegistrar
         // v8.7/W2 — stale-review sweep + weekly notification digest.
         ['kb_stale_review_sweep', 'kb:stale-review-sweep'],
         ['notifications_digest_weekly', 'notifications:digest-weekly'],
+        // v8.7/W5 — Cloud Time Machine archived-version retention.
+        ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
     ];
 
     public function register(Schedule $schedule): void

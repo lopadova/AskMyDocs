@@ -31,6 +31,7 @@ export type AdminSection =
     | 'collections'
     | 'synonyms'
     | 'kb-insights'
+    | 'time-machine'
     | 'compliance-reports'
     // v8.0/W1.4 — dedicated identifier so the
     // /app/admin/notifications route does NOT highlight a
