@@ -1298,8 +1298,11 @@ to the base `tests/TestCase.php::setUp()` so no test can leak
 tenant-scoped state into a sibling and trigger the unmet expectation in
 the first place. Check:
 
-- [ ] Every custom `tearDown()` calls `parent::tearDown()` FIRST, then
-      any `Mockery::close()` / other throwing cleanup.
+- [ ] Every custom `tearDown()` runs `parent::tearDown()` (the rollback)
+      BEFORE any THROWING cleanup (`Mockery::close()`). Non-throwing
+      cleanup that needs `$this->app` (e.g. a `TenantContext` reset) may
+      run before `parent::tearDown()`; only throwing calls must come
+      after the rollback.
 - [ ] Prefer dropping the manual `Mockery::close()` entirely — the
       framework's `tearDown()` already closes it safely.
 - [ ] Base `TestCase::setUp()` resets request-scoped singletons

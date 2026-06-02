@@ -72,9 +72,12 @@ protected function setUp(): void
 
 ## Checklist
 
-- [ ] Every custom `tearDown()` calls `parent::tearDown()` FIRST.
-- [ ] Any `Mockery::close()` / throwing cleanup runs AFTER `parent::tearDown()`,
-      or is removed (framework closes Mockery safely).
+- [ ] The rollback (`parent::tearDown()`) runs BEFORE any THROWING cleanup
+      (`Mockery::close()`). Non-throwing cleanup that needs `$this->app`
+      (e.g. a `TenantContext` reset) may run before `parent::tearDown()` — only
+      throwing calls must come after the rollback.
+- [ ] `Mockery::close()` runs AFTER `parent::tearDown()`, or is removed
+      entirely (the framework closes Mockery safely after the rollback).
 - [ ] Base `TestCase::setUp()` resets request-scoped singletons.
 - [ ] "active transaction" / "did not remove its own handlers" → fix the
       teardown, do NOT just re-run CI (R22 artefact-first still applies, but
