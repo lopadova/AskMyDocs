@@ -86,13 +86,25 @@ final class NotificationsDigestWeeklyCommand extends Command
         // component the `date` cast appends ('Y-m-d 00:00:00'), which a
         // plain `updateOrCreate(['week_start_date' => 'Y-m-d'])` would miss
         // and re-INSERT into the composite unique.
-        $digest = NotificationDigest::query()
+        $existing = NotificationDigest::query()
             ->where('tenant_id', $tenantId)
             ->whereDate('week_start_date', $weekStartDate)
-            ->first()
-            ?? new NotificationDigest(['tenant_id' => $tenantId, 'week_start_date' => $weekStartDate]);
+            ->first();
+
+        // Mail idempotency (Copilot review): once a week's digest has been
+        // SENT, a re-run (manual operator run, missed-schedule retry) must
+        // refresh the aggregate row but NOT re-queue the per-user emails —
+        // `sent_at` is the send-once latch. `whereDate`-row idempotency
+        // alone only dedupes the row, not the `Mail::queue` loop.
+        $alreadySent = $existing !== null && $existing->sent_at !== null;
+
+        $digest = $existing ?? new NotificationDigest(['tenant_id' => $tenantId, 'week_start_date' => $weekStartDate]);
         $digest->payload = $this->aggregate($events);
         $digest->save();
+
+        if ($alreadySent) {
+            return (int) $digest->recipients_count;
+        }
 
         // Per-user roundups: every user with an email-enabled preference
         // who actually had ≥1 event this window.

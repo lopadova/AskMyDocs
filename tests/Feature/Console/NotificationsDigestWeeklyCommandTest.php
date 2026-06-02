@@ -101,6 +101,9 @@ final class NotificationsDigestWeeklyCommandTest extends TestCase
 
         // Still exactly one (tenant, week_start_date) row.
         $this->assertSame(1, NotificationDigest::query()->where('tenant_id', 'default')->count());
+        // And the email is sent exactly ONCE — the second run must not
+        // re-queue duplicate digests (sent_at is the send-once latch).
+        Mail::assertQueued(WeeklyDigestMail::class, 1);
     }
 
     /**
