@@ -84,5 +84,27 @@ Flow + Admin + Architecture + Notifications = **699 tests / 2343 assertions OK**
 former neighbours needs a pre-delete snapshot — separate design); per-tenant gate override (config-level
 for now).
 
-## W5 — Cloud Time Machine ⏳
+## W5 — Cloud Time Machine ✅ (implementation complete, in review)
+
+**Branch:** `feature/v8.7-W5-time-machine` → PR (target `feature/v8.7`).
+
+**Delivered (substrate already there — archived versions + chunks are retained on re-ingest):**
+- `App\Support\MarkdownDiff` — in-house LCS line diff (context/add/remove rows + counts; CRLF-normalised).
+- `App\Services\Kb\Versioning\DocumentVersionService` — `versionsFor` (family timeline), `reconstructContent`
+  (from retained chunks), `diff`, and `restore` (transactional status-flip + canonical-identity transfer
+  from the outgoing live version to the target, `lockForUpdate` + `kb_canonical_audit` row).
+- `KbDocumentVersionController` — `GET .../versions` (timeline) + `GET .../versions/diff?from=&to=`
+  (family-scoped) + `POST .../restore-version` (R14 422 when already live). Named `restore-version` to
+  avoid colliding with the existing soft-delete `restore` (R20). R32 matrix entry.
+- `kb:prune-archived-versions` command (keep last N per family, hard-delete surplus + cascade chunks,
+  `--keep`/`--dry-run`; live + soft-deleted never touched) + scheduler slot + descriptionMap (W2 lesson)
+  + config `kb.versioning.keep_archived` + `.env.example`.
+- FE **Time Machine** SPA (`TimeMachineView`, route `/app/admin/kb/time-machine/$docId`) — version
+  timeline, From/To diff viewer, per-archived-version Restore (R14 surfaced restore + timeline errors).
+
+**Tests (all green locally):** `MarkdownDiffTest` (6) + `KbDocumentVersionControllerTest` (7, incl.
+canonical-identity transfer on restore) + `PruneArchivedVersionsCommandTest` (3) + RBAC matrix +
+MaintenanceCommandController (slot description). Vitest `TimeMachineView` (7); Playwright
+`admin-time-machine`. Regression Admin+Console+Unit/Support+Architecture = **370 / 1409 OK**. `tsc` clean.
+
 ## W6 — RC + GA ⏳

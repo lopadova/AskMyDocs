@@ -114,6 +114,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Cloud Time Machine — archived-version retention (v8.7/W5)
+    |--------------------------------------------------------------------------
+    |
+    | Every re-ingest archives the prior document version + its chunks so the
+    | Time Machine can browse/diff/restore them. `keep_archived` caps how many
+    | ARCHIVED versions to retain per (tenant, project, source_path) family;
+    | `kb:prune-archived-versions` (daily) hard-deletes the rest. The live
+    | version and soft-deleted rows are never pruned.
+    |
+    */
+
+    'versioning' => [
+        'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reranking
     |--------------------------------------------------------------------------
     |

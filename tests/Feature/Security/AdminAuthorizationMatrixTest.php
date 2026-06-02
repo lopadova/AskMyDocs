@@ -66,6 +66,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/tags' => ['admin', 'super-admin'],
             '/api/admin/kb/synonyms' => ['admin', 'super-admin'],
             '/api/admin/kb/analyses' => ['admin', 'super-admin'],
+            '/api/admin/kb/documents/1/versions' => ['admin', 'super-admin'],
             '/api/admin/kb/collections' => ['admin', 'super-admin'],
             '/api/admin/kb/projects' => ['admin', 'super-admin'],
             '/api/admin/commands/catalogue' => ['admin', 'super-admin'],

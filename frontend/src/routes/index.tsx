@@ -19,6 +19,7 @@ import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
+import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
@@ -371,6 +372,31 @@ const adminKbInsightsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb/insights',
     component: AdminKbInsightsRoute,
+});
+
+// v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
+function AdminKbTimeMachineRoute() {
+    const params = useParams({ strict: false }) as { docId?: string };
+    const docId = Number(params.docId);
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="time-machine">
+                {Number.isFinite(docId) && docId > 0 ? (
+                    <TimeMachineView docId={docId} />
+                ) : (
+                    <p data-testid="kb-time-machine-invalid" style={{ padding: 24, color: 'var(--err)' }}>
+                        Invalid document id.
+                    </p>
+                )}
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminKbTimeMachineRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/time-machine/$docId',
+    component: AdminKbTimeMachineRoute,
 });
 
 // PR14 / Phase I — Admin Insights. Same flat RBAC pattern — guard
@@ -739,6 +765,7 @@ const routeTree = rootRoute.addChildren([
         adminTagsRoute,
         adminSynonymsRoute,
         adminKbInsightsRoute,
+        adminKbTimeMachineRoute,
         adminLogsRoute,
         adminMaintenanceRoute,
         adminInsightsRoute,

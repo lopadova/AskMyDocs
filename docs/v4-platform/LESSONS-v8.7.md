@@ -62,6 +62,19 @@ Running lessons log. Promote durable items into CLAUDE.md R-rules / `.claude/ski
   `TenantIdMandatoryTest` AND `TenantReadScopeTest` (the W1 lesson, re-confirmed). The read-scope gate
   ALSO flags any tenant-aware *query* missing `forTenant(` — `KbChangeAnalyzer`'s chunk read tripped it.
 
+## W5 — Cloud Time Machine
+- **Check for an existing route before adding a verb.** `POST /kb/documents/{document}/restore` already
+  existed (un-delete a SOFT-DELETED doc, returns 409). A new `POST /kb/documents/{id}/restore` silently
+  shadowed it — my controller never ran and the OLD handler 409'd. Named the new one `restore-version`
+  (R20 — route contracts must not collide). Always `grep routes/api.php` for the path before registering.
+- **Pre-existing flaky-CI confirmation drill.** A full-suite random-seed ordering flake
+  (`SuggestedFollowupGeneratorTest` "active transaction" cascade) failed only one PHP-version job on
+  identical code; re-run was green. Confirm: isolate the named test (passes) + check the sibling
+  PHP-version jobs (green) → pre-existing, re-run rather than chase it into your diff.
+- **A new scheduler slot needs THREE coupled edits** (re-confirmed from W2): `TierOneSchedulerRegistrar::SLOTS`
+  + `config/askmydocs.php schedule.*` + `MaintenanceCommandController::$descriptionMap` (the controller
+  THROWS 500 on a slot with no description — caught only by `MaintenanceCommandControllerTest`).
+
 ## W1 — Synonym Expansion (continued)
 - **FTS synonym OR-expansion stays injection-safe** by emitting one `plainto_tsquery(?, ?)` per
   phrase joined with the tsquery `||` operator — Postgres owns all lexeme parsing; no user string is

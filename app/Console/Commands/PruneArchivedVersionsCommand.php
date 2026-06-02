@@ -1,0 +1,124 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * v8.7/W5 — Cloud Time Machine retention.
+ *
+ * Archived document versions accumulate forever (every re-ingest keeps the
+ * prior row + its chunks so the Time Machine can browse/restore them). This
+ * command caps that history: per `(tenant, project_key, source_path)`
+ * family it keeps the `--keep` most recent ARCHIVED versions and
+ * hard-deletes the rest (chunks cascade via the FK). The live version and
+ * soft-deleted rows are never touched.
+ */
+final class PruneArchivedVersionsCommand extends Command
+{
+    protected $signature = 'kb:prune-archived-versions
+                            {--tenant= : Restrict to one tenant}
+                            {--keep= : Override how many archived versions to retain per family}
+                            {--dry-run : Report what would be pruned without deleting}';
+
+    protected $description = 'Hard-delete old archived document versions beyond the retention cap';
+
+    public function handle(TenantContext $tenants): int
+    {
+        $keep = max(0, (int) ($this->option('keep') ?? config('kb.versioning.keep_archived', 10)));
+        $dryRun = (bool) $this->option('dry-run');
+
+        $tenantIds = $this->resolveTenantIds();
+        if ($tenantIds === []) {
+            $this->info('No documents found. Nothing to prune.');
+
+            return self::SUCCESS;
+        }
+
+        $previousTenant = $tenants->current();
+
+        try {
+            foreach ($tenantIds as $tenantId) {
+                $tenants->set($tenantId);
+                $pruned = $this->pruneTenant($tenantId, $keep, $dryRun);
+                $this->info("[{$tenantId}] archived_versions_pruned={$pruned}".($dryRun ? ' (dry-run)' : ''));
+            }
+        } finally {
+            $tenants->set($previousTenant);
+        }
+
+        return self::SUCCESS;
+    }
+
+    private function pruneTenant(string $tenantId, int $keep, bool $dryRun): int
+    {
+        // Families with MORE than `keep` archived versions.
+        $families = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->where('status', 'archived')
+            ->select('project_key', 'source_path', DB::raw('count(*) as version_count'))
+            ->groupBy('project_key', 'source_path')
+            ->havingRaw('count(*) > ?', [$keep])
+            ->get();
+
+        $pruned = 0;
+        foreach ($families as $family) {
+            // Surplus = every archived version after the newest `keep`.
+            $surplusIds = KnowledgeDocument::query()
+                ->forTenant($tenantId)
+                ->where('status', 'archived')
+                ->where('project_key', $family->project_key)
+                ->where('source_path', $family->source_path)
+                ->orderByDesc('indexed_at')
+                ->orderByDesc('id')
+                ->skip($keep)
+                ->take(10_000)
+                ->pluck('id')
+                ->all();
+
+            if ($surplusIds === []) {
+                continue;
+            }
+            $pruned += count($surplusIds);
+
+            if ($dryRun) {
+                continue;
+            }
+
+            // Hard delete (chunks cascade via FK ON DELETE CASCADE). Bulk
+            // forceDelete in id-chunks keeps the IN list parser-friendly (R3).
+            foreach (array_chunk($surplusIds, 500) as $chunk) {
+                KnowledgeDocument::query()
+                    ->forTenant($tenantId)
+                    ->whereIn('id', $chunk)
+                    ->forceDelete();
+            }
+        }
+
+        return $pruned;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function resolveTenantIds(): array
+    {
+        $explicit = (string) ($this->option('tenant') ?? '');
+        if ($explicit !== '') {
+            return [$explicit];
+        }
+
+        return KnowledgeDocument::query()
+            ->where('status', 'archived')
+            ->distinct()
+            ->pluck('tenant_id')
+            ->filter(static fn ($v): bool => is_string($v) && $v !== '')
+            ->values()
+            ->all();
+    }
+}
