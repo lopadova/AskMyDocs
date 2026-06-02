@@ -83,8 +83,19 @@ protected function setUp(): void
 ## Grep to find offenders
 
 ```bash
-# Risky order: Mockery::close() immediately before parent::tearDown()
-grep -rlzoP "Mockery::close\(\);\s*\n\s*parent::tearDown\(\);" tests/
+# Risky order: Mockery::close() before parent::tearDown() in the SAME method,
+# even with other lines (e.g. a TenantContext reset) BETWEEN them. The `[^}]*?`
+# keeps the match inside one method body so it can't span across `}` into the
+# next method.
+grep -rlzoP "Mockery::close\(\);(?:[^}]*?)parent::tearDown\(\);" tests/
 ```
 
-v8.8/W1 swept 35 files this way in one pass.
+A naive `Mockery::close\(\);\s*\n\s*parent::tearDown\(\);` only catches the exact
+two-line adjacency and MISSES offenders with a line in between — e.g.
+`Mockery::close(); $this->app->make(TenantContext::class)->reset(); parent::tearDown();`.
+Always use the body-spanning pattern above. (Note: when a reset line legitimately
+needs `$this->app`, keep it BEFORE `parent::tearDown()` — only `Mockery::close()`
+moves after.)
+
+v8.8/W1 swept 35 adjacent files plus 3 non-adjacent ones (Copilot caught the
+latter — the naive grep had missed them).

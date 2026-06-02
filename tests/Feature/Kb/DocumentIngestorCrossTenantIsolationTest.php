@@ -44,9 +44,9 @@ final class DocumentIngestorCrossTenantIsolationTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         $this->app->make(TenantContext::class)->reset();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_same_content_under_two_tenants_yields_two_distinct_documents(): void
