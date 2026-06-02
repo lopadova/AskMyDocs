@@ -331,6 +331,20 @@ Route::middleware([
                 'destroy' => 'api.admin.kb.tags.destroy',
             ]);
 
+        // v8.7/W1 — Admin RESTful CRUD on kb_synonyms (Synonym Expansion).
+        // Per-(tenant, project) scope; int-typed `id` param keeps route
+        // binding plain (mirrors TagController). R32 — covered by the
+        // AdminAuthorizationMatrix (`/api/admin/kb/synonyms`).
+        Route::apiResource('kb/synonyms', \App\Http\Controllers\Api\Admin\SynonymController::class)
+            ->parameters(['synonyms' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.synonyms.index',
+                'store' => 'api.admin.kb.synonyms.store',
+                'show' => 'api.admin.kb.synonyms.show',
+                'update' => 'api.admin.kb.synonyms.update',
+                'destroy' => 'api.admin.kb.synonyms.destroy',
+            ]);
+
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])
             ->names([

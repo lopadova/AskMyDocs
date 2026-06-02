@@ -60,6 +60,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Synonym Expansion (v8.7/W1)
+    |--------------------------------------------------------------------------
+    |
+    | Industry-specific synonym groups registered per (tenant, project) in
+    | `kb_synonyms`. At retrieval time SynonymExpander bidirectionally
+    | expands a query: mentioning any group member also searches every
+    | other member, so in-house jargon / acronyms / product codenames
+    | connect to their plain-language equivalents even when the embedding
+    | model has never seen the in-house term. The expanded text enriches
+    | the query embedding (all drivers) and OR-expands the FTS tsquery
+    | (pgsql). No-op when disabled or no synonym groups exist for the
+    | active (tenant, project) — zero behaviour change for hosts that
+    | never register a synonym.
+    |
+    */
+
+    'synonyms' => [
+        'enabled' => (bool) env('KB_SYNONYM_EXPANSION_ENABLED', true),
+        // Per-(tenant, project) synonym map cache TTL. 0 disables caching
+        // (every query reloads from the DB) — useful in tests.
+        'cache_ttl_seconds' => (int) env('KB_SYNONYM_CACHE_TTL_SECONDS', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reranking
     |--------------------------------------------------------------------------
     |
