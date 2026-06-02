@@ -51,8 +51,8 @@ final class KbChatRunnerUpTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_response_shape_includes_runner_up_array_with_reason_per_chunk(): void

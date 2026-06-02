@@ -21,8 +21,8 @@ final class PersistChunksStepTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_happy_path_creates_knowledge_document_and_chunks(): void

@@ -33,8 +33,8 @@ class MultiTenantRetrievalIsolationTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_graph_expansion_never_crosses_tenant_boundary(): void

@@ -22,8 +22,8 @@ final class RollbackChunksCompensatorTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_force_deletes_document_and_cascades_chunks(): void

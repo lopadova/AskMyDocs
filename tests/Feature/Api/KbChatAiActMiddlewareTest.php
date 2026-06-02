@@ -82,8 +82,8 @@ final class KbChatAiActMiddlewareTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_disclosure_header_is_appended_on_every_chat_response(): void

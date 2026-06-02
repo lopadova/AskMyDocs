@@ -19,8 +19,8 @@ final class EmbedChunksStepTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_happy_path_returns_embeddings_for_chunk_drafts(): void

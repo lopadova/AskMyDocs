@@ -37,8 +37,8 @@ final class PdfIngestionTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_pdf_ingestion_creates_document_with_pdf_source_type(): void
