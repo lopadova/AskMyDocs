@@ -52,6 +52,9 @@ final class TierOneSchedulerRegistrar
         ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run'],
         ['insights_compute', 'insights:compute'],
         ['compliance_digest_quarterly', 'compliance:digest-quarterly'],
+        // v8.7/W2 — stale-review sweep + weekly notification digest.
+        ['kb_stale_review_sweep', 'kb:stale-review-sweep'],
+        ['notifications_digest_weekly', 'notifications:digest-weekly'],
     ];
 
     public function register(Schedule $schedule): void

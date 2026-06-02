@@ -30,7 +30,27 @@ Running progress log for the v8.7 cycle. One section per Wn.
 - Vitest: `SynonymsList.test.tsx` + `parseSynonyms` = 13 green (incl. list-query-error + delete-error paths). `tsc -b` clean.
 - Playwright: `admin-synonyms.spec.ts` — lands + ARIA + full create→edit→delete round-trip + 422 duplicate.
 
-## W2 — Weekly digest + stale-review ⏳
+## W2 — Weekly digest + stale-review ✅ (implementation complete, in review)
+
+**Branch:** `feature/v8.7-W2-digest-stale-review` → PR (target `feature/v8.7`).
+
+**Delivered (backend-only; the new event type is data-driven into the existing preferences grid, no FE change):**
+- **Stale-review:** new `NotificationEvent::EVENT_KB_DOC_STALE_REVIEW` (registered in `eventTypes()` →
+  auto-seeds prefs + appears in the grid) + `KbDocStaleReview` event + subject/summary labels +
+  `NotificationPublisher::publishKbDocStaleReview()` (same tenant-safe ACL recipient pipeline as
+  `KbDocumentChanged`) + `kb:stale-review-sweep` command (time-based, all doc types, `metadata.stale_review_notified_at`
+  marker for per-content-version idempotency, `--months`/`--dry-run`/`--limit`, soft-delete + archived excluded).
+- **Weekly digest (closes roadmap R6):** `notifications:digest-weekly` command aggregates the week's
+  `notification_events` per tenant into a `notification_digests` row (one per `(tenant, week_start_date)`)
+  + emails each email-opted-in user their OWN roundup via `WeeklyDigestMail` + `emails/weekly-digest.blade.php`,
+  stamping `sent_at` + `recipients_count`.
+- Two `TierOneSchedulerRegistrar` slots (`kb_stale_review_sweep` daily 03:55, `notifications_digest_weekly`
+  Monday 07:00) + config (`kb_health.stale_review_months` default 6, both schedule slots) + `.env.example` vars.
+  Commands registered in `AppServiceProvider::commands()`.
+
+**Tests (all green locally):** `KbStaleReviewSweepCommandTest` (5) + `NotificationsDigestWeeklyCommandTest` (4);
+regression: `tests/Feature/Notifications` + `tests/Feature/Console` + `tests/Architecture` = **115 tests / 376 assertions OK**.
+
 ## W3–W4 — AI deep-analysis on change ⏳
 ## W5 — Cloud Time Machine ⏳
 ## W6 — RC + GA ⏳

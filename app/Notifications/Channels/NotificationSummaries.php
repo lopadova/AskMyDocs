@@ -33,6 +33,7 @@ final class NotificationSummaries
             NotificationEvent::EVENT_KB_DOC_MODIFIED => self::kbDocModifiedSummary($payload),
             NotificationEvent::EVENT_KB_CANONICAL_PROMOTED => self::kbCanonicalPromotedSummary($payload),
             NotificationEvent::EVENT_KB_DECISION_DEBT_THRESHOLD => self::decisionDebtSummary($payload),
+            NotificationEvent::EVENT_KB_DOC_STALE_REVIEW => self::staleReviewSummary($payload),
             NotificationEvent::EVENT_COLLECTION_NEW_MEMBER => self::collectionMemberSummary($payload),
             default => NotificationSubjects::forEventType($eventType),
         };
@@ -84,6 +85,20 @@ final class NotificationSummaries
         return is_int($count) || (is_string($count) && ctype_digit($count))
             ? "Project \"{$project}\" has {$count} decisions above the debt threshold."
             : "Project \"{$project}\" has reached the decision-debt threshold.";
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private static function staleReviewSummary(array $payload): string
+    {
+        $title = self::stringField($payload, 'title') ?? self::stringField($payload, 'slug') ?? 'a document';
+        $age = self::stringField($payload, 'age_days');
+        $project = self::stringField($payload, 'project_key');
+        $where = $project === null ? '' : " in project \"{$project}\"";
+        $how = $age === null ? '' : " (untouched for {$age} days)";
+
+        return "Document \"{$title}\"{$where} may need review{$how}.";
     }
 
     /**
