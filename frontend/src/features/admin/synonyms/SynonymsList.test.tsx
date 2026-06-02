@@ -150,6 +150,26 @@ describe('SynonymsList', () => {
         });
     });
 
+    it('renders an error state (NOT the empty state) when the list query fails', async () => {
+        mockGet.mockRejectedValue(new Error('boom 500'));
+        render(withQueryClient(<SynonymsList />));
+        const err = await screen.findByTestId('admin-synonyms-error');
+        expect(err).toHaveAttribute('data-state', 'error');
+        // The empty state must NOT render on a failed query — they are distinct.
+        expect(screen.queryByTestId('admin-synonyms-empty')).not.toBeInTheDocument();
+    });
+
+    it('surfaces a delete failure instead of swallowing it', async () => {
+        mockGet.mockResolvedValue({ data: { data: FIXTURE } });
+        mockDelete.mockRejectedValue(new Error('delete failed'));
+        render(withQueryClient(<SynonymsList />));
+        await waitFor(() => expect(screen.getByTestId('admin-synonym-row-1')).toBeVisible());
+        await userEvent.click(screen.getByTestId('admin-synonym-row-1-delete'));
+        await userEvent.click(screen.getByTestId('admin-synonym-row-1-delete-confirm'));
+        const err = await screen.findByTestId('admin-synonyms-delete-error');
+        expect(err).toHaveTextContent('delete failed');
+    });
+
     it('delete requires a confirm step before firing the API', async () => {
         mockGet.mockResolvedValue({ data: { data: FIXTURE } });
         mockDelete.mockResolvedValue({ status: 204 });

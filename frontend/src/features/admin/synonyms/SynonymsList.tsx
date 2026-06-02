@@ -25,6 +25,7 @@ export function SynonymsList(): ReactNode {
     const [editing, setEditing] = useState<AdminSynonym | null>(null);
     const [createOpen, setCreateOpen] = useState(false);
     const [submitError, setSubmitError] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const [confirmingDelete, setConfirmingDelete] = useState<Record<number, boolean>>({});
 
     const query = useQuery({
@@ -60,7 +61,16 @@ export function SynonymsList(): ReactNode {
 
     const deleteMutation = useMutation({
         mutationFn: (id: number) => adminSynonymsApi.delete(id),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-kb-synonyms'] }),
+        onSuccess: () => {
+            setDeleteError(null);
+            qc.invalidateQueries({ queryKey: ['admin-kb-synonyms'] });
+        },
+        // R14 — a failed DELETE must NOT be swallowed silently; surface it
+        // so the row staying put is explained instead of looking like a
+        // no-op.
+        onError: (err: unknown) => {
+            setDeleteError(err instanceof Error ? err.message : 'Could not delete synonym group.');
+        },
     });
 
     const rows = query.data ?? [];
@@ -125,12 +135,31 @@ export function SynonymsList(): ReactNode {
                 jargon, acronyms, and product codenames connect to their plain-language equivalents.
             </p>
 
+            {deleteError && (
+                <p data-testid="admin-synonyms-delete-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, marginBottom: 8 }}>
+                    {deleteError}
+                </p>
+            )}
+
             {query.isLoading && (
                 <p data-testid="admin-synonyms-loading" data-state="loading" style={{ color: 'var(--fg-3)' }}>
                     Loading…
                 </p>
             )}
-            {!query.isLoading && rows.length === 0 && (
+            {/* R14 — a failed list query must NOT render as the empty state;
+                a network error / 500 is visually distinct from "no groups yet". */}
+            {!query.isLoading && query.isError && (
+                <p
+                    data-testid="admin-synonyms-error"
+                    data-state="error"
+                    role="alert"
+                    style={{ color: 'var(--err)', padding: 24, textAlign: 'center', border: '1px dashed var(--err)', borderRadius: 8 }}
+                >
+                    Failed to load synonym groups.{' '}
+                    {query.error instanceof Error ? query.error.message : 'Please retry.'}
+                </p>
+            )}
+            {!query.isLoading && !query.isError && rows.length === 0 && (
                 <p
                     data-testid="admin-synonyms-empty"
                     data-state="empty"
