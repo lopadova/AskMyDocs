@@ -26,8 +26,8 @@ final class EvaluateCollectionsJobTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_creates_static_match_membership_when_document_matches_collection_criteria(): void

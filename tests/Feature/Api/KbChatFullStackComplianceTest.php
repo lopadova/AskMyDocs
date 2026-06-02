@@ -79,8 +79,8 @@ final class KbChatFullStackComplianceTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_one_chat_turn_fires_citations_disclosure_chatlog_and_pii_redaction_together(): void

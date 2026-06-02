@@ -18,8 +18,8 @@ class DocumentIngestorCanonicalTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_canonical_markdown_populates_canonical_columns_and_dispatches_indexer(): void

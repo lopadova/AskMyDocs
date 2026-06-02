@@ -126,8 +126,8 @@ final class KbChatControllerFiltersTest extends TestCase
     {
         $this->capturedFilters = null;
         $this->capturedProjectKey = null;
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_legacy_project_key_payload_still_works_and_wraps_into_filters(): void

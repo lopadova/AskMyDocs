@@ -31,8 +31,8 @@ class InsightsComputeCommandTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_happy_path_writes_single_snapshot(): void

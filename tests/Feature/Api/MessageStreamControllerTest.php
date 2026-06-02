@@ -119,8 +119,8 @@ final class MessageStreamControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_1_happy_path_emits_sdk_v6_envelope_in_canonical_order(): void

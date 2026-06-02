@@ -55,9 +55,9 @@ final class IngestDocumentFlowTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         $this->app->make(TenantContext::class)->reset();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_happy_path_persists_document_and_writes_flow_persistence_rows(): void

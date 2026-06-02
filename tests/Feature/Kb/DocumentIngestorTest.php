@@ -16,8 +16,8 @@ class DocumentIngestorTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_archives_previous_versions_for_same_source_path(): void

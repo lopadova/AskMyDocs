@@ -338,4 +338,23 @@ abstract class TestCase extends OrchestraTestCase
         // matches what the package SP loads in production.
         $this->loadMigrationsFrom(__DIR__.'/database/migrations');
     }
+
+    /**
+     * Pin the request-scoped TenantContext singleton to its default at the
+     * start of EVERY test. Testbench refreshes the app per test, but a test
+     * that switches tenants (e.g. cross-tenant isolation specs) must never
+     * be able to bleed that state into a sibling and cause a downstream
+     * tenant-scoped query to return the wrong rows — the kind of silent
+     * cross-test contamination that, combined with a mock `->once()`
+     * expectation, used to surface as a flaky "active transaction" cascade.
+     * Belt-and-suspenders: harmless when the refresh already reset it.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {
+            $this->app->make(\App\Support\TenantContext::class)->reset();
+        }
+    }
 }

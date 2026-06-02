@@ -23,8 +23,8 @@ class CanonicalWriterTest extends TestCase
     {
         // One test uses `Storage::shouldReceive(...)` — flush Mockery's
         // expectations here so they don't leak to subsequent tests.
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_writes_decision_under_decisions_folder(): void

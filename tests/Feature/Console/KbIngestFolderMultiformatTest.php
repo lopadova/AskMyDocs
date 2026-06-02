@@ -37,8 +37,8 @@ final class KbIngestFolderMultiformatTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_folder_walker_picks_up_md_pdf_docx_with_correct_source_types(): void

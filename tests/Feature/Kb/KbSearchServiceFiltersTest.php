@@ -60,8 +60,8 @@ final class KbSearchServiceFiltersTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_retrieval_filters_isEmpty_returns_true_for_default_construction(): void

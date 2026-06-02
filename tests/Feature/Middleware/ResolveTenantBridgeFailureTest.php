@@ -43,8 +43,8 @@ final class ResolveTenantBridgeFailureTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_middleware_logs_warning_and_reports_when_bridge_throws(): void

@@ -80,8 +80,8 @@ final class RetrievalPipelineScenarioTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     private function ingestCorpus(): void

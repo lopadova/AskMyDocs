@@ -50,8 +50,8 @@ final class RefusalI18nTest extends TestCase
     {
         // Reset to default to avoid test ordering side-effects.
         App::setLocale(config('app.locale', 'en'));
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     /**

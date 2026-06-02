@@ -29,8 +29,8 @@ final class DocumentIngestorPipelineTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_ingest_text_file_via_pipeline_creates_document_with_text_source_type(): void

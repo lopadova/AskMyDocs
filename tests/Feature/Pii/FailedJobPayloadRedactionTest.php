@@ -204,7 +204,7 @@ final class FailedJobPayloadRedactionTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 }

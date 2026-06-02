@@ -20,8 +20,8 @@ final class CounterfactualServiceTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_anonymous_caller_gets_empty_array(): void

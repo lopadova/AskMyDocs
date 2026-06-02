@@ -17,8 +17,8 @@ class RejectedApproachInjectorTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_returns_empty_when_feature_disabled(): void

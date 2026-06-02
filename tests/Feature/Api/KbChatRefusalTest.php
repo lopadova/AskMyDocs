@@ -54,8 +54,8 @@ final class KbChatRefusalTest extends TestCase
     {
         $this->capturedFilters = null;
         $this->aiMock = null;
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     /**

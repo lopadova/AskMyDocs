@@ -19,8 +19,8 @@ final class ChatRetrievalServiceTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     private function service(): ChatRetrievalService

@@ -17,8 +17,8 @@ class EmbeddingCacheServiceTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     private function makeService(?EmbeddingsResponse $apiResponse = null, bool $expectCall = true): EmbeddingCacheService
