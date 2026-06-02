@@ -9,6 +9,7 @@ use App\Services\Kb\Retrieval\SynonymExpander;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -161,7 +162,7 @@ final class SynonymController extends Controller
     /**
      * DELETE /api/admin/kb/synonyms/{id}
      */
-    public function destroy(int $id): JsonResponse
+    public function destroy(int $id): Response
     {
         $synonym = $this->findOr404($id);
         $tenantId = $synonym->tenant_id;
@@ -169,7 +170,10 @@ final class SynonymController extends Controller
         $synonym->delete();
         SynonymExpander::forget($tenantId, $projectKey);
 
-        return response()->json(null, 204);
+        // 204 with NO body — `noContent()` instead of `json(null, 204)`,
+        // which emits a literal `null` body some proxies/clients choke on
+        // (codebase convention, e.g. WorkflowController — Copilot review).
+        return response()->noContent();
     }
 
     /**
