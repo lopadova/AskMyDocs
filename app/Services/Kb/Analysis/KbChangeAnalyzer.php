@@ -50,7 +50,12 @@ class KbChangeAnalyzer
     public function analyze(KnowledgeDocument $document, string $trigger): array
     {
         $docText = $this->documentText($document);
-        $neighbours = $this->findNeighbours($document, $docText);
+        $neighbours = $this->findNeighbours(
+            projectKey: (string) $document->project_key,
+            excludeDocId: (int) $document->id,
+            title: (string) ($document->title ?? ''),
+            docText: $docText,
+        );
 
         $systemPrompt = View::make('prompts.kb_change_analysis', [
             'document' => $document,
@@ -63,6 +68,51 @@ class KbChangeAnalyzer
 
         return [
             'analysis' => $this->validate($this->decodeLlmJson($response->content)),
+            'provider' => $response->provider,
+            'model' => $response->model,
+        ];
+    }
+
+    /**
+     * v8.8/W2 — obsolescence-impact analysis of a DELETED document.
+     *
+     * Operates on a pre-delete SNAPSHOT (the document row + its chunks are
+     * gone after a hard delete, and hidden after a soft delete), built by
+     * {@see \App\Services\Kb\DocumentDeleter} before the deletion mutates
+     * anything. Finds the still-live neighbours that may have referenced the
+     * deleted document and asks the LLM which of them now have a dangling
+     * reference / stale dependency. Suggest-only — same contract as
+     * {@see analyze()}; `enhancement_suggestions` is always empty for a
+     * deletion (there is no document left to strengthen).
+     *
+     * @param  array{tenant_id: string, project_key: string, knowledge_document_id: int, doc_slug: ?string, title: string, source_path: string, is_canonical: bool, doc_text: string}  $snapshot
+     * @return array{analysis: array{enhancement_suggestions: list<string>, cross_references: list<array{slug: string, title: string, why: string}>, impacted_docs: list<array{slug: string, title: string, impact: string, suggested_action: string}>}, provider: string, model: string}
+     */
+    public function analyzeDeletion(array $snapshot): array
+    {
+        $docText = (string) ($snapshot['doc_text'] ?? '');
+        $neighbours = $this->findNeighbours(
+            projectKey: (string) ($snapshot['project_key'] ?? ''),
+            excludeDocId: (int) ($snapshot['knowledge_document_id'] ?? 0),
+            title: (string) ($snapshot['title'] ?? ''),
+            docText: $docText,
+        );
+
+        $systemPrompt = View::make('prompts.kb_deletion_analysis', [
+            'snapshot' => $snapshot,
+            'docText' => $docText,
+            'neighbours' => $neighbours,
+        ])->render();
+
+        $response = $this->ai->chat($systemPrompt, 'Produce the JSON now.');
+
+        $analysis = $this->validate($this->decodeLlmJson($response->content));
+        // A deletion never strengthens the (now gone) document — drop any
+        // enhancement_suggestions the LLM emitted despite the instruction.
+        $analysis['enhancement_suggestions'] = [];
+
+        return [
+            'analysis' => $analysis,
             'provider' => $response->provider,
             'model' => $response->model,
         ];
@@ -82,14 +132,15 @@ class KbChangeAnalyzer
 
     /**
      * Closest existing documents (semantic neighbours), excluding the
-     * document itself. Reuses the production retrieval path so neighbour
-     * quality matches what chat would surface.
+     * subject document itself (by id). Reuses the production retrieval path
+     * so neighbour quality matches what chat would surface. Shared by
+     * {@see analyze()} (change) and {@see analyzeDeletion()} (delete).
      *
      * @return list<array{slug: ?string, title: ?string, snippet: string}>
      */
-    private function findNeighbours(KnowledgeDocument $document, string $docText): array
+    private function findNeighbours(string $projectKey, int $excludeDocId, string $title, string $docText): array
     {
-        $query = trim(((string) $document->title).' '.mb_substr($docText, 0, 500));
+        $query = trim($title.' '.mb_substr($docText, 0, 500));
         if ($query === '') {
             return [];
         }
@@ -98,14 +149,14 @@ class KbChangeAnalyzer
 
         $results = $this->search->search(
             query: $query,
-            projectKey: (string) $document->project_key,
+            projectKey: $projectKey,
             limit: $limit + 3, // over-fetch so excluding self still leaves enough
         );
 
         $byDoc = [];
         foreach ($results as $chunk) {
             $docId = data_get($chunk, 'document.id');
-            if ($docId === null || (int) $docId === (int) $document->id || isset($byDoc[$docId])) {
+            if ($docId === null || (int) $docId === $excludeDocId || isset($byDoc[$docId])) {
                 continue;
             }
             $byDoc[$docId] = [

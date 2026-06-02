@@ -107,6 +107,9 @@ return [
         'enabled' => (bool) env('KB_CHANGE_ANALYSIS_ENABLED', true),
         'canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_CANONICAL', true),
         'non_canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_NON_CANONICAL', false),
+        // v8.8/W2 — also run the obsolescence-impact analysis on a
+        // user-initiated DELETE (on top of the global `enabled` switch).
+        'delete_enabled' => (bool) env('KB_CHANGE_ANALYSIS_ON_DELETE', true),
         'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
         'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
         'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),

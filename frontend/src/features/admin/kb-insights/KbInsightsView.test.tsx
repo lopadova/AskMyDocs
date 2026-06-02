@@ -77,6 +77,28 @@ describe('KbInsightsView', () => {
         expect(screen.queryByTestId('admin-kb-insight-2-suggestions')).not.toBeInTheDocument();
     });
 
+    it('renders a deleted-trigger card with impacted docs and no suggestions', async () => {
+        const deleted = {
+            ...COMPLETED,
+            id: 3,
+            trigger: 'deleted',
+            suggestion_count: 0,
+            analysis_json: {
+                enhancement_suggestions: [],
+                cross_references: [{ slug: 'runbook', title: 'Cache runbook', why: 'linked the decision' }],
+                impacted_docs: [{ slug: 'runbook', title: 'Cache runbook', impact: 'dangling link', suggested_action: 'update: drop the reference' }],
+            },
+        };
+        mockGet.mockResolvedValue(page([deleted]));
+        render(withQueryClient(<KbInsightsView />));
+        await waitFor(() => expect(screen.getByTestId('admin-kb-insight-3')).toBeVisible());
+        // The trigger label surfaces the deletion (rendered verbatim, uppercased).
+        expect(screen.getByTestId('admin-kb-insight-3')).toHaveTextContent(/deleted/i);
+        expect(screen.getByTestId('admin-kb-insight-3-impacted')).toHaveTextContent('drop the reference');
+        // A deletion never has enhancement suggestions.
+        expect(screen.queryByTestId('admin-kb-insight-3-suggestions')).not.toBeInTheDocument();
+    });
+
     it('renders an error state (not empty) when the query fails', async () => {
         mockGet.mockRejectedValue(new Error('boom 500'));
         render(withQueryClient(<KbInsightsView />));

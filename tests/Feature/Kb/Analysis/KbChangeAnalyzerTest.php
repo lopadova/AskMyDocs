@@ -123,4 +123,55 @@ final class KbChangeAnalyzerTest extends TestCase
 
         $this->assertSame(['Document the eviction policy'], $result['analysis']['enhancement_suggestions']);
     }
+
+    /**
+     * @return array{tenant_id: string, project_key: string, knowledge_document_id: int, doc_slug: ?string, title: string, source_path: string, is_canonical: bool, doc_text: string}
+     */
+    private function deletionSnapshot(): array
+    {
+        return [
+            'tenant_id' => 'default',
+            'project_key' => 'proj-az',
+            'knowledge_document_id' => 7,
+            'doc_slug' => 'dec-cache',
+            'title' => 'Caching strategy',
+            'source_path' => 'docs/a.md',
+            'is_canonical' => true,
+            'doc_text' => 'We cache results in Redis for 1 hour.',
+        ];
+    }
+
+    public function test_deletion_analysis_returns_impacted_docs_from_snapshot(): void
+    {
+        $json = json_encode([
+            'enhancement_suggestions' => [],
+            'cross_references' => [['slug' => 'runbook-cache', 'title' => 'Cache runbook', 'why' => 'linked the decision']],
+            'impacted_docs' => [['slug' => 'runbook-cache', 'title' => 'Cache runbook', 'impact' => 'dangling link', 'suggested_action' => 'update']],
+        ]);
+
+        $result = $this->analyzer($json, [
+            ['document' => ['id' => 99, 'title' => 'Cache runbook', 'slug' => 'runbook-cache'], 'chunk_text' => 'see the decision'],
+        ])->analyzeDeletion($this->deletionSnapshot());
+
+        $this->assertCount(1, $result['analysis']['impacted_docs']);
+        $this->assertSame('runbook-cache', $result['analysis']['impacted_docs'][0]['slug']);
+        $this->assertSame('update', $result['analysis']['impacted_docs'][0]['suggested_action']);
+        $this->assertSame('test-model', $result['model']);
+    }
+
+    public function test_deletion_analysis_always_empties_enhancement_suggestions(): void
+    {
+        // Even if the LLM ignores the instruction and returns suggestions for
+        // the (now gone) document, the analyzer drops them — there is nothing
+        // left to strengthen.
+        $json = json_encode([
+            'enhancement_suggestions' => ['Add a TTL rationale', 'Link the runbook'],
+            'cross_references' => [],
+            'impacted_docs' => [],
+        ]);
+
+        $result = $this->analyzer($json)->analyzeDeletion($this->deletionSnapshot());
+
+        $this->assertSame([], $result['analysis']['enhancement_suggestions']);
+    }
 }
