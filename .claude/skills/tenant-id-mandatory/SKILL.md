@@ -94,10 +94,33 @@ Schema::create('orders', function (Blueprint $t) {
 });
 ```
 
+## A new `BelongsToTenant` model must be registered in TWO enumerations
+
+This is the single most-repeated trip-up (hit 3× in the v8.7 cycle alone). A new model that
+`use BelongsToTenant;` must be added to BOTH:
+
+1. `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` (FQCN list) — R31.
+2. `tests/Architecture/TenantReadScopeTest::TENANT_AWARE_MODELS` (short-name list) — R30 read-scope
+   completeness; it **globs `app/Models` for the trait** and `assertSame`s the sorted list, so a missing
+   entry fails. It ALSO scans services/controllers/commands and flags any tenant-aware **query** missing
+   a `forTenant(` marker — so a new model AND every place you query it both need attention.
+
+The second one is easy to miss (different file, short-name not FQCN) and only the FULL suite catches it —
+a targeted test run goes green, then CI's `TenantReadScopeTest` fails. Run BOTH architecture tests before
+pushing a new tenant-aware model:
+
+```bash
+php vendor/bin/phpunit tests/Architecture/TenantIdMandatoryTest.php tests/Architecture/TenantReadScopeTest.php
+```
+
+`BelongsToTenant::scopeForTenant` qualifies the column as `<table>.tenant_id` (JOIN-safe) — so the gate's
+`forTenant(` requirement is about the marker being present, not about ambiguity.
+
 ## Reference
 
 - `app/Models/Concerns/BelongsToTenant.php` — the trait
 - `app/Support/TenantContext.php` — request-scoped singleton
 - `app/Http/Middleware/ResolveTenant.php` — HTTP entry point
-- `tests/Architecture/TenantIdMandatoryTest.php` — gate
+- `tests/Architecture/TenantIdMandatoryTest.php` — gate (R31, fillable + trait)
+- `tests/Architecture/TenantReadScopeTest.php` — gate (R30, model-list completeness + `forTenant(` markers)
 - `CLAUDE.md` R31 (codified rule)

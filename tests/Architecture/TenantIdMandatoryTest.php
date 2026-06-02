@@ -64,6 +64,10 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbCanonicalAudit::class,
         \App\Models\ProjectMembership::class,
         \App\Models\KbTag::class,
+        // v8.7/W1 — per-(tenant, project) synonym groups for query expansion.
+        \App\Models\KbSynonym::class,
+        // v8.7/W3–W4 — AI deep-analysis on document change.
+        \App\Models\KbDocAnalysis::class,
         \App\Models\KnowledgeDocumentAcl::class,
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,

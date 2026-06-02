@@ -1,0 +1,183 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Kb\Retrieval;
+
+use App\Models\KbSynonym;
+use App\Services\Kb\Retrieval\SynonymExpander;
+use App\Support\TenantContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
+use Tests\TestCase;
+
+/**
+ * v8.7/W1 — SynonymExpander bidirectional query expansion.
+ *
+ * The expander treats each `kb_synonyms` row as an equivalence GROUP
+ * (anchor term + its synonyms). A query mentioning ANY group member is
+ * expanded with every OTHER member, so industry jargon connects to its
+ * plain-language equivalents at retrieval time. Scoped per (tenant,
+ * project); no-op when disabled or when no groups exist.
+ */
+final class SynonymExpanderTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // TenantContext is a mutable singleton; pin it to 'default' so a
+        // prior test class that switched tenants can't scope this test's
+        // seeded rows / queries to the wrong tenant (Copilot review).
+        app(TenantContext::class)->reset();
+        // Disable the per-(tenant, project) cache so each test sees its
+        // own freshly-seeded rows without TTL interference.
+        config()->set('kb.synonyms.cache_ttl_seconds', 0);
+        config()->set('kb.synonyms.enabled', true);
+        Cache::flush();
+    }
+
+    private function expander(): SynonymExpander
+    {
+        return new SynonymExpander(app(TenantContext::class));
+    }
+
+    private function seedGroup(string $term, array $synonyms, string $project = 'eng', bool $enabled = true): void
+    {
+        KbSynonym::create([
+            'project_key' => $project,
+            'term' => $term,
+            'synonyms' => $synonyms,
+            'enabled' => $enabled,
+        ]);
+    }
+
+    public function test_expands_forward_from_term_to_synonyms(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        $phrases = $this->expander()->expansionPhrases('how to deploy k8s cluster', 'eng');
+
+        $this->assertContains('kubernetes', $phrases);
+    }
+
+    public function test_expands_backward_from_synonym_to_term(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        $phrases = $this->expander()->expansionPhrases('deploy kubernetes', 'eng');
+
+        $this->assertContains('k8s', $phrases);
+    }
+
+    public function test_matches_multi_word_synonym_phrase(): void
+    {
+        $this->seedGroup('ci', ['continuous integration', 'build pipeline']);
+
+        $phrases = $this->expander()->expansionPhrases('set up continuous integration today', 'eng');
+
+        $this->assertContains('ci', $phrases);
+        $this->assertContains('build pipeline', $phrases);
+    }
+
+    public function test_matching_is_case_insensitive(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        $phrases = $this->expander()->expansionPhrases('Deploy K8S Now', 'eng');
+
+        $this->assertContains('kubernetes', $phrases);
+    }
+
+    public function test_matches_term_adjacent_to_punctuation(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // Trailing comma / parens must not defeat the boundary match.
+        $this->assertContains('kubernetes', $this->expander()->expansionPhrases('deploy k8s, please', 'eng'));
+        $this->assertContains('kubernetes', $this->expander()->expansionPhrases('deploy (k8s) now', 'eng'));
+    }
+
+    public function test_does_not_match_a_substring_of_a_larger_word(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // 'k8s' is a substring of 'k8sx' but not a whole token → no expansion.
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8sx', 'eng'));
+    }
+
+    public function test_does_not_add_members_already_present_in_query(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // Both members already in the query → nothing to add.
+        $phrases = $this->expander()->expansionPhrases('k8s kubernetes', 'eng');
+
+        $this->assertSame([], $phrases);
+    }
+
+    public function test_no_op_when_feature_disabled(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+        config()->set('kb.synonyms.enabled', false);
+
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8s', 'eng'));
+    }
+
+    public function test_no_op_when_no_groups_for_project(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes'], project: 'eng');
+
+        // Different project → no expansion.
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8s', 'hr'));
+    }
+
+    public function test_disabled_rows_are_ignored(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes'], enabled: false);
+
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8s', 'eng'));
+    }
+
+    public function test_expand_query_text_appends_phrases(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        $text = $this->expander()->expandQueryText('deploy k8s cluster', 'eng');
+
+        $this->assertSame('deploy k8s cluster kubernetes', $text);
+    }
+
+    public function test_expand_query_text_is_verbatim_when_no_match(): void
+    {
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        $this->assertSame('deploy nginx', $this->expander()->expandQueryText('deploy nginx', 'eng'));
+    }
+
+    public function test_falsy_string_member_zero_is_not_dropped(): void
+    {
+        // A member of '0' is falsy in PHP; the group must still form so a
+        // query mentioning '0' expands to its sibling (Copilot review).
+        $this->seedGroup('0', ['zero', 'none']);
+
+        $phrases = $this->expander()->expansionPhrases('status 0 detected', 'eng');
+
+        $this->assertContains('zero', $phrases);
+        $this->assertContains('none', $phrases);
+    }
+
+    public function test_groups_are_tenant_scoped(): void
+    {
+        $tenant = app(TenantContext::class);
+
+        // Group registered under tenant-b only.
+        $tenant->set('tenant-b');
+        $this->seedGroup('k8s', ['kubernetes']);
+
+        // Active tenant 'default' must NOT see tenant-b's synonyms (R30).
+        $tenant->reset();
+        $this->assertSame([], $this->expander()->expansionPhrases('deploy k8s', 'eng'));
+    }
+}

@@ -331,6 +331,39 @@ Route::middleware([
                 'destroy' => 'api.admin.kb.tags.destroy',
             ]);
 
+        // v8.7/W1 — Admin RESTful CRUD on kb_synonyms (Synonym Expansion).
+        // Per-(tenant, project) scope; int-typed `id` param keeps route
+        // binding plain (mirrors TagController). R32 — covered by the
+        // AdminAuthorizationMatrix (`/api/admin/kb/synonyms`).
+        Route::apiResource('kb/synonyms', \App\Http\Controllers\Api\Admin\SynonymController::class)
+            ->parameters(['synonyms' => 'id'])
+            ->names([
+                'index' => 'api.admin.kb.synonyms.index',
+                'store' => 'api.admin.kb.synonyms.store',
+                'show' => 'api.admin.kb.synonyms.show',
+                'update' => 'api.admin.kb.synonyms.update',
+                'destroy' => 'api.admin.kb.synonyms.destroy',
+            ]);
+
+        // v8.7/W3–W4 — read-only AI document-change analyses (Doc Insights).
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/analyses`).
+        Route::get('/kb/analyses', [\App\Http\Controllers\Api\Admin\KbDocAnalysisController::class, 'index'])
+            ->name('api.admin.kb.analyses.index');
+
+        // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/documents/1/versions`).
+        Route::get('/kb/documents/{id}/versions', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'index'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.index');
+        Route::get('/kb/documents/{id}/versions/diff', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'diff'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.diff');
+        // `restore-version` (NOT `restore`) — `POST /kb/documents/{document}/restore`
+        // already exists for un-deleting SOFT-DELETED docs (KbDocumentController);
+        // the Time Machine restore re-activates an ARCHIVED VERSION, a distinct op
+        // (R20 — route contracts must not collide).
+        Route::post('/kb/documents/{id}/restore-version', [\App\Http\Controllers\Api\Admin\KbDocumentVersionController::class, 'restore'])
+            ->whereNumber('id')->name('api.admin.kb.documents.versions.restore');
+
         Route::apiResource('kb/collections', KbCollectionController::class)
             ->parameters(['collections' => 'id'])
             ->names([

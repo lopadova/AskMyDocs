@@ -35,6 +35,11 @@
         <env name="CHAT_LOG_DRIVER" value="database"/>
         <env name="KB_EMBEDDING_CACHE_ENABLED" value="true"/>
         <env name="KB_RERANKING_ENABLED" value="true"/>
+        <!-- v8.7/W3–W4 — AI deep-analysis defaults OFF in tests so the
+             ingest pipeline doesn't fan out an LLM call on every canonical
+             doc; the dedicated AnalyzeDocumentChangeJob / KbChangeAnalyzer
+             tests enable it explicitly via config()->set. -->
+        <env name="KB_CHANGE_ANALYSIS_ENABLED" value="false"/>
         <env name="AI_PROVIDER" value="openai"/>
         <env name="OPENAI_API_KEY" value="sk-test-key"/>
         <env name="OPENAI_CHAT_MODEL" value="gpt-4o"/>

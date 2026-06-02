@@ -231,6 +231,21 @@ return [
             'enabled' => (bool) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_CRON', '0 6 1 1,4,7,10 *'),
         ],
+        // v8.7/W2 — stale-document review sweep (daily 03:55) + weekly
+        // notification digest (Monday 07:00).
+        'kb_stale_review_sweep' => [
+            'enabled' => (bool) env('SCHEDULE_KB_STALE_REVIEW_SWEEP_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_STALE_REVIEW_SWEEP_CRON', '55 3 * * *'),
+        ],
+        'notifications_digest_weekly' => [
+            'enabled' => (bool) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_CRON', '0 7 * * 1'),
+        ],
+        // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
+        'kb_prune_archived_versions' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_CRON', '20 4 * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,
@@ -254,6 +269,10 @@ return [
 
     'kb_health' => [
         'threshold_event_score' => (int) env('KB_HEALTH_THRESHOLD_EVENT_SCORE', 70),
+        // v8.7/W2 — a document untouched (no re-ingest) for this many
+        // months is flagged for review by `kb:stale-review-sweep`. 0
+        // disables the sweep entirely. Settings-tunable per deployment.
+        'stale_review_months' => (int) env('KB_HEALTH_STALE_REVIEW_MONTHS', 6),
         'weights' => [
             'age_decay' => (float) env('KB_HEALTH_WEIGHT_AGE_DECAY', 0.25),
             'repeat_questions' => (float) env('KB_HEALTH_WEIGHT_REPEAT_QUESTIONS', 0.20),

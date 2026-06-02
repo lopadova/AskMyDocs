@@ -60,6 +60,77 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Synonym Expansion (v8.7/W1)
+    |--------------------------------------------------------------------------
+    |
+    | Industry-specific synonym groups registered per (tenant, project) in
+    | `kb_synonyms`. At retrieval time SynonymExpander bidirectionally
+    | expands a query: mentioning any group member also searches every
+    | other member, so in-house jargon / acronyms / product codenames
+    | connect to their plain-language equivalents even when the embedding
+    | model has never seen the in-house term. The expanded text enriches
+    | the query embedding (all drivers) and OR-expands the FTS tsquery
+    | (pgsql). No-op when disabled or no synonym groups exist for the
+    | active (tenant, project) — zero behaviour change for hosts that
+    | never register a synonym.
+    |
+    */
+
+    'synonyms' => [
+        'enabled' => (bool) env('KB_SYNONYM_EXPANSION_ENABLED', true),
+        // Per-(tenant, project) synonym map cache TTL. 0 disables caching
+        // (every query reloads from the DB) — useful in tests.
+        'cache_ttl_seconds' => (int) env('KB_SYNONYM_CACHE_TTL_SECONDS', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI deep-analysis on document change (v8.7/W3–W4)
+    |--------------------------------------------------------------------------
+    |
+    | When a document is ingested or modified, an async
+    | `AnalyzeDocumentChangeJob` asks the LLM to (a) suggest how to
+    | strengthen the doc, (b) surface its cross-references with existing
+    | docs, and (c) flag which OTHER docs this change makes obsolete /
+    | in need of revision. Results land in `kb_doc_analyses` and notify
+    | the doc's reviewers (`KbDocAnalysisReady`). Suggest-only — never
+    | mutates a doc (ADR 0003).
+    |
+    | Cost posture: ON for canonical docs by default (highest-value,
+    | lower-volume), OFF (opt-in) for non-canonical. `enabled` is the
+    | master kill-switch. `debounce_minutes` skips re-analysing a doc that
+    | was analysed within the window (rapid re-ingest guard).
+    |
+    */
+
+    'change_analysis' => [
+        'enabled' => (bool) env('KB_CHANGE_ANALYSIS_ENABLED', true),
+        'canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_CANONICAL', true),
+        'non_canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_NON_CANONICAL', false),
+        'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
+        'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
+        'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Cloud Time Machine — archived-version retention (v8.7/W5)
+    |--------------------------------------------------------------------------
+    |
+    | Every re-ingest archives the prior document version + its chunks so the
+    | Time Machine can browse/diff/restore them. `keep_archived` caps how many
+    | ARCHIVED versions to retain per (tenant, project, source_path) family;
+    | `kb:prune-archived-versions` (daily) hard-deletes the rest. The live
+    | version and soft-deleted rows are never pruned.
+    |
+    */
+
+    'versioning' => [
+        'keep_archived' => (int) env('KB_KEEP_ARCHIVED_VERSIONS', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Reranking
     |--------------------------------------------------------------------------
     |
