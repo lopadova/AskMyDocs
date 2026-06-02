@@ -235,15 +235,9 @@ final class SynonymController extends Controller
                 ->all();
 
             if ($synonyms === []) {
-                throw new \Illuminate\Validation\ValidationException(
-                    validator(
-                        ['synonyms' => $payload['synonyms']],
-                        ['synonyms' => 'array'],
-                        ['synonyms.array' => 'Provide at least one synonym different from the term.'],
-                    )->after(function ($validator): void {
-                        $validator->errors()->add('synonyms', 'Provide at least one synonym different from the term.');
-                    })
-                );
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'synonyms' => ['Provide at least one synonym different from the term.'],
+                ]);
             }
 
             $payload['synonyms'] = $synonyms;
