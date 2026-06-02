@@ -160,6 +160,6 @@ final class DocumentVersionService
             }
         });
 
-        return $target->fresh() ?? $target;
+        return $target->fresh() ?? throw new \RuntimeException('Restored version has been deleted.');
     }
 }
