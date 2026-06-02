@@ -107,4 +107,11 @@ canonical-identity transfer on restore) + `PruneArchivedVersionsCommandTest` (3)
 MaintenanceCommandController (slot description). Vitest `TimeMachineView` (7); Playwright
 `admin-time-machine`. Regression Admin+Console+Unit/Support+Architecture = **370 / 1409 OK**. `tsc` clean.
 
-## W6 — RC + GA ⏳
+## W6 — RC + GA ✅
+
+- rc1..rc4 tagged per Wn closure (R39).
+- README roadmap row flipped to `v8.7.0 ✅ shipped 2026-06-02` + Changelog entry + Time Machine
+  feature row; closure doc `STATUS-2026-06-02-v87-ga.md`.
+- Dual tenant-enumeration lesson folded into `.claude/skills/tenant-id-mandatory/SKILL.md`.
+- GA: `feature/v8.7 → main` merged (R37 once-per-major, `--merge` to preserve W1–W6 integration history);
+  `v8.7.0` tag + GitHub Release at the merge commit.
