@@ -30,6 +30,20 @@ Running lessons log. Promote durable items into CLAUDE.md R-rules / `.claude/ski
 - **Token matching needs non-alnum word boundaries, not space padding.** `' '.$t.' '` substring
   checks miss punctuation-adjacent tokens (`k8s,` `(k8s)`); use a `(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])`
   regex (preg_quote the member) so internal punctuation in jargon (`gp-2.0`) stays literal.
+## W2 — Weekly digest + stale-review
+- **Artisan commands are NOT auto-discovered here** — `AppServiceProvider::boot()` has an explicit
+  `$this->commands([...])` list. A new command must be added there or `artisan('x')` 422s with
+  `CommandNotFoundException` (only surfaces when a test invokes it, not at compile time).
+- **`updateOrCreate` on a `date`-cast column re-INSERTs.** The `date` cast stores `Y-m-d 00:00:00`,
+  but `updateOrCreate(['col' => 'Y-m-d'])` binds the WHERE as `Y-m-d` → no match → re-INSERT →
+  composite-unique violation on re-run. Use `->whereDate('col', $ymd)->first() ?? new Model([...])`
+  so the lookup matches regardless of the time component.
+- **A new notification event type is mostly free** — register the const + `NotificationEvent::eventTypes()`
+  arm and the preferences grid (FE), the per-user pref seeding, and the API all pick it up dynamically
+  (R18). Only the `NotificationSubjects` + `NotificationSummaries` `match` arms need a manual line, and
+  the `NotificationServiceProvider` Event::listen array needs the new event class.
+
+## W1 — Synonym Expansion (continued)
 - **FTS synonym OR-expansion stays injection-safe** by emitting one `plainto_tsquery(?, ?)` per
   phrase joined with the tsquery `||` operator — Postgres owns all lexeme parsing; no user string is
   interpolated. Collapses to the exact legacy single-`plainto_tsquery` query when no synonyms match.

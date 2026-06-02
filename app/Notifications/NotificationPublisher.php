@@ -12,6 +12,7 @@ use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Notifications\Events\CollectionNewMember;
 use App\Notifications\Events\KbCanonicalPromoted;
+use App\Notifications\Events\KbDocStaleReview;
 use App\Notifications\Events\KbDocumentChanged;
 use App\Scopes\AccessScopeScope;
 use Illuminate\Support\Facades\DB;
@@ -131,6 +132,53 @@ final class NotificationPublisher
                 'source_path' => (string) $document->source_path,
                 'title' => $document->title === null ? null : (string) $document->title,
                 'change' => $isModified ? 'modified' : 'created',
+            ],
+            tenantId: $tenantId,
+        ));
+    }
+
+    /**
+     * v8.7/W2 — fires `KbDocStaleReview` for a document that has gone
+     * untouched longer than the configured staleness window. Recipients
+     * are resolved through the SAME tenant-safe ACL pipeline as
+     * `publishKbDocumentChanged` (project membership + ACL + scope), so a
+     * user is only told a doc needs review if they could read it via the
+     * chat / admin path. `$ageDays` is surfaced in the payload for the
+     * channel summary + the weekly digest roll-up.
+     */
+    public function publishKbDocStaleReview(
+        KnowledgeDocument $document,
+        int $ageDays,
+    ): void {
+        $tenantId = (string) ($document->tenant_id ?? '');
+        $projectKey = (string) ($document->project_key ?? '');
+        if ($tenantId === '' || $projectKey === '') {
+            return;
+        }
+
+        $recipients = $this->streamEligibleRecipients(
+            $tenantId,
+            NotificationEvent::EVENT_KB_DOC_STALE_REVIEW,
+            fn (User $user): bool => $this->userCanViewDocumentInTenant(
+                $user,
+                $tenantId,
+                $projectKey,
+                $document,
+            ),
+        );
+        if ($recipients === []) {
+            return;
+        }
+
+        Event::dispatch(new KbDocStaleReview(
+            recipients: $recipients,
+            payload: [
+                'doc_id' => (int) $document->id,
+                'project_key' => $projectKey,
+                'source_path' => (string) $document->source_path,
+                'title' => $document->title === null ? null : (string) $document->title,
+                'slug' => $document->slug,
+                'age_days' => $ageDays,
             ],
             tenantId: $tenantId,
         ));

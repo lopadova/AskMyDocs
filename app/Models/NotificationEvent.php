@@ -54,6 +54,12 @@ class NotificationEvent extends Model
     // pick either path without a schema change.
     public const EVENT_KB_DECISION_DEBT_THRESHOLD = 'kb_decision_debt_threshold';
 
+    // v8.7/W2 — per-user fan-out: a document has gone untouched longer
+    // than the configured staleness window (`kb_health.stale_review_months`)
+    // and should be reviewed. Fired by the `kb:stale-review-sweep` cron to
+    // project members who opted in; also rolled up into the weekly digest.
+    public const EVENT_KB_DOC_STALE_REVIEW = 'kb_doc_stale_review';
+
     // Intentionally NO `EVENT_WEEKLY_DIGEST` constant: the aggregated
     // weekly digest is persisted in `notification_digests`, not as
     // notification_events rows. The W2 digest dispatcher reads the
@@ -101,6 +107,7 @@ class NotificationEvent extends Model
             self::EVENT_KB_DOC_MODIFIED,
             self::EVENT_KB_CANONICAL_PROMOTED,
             self::EVENT_KB_DECISION_DEBT_THRESHOLD,
+            self::EVENT_KB_DOC_STALE_REVIEW,
             self::EVENT_COLLECTION_NEW_MEMBER,
         ];
     }

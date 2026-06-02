@@ -333,6 +333,9 @@ class AppServiceProvider extends ServiceProvider
             // v8.2 — retrieval-quality benchmark + reproducible fixtures.
             \App\Console\Commands\Benchmark\RunBenchmarkCommand::class,
             \App\Console\Commands\Benchmark\MakeBenchmarkFixturesCommand::class,
+            // v8.7/W2 — stale-document review sweep + weekly notification digest.
+            \App\Console\Commands\KbStaleReviewSweepCommand::class,
+            \App\Console\Commands\NotificationsDigestWeeklyCommand::class,
         ]);
     }
 
