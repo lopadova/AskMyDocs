@@ -69,6 +69,35 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         // No nested iframe any more.
         await expect(page.locator('iframe')).toHaveCount(0);
     });
+
+    seededTest(
+        // R13: failure injection — the happy path above covers the real-data
+        // flow (open-cockpit button, no iframe). This test injects a 503 from
+        // the live-throughput probe so the error banner is exercised without
+        // depending on the Flow cockpit being installed in CI.
+        'failure — live-throughput probe returns 503 → error banner visible, open-cockpit still reachable (R13: failure injection)',
+        async ({ page }) => {
+            // Intercept the probe before navigating so the fetch racing the
+            // component mount is caught deterministically.
+            await page.route('**/admin/flows/api/live', (route) =>
+                route.fulfill({ status: 503, body: 'Service Unavailable' }),
+            );
+
+            await page.goto('/app/admin/flows');
+            await expect(page.getByTestId('admin-flows-host')).toBeVisible({ timeout: 15_000 });
+
+            // Error banner must surface — not silently 0/0/0.
+            await expect(page.getByTestId('admin-flows-error')).toBeVisible();
+            await expect(page.getByTestId('admin-flows-host')).toHaveAttribute('data-state', 'error');
+
+            // The "Open Flow cockpit" button MUST still be present so
+            // operators can reach the cockpit even when the probe is down.
+            await expect(page.getByTestId('admin-flows-open-cockpit')).toBeVisible();
+
+            // KPI grid must NOT render while in error state.
+            await expect(page.getByTestId('admin-flows-kpi-total')).toHaveCount(0);
+        },
+    );
 });
 
 baseTest.describe('Admin Flows — viewer (RBAC denied)', () => {

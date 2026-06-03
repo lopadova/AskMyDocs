@@ -59,6 +59,13 @@ export function FlowsView() {
                     return;
                 }
                 const body = (await response.json().catch(() => null)) as FlowLive | null;
+                // R14: a parseable-but-null body means the live API returned
+                // non-JSON on a 200 — surface that as an error rather than
+                // silently showing 0/0/0 KPIs which look like valid data.
+                if (body === null) {
+                    setState('error');
+                    return;
+                }
                 setLive(body);
                 setState('ready');
             })
