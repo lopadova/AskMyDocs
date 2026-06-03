@@ -19,6 +19,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // when no header / claim is present (R31 backward-compat with v3).
         $middleware->prepend(\App\Http\Middleware\ResolveTenant::class);
 
+        // Canale widget KITT: CORS dedicato per /api/widget/*. Prepended (come
+        // ResolveTenant) così gestisce il preflight OPTIONS PRIMA del routing
+        // e riflette l'Origin del sito ospite. Il gate reale resta `widget.key`
+        // sul gruppo; il canale non usa cookie (supports_credentials:false).
+        $middleware->prepend(\App\Http\Middleware\HandleWidgetCors::class);
+
         // Route aliases exposed to routes/*.php and feature tests.
         //
         // `role` / `permission` / `role_or_permission` are Spatie's RBAC
@@ -38,6 +44,13 @@ return Application::configure(basePath: dirname(__DIR__))
             // `auth:sanctum` on every authenticated route group; ResolveTenant
             // runs too early (pre-auth) to validate the header itself.
             'tenant.authorize' => \App\Http\Middleware\AuthorizeTenantHeader::class,
+            // Canale pubblico del widget KITT embeddabile. Risolve la
+            // WidgetKey dall'header X-Widget-Key (modalità A browser
+            // pk+Origin / B proxy pk+secret-bearer), imposta TenantContext +
+            // project DALLA KEY (R30), applica rate-limit per key+IP e
+            // risponde 401/403/429 espliciti (R14). Montato SOLO sul gruppo
+            // /api/widget/* in routes/api.php, fuori dallo stack auth:sanctum.
+            'widget.key' => \App\Http\Middleware\ResolveWidgetKey::class,
             'mcp.scope' => \App\Http\Middleware\EnforceMcpScope::class,
             // v4.0/W3.1 — `auth` variant for SSE streaming routes that
             // returns JSON 401 instead of a 302 → /login redirect when

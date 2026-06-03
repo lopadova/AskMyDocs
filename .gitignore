@@ -4,6 +4,7 @@
 /.claude/worktrees/
 /.claude/scheduled_tasks.lock
 /public/build/
+/public/widget/
 /public/hot
 /tailwind.config.d.ts
 /vite.config.d.ts
@@ -43,6 +44,9 @@ composer.lock
 # v8.4 — local dev helper for `php -S` on a project path with spaces (Herd shim
 # mangles spaced args). Not part of the app; do not commit.
 public/_serve_router.php
+
+# Hermes — task/handoff docs locali del widget KITT (non versionati)
+/Hermes/
 
 # Playwright MCP browser session artifacts
 .playwright-mcp/

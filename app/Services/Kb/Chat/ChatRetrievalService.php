@@ -22,7 +22,7 @@ use App\Services\Kb\Retrieval\SearchResult;
  * and ONE prompt-context shape — the retrieval analogue of the codebase's
  * "two ingestion entrypoints, one execution path" invariant.
  */
-final class ChatRetrievalService
+class ChatRetrievalService
 {
     public function __construct(private readonly KbSearchService $search)
     {

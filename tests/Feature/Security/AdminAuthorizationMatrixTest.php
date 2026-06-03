@@ -85,6 +85,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/tabular-reviews' => ['admin', 'viewer', 'super-admin'], // viewTabularReviews
             '/api/admin/workflows' => ['admin', 'viewer', 'super-admin'], // viewWorkflows
             '/api/admin/ai-act-compliance/overview' => ['admin', 'dpo', 'super-admin'], // viewAiActCompliance
+
+            // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
+            '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
+            '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions
         ];
     }
 

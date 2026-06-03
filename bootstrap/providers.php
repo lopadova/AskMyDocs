@@ -67,6 +67,12 @@ $providers = [
     // provider ships only the registry + NullChannel fallback so
     // the dispatch path is end-to-end testable in W1.2.
     App\Providers\NotificationServiceProvider::class,
+    // M4 — KITT Widget services. Registers WidgetAiToolRegistry as a
+    // singleton with built-in AiTool FQCNs (R23: FQCN validation +
+    // supports() mutex on registration). Must boot AFTER
+    // AppServiceProvider so ChatRetrievalService is bound for
+    // SearchKnowledgeBaseTool.
+    App\Providers\WidgetServiceProvider::class,
     // v4.6 — Connector framework SP (padosoft/askmydocs-connector-base
     // v1.1.1). Listed explicitly for the same auto-discovery
     // brittleness rationale as the siblings above. Required to

@@ -261,6 +261,8 @@ class MaintenanceCommandController extends Controller
             // Listed here so they appear in the widget when active.
             'eval_nightly' => 'Nightly eval-harness regression run (live-mode opt-in).',
             'ai_act_regulatory_poll' => 'EU AI Act regulatory-feed daily poll.',
+            // M5 — Widget session auto-purge (config/widget.php retention knob)
+            'widget_prune_sessions' => 'Widget session retention (default 90d).',
         ];
 
         $scheduleConfig = (array) config('askmydocs.schedule', []);
