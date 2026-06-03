@@ -57,13 +57,17 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         await expect(page).toHaveURL(/\/app\/admin\/flows$/);
         await expect(page.getByTestId('admin-flows-host')).toBeVisible({ timeout: 15_000 });
 
-        // The iframe element itself is mounted unconditionally. The
-        // visibility of its CONTENTS depends on FLOW_ADMIN_ENABLED —
-        // which defaults to false in CI/dev — so we only assert the
-        // wrapper element exists, not that it loads. (When the
-        // operator flips the env var on, a follow-up smoke test under
-        // the trusted-env setup would assert iframe content too.)
-        await expect(page.getByTestId('admin-flows-iframe')).toBeAttached();
+        // Phase 2: the cockpit is no longer iframe-embedded (it brought its
+        // own full Blade chrome). The native host landing always exposes the
+        // _blank launcher to the standalone cockpit — independent of
+        // FLOW_ADMIN_ENABLED (which defaults to false in CI/dev), so this
+        // assertion doesn't race the package master-switch.
+        const openCockpit = page.getByTestId('admin-flows-open-cockpit');
+        await expect(openCockpit).toBeVisible();
+        await expect(openCockpit).toHaveAttribute('href', '/admin/flows');
+        await expect(openCockpit).toHaveAttribute('target', '_blank');
+        // No nested iframe any more.
+        await expect(page.locator('iframe')).toHaveCount(0);
     });
 });
 

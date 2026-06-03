@@ -410,3 +410,36 @@
         grid-template-columns: 1fr;
     }
 }
+
+/*
+ * Embedded mode (mounted inside the AskMyDocs admin shell): no own sidebar —
+ * the host single rail navigates between top-level sections — so the grid
+ * collapses to one column and the PII sections render as an in-content tab
+ * strip instead of a second sidebar.
+ */
+.pra-shell.is-embedded {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+}
+.pra-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 0 0 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+}
+.pra-tabs button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    border-radius: 8px;
+    color: var(--muted);
+    background: transparent;
+}
+.pra-tabs button.is-active {
+    color: var(--text);
+    background: var(--surface-2);
+}
