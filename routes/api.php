@@ -109,6 +109,9 @@ Route::middleware([
         ->middleware($chatMiddleware);
     Route::post('/kb/feedback', KbChunkFeedbackController::class)
         ->name('api.kb.feedback');
+    // v8.8/W6 — chat-side related-graph: 1-hop neighbours of cited canonical docs.
+    Route::get('/kb/related', [\App\Http\Controllers\Api\KbGraphController::class, 'related'])
+        ->name('api.kb.related');
     Route::post('/kb/ingest', KbIngestController::class);
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
