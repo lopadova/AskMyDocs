@@ -24,8 +24,16 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
     const activeGroupId = NAV_GROUPS.find((g) => g.items.some((i) => i.id === active))?.id;
     const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-    const toggleGroup = (id: string) =>
+    // The active group is force-open (so the current page is never hidden), so
+    // toggling its collapse state would be a no-op now but silently collapse it
+    // the moment the user navigates away — a hidden side effect. Ignore the
+    // toggle for the active group entirely.
+    const toggleGroup = (id: string) => {
+        if (id === activeGroupId) {
+            return;
+        }
         setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+    };
 
     return (
         <aside
