@@ -12,8 +12,8 @@ class PromotionSuggestServiceTest extends TestCase
 {
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_returns_empty_for_empty_transcript(): void

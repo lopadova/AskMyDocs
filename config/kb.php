@@ -52,7 +52,20 @@ return [
 
     'hybrid_search' => [
         'enabled' => env('KB_HYBRID_SEARCH_ENABLED', false),
+        // Fixed FTS dictionary — also the FALLBACK when per-query detection is
+        // off or can't confidently determine the query language (v8.8/W5).
         'fts_language' => env('KB_FTS_LANGUAGE', 'italian'),
+        // v8.8/W5 — detect each query's language and stem with the matching
+        // PostgreSQL dictionary instead of the fixed one above. Default OFF
+        // (opt-in): when off, behaviour is byte-for-byte the previous fixed
+        // dictionary. `fts_supported_languages` bounds the candidate set.
+        'fts_language_detection' => (bool) env('KB_FTS_LANGUAGE_DETECTION', false),
+        // Lowercased + trimmed: PostgreSQL `regconfig` names are lowercase, so
+        // `English, Italian` must normalize or detection would silently no-op.
+        'fts_supported_languages' => array_values(array_filter(array_map(
+            static fn (string $l): string => strtolower(trim($l)),
+            explode(',', (string) env('KB_FTS_SUPPORTED_LANGUAGES', 'english,italian')),
+        ))),
         'rrf_k' => env('KB_RRF_K', 60),
         'semantic_weight' => env('KB_HYBRID_SEMANTIC_WEIGHT', 0.70),
         'fts_weight' => env('KB_HYBRID_FTS_WEIGHT', 0.30),
@@ -107,9 +120,27 @@ return [
         'enabled' => (bool) env('KB_CHANGE_ANALYSIS_ENABLED', true),
         'canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_CANONICAL', true),
         'non_canonical_default' => (bool) env('KB_CHANGE_ANALYSIS_NON_CANONICAL', false),
+        // v8.8/W2 — also run the obsolescence-impact analysis on a
+        // user-initiated DELETE (on top of the global `enabled` switch).
+        'delete_enabled' => (bool) env('KB_CHANGE_ANALYSIS_ON_DELETE', true),
         'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
         'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
         'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Content-gap analytics (v8.8/W4)
+    |--------------------------------------------------------------------------
+    |
+    | Every refused chat turn (deterministic grounding gate OR LLM
+    | self-refusal sentinel) increments a `kb_search_failures` rollup so the
+    | admin "Content Gaps" panel can rank the questions the KB could not
+    | answer. Recording is a side-channel that never breaks the chat path.
+    */
+
+    'content_gaps' => [
+        'enabled' => (bool) env('KB_CONTENT_GAPS_ENABLED', true),
     ],
 
     /*

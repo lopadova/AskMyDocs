@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
 import { CitationsPopover } from './CitationsPopover';
+import { RelatedPanel } from './RelatedPanel';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import { RefusalNotice } from './RefusalNotice';
 import { ThinkingTrace } from './ThinkingTrace';
@@ -235,6 +236,15 @@ export function MessageBubble({
                   */}
                 {!streaming && !isRefusal && citations.length > 0 && (
                     <CitationsPopover citations={citations} onOpenSource={onOpenSource} />
+                )}
+                {/* v8.8/W6 — Related graph panel for the cited CANONICAL docs.
+                    Derives slugs + project from the citations themselves; the
+                    panel renders nothing when no citation is canonical. */}
+                {!streaming && !isRefusal && (
+                    <RelatedPanel
+                        projectKey={citations.find((c) => c.slug && c.project_key)?.project_key ?? null}
+                        slugs={citations.map((c) => c.slug).filter((s): s is string => !!s)}
+                    />
                 )}
                 {!streaming && (
                     <RetrievalRunnerUpPanel rows={runnerUp} />

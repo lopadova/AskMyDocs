@@ -109,6 +109,9 @@ Route::middleware([
         ->middleware($chatMiddleware);
     Route::post('/kb/feedback', KbChunkFeedbackController::class)
         ->name('api.kb.feedback');
+    // v8.8/W6 — chat-side related-graph: 1-hop neighbours of cited canonical docs.
+    Route::get('/kb/related', [\App\Http\Controllers\Api\KbGraphController::class, 'related'])
+        ->name('api.kb.related');
     Route::post('/kb/ingest', KbIngestController::class);
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
@@ -349,6 +352,22 @@ Route::middleware([
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/analyses`).
         Route::get('/kb/analyses', [\App\Http\Controllers\Api\Admin\KbDocAnalysisController::class, 'index'])
             ->name('api.admin.kb.analyses.index');
+
+        // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/analysis-settings`).
+        Route::get('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'index'])
+            ->name('api.admin.kb.analysis-settings.index');
+        Route::put('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'upsert'])
+            ->name('api.admin.kb.analysis-settings.upsert');
+
+        // v8.8/W4 — content-gap analytics (questions the KB couldn't answer).
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/content-gaps`).
+        Route::get('/kb/content-gaps', [\App\Http\Controllers\Api\Admin\KbContentGapController::class, 'index'])
+            ->name('api.admin.kb.content-gaps.index');
+        Route::patch('/kb/content-gaps/{id}/resolve', [\App\Http\Controllers\Api\Admin\KbContentGapController::class, 'resolve'])
+            ->whereNumber('id')->name('api.admin.kb.content-gaps.resolve');
 
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix

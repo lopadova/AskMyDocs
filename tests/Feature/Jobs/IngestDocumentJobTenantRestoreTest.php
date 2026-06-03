@@ -46,9 +46,9 @@ final class IngestDocumentJobTenantRestoreTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         $this->app->make(TenantContext::class)->reset();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_handle_restores_previous_tenant_after_successful_run(): void

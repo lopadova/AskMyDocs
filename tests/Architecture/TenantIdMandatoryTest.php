@@ -68,6 +68,10 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbSynonym::class,
         // v8.7/W3–W4 — AI deep-analysis on document change.
         \App\Models\KbDocAnalysis::class,
+        // v8.8/W3 — per-(tenant, project) deep-analysis gate override.
+        \App\Models\KbAnalysisSetting::class,
+        // v8.8/W4 — content-gap analytics (refused-query rollup).
+        \App\Models\KbSearchFailure::class,
         \App\Models\KnowledgeDocumentAcl::class,
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,

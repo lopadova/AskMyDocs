@@ -47,6 +47,15 @@ class TestingController extends Controller
         // v8.5 — one vector-searchable hr-portal doc (real DocumentIngestor
         // path, fake embeddings) for chat-stream-browser.spec.ts.
         'E2eStreamSeeder' => \Database\Seeders\E2eStreamSeeder::class,
+        // v8.8/W2 — one `deleted`-trigger analysis row for the Doc Insights
+        // deletion-impact happy-path E2E (admin-kb-insights-deleted.spec.ts).
+        'KbDeletionInsightSeeder' => \Database\Seeders\KbDeletionInsightSeeder::class,
+        // v8.8/W4 — content-gap rows for the Content Gaps happy-path E2E
+        // (admin-content-gaps.spec.ts).
+        'KbContentGapSeeder' => \Database\Seeders\KbContentGapSeeder::class,
+        // v8.8/W6 — a persisted conversation citing a canonical doc + its
+        // graph neighbour for the chat-side Related-panel E2E.
+        'KbChatGraphSeeder' => \Database\Seeders\KbChatGraphSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

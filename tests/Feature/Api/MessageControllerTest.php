@@ -89,8 +89,8 @@ final class MessageControllerTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     /** A production-shape chunk array (as KbSearchService::search() emits). */

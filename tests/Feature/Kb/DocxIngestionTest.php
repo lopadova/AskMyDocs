@@ -34,8 +34,8 @@ final class DocxIngestionTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     public function test_docx_ingestion_creates_document_with_docx_source_type(): void

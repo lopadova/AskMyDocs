@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Kb;
 
+use App\Jobs\AnalyzeDocumentDeletionJob;
 use App\Models\KbCanonicalAudit;
 use App\Models\KbNode;
+use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
+use App\Services\Kb\Analysis\ChangeAnalysisGate;
 use App\Support\KbPath;
 use App\Support\LikeEscaper;
 use DateTimeInterface;
@@ -24,19 +27,105 @@ use Illuminate\Support\Facades\Storage;
  */
 class DocumentDeleter
 {
+    /** Max chars of reconstructed document text kept in the deletion snapshot. */
+    private const SNAPSHOT_TEXT_CHARS = 4000;
+
     /**
      * Delete a single document. When $force is null the behaviour is driven
      * by the `kb.deletion.soft_delete` config flag (default: soft).
      *
      * @return array{mode: string, document_id: int, project_key: string, source_path: string, file_deleted: bool}
      */
-    public function delete(KnowledgeDocument $document, ?bool $force = null): array
+    public function delete(KnowledgeDocument $document, ?bool $force = null, bool $analyzeImpact = false): array
     {
         $shouldForce = $force ?? ! (bool) config('kb.deletion.soft_delete', true);
 
-        return $shouldForce
+        // v8.8/W2 — capture the obsolescence-impact snapshot BEFORE the
+        // deletion mutates anything: a hard delete cascades the chunks, a
+        // soft delete hides them. Only the user-initiated single delete opts
+        // in ($analyzeImpact); bulk orphan/prune sweeps never trigger the LLM.
+        $snapshot = ($analyzeImpact && $this->deletionAnalysisEnabled($document))
+            ? $this->deletionSnapshot($document)
+            : null;
+
+        $result = $shouldForce
             ? $this->forceDelete($document)
             : $this->softDelete($document);
+
+        // Dispatched only AFTER the delete has persisted (softDelete's
+        // delete() and forceDelete's own DB::transaction have both committed
+        // by here), so a failed/throwing delete never fans out an analysis
+        // for a still-live document. Direct dispatch mirrors how
+        // IngestDocumentJob dispatches AnalyzeDocumentChangeJob.
+        if ($snapshot !== null) {
+            AnalyzeDocumentDeletionJob::dispatch($snapshot);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Skip the (one-query) snapshot build entirely when deletion analysis is
+     * disabled for this doc's (tenant, project) — resolved through the same
+     * {@see ChangeAnalysisGate} the job re-checks authoritatively. Resolved
+     * via the container because this service is also instantiated with `new`
+     * in tests (no constructor injection).
+     */
+    private function deletionAnalysisEnabled(KnowledgeDocument $document): bool
+    {
+        return app(ChangeAnalysisGate::class)->allows(
+            (string) $document->tenant_id,
+            (string) $document->project_key,
+            (bool) $document->is_canonical,
+            isDelete: true,
+        );
+    }
+
+    /**
+     * Pre-delete snapshot for {@see AnalyzeDocumentDeletionJob}. Reconstructs
+     * the document text from its chunks (tenant-scoped, R30) while they still
+     * exist, plus the identity fields the analyzer + notifier need.
+     *
+     * @return array{tenant_id: string, project_key: string, knowledge_document_id: int, doc_slug: ?string, title: string, source_path: string, is_canonical: bool, doc_text: string}
+     */
+    private function deletionSnapshot(KnowledgeDocument $document): array
+    {
+        return [
+            'tenant_id' => (string) $document->tenant_id,
+            'project_key' => (string) $document->project_key,
+            'knowledge_document_id' => (int) $document->id,
+            'doc_slug' => $document->slug,
+            'title' => (string) ($document->title ?? ''),
+            'source_path' => (string) $document->source_path,
+            'is_canonical' => (bool) $document->is_canonical,
+            'doc_text' => $this->snapshotText($document),
+        ];
+    }
+
+    /**
+     * Reconstruct up to {@see self::SNAPSHOT_TEXT_CHARS} chars of the document
+     * text from its chunks (tenant-scoped, R30). Streams with `cursor()` and
+     * stops as soon as enough text is accumulated, so a huge document doesn't
+     * pull every chunk into memory only to truncate it (R3 — Copilot review).
+     */
+    private function snapshotText(KnowledgeDocument $document): string
+    {
+        $chunks = KnowledgeChunk::query()
+            ->forTenant((string) $document->tenant_id)
+            ->where('knowledge_document_id', $document->id)
+            ->orderBy('chunk_order')
+            ->select('chunk_text')
+            ->cursor();
+
+        $text = '';
+        foreach ($chunks as $chunk) {
+            $text .= ($text === '' ? '' : "\n\n").(string) $chunk->chunk_text;
+            if (mb_strlen($text) >= self::SNAPSHOT_TEXT_CHARS) {
+                break;
+            }
+        }
+
+        return mb_substr(trim($text), 0, self::SNAPSHOT_TEXT_CHARS);
     }
 
     /**

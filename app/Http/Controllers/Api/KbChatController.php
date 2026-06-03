@@ -295,6 +295,11 @@ class KbChatController extends Controller
             ],
         ));
 
+        // v8.8/W4 — record the content gap (the question the KB couldn't
+        // answer). Side-channel: never breaks the chat path.
+        app(\App\Services\Kb\Analytics\SearchFailureRecorder::class)
+            ->record($projectKey, $question, $reason);
+
         $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? $latencyMs);
 
         return response()->json([
@@ -429,6 +434,10 @@ class KbChatController extends Controller
                 'rejected_count' => $result->rejected->count(),
             ],
         ));
+
+        // v8.8/W4 — record the content gap (LLM self-refusal). Side-channel.
+        app(\App\Services\Kb\Analytics\SearchFailureRecorder::class)
+            ->record($projectKey, $question, $reason);
 
         $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? 0);
         $llmMs = max(0, $latencyMs - $retrievalMs);

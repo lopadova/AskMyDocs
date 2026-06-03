@@ -384,7 +384,10 @@ class KbDocumentController extends Controller
     {
         $force = $request->boolean('force');
 
-        $result = $this->deleter->delete($document, $force);
+        // v8.8/W2 — user-initiated delete opts into the obsolescence-impact
+        // deep-analysis (gated/cost-bounded inside the deleter + job). Bulk
+        // orphan/prune sweeps deliberately do NOT pass analyzeImpact.
+        $result = $this->deleter->delete($document, $force, analyzeImpact: true);
 
         return response()->json([
             'ok' => true,

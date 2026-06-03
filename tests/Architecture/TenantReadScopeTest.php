@@ -33,9 +33,9 @@ final class TenantReadScopeTest extends TestCase
     private const TENANT_AWARE_MODELS = [
         'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot',
         'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport',
-        'Conversation', 'HiddenWorkflow', 'KbCanonicalAudit',
+        'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
-        'KbCollectionMember', 'KbDocAnalysis', 'KbEdge', 'KbNode', 'KbSynonym', 'KbTag', 'KnowledgeChunk',
+        'KbCollectionMember', 'KbDocAnalysis', 'KbEdge', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',

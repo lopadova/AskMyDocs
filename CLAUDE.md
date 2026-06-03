@@ -1259,6 +1259,62 @@ the only acceptable skip is a documented hotfix where every minute
 of delay is operationally costly — and even then the local critic
 must run retroactively.
 
+### R41 — Test teardown: roll the DB back BEFORE `Mockery::close()`
+
+A test's `tearDown()` MUST call `parent::tearDown()` (which runs the
+`RefreshDatabase` rollback) **before** any code that can throw —
+specifically `Mockery::close()`. The framework already closes Mockery
+safely (after the rollback, wrapped in try/catch); a MANUAL
+`Mockery::close()` placed BEFORE `parent::tearDown()` is the bug:
+
+```php
+// ❌ WRONG — close-before-parent. If a `->once()` expectation is
+//    unmet, Mockery::close() THROWS, parent::tearDown() never runs,
+//    the RefreshDatabase transaction is never rolled back, and the
+//    NEXT test errors "PDOException: There is already an active
+//    transaction" — a cascade that turns ONE real failure into a
+//    suite-wide red, masking the true culprit and reading as flake.
+protected function tearDown(): void
+{
+    Mockery::close();      // throws here on unmet mock
+    parent::tearDown();    // rollback SKIPPED
+}
+
+// ✅ RIGHT — rollback first, then verify mocks. A failed expectation
+//    fails only ITS OWN test; the transaction is already clean.
+protected function tearDown(): void
+{
+    parent::tearDown();    // rollback ALWAYS happens
+    Mockery::close();      // safe to throw now; DB already clean
+}
+```
+
+This is graded on **blast radius, not frequency**: one fragile teardown
+poisons every test that runs after it in random order, so a single
+unmet mock surfaces as a non-deterministic "active transaction"
+cascade that wastes a full CI cycle chasing the wrong test. v8.8/W1
+reordered 35 such files in one sweep and added a `TenantContext` reset
+to the base `tests/TestCase.php::setUp()` so no test can leak
+tenant-scoped state into a sibling and trigger the unmet expectation in
+the first place. Check:
+
+- [ ] Every custom `tearDown()` runs `parent::tearDown()` (the rollback)
+      BEFORE any THROWING cleanup (`Mockery::close()`). Non-throwing
+      cleanup that needs `$this->app` (e.g. a `TenantContext` reset) may
+      run before `parent::tearDown()`; only throwing calls must come
+      after the rollback.
+- [ ] Prefer dropping the manual `Mockery::close()` entirely — the
+      framework's `tearDown()` already closes it safely.
+- [ ] Base `TestCase::setUp()` resets request-scoped singletons
+      (`TenantContext`) so a tenant-switching test cannot contaminate
+      the next one.
+- [ ] A "flaky" suite that fails with "active transaction" or "did not
+      remove its own error/exception handlers" is almost always a
+      teardown that threw before its rollback — fix the teardown, do
+      NOT just re-run CI.
+
+→ See `.claude/skills/test-teardown-rollback-before-mockery/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
@@ -1295,7 +1351,7 @@ must run retroactively.
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R40 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R41 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

@@ -52,8 +52,8 @@ final class KbChatSentinelTest extends TestCase
 
     protected function tearDown(): void
     {
-        Mockery::close();
         parent::tearDown();
+        Mockery::close();
     }
 
     private function mockSearchWithHighSimChunks(): void
