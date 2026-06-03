@@ -39,7 +39,7 @@ export function AiActComplianceView() {
             <section
                 data-testid="admin-ai-act-compliance"
                 data-state={state}
-                aria-busy={query.isLoading}
+                aria-busy={query.isLoading || query.isFetching}
                 aria-labelledby="admin-ai-act-compliance-title"
                 style={{
                     flex: 1,
@@ -158,11 +158,11 @@ export function AiActComplianceView() {
                                         data-testid={`admin-ai-act-count-${domain.key}`}
                                         style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
                                     >
-                                        {query.isLoading ? '—' : (result?.count ?? 0)}
+                                        {state === 'ready' ? (result?.count ?? 0) : '—'}
                                     </span>
                                 </div>
                                 <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 12 }}>{domain.description}</p>
-                                {!query.isLoading && statusEntries.length > 0 && (
+                                {state === 'ready' && statusEntries.length > 0 && (
                                     <ul
                                         style={{
                                             listStyle: 'none',
@@ -190,7 +190,7 @@ export function AiActComplianceView() {
                                         ))}
                                     </ul>
                                 )}
-                                {!query.isLoading && result?.count === 0 && (
+                                {state === 'ready' && result?.count === 0 && (
                                     <span style={{ marginTop: 'auto', fontSize: 11.5, color: 'var(--fg-3)' }}>
                                         None recorded yet.
                                     </span>

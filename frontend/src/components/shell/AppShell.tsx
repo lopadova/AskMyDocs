@@ -88,9 +88,11 @@ export function AppShell() {
               email: storeUser.email,
               // Real role from the auth store, not the USERS[0] seed constant
               // (which always read `super-admin` and mislabelled every user).
-              // pickPrimaryRole returns the SeedUser role union (or null), so
-              // no cast is needed; null keeps the seed default.
-              role: pickPrimaryRole(storeRoles) ?? USERS[0].role,
+              // pickPrimaryRole returns the SeedUser role union (or null); when
+              // the user has no known role we fall back to the LEAST-privileged
+              // `viewer` rather than the seed's `super-admin`, so an empty /
+              // unrecognised roles array can never mislabel someone as an admin.
+              role: pickPrimaryRole(storeRoles) ?? 'viewer',
               avatar: storeUser.name
                   .split(' ')
                   .map((part) => part[0])
