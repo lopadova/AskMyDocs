@@ -150,6 +150,12 @@ final class ChatRetrievalService
                 'document_id' => data_get($first, 'document.id'),
                 'title' => data_get($first, 'document.title', 'Untitled'),
                 'source_path' => data_get($first, 'document.source_path'),
+                // v8.8/W6 — canonical slug + project_key (null for
+                // non-canonical docs), so the chat-side "Related" panel can
+                // request the graph neighbours of the cited canonical docs
+                // without prop-drilling the active project (R27 additive).
+                'slug' => data_get($first, 'document.slug'),
+                'project_key' => data_get($first, 'document.project_key'),
                 // R27 — `source_type` was present on the conversation
                 // channel's citations but not /api/kb/chat's; expose it on
                 // the unified shape so no channel loses a key it had.

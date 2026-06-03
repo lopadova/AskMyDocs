@@ -105,6 +105,9 @@ export interface MessageCitation {
     document_id: number | null;
     title: string;
     source_path: string | null;
+    /** v8.8/W6 — canonical slug + project (null for non-canonical) for the Related panel. */
+    slug?: string | null;
+    project_key?: string | null;
     source_type?: string | null;
     headings?: string[];
     chunks_used?: number;
