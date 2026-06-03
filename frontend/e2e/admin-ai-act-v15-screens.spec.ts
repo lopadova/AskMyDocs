@@ -2,43 +2,53 @@ import { expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 
 /**
- * v6.1.1 — Playwright proof that the v6.0 cross-mount under
- * `/admin/ai-act-compliance/*` is reachable through host auth and
- * renders the sister-package SPA inside an iframe scaffold.
+ * AI Act compliance — native overview (replaces the v6.0 iframe cross-mount).
  *
- * Scope of THIS file: the BOUNDARY the host controls — the cross-mount
- * wrapper, the heading, and the iframe element pointing at the
- * `/admin/ai-act-compliance/embed` entry. The interaction surface of
- * each screen (`tenants-screen` etc.) lives inside the
- * sister-package's compiled SPA assets, which are validated by the
- * package repo's own Playwright suite — re-asserting them here would
- * couple the host CI to the package's build output (R16 violation).
+ * The v6.0 design iframed the standalone `laravel-ai-act-compliance-admin`
+ * SPA at `/admin/ai-act-compliance/embed`. That package is a frontend-only
+ * prototype (mock data, no servable Laravel bundle), and the host
+ * `/admin/ai-act-compliance/{any?}` placeholder route redirected the iframe
+ * target back into the host SPA — so the iframe re-rendered this view's
+ * iframe, recursing indefinitely. The old spec here asserted only that an
+ * `<iframe>` element existed (deliberately not inspecting its contents),
+ * which is exactly why the recursion shipped unnoticed.
  *
- * R13 note: no external proxy is needed — these scenarios exercise
- * real host routes only.
+ * The view now renders a NATIVE overview backed by the real core-package
+ * endpoints `/api/admin/ai-act-compliance/*` — live counts per compliance
+ * register, no iframe, no recursion. These scenarios assert that real
+ * behaviour (R16): the panel reaches `ready` and renders the six register
+ * cards with live counts. The deep `/admin/ai-act-compliance/<suffix>`
+ * URLs still resolve to the panel through the host redirect + SPA splat
+ * route.
+ *
+ * R13 note: host routes only; no external proxy. The card data comes from
+ * the real seeded database via the core package controllers.
  */
-seededTest.describe('Admin AI Act v1.3 → v1.5 cross-mount reaches the package SPA', () => {
-    seededTest('v1.3 — /alerts URL is reachable through the cross-mount wrapper', async ({ page }) => {
-        await page.goto('/admin/ai-act-compliance/alerts');
-        await assertCrossMountFrame(page);
+seededTest.describe('Admin AI Act compliance — native live overview', () => {
+    seededTest('renders the six compliance register cards with live counts', async ({ page }) => {
+        await page.goto('/app/admin/ai-act-compliance');
+
+        const panel = page.getByTestId('admin-ai-act-compliance');
+        await expect(panel).toBeVisible({ timeout: 15_000 });
+        await expect(panel).toHaveAttribute('data-state', 'ready');
+        await expect(page.getByRole('heading', { name: 'AI Act compliance' })).toBeVisible();
+
+        // No recursive iframe any more — the page is native.
+        await expect(page.locator('iframe')).toHaveCount(0);
+
+        for (const key of ['incidents', 'dsar', 'consent', 'bias', 'attestations', 'human-reviews']) {
+            await expect(page.getByTestId(`admin-ai-act-card-${key}`)).toBeVisible();
+            // Count renders as a number (not the loading em-dash) once ready.
+            await expect(page.getByTestId(`admin-ai-act-count-${key}`)).toHaveText(/^\d+$/);
+        }
     });
 
-    seededTest('v1.4 — /regulatory URL is reachable through the cross-mount wrapper', async ({ page }) => {
-        await page.goto('/admin/ai-act-compliance/regulatory');
-        await assertCrossMountFrame(page);
-    });
-
-    seededTest('v1.5 — /tenants URL is reachable through the cross-mount wrapper', async ({ page }) => {
+    seededTest('deep cross-mount URL still resolves to the native panel', async ({ page }) => {
+        // /tenants was a package screen route in v6.0; it now resolves through
+        // the host redirect + SPA splat to the same native overview.
         await page.goto('/admin/ai-act-compliance/tenants');
-        await assertCrossMountFrame(page);
+
+        await expect(page.getByTestId('admin-ai-act-compliance')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('heading', { name: 'AI Act compliance' })).toBeVisible();
     });
 });
-
-async function assertCrossMountFrame(page: import('@playwright/test').Page): Promise<void> {
-    await expect(page.getByRole('heading', { name: 'AI Act compliance' })).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('iframe').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /Open in new tab/i })).toHaveAttribute(
-        'href',
-        '/admin/ai-act-compliance/embed',
-    );
-}

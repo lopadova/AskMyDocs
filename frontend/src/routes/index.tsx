@@ -41,12 +41,7 @@ import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { AdminShell } from '../features/admin/shell/AdminShell';
-import { DashboardPlaceholder } from '../components/sections/DashboardPlaceholder';
 import { RequireRole } from './role-guard';
-import { KbPlaceholder } from '../components/sections/KbPlaceholder';
-import { InsightsPlaceholder } from '../components/sections/InsightsPlaceholder';
-import { UsersPlaceholder } from '../components/sections/UsersPlaceholder';
-import { MaintenancePlaceholder } from '../components/sections/MaintenancePlaceholder';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
@@ -163,25 +158,39 @@ const chatConversationRoute = createRoute({
     path: 'chat/$conversationId',
     component: ChatView,
 });
+// These five paths shipped as `Coming in Phase …` placeholders in early
+// phases. The real views now live under `/app/admin/*` (DashboardView,
+// KbView, InsightsView, UsersView, MaintenanceView) and the primary sidebar
+// links there directly (AppShell SECTION_ROUTES). The old paths redirect to
+// the real targets so any stale bookmark / deep link lands on the working
+// view instead of a dead-end stub.
 const dashboardRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'dashboard',
-    component: DashboardPlaceholder,
+    beforeLoad: () => {
+        throw redirect({ to: '/app/admin' });
+    },
 });
 const kbRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'kb',
-    component: KbPlaceholder,
+    beforeLoad: () => {
+        throw redirect({ to: '/app/admin/kb' });
+    },
 });
 const insightsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'insights',
-    component: InsightsPlaceholder,
+    beforeLoad: () => {
+        throw redirect({ to: '/app/admin/insights' });
+    },
 });
 const usersRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'users',
-    component: UsersPlaceholder,
+    beforeLoad: () => {
+        throw redirect({ to: '/app/admin/users' });
+    },
 });
 // Phase H1 — admin Log Viewer route. Same flat RBAC pattern as
 // AdminKbRoute: the RequireRole gate lives inside the component so
@@ -208,7 +217,9 @@ const adminLogsRoute = createRoute({
 const maintenanceRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'maintenance',
-    component: MaintenancePlaceholder,
+    beforeLoad: () => {
+        throw redirect({ to: '/app/admin/maintenance' });
+    },
 });
 
 // Phase H2 — admin Maintenance panel route. Same flat RBAC pattern as

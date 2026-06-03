@@ -154,8 +154,14 @@ final class ChatRetrievalService
                 // non-canonical docs), so the chat-side "Related" panel can
                 // request the graph neighbours of the cited canonical docs
                 // without prop-drilling the active project (R27 additive).
+                // project_key is read from the CHUNK (always loaded + tenant-
+                // scoped), NOT the document relation: the retrieval select
+                // omits document.project_key, so reading it there returned null
+                // in production and the Related panel never rendered — caught
+                // by live pgvector testing; the mocked suite had supplied a
+                // field production never loads (R13/R16).
                 'slug' => data_get($first, 'document.slug'),
-                'project_key' => data_get($first, 'document.project_key'),
+                'project_key' => data_get($first, 'project_key') ?? data_get($first, 'document.project_key'),
                 // R27 — `source_type` was present on the conversation
                 // channel's citations but not /api/kb/chat's; expose it on
                 // the unified shape so no channel loses a key it had.
