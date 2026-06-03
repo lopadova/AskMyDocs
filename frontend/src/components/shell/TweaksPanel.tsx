@@ -3,6 +3,7 @@ import { Icon } from '../Icons';
 import { SegmentedControl } from './SegmentedControl';
 import type { Density, FontPair, Theme } from './hooks';
 import type { SidebarSection } from './Sidebar';
+import { NAV_ITEMS } from './nav-config';
 
 export type TweaksPanelProps = {
     open: boolean;
@@ -122,14 +123,15 @@ export function TweaksPanel({
                         aria-label="Active section"
                         style={{ height: 30, fontSize: 12 }}
                     >
-                        <option value="chat">Chat</option>
-                        <option value="dashboard">Admin Dashboard</option>
-                        <option value="kb">Knowledge Base</option>
-                        <option value="insights">AI Insights</option>
-                        <option value="users">Users &amp; Roles</option>
-                        <option value="ai-act-compliance">AI Act Compliance</option>
-                        <option value="logs">Logs</option>
-                        <option value="maintenance">Maintenance</option>
+                        {/* Derived from the single nav source so this dev
+                            jump-to-section selector stays in sync with every
+                            section in the unified rail (R18 — not a stale
+                            hard-coded subset). */}
+                        {NAV_ITEMS.map((item) => (
+                            <option key={item.id} value={item.id}>
+                                {item.label}
+                            </option>
+                        ))}
                     </select>
                 </TweakRow>
             </div>
