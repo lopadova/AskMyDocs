@@ -5,19 +5,28 @@ import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS, type Project } from '../../lib/seed';
+import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 
+// The primary sidebar links into the REAL admin views under `/app/admin/*`
+// (the same tree the AdminShell secondary rail navigates). Earlier phases
+// shipped `Coming in Phase …` placeholders at `/app/dashboard`, `/app/kb`,
+// `/app/insights`, `/app/users`, `/app/maintenance`; when the real
+// DashboardView / KbView / InsightsView / UsersView / MaintenanceView
+// landed under `/app/admin/*`, the sidebar map was never repointed, so five
+// core sections dead-ended on stubs (the real views were reachable only by
+// typing the URL). Repointed here; the old placeholder paths now redirect to
+// these same targets (see routes/index.tsx) for stale bookmarks.
 const SECTION_ROUTES: Record<SidebarSection, string> = {
     chat: '/app/chat',
-    dashboard: '/app/dashboard',
-    kb: '/app/kb',
-    insights: '/app/insights',
-    users: '/app/users',
+    dashboard: '/app/admin',
+    kb: '/app/admin/kb',
+    insights: '/app/admin/insights',
+    users: '/app/admin/users',
     'ai-act-compliance': '/app/admin/ai-act-compliance',
     connectors: '/app/admin/connectors',
     logs: '/app/logs',
-    maintenance: '/app/maintenance',
+    maintenance: '/app/admin/maintenance',
     'pii-redactor': '/app/admin/pii-redactor',
     flows: '/app/admin/flows',
     'eval-harness': '/app/admin/eval-harness',
@@ -26,11 +35,33 @@ const SECTION_ROUTES: Record<SidebarSection, string> = {
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {
     const entries = Object.entries(SECTION_ROUTES) as [SidebarSection, string][];
     for (const [section, path] of entries) {
-        if (match({ to: path, fuzzy: true })) {
+        // `dashboard` maps to the bare `/app/admin` root, which is a path
+        // prefix of every other admin route — match it EXACTLY so it doesn't
+        // fuzzily shadow kb / users / insights / maintenance (and the
+        // AdminShell-only sub-pages) and mis-highlight them as Dashboard.
+        const fuzzy = section !== 'dashboard';
+        if (match({ to: path, fuzzy })) {
             return section;
         }
     }
     return 'chat';
+}
+
+// The sidebar footer shows ONE role label. Pick the most privileged of the
+// user's real Spatie roles (from `/api/auth/me`) so the label matches what
+// the RBAC guards actually grant — e.g. an `admin` user is shown `admin`,
+// not the seed-constant `super-admin` that the static USERS[0] fixture
+// carried (which made the super-admin-only screens look mis-gated).
+// Typed to the SeedUser role union (which now covers all five real system
+// roles) so the picked value flows into the sidebar label with no cast. A
+// user whose roles fall entirely outside this set yields null → the caller
+// falls back to the least-privileged `viewer`; we deliberately do NOT surface
+// an unknown raw role string, which is what the old `?? roles[0]` fallback +
+// cast smuggled through.
+const ROLE_PRIORITY: SeedUser['role'][] = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+
+function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
+    return ROLE_PRIORITY.find((r) => roles.includes(r)) ?? null;
 }
 
 /*
@@ -49,12 +80,20 @@ export function AppShell() {
     const section = deriveSectionFromMatch(matchRoute);
     const storeUser = useAuthStore((s) => s.user);
     const storeProjects = useAuthStore((s) => s.projects);
+    const storeRoles = useAuthStore((s) => s.roles);
 
     const sidebarUser = storeUser
         ? {
               ...USERS[0],
               name: storeUser.name,
               email: storeUser.email,
+              // Real role from the auth store, not the USERS[0] seed constant
+              // (which always read `super-admin` and mislabelled every user).
+              // pickPrimaryRole returns the SeedUser role union (or null); when
+              // the user has no known role we fall back to the LEAST-privileged
+              // `viewer` rather than the seed's `super-admin`, so an empty /
+              // unrecognised roles array can never mislabel someone as an admin.
+              role: pickPrimaryRole(storeRoles) ?? 'viewer',
               avatar: storeUser.name
                   .split(' ')
                   .map((part) => part[0])

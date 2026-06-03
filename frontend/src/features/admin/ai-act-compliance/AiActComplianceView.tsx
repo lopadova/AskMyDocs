@@ -1,45 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
 import { AdminShell } from '../shell/AdminShell';
+import { AI_ACT_DOMAINS, getAiActOverview, type AiActDomainResult } from './ai-act.api';
 
 /**
- * v6.0/W7 — AI Act compliance admin landing.
+ * AI Act compliance admin landing — NATIVE live overview.
  *
- * Cross-mounts the standalone `padosoft/laravel-ai-act-compliance-admin`
- * SPA (v1.1+, ported from the Claude Design handoff bundle) into the
- * AskMyDocs admin shell via an iframe with a `name="ai-act-cross-mount"`
- * isolation boundary. Same pattern as the pii-redactor / eval-harness
- * cross-mounts in v4.4. Once Padosoft ships the SDK shared
- * iframe-resizer, this can swap to a transparent embed.
+ * v6.0 shipped this as an iframe cross-mount of the standalone
+ * `padosoft/laravel-ai-act-compliance-admin` SPA, but that package is a
+ * frontend-only prototype (no Laravel routes / no servable bundle), and the
+ * host `/admin/ai-act-compliance/{any?}` placeholder route redirected the
+ * iframe target back into the host SPA — which re-rendered this view's
+ * iframe, recursing indefinitely. The recursion was caught by live
+ * browser verification (the page nested the whole app inside itself).
  *
- * The iframe target URL is the path where the package PHP service
- * provider has published the Vite bundle (config:
- * `compliance.admin.mount_prefix` — defaults to
- * `/admin/ai-act-compliance`). The PHP backend serves the bundle via
- * the package's `serve()` controller that returns the published
- * `app.blade.php` (provided by laravel-ai-act-compliance-admin's
- * service provider).
+ * This native panel reads the REAL compliance data the core
+ * `padosoft/laravel-ai-act-compliance` package serves under
+ * `/api/admin/ai-act-compliance/*` (incidents, DSAR, consent, bias,
+ * attestations, human-reviews) — no iframe, no recursion, live counts +
+ * status tallies, with explicit loading / error / empty states (R14).
  */
 export function AiActComplianceView() {
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
-    const [loaded, setLoaded] = useState(false);
-    const [errored, setErrored] = useState(false);
-    const targetUrl = '/admin/ai-act-compliance/embed';
+    const query = useQuery({
+        queryKey: ['ai-act-overview'],
+        queryFn: getAiActOverview,
+        staleTime: 30_000,
+    });
 
-    useEffect(() => {
-        if (errored) return;
-        const timer = window.setTimeout(() => {
-            if (!loaded) setErrored(true);
-        }, 12_000);
-        return () => window.clearTimeout(timer);
-    }, [loaded, errored]);
+    const byKey = new Map<string, AiActDomainResult>((query.data ?? []).map((d) => [d.key, d]));
+    // No distinct 'empty' state: the six register cards always render once the
+    // query resolves (each shows "None recorded yet" at count 0), so an
+    // all-zero result is still a meaningful 'ready' view — a top-level empty
+    // branch here was unreachable (query.data is an array; [] is truthy).
+    const state = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
 
     return (
         <AdminShell section="ai-act-compliance">
             <section
                 data-testid="admin-ai-act-compliance"
-                data-state={errored ? 'error' : loaded ? 'ready' : 'loading'}
-                aria-busy={!loaded && !errored}
+                data-state={state}
+                aria-busy={query.isLoading || query.isFetching}
                 aria-labelledby="admin-ai-act-compliance-title"
                 style={{
                     flex: 1,
@@ -48,6 +48,7 @@ export function AiActComplianceView() {
                     minHeight: 0,
                     color: 'var(--fg-1)',
                     fontFamily: 'var(--font-sans)',
+                    overflow: 'auto',
                 }}
             >
                 <header
@@ -62,12 +63,7 @@ export function AiActComplianceView() {
                     <h1
                         id="admin-ai-act-compliance-title"
                         data-testid="admin-ai-act-compliance-title"
-                        style={{
-                            margin: 0,
-                            fontSize: 18,
-                            fontWeight: 700,
-                            letterSpacing: '-0.01em',
-                        }}
+                        style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em' }}
                     >
                         AI Act compliance
                     </h1>
@@ -84,84 +80,125 @@ export function AiActComplianceView() {
                             textTransform: 'uppercase',
                         }}
                     >
-                        padosoft/laravel-ai-act-compliance-admin v1.1
+                        padosoft/laravel-ai-act-compliance
                     </span>
                     <span style={{ flex: 1 }} />
-                    <a
-                        href={targetUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-testid="admin-ai-act-compliance-open-tab"
+                    <button
+                        type="button"
+                        data-testid="admin-ai-act-compliance-refresh"
+                        onClick={() => query.refetch()}
+                        disabled={query.isFetching}
+                        className="focus-ring"
                         style={{
                             fontSize: 12.5,
                             color: 'var(--fg-2)',
-                            textDecoration: 'none',
+                            background: 'transparent',
                             padding: '6px 12px',
                             border: '1px solid var(--border-2)',
                             borderRadius: 8,
+                            cursor: query.isFetching ? 'default' : 'pointer',
+                            opacity: query.isFetching ? 0.6 : 1,
                         }}
                     >
-                        Open in new tab ↗
-                    </a>
+                        {query.isFetching ? 'Refreshing…' : 'Refresh'}
+                    </button>
                 </header>
 
-                {!loaded && !errored && (
-                    <div
-                        data-testid="admin-ai-act-compliance-loading"
-                        style={{
-                            flex: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--fg-2)',
-                            fontSize: 13,
-                        }}
-                    >
-                        Loading AI Act compliance panel…
-                    </div>
-                )}
+                <p style={{ margin: 0, padding: '12px 22px 0', color: 'var(--fg-2)', fontSize: 13, maxWidth: 760 }}>
+                    Live counts across the EU AI Act compliance registers. Records are created and
+                    transitioned through the <code style={{ fontFamily: 'var(--font-mono)' }}>/api/admin/ai-act-compliance/*</code>{' '}
+                    endpoints (DSAR intake, incident reporting, consent grants, bias capture, human-review queue).
+                </p>
 
-                {errored && (
+                {query.isError && (
                     <div
                         data-testid="admin-ai-act-compliance-error"
                         role="alert"
-                        style={{
-                            flex: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'var(--danger-fg)',
-                            fontSize: 13,
-                            padding: 24,
-                            textAlign: 'center',
-                        }}
+                        style={{ margin: '16px 22px', color: 'var(--danger-fg)', fontSize: 13 }}
                     >
-                        Failed to load the AI Act compliance panel. Verify that
-                        <code style={{ margin: '0 6px', fontFamily: 'var(--font-mono)' }}>
-                            padosoft/laravel-ai-act-compliance-admin
-                        </code>
-                        is installed and the publishable assets are served at{' '}
-                        <code>{targetUrl}</code>.
+                        Failed to load AI Act compliance data. Confirm the{' '}
+                        <code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/laravel-ai-act-compliance</code>{' '}
+                        package is installed and that your role is granted the{' '}
+                        <code>viewAiActCompliance</code> gate.
                     </div>
                 )}
 
-                <iframe
-                    ref={iframeRef}
-                    name="ai-act-cross-mount"
-                    title="AI Act compliance admin panel"
-                    src={targetUrl}
-                    data-testid="admin-ai-act-compliance-iframe"
-                    onLoad={() => setLoaded(true)}
-                    onError={() => setErrored(true)}
+                <div
+                    role="list"
+                    aria-label="Compliance registers"
                     style={{
-                        flex: 1,
-                        width: '100%',
-                        border: 0,
-                        background: 'transparent',
-                        minHeight: 0,
-                        display: loaded ? 'block' : 'none',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                        gap: 14,
+                        padding: 22,
                     }}
-                />
+                >
+                    {AI_ACT_DOMAINS.map((domain) => {
+                        const result = byKey.get(domain.key);
+                        const statusEntries = result ? Object.entries(result.statuses) : [];
+                        return (
+                            <article
+                                key={domain.key}
+                                role="listitem"
+                                data-testid={`admin-ai-act-card-${domain.key}`}
+                                style={{
+                                    border: '1px solid var(--border-1)',
+                                    borderRadius: 12,
+                                    padding: 16,
+                                    background: 'var(--bg-1)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 8,
+                                    minHeight: 120,
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                                    <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{domain.label}</h2>
+                                    <span
+                                        data-testid={`admin-ai-act-count-${domain.key}`}
+                                        style={{ fontSize: 22, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+                                    >
+                                        {state === 'ready' ? (result?.count ?? 0) : '—'}
+                                    </span>
+                                </div>
+                                <p style={{ margin: 0, color: 'var(--fg-3)', fontSize: 12 }}>{domain.description}</p>
+                                {state === 'ready' && statusEntries.length > 0 && (
+                                    <ul
+                                        style={{
+                                            listStyle: 'none',
+                                            margin: '4px 0 0',
+                                            padding: 0,
+                                            display: 'flex',
+                                            flexWrap: 'wrap',
+                                            gap: 6,
+                                        }}
+                                    >
+                                        {statusEntries.map(([status, n]) => (
+                                            <li
+                                                key={status}
+                                                style={{
+                                                    fontSize: 11,
+                                                    padding: '2px 8px',
+                                                    borderRadius: 999,
+                                                    background: 'var(--bg-3)',
+                                                    color: 'var(--fg-2)',
+                                                    fontFamily: 'var(--font-mono)',
+                                                }}
+                                            >
+                                                {status}: {n}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {state === 'ready' && result?.count === 0 && (
+                                    <span style={{ marginTop: 'auto', fontSize: 11.5, color: 'var(--fg-3)' }}>
+                                        None recorded yet.
+                                    </span>
+                                )}
+                            </article>
+                        );
+                    })}
+                </div>
             </section>
         </AdminShell>
     );

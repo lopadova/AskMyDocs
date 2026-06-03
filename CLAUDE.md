@@ -1315,6 +1315,33 @@ the first place. Check:
 
 → See `.claude/skills/test-teardown-rollback-before-mockery/SKILL.md`.
 
+### R42 — On transient API failure: never stop, wait, retry in a loop
+
+Operational rule (like R22), standing from **2026-06-03** (Lorenzo). When an
+agent action hits a **transient, recoverable** failure talking to an external
+service — HTTP 429 rate-limit, a 5xx / transport error from the AI provider,
+`Stream idle timeout`, a dropped/again-up network, a "no connection" blip —
+the agent MUST NOT stop, abandon the task, or ask the user what to do. Instead:
+
+1. Wait ~60 seconds.
+2. Retry the same operation.
+3. Repeat the wait-then-retry loop **indefinitely** until access is restored.
+
+Do NOT drop out of an unattended `/loop` / auto-mode run on a transient error —
+that is exactly when the loop must keep itself alive. This is the same posture
+as [[feedback_stream_idle_timeout_retry]] generalised to every recoverable
+external-call failure (live verification, benchmark runs, copilot-cli calls,
+PR/CI polling, the live AI provider during ingest/chat tests).
+
+**Only** surface to the user (instead of looping) when the failure is clearly
+**non-transient**: a `401` on a key known to be valid, a `403`/permission
+denial, a `4xx` contract/validation error that a retry cannot fix, or a
+permanent quota exhaustion. Those are real signals; rate-limits and timeouts
+are not.
+
+Scope: every agent/session on `lopadova/*` and `padosoft/*`, attended or
+unattended. Mirrors the private memory [[feedback_retry_on_api_error_never_stop]].
+
 ---
 
 ## 8. Testing & CI
@@ -1351,7 +1378,7 @@ the first place. Check:
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R41 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R42 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

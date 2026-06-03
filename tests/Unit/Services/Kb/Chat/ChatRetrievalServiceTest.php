@@ -28,6 +28,34 @@ final class ChatRetrievalServiceTest extends TestCase
         return new ChatRetrievalService(Mockery::mock(KbSearchService::class));
     }
 
+    public function test_citation_project_key_reads_from_the_chunk_not_the_document_select(): void
+    {
+        // v8.8 live-verification regression: the production retrieval select on
+        // the document relation OMITS project_key (it loads id/title/slug/…),
+        // so reading document.project_key returned null and the W6 Related
+        // panel never rendered. project_key MUST come from the chunk (always
+        // loaded + tenant-scoped). This fixture mirrors the production array
+        // shape: chunk carries project_key; the `document` sub-array does NOT.
+        $result = new SearchResult(
+            primary: collect([[
+                'chunk_id' => 1,
+                'project_key' => 'hr-portal',
+                'chunk_text' => 'We chose Redis as the cache backend.',
+                'heading_path' => 'Cache',
+                'rerank_score' => 0.9,
+                // NOTE: no project_key here — matches the real retrieval select.
+                'document' => ['id' => 7, 'title' => 'Cache decision', 'source_path' => 'd/cache.md', 'slug' => 'dec-cache'],
+            ]]),
+            expanded: collect(),
+            rejected: collect(),
+        );
+
+        $c = $this->service()->buildCitations($result)[0];
+
+        $this->assertSame('dec-cache', $c['slug']);
+        $this->assertSame('hr-portal', $c['project_key'], 'project_key must come from the chunk, not the (unselected) document.project_key');
+    }
+
     public function test_build_citations_includes_evidence_grade_chunk_provenance(): void
     {
         $text = 'The remote work stipend applies after 90 days.';
