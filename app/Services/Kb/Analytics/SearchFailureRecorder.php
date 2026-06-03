@@ -6,6 +6,7 @@ namespace App\Services\Kb\Analytics;
 
 use App\Models\KbSearchFailure;
 use App\Support\TenantContext;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -41,43 +42,39 @@ final class SearchFailureRecorder
             $truncated = mb_substr($query, 0, 1000);
             $ts        = now();
 
-            // R21 — rate counter: lock-read-write in ONE transaction so two
-            // concurrent refusals of the same query can't race on the UNIQUE
-            // anchor (firstOrCreate without a lock would let both threads win
-            // the SELECT, both attempt INSERT, and the loser's occurrence is
-            // silently swallowed by the outer catch).
-            DB::transaction(function () use (
-                $tenantId, $project, $hash, $reason, $normalized, $truncated, $ts,
-            ): void {
-                $row = KbSearchFailure::query()
-                    ->where('tenant_id', $tenantId)
+            // Insert-or-atomic-increment without losing a count under
+            // concurrency. A plain `lockForUpdate` read+write does NOT cover
+            // the MISSING-ROW race: two concurrent refusals both see no row,
+            // both INSERT, and the loser hits the UNIQUE constraint
+            // (Copilot review). Instead: try the INSERT, and on the unique
+            // violation fall back to an ATOMIC `occurrences = occurrences + 1`
+            // UPDATE — portable across pgsql + sqlite, no lost counts.
+            try {
+                KbSearchFailure::create([
+                    'tenant_id'        => $tenantId,
+                    'project_key'      => $project,
+                    'query_hash'       => $hash,
+                    'reason'           => $reason,
+                    'normalized_query' => $normalized,
+                    'query_text'       => $truncated,
+                    'occurrences'      => 1,
+                    'last_seen_at'     => $ts,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                KbSearchFailure::query()
+                    ->forTenant($tenantId)
                     ->where('project_key', $project)
                     ->where('query_hash', $hash)
                     ->where('reason', $reason)
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($row === null) {
-                    KbSearchFailure::create([
-                        'tenant_id'        => $tenantId,
-                        'project_key'      => $project,
-                        'query_hash'       => $hash,
-                        'reason'           => $reason,
-                        'normalized_query' => $normalized,
-                        'query_text'       => $truncated,
-                        'occurrences'      => 1,
-                        'last_seen_at'     => $ts,
+                    ->update([
+                        'occurrences' => DB::raw('occurrences + 1'),
+                        'query_text' => $truncated,
+                        'last_seen_at' => $ts,
+                        // A recurring gap is "re-opened" — clear a stale
+                        // resolution so it resurfaces in the ranked list.
+                        'resolved_at' => null,
                     ]);
-                } else {
-                    $row->occurrences   += 1;
-                    $row->query_text    = $truncated;
-                    $row->last_seen_at  = $ts;
-                    // A recurring gap is "re-opened" — clear a stale resolution
-                    // so it resurfaces in the ranked list.
-                    $row->resolved_at = null;
-                    $row->save();
-                }
-            });
+            }
         } catch (Throwable $e) {
             Log::warning('SearchFailureRecorder: failed to record content gap', [
                 'reason' => $reason,

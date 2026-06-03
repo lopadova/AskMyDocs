@@ -27,9 +27,10 @@ test.describe('Admin Content Gaps', () => {
         await expect(list).toContainText('How do I rotate the signing key in production?');
         await expect(list).toContainText('17×');
 
-        // Resolve the top gap via the real PATCH endpoint.
-        const topRow = page.locator('[data-testid^="admin-content-gap-"][data-resolved="false"]').first();
-        const resolveBtn = topRow.getByRole('button', { name: /resolve gap/i });
+        // Resolve the top gap via the real PATCH endpoint. The seeder's
+        // highest-occurrence row renders first, so the first "Resolve gap"
+        // button reaches it — a role+name locator, not a CSS selector (R13).
+        const resolveBtn = page.getByRole('button', { name: /resolve gap/i }).first();
         const patchResp = page.waitForResponse(
             (r) => /\/api\/admin\/kb\/content-gaps\/\d+\/resolve/.test(r.url()) && r.request().method() === 'PATCH',
             { timeout: 15_000 },
