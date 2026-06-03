@@ -253,6 +253,15 @@ final class MessageStreamControllerTest extends TestCase
 
         // Http::fake recorded zero requests — the LLM was never called.
         Http::assertNothingSent();
+
+        // v8.8/W4 — the STREAMING refusal is recorded as a content gap (the SPA
+        // uses /messages/stream, so this is the path that must record).
+        $gap = \App\Models\KbSearchFailure::query()
+            ->where('reason', 'no_relevant_context')
+            ->first();
+        $this->assertNotNull($gap, 'a streaming refusal must record a content gap');
+        $this->assertStringContainsString('completely unrelated', $gap->query_text);
+        $this->assertSame(1, (int) $gap->occurrences);
     }
 
     public function test_3_empty_content_returns_422(): void

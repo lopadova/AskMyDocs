@@ -331,6 +331,12 @@ class MessageStreamController extends Controller
                 ],
             ));
 
+            // v8.8/W4 — record the content gap for STREAMING refusals too (the
+            // SPA chat uses /messages/stream, so without this the rollup would
+            // miss the majority of refusals). Side-channel; never breaks chat.
+            app(\App\Services\Kb\Analytics\SearchFailureRecorder::class)
+                ->record($projectKey, $question, $reason);
+
             // Terminal event AFTER persistence — guarantees that any
             // client refetch triggered by `finish` sees the
             // assistant Message row in the DB. Refusal turns close
