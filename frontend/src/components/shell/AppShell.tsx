@@ -13,11 +13,11 @@ import { useAuthStore } from '../../lib/auth-store';
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
 // not its parent `kb`). We feed it the router's fuzzy matcher — EXCEPT for the
 // bare `/app/admin` (Dashboard) root, matched exactly. That root is a prefix of
-// every admin sub-page, including ones with NO nav entry of their own
-// (`/app/admin/notifications`, `/app/admin/kb/time-machine/…`); fuzzy-matching
-// it there would mis-highlight Dashboard. Exact match leaves those with no
-// highlight instead, while a real section's deeper sub-pages still resolve to
-// their own (longer) route fuzzily.
+// every admin sub-page, including `/app/admin/notifications` which has NO nav
+// entry of its own; fuzzy-matching the root there would mis-highlight
+// Dashboard. Exact match leaves it unhighlighted instead, while a real
+// section's deeper sub-pages still resolve to their own (longer) route fuzzily
+// — e.g. `/app/admin/kb/time-machine/$docId` matches `kb` (Knowledge).
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection | null {
     return deriveSection((route) => Boolean(match({ to: route, fuzzy: route !== '/app/admin' })));
 }

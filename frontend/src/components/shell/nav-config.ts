@@ -132,9 +132,11 @@ export function deriveSection(matches: (route: string) => boolean): SidebarSecti
             return item.id;
         }
     }
-    // No nav entry owns this route (e.g. /app/admin/notifications,
-    // /app/admin/kb/time-machine/…) — return null so NOTHING in the sidebar
+    // No nav entry is a prefix of this route (e.g. /app/admin/notifications,
+    // reached from the topbar bell) — return null so NOTHING in the sidebar
     // highlights, rather than mis-attributing it to Dashboard (longest-prefix)
-    // or Chat (a hard-coded fallback).
+    // or Chat (a hard-coded fallback). Note: routes that DO sit under a nav
+    // section still resolve to it — e.g. /app/admin/kb/time-machine/$docId
+    // fuzzily matches `kb` and correctly highlights Knowledge.
     return null;
 }
