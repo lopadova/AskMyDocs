@@ -107,6 +107,11 @@ export const NAV_GROUPS: NavGroup[] = [
 /** Flat list of every nav item, in group order. */
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
+// Precomputed once: items ordered by descending route length so the
+// most-specific match wins. NAV_ITEMS is static, so there is no reason to
+// re-sort on every deriveSection() call.
+const ORDERED_NAV_ITEMS: NavItem[] = [...NAV_ITEMS].sort((a, b) => b.route.length - a.route.length);
+
 /** id → route, derived so it can never drift from the rendered nav. */
 export const SECTION_ROUTES: Record<SidebarSection, string> = Object.fromEntries(
     NAV_ITEMS.map((i) => [i.id, i.route]),
@@ -122,8 +127,7 @@ export const SECTION_ROUTES: Record<SidebarSection, string> = Object.fromEntries
  * resolves to `dashboard` (nothing deeper matches it).
  */
 export function deriveSection(matches: (route: string) => boolean): SidebarSection {
-    const ordered = [...NAV_ITEMS].sort((a, b) => b.route.length - a.route.length);
-    for (const item of ordered) {
+    for (const item of ORDERED_NAV_ITEMS) {
         if (matches(item.route)) {
             return item.id;
         }

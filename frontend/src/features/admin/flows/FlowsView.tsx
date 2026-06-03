@@ -28,13 +28,13 @@ interface FlowLive {
 
 // The cockpit's own sections — surfaced here as quick-launch links so the
 // host page mirrors the tool's menu without embedding its chrome.
-const COCKPIT_SECTIONS: Array<{ label: string; path: string }> = [
-    { label: 'Overview', path: '' },
-    { label: 'Runs', path: '/runs' },
-    { label: 'Approvals', path: '/approvals' },
-    { label: 'Outbox', path: '/outbox' },
-    { label: 'Definitions', path: '/definitions' },
-    { label: 'Settings', path: '/settings' },
+const COCKPIT_SECTIONS: Array<{ id: string; label: string; path: string }> = [
+    { id: 'overview', label: 'Overview', path: '' },
+    { id: 'runs', label: 'Runs', path: '/runs' },
+    { id: 'approvals', label: 'Approvals', path: '/approvals' },
+    { id: 'outbox', label: 'Outbox', path: '/outbox' },
+    { id: 'definitions', label: 'Definitions', path: '/definitions' },
+    { id: 'settings', label: 'Settings', path: '/settings' },
 ];
 
 export function FlowsView() {
@@ -210,11 +210,11 @@ export function FlowsView() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {COCKPIT_SECTIONS.map((s) => (
                         <a
-                            key={s.label}
+                            key={s.id}
                             href={`${FLOW_ADMIN_BASE_URL}${s.path}`}
                             target="_blank"
                             rel="noreferrer"
-                            data-testid={`admin-flows-section-${s.label.toLowerCase()}`}
+                            data-testid={`admin-flows-section-${s.id}`}
                             className="focus-ring"
                             style={{
                                 display: 'inline-flex',

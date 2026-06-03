@@ -38,6 +38,13 @@ INTERNAL_PATTERNS=(
   '/logout'
   '/conversations'
   '/testing/'
+  # v8.8.2 — sister-package admin APIs are host-served under /admin/<pkg>/…
+  # (not /api/admin/…), so they need their own internal patterns. The native
+  # Flows/PII landings probe these; failure-injection tests still require the
+  # `R13: failure injection` marker, enforced by the marker check below.
+  '/admin/flows/'
+  '/admin/pii-redactor/'
+  '/admin/eval-harness/'
 )
 
 # Patterns considered "external boundaries" — always allowed.

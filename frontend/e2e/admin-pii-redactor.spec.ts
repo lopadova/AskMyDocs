@@ -113,6 +113,7 @@ seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
         async ({ page }) => {
             // Intercept the status probe before mounting so it is caught
             // on the very first fetch.
+            // R13: failure injection
             await page.route('**/admin/pii-redactor/api/status', (route) =>
                 route.fulfill({ status: 503, body: 'Service Unavailable' }),
             );

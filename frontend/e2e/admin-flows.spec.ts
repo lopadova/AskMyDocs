@@ -79,6 +79,7 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         async ({ page }) => {
             // Intercept the probe before navigating so the fetch racing the
             // component mount is caught deterministically.
+            // R13: failure injection
             await page.route('**/admin/flows/api/live', (route) =>
                 route.fulfill({ status: 503, body: 'Service Unavailable' }),
             );

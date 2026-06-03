@@ -88,9 +88,11 @@ seededTest.describe('Unified sidebar — collapsible groups', () => {
             // All groups default to expanded, so sidebar-nav-flows must be visible.
             await expect(page.getByTestId('sidebar-nav-flows')).toBeVisible({ timeout: 15_000 });
 
-            // Collapse the Operations group → its entries are removed from the DOM.
+            // Collapse the Operations group → its entries are removed from the DOM
+            // (the sidebar conditionally renders items, it does not just hide them),
+            // so assert detachment explicitly rather than the weaker not-visible.
             await page.getByTestId('sidebar-group-operations').click();
-            await expect(page.getByTestId('sidebar-nav-flows')).not.toBeVisible();
+            await expect(page.getByTestId('sidebar-nav-flows')).toHaveCount(0);
 
             // Re-expand → entries reappear and are clickable again.
             await page.getByTestId('sidebar-group-operations').click();

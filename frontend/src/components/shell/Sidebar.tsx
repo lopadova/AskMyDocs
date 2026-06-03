@@ -101,8 +101,11 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
             </div>
             <nav style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
                 {NAV_GROUPS.map((group) => {
-                    // The active section's group is always shown; user toggle wins otherwise.
-                    const groupOpen = group.id === activeGroupId || !collapsedGroups[group.id];
+                    // The active section's group is always shown; user toggle wins
+                    // otherwise. In icon-collapsed mode there are no group headers
+                    // to re-expand with, so force every group open — a group can
+                    // never get stuck hidden with no way to reveal it.
+                    const groupOpen = collapsed || group.id === activeGroupId || !collapsedGroups[group.id];
                     return (
                         <div key={group.id} style={{ marginTop: 10 }}>
                             {!collapsed && (
