@@ -114,7 +114,7 @@ describe('EvalHarnessView (cross-mount shell)', () => {
         expect(screen.queryByTestId('admin-eval-harness-app')).not.toBeInTheDocument();
     });
 
-    it('mounts the cross-mount SPA after the bootstrap-config fetch resolves with data-state=ready', async () => {
+    it('mounts the cross-mount SPA only when BOTH config and the data probe resolve (data-state=ready)', async () => {
         apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = {
             kind: 'ok',
             data: {
@@ -126,12 +126,14 @@ describe('EvalHarnessView (cross-mount shell)', () => {
                 shortcuts: { commandPalette: 'mod+k' },
             },
         };
+        // The data probe must answer for the SPA to mount.
+        apiMock.getResponses['/admin/eval-harness/api/reports'] = {
+            kind: 'ok',
+            data: { schema_version: 'eval-harness.report-api.v1.reports', items: [], total: 0 },
+        };
 
         render(<EvalHarnessView />);
 
-        // Initial render is loading; after the fetch promise
-        // resolves, the wrapper flips to data-state="ready" and the
-        // SPA shell mounts.
         await waitFor(() => {
             expect(screen.getByTestId('admin-eval-harness-host')).toHaveAttribute('data-state', 'ready');
         });
@@ -139,22 +141,29 @@ describe('EvalHarnessView (cross-mount shell)', () => {
         expect(await screen.findByTestId('admin-eval-harness-app')).toBeInTheDocument();
     });
 
-    it('flips data-state to error when bootstrap-config fails AND still mounts the SPA in degraded mode (R7 / R14)', async () => {
+    it('shows a clean unavailable landing (NOT the SPA) when the data API probe fails — safe with the flag on OR off', async () => {
+        // Config resolves (host endpoint), but the eval data API is unwired /
+        // disabled — its routes 404 (flag off) or 500 (flag on, blade shadow).
         apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = {
-            kind: 'fail',
-            status: 503,
-            data: { message: 'config service unavailable' },
+            kind: 'ok',
+            data: {
+                ui_version: '0.1.0',
+                metric_labels: {},
+                tenant_header: null,
+                polling: {},
+                locale: 'en',
+                shortcuts: { commandPalette: 'mod+k' },
+            },
         };
+        apiMock.getResponses['/admin/eval-harness/api/reports'] = { kind: 'fail', status: 404 };
 
         render(<EvalHarnessView />);
 
         await waitFor(() => {
-            expect(screen.getByTestId('admin-eval-harness-host')).toHaveAttribute('data-state', 'error');
+            expect(screen.getByTestId('admin-eval-harness-host')).toHaveAttribute('data-state', 'unavailable');
         });
-        // The cross-mount STILL mounts so the package's own
-        // `<ErrorPanel />` surfaces underlying API failures (R7 /
-        // R14: failures should be loud — the shell going completely
-        // blank would hide the real error from the operator).
-        expect(await screen.findByTestId('admin-eval-harness-app')).toBeInTheDocument();
+        // Clean landing instead of the SPA + its error-panel storm.
+        expect(screen.getByTestId('admin-eval-harness-unavailable')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-eval-harness-app')).not.toBeInTheDocument();
     });
 });
