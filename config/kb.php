@@ -52,7 +52,20 @@ return [
 
     'hybrid_search' => [
         'enabled' => env('KB_HYBRID_SEARCH_ENABLED', false),
+        // Fixed FTS dictionary — also the FALLBACK when per-query detection is
+        // off or can't confidently determine the query language (v8.8/W5).
         'fts_language' => env('KB_FTS_LANGUAGE', 'italian'),
+        // v8.8/W5 — detect each query's language and stem with the matching
+        // PostgreSQL dictionary instead of the fixed one above. Default OFF
+        // (opt-in): when off, behaviour is byte-for-byte the previous fixed
+        // dictionary. `fts_supported_languages` bounds the candidate set.
+        'fts_language_detection' => (bool) env('KB_FTS_LANGUAGE_DETECTION', false),
+        // Lowercased + trimmed: PostgreSQL `regconfig` names are lowercase, so
+        // `English, Italian` must normalize or detection would silently no-op.
+        'fts_supported_languages' => array_values(array_filter(array_map(
+            static fn (string $l): string => strtolower(trim($l)),
+            explode(',', (string) env('KB_FTS_SUPPORTED_LANGUAGES', 'english,italian')),
+        ))),
         'rrf_k' => env('KB_RRF_K', 60),
         'semantic_weight' => env('KB_HYBRID_SEMANTIC_WEIGHT', 0.70),
         'fts_weight' => env('KB_HYBRID_FTS_WEIGHT', 0.30),
