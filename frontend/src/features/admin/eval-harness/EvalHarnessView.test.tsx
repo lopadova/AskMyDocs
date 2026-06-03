@@ -114,7 +114,7 @@ describe('EvalHarnessView (cross-mount shell)', () => {
         expect(screen.queryByTestId('admin-eval-harness-app')).not.toBeInTheDocument();
     });
 
-    it('mounts the cross-mount SPA only when BOTH config and the data probe resolve (data-state=ready)', async () => {
+    it('mounts the cross-mount SPA when the data probe resolves — data-state=ready (bootstrap-config is best-effort)', async () => {
         apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = {
             kind: 'ok',
             data: {
@@ -139,6 +139,24 @@ describe('EvalHarnessView (cross-mount shell)', () => {
         });
         expect(screen.queryByTestId('admin-eval-harness-loading')).not.toBeInTheDocument();
         expect(await screen.findByTestId('admin-eval-harness-app')).toBeInTheDocument();
+    });
+
+    it('still mounts the SPA (with fallback config) when bootstrap-config FAILS but the data probe resolves — config is best-effort', async () => {
+        apiMock.getResponses['/api/admin/eval-harness/bootstrap-config'] = { kind: 'fail', status: 503 };
+        apiMock.getResponses['/admin/eval-harness/api/reports'] = {
+            kind: 'ok',
+            data: { schema_version: 'eval-harness.report-api.v1.reports', items: [], total: 0 },
+        };
+
+        render(<EvalHarnessView />);
+
+        // The data probe is what gates the mount — a failed config falls back
+        // to FALLBACK_CONFIG and the SPA still renders (data-state=ready).
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-eval-harness-host')).toHaveAttribute('data-state', 'ready');
+        });
+        expect(await screen.findByTestId('admin-eval-harness-app')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-eval-harness-unavailable')).not.toBeInTheDocument();
     });
 
     it('shows a clean unavailable landing (NOT the SPA) when the data API probe fails — safe with the flag on OR off', async () => {
