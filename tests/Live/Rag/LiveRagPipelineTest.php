@@ -50,9 +50,13 @@ use Tests\TestCase;
  */
 final class LiveRagPipelineTest extends TestCase
 {
-    private string $tenant = 'live-rag-tenant';
+    // Generated per run in setUp() with a random suffix so the destructive
+    // cleanup can NEVER touch a real tenant/project that happens to share a
+    // fixed identifier — the test only ever writes + deletes its own unique
+    // namespace on the live database.
+    private string $tenant;
 
-    private string $project = 'live-rag-project';
+    private string $project;
 
     protected function getEnvironmentSetUp($app): void
     {
@@ -122,6 +126,13 @@ final class LiveRagPipelineTest extends TestCase
         } catch (\Throwable $e) {
             $this->markTestSkipped('pgvector database not reachable — live RAG suite disabled: ' . $e->getMessage());
         }
+
+        // Unique per-run namespace (stable prefix + random suffix) so the
+        // destructive cleanup is scoped to data THIS run created and can never
+        // collide with a real operator tenant/project on the live database.
+        $suffix = bin2hex(random_bytes(5));
+        $this->tenant = "live-rag-tenant-{$suffix}";
+        $this->project = "live-rag-project-{$suffix}";
 
         $this->app->make(TenantContext::class)->set($this->tenant);
         $this->cleanup();
@@ -213,11 +224,12 @@ final class LiveRagPipelineTest extends TestCase
 
     private function cleanup(): void
     {
-        // Only touch the (pgsql) database when the live suite is armed. On the
-        // skipped run the default connection is the migration-less SQLite test
-        // DB, so a stray DELETE here would hit a non-existent table during
-        // tearDown and surface as a spurious error.
-        if (getenv('LIVE_RAG') !== '1') {
+        // Only touch the (pgsql) database when the live suite is armed AND the
+        // per-run namespace was generated. On the skipped run the default
+        // connection is the migration-less SQLite test DB (stray DELETE → error),
+        // and when a gate skips before setUp() assigns $tenant/$project the
+        // typed properties are uninitialized — `isset()` guards both safely.
+        if (getenv('LIVE_RAG') !== '1' || ! isset($this->tenant, $this->project)) {
             return;
         }
 
