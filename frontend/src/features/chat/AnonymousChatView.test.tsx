@@ -68,6 +68,16 @@ describe('AnonymousChatView', () => {
         expect(screen.queryByTestId('anonymous-chat-input')).not.toBeInTheDocument();
     });
 
+    it('surfaces a config-probe failure as an error, not a silent disabled state (R14)', async () => {
+        mockedConfig.mockRejectedValue(new Error('probe 500'));
+        renderView(<AnonymousChatView />);
+
+        expect(await screen.findByTestId('anonymous-chat-error')).toBeInTheDocument();
+        // A network/5xx failure must NOT be presented as the deliberate off-state.
+        expect(screen.queryByTestId('anonymous-chat-disabled')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('anonymous-chat-input')).not.toBeInTheDocument();
+    });
+
     it('shows the banner + empty state when enabled', async () => {
         mockedConfig.mockResolvedValue({ enabled: true });
         renderView(<AnonymousChatView />);

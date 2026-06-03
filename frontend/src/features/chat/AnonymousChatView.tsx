@@ -76,9 +76,11 @@ export function AnonymousChatView(): ReactNode {
 
     const state = configQuery.isLoading
         ? 'loading'
-        : configQuery.data?.enabled
-            ? 'ready'
-            : 'disabled';
+        : configQuery.isError
+            ? 'error'
+            : configQuery.data?.enabled
+                ? 'ready'
+                : 'disabled';
 
     return (
         <div
@@ -115,6 +117,25 @@ export function AnonymousChatView(): ReactNode {
                         <p data-testid="anonymous-chat-loading" style={{ color: 'var(--fg-3)', fontSize: 13 }}>
                             Checking availability…
                         </p>
+                    )}
+
+                    {state === 'error' && (
+                        <div
+                            data-testid="anonymous-chat-error"
+                            role="alert"
+                            style={{
+                                padding: '16px 18px',
+                                border: '1px solid var(--err-border, rgba(220,50,50,.35))',
+                                borderRadius: 10,
+                                background: 'var(--err-bg, rgba(220,50,50,.06))',
+                                fontSize: 13,
+                                color: 'var(--err, #c0392b)',
+                                lineHeight: 1.6,
+                            }}
+                        >
+                            Could not check anonymous-chat availability. Please try again or reload
+                            the page.
+                        </div>
                     )}
 
                     {state === 'disabled' && (
