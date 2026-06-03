@@ -38,37 +38,41 @@ describe('Sidebar (unified rail)', () => {
     });
 
     it('fires onNav with the section id when an entry is clicked', async () => {
+        const user = userEvent.setup();
         const onNav = vi.fn();
         render(<Sidebar active="chat" onNav={onNav} user={USERS[0]} projectCount={4} />);
-        await userEvent.click(screen.getByTestId('sidebar-nav-tabular-reviews'));
+        await user.click(screen.getByTestId('sidebar-nav-tabular-reviews'));
         expect(onNav).toHaveBeenCalledWith('tabular-reviews');
     });
 
     it('collapsing a non-active group hides its entries; re-expanding shows them', async () => {
+        const user = userEvent.setup();
         render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
         // Operations group is not the active group (chat lives in Workspace).
         expect(screen.getByTestId('sidebar-nav-flows')).toBeInTheDocument();
 
-        await userEvent.click(screen.getByTestId('sidebar-group-operations'));
+        await user.click(screen.getByTestId('sidebar-group-operations'));
         expect(screen.queryByTestId('sidebar-nav-flows')).not.toBeInTheDocument();
 
-        await userEvent.click(screen.getByTestId('sidebar-group-operations'));
+        await user.click(screen.getByTestId('sidebar-group-operations'));
         expect(screen.getByTestId('sidebar-nav-flows')).toBeInTheDocument();
     });
 
     it('the active section group stays open even if collapsed', async () => {
+        const user = userEvent.setup();
         // active=flows lives in Operations; toggling Operations must not hide it.
         render(<Sidebar active="flows" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
-        await userEvent.click(screen.getByTestId('sidebar-group-operations'));
+        await user.click(screen.getByTestId('sidebar-group-operations'));
         expect(screen.getByTestId('sidebar-nav-flows')).toBeInTheDocument();
         expect(screen.getByTestId('sidebar-nav-flows')).toHaveAttribute('aria-current', 'page');
     });
 
     it('dispatches amd:palette when the search button is clicked', async () => {
+        const user = userEvent.setup();
         const handler = vi.fn();
         window.addEventListener('amd:palette', handler);
         render(<Sidebar active="chat" onNav={() => undefined} user={USERS[0]} projectCount={4} />);
-        await userEvent.click(screen.getByRole('button', { name: /open command palette/i }));
+        await user.click(screen.getByRole('button', { name: /open command palette/i }));
         window.removeEventListener('amd:palette', handler);
         expect(handler).toHaveBeenCalled();
     });
