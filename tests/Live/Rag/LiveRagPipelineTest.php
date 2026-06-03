@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Live\Rag;
 
+use App\Models\KbCanonicalAudit;
 use App\Models\KbDocAnalysis;
 use App\Models\KbEdge;
 use App\Models\KbNode;
@@ -177,6 +178,8 @@ final class LiveRagPipelineTest extends TestCase
             ->firstOrFail();
         $this->assertTrue((bool) $doc->is_canonical, 'doc should be canonical');
         $embedded = KnowledgeChunk::query()
+            ->where('tenant_id', $this->tenant)
+            ->where('project_key', $this->project)
             ->where('knowledge_document_id', $doc->id)
             ->whereNotNull('embedding')
             ->count();
@@ -236,6 +239,11 @@ final class LiveRagPipelineTest extends TestCase
         KbEdge::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
         KbNode::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
         KbDocAnalysis::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        // The canonical index flow writes a graph_rebuild audit row per doc;
+        // these have no FK to knowledge_documents (forensic trail survives hard
+        // deletes by design), so they must be removed explicitly or the
+        // throwaway run leaks permanent audit noise into the operator's live DB.
+        KbCanonicalAudit::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
         KbSearchFailure::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
         KnowledgeChunk::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
         KnowledgeDocument::withTrashed()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->forceDelete();
