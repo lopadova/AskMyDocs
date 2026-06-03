@@ -56,16 +56,36 @@ final class QueryLanguageDetectorTest extends TestCase
         $this->assertNull($this->detector->detect('come va il sistema', ['english']));
     }
 
-    public function test_detected_language_must_be_in_supported_set(): void
+    public function test_unsupported_language_query_returns_null_not_a_wrong_guess(): void
     {
-        // French query, but only english+italian supported → french can't win.
-        $result = $this->detector->detect('comment ça marche le système', ['english', 'italian']);
-        $this->assertNotSame('french', $result);
+        // A French query with only english+italian supported must return NULL
+        // (fall back to default) — NOT silently mis-detect as italian/english
+        // because a shared article happened to collide (curated stopwords +
+        // confident-winner guard; Copilot review).
+        $this->assertNull($this->detector->detect('comment ça marche le système', ['english', 'italian']));
+        // A Spanish query, same supported set → also null.
+        $this->assertNull($this->detector->detect('cómo funciona el sistema', ['english', 'italian']));
+    }
+
+    public function test_shared_articles_do_not_force_a_false_positive(): void
+    {
+        // 'la' / 'le' / 'un' are shared across it/fr/es and are deliberately
+        // NOT in the stopword sets, so a query of only shared articles is
+        // inconclusive → null.
+        $this->assertNull($this->detector->detect('la le un', ['english', 'italian', 'french']));
+    }
+
+    public function test_supported_languages_are_case_and_whitespace_normalized(): void
+    {
+        // A caller passing `English` / ` Italian ` must not silently disable
+        // detection (regconfig names are lowercase).
+        $this->assertSame('english', $this->detector->detect('How does this work?', ['English', ' Italian ']));
+        $this->assertSame('italian', $this->detector->detect('Come funziona questo?', ['ENGLISH', 'Italian']));
     }
 
     public function test_unknown_dictionary_in_supported_is_ignored(): void
     {
         // 'klingon' has no stopword table — ignored, italian still wins.
-        $this->assertSame('italian', $this->detector->detect('come sono le cose', ['klingon', 'italian']));
+        $this->assertSame('italian', $this->detector->detect('come sono questi', ['klingon', 'italian']));
     }
 }

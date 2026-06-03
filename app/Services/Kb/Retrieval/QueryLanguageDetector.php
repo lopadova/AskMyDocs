@@ -23,18 +23,23 @@ namespace App\Services\Kb\Retrieval;
 final class QueryLanguageDetector
 {
     /**
-     * Common stopwords per PostgreSQL dictionary name. Kept short + highly
-     * discriminative (function words that rarely collide across languages).
+     * Stopwords per PostgreSQL dictionary name. DELIBERATELY curated to words
+     * that are highly DISCRIMINATIVE — a function word that appears in more
+     * than one of these sets (e.g. `la`, `le`, `un`, `de`, `que`) is OMITTED
+     * so a shared article can't produce a false-positive "confident"
+     * detection for the wrong language (Copilot review). What remains are
+     * question words / verbs / determiners that rarely collide across these
+     * languages, so a single hit is a strong, language-specific signal.
      *
      * @var array<string, list<string>>
      */
     private const STOPWORDS = [
-        'english' => ['the', 'is', 'are', 'how', 'what', 'do', 'does', 'can', 'with', 'and', 'for', 'of', 'to', 'in', 'where', 'why', 'a', 'an'],
-        'italian' => ['il', 'lo', 'la', 'come', 'cosa', 'che', 'di', 'per', 'con', 'dove', 'perche', 'perché', 'sono', 'una', 'un', 'gli', 'le', 'qual', 'quale'],
-        'french' => ['le', 'la', 'les', 'comment', 'quoi', 'que', 'de', 'pour', 'avec', 'ou', 'où', 'pourquoi', 'est', 'une', 'un', 'des', 'quel', 'quelle'],
-        'german' => ['der', 'die', 'das', 'wie', 'was', 'ist', 'sind', 'mit', 'und', 'für', 'von', 'wo', 'warum', 'ein', 'eine', 'wer', 'welche'],
-        'spanish' => ['el', 'la', 'los', 'como', 'cómo', 'que', 'qué', 'de', 'para', 'con', 'donde', 'dónde', 'por', 'una', 'un', 'cuál', 'porque'],
-        'portuguese' => ['o', 'os', 'como', 'que', 'de', 'para', 'com', 'onde', 'porque', 'porquê', 'uma', 'um', 'qual', 'são'],
+        'english' => ['the', 'is', 'are', 'how', 'what', 'does', 'can', 'with', 'and', 'where', 'why', 'who', 'which', 'should', 'about', 'this', 'that', 'these'],
+        'italian' => ['come', 'cosa', 'che', 'perche', 'perché', 'sono', 'gli', 'qual', 'quale', 'quali', 'questo', 'questa', 'dove', 'quando'],
+        'french' => ['comment', 'quoi', 'pourquoi', 'est', 'quel', 'quelle', 'cette', 'avec', 'pour', 'sur', 'dans', 'sont', 'où', 'puis'],
+        'german' => ['der', 'die', 'das', 'wie', 'was', 'ist', 'sind', 'mit', 'und', 'für', 'von', 'warum', 'ein', 'eine', 'wer', 'welche', 'wann'],
+        'spanish' => ['como', 'cómo', 'qué', 'para', 'donde', 'dónde', 'porque', 'cuál', 'cuáles', 'esta', 'sobre', 'cuando'],
+        'portuguese' => ['como', 'para', 'onde', 'porque', 'porquê', 'uma', 'qual', 'quais', 'são', 'esta', 'sobre', 'quando'],
     ];
 
     /**
@@ -52,6 +57,11 @@ final class QueryLanguageDetector
 
         $scores = [];
         foreach ($supported as $lang) {
+            // Normalize to lowercase (PostgreSQL regconfig names are lowercase
+            // and the STOPWORDS keys are lowercase) — a config value like
+            // `English` or ` Italian ` must not silently disable detection
+            // (Copilot review).
+            $lang = strtolower(trim($lang));
             $words = self::STOPWORDS[$lang] ?? null;
             if ($words === null) {
                 continue; // unknown dictionary — not detectable here

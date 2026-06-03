@@ -60,8 +60,10 @@ return [
         // (opt-in): when off, behaviour is byte-for-byte the previous fixed
         // dictionary. `fts_supported_languages` bounds the candidate set.
         'fts_language_detection' => (bool) env('KB_FTS_LANGUAGE_DETECTION', false),
+        // Lowercased + trimmed: PostgreSQL `regconfig` names are lowercase, so
+        // `English, Italian` must normalize or detection would silently no-op.
         'fts_supported_languages' => array_values(array_filter(array_map(
-            'trim',
+            static fn (string $l): string => strtolower(trim($l)),
             explode(',', (string) env('KB_FTS_SUPPORTED_LANGUAGES', 'english,italian')),
         ))),
         'rrf_k' => env('KB_RRF_K', 60),

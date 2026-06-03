@@ -57,8 +57,17 @@ class KbSearchService
             return $default;
         }
 
+        // Normalize (lowercase + trim) so a dynamically-set supported list
+        // (tests / runtime overrides) with values like `' English '` still
+        // resolves — the detector normalizes too, but keeping the input clean
+        // here is belt-and-suspenders (Copilot review).
         $supported = config('kb.hybrid_search.fts_supported_languages', ['english', 'italian']);
-        $supported = is_array($supported) ? array_values(array_filter($supported, 'is_string')) : [];
+        $supported = is_array($supported)
+            ? array_values(array_map(
+                static fn (string $l): string => strtolower(trim($l)),
+                array_filter($supported, 'is_string'),
+            ))
+            : [];
 
         return $this->languageDetector->detect($query, $supported) ?? $default;
     }
