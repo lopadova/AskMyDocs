@@ -104,6 +104,16 @@ final class LiveRagPipelineTest extends TestCase
             $this->markTestSkipped('No real OPENROUTER_API_KEY exported — live RAG suite disabled.');
         }
 
+        // Third gate (per the class docblock): the pgvector database must be
+        // reachable. Probe the connection and SKIP — rather than hard-fail with
+        // a raw PDOException — when the docker container is down/misconfigured,
+        // so an operator run degrades cleanly instead of looking like a bug.
+        try {
+            $this->app->make('db')->connection()->getPdo();
+        } catch (\Throwable $e) {
+            $this->markTestSkipped('pgvector database not reachable — live RAG suite disabled: ' . $e->getMessage());
+        }
+
         $this->app->make(TenantContext::class)->set($this->tenant);
         $this->cleanup();
     }

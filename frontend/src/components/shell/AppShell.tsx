@@ -5,7 +5,7 @@ import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS, type Project } from '../../lib/seed';
+import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 
 // The primary sidebar links into the REAL admin views under `/app/admin/*`
@@ -52,14 +52,15 @@ function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): Sideba
 // the RBAC guards actually grant — e.g. an `admin` user is shown `admin`,
 // not the seed-constant `super-admin` that the static USERS[0] fixture
 // carried (which made the super-admin-only screens look mis-gated).
-const ROLE_PRIORITY = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+// Typed to the SeedUser role union (which now covers all five real system
+// roles) so the picked value flows into the sidebar label with no cast. A
+// user whose roles fall entirely outside this set yields null → the caller
+// keeps the seed default; we deliberately do NOT surface an unknown raw role
+// string, which is what the old `?? roles[0]` fallback + cast smuggled through.
+const ROLE_PRIORITY: SeedUser['role'][] = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
-function pickPrimaryRole(roles: string[]): string | null {
-    if (roles.length === 0) {
-        return null;
-    }
-    const ranked = ROLE_PRIORITY.find((r) => roles.includes(r));
-    return ranked ?? roles[0];
+function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
+    return ROLE_PRIORITY.find((r) => roles.includes(r)) ?? null;
 }
 
 /*
@@ -87,9 +88,9 @@ export function AppShell() {
               email: storeUser.email,
               // Real role from the auth store, not the USERS[0] seed constant
               // (which always read `super-admin` and mislabelled every user).
-              // Display-only label, so widen past the seed's role union (the
-              // real set includes `dpo`, absent from the SeedUser fixture type).
-              role: (pickPrimaryRole(storeRoles) ?? USERS[0].role) as (typeof USERS)[0]['role'],
+              // pickPrimaryRole returns the SeedUser role union (or null), so
+              // no cast is needed; null keeps the seed default.
+              role: pickPrimaryRole(storeRoles) ?? USERS[0].role,
               avatar: storeUser.name
                   .split(' ')
                   .map((part) => part[0])

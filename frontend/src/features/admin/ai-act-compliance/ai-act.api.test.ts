@@ -45,8 +45,15 @@ describe('ai-act.api', () => {
         const results = await getAiActOverview();
 
         expect(results).toHaveLength(AI_ACT_DOMAINS.length);
+        // EXACTLY once per register — total call count must equal the number
+        // of domains (a duplicate/extra request would push this over and fail
+        // the guard, per R16), and each endpoint must be hit precisely once.
+        expect(mockGet).toHaveBeenCalledTimes(AI_ACT_DOMAINS.length);
         for (const d of AI_ACT_DOMAINS) {
-            expect(mockGet).toHaveBeenCalledWith(`/api/admin/ai-act-compliance/${d.path}`);
+            const calls = mockGet.mock.calls.filter(
+                ([url]) => url === `/api/admin/ai-act-compliance/${d.path}`,
+            );
+            expect(calls).toHaveLength(1);
         }
         expect(results.map((r) => r.key).sort()).toEqual(AI_ACT_DOMAINS.map((d) => d.key).sort());
     });
