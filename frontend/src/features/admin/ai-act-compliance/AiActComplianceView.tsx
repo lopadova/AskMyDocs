@@ -28,7 +28,11 @@ export function AiActComplianceView() {
     });
 
     const byKey = new Map<string, AiActDomainResult>((query.data ?? []).map((d) => [d.key, d]));
-    const state = query.isLoading ? 'loading' : query.isError ? 'error' : query.data ? 'ready' : 'empty';
+    // No distinct 'empty' state: the six register cards always render once the
+    // query resolves (each shows "None recorded yet" at count 0), so an
+    // all-zero result is still a meaningful 'ready' view — a top-level empty
+    // branch here was unreachable (query.data is an array; [] is truthy).
+    const state = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
 
     return (
         <AdminShell section="ai-act-compliance">
@@ -114,7 +118,8 @@ export function AiActComplianceView() {
                     >
                         Failed to load AI Act compliance data. Confirm the{' '}
                         <code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/laravel-ai-act-compliance</code>{' '}
-                        package is installed and you hold the <code>viewAiActCompliance</code> permission.
+                        package is installed and that your role is granted the{' '}
+                        <code>viewAiActCompliance</code> gate.
                     </div>
                 )}
 

@@ -41,10 +41,10 @@ use Tests\TestCase;
  * throwaway tenant + project and torn down in tearDown(). No RefreshDatabase
  * — it runs against the operator's live database on purpose.
  *
- * Operator runbook (PowerShell):
- *   $env:LIVE_RAG='1'; $env:DB_CONNECTION='pgsql'; $env:DB_HOST='127.0.0.1'
- *   $env:DB_PORT='5433'; $env:DB_DATABASE='askmydocs'
- *   $env:AI_PROVIDER='openrouter'; $env:AI_EMBEDDINGS_PROVIDER='openrouter'
+ * Operator runbook (PowerShell) — the AI provider is forced to OpenRouter in
+ * getEnvironmentSetUp(), so only the gate vars + DB + key are needed:
+ *   $env:LIVE_RAG='1'; $env:DB_HOST='127.0.0.1'; $env:DB_PORT='5433'
+ *   $env:DB_DATABASE='askmydocs'; $env:DB_USERNAME='postgres'; $env:DB_PASSWORD='<pw>'
  *   $env:OPENROUTER_API_KEY='<real>'; $env:QUEUE_CONNECTION='sync'
  *   vendor/bin/phpunit tests/Live/Rag/LiveRagPipelineTest.php
  */
@@ -84,6 +84,15 @@ final class LiveRagPipelineTest extends TestCase
             'search_path' => 'public',
             'sslmode' => 'prefer',
         ]);
+
+        // Force the AI provider to OpenRouter for the live run. The gate below
+        // only checks OPENROUTER_API_KEY, and phpunit.xml defaults
+        // AI_PROVIDER=openai + a sentinel key — so without this an operator who
+        // exports LIVE_RAG=1 + a real OpenRouter key but forgets AI_PROVIDER
+        // would run against the fake OpenAI test creds and fail confusingly
+        // instead of using the key they provided.
+        $app['config']->set('ai.default', 'openrouter');
+        $app['config']->set('ai.embeddings_provider', 'openrouter');
     }
 
     /** The live DB is already migrated — do NOT run the SQLite test migrations. */
