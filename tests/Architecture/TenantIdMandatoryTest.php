@@ -119,6 +119,14 @@ final class TenantIdMandatoryTest extends TestCase
         // wired since the migration shipped; this entry locks the
         // gate so a future refactor cannot silently drop them.
         \App\Models\KbChunkFeedback::class,
+        // KITT embeddable widget channel (branch m-m/feature/kitt): the
+        // public-key credential + the ReAct session/step audit trail are
+        // all tenant-scoped — tenant/project are resolved FROM the key
+        // server-side, never from the client (R30).
+        \App\Models\WidgetKey::class,
+        \App\Models\WidgetSession::class,
+        \App\Models\WidgetSessionStep::class,
+        \App\Models\WidgetSessionToken::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void

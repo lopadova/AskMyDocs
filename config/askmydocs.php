@@ -231,6 +231,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_CRON', '0 6 1 1,4,7,10 *'),
         ],
+        // M5.10 — Prune expired widget sessions (cascade-deletes steps).
+        'widget_prune_sessions' => [
+            'enabled' => (bool) env('SCHEDULE_WIDGET_PRUNE_SESSIONS_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_WIDGET_PRUNE_SESSIONS_CRON', '0 4 * * *'),
+        ],
         // v8.7/W2 — stale-document review sweep (daily 03:55) + weekly
         // notification digest (Monday 07:00).
         'kb_stale_review_sweep' => [

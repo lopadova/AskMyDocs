@@ -182,6 +182,40 @@ if (app()->environment('testing')) {
 Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/plain']))
     ->name('healthz');
 
+/*
+|--------------------------------------------------------------------------
+| KITT widget — pagina demo pubblica (non-SPA), solo local/testing
+|--------------------------------------------------------------------------
+|
+| Pagina ospite di prova per il widget embeddabile: PUBBLICA (niente auth —
+| il widget deve funzionare senza login, modello embed-key). Crea/riusa una
+| WidgetKey demo per il tenant attivo e passa la public_key alla view. Gated
+| a local/testing così non è esposta in produzione.
+|
+*/
+if (app()->environment(['local', 'testing'])) {
+    Route::get('/widget-demo', function () {
+        $key = \App\Models\WidgetKey::firstOrCreate(
+            ['public_key' => 'pk_demo_local'],
+            [
+                'tenant_id' => 'default',
+                'project_key' => 'docs-v3',
+                'label' => 'demo-local',
+                'allowed_origins' => [
+                    'http://127.0.0.1:8000',
+                    'http://localhost:8000',
+                    'http://localhost:5173',
+                ],
+                'rate_limit' => 1000,
+                'skill' => 'askmydocs-assistant@1',
+                'is_active' => true,
+            ],
+        );
+
+        return view('widget-demo', ['publicKey' => $key->public_key]);
+    })->name('widget.demo');
+}
+
 // v8.0/W1.3 — one-click unsubscribe for email notifications.
 // HMAC-signed token is the auth; no session / Sanctum guard required
 // because the user is clicking from their mail client outside the

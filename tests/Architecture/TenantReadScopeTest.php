@@ -40,7 +40,8 @@ final class TenantReadScopeTest extends TestCase
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
         'ProjectMembership', 'TabularCell', 'TabularReview',
-        'TenantSchedulerOverride', 'Workflow',
+        'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
+        'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
 
     /**
@@ -76,6 +77,12 @@ final class TenantReadScopeTest extends TestCase
         // EVERY tenant a user touched (memberships, conversations, chat logs,
         // connectors). Inherently cross-tenant — the inverse of a leak.
         'app/Compliance/UserTenantResolver.php' => 'Resolves the full set of tenants a user belongs to (DSAR); cross-tenant by design.',
+
+        // CLI command that resolves a WidgetKey by public_key (globally unique);
+        // no HTTP request context → tenant is derived from the key itself, not
+        // from TenantContext. This is the same posture as the HTTP ResolveWidgetKey
+        // middleware which does WidgetKey::query()->where('public_key', …).
+        'app/Console/Commands/WidgetEmitSecretCommand.php' => 'Looks up WidgetKey by globally-unique public_key; no tenant context in CLI.',
     ];
 
     public function test_tenant_aware_reads_are_scoped(): void

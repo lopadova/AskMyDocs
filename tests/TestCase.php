@@ -56,6 +56,10 @@ abstract class TestCase extends OrchestraTestCase
         // subclasses). Same explicit-registration reason as the other
         // host providers above (Testbench skips bootstrap/providers.php).
         $app->register(\App\Providers\NotificationServiceProvider::class);
+        // M4 — KITT Widget AiTool registry (R23). Registered after
+        // AppServiceProvider so ChatRetrievalService is bound for
+        // SearchKnowledgeBaseTool.
+        $app->register(\App\Providers\WidgetServiceProvider::class);
 
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
@@ -210,6 +214,11 @@ abstract class TestCase extends OrchestraTestCase
         // empty `defaults` map. Testbench doesn't auto-load project
         // config/ files; explicit set mirrors the other configs above.
         $app['config']->set('askmydocs', require __DIR__.'/../config/askmydocs.php');
+        // Widget KITT config. resource_path() under Testbench points at the
+        // skeleton, so override skills_path with the real project resources/
+        // so WidgetSkillRegistry resolves askmydocs-assistant@1/manifest.json.
+        $app['config']->set('widget', require __DIR__.'/../config/widget.php');
+        $app['config']->set('widget.skills_path', realpath(__DIR__.'/../resources/widget/skills') ?: __DIR__.'/../resources/widget/skills');
         // v4.5/W1 — connector framework config. Without this,
         // ConnectorRegistry boots empty and the admin endpoints can't
         // resolve provider knobs.
@@ -296,6 +305,12 @@ abstract class TestCase extends OrchestraTestCase
         // bootstrap/app.php.
         $router->aliasMiddleware('tenant.resolve', \App\Http\Middleware\ResolveTenant::class);
         $router->aliasMiddleware('tenant.authorize', \App\Http\Middleware\AuthorizeTenantHeader::class);
+        // Widget KITT public channel gate. Mirrors bootstrap/app.php
+        // (Testbench does not execute that file). The global-prepended
+        // HandleWidgetCors is intentionally NOT registered here — CORS is
+        // exercised in Playwright E2E, not phpunit; the access gate itself
+        // (`widget.key`) is what the feature tests assert.
+        $router->aliasMiddleware('widget.key', \App\Http\Middleware\ResolveWidgetKey::class);
         // v6.0 — host-facing AI Act middleware aliases mirroring
         // bootstrap/app.php. The sister package aliases its own
         // `ai-act.*` variants in boot(); we expose them under the

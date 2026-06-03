@@ -41,6 +41,9 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     { uri: '/api/admin/workflows', allowed: ['admin', 'viewer', 'super-admin'] },
     // the route group whose missing gate this whole effort uncovered
     { uri: '/api/admin/ai-act-compliance/overview', allowed: ['admin', 'dpo', 'super-admin'] },
+    // M6 — widget admin (gate: manageWidgetKeys / viewWidgetSessions)
+    { uri: '/api/admin/widget-keys', allowed: ['super-admin'] },
+    { uri: '/api/admin/widget-sessions', allowed: ['admin', 'super-admin'] },
 ];
 
 const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;
