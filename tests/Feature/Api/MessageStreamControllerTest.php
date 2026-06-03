@@ -258,7 +258,7 @@ final class MessageStreamControllerTest extends TestCase
         // uses /messages/stream, so this is the path that must record).
         $gap = \App\Models\KbSearchFailure::query()
             ->forTenant('default')
-            ->where('reason', 'no_relevant_context')
+            ->where('reason', \App\Models\KbSearchFailure::REASON_NO_CONTEXT)
             ->first();
         $this->assertNotNull($gap, 'a streaming refusal must record a content gap');
         $this->assertStringContainsString('completely unrelated', $gap->query_text);
