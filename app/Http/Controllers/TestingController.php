@@ -50,6 +50,9 @@ class TestingController extends Controller
         // v8.8/W2 — one `deleted`-trigger analysis row for the Doc Insights
         // deletion-impact happy-path E2E (admin-kb-insights-deleted.spec.ts).
         'KbDeletionInsightSeeder' => \Database\Seeders\KbDeletionInsightSeeder::class,
+        // v8.8/W4 — content-gap rows for the Content Gaps happy-path E2E
+        // (admin-content-gaps.spec.ts).
+        'KbContentGapSeeder' => \Database\Seeders\KbContentGapSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

@@ -358,6 +358,14 @@ Route::middleware([
         Route::put('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'upsert'])
             ->name('api.admin.kb.analysis-settings.upsert');
 
+        // v8.8/W4 — content-gap analytics (questions the KB couldn't answer).
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/content-gaps`).
+        Route::get('/kb/content-gaps', [\App\Http\Controllers\Api\Admin\KbContentGapController::class, 'index'])
+            ->name('api.admin.kb.content-gaps.index');
+        Route::patch('/kb/content-gaps/{id}/resolve', [\App\Http\Controllers\Api\Admin\KbContentGapController::class, 'resolve'])
+            ->whereNumber('id')->name('api.admin.kb.content-gaps.resolve');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

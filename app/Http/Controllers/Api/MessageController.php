@@ -318,6 +318,10 @@ class MessageController extends Controller
             ],
         ));
 
+        // v8.8/W4 — record the content gap (side-channel; never breaks chat).
+        app(\App\Services\Kb\Analytics\SearchFailureRecorder::class)
+            ->record($projectKey, $question, $reason);
+
         return response()->json([
             'id' => $assistantMessage->id,
             'role' => 'assistant',
@@ -437,6 +441,10 @@ class MessageController extends Controller
                 'confidence' => 0,
             ],
         ));
+
+        // v8.8/W4 — record the content gap (LLM self-refusal). Side-channel.
+        app(\App\Services\Kb\Analytics\SearchFailureRecorder::class)
+            ->record($projectKey, $question, $reason);
 
         return response()->json([
             'id' => $assistantMessage->id,

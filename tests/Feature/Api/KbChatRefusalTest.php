@@ -157,6 +157,27 @@ final class KbChatRefusalTest extends TestCase
             ->assertJsonPath('meta.refused_early', true);
     }
 
+    public function test_refusal_records_a_content_gap(): void
+    {
+        // v8.8/W4 — a refused turn records the unanswered question so the
+        // admin Content Gaps panel can rank it. Real refusal path → real
+        // SearchFailureRecorder (side-channel).
+        config()->set('kb.content_gaps.enabled', true);
+        $this->mockSearchWithChunks([]);
+        $this->mockAiThatMustNotBeCalled();
+
+        $this->postJson('/api/kb/chat', [
+            'question' => 'How do I rotate the signing key?',
+            'project_key' => 'test',
+        ])->assertOk()->assertJsonPath('refusal_reason', 'no_relevant_context');
+
+        $gap = \App\Models\KbSearchFailure::query()->forTenant('default')->sole();
+        $this->assertSame('How do I rotate the signing key?', $gap->query_text);
+        $this->assertSame('test', $gap->project_key);
+        $this->assertSame(\App\Models\KbSearchFailure::REASON_NO_CONTEXT, $gap->reason);
+        $this->assertSame(1, $gap->occurrences);
+    }
+
     public function test_chunks_below_threshold_refuse_without_calling_llm(): void
     {
         // Threshold is 0.45 (default) — these are all below.

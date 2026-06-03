@@ -60,9 +60,15 @@ export function AnalysisSettingsView(): ReactNode {
     }
 
     const data = query.data;
+    const rootState = query.isLoading ? 'loading' : query.isError ? 'error' : 'ready';
 
     return (
-        <div data-testid="admin-analysis-settings-view" style={{ padding: 24 }}>
+        <div
+            data-testid="admin-analysis-settings-view"
+            data-state={rootState}
+            aria-busy={query.isLoading || query.isFetching || mutation.isPending}
+            style={{ padding: 24 }}
+        >
             <header style={{ marginBottom: 8 }}>
                 <h1 style={{ margin: 0, fontSize: 18, color: 'var(--fg-0)' }}>Deep-Analysis Gate</h1>
             </header>

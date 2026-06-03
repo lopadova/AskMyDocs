@@ -117,6 +117,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Content-gap analytics (v8.8/W4)
+    |--------------------------------------------------------------------------
+    |
+    | Every refused chat turn (deterministic grounding gate OR LLM
+    | self-refusal sentinel) increments a `kb_search_failures` rollup so the
+    | admin "Content Gaps" panel can rank the questions the KB could not
+    | answer. Recording is a side-channel that never breaks the chat path.
+    */
+
+    'content_gaps' => [
+        'enabled' => (bool) env('KB_CONTENT_GAPS_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cloud Time Machine — archived-version retention (v8.7/W5)
     |--------------------------------------------------------------------------
     |
