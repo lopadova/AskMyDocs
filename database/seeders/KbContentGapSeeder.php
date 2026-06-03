@@ -25,15 +25,19 @@ final class KbContentGapSeeder extends Seeder
         ];
 
         foreach ($rows as [$query, $occurrences, $resolvedAt]) {
+            // Normalize EXACTLY as SearchFailureRecorder does (trim + collapse
+            // whitespace + lowercase + bound) so the seeded query_hash matches
+            // what production would compute (Copilot review).
+            $normalized = mb_substr(mb_strtolower(preg_replace('/\s+/u', ' ', trim($query)) ?? ''), 0, 500);
             KbSearchFailure::updateOrCreate(
                 [
                     'tenant_id' => 'default',
                     'project_key' => 'eng',
-                    'query_hash' => hash('sha256', mb_strtolower($query)),
+                    'query_hash' => hash('sha256', $normalized),
                     'reason' => KbSearchFailure::REASON_NO_CONTEXT,
                 ],
                 [
-                    'normalized_query' => mb_strtolower($query),
+                    'normalized_query' => $normalized,
                     'query_text' => $query,
                     'occurrences' => $occurrences,
                     'last_seen_at' => now(),
