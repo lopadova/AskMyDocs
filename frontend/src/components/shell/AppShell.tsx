@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
-import { Sidebar, type SidebarSection } from './Sidebar';
+import { Sidebar } from './Sidebar';
+import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
 import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
@@ -8,43 +9,11 @@ import { useDensity, useFontPair, useTheme } from './hooks';
 import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 
-// The primary sidebar links into the REAL admin views under `/app/admin/*`
-// (the same tree the AdminShell secondary rail navigates). Earlier phases
-// shipped `Coming in Phase …` placeholders at `/app/dashboard`, `/app/kb`,
-// `/app/insights`, `/app/users`, `/app/maintenance`; when the real
-// DashboardView / KbView / InsightsView / UsersView / MaintenanceView
-// landed under `/app/admin/*`, the sidebar map was never repointed, so five
-// core sections dead-ended on stubs (the real views were reachable only by
-// typing the URL). Repointed here; the old placeholder paths now redirect to
-// these same targets (see routes/index.tsx) for stale bookmarks.
-const SECTION_ROUTES: Record<SidebarSection, string> = {
-    chat: '/app/chat',
-    dashboard: '/app/admin',
-    kb: '/app/admin/kb',
-    insights: '/app/admin/insights',
-    users: '/app/admin/users',
-    'ai-act-compliance': '/app/admin/ai-act-compliance',
-    connectors: '/app/admin/connectors',
-    logs: '/app/logs',
-    maintenance: '/app/admin/maintenance',
-    'pii-redactor': '/app/admin/pii-redactor',
-    flows: '/app/admin/flows',
-    'eval-harness': '/app/admin/eval-harness',
-};
-
+// Active-section detection is centralised in nav-config.deriveSection, which
+// resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
+// not its parent `kb`). We feed it the router's fuzzy matcher.
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {
-    const entries = Object.entries(SECTION_ROUTES) as [SidebarSection, string][];
-    for (const [section, path] of entries) {
-        // `dashboard` maps to the bare `/app/admin` root, which is a path
-        // prefix of every other admin route — match it EXACTLY so it doesn't
-        // fuzzily shadow kb / users / insights / maintenance (and the
-        // AdminShell-only sub-pages) and mis-highlight them as Dashboard.
-        const fuzzy = section !== 'dashboard';
-        if (match({ to: path, fuzzy })) {
-            return section;
-        }
-    }
-    return 'chat';
+    return deriveSection((route) => Boolean(match({ to: route, fuzzy: true })));
 }
 
 // The sidebar footer shows ONE role label. Pick the most privileged of the
@@ -173,7 +142,7 @@ export function AppShell() {
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}
-                    crumbs={[section.charAt(0).toUpperCase() + section.slice(1)]}
+                    crumbs={[NAV_ITEMS.find((i) => i.id === section)?.label ?? section]}
                 />
                 <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     <Outlet />
