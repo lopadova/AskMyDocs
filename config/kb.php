@@ -145,6 +145,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Anonymous chat (authenticated, NOT persisted)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, `POST /api/kb/chat` accepts `anonymous: true` for an
+    | authenticated user to run a one-off KB chat that is NEVER saved as a
+    | conversation/message and is logged only minimally (see
+    | `chat-log.anonymous_level`). It does NOT bypass any guard: tenant scope,
+    | RBAC, AI-Act disclosure/consent, grounding/refusal, and PII redaction all
+    | still apply. The question is redacted with a NON-PERSISTENT strategy
+    | (`mask` — no reversible token map is written) so no PII is stored anywhere.
+    | Default OFF; when off, an `anonymous: true` request is rejected (422) so it
+    | can never silently fall back to a persisted turn (R43).
+    |
+    */
+
+    'anonymous_chat' => [
+        'enabled' => (bool) env('KB_ANONYMOUS_CHAT_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cloud Time Machine — archived-version retention (v8.7/W5)
     |--------------------------------------------------------------------------
     |

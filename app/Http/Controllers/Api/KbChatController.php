@@ -15,6 +15,9 @@ use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Padosoft\PiiRedactor\RedactorEngine;
+use Padosoft\PiiRedactor\Strategies\MaskStrategy;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class KbChatController extends Controller
 {
@@ -35,8 +38,27 @@ class KbChatController extends Controller
         ConfidenceCalculator $confidence,
         CounterfactualService $counterfactual,
         TenantContext $tenants,
+        RedactorEngine $redactor,
     ): JsonResponse {
         $question = (string) $request->input('question');
+
+        // v8.8.3 — anonymous (authenticated, non-persisted) turn. R43: when the
+        // flag is off we REJECT rather than silently fall back to a persisted
+        // turn, so toggling the flag can never surprise an operator.
+        $anonymous = $request->isAnonymous();
+        if ($anonymous && ! (bool) config('kb.anonymous_chat.enabled', false)) {
+            throw new HttpException(422, 'Anonymous chat is disabled (kb.anonymous_chat.enabled=false).');
+        }
+
+        // Anonymous turns redact the question with a NON-PERSISTENT strategy
+        // (mask — no reversible token map is written anywhere) BEFORE it reaches
+        // retrieval, the LLM, the content-gap rollup, or the minimal log — so an
+        // anonymous turn is MORE redacted than a normal stateless turn, never a
+        // PII bypass. Redaction still honours the operator's global
+        // `pii-redactor.enabled`; pair anonymous chat with PII redaction on.
+        if ($anonymous) {
+            $question = $redactor->redact($question, new MaskStrategy());
+        }
         // Effective single-project key for the legacy meta payload + the
         // chat log row. When the new `filters.project_keys` payload is
         // used, the FIRST element is treated as the canonical tenant for
@@ -133,7 +155,7 @@ class KbChatController extends Controller
         );
 
         $chatLog->log(new ChatLogEntry(
-            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            sessionId: $this->chatSessionId($request),
             userId: $request->user()?->id,
             question: $question,
             answer: $aiResponse->content,
@@ -158,6 +180,7 @@ class KbChatController extends Controller
                 // additions on chat_logs.
                 'confidence' => $confidenceScore,
             ],
+            anonymous: $anonymous,
         ));
 
         return response()->json($this->buildSuccessResponse(
@@ -271,7 +294,7 @@ class KbChatController extends Controller
         $answer = $this->localizedRefusalMessage($reason);
 
         $chatLog->log(new ChatLogEntry(
-            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            sessionId: $this->chatSessionId($request),
             userId: $request->user()?->id,
             question: $question,
             answer: $answer,
@@ -293,6 +316,7 @@ class KbChatController extends Controller
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
             ],
+            anonymous: $request->isAnonymous(),
         ));
 
         // v8.8/W4 — record the content gap (the question the KB couldn't
@@ -345,6 +369,21 @@ class KbChatController extends Controller
     private function isSelfRefusalSentinel(string $content): bool
     {
         return trim($content) === self::SELF_REFUSAL_SENTINEL;
+    }
+
+    /**
+     * Session id for the chat-log row. An anonymous turn always gets a FRESH
+     * random UUID — never the client-supplied `X-Session-Id`, which could be a
+     * stable, user-linkable value — so the minimal anonymous row carries
+     * nothing that could re-identify the user or correlate turns.
+     */
+    private function chatSessionId(KbChatRequest $request): string
+    {
+        if ($request->isAnonymous()) {
+            return (string) Str::uuid();
+        }
+
+        return $request->header('X-Session-Id', (string) Str::uuid());
     }
 
     /**
@@ -411,7 +450,7 @@ class KbChatController extends Controller
         $answer = $this->localizedRefusalMessage($reason);
 
         $chatLog->log(new ChatLogEntry(
-            sessionId: $request->header('X-Session-Id', (string) Str::uuid()),
+            sessionId: $this->chatSessionId($request),
             userId: $request->user()?->id,
             question: $question,
             answer: $answer,
@@ -433,6 +472,7 @@ class KbChatController extends Controller
                 'expanded_count' => $result->expanded->count(),
                 'rejected_count' => $result->rejected->count(),
             ],
+            anonymous: $request->isAnonymous(),
         ));
 
         // v8.8/W4 — record the content gap (LLM self-refusal). Side-channel.

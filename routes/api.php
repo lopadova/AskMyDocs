@@ -107,6 +107,15 @@ Route::middleware([
     }
     Route::post('/kb/chat', KbChatController::class)
         ->middleware($chatMiddleware);
+    // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
+    // "New anonymous chat" surface as a clean disabled landing (R14/R43)
+    // when `kb.anonymous_chat.enabled` is off, instead of only learning
+    // that after a 422-ed send.
+    Route::get('/kb/chat/anonymous-config', static function (): \Illuminate\Http\JsonResponse {
+        return response()->json([
+            'enabled' => (bool) config('kb.anonymous_chat.enabled', false),
+        ]);
+    })->name('api.kb.chat.anonymous-config');
     Route::post('/kb/feedback', KbChunkFeedbackController::class)
         ->name('api.kb.feedback');
     // v8.8/W6 — chat-side related-graph: 1-hop neighbours of cited canonical docs.

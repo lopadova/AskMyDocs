@@ -97,6 +97,13 @@ export default defineConfig({
                   // frame is exercised). No external LLM call, no API key.
                   AI_PROVIDER: 'fake',
                   AI_EMBEDDINGS_PROVIDER: 'fake',
+                  // v8.8.3 — anonymous chat ON for E2E so the happy-path
+                  // spec (anonymous-chat.spec.ts) exercises the real
+                  // stateless /api/kb/chat turn end-to-end. The OFF /
+                  // 422-reject state is covered by KbChatAnonymousTest
+                  // (phpunit) + the AnonymousChatView Vitest disabled
+                  // landing, per R43 (both states tested).
+                  KB_ANONYMOUS_CHAT_ENABLED: 'true',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var

@@ -315,6 +315,52 @@ export const chatApi = {
 };
 
 /**
+ * v8.8.3 — stateless answer shape returned by `POST /api/kb/chat`. Mirrors
+ * `KbChatController::buildSuccessResponse()` / `refusalResponse()` — the same
+ * envelope for grounded and refused turns (R27 shape-uniform). The anonymous
+ * chat view consumes this directly; nothing is persisted.
+ */
+export interface AnonymousChatMeta {
+    provider: string | null;
+    model: string | null;
+    chunks_used: number;
+    primary_count: number;
+    latency_ms: number;
+    [key: string]: unknown;
+}
+
+export interface AnonymousChatAnswer {
+    answer: string;
+    citations: MessageCitation[];
+    confidence: number;
+    refusal_reason: string | null;
+    meta: AnonymousChatMeta;
+}
+
+export const anonymousChatApi = {
+    /** Capability probe — `{ enabled }` reflects `kb.anonymous_chat.enabled`. */
+    async config(): Promise<{ enabled: boolean }> {
+        const { data } = await api.get<{ enabled: boolean }>('/api/kb/chat/anonymous-config');
+        return { enabled: Boolean(data?.enabled) };
+    },
+
+    /**
+     * Send one anonymous turn. The BE force-masks PII before retrieval / LLM /
+     * log, never persists a conversation, and logs only minimally — see
+     * KbChatController. `filters` is omitted when empty so the BE legacy
+     * project fallback still applies (R20).
+     */
+    async send(question: string, filters?: FilterState): Promise<AnonymousChatAnswer> {
+        const payload: Record<string, unknown> = { question, anonymous: true };
+        if (filters && !isFilterStateEmpty(filters)) {
+            payload.filters = filters;
+        }
+        const { data } = await api.post<AnonymousChatAnswer>('/api/kb/chat', payload);
+        return data;
+    },
+};
+
+/**
  * v4.5/W7 Tier 1 — cost-rate lookup table. Fetched once per session
  * via TanStack Query and consumed by the token/cost meter on every
  * assistant bubble. Shape mirrors `config/ai.php::cost_rates`.
