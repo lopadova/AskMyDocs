@@ -34,7 +34,7 @@ final class KbChatGraphSeeder extends Seeder
         }
 
         $project = 'hr-portal';
-        $this->seedCanonical('dec-cache-graph', 'Cache decision (graph)', $project);
+        $cacheDoc = $this->seedCanonical('dec-cache-graph', 'Cache decision (graph)', $project);
         $this->seedCanonical('dec-redis-graph', 'Redis decision (graph)', $project);
 
         KbEdge::updateOrCreate(
@@ -64,7 +64,7 @@ final class KbChatGraphSeeder extends Seeder
                 'provider' => 'seed', 'model' => 'seed', 'chunks_count' => 1, 'latency_ms' => 10,
                 'tool_calls_count' => 0, 'tool_calls' => [], 'confidence' => 88,
                 'citations' => [[
-                    'document_id' => null,
+                    'document_id' => $cacheDoc->id,
                     'title' => 'Cache decision (graph)',
                     'source_path' => 'decisions/dec-cache-graph.md',
                     'slug' => 'dec-cache-graph',
@@ -75,9 +75,9 @@ final class KbChatGraphSeeder extends Seeder
         ]);
     }
 
-    private function seedCanonical(string $slug, string $title, string $project): void
+    private function seedCanonical(string $slug, string $title, string $project): KnowledgeDocument
     {
-        KnowledgeDocument::withTrashed()->updateOrCreate(
+        $doc = KnowledgeDocument::withTrashed()->updateOrCreate(
             ['tenant_id' => 'default', 'project_key' => $project, 'source_path' => "decisions/$slug.md"],
             [
                 'source_type' => 'markdown', 'title' => $title, 'language' => 'en',
@@ -91,5 +91,7 @@ final class KbChatGraphSeeder extends Seeder
             ['tenant_id' => 'default', 'project_key' => $project, 'node_uid' => $slug],
             ['node_type' => 'decision', 'label' => $title, 'source_doc_id' => strtoupper($slug), 'payload_json' => ['dangling' => false]],
         );
+
+        return $doc;
     }
 }
