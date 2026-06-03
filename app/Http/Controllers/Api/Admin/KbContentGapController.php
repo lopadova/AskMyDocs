@@ -45,7 +45,10 @@ final class KbContentGapController extends Controller
             ->orderByDesc('occurrences')
             ->orderByDesc('last_seen_at');
 
-        if (! ($validated['include_resolved'] ?? false)) {
+        // $request->boolean — a validated 'boolean' field is still the raw
+        // string ('false' is truthy in PHP), so cast it properly or
+        // include_resolved=false would wrongly include resolved gaps (Copilot).
+        if (! $request->boolean('include_resolved')) {
             $query->whereNull('resolved_at');
         }
         if (! empty($validated['project_keys'])) {

@@ -114,6 +114,12 @@ final class KbContentGapControllerTest extends TestCase
 
         $all = $this->actingAs($admin)->getJson('/api/admin/kb/content-gaps?include_resolved=1');
         $this->assertSame(2, $all->json('meta.total'));
+
+        // include_resolved=0 must still EXCLUDE resolved gaps — guards the
+        // $request->boolean cast (a raw '0' string is falsy only via the
+        // proper boolean cast, not e.g. a naive non-empty-string check).
+        $explicitFalse = $this->actingAs($admin)->getJson('/api/admin/kb/content-gaps?include_resolved=0');
+        $this->assertSame(['open gap'], collect($explicitFalse->json('data'))->pluck('query_text')->all());
     }
 
     public function test_reason_filter(): void

@@ -40,7 +40,7 @@ export function ContentGapsView(): ReactNode {
         <div
             data-testid="admin-content-gaps-view"
             data-state={rootState}
-            aria-busy={query.isLoading || resolveMutation.isPending}
+            aria-busy={query.isLoading || query.isFetching || resolveMutation.isPending}
             style={{ padding: 24 }}
         >
             <header style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>

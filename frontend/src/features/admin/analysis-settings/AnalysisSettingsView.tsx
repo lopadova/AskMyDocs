@@ -66,7 +66,7 @@ export function AnalysisSettingsView(): ReactNode {
         <div
             data-testid="admin-analysis-settings-view"
             data-state={rootState}
-            aria-busy={query.isLoading || mutation.isPending}
+            aria-busy={query.isLoading || query.isFetching || mutation.isPending}
             style={{ padding: 24 }}
         >
             <header style={{ marginBottom: 8 }}>

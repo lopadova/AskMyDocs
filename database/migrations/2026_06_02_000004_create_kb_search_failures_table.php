@@ -32,7 +32,7 @@ return new class extends Migration
             $table->char('query_hash', 64);
             $table->string('normalized_query', 500);
             $table->text('query_text');
-            // 'no_relevant_context' | 'self_refusal' | ... (refusal reason).
+            // 'no_relevant_context' | 'llm_self_refusal' | ... (refusal reason).
             $table->string('reason', 40);
             $table->unsignedInteger('occurrences')->default(0);
             $table->timestamp('last_seen_at')->nullable();
