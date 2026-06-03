@@ -141,6 +141,7 @@ final class LiveRagPipelineTest extends TestCase
 
         // 1. Real embeddings landed in pgvector.
         $doc = KnowledgeDocument::query()
+            ->where('tenant_id', $this->tenant)
             ->where('project_key', $this->project)
             ->where('slug', 'live-rag-cache')
             ->firstOrFail();
@@ -154,7 +155,7 @@ final class LiveRagPipelineTest extends TestCase
         // 2. Canonical graph node exists for the doc.
         $this->assertSame(
             1,
-            KbNode::query()->where('project_key', $this->project)->where('node_uid', 'live-rag-cache')->count(),
+            KbNode::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->where('node_uid', 'live-rag-cache')->count(),
             'a canonical kb_node must be created for the decision',
         );
 
@@ -183,6 +184,7 @@ final class LiveRagPipelineTest extends TestCase
         $this->assertSame(
             1,
             KbSearchFailure::query()
+                ->where('tenant_id', $this->tenant)
                 ->where('project_key', $this->project)
                 ->where('reason', 'no_relevant_context')
                 ->count(),
@@ -200,11 +202,11 @@ final class LiveRagPipelineTest extends TestCase
             return;
         }
 
-        KbEdge::query()->where('project_key', $this->project)->delete();
-        KbNode::query()->where('project_key', $this->project)->delete();
-        KbDocAnalysis::query()->where('project_key', $this->project)->delete();
-        KbSearchFailure::query()->where('project_key', $this->project)->delete();
-        KnowledgeChunk::query()->where('project_key', $this->project)->delete();
-        KnowledgeDocument::withTrashed()->where('project_key', $this->project)->forceDelete();
+        KbEdge::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        KbNode::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        KbDocAnalysis::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        KbSearchFailure::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        KnowledgeChunk::query()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->delete();
+        KnowledgeDocument::withTrashed()->where('tenant_id', $this->tenant)->where('project_key', $this->project)->forceDelete();
     }
 }

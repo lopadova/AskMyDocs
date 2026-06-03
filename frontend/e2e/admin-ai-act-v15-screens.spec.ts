@@ -51,4 +51,21 @@ seededTest.describe('Admin AI Act compliance — native live overview', () => {
         await expect(page.getByTestId('admin-ai-act-compliance')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByRole('heading', { name: 'AI Act compliance' })).toBeVisible();
     });
+
+    seededTest('shows error state when the compliance API is unavailable', async ({ page }) => {
+        // R13: failure injection — intercepts the internal compliance API to
+        // simulate a backend outage (503) so the FE error branch is exercised.
+        // The happy-path variant above already covers the real-data flow.
+        await page.route('**/api/admin/ai-act-compliance/**', (route) =>
+            // R13: failure injection
+            route.fulfill({ status: 503, contentType: 'application/json', body: '{"message":"Service unavailable"}' }),
+        );
+
+        await page.goto('/app/admin/ai-act-compliance');
+
+        const panel = page.getByTestId('admin-ai-act-compliance');
+        await expect(panel).toBeVisible({ timeout: 15_000 });
+        await expect(panel).toHaveAttribute('data-state', 'error');
+        await expect(page.getByTestId('admin-ai-act-compliance-error')).toBeVisible();
+    });
 });
