@@ -58,15 +58,22 @@ export function FlowsView() {
                     setState('error');
                     return;
                 }
-                const body = (await response.json().catch(() => null)) as FlowLive | null;
-                // R14: a parseable-but-null body means the live API returned
-                // non-JSON on a 200 — surface that as an error rather than
-                // silently showing 0/0/0 KPIs which look like valid data.
-                if (body === null) {
+                const body = (await response.json().catch(() => null)) as Partial<FlowLive> | null;
+                // R14: validate the SHAPE, not just non-null. A non-JSON 200, a
+                // renamed field, or a string where a number is expected would
+                // otherwise render NaN / 0-0-0 KPIs that look like valid data.
+                // Require both counters to be finite numbers before trusting it.
+                if (
+                    body === null ||
+                    typeof body.totalRuns !== 'number' ||
+                    !Number.isFinite(body.totalRuns) ||
+                    typeof body.failedRuns !== 'number' ||
+                    !Number.isFinite(body.failedRuns)
+                ) {
                     setState('error');
                     return;
                 }
-                setLive(body);
+                setLive({ totalRuns: body.totalRuns, failedRuns: body.failedRuns });
                 setState('ready');
             })
             .catch(() => active && setState('error'))

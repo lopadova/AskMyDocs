@@ -11,9 +11,15 @@ import { useAuthStore } from '../../lib/auth-store';
 
 // Active-section detection is centralised in nav-config.deriveSection, which
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
-// not its parent `kb`). We feed it the router's fuzzy matcher.
+// not its parent `kb`). We feed it the router's fuzzy matcher — EXCEPT for the
+// bare `/app/admin` (Dashboard) root, matched exactly. That root is a prefix of
+// every admin sub-page, including ones with NO nav entry of their own
+// (`/app/admin/notifications`, `/app/admin/kb/time-machine/…`); fuzzy-matching
+// it there would mis-highlight Dashboard. Exact match leaves those with no
+// highlight instead, while a real section's deeper sub-pages still resolve to
+// their own (longer) route fuzzily.
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {
-    return deriveSection((route) => Boolean(match({ to: route, fuzzy: true })));
+    return deriveSection((route) => Boolean(match({ to: route, fuzzy: route !== '/app/admin' })));
 }
 
 // The sidebar footer shows ONE role label. Pick the most privileged of the
