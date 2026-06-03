@@ -2,18 +2,23 @@ import { expect } from '@playwright/test';
 import { test as seededTest } from './fixtures';
 
 /**
- * Regression: the primary sidebar must link the five core admin sections to
- * their REAL views, not to the early-phase `Coming in Phase …` placeholders.
+ * Primary sidebar navigation — unified rail (v8.8/W1).
  *
- * `AppShell.SECTION_ROUTES` originally pointed Dashboard / Knowledge /
- * AI Insights / Users / Maintenance at `/app/dashboard`, `/app/kb`,
- * `/app/insights`, `/app/users`, `/app/maintenance` — placeholder stubs —
- * while the fully-built DashboardView / KbView / InsightsView / UsersView /
- * MaintenanceView lived under `/app/admin/*` and were reachable only by
- * typing the URL. The existing e2e suites navigated to `/app/admin/*`
- * directly, so they never caught that the SIDEBAR dead-ended on stubs. This
- * spec drives the real sidebar buttons and asserts each lands on the real
- * view (real data via the seeded DemoSeeder, R13) with no placeholder text.
+ * Before v8.8 there were TWO overlapping navs: the primary `Sidebar` and a
+ * secondary `AdminShell` rail, so admin pages showed eight sections twice.
+ * The v8.8 unified-admin branch merged them into ONE grouped, collapsible
+ * sidebar (nav-config.ts). This spec covers:
+ *
+ *  1. Legacy regression — the five core sections still link to real views
+ *     (not the old "Coming in Phase …" placeholders).
+ *  2. Redirect regression — old placeholder paths still redirect to real views.
+ *  3. Unified sidebar — newly-surfaced sections (e.g. Roles, which only lived
+ *     in the secondary AdminShell rail) are reachable from the primary sidebar.
+ *  4. Collapsible groups — failure path: collapsing a group hides its entries;
+ *     the active section's group cannot be collapsed.
+ *
+ * All tests hit the real backend with seeded DemoSeeder data (R13 — no
+ * internal-route interception).
  */
 const SECTIONS = [
     { testid: 'sidebar-nav-dashboard', url: /\/app\/admin$/, heading: 'Dashboard' },
@@ -57,4 +62,57 @@ seededTest.describe('Primary sidebar links to the real admin views', () => {
             await expect(page.getByText(/Coming in Phase/i)).toHaveCount(0);
         }
     });
+});
+
+seededTest.describe('Unified sidebar — newly-surfaced sections', () => {
+    seededTest(
+        'Roles (previously only in the secondary AdminShell rail) is reachable from the primary sidebar',
+        async ({ page }) => {
+            await page.goto('/app/admin');
+            await expect(page.getByTestId('sidebar-nav-roles')).toBeVisible({ timeout: 15_000 });
+
+            await page.getByTestId('sidebar-nav-roles').click();
+            await expect(page).toHaveURL(/\/app\/admin\/roles$/);
+            await expect(page.getByTestId('sidebar-nav-roles')).toHaveAttribute('aria-current', 'page');
+            await expect(page.getByTestId('admin-shell')).toBeVisible();
+        },
+    );
+});
+
+seededTest.describe('Unified sidebar — collapsible groups', () => {
+    seededTest(
+        'failure — collapsing a non-active group hides its entries; re-expanding restores them',
+        async ({ page }) => {
+            await page.goto('/app/chat');
+            // The Operations group is NOT the active group (chat lives in Workspace).
+            // All groups default to expanded, so sidebar-nav-flows must be visible.
+            await expect(page.getByTestId('sidebar-nav-flows')).toBeVisible({ timeout: 15_000 });
+
+            // Collapse the Operations group → its entries are removed from the DOM
+            // (the sidebar conditionally renders items, it does not just hide them),
+            // so assert detachment explicitly rather than the weaker not-visible.
+            await page.getByTestId('sidebar-group-operations').click();
+            await expect(page.getByTestId('sidebar-nav-flows')).toHaveCount(0);
+
+            // Re-expand → entries reappear and are clickable again.
+            await page.getByTestId('sidebar-group-operations').click();
+            await expect(page.getByTestId('sidebar-nav-flows')).toBeVisible();
+        },
+    );
+
+    seededTest(
+        'failure — the active section\'s group cannot be collapsed (entry stays visible + highlighted)',
+        async ({ page }) => {
+            // Navigate directly to a URL inside the Operations group so that group
+            // is forced open by the active-section constraint in the sidebar.
+            await page.goto('/app/admin/flows');
+            await expect(page.getByTestId('sidebar-nav-flows')).toBeVisible({ timeout: 15_000 });
+            await expect(page.getByTestId('sidebar-nav-flows')).toHaveAttribute('aria-current', 'page');
+
+            // Attempt to collapse the active group — the sidebar MUST keep it open.
+            await page.getByTestId('sidebar-group-operations').click();
+            await expect(page.getByTestId('sidebar-nav-flows')).toBeVisible();
+            await expect(page.getByTestId('sidebar-nav-flows')).toHaveAttribute('aria-current', 'page');
+        },
+    );
 });

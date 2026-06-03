@@ -80,7 +80,10 @@ export function PiiRedactorView() {
                 minHeight: 0,
             }}
         >
-            <PiiRedactorAdminApp config={config} />
+            {/* embedded: drop the package's own sidebar — the host single
+                rail already provides navigation — and render its sections as
+                an in-content tab strip (no second sidebar / nested chrome). */}
+            <PiiRedactorAdminApp config={config} embedded />
         </div>
     );
 }

@@ -111,3 +111,43 @@
     background: #ffe4e6;
     color: #be123c;
 }
+
+/*
+ * Phase 2 embedded layout: no own header / sidebar — the host admin shell
+ * supplies those. Sections render as a slim horizontal tab strip above the
+ * content (no second sidebar / nested chrome).
+ */
+.ehu-shell.ehu-embedded {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 18px 22px 24px;
+}
+.ehu-shell .ehu-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-bottom: 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--eval-line);
+}
+.ehu-shell .ehu-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--eval-muted);
+}
+.ehu-shell .ehu-tab:hover {
+    background: var(--eval-elev-2);
+}
+.ehu-shell .ehu-tab.is-active {
+    background: #0f172a;
+    color: #ffffff;
+}
+.ehu-shell .ehu-content {
+    flex: 1;
+    min-height: 0;
+}

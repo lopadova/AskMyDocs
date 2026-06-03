@@ -1,84 +1,42 @@
-import { Icon, type IconName } from '../Icons';
+import { useState } from 'react';
+import { Icon } from '../Icons';
 import { Avatar } from './Avatar';
+import { NAV_GROUPS, type SidebarSection } from './nav-config';
 import type { SeedUser } from '../../lib/seed';
 
-export type SidebarSection =
-    | 'chat'
-    | 'dashboard'
-    | 'kb'
-    | 'insights'
-    | 'users'
-    | 'ai-act-compliance'
-    | 'connectors'
-    | 'logs'
-    | 'maintenance'
-    | 'pii-redactor'
-    | 'flows'
-    | 'eval-harness';
+export type { SidebarSection } from './nav-config';
 
 export type SidebarProps = {
-    active: SidebarSection;
+    // null when the current route has no nav entry (e.g. an admin sub-page
+    // reached from a link, not the rail) — nothing highlights then.
+    active: SidebarSection | null;
     onNav: (id: SidebarSection) => void;
     collapsed?: boolean;
     user: SeedUser;
     projectCount: number;
 };
 
-type NavItem = {
-    id: SidebarSection;
-    label: string;
-    icon: IconName;
-    section: 'workspace' | 'admin' | 'ops';
-    badge?: number;
-};
-
-const NAV_ITEMS: NavItem[] = [
-    { id: 'chat', label: 'Chat', icon: 'Chat', section: 'workspace' },
-    { id: 'dashboard', label: 'Dashboard', icon: 'Grid', section: 'admin' },
-    { id: 'kb', label: 'Knowledge', icon: 'Book', section: 'admin' },
-    { id: 'insights', label: 'AI Insights', icon: 'Sparkles', section: 'admin', badge: 5 },
-    { id: 'users', label: 'Users & Roles', icon: 'Users', section: 'admin' },
-    { id: 'ai-act-compliance', label: 'AI Act', icon: 'Shield', section: 'admin' },
-    // v4.5/W3 — Connectors admin landing. Sits in the Administration
-    // section between Users and PII Redactor. BE Gate
-    // `manageConnectors` restricts to super-admin only; the entry
-    // itself is always visible — the route component handles RBAC via
-    // <RequireRole roles={['super-admin']}>.
-    { id: 'connectors', label: 'Connectors', icon: 'Link', section: 'admin' },
-    // v4.2/W4 sub-PR 5 — PII Redactor admin SPA mount. Cross-mount
-    // strategy is iframe (the package targets React 19 + Tailwind v4
-    // while the AskMyDocs SPA is React 18 — safer to isolate the two
-    // bundles), but the sidebar entry itself is just another nav item.
-    // The route uses an icon already present in our Icons set (Shield)
-    // — no new SVGs required. Visible to all roles; the route's
-    // RequireRole gate filters down to admin/dpo/super-admin.
-    { id: 'pii-redactor', label: 'PII Redactor', icon: 'Shield', section: 'admin' },
-    // v4.2/W4 sub-PR 6 — Flow Admin cockpit mount. Same iframe strategy
-    // as PII Redactor (the package targets Blade + Alpine, not React, so
-    // bundle isolation is the only viable mount). Visible to all roles
-    // in the sidebar; the route's RequireRole gate filters down to
-    // super-admin / admin / dpo. The Spatie role allowlist in the BE
-    // outer-fence Gate `viewFlowAdmin` mirrors the FE one.
-    { id: 'flows', label: 'Flows', icon: 'Bolt', section: 'ops' },
-    // v4.2/W4 sub-PR 7 — Eval Harness UI dashboard mount. Same iframe
-    // strategy as PII Redactor + Flow Admin (the package ships its own
-    // React + Vite bundle that hydrates against a Blade bootstrap; we
-    // isolate the bundle to avoid double-React + bootstrap-pipeline
-    // duplication). Visible to all roles in the sidebar; the route's
-    // RequireRole gate filters down to super-admin / admin / dpo /
-    // editor — same allowlist as the BE Gate `eval-harness.viewer`.
-    { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', section: 'ops' },
-    { id: 'logs', label: 'Logs', icon: 'Activity', section: 'ops' },
-    { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', section: 'ops' },
-];
-
-const SECTIONS: { id: NavItem['section']; label: string }[] = [
-    { id: 'workspace', label: 'Workspace' },
-    { id: 'admin', label: 'Administration' },
-    { id: 'ops', label: 'Operations' },
-];
-
+/*
+ * The ONE host navigation. Every admin section lives here, grouped and
+ * collapsible — the old secondary `AdminShell` rail is gone, so nothing
+ * appears twice. Groups default to expanded; the group that owns the active
+ * section is always forced open so the current page is never hidden.
+ */
 export function Sidebar({ active, onNav, collapsed = false, user, projectCount }: SidebarProps) {
+    const activeGroupId = NAV_GROUPS.find((g) => g.items.some((i) => i.id === active))?.id;
+    const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+    // The active group is force-open (so the current page is never hidden), so
+    // toggling its collapse state would be a no-op now but silently collapse it
+    // the moment the user navigates away — a hidden side effect. Ignore the
+    // toggle for the active group entirely.
+    const toggleGroup = (id: string) => {
+        if (id === activeGroupId) {
+            return;
+        }
+        setCollapsedGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+    };
+
     return (
         <aside
             aria-label="Primary navigation"
@@ -144,91 +102,100 @@ export function Sidebar({ active, onNav, collapsed = false, user, projectCount }
                 </button>
             </div>
             <nav style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
-                {SECTIONS.map((sec) => (
-                    <div key={sec.id} style={{ marginTop: 10 }}>
-                        {!collapsed && (
-                            <div
-                                style={{
-                                    fontSize: 10,
-                                    color: 'var(--fg-3)',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '.08em',
-                                    padding: '6px 10px 4px',
-                                    fontFamily: 'var(--font-mono)',
-                                }}
-                            >
-                                {sec.label}
-                            </div>
-                        )}
-                        {NAV_ITEMS.filter((i) => i.section === sec.id).map((it) => {
-                            const IconCmp = Icon[it.icon];
-                            const isActive = active === it.id;
-                            return (
+                {NAV_GROUPS.map((group) => {
+                    // The active section's group is always shown; user toggle wins
+                    // otherwise. In icon-collapsed mode there are no group headers
+                    // to re-expand with, so force every group open — a group can
+                    // never get stuck hidden with no way to reveal it.
+                    const groupOpen = collapsed || group.id === activeGroupId || !collapsedGroups[group.id];
+                    return (
+                        <div key={group.id} style={{ marginTop: 10 }}>
+                            {!collapsed && (
                                 <button
-                                    key={it.id}
                                     type="button"
-                                    data-testid={`sidebar-nav-${it.id}`}
-                                    onClick={() => onNav(it.id)}
+                                    data-testid={`sidebar-group-${group.id}`}
+                                    aria-expanded={groupOpen}
+                                    onClick={() => toggleGroup(group.id)}
                                     className="focus-ring"
-                                    aria-label={it.label}
-                                    aria-current={isActive ? 'page' : undefined}
                                     style={{
                                         width: '100%',
                                         display: 'flex',
                                         alignItems: 'center',
-                                        gap: 10,
-                                        padding: collapsed ? '8px 10px' : '7px 10px',
-                                        background: isActive ? 'var(--bg-3)' : 'transparent',
-                                        color: isActive ? 'var(--fg-0)' : 'var(--fg-2)',
-                                        border: '1px solid ' + (isActive ? 'var(--panel-border)' : 'transparent'),
-                                        borderRadius: 8,
+                                        gap: 6,
+                                        background: 'transparent',
+                                        border: 0,
                                         cursor: 'pointer',
-                                        fontSize: 13,
-                                        fontWeight: isActive ? 500 : 400,
-                                        justifyContent: collapsed ? 'center' : 'flex-start',
-                                        position: 'relative',
-                                        marginBottom: 2,
+                                        fontSize: 10,
+                                        color: 'var(--fg-3)',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '.08em',
+                                        padding: '6px 10px 4px',
+                                        fontFamily: 'var(--font-mono)',
                                     }}
                                 >
-                                    {isActive && (
-                                        <span
+                                    <Icon.ChevronDown
+                                        size={11}
+                                        style={{
+                                            transition: 'transform .15s',
+                                            transform: groupOpen ? 'none' : 'rotate(-90deg)',
+                                        }}
+                                    />
+                                    <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
+                                </button>
+                            )}
+                            {groupOpen &&
+                                group.items.map((it) => {
+                                    const IconCmp = Icon[it.icon];
+                                    const isActive = active === it.id;
+                                    return (
+                                        <button
+                                            key={it.id}
+                                            type="button"
+                                            data-testid={`sidebar-nav-${it.id}`}
+                                            onClick={() => onNav(it.id)}
+                                            className="focus-ring"
+                                            aria-label={it.label}
+                                            aria-current={isActive ? 'page' : undefined}
+                                            title={collapsed ? it.label : undefined}
                                             style={{
-                                                position: 'absolute',
-                                                left: -10,
-                                                top: 6,
-                                                bottom: 6,
-                                                width: 2,
-                                                background: 'var(--grad-accent)',
-                                                borderRadius: 2,
+                                                width: '100%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: collapsed ? '8px 10px' : '7px 10px',
+                                                background: isActive ? 'var(--bg-3)' : 'transparent',
+                                                color: isActive ? 'var(--fg-0)' : 'var(--fg-2)',
+                                                border: '1px solid ' + (isActive ? 'var(--panel-border)' : 'transparent'),
+                                                borderRadius: 8,
+                                                cursor: 'pointer',
+                                                fontSize: 13,
+                                                fontWeight: isActive ? 500 : 400,
+                                                justifyContent: collapsed ? 'center' : 'flex-start',
+                                                position: 'relative',
+                                                marginBottom: 2,
                                             }}
-                                        />
-                                    )}
-                                    <IconCmp size={15} />
-                                    {!collapsed && (
-                                        <>
-                                            <span style={{ flex: 1, textAlign: 'left' }}>{it.label}</span>
-                                            {it.badge && (
+                                        >
+                                            {isActive && (
                                                 <span
                                                     style={{
-                                                        fontSize: 10,
-                                                        padding: '2px 6px',
-                                                        borderRadius: 99,
-                                                        background: 'var(--grad-accent-soft)',
-                                                        color: 'var(--fg-0)',
-                                                        fontWeight: 500,
-                                                        border: '1px solid rgba(139,92,246,.3)',
+                                                        position: 'absolute',
+                                                        left: -10,
+                                                        top: 6,
+                                                        bottom: 6,
+                                                        width: 2,
+                                                        background: 'var(--grad-accent)',
+                                                        borderRadius: 2,
                                                     }}
-                                                >
-                                                    {it.badge}
-                                                </span>
+                                                />
                                             )}
-                                        </>
-                                    )}
-                                </button>
-                            );
-                        })}
-                    </div>
-                ))}
+                                            <IconCmp size={15} />
+                                            {!collapsed && <span style={{ flex: 1, textAlign: 'left' }}>{it.label}</span>}
+                                        </button>
+                                    );
+                                })}
+                        </div>
+                    );
+                })}
             </nav>
             <div
                 style={{

@@ -73,6 +73,15 @@ seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
             'data-page',
             'overview',
         );
+        // Phase 2 (unified-admin): the app is always mounted in embedded
+        // mode — the host shell provides the primary rail, so the
+        // package's own sidebar is hidden and sections render as a tab
+        // strip above the content area.
+        await expect(page.getByTestId('admin-pii-redactor-app')).toHaveAttribute(
+            'data-embedded',
+            'true',
+        );
+        await expect(page.getByTestId('admin-pii-redactor-tabs')).toBeVisible();
         await expect(page.getByTestId('admin-pii-redactor-overview')).toBeVisible();
 
         // Sidebar nav buttons render with stable testids per
@@ -93,6 +102,37 @@ seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
         // is intentionally absent — host theme switcher takes over.
         await expect(page.getByTestId('admin-pii-redactor-shortcut-playground')).toBeVisible();
     });
+
+    seededTest(
+        // R13: failure injection — the happy path above covers the real-data
+        // flow. This test injects a 503 from the package status probe so the
+        // error banner is exercised without requiring PII_REDACTOR_ADMIN_ENABLED=true
+        // in CI, and verifies the embedded tab strip still renders (R14: error
+        // state is surfaced, not silently hidden).
+        'failure — status probe returns 503 → error banner visible, embedded tab strip still rendered (R13: failure injection)',
+        async ({ page }) => {
+            // Intercept the status probe before mounting so it is caught
+            // on the very first fetch.
+            // R13: failure injection
+            await page.route('**/admin/pii-redactor/api/status', (route) =>
+                route.fulfill({ status: 503, body: 'Service Unavailable' }),
+            );
+
+            await page.goto('/app/admin/pii-redactor');
+            await expect(page.getByTestId('admin-pii-redactor-host')).toBeVisible({ timeout: 15_000 });
+
+            // Error banner must surface — not silently hidden.
+            await expect(page.getByTestId('admin-pii-redactor-status-error')).toBeVisible();
+            await expect(page.getByTestId('admin-pii-redactor-app')).toHaveAttribute(
+                'data-status-state',
+                'error',
+            );
+
+            // Even in error state the embedded tab strip must render so
+            // the operator can pivot to another section (e.g. Settings).
+            await expect(page.getByTestId('admin-pii-redactor-tabs')).toBeVisible();
+        },
+    );
 });
 
 baseTest.describe('Admin PII Redactor — viewer (RBAC denied)', () => {

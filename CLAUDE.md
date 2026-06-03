@@ -1342,6 +1342,43 @@ are not.
 Scope: every agent/session on `lopadova/*` and `padosoft/*`, attended or
 unattended. Mirrors the private memory [[feedback_retry_on_api_error_never_stop]].
 
+### R43 — A boolean feature flag is tested in BOTH states, never just enabled
+
+Inalienable rule, standing from **2026-06-03** (Lorenzo, after the eval-harness
+500). Any `true/false` feature flag (env knob, `config('…enabled')`, a
+package-mount toggle like `EVAL_HARNESS_UI_ENABLED` / `FLOW_ADMIN_ENABLED` /
+`PII_REDACTOR_ADMIN_ENABLED`, a chat/retrieval gate, an admin-panel switch)
+MUST be verified to leave the app **healthy in BOTH states — OFF and ON — not
+only when enabled**. "It works when I turn it on" is half a test.
+
+The eval-harness failure is the canonical example: enabling the flag mounted a
+package Blade route that `@vite`'d an asset absent from the host manifest →
+**500** on every data call; the cross-mount surfaced "API returned 500". It had
+only ever been exercised enabled-and-assumed-working — the OFF path (clean 404
+degrade) and the ON-but-backend-unwired path (the 500) were never checked. The
+fix made the host probe the data API and show a single clean "unavailable"
+landing, so the feature is safe **on or off**.
+
+Concretely, for every flag added or touched:
+
+- [ ] **OFF path**: with the flag false, the feature's routes/UI degrade
+      cleanly — a 404 / disabled state / "unavailable" panel, **never** a 500,
+      a blank crash, an unhandled exception, or a `page.route`-less error storm.
+      A consumer that hits the now-absent backend must handle the 4xx, not throw.
+- [ ] **ON path**: with the flag true, the feature works **or**, if its backend
+      isn't wired in this deployment, still degrades to a clean state (no raw
+      500 / stack trace reaching the user).
+- [ ] **Tests cover both**: a unit/e2e asserting the OFF (disabled/unavailable)
+      branch AND the ON branch — not just the happy enabled path. Toggling the
+      flag in the future must hold no surprises.
+- [ ] **Default-OFF flags get extra scrutiny on the OFF path** — that is the
+      state every fresh deploy ships, and the one most likely to be skipped in
+      manual testing precisely because "I enabled it to try it".
+
+Graded on blast radius: one un-tested OFF path that 500s is a public incident
+the first time an operator flips a knob. Mirrors the private memory
+[[feedback_test_feature_flags_both_states]].
+
 ---
 
 ## 8. Testing & CI
@@ -1378,7 +1415,7 @@ unattended. Mirrors the private memory [[feedback_retry_on_api_error_never_stop]
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R42 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R43 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

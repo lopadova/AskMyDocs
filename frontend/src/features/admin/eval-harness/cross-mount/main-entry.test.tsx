@@ -131,10 +131,11 @@ describe('EvalHarnessUiApp (cross-mount)', () => {
         const app = await screen.findByTestId('admin-eval-harness-app');
         expect(app).toBeInTheDocument();
 
-        // The header carries the package's static "Eval Harness UI"
-        // title — proves the AppShell rendered with the version we
-        // injected via the bootstrap config.
-        expect(screen.getByRole('heading', { level: 1, name: 'Eval Harness UI' })).toBeInTheDocument();
+        // Phase 2 embedded mode drops the package's own header/sidebar
+        // (the host shell supplies those) — the section nav renders as an
+        // in-content tab strip instead. Its presence proves the embedded
+        // AppShell rendered.
+        expect(screen.getByTestId('admin-eval-harness-tabs')).toBeInTheDocument();
 
         // Dashboard nav anchor is reachable by accessible name (R11 +
         // R15) and by stable testid (R29).

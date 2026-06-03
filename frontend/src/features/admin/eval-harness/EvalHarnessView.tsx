@@ -92,6 +92,21 @@ const EVAL_HARNESS_ROUTE_BASE = '/app/admin/eval-harness';
 const EVAL_HARNESS_BOOTSTRAP_CONFIG_URL = '/api/admin/eval-harness/bootstrap-config';
 
 /*
+ * A real eval-harness DATA endpoint, probed once at mount to confirm the
+ * package's JSON API is actually wired + reachable in THIS deployment.
+ *
+ * `bootstrap-config` is a HOST endpoint that always answers 200, so it does
+ * NOT tell us whether the eval data backend works. When `EVAL_HARNESS_UI_ENABLED`
+ * is off the `/admin/eval-harness/api/*` routes 404; when it is on but the
+ * package's blade SPA shadows the JSON path (no host-wired data routes), they
+ * 500. In both cases the cross-mount would mount and render nothing but error
+ * panels. Probing a data endpoint lets the host show a single clean
+ * "unavailable" landing instead — so the feature is safe whether its flag is
+ * ON or OFF (never a raw 500 / error-panel storm reaching the operator).
+ */
+const EVAL_HARNESS_DATA_PROBE_URL = `${EVAL_HARNESS_API_BASE}/reports`;
+
+/*
  * Hard-coded fallback payload — used ONLY when the bootstrap-config
  * fetch fails (e.g. env=false at the package level rejects the
  * response with a 404, or the host endpoint itself errors). The SPA
@@ -109,7 +124,7 @@ const FALLBACK_CONFIG: AppBootstrapConfig = {
     shortcuts: { commandPalette: 'mod+k' },
 };
 
-type LoadState = 'loading' | 'ready' | 'error';
+type LoadState = 'loading' | 'ready' | 'unavailable';
 
 export function EvalHarnessView() {
     const [config, setConfig] = useState<AppBootstrapConfig | null>(null);
@@ -119,27 +134,21 @@ export function EvalHarnessView() {
         let active = true;
         setState('loading');
 
-        api.get<AppBootstrapConfig>(EVAL_HARNESS_BOOTSTRAP_CONFIG_URL)
-            .then((response) => {
-                if (!active) {
-                    return;
-                }
-                setConfig(response.data);
-                setState('ready');
-            })
-            .catch(() => {
-                if (!active) {
-                    return;
-                }
-                // R7 / R14: surface the failure visibly. We still
-                // mount the SPA below so the package's own
-                // <ErrorPanel /> surfaces the underlying API
-                // failures, but the host wrapper carries
-                // data-state="error" so E2E + observability tools
-                // see the degraded state.
-                setConfig(FALLBACK_CONFIG);
-                setState('error');
-            });
+        // Fetch the SPA config (host endpoint, tolerant of failure) AND probe a
+        // real data endpoint to decide whether the eval data API is usable here.
+        Promise.allSettled([
+            api.get<AppBootstrapConfig>(EVAL_HARNESS_BOOTSTRAP_CONFIG_URL),
+            api.get(EVAL_HARNESS_DATA_PROBE_URL),
+        ]).then(([cfgResult, dataResult]) => {
+            if (!active) {
+                return;
+            }
+            setConfig(cfgResult.status === 'fulfilled' ? cfgResult.value.data : FALLBACK_CONFIG);
+            // Only mount the cross-mount when the data API actually answered.
+            // Otherwise show a single clean unavailable landing rather than a
+            // storm of error panels / a raw 500 (R14: degrade loudly but clean).
+            setState(dataResult.status === 'fulfilled' ? 'ready' : 'unavailable');
+        });
 
         return () => {
             active = false;
@@ -161,7 +170,7 @@ export function EvalHarnessView() {
                 minHeight: 0,
             }}
         >
-            {config === null ? (
+            {state === 'loading' && (
                 <div
                     data-testid="admin-eval-harness-loading"
                     style={{
@@ -178,7 +187,36 @@ export function EvalHarnessView() {
                         Loading Eval Harness…
                     </span>
                 </div>
-            ) : (
+            )}
+
+            {state === 'unavailable' && (
+                <div
+                    data-testid="admin-eval-harness-unavailable"
+                    role="status"
+                    style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 40,
+                        fontFamily: 'var(--font-sans)',
+                    }}
+                >
+                    <div className="panel" style={{ maxWidth: 520, padding: '24px 24px 22px', textAlign: 'center' }}>
+                        <h2 style={{ fontSize: 17, fontWeight: 600, margin: '0 0 8px' }}>
+                            Eval Harness data API is not available
+                        </h2>
+                        <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.55 }}>
+                            The <code style={{ fontFamily: 'var(--font-mono)' }}>padosoft/eval-harness-ui</code> data
+                            endpoints aren&rsquo;t reachable in this environment. Set{' '}
+                            <code>EVAL_HARNESS_UI_ENABLED=true</code> and wire the package&rsquo;s JSON API
+                            (then <code>php artisan config:clear</code>) to enable the dashboards.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {state === 'ready' && config !== null && (
                 <EvalHarnessUiApp
                     config={config}
                     apiBase={EVAL_HARNESS_API_BASE}
