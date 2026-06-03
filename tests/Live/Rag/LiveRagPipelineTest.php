@@ -98,6 +98,13 @@ final class LiveRagPipelineTest extends TestCase
         // instead of using the key they provided.
         $app['config']->set('ai.default', 'openrouter');
         $app['config']->set('ai.embeddings_provider', 'openrouter');
+
+        // Run the queue inline so CanonicalIndexerJob (dispatched by
+        // DocumentIngestor after the commit) executes synchronously and the
+        // kb_nodes / kb_edges assertions are deterministic — without requiring
+        // the operator to also stand up a queue worker (QUEUE_CONNECTION=sync
+        // is no longer a precondition for a green run).
+        $app['config']->set('queue.default', 'sync');
     }
 
     /** The live DB is already migrated — do NOT run the SQLite test migrations. */
