@@ -130,7 +130,7 @@ export function FlowsView() {
                 <a
                     href={FLOW_ADMIN_BASE_URL}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     data-testid="admin-flows-open-cockpit"
                     className="focus-ring"
                     style={{
@@ -220,7 +220,7 @@ export function FlowsView() {
                             key={s.id}
                             href={`${FLOW_ADMIN_BASE_URL}${s.path}`}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             data-testid={`admin-flows-section-${s.id}`}
                             className="focus-ring"
                             style={{

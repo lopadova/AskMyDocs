@@ -18,7 +18,7 @@ import { useAuthStore } from '../../lib/auth-store';
 // it there would mis-highlight Dashboard. Exact match leaves those with no
 // highlight instead, while a real section's deeper sub-pages still resolve to
 // their own (longer) route fuzzily.
-function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {
+function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection | null {
     return deriveSection((route) => Boolean(match({ to: route, fuzzy: route !== '/app/admin' })));
 }
 
@@ -148,7 +148,7 @@ export function AppShell() {
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}
-                    crumbs={[NAV_ITEMS.find((i) => i.id === section)?.label ?? section]}
+                    crumbs={[NAV_ITEMS.find((i) => i.id === section)?.label ?? 'Admin']}
                 />
                 <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     <Outlet />
@@ -164,7 +164,7 @@ export function AppShell() {
                 setDensity={setDensity}
                 font={font}
                 setFont={setFont}
-                section={section}
+                section={section ?? 'chat'}
                 setSection={onNav}
             />
         </div>

@@ -7,7 +7,9 @@ import type { SeedUser } from '../../lib/seed';
 export type { SidebarSection } from './nav-config';
 
 export type SidebarProps = {
-    active: SidebarSection;
+    // null when the current route has no nav entry (e.g. an admin sub-page
+    // reached from a link, not the rail) — nothing highlights then.
+    active: SidebarSection | null;
     onNav: (id: SidebarSection) => void;
     collapsed?: boolean;
     user: SeedUser;

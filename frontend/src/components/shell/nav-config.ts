@@ -126,11 +126,15 @@ export const SECTION_ROUTES: Record<SidebarSection, string> = Object.fromEntries
  * resolves to `synonyms`, not its parent `kb`, and the bare `/app/admin`
  * resolves to `dashboard` (nothing deeper matches it).
  */
-export function deriveSection(matches: (route: string) => boolean): SidebarSection {
+export function deriveSection(matches: (route: string) => boolean): SidebarSection | null {
     for (const item of ORDERED_NAV_ITEMS) {
         if (matches(item.route)) {
             return item.id;
         }
     }
-    return 'chat';
+    // No nav entry owns this route (e.g. /app/admin/notifications,
+    // /app/admin/kb/time-machine/…) — return null so NOTHING in the sidebar
+    // highlights, rather than mis-attributing it to Dashboard (longest-prefix)
+    // or Chat (a hard-coded fallback).
+    return null;
 }
