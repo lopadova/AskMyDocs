@@ -55,8 +55,9 @@ function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): Sideba
 // Typed to the SeedUser role union (which now covers all five real system
 // roles) so the picked value flows into the sidebar label with no cast. A
 // user whose roles fall entirely outside this set yields null → the caller
-// keeps the seed default; we deliberately do NOT surface an unknown raw role
-// string, which is what the old `?? roles[0]` fallback + cast smuggled through.
+// falls back to the least-privileged `viewer`; we deliberately do NOT surface
+// an unknown raw role string, which is what the old `?? roles[0]` fallback +
+// cast smuggled through.
 const ROLE_PRIORITY: SeedUser['role'][] = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
 
 function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
