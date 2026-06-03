@@ -28,10 +28,11 @@ final class KbChatGraphSeeder extends Seeder
     {
         app(TenantContext::class)->set('default');
 
-        $admin = User::where('email', 'admin@demo.local')->first();
-        if ($admin === null) {
-            return; // DemoSeeder hasn't run — nothing to attach the conversation to.
-        }
+        // Fail LOUDLY (not a silent early return) when the prerequisite admin
+        // is missing: /testing/seed returns 200 on a no-op, so seedDb() would
+        // think it succeeded and the E2E would proceed against empty data and
+        // time out opaquely (Copilot). Always run after DemoSeeder.
+        $admin = User::where('email', 'admin@demo.local')->firstOrFail();
 
         $project = 'hr-portal';
         $cacheDoc = $this->seedCanonical('dec-cache-graph', 'Cache decision (graph)', $project);

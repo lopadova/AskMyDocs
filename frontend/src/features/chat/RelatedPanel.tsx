@@ -14,7 +14,9 @@ import { getRelated, type RelatedNode } from './related.api';
 export function RelatedPanel({ projectKey, slugs }: { projectKey: string | null; slugs: string[] }): ReactNode {
     const [open, setOpen] = useState(false);
 
-    const usableSlugs = slugs.filter((s): s is string => typeof s === 'string' && s !== '');
+    // Dedupe (a doc can be cited under multiple origins) and cap to the
+    // endpoint's `max:20` so a citation-heavy answer never 422s (Copilot).
+    const usableSlugs = [...new Set(slugs.filter((s): s is string => typeof s === 'string' && s !== ''))].slice(0, 20);
     const enabled = open && !!projectKey && usableSlugs.length > 0;
 
     const query = useQuery({
@@ -33,7 +35,7 @@ export function RelatedPanel({ projectKey, slugs }: { projectKey: string | null;
     const state = !open ? 'idle' : query.isLoading ? 'loading' : query.isError ? 'error' : nodes.length === 0 ? 'empty' : 'ready';
 
     return (
-        <div data-testid="chat-related-panel" data-state={state} style={{ marginTop: 8 }}>
+        <div data-testid="chat-related-panel" data-state={state} aria-busy={enabled && query.isFetching} style={{ marginTop: 8 }}>
             <button
                 type="button"
                 data-testid="chat-related-toggle"
