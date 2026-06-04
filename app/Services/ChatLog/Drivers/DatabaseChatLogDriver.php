@@ -97,6 +97,10 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             'rejected_count',
         ]));
 
-        return $safe + ['anonymous' => true];
+        // array_merge (not `+`) so the `anonymous` marker ALWAYS wins — a `+`
+        // union would keep an upstream `anonymous` key if one ever leaked into
+        // `extra`. For a privacy feature the stored `extra.anonymous` must be
+        // unconditionally true on an anonymous row.
+        return array_merge($safe, ['anonymous' => true]);
     }
 }

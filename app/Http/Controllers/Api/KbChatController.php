@@ -50,12 +50,22 @@ class KbChatController extends Controller
             throw new HttpException(422, 'Anonymous chat is disabled (kb.anonymous_chat.enabled=false).');
         }
 
-        // Anonymous turns redact the question with a NON-PERSISTENT strategy
-        // (mask — no reversible token map is written anywhere) BEFORE it reaches
-        // retrieval, the LLM, the content-gap rollup, or the minimal log — so an
-        // anonymous turn is MORE redacted than a normal stateless turn, never a
-        // PII bypass. Redaction still honours the operator's global
-        // `pii-redactor.enabled`; pair anonymous chat with PII redaction on.
+        // Anonymous turns redact the question BEFORE it reaches retrieval, the
+        // LLM, the content-gap rollup, or the minimal log — so an anonymous turn
+        // is MORE redacted than a normal stateless turn, never a PII bypass.
+        //
+        // Two deliberate choices here:
+        //  1. `MaskStrategy` is passed EXPLICITLY (not resolved from the
+        //     operator's configured default strategy) to FORCE a NON-PERSISTENT
+        //     redaction — mask writes no reversible token map anywhere. An
+        //     operator whose default is the reversible `tokenise` strategy must
+        //     not have a reversible PII map persisted on a turn that is supposed
+        //     to be anonymous; forcing mask guarantees that.
+        //  2. The global `pii-redactor.enabled` knob is still honoured: it is
+        //     NOT re-checked here because `RedactorEngine::redact()` already
+        //     returns the input unchanged when the engine is disabled (see its
+        //     `if (! $this->enabled ...)` guard). A redundant guard here would
+        //     just duplicate that. Pair anonymous chat with PII redaction on.
         if ($anonymous) {
             $question = $redactor->redact($question, new MaskStrategy());
         }
