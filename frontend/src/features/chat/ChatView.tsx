@@ -476,7 +476,11 @@ export function ChatView(): ReactNode {
 
     return (
         <div data-testid="chat-view" style={{ display: 'flex', height: '100%', flex: 1, minWidth: 0 }}>
-            <ConversationList projectKey={projectKey} onSelect={onSelect} />
+            <ConversationList
+                projectKey={projectKey}
+                onSelect={onSelect}
+                onNewAnonymous={() => navigate({ to: '/app/chat/anonymous' })}
+            />
             <div
                 style={{
                     flex: 1,

@@ -46,6 +46,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Anonymous-chat logging level (data minimisation)
+    |--------------------------------------------------------------------------
+    |
+    | An anonymous chat turn (POST /api/kb/chat with `anonymous: true`) is
+    | never attributed and never persisted as a conversation. This knob
+    | governs how its chat_logs row is written, by GDPR data-minimisation:
+    |
+    |   'none'    — write NO chat_logs row at all.
+    |   'minimal' — write a stripped row: NO question / answer / sources /
+    |               user_id / client_ip / user_agent; keep only the
+    |               by-norm operational fields (tenant, provider/model,
+    |               token counts, latency, chunks_count, timestamp) for
+    |               billing + abuse counting. Default.
+    |
+    | A normal (non-anonymous) turn is unaffected — it logs in full as before.
+    |
+    */
+
+    'anonymous_level' => env('CHAT_LOG_ANONYMOUS_LEVEL', 'minimal'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Driver-Specific Options
     |--------------------------------------------------------------------------
     */

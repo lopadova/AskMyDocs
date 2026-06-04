@@ -7,6 +7,8 @@ import { useChatStore } from './chat.store';
 export interface ConversationListProps {
     projectKey: string | null;
     onSelect: (id: number | null) => void;
+    /** v8.8.3 — start an anonymous (non-persisted) chat. */
+    onNewAnonymous: () => void;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface ConversationListProps {
  * (Today / Earlier). Empty state surfaces a testid-tagged message
  * so Playwright can assert the no-chats path.
  */
-export function ConversationList({ projectKey, onSelect }: ConversationListProps): ReactNode {
+export function ConversationList({ projectKey, onSelect, onNewAnonymous }: ConversationListProps): ReactNode {
     const qc = useQueryClient();
     const [filter, setFilter] = useState('');
     const activeId = useChatStore((s) => s.activeConversationId);
@@ -61,7 +63,7 @@ export function ConversationList({ projectKey, onSelect }: ConversationListProps
                 flexDirection: 'column',
             }}
         >
-            <div style={{ padding: 12, display: 'flex', gap: 8 }}>
+            <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <button
                     type="button"
                     className="btn primary"
@@ -69,10 +71,20 @@ export function ConversationList({ projectKey, onSelect }: ConversationListProps
                     onClick={() => createMutation.mutate()}
                     disabled={createMutation.isPending}
                     aria-busy={createMutation.isPending}
-                    style={{ flex: 1 }}
+                    style={{ width: '100%' }}
                 >
                     <Icon.Plus size={13} />
                     New chat
+                </button>
+                <button
+                    type="button"
+                    className="btn"
+                    data-testid="chat-new-anonymous-chat"
+                    onClick={onNewAnonymous}
+                    style={{ width: '100%' }}
+                >
+                    <Icon.Eye size={13} />
+                    New anonymous chat
                 </button>
             </div>
             <div style={{ padding: '0 12px 10px' }}>

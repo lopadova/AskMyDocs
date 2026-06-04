@@ -25,5 +25,10 @@ final readonly class ChatLogEntry
         public ?string $clientIp,
         public ?string $userAgent,
         public array $extra = [],
+        // v8.8.3 — an anonymous turn is logged minimally (or not at all) per
+        // `chat-log.anonymous_level`: the driver strips question / answer /
+        // sources / user_id / client_ip / user_agent and keeps only the
+        // by-norm operational fields. Default false = full logging as before.
+        public bool $anonymous = false,
     ) {}
 }

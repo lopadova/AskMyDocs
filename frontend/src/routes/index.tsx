@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import { AppShell } from '../components/shell/AppShell';
 import { ChatView } from '../features/chat/ChatView';
+import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
@@ -152,6 +153,16 @@ const chatRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'chat',
     component: ChatView,
+});
+// v8.8.3 — anonymous (non-persisted) chat. Declared as a STATIC sibling
+// BEFORE `chat/$conversationId` so TanStack's static-over-dynamic matching
+// resolves `/app/chat/anonymous` to the dedicated view rather than treating
+// "anonymous" as a conversation id. Self-contained (no streaming/conversation
+// machinery) so the feature toggle never destabilises the normal chat path.
+const chatAnonymousRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'chat/anonymous',
+    component: AnonymousChatView,
 });
 const chatConversationRoute = createRoute({
     getParentRoute: () => appRoute,
@@ -797,6 +808,7 @@ const routeTree = rootRoute.addChildren([
     appRoute.addChildren([
         appIndexRoute,
         chatRoute,
+        chatAnonymousRoute,
         chatConversationRoute,
         dashboardRoute,
         kbRoute,

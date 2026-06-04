@@ -315,6 +315,64 @@ export const chatApi = {
 };
 
 /**
+ * v8.8.3 — stateless answer shape returned by `POST /api/kb/chat`. Mirrors
+ * `KbChatController::buildSuccessResponse()` / `refusalResponse()` — the same
+ * envelope for grounded and refused turns (R27 shape-uniform). The anonymous
+ * chat view consumes this directly; nothing is persisted.
+ */
+export interface AnonymousChatMeta {
+    provider: string | null;
+    model: string | null;
+    chunks_used: number;
+    primary_count: number;
+    latency_ms: number;
+    [key: string]: unknown;
+}
+
+export interface AnonymousChatAnswer {
+    answer: string;
+    citations: MessageCitation[];
+    confidence: number;
+    refusal_reason: string | null;
+    meta: AnonymousChatMeta;
+}
+
+export const anonymousChatApi = {
+    /**
+     * Capability probe — `{ enabled }` reflects `kb.anonymous_chat.enabled`.
+     *
+     * R14: a malformed 200 (missing / non-boolean `enabled`) is a schema/API
+     * bug, NOT the deliberate OFF state — throw so React Query surfaces it as
+     * an error and the view renders its error landing, instead of coercing it
+     * to `false` and silently showing "disabled".
+     */
+    async config(): Promise<{ enabled: boolean }> {
+        const { data } = await api.get<{ enabled: boolean }>('/api/kb/chat/anonymous-config');
+        if (typeof data?.enabled !== 'boolean') {
+            throw new Error('Malformed anonymous-chat config response: `enabled` is not a boolean.');
+        }
+        return { enabled: data.enabled };
+    },
+
+    /**
+     * Send one anonymous turn. The BE force-masks PII before retrieval / LLM /
+     * log, never persists a conversation, and logs only minimally — see
+     * KbChatController. Anonymous chat carries no project scope of its own (no
+     * `project_key` is ever sent); `filters` is the only retrieval-scoping
+     * surface and is omitted from the payload entirely when empty so the
+     * request shape stays minimal.
+     */
+    async send(question: string, filters?: FilterState): Promise<AnonymousChatAnswer> {
+        const payload: Record<string, unknown> = { question, anonymous: true };
+        if (filters && !isFilterStateEmpty(filters)) {
+            payload.filters = filters;
+        }
+        const { data } = await api.post<AnonymousChatAnswer>('/api/kb/chat', payload);
+        return data;
+    },
+};
+
+/**
  * v4.5/W7 Tier 1 — cost-rate lookup table. Fetched once per session
  * via TanStack Query and consumed by the token/cost meter on every
  * assistant bubble. Shape mirrors `config/ai.php::cost_rates`.
