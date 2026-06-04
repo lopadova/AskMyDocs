@@ -338,10 +338,20 @@ export interface AnonymousChatAnswer {
 }
 
 export const anonymousChatApi = {
-    /** Capability probe — `{ enabled }` reflects `kb.anonymous_chat.enabled`. */
+    /**
+     * Capability probe — `{ enabled }` reflects `kb.anonymous_chat.enabled`.
+     *
+     * R14: a malformed 200 (missing / non-boolean `enabled`) is a schema/API
+     * bug, NOT the deliberate OFF state — throw so React Query surfaces it as
+     * an error and the view renders its error landing, instead of coercing it
+     * to `false` and silently showing "disabled".
+     */
     async config(): Promise<{ enabled: boolean }> {
         const { data } = await api.get<{ enabled: boolean }>('/api/kb/chat/anonymous-config');
-        return { enabled: Boolean(data?.enabled) };
+        if (typeof data?.enabled !== 'boolean') {
+            throw new Error('Malformed anonymous-chat config response: `enabled` is not a boolean.');
+        }
+        return { enabled: data.enabled };
     },
 
     /**
