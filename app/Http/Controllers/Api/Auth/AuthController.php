@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -73,12 +76,25 @@ class AuthController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        // Real per-project doc counts, scoped to the active tenant (R30).
+        // One grouped query keyed by project_key → O(1) lookup in the map().
+        $tenantId = app(TenantContext::class)->current();
+        $docCounts = KnowledgeDocument::query()
+            ->forTenant($tenantId)
+            ->selectRaw('project_key, count(*) as aggregate')
+            ->groupBy('project_key')
+            ->pluck('aggregate', 'project_key');
+
         $projects = $user->projectMemberships()
             ->get(['project_key', 'role', 'scope_allowlist'])
             ->map(fn ($membership) => [
                 'project_key' => $membership->project_key,
+                // Human label derived BE-side so the FE no longer needs the
+                // hard-coded seed mock (R18 — derive from the real domain).
+                'label' => Str::headline($membership->project_key),
                 'role' => $membership->role,
                 'scope' => $membership->scope_allowlist ?? [],
+                'doc_count' => (int) ($docCounts[$membership->project_key] ?? 0),
             ])
             ->values();
 

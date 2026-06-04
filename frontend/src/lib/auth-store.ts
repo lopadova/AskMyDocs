@@ -9,8 +9,12 @@ export type AuthUser = {
 
 export type AuthProject = {
     project_key: string;
+    /** Human label derived BE-side from the key (AuthController@me). */
+    label: string;
     role: string;
     scope: unknown;
+    /** Real document count for this project, tenant-scoped (AuthController@me). */
+    doc_count: number;
 };
 
 export type AuthMePayload = {

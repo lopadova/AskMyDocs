@@ -19,13 +19,15 @@ describe('useAuthStore', () => {
             user: { id: 1, name: 'Elena', email: 'elena@acme.io' },
             roles: ['super-admin'],
             permissions: ['kb.read.any'],
-            projects: [{ project_key: 'hr-portal', role: 'admin', scope: null }],
+            projects: [{ project_key: 'hr-portal', label: 'Hr Portal', role: 'admin', scope: null, doc_count: 12 }],
         });
         const s = useAuthStore.getState();
         expect(s.user?.name).toBe('Elena');
         expect(s.roles).toEqual(['super-admin']);
         expect(s.permissions).toEqual(['kb.read.any']);
         expect(s.projects).toHaveLength(1);
+        expect(s.projects[0].label).toBe('Hr Portal');
+        expect(s.projects[0].doc_count).toBe(12);
         expect(s.loading).toBe(false);
     });
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { Sidebar } from './Sidebar';
 import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
@@ -6,8 +6,9 @@ import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
+import { USERS, type Project, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
+import { useProjectStore } from '../../lib/project-store';
 
 // Active-section detection is centralised in nav-config.deriveSection, which
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
@@ -39,6 +40,20 @@ function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
     return ROLE_PRIORITY.find((r) => roles.includes(r)) ?? null;
 }
 
+// Deterministic accent colour per project key. `color` is the only
+// ProjectSwitcher field with no backend source yet, so we derive a stable
+// hue from the key (same key → same colour across reloads) instead of
+// reintroducing a hard-coded per-project palette. Pure FE cosmetics.
+const PROJECT_PALETTE = ['#8b5cf6', '#22d3ee', '#f97316', '#a3e635', '#e11d48', '#14b8a6', '#eab308'];
+
+function colorForKey(key: string): string {
+    let hash = 0;
+    for (let i = 0; i < key.length; i++) {
+        hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+    }
+    return PROJECT_PALETTE[hash % PROJECT_PALETTE.length];
+}
+
 /*
  * Root of the authenticated `/app/*` routes. Hosts the sidebar + topbar
  * + the route outlet + the floating palette + tweaks panel.
@@ -48,7 +63,8 @@ export function AppShell() {
     const [density, setDensity] = useDensity('balanced');
     const [font, setFont] = useFontPair('geist');
     const [tweaksOpen, setTweaksOpen] = useState(false);
-    const [projectIndex, setProjectIndex] = useState(0);
+    const activeProjectKey = useProjectStore((s) => s.activeProjectKey);
+    const setActiveProject = useProjectStore((s) => s.setActiveProject);
 
     const navigate = useNavigate();
     const matchRoute = useMatchRoute();
@@ -86,32 +102,33 @@ export function AppShell() {
     // Keeps `projectCount` and the switcher in lockstep — Copilot PR #33
     // flagged the previous mismatch where projectCount came from
     // storeProjects but the switcher always rendered PROJECTS.
-    const projects: Project[] = useMemo(() => {
-        if (storeProjects.length === 0) {
-            return PROJECTS;
-        }
-        return storeProjects.map((sp) => {
-            const seeded = PROJECTS.find((p) => p.key === sp.project_key);
-            if (seeded) {
-                return seeded;
-            }
-            return {
+    const projects: Project[] = useMemo(
+        () =>
+            storeProjects.map((sp) => ({
                 key: sp.project_key,
-                label: sp.project_key
-                    .split('-')
-                    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                    .join(' '),
-                color: '#8b5cf6',
-                docs: 0,
+                label: sp.label || sp.project_key,
+                color: colorForKey(sp.project_key),
+                docs: sp.doc_count ?? 0,
                 members: 0,
-            };
-        });
-    }, [storeProjects]);
+            })),
+        [storeProjects],
+    );
 
-    // Clamp the index whenever the project list shrinks — otherwise
-    // an out-of-bounds index would yield `undefined` and crash the
-    // Topbar.
-    const safeProjectIndex = projectIndex < projects.length ? projectIndex : 0;
+    // Hydrate the active project from the first real membership once the
+    // store has loaded, and self-heal if the current selection is no longer
+    // in the user's project list (e.g. membership revoked).
+    useEffect(() => {
+        if (projects.length === 0) {
+            return;
+        }
+        if (!projects.some((p) => p.key === activeProjectKey)) {
+            setActiveProject(projects[0].key);
+        }
+    }, [projects, activeProjectKey, setActiveProject]);
+
+    // Resolve the active project from the shared store; fall back to the
+    // first project until the effect hydrates it, so Topbar never gets undefined.
+    const activeProject = projects.find((p) => p.key === activeProjectKey) ?? projects[0];
     const projectCount = projects.length;
 
     const onNav = useCallback(
@@ -137,14 +154,9 @@ export function AppShell() {
             <Sidebar active={section} onNav={onNav} user={sidebarUser} projectCount={projectCount} />
             <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
-                    project={projects[safeProjectIndex]}
+                    project={activeProject}
                     projects={projects}
-                    onProjectChange={(p) => {
-                        const idx = projects.findIndex((pp) => pp.key === p.key);
-                        if (idx >= 0) {
-                            setProjectIndex(idx);
-                        }
-                    }}
+                    onProjectChange={(p) => setActiveProject(p.key)}
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}

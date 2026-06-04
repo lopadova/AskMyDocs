@@ -70,6 +70,24 @@ class MeTest extends TestCase
             'scope_allowlist' => ['folder_globs' => ['hr/*']],
         ]);
 
+        // Two docs on hr-portal so doc_count is a meaningful non-zero value
+        // (R16: the test must exercise the count it asserts, not a trivial 0).
+        foreach (['hr/a.md', 'hr/b.md'] as $path) {
+            \App\Models\KnowledgeDocument::create([
+                'project_key' => 'hr-portal',
+                'source_type' => 'md',
+                'title' => 'Seeded '.$path,
+                'source_path' => $path,
+                'mime_type' => 'text/markdown',
+                'language' => 'en',
+                'access_scope' => 'project',
+                'status' => 'indexed',
+                'document_hash' => hash('sha256', $path),
+                'version_hash' => hash('sha256', $path.'/v1'),
+                'metadata' => [],
+            ]);
+        }
+
         $this->actingAs($user);
 
         $response = $this->getJson('/api/auth/me');
@@ -79,7 +97,10 @@ class MeTest extends TestCase
             ->assertJsonPath('roles.0', 'admin')
             ->assertJsonPath('projects.0.project_key', 'hr-portal')
             ->assertJsonPath('projects.0.role', 'admin')
-            ->assertJsonPath('projects.0.scope.folder_globs.0', 'hr/*');
+            ->assertJsonPath('projects.0.scope.folder_globs.0', 'hr/*')
+            // BE-derived fields that replace the FE seed mock (R18).
+            ->assertJsonPath('projects.0.label', 'Hr Portal')
+            ->assertJsonPath('projects.0.doc_count', 2);
 
         $permissions = $response->json('permissions');
         $this->assertContains('kb.read.any', $permissions);

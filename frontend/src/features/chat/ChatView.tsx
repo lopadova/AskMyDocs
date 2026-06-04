@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
-import { PROJECTS } from '../../lib/seed';
+import { useProjectStore } from '../../lib/project-store';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
@@ -79,9 +79,19 @@ export function ChatView(): ReactNode {
         }
     }, [params.conversationId, activeId, setActive]);
 
-    const project = PROJECTS[0];
-    const projectLabel = project?.label ?? 'default';
-    const projectKey = project?.key ?? null;
+    // Active project comes from the shared store (written by the Topbar
+    // ProjectSwitcher), so switching project in the topbar now actually
+    // re-scopes the chat. Label resolves from the user's REAL memberships
+    // (auth store, BE-provided) — no more hard-coded PROJECTS[0] mock that
+    // pinned every chat to "HR Portal" regardless of the selection (R18).
+    const activeProjectKey = useProjectStore((s) => s.activeProjectKey);
+    const memberships = useAuthStore((s) => s.projects);
+    const activeMembership = useMemo(
+        () => memberships.find((p) => p.project_key === activeProjectKey) ?? null,
+        [memberships, activeProjectKey],
+    );
+    const projectKey = activeProjectKey;
+    const projectLabel = activeMembership?.label ?? activeProjectKey ?? 'default';
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
