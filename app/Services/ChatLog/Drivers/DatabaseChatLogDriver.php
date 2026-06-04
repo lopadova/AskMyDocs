@@ -43,9 +43,13 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
      *   'minimal' — keep ONLY the by-norm operational fields (tenant via the
      *               model's BelongsToTenant trait, provider/model, token
      *               counts, latency, chunks_count, timestamp) for billing +
-     *               abuse counting. NO question / answer / sources / user_id /
-     *               client_ip / user_agent — so the row carries no PII and no
-     *               way to reconstruct or attribute the conversation.
+     *               abuse counting, PLUS an allowlisted slice of `extra` that
+     *               is operational-but-non-PII (refusal_reason + confidence +
+     *               the primary/expanded/rejected chunk counts) so refusal /
+     *               retrieval dashboards keep working on anonymous turns. NO
+     *               question / answer / sources / user_id / client_ip /
+     *               user_agent — so the row carries no PII and no way to
+     *               reconstruct or attribute the conversation.
      */
     private function storeAnonymous(ChatLogEntry $entry): void
     {
@@ -69,7 +73,30 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             'latency_ms' => $entry->latencyMs,
             'client_ip' => null,
             'user_agent' => null,
-            'extra' => ['anonymous' => true],
+            'extra' => $this->anonymousExtra($entry),
         ]);
+    }
+
+    /**
+     * Allowlisted, non-PII slice of the upstream `extra` for an anonymous row.
+     *
+     * Whitelisting (not blanket-merging) is deliberate: this is a privacy
+     * feature, so a future code path that stuffs PII into `extra` must NOT
+     * silently leak it onto the minimal anonymous row. Only the known
+     * operational keys retrieval/refusal dashboards rely on are kept.
+     *
+     * @return array<string, mixed>
+     */
+    private function anonymousExtra(ChatLogEntry $entry): array
+    {
+        $safe = array_intersect_key($entry->extra, array_flip([
+            'refusal_reason',
+            'confidence',
+            'primary_count',
+            'expanded_count',
+            'rejected_count',
+        ]));
+
+        return $safe + ['anonymous' => true];
     }
 }

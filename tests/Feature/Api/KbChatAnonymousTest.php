@@ -242,6 +242,32 @@ final class KbChatAnonymousTest extends TestCase
         $this->assertStringContainsString('[REDACTED]', $gap->query_text);
     }
 
+    public function test_anonymous_minimal_log_retains_nonpii_operational_extra(): void
+    {
+        // The minimal anonymous row keeps an ALLOWLISTED slice of `extra`
+        // (refusal_reason + chunk counts) so refusal/retrieval dashboards still
+        // work, while never persisting the question/answer/attribution.
+        config()->set('chat-log.enabled', true);
+        config()->set('chat-log.driver', 'database');
+        config()->set('chat-log.anonymous_level', 'minimal');
+        $this->mockSearchWithChunks([]);
+        $this->mockAiThatMustNotBeCalled();
+
+        $this->postJson('/api/kb/chat', [
+            'question' => 'unknown thing',
+            'project_key' => 'test',
+            'anonymous' => true,
+        ])->assertOk()->assertJsonPath('refusal_reason', 'no_relevant_context');
+
+        $row = ChatLog::query()->forTenant('default')->sole();
+        $this->assertSame('no_relevant_context', $row->extra['refusal_reason'] ?? null);
+        $this->assertSame(0, $row->extra['primary_count'] ?? null);
+        $this->assertTrue((bool) ($row->extra['anonymous'] ?? false));
+        // Still no PII / attribution on the row.
+        $this->assertSame('', $row->question);
+        $this->assertNull($row->user_id);
+    }
+
     public function test_non_anonymous_turn_is_unaffected(): void
     {
         // The flag defaults to false → existing callers behave exactly as

@@ -74,18 +74,26 @@ export function AnonymousChatView(): ReactNode {
         }
     };
 
-    const state = configQuery.isLoading
+    // Internal render discriminator — `disabled` is a distinct terminal
+    // landing (feature off). The DOM `data-state` attribute, however, stays
+    // within the shared SPA observable contract (`loading|error|empty|ready`):
+    // the disabled landing maps to `empty` (a terminal state with no content),
+    // while the precise "feature off" reason is carried by the inner
+    // `data-testid="anonymous-chat-disabled"` block — so cross-SPA tooling that
+    // keys off `data-state` keeps working.
+    const phase = configQuery.isLoading
         ? 'loading'
         : configQuery.isError
             ? 'error'
             : configQuery.data?.enabled
                 ? 'ready'
                 : 'disabled';
+    const dataState = phase === 'disabled' ? 'empty' : phase;
 
     return (
         <div
             data-testid="anonymous-chat-view"
-            data-state={state}
+            data-state={dataState}
             style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}
         >
             <header
@@ -113,13 +121,13 @@ export function AnonymousChatView(): ReactNode {
 
             <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
                 <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {state === 'loading' && (
+                    {phase === 'loading' && (
                         <p data-testid="anonymous-chat-loading" style={{ color: 'var(--fg-3)', fontSize: 13 }}>
                             Checking availability…
                         </p>
                     )}
 
-                    {state === 'error' && (
+                    {phase === 'error' && (
                         <div
                             data-testid="anonymous-chat-error"
                             role="alert"
@@ -138,7 +146,7 @@ export function AnonymousChatView(): ReactNode {
                         </div>
                     )}
 
-                    {state === 'disabled' && (
+                    {phase === 'disabled' && (
                         <div
                             data-testid="anonymous-chat-disabled"
                             role="status"
@@ -157,7 +165,7 @@ export function AnonymousChatView(): ReactNode {
                         </div>
                     )}
 
-                    {state === 'ready' && (
+                    {phase === 'ready' && (
                         <>
                             <AnonymousChatBanner />
 
@@ -186,7 +194,7 @@ export function AnonymousChatView(): ReactNode {
                 </div>
             </div>
 
-            {state === 'ready' && (
+            {phase === 'ready' && (
                 <div style={{ borderTop: '1px solid var(--hairline)', padding: 14 }}>
                     <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                         <label htmlFor="anonymous-chat-input" className="sr-only" style={srOnly}>

@@ -66,6 +66,9 @@ describe('AnonymousChatView', () => {
         expect(await screen.findByTestId('anonymous-chat-disabled')).toBeInTheDocument();
         // No composer when disabled.
         expect(screen.queryByTestId('anonymous-chat-input')).not.toBeInTheDocument();
+        // The wrapper data-state stays within the shared observable contract:
+        // the disabled landing maps to `empty`, never a bespoke `disabled` value.
+        expect(screen.getByTestId('anonymous-chat-view')).toHaveAttribute('data-state', 'empty');
     });
 
     it('surfaces a config-probe failure as an error, not a silent disabled state (R14)', async () => {
