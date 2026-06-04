@@ -178,15 +178,30 @@ textarea:focus-visible {
   animation: caret-blink 0.9s steps(1) infinite;
 }
 
-/* moving accent border (for focus'd composer) */
-@keyframes rot { to { transform: rotate(360deg); } }
+/* moving accent border (for focus'd composer)
+ *
+ * The accent travels around the border by animating the conic-gradient's
+ * START ANGLE — NOT by rotating the pseudo-element. Rotating the element
+ * (`transform: rotate`) spun the whole non-square rectangle, so its corners
+ * swept far outside the box and drew a diagonal "comet tail" across the
+ * screen. Animating `--angle` keeps the box perfectly still while the
+ * gradient sweeps along the edge. `@property` is required so the custom
+ * property is interpolated as an <angle> (browsers can't animate an
+ * untyped custom property). Where @property is unsupported the border
+ * just renders static — graceful, no overflow. */
+@property --glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes glow-rot { to { --glow-angle: 360deg; } }
 .glow-frame { position: relative; isolation: isolate; }
 .glow-frame::before {
   content: '';
   position: absolute; inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: conic-gradient(from 0deg, #8b5cf6, #22d3ee, #8b5cf6);
+  background: conic-gradient(from var(--glow-angle), #8b5cf6, #22d3ee, #8b5cf6);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -195,7 +210,7 @@ textarea:focus-visible {
   pointer-events: none;
   transition: opacity .25s;
 }
-.glow-frame.on::before { opacity: 1; animation: rot 6s linear infinite; }
+.glow-frame.on::before { opacity: 1; animation: glow-rot 6s linear infinite; }
 
 /* subtle grid overlay */
 .grid-bg {
