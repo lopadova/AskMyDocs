@@ -36,7 +36,9 @@ export function AnonymousChatView(): ReactNode {
     const navigate = useNavigate();
     const [turns, setTurns] = useState<AnonymousTurn[]>([]);
     const [draft, setDraft] = useState('');
-    const threadRef = useRef<HTMLDivElement | null>(null);
+    // Sentinel at the very end of the thread — scrolled into view after a turn
+    // resolves so the latest answer shows even when the thread overflows.
+    const endRef = useRef<HTMLDivElement | null>(null);
 
     const configQuery = useQuery({
         queryKey: ['anonymous-chat-config'],
@@ -51,7 +53,7 @@ export function AnonymousChatView(): ReactNode {
         },
         onSuccess: (answer) => {
             setTurns((prev) => patchLastTurn(prev, { answer, error: null }));
-            scrollToEnd(threadRef.current);
+            scrollToEnd(endRef.current);
         },
         onError: (err) => {
             setTurns((prev) => patchLastTurn(prev, { answer: null, error: err.message || 'Request failed.' }));
@@ -170,7 +172,6 @@ export function AnonymousChatView(): ReactNode {
                             <AnonymousChatBanner />
 
                             <div
-                                ref={threadRef}
                                 data-testid="anonymous-chat-thread"
                                 role="log"
                                 aria-live="polite"
@@ -188,6 +189,9 @@ export function AnonymousChatView(): ReactNode {
                                 {turns.map((turn, i) => (
                                     <AnonymousTurnBlock key={i} index={i} turn={turn} />
                                 ))}
+                                {/* Sentinel scrolled into view after each turn resolves so the
+                                    newest answer is visible even when the thread overflows. */}
+                                <div ref={endRef} aria-hidden="true" />
                             </div>
                         </>
                     )}
@@ -292,8 +296,10 @@ function patchLastTurn(turns: AnonymousTurn[], patch: Partial<AnonymousTurn>): A
 }
 
 function scrollToEnd(el: HTMLElement | null): void {
-    // `scrollIntoView` is unimplemented in jsdom and absent on some older
-    // engines — guard so a missing impl can never break the success path.
+    // `el` is the end-of-thread sentinel, so scrolling IT into view reveals the
+    // newest answer regardless of thread height. `scrollIntoView` is
+    // unimplemented in jsdom and absent on some older engines — guard so a
+    // missing impl can never break the success path.
     if (!el || typeof el.scrollIntoView !== 'function') {
         return;
     }

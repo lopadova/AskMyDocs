@@ -11,10 +11,13 @@ use App\Models\ChatLog;
 use App\Models\Conversation;
 use App\Models\KbSearchFailure;
 use App\Models\Message;
+use App\Models\User;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\SearchResult;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Sanctum;
 use Mockery;
 use Tests\TestCase;
 
@@ -48,6 +51,20 @@ final class KbChatAnonymousTest extends TestCase
         parent::setUp();
 
         Route::post('/api/kb/chat', KbChatController::class)->name('api.kb.chat');
+
+        // Decision 1 — "anonymous" is an AUTHENTICATED user whose turn is not
+        // saved. Act as a real user so the minimal-log test proves attribution
+        // (user_id) is dropped DESPITE there being an authenticated caller.
+        // User::create (no factory in this Testbench app — mirrors makeUser()
+        // in ChatExtrasControllerTest); refresh re-hydrates tenant_id via the
+        // BelongsToTenant boot hook.
+        $user = User::create([
+            'name' => 'anon-tester',
+            'email' => 'anon-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $user->refresh();
+        Sanctum::actingAs($user);
 
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_chunks_required', 1);

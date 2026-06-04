@@ -347,8 +347,10 @@ export const anonymousChatApi = {
     /**
      * Send one anonymous turn. The BE force-masks PII before retrieval / LLM /
      * log, never persists a conversation, and logs only minimally — see
-     * KbChatController. `filters` is omitted when empty so the BE legacy
-     * project fallback still applies (R20).
+     * KbChatController. Anonymous chat carries no project scope of its own (no
+     * `project_key` is ever sent); `filters` is the only retrieval-scoping
+     * surface and is omitted from the payload entirely when empty so the
+     * request shape stays minimal.
      */
     async send(question: string, filters?: FilterState): Promise<AnonymousChatAnswer> {
         const payload: Record<string, unknown> = { question, anonymous: true };

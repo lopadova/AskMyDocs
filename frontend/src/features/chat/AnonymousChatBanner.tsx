@@ -6,8 +6,10 @@ import { type ReactNode } from 'react';
  * Anonymous chats are authenticated but NOT saved: no conversation row, no
  * message rows, and only a minimal by-norm `chat_logs` entry (or none). The
  * banner makes that contract visible so the user understands the turn will be
- * lost on refresh and that PII is still force-redacted before it leaves the
- * browser boundary.
+ * lost on refresh and that the server force-redacts PII from the question
+ * before it is used for retrieval, sent to the AI model, or logged. (The
+ * redaction runs server-side, not in the browser — the copy below avoids
+ * implying client-side scrubbing.)
  *
  * Visual contract mirrors {@link RefusalNotice}: neutral (not destructive),
  * info glyph, `role="status"` + `aria-live="polite"` so AT announces it on
@@ -64,7 +66,8 @@ export function AnonymousChatBanner(): ReactNode {
             </span>
             <span data-testid="anonymous-chat-banner-body">
                 <strong>Anonymous chat</strong> — this conversation is not saved and is lost on
-                refresh. PII is still redacted before your question leaves the page.
+                refresh. The server still redacts PII from your question before it is used for
+                retrieval, sent to the AI model, or logged.
             </span>
         </div>
     );
