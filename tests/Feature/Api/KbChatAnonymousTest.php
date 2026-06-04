@@ -56,14 +56,15 @@ final class KbChatAnonymousTest extends TestCase
         // saved. Act as a real user so the minimal-log test proves attribution
         // (user_id) is dropped DESPITE there being an authenticated caller.
         // User::create (no factory in this Testbench app — mirrors makeUser()
-        // in ChatExtrasControllerTest); refresh re-hydrates tenant_id via the
-        // BelongsToTenant boot hook.
+        // in ChatExtrasControllerTest). The `users` table is intentionally NOT
+        // tenant-scoped (no tenant_id column / no BelongsToTenant) — tenancy is
+        // header/default-driven since the v8.0.3 isolation hotfix — so no
+        // tenant re-hydration is needed here.
         $user = User::create([
             'name' => 'anon-tester',
             'email' => 'anon-'.uniqid().'@demo.local',
             'password' => Hash::make('secret123'),
         ]);
-        $user->refresh();
         Sanctum::actingAs($user);
 
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
