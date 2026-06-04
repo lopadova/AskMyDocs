@@ -148,8 +148,8 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk()->assertJsonPath('answer', 'Grounded answer');
 
-        $this->assertSame(0, Conversation::query()->count());
-        $this->assertSame(0, Message::query()->count());
+        $this->assertSame(0, Conversation::query()->forTenant('default')->count());
+        $this->assertSame(0, Message::query()->forTenant('default')->count());
     }
 
     public function test_anonymous_turn_masks_pii_before_it_reaches_the_provider(): void
@@ -188,7 +188,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ], ['X-Session-Id' => 'client-stable-session-123'])->assertOk();
 
-        $row = ChatLog::query()->sole();
+        $row = ChatLog::query()->forTenant('default')->sole();
         $this->assertSame('', $row->question);
         $this->assertSame('', $row->answer);
         $this->assertNull($row->user_id);
@@ -219,7 +219,7 @@ final class KbChatAnonymousTest extends TestCase
             'anonymous' => true,
         ])->assertOk();
 
-        $this->assertSame(0, ChatLog::query()->count());
+        $this->assertSame(0, ChatLog::query()->forTenant('default')->count());
     }
 
     public function test_anonymous_refusal_records_redacted_content_gap_without_llm(): void
@@ -258,7 +258,7 @@ final class KbChatAnonymousTest extends TestCase
             'project_key' => 'test',
         ])->assertOk()->assertJsonPath('answer', 'Grounded answer');
 
-        $row = ChatLog::query()->sole();
+        $row = ChatLog::query()->forTenant('default')->sole();
         // Full logging — the question is preserved on a normal turn.
         $this->assertSame('Plain question, no flag', $row->question);
         $this->assertFalse((bool) ($row->extra['anonymous'] ?? false));
