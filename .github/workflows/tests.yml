@@ -337,6 +337,16 @@ jobs:
           # E2E_SKIP_WEBSERVER=1.)
           AI_PROVIDER: fake
           AI_EMBEDDINGS_PROVIDER: fake
+          # v8.8.3 — anonymous chat ON for the Playwright run so
+          # anonymous-chat.spec.ts exercises the real stateless /api/kb/chat
+          # turn end-to-end. CI skips playwright.config.ts's webServer block
+          # (E2E_SKIP_WEBSERVER=1), so the flag the config sets there does NOT
+          # reach this server — it must be declared on THIS step's env. Read at
+          # runtime (no config:cache), so config('kb.anonymous_chat.enabled')
+          # resolves true. The OFF / 422-reject state is covered by
+          # KbChatAnonymousTest (phpunit) + the AnonymousChatView disabled
+          # landing (Vitest), per R43.
+          KB_ANONYMOUS_CHAT_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

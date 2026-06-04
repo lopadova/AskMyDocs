@@ -2,21 +2,16 @@
  * Cross-mount port of `vendor/padosoft/eval-harness-ui/resources/js/
  * components/layout/AppShell.tsx`.
  *
- * Three material differences vs the upstream `AppShell.tsx`:
+ * Phase 2 (unified-admin) — center-only embed. This copy is mounted ONLY
+ * inside the AskMyDocs admin shell, which already provides the single
+ * primary rail + topbar + breadcrumb. So the package's own redundant
+ * chrome is dropped: no second header ("Eval Harness UI / Eval Harness
+ * Admin") and no second sidebar. The six section links render as a slim
+ * in-content tab strip instead — no nested chrome.
  *
- *   1. Class names rebadged to cross-mount-scoped equivalents
- *      (`ehu-panel`, `ehu-rounded`) so they match the styles defined
- *      in `cross-mount/eval-harness-ui.css` instead of relying on the
- *      package's Tailwind v3 component-layer plugin.
- *
- *   2. The outer wrapper class drops `min-h-screen` (the host's
- *      `<div data-testid="admin-eval-harness-host">` already owns the
- *      layout flex/min-h chain) and adds the `ehu-shell` wrapper class
- *      that the cross-mount CSS scopes its tokens under.
- *
- *   3. Added stable `data-testid` hooks on the shell + nav items so
- *      vitest + Playwright can drive navigation deterministically (R11).
- *      NavLink's `aria-current="page"` semantics are preserved verbatim.
+ * Differences vs upstream preserved: cross-mount-scoped class names
+ * (`ehu-panel`, `ehu-rounded`, `ehu-shell`), stable `data-testid` hooks on
+ * the shell + nav items, and NavLink `aria-current="page"` semantics.
  */
 import { NavLink } from 'react-router-dom';
 import { ReactNode } from 'react';
@@ -31,49 +26,31 @@ const navItems = [
   { to: '/live-batches', key: 'nav_live_batches', testid: 'admin-eval-harness-nav-live-batches' },
 ];
 
-const AppShell = ({ title, version, children }: { title: string; version: string; children: ReactNode }) => {
+const AppShell = ({ children }: { title?: string; version?: string; children: ReactNode }) => {
   const { t } = useI18n();
 
   return (
-    <div className="ehu-shell bg-slate-50 text-slate-900" data-testid="admin-eval-harness-app">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-xl font-semibold">{title}</h1>
-            <p className="text-xs text-slate-500">v {version}</p>
-          </div>
-          <span className="text-xs text-slate-500">{t('nav_admin_label', 'Eval Harness Admin')}</span>
-        </div>
-      </header>
-      <div className="mx-auto flex w-full max-w-7xl gap-4 px-6 py-4">
-        <aside className="w-56">
-          <nav className="ehu-panel ehu-rounded" aria-label={t('nav_admin_label', 'Eval Harness Admin')}>
-            <ul className="space-y-1">
-              {navItems.map((item) => (
-                <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.to === '/'}
-                    data-testid={item.testid}
-                    className={({ isActive }) =>
-                      `block ehu-rounded px-3 py-2 text-sm ${
-                        isActive ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-                      }`
-                    }
-                  >
-                    {t(item.key)}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </nav>
-        </aside>
-        <section className="min-h-[calc(100vh-88px)] flex-1">
-          <div className="ehu-panel min-h-full">
-            {children}
-          </div>
-        </section>
-      </div>
+    <div className="ehu-shell ehu-embedded text-slate-900" data-testid="admin-eval-harness-app">
+      <nav
+        className="ehu-tabs"
+        aria-label={t('nav_admin_label', 'Eval Harness sections')}
+        data-testid="admin-eval-harness-tabs"
+      >
+        {navItems.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            data-testid={item.testid}
+            className={({ isActive }) => (isActive ? 'ehu-tab is-active' : 'ehu-tab')}
+          >
+            {t(item.key)}
+          </NavLink>
+        ))}
+      </nav>
+      <section className="ehu-content">
+        <div className="ehu-panel min-h-full">{children}</div>
+      </section>
     </div>
   );
 };

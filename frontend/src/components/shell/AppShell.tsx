@@ -1,36 +1,42 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
-import { Sidebar, type SidebarSection } from './Sidebar';
+import { Sidebar } from './Sidebar';
+import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
 import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS, type Project } from '../../lib/seed';
+import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
 
-const SECTION_ROUTES: Record<SidebarSection, string> = {
-    chat: '/app/chat',
-    dashboard: '/app/dashboard',
-    kb: '/app/kb',
-    insights: '/app/insights',
-    users: '/app/users',
-    'ai-act-compliance': '/app/admin/ai-act-compliance',
-    connectors: '/app/admin/connectors',
-    logs: '/app/logs',
-    maintenance: '/app/maintenance',
-    'pii-redactor': '/app/admin/pii-redactor',
-    flows: '/app/admin/flows',
-    'eval-harness': '/app/admin/eval-harness',
-};
+// Active-section detection is centralised in nav-config.deriveSection, which
+// resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
+// not its parent `kb`). We feed it the router's fuzzy matcher — EXCEPT for the
+// bare `/app/admin` (Dashboard) root, matched exactly. That root is a prefix of
+// every admin sub-page, including `/app/admin/notifications` which has NO nav
+// entry of its own; fuzzy-matching the root there would mis-highlight
+// Dashboard. Exact match leaves it unhighlighted instead, while a real
+// section's deeper sub-pages still resolve to their own (longer) route fuzzily
+// — e.g. `/app/admin/kb/time-machine/$docId` matches `kb` (Knowledge).
+function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection | null {
+    return deriveSection((route) => Boolean(match({ to: route, fuzzy: route !== '/app/admin' })));
+}
 
-function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection {
-    const entries = Object.entries(SECTION_ROUTES) as [SidebarSection, string][];
-    for (const [section, path] of entries) {
-        if (match({ to: path, fuzzy: true })) {
-            return section;
-        }
-    }
-    return 'chat';
+// The sidebar footer shows ONE role label. Pick the most privileged of the
+// user's real Spatie roles (from `/api/auth/me`) so the label matches what
+// the RBAC guards actually grant — e.g. an `admin` user is shown `admin`,
+// not the seed-constant `super-admin` that the static USERS[0] fixture
+// carried (which made the super-admin-only screens look mis-gated).
+// Typed to the SeedUser role union (which now covers all five real system
+// roles) so the picked value flows into the sidebar label with no cast. A
+// user whose roles fall entirely outside this set yields null → the caller
+// falls back to the least-privileged `viewer`; we deliberately do NOT surface
+// an unknown raw role string, which is what the old `?? roles[0]` fallback +
+// cast smuggled through.
+const ROLE_PRIORITY: SeedUser['role'][] = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'];
+
+function pickPrimaryRole(roles: string[]): SeedUser['role'] | null {
+    return ROLE_PRIORITY.find((r) => roles.includes(r)) ?? null;
 }
 
 /*
@@ -49,12 +55,20 @@ export function AppShell() {
     const section = deriveSectionFromMatch(matchRoute);
     const storeUser = useAuthStore((s) => s.user);
     const storeProjects = useAuthStore((s) => s.projects);
+    const storeRoles = useAuthStore((s) => s.roles);
 
     const sidebarUser = storeUser
         ? {
               ...USERS[0],
               name: storeUser.name,
               email: storeUser.email,
+              // Real role from the auth store, not the USERS[0] seed constant
+              // (which always read `super-admin` and mislabelled every user).
+              // pickPrimaryRole returns the SeedUser role union (or null); when
+              // the user has no known role we fall back to the LEAST-privileged
+              // `viewer` rather than the seed's `super-admin`, so an empty /
+              // unrecognised roles array can never mislabel someone as an admin.
+              role: pickPrimaryRole(storeRoles) ?? 'viewer',
               avatar: storeUser.name
                   .split(' ')
                   .map((part) => part[0])
@@ -134,7 +148,7 @@ export function AppShell() {
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}
-                    crumbs={[section.charAt(0).toUpperCase() + section.slice(1)]}
+                    crumbs={[NAV_ITEMS.find((i) => i.id === section)?.label ?? 'Admin']}
                 />
                 <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     <Outlet />
@@ -150,7 +164,7 @@ export function AppShell() {
                 setDensity={setDensity}
                 font={font}
                 setFont={setFont}
-                section={section}
+                section={section ?? 'chat'}
                 setSection={onNav}
             />
         </div>

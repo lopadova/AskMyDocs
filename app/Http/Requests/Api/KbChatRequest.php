@@ -55,6 +55,12 @@ final class KbChatRequest extends FormRequest
         return [
             'question' => ['required', 'string', 'max:10000'],
 
+            // v8.8.3 — opt into an anonymous turn: still fully guarded (tenant /
+            // RBAC / PII redaction / AI-Act / grounding) but NOT persisted as a
+            // conversation and logged only minimally. The controller rejects it
+            // with 422 when `kb.anonymous_chat.enabled` is false (R43).
+            'anonymous' => ['nullable', 'boolean'],
+
             // Legacy single-project key — kept for back-compat with every
             // pre-T2.2 caller. When `filters.project_keys` is also passed,
             // the latter wins (see toFilters()).
@@ -166,6 +172,12 @@ final class KbChatRequest extends FormRequest
 
         $legacy = $this->input('project_key');
         return $legacy === null || $legacy === '' ? null : (string) $legacy;
+    }
+
+    /** Whether the caller opted into an anonymous (non-persisted) turn. */
+    public function isAnonymous(): bool
+    {
+        return $this->boolean('anonymous');
     }
 
     private function normaliseDate(mixed $raw): ?string

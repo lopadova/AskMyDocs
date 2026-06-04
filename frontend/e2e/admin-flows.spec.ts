@@ -57,14 +57,48 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         await expect(page).toHaveURL(/\/app\/admin\/flows$/);
         await expect(page.getByTestId('admin-flows-host')).toBeVisible({ timeout: 15_000 });
 
-        // The iframe element itself is mounted unconditionally. The
-        // visibility of its CONTENTS depends on FLOW_ADMIN_ENABLED —
-        // which defaults to false in CI/dev — so we only assert the
-        // wrapper element exists, not that it loads. (When the
-        // operator flips the env var on, a follow-up smoke test under
-        // the trusted-env setup would assert iframe content too.)
-        await expect(page.getByTestId('admin-flows-iframe')).toBeAttached();
+        // Phase 2: the cockpit is no longer iframe-embedded (it brought its
+        // own full Blade chrome). The native host landing always exposes the
+        // _blank launcher to the standalone cockpit — independent of
+        // FLOW_ADMIN_ENABLED (which defaults to false in CI/dev), so this
+        // assertion doesn't race the package master-switch.
+        const openCockpit = page.getByTestId('admin-flows-open-cockpit');
+        await expect(openCockpit).toBeVisible();
+        await expect(openCockpit).toHaveAttribute('href', '/admin/flows');
+        await expect(openCockpit).toHaveAttribute('target', '_blank');
+        // No nested iframe any more.
+        await expect(page.locator('iframe')).toHaveCount(0);
     });
+
+    seededTest(
+        // R13: failure injection — the happy path above covers the real-data
+        // flow (open-cockpit button, no iframe). This test injects a 503 from
+        // the live-throughput probe so the error banner is exercised without
+        // depending on the Flow cockpit being installed in CI.
+        'failure — live-throughput probe returns 503 → error banner visible, open-cockpit still reachable (R13: failure injection)',
+        async ({ page }) => {
+            // Intercept the probe before navigating so the fetch racing the
+            // component mount is caught deterministically.
+            // R13: failure injection
+            await page.route('**/admin/flows/api/live', (route) =>
+                route.fulfill({ status: 503, body: 'Service Unavailable' }),
+            );
+
+            await page.goto('/app/admin/flows');
+            await expect(page.getByTestId('admin-flows-host')).toBeVisible({ timeout: 15_000 });
+
+            // Error banner must surface — not silently 0/0/0.
+            await expect(page.getByTestId('admin-flows-error')).toBeVisible();
+            await expect(page.getByTestId('admin-flows-host')).toHaveAttribute('data-state', 'error');
+
+            // The "Open Flow cockpit" button MUST still be present so
+            // operators can reach the cockpit even when the probe is down.
+            await expect(page.getByTestId('admin-flows-open-cockpit')).toBeVisible();
+
+            // KPI grid must NOT render while in error state.
+            await expect(page.getByTestId('admin-flows-kpi-total')).toHaveCount(0);
+        },
+    );
 });
 
 baseTest.describe('Admin Flows — viewer (RBAC denied)', () => {

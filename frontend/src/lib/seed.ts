@@ -17,7 +17,7 @@ export type SeedUser = {
     id: number;
     name: string;
     email: string;
-    role: 'super-admin' | 'admin' | 'editor' | 'viewer';
+    role: 'super-admin' | 'admin' | 'dpo' | 'editor' | 'viewer';
     projects: string[];
     active: boolean;
     last: string;

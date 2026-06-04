@@ -36,37 +36,31 @@ import { test as seededTest } from './fixtures';
  */
 
 seededTest.describe('Admin Eval Harness — admin (cross-mount + nav)', () => {
-    seededTest('happy — sidebar entry navigates to admin/eval-harness and renders the cross-mounted shell', async ({
+    seededTest('happy — sidebar entry routes to admin/eval-harness and degrades cleanly when the data API is unwired', async ({
         page,
     }) => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
-        // Sidebar entry exposes the new section. The button label is
-        // 'Eval Harness' — find it via the accessible name (R11) and
-        // click; it routes to /app/admin/eval-harness.
+        // Sidebar entry exposes the section. Label is 'Eval Harness' (R11).
         const navButton = page.getByRole('button', { name: 'Eval Harness', exact: true });
         await expect(navButton).toBeVisible();
         await navButton.click();
 
-        // Route lands on the host component. The host's
-        // data-testid="admin-eval-harness-host" wrapper carries
-        // data-mount="cross-mount" so the test deterministically
-        // confirms we're on the cross-mounted shell, not the iframe
-        // predecessor (R16: name promises cross-mount, body asserts
-        // cross-mount).
         await expect(page).toHaveURL(/\/app\/admin\/eval-harness$/);
         const host = page.getByTestId('admin-eval-harness-host');
         await expect(host).toBeVisible({ timeout: 15_000 });
         await expect(host).toHaveAttribute('data-mount', 'cross-mount');
 
-        // The cross-mounted SPA's `<AppShell />` mounts directly into
-        // the host's React tree (no iframe element to look up). The
-        // sidebar is part of the cross-mount; assert ONE actionable
-        // nav item is reachable so the cross-mount has truly hydrated
-        // beyond the wrapper.
-        await expect(page.getByTestId('admin-eval-harness-app')).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByTestId('admin-eval-harness-nav-dashboard')).toBeVisible();
+        // EVAL_HARNESS_UI_ENABLED is off by default in CI/dev, so the package's
+        // data API is unwired — the host probes it and shows a single clean
+        // "unavailable" landing instead of mounting the cross-mount and letting
+        // it render a storm of error panels / a raw 500 (the hardening that
+        // makes the feature safe whether the flag is on OR off). data-state
+        // settles to 'unavailable', the SPA does NOT mount.
+        await expect(host).toHaveAttribute('data-state', 'unavailable');
+        await expect(page.getByTestId('admin-eval-harness-unavailable')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('admin-eval-harness-app')).toHaveCount(0);
     });
 });
 

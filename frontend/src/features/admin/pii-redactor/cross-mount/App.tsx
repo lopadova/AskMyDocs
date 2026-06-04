@@ -71,7 +71,18 @@ const nav: Array<{ page: Page; label: string; icon: React.ComponentType<{ size?:
     { page: 'settings', label: 'Settings', icon: Settings },
 ];
 
-export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdminConfig }) {
+export default function PiiRedactorAdminApp({
+    config,
+    embedded = false,
+}: {
+    config: PiiRedactorAdminConfig;
+    // When mounted inside the AskMyDocs admin shell (the default for the host
+    // cross-mount), drop this app's OWN sidebar — the host already provides
+    // the single primary rail — and render the section nav as an in-content
+    // tab strip instead, so there is no second sidebar. Standalone use
+    // (embedded=false) keeps the full sidebar chrome.
+    embedded?: boolean;
+}) {
     const [page, setPage] = useState<Page>('overview');
     const [status, setStatus] = useState<StatusPayload | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -107,34 +118,37 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
 
     return (
         <div
-            className="pra-shell"
+            className={embedded ? 'pra-shell is-embedded' : 'pra-shell'}
             data-testid="admin-pii-redactor-app"
+            data-embedded={embedded ? 'true' : 'false'}
             data-page={page}
             data-status-state={status === null ? (error ? 'error' : 'loading') : 'ready'}
         >
-            <aside className="pra-sidebar" aria-label="PII Redactor sections">
-                <div className="pra-brand">
-                    <div className="pra-mark"><KeyRound size={18} /></div>
-                    <div>
-                        <strong>PII Redactor</strong>
-                        <span>Admin console</span>
+            {!embedded && (
+                <aside className="pra-sidebar" aria-label="PII Redactor sections">
+                    <div className="pra-brand">
+                        <div className="pra-mark"><KeyRound size={18} /></div>
+                        <div>
+                            <strong>PII Redactor</strong>
+                            <span>Admin console</span>
+                        </div>
                     </div>
-                </div>
-                <nav className="pra-nav">
-                    {nav.map(({ page: item, label, icon: Icon }) => (
-                        <button
-                            key={item}
-                            type="button"
-                            className={page === item ? 'is-active' : ''}
-                            data-testid={`admin-pii-redactor-nav-${item}`}
-                            aria-current={page === item ? 'page' : undefined}
-                            onClick={() => setPage(item)}
-                        >
-                            <Icon size={16} /> {label}
-                        </button>
-                    ))}
-                </nav>
-            </aside>
+                    <nav className="pra-nav">
+                        {nav.map(({ page: item, label, icon: Icon }) => (
+                            <button
+                                key={item}
+                                type="button"
+                                className={page === item ? 'is-active' : ''}
+                                data-testid={`admin-pii-redactor-nav-${item}`}
+                                aria-current={page === item ? 'page' : undefined}
+                                onClick={() => setPage(item)}
+                            >
+                                <Icon size={16} /> {label}
+                            </button>
+                        ))}
+                    </nav>
+                </aside>
+            )}
             <main className="pra-main">
                 <header className="pra-topbar">
                     <div>
@@ -154,6 +168,22 @@ export default function PiiRedactorAdminApp({ config }: { config: PiiRedactorAdm
                         </button>
                     </div>
                 </header>
+                {embedded && (
+                    <nav className="pra-tabs" aria-label="PII Redactor sections" data-testid="admin-pii-redactor-tabs">
+                        {nav.map(({ page: item, label, icon: Icon }) => (
+                            <button
+                                key={item}
+                                type="button"
+                                className={page === item ? 'is-active' : ''}
+                                data-testid={`admin-pii-redactor-nav-${item}`}
+                                aria-current={page === item ? 'page' : undefined}
+                                onClick={() => setPage(item)}
+                            >
+                                <Icon size={14} /> {label}
+                            </button>
+                        ))}
+                    </nav>
+                )}
                 {error && (
                     <div className="pra-alert" role="alert" data-testid="admin-pii-redactor-status-error">
                         {error}
