@@ -1,6 +1,23 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Ban, Code2, Info, KeyRound, Plus, RotateCw, Trash2 } from 'lucide-react';
+
 import { api } from '../../../lib/api';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { CopyButton } from './CopyButton';
+import { EmbedCodeDialog } from './EmbedCodeDialog';
 
 /**
  * WidgetKey row as returned by the admin API.
@@ -30,17 +47,53 @@ interface CreateKeyResponse {
     public_key: string;
 }
 
-interface RotateKeyResponse {
-    data: WidgetKeyRow;
-    plain_secret: string;
-    public_key: string;
+type RotateKeyResponse = CreateKeyResponse;
+
+/** Target passed to the embed-code dialog (with the secret only right after create/rotate). */
+interface EmbedTarget {
+    publicKey: string;
+    projectKey: string;
+    label: string;
+    allowedOrigins: string[];
+    secret?: string;
+}
+
+/** Pull a human message out of an axios error (422 validation first, then message). */
+function extractApiError(err: unknown): string {
+    const data = (
+        err as {
+            response?: { data?: { message?: string; errors?: Record<string, string[]> } };
+        }
+    )?.response?.data;
+
+    if (data?.errors) {
+        const first = Object.values(data.errors)[0];
+        if (Array.isArray(first) && first.length > 0) {
+            return first[0];
+        }
+    }
+    if (typeof data?.message === 'string' && data.message !== '') {
+        return data.message;
+    }
+    const msg = (err as { message?: string })?.message;
+
+    return typeof msg === 'string' && msg !== ''
+        ? msg
+        : 'Something went wrong. Please try again.';
+}
+
+/** Absolute origin of THIS AskMyDocs instance — the widget's script + API base. */
+function instanceOrigin(): string {
+    return typeof window !== 'undefined' ? window.location.origin : '';
 }
 
 /**
  * M6.4 — Widget admin keys management view.
  *
- * Features: list keys, create, rotate (regenerate pk_ + sk_), revoke (is_active=false),
- * destroy, view allowed_origins, session count. R11 testids, R15 a11y, R14 states.
+ * Lists keys, creates / rotates / revokes / deletes them, and — new in
+ * this iteration — explains every field inline and generates the
+ * copy-paste embed snippet for the host site via {@link EmbedCodeDialog}.
+ * R11 testids, R14 surfaced failures, R15 a11y.
  */
 export function WidgetKeysView() {
     const qc = useQueryClient();
@@ -48,8 +101,11 @@ export function WidgetKeysView() {
     const [newLabel, setNewLabel] = useState('');
     const [newProjectKey, setNewProjectKey] = useState('');
     const [newOrigins, setNewOrigins] = useState('');
+    const [newRateLimit, setNewRateLimit] = useState('');
+    const [newSkill, setNewSkill] = useState('');
     const [rotatedCreds, setRotatedCreds] = useState<RotateKeyResponse | null>(null);
     const [createdCreds, setCreatedCreds] = useState<CreateKeyResponse | null>(null);
+    const [embedTarget, setEmbedTarget] = useState<EmbedTarget | null>(null);
 
     const keys = useQuery({
         queryKey: ['admin-widget-keys'],
@@ -59,24 +115,43 @@ export function WidgetKeysView() {
         },
     });
 
+    const resetCreateForm = () => {
+        setNewLabel('');
+        setNewProjectKey('');
+        setNewOrigins('');
+        setNewRateLimit('');
+        setNewSkill('');
+    };
+
     const createKey = useMutation({
         mutationFn: async () => {
             const origins = newOrigins
-                .split(',')
-                .map((s: string) => s.trim())
+                .split(/[\n,]/)
+                .map((s) => s.trim())
                 .filter(Boolean);
-            const { data } = await api.post<CreateKeyResponse>('/api/admin/widget-keys', {
+
+            const payload: Record<string, unknown> = {
                 label: newLabel.trim(),
                 project_key: newProjectKey.trim(),
                 allowed_origins: origins,
-            });
+            };
+            const rate = Number.parseInt(newRateLimit, 10);
+            if (newRateLimit.trim() !== '' && Number.isFinite(rate)) {
+                payload.rate_limit = rate;
+            }
+            if (newSkill.trim() !== '') {
+                payload.skill = newSkill.trim();
+            }
+
+            const { data } = await api.post<CreateKeyResponse>(
+                '/api/admin/widget-keys',
+                payload,
+            );
             return data;
         },
         onSuccess: async (payload) => {
             setCreatedCreds(payload);
-            setNewLabel('');
-            setNewProjectKey('');
-            setNewOrigins('');
+            resetCreateForm();
             setShowCreate(false);
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
         },
@@ -84,7 +159,9 @@ export function WidgetKeysView() {
 
     const rotateKey = useMutation({
         mutationFn: async (id: number) => {
-            const { data } = await api.post<RotateKeyResponse>(`/api/admin/widget-keys/${id}/rotate`);
+            const { data } = await api.post<RotateKeyResponse>(
+                `/api/admin/widget-keys/${id}/rotate`,
+            );
             return data;
         },
         onSuccess: async (payload) => {
@@ -111,216 +188,487 @@ export function WidgetKeysView() {
         },
     });
 
+    const canSubmit =
+        newLabel.trim() !== '' && newProjectKey.trim() !== '' && !createKey.isPending;
+
     return (
-        <section data-testid="admin-widget-keys-view" style={{ display: 'grid', gap: 14 }}>
+        <section data-testid="admin-widget-keys-view" className="grid gap-5">
             <header>
-                <h1 style={{ margin: 0, fontSize: 22 }}>Widget Keys</h1>
-                <p style={{ marginTop: 6, color: 'var(--fg-2)' }}>
-                    Manage embeddable KITT widget credentials. Create, rotate, or revoke keys.
+                <h1 className="m-0 flex items-center gap-2 text-[22px] font-semibold">
+                    <KeyRound aria-hidden className="size-5 text-[var(--accent-a)]" />
+                    Widget Keys
+                </h1>
+                <p className="text-muted-foreground mt-1.5 text-sm">
+                    Manage embeddable KITT widget credentials. Create a key, copy the snippet,
+                    and paste it into any website to launch the AI chat widget grounded in your
+                    knowledge base.
                 </p>
             </header>
 
-            {/* Create form */}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                {!showCreate ? (
-                    <button
+            {/* How it works (R14: explain, don't assume) */}
+            <Alert variant="info">
+                <Info aria-hidden />
+                <AlertTitle>How a widget key works</AlertTitle>
+                <AlertDescription>
+                    <ol className="list-decimal space-y-0.5 pl-4">
+                        <li>
+                            Create a key and bind it to one knowledge-base project — the widget
+                            answers only from that project.
+                        </li>
+                        <li>
+                            List the websites allowed to load it under <em>Allowed origins</em>{' '}
+                            (the browser origin is enforced server-side).
+                        </li>
+                        <li>
+                            Copy the generated <code className="font-mono">&lt;script&gt;</code>{' '}
+                            snippet and paste it before{' '}
+                            <code className="font-mono">&lt;/body&gt;</code> on the host site.
+                        </li>
+                    </ol>
+                    The public key (<code className="font-mono">pk_…</code>) is safe in the
+                    browser; the secret (<code className="font-mono">sk_…</code>) is shown once at
+                    creation and is only needed for server-side proxy mode.
+                </AlertDescription>
+            </Alert>
+
+            {/* Create */}
+            {!showCreate ? (
+                <div>
+                    <Button
                         type="button"
                         data-testid="admin-widget-keys-create-btn"
                         onClick={() => setShowCreate(true)}
                     >
-                        + Create Key
-                    </button>
-                ) : (
-                    <div data-testid="admin-widget-keys-create-form" style={{ display: 'grid', gap: 6 }}>
-                        <input
-                            data-testid="admin-widget-keys-label"
-                            value={newLabel}
-                            onChange={(e) => setNewLabel(e.target.value)}
-                            placeholder="Key label (e.g. Production)"
-                            aria-label="Key label"
-                            style={{ minWidth: 320 }}
-                        />
-                        <input
-                            data-testid="admin-widget-keys-project"
-                            value={newProjectKey}
-                            onChange={(e) => setNewProjectKey(e.target.value)}
-                            placeholder="Project key"
-                            aria-label="Project key"
-                            style={{ minWidth: 320 }}
-                        />
-                        <input
-                            data-testid="admin-widget-keys-origins"
-                            value={newOrigins}
-                            onChange={(e) => setNewOrigins(e.target.value)}
-                            placeholder="Allowed origins (comma-separated)"
-                            aria-label="Allowed origins"
-                            style={{ minWidth: 320 }}
-                        />
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <button
+                        <Plus aria-hidden />
+                        Create Key
+                    </Button>
+                </div>
+            ) : (
+                <Card data-testid="admin-widget-keys-create-form">
+                    <CardHeader>
+                        <CardTitle>New widget key</CardTitle>
+                        <CardDescription>
+                            Fields marked <span className="text-destructive">*</span> are
+                            required. Everything else has a sensible default.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid gap-4">
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="wk-label">
+                                Key label <span className="text-destructive">*</span>
+                            </Label>
+                            <Input
+                                id="wk-label"
+                                data-testid="admin-widget-keys-label"
+                                value={newLabel}
+                                onChange={(e) => setNewLabel(e.target.value)}
+                                placeholder="e.g. Production website"
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                A name to recognise this key in the list. Internal only — never
+                                shown to visitors.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="wk-project">
+                                Project key <span className="text-destructive">*</span>
+                            </Label>
+                            <Input
+                                id="wk-project"
+                                data-testid="admin-widget-keys-project"
+                                value={newProjectKey}
+                                onChange={(e) => setNewProjectKey(e.target.value)}
+                                placeholder="e.g. modelsgenerator"
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                Which knowledge-base project the widget retrieves from. Answers
+                                and citations are grounded strictly in this project.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-1.5">
+                            <Label htmlFor="wk-origins">Allowed origins</Label>
+                            <Textarea
+                                id="wk-origins"
+                                data-testid="admin-widget-keys-origins"
+                                value={newOrigins}
+                                onChange={(e) => setNewOrigins(e.target.value)}
+                                placeholder={'https://acme.com\nhttps://www.acme.com'}
+                                rows={2}
+                            />
+                            <p className="text-muted-foreground text-xs">
+                                Comma- or newline-separated list of sites allowed to load the
+                                widget. The server rejects requests from any other origin. Leave
+                                empty to allow any origin — not recommended in production.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="wk-rate">Rate limit (req/min)</Label>
+                                <Input
+                                    id="wk-rate"
+                                    type="number"
+                                    min={1}
+                                    max={1000}
+                                    data-testid="admin-widget-keys-rate-limit"
+                                    value={newRateLimit}
+                                    onChange={(e) => setNewRateLimit(e.target.value)}
+                                    placeholder="60"
+                                />
+                                <p className="text-muted-foreground text-xs">
+                                    Max widget API calls per minute per visitor. Default 60.
+                                </p>
+                            </div>
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="wk-skill">Assistant skill</Label>
+                                <Input
+                                    id="wk-skill"
+                                    data-testid="admin-widget-keys-skill"
+                                    value={newSkill}
+                                    onChange={(e) => setNewSkill(e.target.value)}
+                                    placeholder="askmydocs-assistant@1"
+                                />
+                                <p className="text-muted-foreground text-xs">
+                                    The skill/persona the widget runs. Leave blank for the
+                                    default.
+                                </p>
+                            </div>
+                        </div>
+
+                        {createKey.isError && (
+                            <Alert
+                                variant="destructive"
+                                data-testid="admin-widget-keys-create-error"
+                            >
+                                <Ban aria-hidden />
+                                <AlertTitle>Could not create the key</AlertTitle>
+                                <AlertDescription>
+                                    {extractApiError(createKey.error)}
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        <div className="flex gap-2">
+                            <Button
                                 type="button"
                                 data-testid="admin-widget-keys-create-submit"
-                                disabled={newLabel.trim() === '' || newProjectKey.trim() === '' || createKey.isPending}
-                                onClick={() => void createKey.mutateAsync()}
+                                disabled={!canSubmit}
+                                onClick={() => createKey.mutate()}
                             >
-                                {createKey.isPending ? 'Creating…' : 'Create'}
-                            </button>
-                            <button
+                                {createKey.isPending ? 'Creating…' : 'Create key'}
+                            </Button>
+                            <Button
                                 type="button"
-                                onClick={() => { setShowCreate(false); setNewLabel(''); setNewProjectKey(''); setNewOrigins(''); }}
+                                variant="ghost"
+                                onClick={() => {
+                                    setShowCreate(false);
+                                    resetCreateForm();
+                                    createKey.reset();
+                                }}
                             >
                                 Cancel
-                            </button>
+                            </Button>
                         </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Created credentials – show ONCE */}
-            {createdCreds && (
-                <div data-testid="admin-widget-keys-created-creds" style={{ padding: 10, border: '1px solid var(--hairline)', borderRadius: 6 }}>
-                    <strong>Key created — copy the secret now, it won't be shown again:</strong>
-                    <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
-                        Public key:  {createdCreds.public_key}{'\n'}
-                        Secret:      {createdCreds.plain_secret}
-                    </pre>
-                    <button type="button" onClick={() => setCreatedCreds(null)} style={{ marginTop: 6 }}>
-                        Dismiss
-                    </button>
-                </div>
+                    </CardContent>
+                </Card>
             )}
 
-            {/* Rotated credentials – show ONCE */}
+            {/* Created credentials — show ONCE */}
+            {createdCreds && (
+                <CredentialsCard
+                    testId="admin-widget-keys-created-creds"
+                    title="Key created — copy the secret now, it won't be shown again"
+                    creds={createdCreds}
+                    onEmbed={() =>
+                        setEmbedTarget({
+                            publicKey: createdCreds.public_key,
+                            projectKey: createdCreds.data.project_key,
+                            label: createdCreds.data.label,
+                            allowedOrigins: createdCreds.data.allowed_origins,
+                            secret: createdCreds.plain_secret,
+                        })
+                    }
+                    onDismiss={() => setCreatedCreds(null)}
+                />
+            )}
+
+            {/* Rotated credentials — show ONCE */}
             {rotatedCreds && (
-                <div data-testid="admin-widget-keys-rotated-creds" style={{ padding: 10, border: '1px solid var(--hairline)', borderRadius: 6 }}>
-                    <strong>Credentials rotated — copy the new secret now:</strong>
-                    <pre style={{ marginTop: 8, fontSize: 12, overflowX: 'auto' }}>
-                        Public key:  {rotatedCreds.public_key}{'\n'}
-                        Secret:      {rotatedCreds.plain_secret}
-                    </pre>
-                    <button type="button" onClick={() => setRotatedCreds(null)} style={{ marginTop: 6 }}>
-                        Dismiss
-                    </button>
-                </div>
+                <CredentialsCard
+                    testId="admin-widget-keys-rotated-creds"
+                    title="Credentials rotated — copy the new secret now"
+                    creds={rotatedCreds}
+                    onEmbed={() =>
+                        setEmbedTarget({
+                            publicKey: rotatedCreds.public_key,
+                            projectKey: rotatedCreds.data.project_key,
+                            label: rotatedCreds.data.label,
+                            allowedOrigins: rotatedCreds.data.allowed_origins,
+                            secret: rotatedCreds.plain_secret,
+                        })
+                    }
+                    onDismiss={() => setRotatedCreds(null)}
+                />
             )}
 
             {/* Loading / error states (R14) */}
             {keys.isLoading && (
-                <div data-testid="admin-widget-keys-loading" style={{ color: 'var(--fg-2)' }}>
+                <div
+                    data-testid="admin-widget-keys-loading"
+                    className="text-muted-foreground text-sm"
+                >
                     Loading widget keys…
                 </div>
             )}
             {keys.isError && (
-                <div data-testid="admin-widget-keys-error" style={{ color: 'var(--color-danger)' }} role="alert">
-                    Failed to load widget keys.
-                </div>
+                <Alert variant="destructive" data-testid="admin-widget-keys-error">
+                    <Ban aria-hidden />
+                    <AlertTitle>Failed to load widget keys.</AlertTitle>
+                    <AlertDescription>{extractApiError(keys.error)}</AlertDescription>
+                </Alert>
             )}
 
-            {/* Key list */}
+            {/* Empty state */}
             {keys.data && keys.data.length === 0 && (
-                <div data-testid="admin-widget-keys-empty" style={{ color: 'var(--fg-2)' }}>
+                <div
+                    data-testid="admin-widget-keys-empty"
+                    className="text-muted-foreground rounded-lg border border-dashed border-border p-6 text-center text-sm"
+                >
                     No widget keys yet. Create one to get started.
                 </div>
             )}
 
+            {/* Key list */}
             {keys.data && keys.data.length > 0 && (
-                <table data-testid="admin-widget-keys-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                        <tr style={{ borderBottom: '1px solid var(--hairline)', textAlign: 'left' }}>
-                            <th>Label</th>
-                            <th>Public Key</th>
-                            <th>Project</th>
-                            <th>Origins</th>
-                            <th>Rate Limit</th>
-                            <th>Status</th>
-                            <th>Sessions</th>
-                            <th>Last Used</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {keys.data.map((key) => (
-                            <tr key={key.id} data-testid={`admin-widget-keys-row-${key.id}`} style={{ borderBottom: '1px solid var(--hairline)' }}>
-                                <td>{key.label}</td>
-                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{key.public_key}</td>
-                                <td>{key.project_key}</td>
-                                <td>
-                                    {key.allowed_origins.length === 0 ? (
-                                        <span style={{ color: 'var(--fg-2)' }}>—</span>
-                                    ) : (
-                                        key.allowed_origins.join(', ')
-                                    )}
-                                </td>
-                                <td>{key.rate_limit}/min</td>
-                                <td>
-                                    <span
-                                        data-testid={`admin-widget-keys-status-${key.id}`}
-                                        style={{
-                                            padding: '2px 8px',
-                                            borderRadius: 4,
-                                            fontSize: 11,
-                                            background: key.is_active ? 'var(--color-success-bg, #e6f9e6)' : 'var(--color-danger-bg, #fde8e8)',
-                                            color: key.is_active ? 'var(--color-success, #0a7a0a)' : 'var(--color-danger, #c41e1e)',
-                                        }}
-                                    >
-                                        {key.is_active ? 'Active' : 'Revoked'}
-                                    </span>
-                                </td>
-                                <td>{key.sessions_count}</td>
-                                <td>{key.last_used_at ? new Date(key.last_used_at).toLocaleDateString() : '—'}</td>
-                                <td style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                    {key.is_active && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                data-testid={`admin-widget-keys-rotate-${key.id}`}
-                                                disabled={rotateKey.isPending}
-                                                onClick={() => {
-                                                    if (confirm('Rotating will invalidate the current credentials. Continue?')) {
-                                                        void rotateKey.mutateAsync(key.id);
-                                                    }
-                                                }}
-                                                title="Rotate credentials (generates new pk_ + sk_)"
-                                                aria-label={`Rotate key ${key.label}`}
-                                            >
-                                                Rotate
-                                            </button>
-                                            <button
-                                                type="button"
-                                                data-testid={`admin-widget-keys-revoke-${key.id}`}
-                                                disabled={revokeKey.isPending}
-                                                onClick={() => {
-                                                    if (confirm('Revoke this key? It will stop accepting requests.')) {
-                                                        void revokeKey.mutateAsync(key.id);
-                                                    }
-                                                }}
-                                                title="Revoke (set inactive)"
-                                                aria-label={`Revoke key ${key.label}`}
-                                            >
-                                                Revoke
-                                            </button>
-                                        </>
-                                    )}
-                                    <button
-                                        type="button"
-                                        data-testid={`admin-widget-keys-delete-${key.id}`}
-                                        disabled={destroyKey.isPending}
-                                        onClick={() => {
-                                            if (confirm('Permanently delete this key and all its sessions?')) {
-                                                void destroyKey.mutateAsync(key.id);
-                                            }
-                                        }}
-                                        title="Hard delete (cascading)"
-                                        aria-label={`Delete key ${key.label}`}
-                                    >
-                                        Delete
-                                    </button>
-                                </td>
+                <div className="overflow-x-auto rounded-lg border border-border">
+                    <table
+                        data-testid="admin-widget-keys-table"
+                        className="w-full border-collapse text-[13px]"
+                    >
+                        <thead>
+                            <tr className="text-muted-foreground border-b border-border text-left [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
+                                <th>Label</th>
+                                <th>Public Key</th>
+                                <th>Project</th>
+                                <th>Origins</th>
+                                <th>Rate</th>
+                                <th>Status</th>
+                                <th>Sessions</th>
+                                <th>Last Used</th>
+                                <th className="text-right">Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {keys.data.map((key) => (
+                                <tr
+                                    key={key.id}
+                                    data-testid={`admin-widget-keys-row-${key.id}`}
+                                    className="border-b border-border last:border-0 [&>td]:px-3 [&>td]:py-2 [&>td]:align-middle"
+                                >
+                                    <td className="font-medium">{key.label}</td>
+                                    <td className="font-mono text-[11px]">{key.public_key}</td>
+                                    <td>{key.project_key}</td>
+                                    <td className="max-w-[180px] truncate">
+                                        {key.allowed_origins.length === 0 ? (
+                                            <span className="text-muted-foreground">any</span>
+                                        ) : (
+                                            key.allowed_origins.join(', ')
+                                        )}
+                                    </td>
+                                    <td className="whitespace-nowrap">{key.rate_limit}/min</td>
+                                    <td>
+                                        <Badge
+                                            data-testid={`admin-widget-keys-status-${key.id}`}
+                                            variant={key.is_active ? 'success' : 'destructive'}
+                                        >
+                                            {key.is_active ? 'Active' : 'Revoked'}
+                                        </Badge>
+                                    </td>
+                                    <td>{key.sessions_count}</td>
+                                    <td className="whitespace-nowrap">
+                                        {key.last_used_at
+                                            ? new Date(key.last_used_at).toLocaleDateString()
+                                            : '—'}
+                                    </td>
+                                    <td>
+                                        <div className="flex flex-wrap justify-end gap-1.5">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                data-testid={`admin-widget-keys-embed-${key.id}`}
+                                                onClick={() =>
+                                                    setEmbedTarget({
+                                                        publicKey: key.public_key,
+                                                        projectKey: key.project_key,
+                                                        label: key.label,
+                                                        allowedOrigins: key.allowed_origins,
+                                                    })
+                                                }
+                                                title="Get the embed snippet"
+                                                aria-label={`Embed code for ${key.label}`}
+                                            >
+                                                <Code2 aria-hidden />
+                                                Embed
+                                            </Button>
+                                            {key.is_active && (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        data-testid={`admin-widget-keys-rotate-${key.id}`}
+                                                        disabled={rotateKey.isPending}
+                                                        onClick={() => {
+                                                            if (
+                                                                confirm(
+                                                                    'Rotating will invalidate the current credentials. Continue?',
+                                                                )
+                                                            ) {
+                                                                rotateKey.mutate(key.id);
+                                                            }
+                                                        }}
+                                                        title="Rotate credentials (generates new pk_ + sk_)"
+                                                        aria-label={`Rotate key ${key.label}`}
+                                                    >
+                                                        <RotateCw aria-hidden />
+                                                        Rotate
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        data-testid={`admin-widget-keys-revoke-${key.id}`}
+                                                        disabled={revokeKey.isPending}
+                                                        onClick={() => {
+                                                            if (
+                                                                confirm(
+                                                                    'Revoke this key? It will stop accepting requests.',
+                                                                )
+                                                            ) {
+                                                                revokeKey.mutate(key.id);
+                                                            }
+                                                        }}
+                                                        title="Revoke (set inactive)"
+                                                        aria-label={`Revoke key ${key.label}`}
+                                                    >
+                                                        <Ban aria-hidden />
+                                                        Revoke
+                                                    </Button>
+                                                </>
+                                            )}
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                className="text-destructive hover:text-destructive"
+                                                data-testid={`admin-widget-keys-delete-${key.id}`}
+                                                disabled={destroyKey.isPending}
+                                                onClick={() => {
+                                                    if (
+                                                        confirm(
+                                                            'Permanently delete this key and all its sessions?',
+                                                        )
+                                                    ) {
+                                                        destroyKey.mutate(key.id);
+                                                    }
+                                                }}
+                                                title="Hard delete (cascading)"
+                                                aria-label={`Delete key ${key.label}`}
+                                            >
+                                                <Trash2 aria-hidden />
+                                                Delete
+                                            </Button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {embedTarget && (
+                <EmbedCodeDialog
+                    open={embedTarget !== null}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setEmbedTarget(null);
+                        }
+                    }}
+                    publicKey={embedTarget.publicKey}
+                    projectKey={embedTarget.projectKey}
+                    label={embedTarget.label}
+                    apiBase={instanceOrigin()}
+                    allowedOrigins={embedTarget.allowedOrigins}
+                    secret={embedTarget.secret}
+                />
             )}
         </section>
+    );
+}
+
+/** One-time credentials reveal: copyable pk_/sk_ plus an "Embed code" launcher. */
+function CredentialsCard({
+    testId,
+    title,
+    creds,
+    onEmbed,
+    onDismiss,
+}: {
+    testId: string;
+    title: string;
+    creds: CreateKeyResponse;
+    onEmbed: () => void;
+    onDismiss: () => void;
+}) {
+    return (
+        <Card data-testid={testId} className="border-[var(--accent-a)]/40">
+            <CardHeader>
+                <CardTitle className="text-sm">{title}</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3">
+                <CredRow label="Public key" value={creds.public_key} testId="created-pk" />
+                <CredRow label="Secret" value={creds.plain_secret} testId="created-sk" />
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        type="button"
+                        data-testid="admin-widget-keys-creds-embed"
+                        onClick={onEmbed}
+                    >
+                        <Code2 aria-hidden />
+                        Get embed code
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={onDismiss}>
+                        Dismiss
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
+/** A labelled, monospaced, copyable credential value. */
+function CredRow({
+    label,
+    value,
+    testId,
+}: {
+    label: string;
+    value: string;
+    testId: string;
+}) {
+    return (
+        <div className="flex items-center gap-3">
+            <span className="text-muted-foreground w-20 shrink-0 text-xs font-medium">
+                {label}
+            </span>
+            <code className="bg-muted flex-1 overflow-x-auto rounded-md border border-border px-2 py-1 font-mono text-xs">
+                {value}
+            </code>
+            <CopyButton value={value} testId={`admin-widget-keys-copy-${testId}`} />
+        </div>
     );
 }

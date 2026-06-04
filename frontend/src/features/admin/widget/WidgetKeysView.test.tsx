@@ -149,4 +149,105 @@ describe('WidgetKeysView', () => {
             expect(screen.getByTestId('admin-widget-keys-status-2').textContent).toBe('Revoked');
         });
     });
+
+    it('exposes rate-limit and skill fields in the create form', async () => {
+        mockedApi.get.mockResolvedValueOnce({ data: { data: [] } });
+        renderWithQuery(<WidgetKeysView />);
+
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+
+        expect(await screen.findByTestId('admin-widget-keys-rate-limit')).toBeDefined();
+        expect(screen.getByTestId('admin-widget-keys-skill')).toBeDefined();
+    });
+
+    it('surfaces a create error in the DOM instead of swallowing it (R14)', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockRejectedValueOnce({
+            response: { data: { errors: { project_key: ['The project key is required.'] } } },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Prod' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'x' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        const err = await screen.findByTestId('admin-widget-keys-create-error');
+        expect(err.textContent).toContain('The project key is required.');
+    });
+
+    it('reveals created credentials with an embed launcher after create', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 9,
+                    label: 'Prod',
+                    public_key: 'pk_new_xyz',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_new_secret',
+                public_key: 'pk_new_xyz',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Prod' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        const creds = await screen.findByTestId('admin-widget-keys-created-creds');
+        expect(creds.textContent).toContain('pk_new_xyz');
+        expect(screen.getByTestId('admin-widget-keys-creds-embed')).toBeDefined();
+    });
+
+    it('opens the embed dialog from a table row and shows the snippet', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 1,
+                        label: 'Production',
+                        public_key: 'pk_embed_one',
+                        project_key: 'main',
+                        allowed_origins: ['https://example.com'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+
+        fireEvent.click(await screen.findByTestId('admin-widget-keys-embed-1'));
+
+        expect(await screen.findByTestId('admin-widget-keys-embed-dialog')).toBeDefined();
+        const snippet = await screen.findByTestId('admin-widget-embed-snippet');
+        expect(snippet.textContent).toContain('pk_embed_one');
+        expect(snippet.textContent).toContain('window.AskMyDocsWidget');
+    });
 });
