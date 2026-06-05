@@ -405,15 +405,25 @@ export function Composer({
                             type="submit"
                             className="btn primary sm"
                             data-testid="chat-composer-send"
+                            style={{ gap: 7 }}
                         >
                             <Icon.Send size={12} />
                             Send
+                            {/*
+                              * Enter-key affordance. A flat, faded glyph
+                              * behind a hairline divider — NOT the boxed
+                              * `.kbd` keycap, which on the bright primary
+                              * gradient reads as a second, separate button.
+                              */}
                             <span
-                                className="kbd"
+                                aria-hidden="true"
                                 style={{
-                                    background: 'rgba(10,10,20,.2)',
-                                    color: '#0a0a14',
-                                    borderColor: 'rgba(10,10,20,.15)',
+                                    paddingLeft: 7,
+                                    borderLeft: '1px solid rgba(10,10,20,.18)',
+                                    fontSize: 11,
+                                    lineHeight: 1,
+                                    color: 'rgba(10,10,20,.5)',
+                                    fontFamily: 'var(--font-mono)',
                                 }}
                             >
                                 ⏎
