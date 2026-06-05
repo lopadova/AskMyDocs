@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { MessageCitation } from './chat.api';
 
 export interface CitationsPopoverProps {
@@ -13,40 +13,101 @@ export interface CitationsPopoverProps {
     onOpenSource?: (citation: MessageCitation) => void;
 }
 
-const ORIGIN_PALETTE: Record<string, { label: string; color: string }> = {
-    primary: { label: 'primary', color: 'var(--accent-a)' },
-    related: { label: 'related', color: 'var(--accent-b)' },
-    rejected: { label: 'rejected', color: '#ef4444' },
+interface OriginStyle {
+    label: string;
+    /** Accent used for the popover origin pill border + text. */
+    color: string;
+    /** Background of the chip's numbered badge. */
+    badge: string;
+    /** Foreground of the chip's numbered badge. */
+    badgeFg: string;
+}
+
+const ORIGIN_PALETTE: Record<string, OriginStyle> = {
+    primary: { label: 'primary', color: 'var(--accent-a)', badge: 'var(--grad-accent)', badgeFg: '#0a0a14' },
+    related: { label: 'related', color: 'var(--accent-b)', badge: 'var(--accent-b)', badgeFg: '#06222a' },
+    rejected: { label: 'rejected', color: '#ef4444', badge: '#ef4444', badgeFg: '#fff' },
 };
 
 /**
- * Row of citation chips under an assistant message. Each chip opens a
- * hover popover with the doc title + excerpt + origin pill (primary /
+ * Basename of a KB source path — the chip shows just the filename
+ * (e.g. `blog-settings.md`) while the popover keeps the full path. The
+ * extension is preserved on purpose: the ingest pipeline accepts both
+ * `.md` AND `.markdown`, so stripping it would mislabel `.markdown`
+ * docs (R18). Returns null for empty / null input so the caller can
+ * fall back to the title.
+ */
+function fileName(path: string | null | undefined): string | null {
+    if (!path) {
+        return null;
+    }
+    const segments = path.replace(/[\\/]+$/, '').split(/[\\/]/);
+    const last = segments[segments.length - 1];
+    return last.length > 0 ? last : null;
+}
+
+/**
+ * Most-specific heading for the chip. `headings[0]` is a full
+ * breadcrumb string (`"A > B > C"`); rendering the whole thing is what
+ * blew the chips up into ragged multi-line rows. We surface only the
+ * last segment (`C`) inline — the complete breadcrumb stays in the
+ * popover.
+ */
+function lastHeadingSegment(headings?: string[]): string | null {
+    const first = headings?.[0];
+    if (!first) {
+        return null;
+    }
+    const segments = first.split('>').map((s) => s.trim()).filter((s) => s.length > 0);
+    const tail = segments.length > 0 ? segments[segments.length - 1] : first.trim();
+    return tail.length > 0 ? tail : null;
+}
+
+/**
+ * Row of citation chips under an assistant message. Each chip is a
+ * compact pill (numbered badge + filename + most-specific heading); on
+ * hover OR keyboard focus it opens a popover with the doc title, full
+ * source path, full heading breadcrumb and an origin pill (primary /
  * related / rejected).
  *
- * R11: the strip itself carries `data-testid="chat-citations"`; each
- * chip is `chat-citation-<idx>` and the popover for the chip is
- * `chat-citations-popover` (opened state via `data-state="open"`).
+ * The popover opens BELOW the chip by default so it never covers the
+ * answer that sits directly above the strip; it flips above only when
+ * there isn't room below (last message near the viewport bottom).
+ *
+ * R11: the strip carries `data-testid="chat-citations"` + `data-count`;
+ * each chip is `chat-citation-<idx>`; the popover is
+ * `chat-citations-popover` (`data-state="open"`, `data-placement`).
+ * R15: the popover is reachable by keyboard (focus/blur) and Escape
+ * closes it.
  */
 export function CitationsPopover({ citations, onOpenSource }: CitationsPopoverProps): ReactNode {
     const [openIdx, setOpenIdx] = useState<number | null>(null);
 
     return (
-        <div
-            data-testid="chat-citations"
-            data-count={citations.length}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}
-        >
-            {citations.map((c, i) => (
-                <CitationChip
-                    key={`${c.source_path ?? 'x'}-${i}`}
-                    citation={c}
-                    index={i}
-                    open={openIdx === i}
-                    onHover={(open) => setOpenIdx(open ? i : null)}
-                    onOpenSource={onOpenSource}
-                />
-            ))}
+        <div data-testid="chat-citations" data-count={citations.length} style={{ marginTop: 10 }}>
+            <div
+                style={{
+                    fontSize: 10.5,
+                    color: 'var(--fg-3)',
+                    fontFamily: 'var(--font-mono)',
+                    letterSpacing: '.04em',
+                    marginBottom: 6,
+                }}
+            >
+                Sources · {citations.length}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {citations.map((c, i) => (
+                    <CitationChip
+                        key={`${c.source_path ?? 'x'}-${i}`}
+                        citation={c}
+                        index={i}
+                        open={openIdx === i}
+                        onOpenChange={(open) => setOpenIdx(open ? i : null)}
+                        onOpenSource={onOpenSource}
+                    />
+                ))}
+            </div>
         </div>
     );
 }
@@ -55,24 +116,62 @@ interface CitationChipProps {
     citation: MessageCitation;
     index: number;
     open: boolean;
-    onHover: (open: boolean) => void;
+    onOpenChange: (open: boolean) => void;
     onOpenSource?: (citation: MessageCitation) => void;
 }
 
-function CitationChip({ citation, index, open, onHover, onOpenSource }: CitationChipProps): ReactNode {
+const ELLIPSIS: CSSProperties = {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+};
+
+function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: CitationChipProps): ReactNode {
     const origin = citation.origin ?? 'primary';
     const palette = ORIGIN_PALETTE[origin] ?? ORIGIN_PALETTE.primary;
-    const short = citation.source_path ?? citation.title ?? `#${index + 1}`;
+    // Visible chip label: just the filename. The aria-label + popover keep
+    // the full path so screen-reader and hover users lose nothing.
+    const label = fileName(citation.source_path) ?? citation.title ?? `#${index + 1}`;
+    const ariaTarget = citation.source_path ?? citation.title ?? `#${index + 1}`;
+    const heading = lastHeadingSegment(citation.headings);
     // The chip opens its source only when a handler is wired AND the citation
     // resolves to a concrete document (rejected-approach citations / legacy
     // rows may have a null document_id and have nothing to open).
     const canOpen = onOpenSource !== undefined && citation.document_id != null;
 
+    const wrapRef = useRef<HTMLSpanElement>(null);
+    const [placement, setPlacement] = useState<'top' | 'bottom'>('bottom');
+    const popoverId = `chat-citation-popover-${index}`;
+
+    // Prefer opening below the chip (keeps the answer above readable). Flip
+    // above only when there clearly isn't room below but there is above —
+    // e.g. the last message sitting near the viewport bottom. getBoundingClientRect
+    // returns zeros under jsdom, which keeps the default 'bottom'.
+    useLayoutEffect(() => {
+        if (!open || !wrapRef.current) {
+            return;
+        }
+        const rect = wrapRef.current.getBoundingClientRect();
+        const estimatedHeight = 170;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+        setPlacement(spaceBelow < estimatedHeight && spaceAbove > spaceBelow ? 'top' : 'bottom');
+    }, [open]);
+
     return (
         <span
-            style={{ position: 'relative' }}
-            onMouseEnter={() => onHover(true)}
-            onMouseLeave={() => onHover(false)}
+            ref={wrapRef}
+            style={{ position: 'relative', display: 'inline-flex', maxWidth: '100%' }}
+            onMouseEnter={() => onOpenChange(true)}
+            onMouseLeave={() => onOpenChange(false)}
+            onFocus={() => onOpenChange(true)}
+            onBlur={() => onOpenChange(false)}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape' && open) {
+                    onOpenChange(false);
+                }
+            }}
         >
             <button
                 type="button"
@@ -81,63 +180,78 @@ function CitationChip({ citation, index, open, onHover, onOpenSource }: Citation
                 data-openable={canOpen ? 'true' : 'false'}
                 aria-label={
                     canOpen
-                        ? `Open source ${index + 1}: ${short}`
-                        : `Citation ${index + 1}: ${short}`
+                        ? `Open source ${index + 1}: ${ariaTarget}`
+                        : `Citation ${index + 1}: ${ariaTarget}`
                 }
+                aria-describedby={open ? popoverId : undefined}
+                title={citation.source_path ?? citation.title}
                 onClick={canOpen ? () => onOpenSource?.(citation) : undefined}
                 style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 6,
-                    padding: '4px 9px 4px 4px',
+                    maxWidth: 300,
+                    padding: '4px 10px 4px 4px',
                     background: 'var(--bg-2)',
                     border: '1px solid var(--panel-border)',
                     borderRadius: 99,
                     cursor: canOpen ? 'pointer' : 'default',
                     color: 'var(--fg-1)',
                     fontSize: 11.5,
+                    transition: 'border-color .12s ease, background .12s ease',
                 }}
             >
                 <span
+                    aria-hidden="true"
                     style={{
+                        flex: '0 0 auto',
                         width: 18,
                         height: 18,
                         borderRadius: 99,
-                        background: 'var(--grad-accent)',
+                        background: palette.badge,
                         display: 'inline-flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         fontSize: 10,
                         fontWeight: 600,
-                        color: '#0a0a14',
+                        color: palette.badgeFg,
                         fontFamily: 'var(--font-mono)',
                     }}
                 >
                     {index + 1}
                 </span>
-                <span className="mono" style={{ fontSize: 11 }}>
-                    {short}
+                <span className="mono" style={{ ...ELLIPSIS, flex: '0 1 auto', fontSize: 11 }}>
+                    {label}
                 </span>
-                {citation.headings && citation.headings[0] && (
+                {heading && (
                     <>
-                        <span style={{ color: 'var(--fg-3)' }}>·</span>
-                        <span style={{ color: 'var(--fg-3)' }}>§{citation.headings[0]}</span>
+                        <span aria-hidden="true" style={{ flex: '0 0 auto', color: 'var(--fg-4)' }}>
+                            ·
+                        </span>
+                        <span
+                            style={{ ...ELLIPSIS, flex: '0 1 auto', maxWidth: 130, color: 'var(--fg-3)' }}
+                        >
+                            §{heading}
+                        </span>
                     </>
                 )}
             </button>
             {open && (
                 <span
+                    id={popoverId}
                     role="tooltip"
                     data-testid="chat-citations-popover"
                     data-state="open"
                     data-origin={origin}
+                    data-placement={placement}
                     className="panel popin"
                     style={{
                         position: 'absolute',
-                        bottom: 'calc(100% + 8px)',
+                        [placement === 'bottom' ? 'top' : 'bottom']: 'calc(100% + 8px)',
                         left: 0,
                         zIndex: 40,
                         width: 360,
+                        maxWidth: '80vw',
                         padding: 14,
                         fontSize: 12,
                         background: 'var(--panel-solid)',
@@ -146,10 +260,26 @@ function CitationChip({ citation, index, open, onHover, onOpenSource }: Citation
                         borderRadius: 10,
                     }}
                 >
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    {/* Caret: a rotated square showing two borders, points at the chip. */}
+                    <span
+                        aria-hidden="true"
+                        style={{
+                            position: 'absolute',
+                            [placement === 'bottom' ? 'top' : 'bottom']: -5,
+                            left: 16,
+                            width: 9,
+                            height: 9,
+                            background: 'var(--panel-solid)',
+                            borderLeft: '1px solid var(--panel-border-strong)',
+                            borderTop: '1px solid var(--panel-border-strong)',
+                            transform: placement === 'bottom' ? 'rotate(45deg)' : 'rotate(225deg)',
+                        }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}>
                         <span
                             className="pill"
                             style={{
+                                flex: '0 0 auto',
                                 padding: '2px 8px',
                                 fontSize: 10.5,
                                 borderRadius: 99,
@@ -163,9 +293,19 @@ function CitationChip({ citation, index, open, onHover, onOpenSource }: Citation
                         >
                             {palette.label}
                         </span>
-                        <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-2)' }}>
-                            {citation.source_path}
-                        </span>
+                        {citation.source_path && (
+                            <span
+                                className="mono"
+                                style={{
+                                    minWidth: 0,
+                                    fontSize: 10.5,
+                                    color: 'var(--fg-2)',
+                                    wordBreak: 'break-all',
+                                }}
+                            >
+                                {citation.source_path}
+                            </span>
+                        )}
                     </div>
                     <div
                         style={{
@@ -179,12 +319,12 @@ function CitationChip({ citation, index, open, onHover, onOpenSource }: Citation
                         {citation.title}
                     </div>
                     {citation.headings && citation.headings.length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 2 }}>
                             {citation.headings.slice(0, 3).map((h, i) => (
                                 <span
                                     key={i}
                                     className="mono"
-                                    style={{ fontSize: 10.5, color: 'var(--fg-3)' }}
+                                    style={{ fontSize: 10.5, color: 'var(--fg-3)', wordBreak: 'break-word' }}
                                 >
                                     §{h}
                                 </span>
