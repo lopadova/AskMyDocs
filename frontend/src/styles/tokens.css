@@ -322,3 +322,36 @@ textarea:focus-visible {
 .chat-user-row:hover .chat-user-edit,
 .chat-user-row:focus-within .chat-user-edit { opacity: 1; }
 @media (hover: none) { .chat-user-edit { opacity: 1; } }
+
+/* chat: conversation-list rows. Inline styles can't express :hover, so
+   the row look lives here and is driven by `data-active`. The active row
+   gains a soft fill + a left accent bar so the selected conversation is
+   unmistakable in a long list. */
+.conv-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  gap: 9px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  text-align: left;
+  transition: background .14s ease, border-color .14s ease;
+}
+.conv-row:hover { background: var(--bg-2); }
+.conv-row:focus-visible { outline: 2px solid var(--accent-a); outline-offset: -1px; }
+.conv-row[data-active="true"] {
+  background: var(--bg-3);
+  border-color: var(--panel-border);
+}
+.conv-row[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 1px; top: 9px; bottom: 9px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--grad-accent);
+}
