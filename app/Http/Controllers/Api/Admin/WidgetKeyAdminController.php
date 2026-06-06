@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Models\WidgetKey;
+use App\Services\Widget\WidgetThemeService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,6 +24,7 @@ final class WidgetKeyAdminController extends Controller
 {
     public function __construct(
         private readonly TenantContext $tenantContext,
+        private readonly WidgetThemeService $theme,
     ) {}
 
     /** List all widget keys for the current tenant. */
@@ -51,7 +53,7 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'skill' => ['nullable', 'string', 'max:100'],
-        ]);
+        ] + $this->theme->rules('theme'));
 
         $plainSecret = 'sk_'.Str::random(40);
         $publicKey = 'pk_'.Str::random(32);
@@ -66,6 +68,11 @@ final class WidgetKeyAdminController extends Controller
             'rate_limit' => $validated['rate_limit'] ?? 60,
             'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
             'is_active' => true,
+            // Tema esplicito solo se fornito; altrimenti null → il widget
+            // risolve i default (snippet di create resta minimale).
+            'theme_config' => array_key_exists('theme', $validated)
+                ? $this->theme->sanitize($validated['theme'])
+                : null,
         ]);
 
         // Return the secret ONCE — never again available after this response.
@@ -87,9 +94,18 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'skill' => ['nullable', 'string', 'max:100'],
-        ]);
+        ] + $this->theme->rules('theme'));
 
-        $row->fill(array_filter($validated, fn ($v) => $v !== null))->save();
+        // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
+        // FE `theme`): gestito a parte, mai via fill().
+        $themeProvided = array_key_exists('theme', $validated);
+        unset($validated['theme']);
+
+        $row->fill(array_filter($validated, fn ($v) => $v !== null));
+        if ($themeProvided) {
+            $row->theme_config = $this->theme->sanitize($request->input('theme', []));
+        }
+        $row->save();
 
         return response()->json([
             'data' => $this->serialize($row->fresh()),
@@ -172,6 +188,9 @@ final class WidgetKeyAdminController extends Controller
             'is_active' => $row->is_active,
             'last_used_at' => $row->last_used_at?->toIso8601String(),
             'sessions_count' => $row->sessions()->count(),
+            // Tema risolto (stored sui default) così l'editor admin parte sempre
+            // da un oggetto completo, anche per le key senza tema esplicito.
+            'theme' => $this->theme->resolve($row->theme_config),
             'created_at' => $row->created_at->toIso8601String(),
             'updated_at' => $row->updated_at->toIso8601String(),
         ];

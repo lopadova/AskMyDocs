@@ -97,6 +97,28 @@ final class WidgetAccessTest extends TestCase
 
         $this->assertContains('click', $res->json('tools_enabled'));
         $this->assertContains('search_knowledge_base', $res->json('tools_enabled'));
+
+        // Tema additivo (R27): key senza theme_config → default risolto.
+        $res->assertJsonPath('theme.accent', '#2563eb')
+            ->assertJsonPath('theme.fontFamily', 'system')
+            ->assertJsonPath('theme.launcherShape', 'pill');
+    }
+
+    public function test_setup_returns_the_stored_theme_resolved_over_defaults(): void
+    {
+        $key = $this->makeKey([
+            'allowed_origins' => ['https://allowed.test'],
+            'theme_config' => ['accent' => '#10b981', 'launcherShape' => 'circle'],
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('theme.accent', '#10b981')   // valore custom
+            ->assertJsonPath('theme.launcherShape', 'circle')
+            ->assertJsonPath('theme.background', '#ffffff'); // resto sui default
     }
 
     public function test_proxy_mode_with_valid_secret_skips_the_origin_check(): void

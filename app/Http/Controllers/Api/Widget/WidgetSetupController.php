@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Widget;
 use App\Http\Middleware\ResolveWidgetKey;
 use App\Models\WidgetKey;
 use App\Services\Widget\WidgetSkillRegistry;
+use App\Services\Widget\WidgetThemeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -21,7 +22,7 @@ use Illuminate\Routing\Controller;
  */
 final class WidgetSetupController extends Controller
 {
-    public function __invoke(Request $request, WidgetSkillRegistry $skills): JsonResponse
+    public function __invoke(Request $request, WidgetSkillRegistry $skills, WidgetThemeService $theme): JsonResponse
     {
         /** @var WidgetKey $key */
         $key = $request->attributes->get(ResolveWidgetKey::ATTR_KEY);
@@ -43,6 +44,9 @@ final class WidgetSetupController extends Controller
             'auto_annotation_rules' => $manifest['auto_annotation_rules'] ?? [],
             'default_policies' => $manifest['default_policies'] ?? [],
             'default_locale' => $manifest['default_locale'] ?? 'en',
+            // R27 additivo: identità grafica risolta (stored sui default) per
+            // l'applicazione dinamica lato widget. `null` → default.
+            'theme' => $theme->resolve($key->theme_config),
         ]);
     }
 }
