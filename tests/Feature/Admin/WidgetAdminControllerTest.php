@@ -149,6 +149,235 @@ final class WidgetAdminControllerTest extends TestCase
         $response->assertJsonPath('data.rate_limit', 200);
     }
 
+    public function test_update_replaces_allowed_origins_and_persists_them(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'test-project',
+            'public_key' => 'pk_test_origins',
+            'secret_hash' => bcrypt('sk_test_secret'),
+            'label' => 'Origins Key',
+            'allowed_origins' => ['https://old.example.com'],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'allowed_origins' => ['https://a.example.com', 'https://b.example.com'],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.allowed_origins', [
+            'https://a.example.com',
+            'https://b.example.com',
+        ]);
+
+        $key->refresh();
+        $this->assertSame(
+            ['https://a.example.com', 'https://b.example.com'],
+            $key->allowed_origins,
+        );
+    }
+
+    public function test_update_can_clear_allowed_origins(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'test-project',
+            'public_key' => 'pk_test_clear_origins',
+            'secret_hash' => bcrypt('sk_test_secret'),
+            'label' => 'Origins Key',
+            'allowed_origins' => ['https://old.example.com'],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'allowed_origins' => [],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('data.allowed_origins', []);
+
+        $key->refresh();
+        $this->assertSame([], $key->allowed_origins);
+    }
+
+    public function test_update_rejects_an_overlong_origin_with_422(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'test-project',
+            'public_key' => 'pk_test_long_origin',
+            'secret_hash' => bcrypt('sk_test_secret'),
+            'label' => 'Origins Key',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'allowed_origins' => ['https://'.str_repeat('a', 300).'.com'],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('allowed_origins.0');
+    }
+
+    public function test_serialize_includes_resolved_default_theme(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'p',
+            'public_key' => 'pk_theme_default',
+            'label' => 'No theme',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->getJson('/api/admin/widget-keys')
+            ->assertOk()
+            ->assertJsonPath('data.0.theme.accent', '#2563eb')
+            ->assertJsonPath('data.0.theme.fontFamily', 'system');
+
+        // theme_config resta null finché non si personalizza.
+        $this->assertNull($key->fresh()->theme_config);
+    }
+
+    public function test_store_persists_and_sanitizes_a_theme(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Themed',
+            'project_key' => 'p',
+            'theme' => [
+                'accent' => '#10B981',      // valido; sanitize lo normalizza lowercase
+                'fontFamily' => 'inter',
+                'fontSize' => 16,
+                'launcherShape' => 'circle',
+            ],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.theme.accent', '#10b981') // sanitize → lowercase
+            ->assertJsonPath('data.theme.fontFamily', 'inter')
+            ->assertJsonPath('data.theme.launcherShape', 'circle');
+
+        $row = WidgetKey::query()->where('public_key', $response->json('public_key'))->firstOrFail();
+        $this->assertSame('#10b981', $row->theme_config['accent']);
+        $this->assertSame(16, $row->theme_config['fontSize']);
+    }
+
+    public function test_update_persists_theme_and_returns_it(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'p',
+            'public_key' => 'pk_theme_update',
+            'label' => 'L',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'theme' => ['accent' => '#ef4444', 'launcherSide' => 'left'],
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.theme.accent', '#ef4444')
+            ->assertJsonPath('data.theme.launcherSide', 'left')
+            ->assertJsonPath('data.theme.background', '#ffffff'); // default conservato
+
+        $this->assertSame('#ef4444', $key->fresh()->theme_config['accent']);
+    }
+
+    public function test_invalid_theme_color_is_rejected_with_422(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Bad',
+            'project_key' => 'p',
+            'theme' => ['accent' => 'red; } body{display:none}'],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('theme.accent');
+    }
+
+    public function test_invalid_theme_url_is_rejected_with_422(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Bad URL',
+            'project_key' => 'p',
+            'theme' => ['headerLogoUrl' => 'http://insecure.example.com/logo.png'],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('theme.headerLogoUrl');
+    }
+
+    public function test_store_persists_inline_widget_mode_via_theme(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Inline chat',
+            'project_key' => 'p',
+            'theme' => ['mode' => 'inline'],
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.theme.mode', 'inline');
+
+        $row = WidgetKey::query()->where('public_key', $response->json('public_key'))->firstOrFail();
+        $this->assertSame('inline', $row->theme_config['mode']);
+    }
+
+    public function test_default_key_resolves_helper_mode(): void
+    {
+        $user = $this->superAdmin();
+        WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'p',
+            'public_key' => 'pk_mode_default',
+            'label' => 'No mode',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($user)->getJson('/api/admin/widget-keys')
+            ->assertOk()
+            ->assertJsonPath('data.0.theme.mode', 'helper');
+    }
+
+    public function test_invalid_widget_mode_is_rejected_with_422(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Bad mode',
+            'project_key' => 'p',
+            'theme' => ['mode' => 'floating'],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('theme.mode');
+    }
+
     public function test_rotate_generates_new_credentials(): void
     {
         $user = $this->superAdmin();
