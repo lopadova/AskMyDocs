@@ -116,6 +116,16 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
         await page.getByTestId('chat-title-save').click();
         await expect(page.getByTestId('chat-title')).toHaveText('My renamed thread', { timeout: 10_000 });
 
+        // 3.5) R15 — the citation popover is keyboard-reachable, not hover-only.
+        //    Focusing the chip opens it; Escape dismisses it. Exercised before
+        //    the navigating click below so it doesn't interfere with step 4.
+        await page.getByTestId('chat-citation-0').focus();
+        const citationPopover = page.getByTestId('chat-citations-popover');
+        await expect(citationPopover).toBeVisible({ timeout: 5_000 });
+        await expect(citationPopover).toHaveAttribute('data-state', 'open');
+        await page.keyboard.press('Escape');
+        await expect(citationPopover).toBeHidden();
+
         // 4) Citation click → navigate to the KB document detail. (admin role
         //    is authorized for /app/admin/kb.)
         await expect(page.getByTestId('chat-citation-0')).toHaveAttribute('data-openable', 'true');

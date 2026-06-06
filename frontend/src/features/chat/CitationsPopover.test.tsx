@@ -23,11 +23,76 @@ const citations: MessageCitation[] = [
 ];
 
 describe('CitationsPopover', () => {
-    it('renders a chip per citation with the right data-origin', () => {
+    it('renders a chip per citation with the right data-origin + data-count', () => {
         render(<CitationsPopover citations={citations} />);
-        expect(screen.getByTestId('chat-citations')).toBeInTheDocument();
+        expect(screen.getByTestId('chat-citations')).toHaveAttribute('data-count', '2');
         expect(screen.getByTestId('chat-citation-0')).toHaveAttribute('data-origin', 'primary');
         expect(screen.getByTestId('chat-citation-1')).toHaveAttribute('data-origin', 'rejected');
+    });
+
+    it('shows the filename in the chip, not the full source path', () => {
+        render(<CitationsPopover citations={citations} />);
+        const chip = screen.getByTestId('chat-citation-0');
+        // Visible label is the basename...
+        expect(chip).toHaveTextContent('remote-work-policy.md');
+        // ...the full path is NOT in the chip text (it lives in the popover +
+        // the native title attribute for hover/SR users).
+        expect(chip).not.toHaveTextContent('policies/remote-work-policy.md');
+        expect(chip).toHaveAttribute('title', 'policies/remote-work-policy.md');
+    });
+
+    it('opens the popover on hover with the full path, title and every heading', () => {
+        render(<CitationsPopover citations={citations} />);
+        // Popover is closed until interaction.
+        expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
+
+        const chip = screen.getByTestId('chat-citation-0');
+        fireEvent.mouseEnter(chip.parentElement as HTMLElement);
+
+        const popover = screen.getByTestId('chat-citations-popover');
+        expect(popover).toHaveAttribute('data-state', 'open');
+        expect(popover).toHaveTextContent('policies/remote-work-policy.md');
+        expect(popover).toHaveTextContent('Remote Work Policy');
+        expect(popover).toHaveTextContent('Intro');
+        expect(popover).toHaveTextContent('Eligibility');
+
+        fireEvent.mouseLeave(chip.parentElement as HTMLElement);
+        expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
+    });
+
+    it('opens the popover on keyboard focus and closes on blur (R15)', () => {
+        render(<CitationsPopover citations={citations} />);
+        const chip = screen.getByTestId('chat-citation-0');
+        expect(chip).not.toHaveAttribute('aria-describedby');
+
+        // focusIn/focusOut dispatch the bubbling events React maps to
+        // onFocus/onBlur — proving the popover is reachable without a mouse.
+        fireEvent.focusIn(chip);
+        expect(screen.getByTestId('chat-citations-popover')).toBeInTheDocument();
+        expect(chip).toHaveAttribute('aria-describedby', 'chat-citation-popover-0');
+
+        fireEvent.focusOut(chip);
+        expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
+    });
+
+    it('keeps the popover open when the mouse leaves while the chip is still focused (R15)', () => {
+        render(<CitationsPopover citations={citations} />);
+        const chip = screen.getByTestId('chat-citation-0');
+        const wrap = chip.parentElement as HTMLElement;
+
+        // Hover opens it, then the keyboard takes over (focus).
+        fireEvent.mouseEnter(wrap);
+        fireEvent.focusIn(chip);
+        expect(screen.getByTestId('chat-citations-popover')).toBeInTheDocument();
+
+        // Mouse leaves but focus REMAINS → must stay open (the bug: a single
+        // hover/focus boolean let mouseLeave close it under the keyboard).
+        fireEvent.mouseLeave(wrap);
+        expect(screen.getByTestId('chat-citations-popover')).toBeInTheDocument();
+
+        // Blur with no hover left → now it closes.
+        fireEvent.focusOut(chip);
+        expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
     });
 
     it('is not openable without an onOpenSource handler', () => {

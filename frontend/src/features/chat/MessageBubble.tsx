@@ -120,9 +120,34 @@ export function MessageBubble({
             <div
                 data-testid={`chat-message-${messageId}`}
                 data-role="user"
-                className="popin"
-                style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 18 }}
+                className="popin chat-user-row"
+                style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginBottom: 18,
+                }}
             >
+                {/*
+                  * Edit affordance sits OUTSIDE the bubble, to its left
+                  * (the bubble is right-aligned) and vertically centred,
+                  * instead of floating over the top-right corner. It is
+                  * hidden until the row is hovered or a descendant is
+                  * focused (`.chat-user-edit` in tokens.css) so it stays
+                  * keyboard-reachable without cluttering the thread.
+                  */}
+                {onEditSubmit && !streaming && (
+                    <button
+                        type="button"
+                        className="btn icon sm ghost chat-user-edit"
+                        data-testid={`chat-message-${messageId}-edit`}
+                        onClick={() => setEditing(true)}
+                        aria-label="Edit your message"
+                    >
+                        <Icon.Edit size={12} />
+                    </button>
+                )}
                 <div
                     style={{
                         maxWidth: '70%',
@@ -134,24 +159,9 @@ export function MessageBubble({
                         lineHeight: 1.55,
                         color: 'var(--fg-0)',
                         whiteSpace: 'pre-wrap',
-                        position: 'relative',
                     }}
                 >
                     {textContent}
-                    {onEditSubmit && !streaming && (
-                        <div style={{ position: 'absolute', top: -8, right: 4 }}>
-                            <button
-                                type="button"
-                                className="btn icon sm ghost"
-                                data-testid={`chat-message-${messageId}-edit`}
-                                onClick={() => setEditing(true)}
-                                aria-label="Edit your message"
-                                style={{ padding: 4 }}
-                            >
-                                <Icon.Edit size={11} />
-                            </button>
-                        </div>
-                    )}
                 </div>
             </div>
         );

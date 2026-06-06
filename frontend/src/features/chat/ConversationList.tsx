@@ -71,7 +71,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                     onClick={() => createMutation.mutate()}
                     disabled={createMutation.isPending}
                     aria-busy={createMutation.isPending}
-                    style={{ width: '100%' }}
+                    style={{ width: '100%', justifyContent: 'center' }}
                 >
                     <Icon.Plus size={13} />
                     New chat
@@ -81,7 +81,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                     className="btn"
                     data-testid="chat-new-anonymous-chat"
                     onClick={onNewAnonymous}
-                    style={{ width: '100%' }}
+                    style={{ width: '100%', justifyContent: 'center' }}
                 >
                     <Icon.Eye size={13} />
                     New anonymous chat
@@ -107,6 +107,7 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
             </div>
 
             <div style={{ flex: 1, overflow: 'auto', padding: '4px 10px 10px' }}>
+                {state === 'loading' && <SidebarSkeleton />}
                 {state === 'empty' && (
                     <div
                         data-testid="chat-sidebar-empty"
@@ -128,6 +129,14 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                 {earlier.map((c) => (
                     <ConversationRow key={c.id} c={c} active={c.id === activeId} onSelect={onSelect} />
                 ))}
+                {state === 'ready' && filter.trim() !== '' && filtered.length === 0 && (
+                    <div
+                        data-testid="chat-sidebar-no-results"
+                        style={{ fontSize: 12, color: 'var(--fg-3)', padding: '10px 6px', lineHeight: 1.6 }}
+                    >
+                        No conversations match “<strong>{filter.trim()}</strong>”.
+                    </div>
+                )}
             </div>
 
             {createMutation.isError && (
@@ -140,6 +149,21 @@ export function ConversationList({ projectKey, onSelect, onNewAnonymous }: Conve
                 </div>
             )}
         </aside>
+    );
+}
+
+function SidebarSkeleton(): ReactNode {
+    // Placeholder rows shown while the conversation list loads, so the
+    // sidebar shows shape instead of a blank panel (perceived speed).
+    return (
+        <div data-testid="chat-sidebar-loading" aria-hidden="true" style={{ padding: '6px 0' }}>
+            {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} style={{ padding: '8px 10px', marginBottom: 2 }}>
+                    <div className="shimmer" style={{ height: 11, borderRadius: 4, width: `${72 - i * 7}%` }} />
+                    <div className="shimmer" style={{ height: 8, borderRadius: 4, width: '42%', marginTop: 6 }} />
+                </div>
+            ))}
+        </div>
     );
 }
 
@@ -170,21 +194,11 @@ function ConversationRow({ c, active, onSelect }: ConversationRowProps): ReactNo
     return (
         <button
             type="button"
+            className="conv-row"
             data-testid={`chat-conversation-${c.id}`}
             data-active={active ? 'true' : 'false'}
+            aria-current={active ? 'true' : undefined}
             onClick={() => onSelect(c.id)}
-            style={{
-                width: '100%',
-                display: 'flex',
-                gap: 9,
-                padding: '8px 10px',
-                background: active ? 'var(--bg-3)' : 'transparent',
-                border: '1px solid ' + (active ? 'var(--panel-border)' : 'transparent'),
-                borderRadius: 8,
-                cursor: 'pointer',
-                marginBottom: 2,
-                textAlign: 'left',
-            }}
         >
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div

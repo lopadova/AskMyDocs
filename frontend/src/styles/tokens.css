@@ -178,15 +178,30 @@ textarea:focus-visible {
   animation: caret-blink 0.9s steps(1) infinite;
 }
 
-/* moving accent border (for focus'd composer) */
-@keyframes rot { to { transform: rotate(360deg); } }
+/* moving accent border (for focus'd composer)
+ *
+ * The accent travels around the border by animating the conic-gradient's
+ * START ANGLE — NOT by rotating the pseudo-element. Rotating the element
+ * (`transform: rotate`) spun the whole non-square rectangle, so its corners
+ * swept far outside the box and drew a diagonal "comet tail" across the
+ * screen. Animating `--angle` keeps the box perfectly still while the
+ * gradient sweeps along the edge. `@property` is required so the custom
+ * property is interpolated as an <angle> (browsers can't animate an
+ * untyped custom property). Where @property is unsupported the border
+ * just renders static — graceful, no overflow. */
+@property --glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes glow-rot { to { --glow-angle: 360deg; } }
 .glow-frame { position: relative; isolation: isolate; }
 .glow-frame::before {
   content: '';
   position: absolute; inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: conic-gradient(from 0deg, #8b5cf6, #22d3ee, #8b5cf6);
+  background: conic-gradient(from var(--glow-angle), #8b5cf6, #22d3ee, #8b5cf6);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
           mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -195,7 +210,7 @@ textarea:focus-visible {
   pointer-events: none;
   transition: opacity .25s;
 }
-.glow-frame.on::before { opacity: 1; animation: rot 6s linear infinite; }
+.glow-frame.on::before { opacity: 1; animation: glow-rot 6s linear infinite; }
 
 /* subtle grid overlay */
 .grid-bg {
@@ -293,3 +308,50 @@ textarea:focus-visible {
 /* tiny pop-in */
 @keyframes popin { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .popin { animation: popin .22s ease-out both; }
+
+/* chat: user-message edit affordance — sits to the left of the
+   right-aligned bubble. Hidden until the row is hovered or a child
+   gains focus (keyboard-reachable; opacity keeps it in the tab order,
+   unlike display:none — R15). Touch devices have no hover, so it
+   stays visible there. */
+.chat-user-edit {
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+.chat-user-row:hover .chat-user-edit,
+.chat-user-row:focus-within .chat-user-edit { opacity: 1; }
+@media (hover: none) { .chat-user-edit { opacity: 1; } }
+
+/* chat: conversation-list rows. Inline styles can't express :hover, so
+   the row look lives here and is driven by `data-active`. The active row
+   gains a soft fill + a left accent bar so the selected conversation is
+   unmistakable in a long list. */
+.conv-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  gap: 9px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  text-align: left;
+  transition: background .14s ease, border-color .14s ease;
+}
+.conv-row:hover { background: var(--bg-2); }
+.conv-row:focus-visible { outline: 2px solid var(--accent-a); outline-offset: -1px; }
+.conv-row[data-active="true"] {
+  background: var(--bg-3);
+  border-color: var(--panel-border);
+}
+.conv-row[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: 1px; top: 9px; bottom: 9px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: var(--grad-accent);
+}

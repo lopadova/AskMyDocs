@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Icon } from '../../components/Icons';
 import { chatApi, type Message } from './chat.api';
 
 export interface FeedbackButtonsProps {
@@ -48,7 +49,7 @@ export function FeedbackButtons({ conversationId, messageId, initialRating }: Fe
                 disabled={mutation.isPending}
                 style={{ color: rating === 'positive' ? 'var(--accent-a)' : undefined }}
             >
-                <span style={{ fontSize: 12 }}>👍</span>
+                <Icon.ThumbsUp size={13} fill={rating === 'positive' ? 'currentColor' : 'none'} />
             </button>
             <button
                 type="button"
@@ -58,9 +59,9 @@ export function FeedbackButtons({ conversationId, messageId, initialRating }: Fe
                 aria-pressed={rating === 'negative'}
                 onClick={() => mutation.mutate('negative')}
                 disabled={mutation.isPending}
-                style={{ color: rating === 'negative' ? '#ef4444' : undefined }}
+                style={{ color: rating === 'negative' ? 'var(--err)' : undefined }}
             >
-                <span style={{ fontSize: 12 }}>👎</span>
+                <Icon.ThumbsDown size={13} fill={rating === 'negative' ? 'currentColor' : 'none'} />
             </button>
             {mutation.isError && (
                 <span data-testid="chat-feedback-error" role="alert" style={{ fontSize: 11, color: 'var(--err)' }}>

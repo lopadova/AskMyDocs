@@ -460,6 +460,28 @@ export const Icon = {
             d={<path d="M6 4a3 3 0 1 1 0 6h12a3 3 0 1 1 0-6v12a3 3 0 1 1 0 6H6a3 3 0 1 1 0-6z" />}
         />
     ),
+    ThumbsUp: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M7 10v11" />
+                    <path d="M7 10 11 3a2 2 0 0 1 3 1.8V8h4.7a2 2 0 0 1 2 2.4l-1.4 7a2 2 0 0 1-2 1.6H7" />
+                </>
+            }
+        />
+    ),
+    ThumbsDown: (p: IconProps) => (
+        <I
+            {...p}
+            d={
+                <>
+                    <path d="M17 14V3" />
+                    <path d="M17 14 13 21a2 2 0 0 1-3-1.8V16H5.3a2 2 0 0 1-2-2.4l1.4-7a2 2 0 0 1 2-1.6H17" />
+                </>
+            }
+        />
+    ),
 } as const;
 
 export type IconName = keyof typeof Icon;
