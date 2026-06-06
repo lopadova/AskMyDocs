@@ -14,6 +14,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
+import type { WidgetTheme } from '../../../widget/types';
 import { CopyButton } from './CopyButton';
 import { highlightSnippet } from './highlightSnippet';
 
@@ -35,6 +37,11 @@ interface EmbedCodeDialogProps {
      * Drives the proxy-mode example; absent on the table "Embed" action.
      */
     secret?: string | null;
+    /**
+     * Saved appearance theme of the key. When present and non-default, the
+     * operator can bake it inline into the snippet (`theme: {…}`).
+     */
+    theme?: WidgetTheme;
 }
 
 /** Escape a value so it is safe inside a single-quoted JS string literal. */
@@ -93,32 +100,102 @@ export function EmbedCodeDialog({
     apiBase,
     allowedOrigins = [],
     secret,
+    theme,
 }: EmbedCodeDialogProps) {
     const [title, setTitle] = useState('');
     const [launcherLabel, setLauncherLabel] = useState('');
     const [autoOpen, setAutoOpen] = useState(false);
+    const [includeTheme, setIncludeTheme] = useState(false);
     const [base, setBase] = useState(apiBase);
+    // Inline-mode only: the host container the chat block mounts into.
+    const [containerId, setContainerId] = useState('askmydocs-chat');
+    const [height, setHeight] = useState('600');
+
+    // Layout the key was created with — drives helper vs inline snippet.
+    const mode = theme?.mode === 'inline' ? 'inline' : 'helper';
 
     const resolvedBase = trimTrailingSlash(base.trim());
     const scriptSrc = `${resolvedBase}/widget/askmydocs-widget.js`;
+
+    // Sanitize the container id to a safe HTML id / CSS selector; both the
+    // `<div id>` and `mount: '#…'` are derived from this single value.
+    const safeContainerId = useMemo(
+        () => containerId.trim().replace(/[^A-Za-z0-9_-]/g, '') || 'askmydocs-chat',
+        [containerId],
+    );
+    const mountSelector = `#${safeContainerId}`;
+    const containerHeight = useMemo(() => {
+        const h = Number.parseInt(height, 10);
+        return Number.isFinite(h) && h > 0 ? Math.min(h, 2000) : 600;
+    }, [height]);
+
+    // Only the fields that differ from the default theme — keeps the snippet
+    // small and the inline override explicit.
+    const themeDelta = useMemo<Partial<WidgetTheme>>(() => {
+        if (!theme) {
+            return {};
+        }
+        const t = sanitizeTheme(theme);
+        const out: Partial<WidgetTheme> = {};
+        (Object.keys(DEFAULT_THEME) as (keyof WidgetTheme)[]).forEach((k) => {
+            // `mode` is a layout concern surfaced as top-level `mode:` config,
+            // not part of the graphical theme block — never bake it here.
+            if (k === 'mode') {
+                return;
+            }
+            if (t[k] !== DEFAULT_THEME[k]) {
+                (out as Record<string, unknown>)[k] = t[k];
+            }
+        });
+        return out;
+    }, [theme]);
+    const hasCustomTheme = Object.keys(themeDelta).length > 0;
 
     const snippet = useMemo(() => {
         const cfg: string[] = [`    key: '${jsString(publicKey)}',`];
         if (resolvedBase) {
             cfg.push(`    apiBase: '${jsString(resolvedBase)}',`);
         }
+        if (mode === 'inline') {
+            // Inline chat mounts into a host container; both lines are required.
+            cfg.push("    mode: 'inline',");
+            cfg.push(`    mount: '${jsString(mountSelector)}',`);
+        }
         if (title.trim()) {
             cfg.push(`    title: '${jsString(title.trim())}',`);
         }
-        if (launcherLabel.trim()) {
-            cfg.push(`    launcherLabel: '${jsString(launcherLabel.trim())}',`);
+        // Launcher-only options have no effect in inline mode.
+        if (mode === 'helper') {
+            if (launcherLabel.trim()) {
+                cfg.push(`    launcherLabel: '${jsString(launcherLabel.trim())}',`);
+            }
+            if (autoOpen) {
+                cfg.push('    autoOpen: true,');
+            }
         }
-        if (autoOpen) {
-            cfg.push('    autoOpen: true,');
+        if (includeTheme && hasCustomTheme) {
+            // JSON.stringify is safe inside <script> once `</` is broken up so
+            // the host markup can't close the script element early.
+            const raw = JSON.stringify(themeDelta, null, 2).replace(/<\/(?=script)/gi, '<\\/');
+            const entry =
+                raw
+                    .split('\n')
+                    .map((line, i) => (i === 0 ? `    theme: ${line}` : `      ${line}`))
+                    .join('\n') + ',';
+            cfg.push(entry);
         }
 
+        // Inline mode prepends the host container the chat fills.
+        const head =
+            mode === 'inline'
+                ? [
+                      `<!-- AskMyDocs KITT widget (inline chat) — ${label} -->`,
+                      `<div id="${safeContainerId}" style="height: ${containerHeight}px;"></div>`,
+                  ]
+                : [`<!-- AskMyDocs KITT widget — ${label} -->`];
+
         return [
-            `<!-- AskMyDocs KITT widget — ${label} -->`,
+            ...head,
             '<script>',
             '  window.AskMyDocsWidget = {',
             ...cfg.map((line) => `  ${line}`),
@@ -126,7 +203,22 @@ export function EmbedCodeDialog({
             '</script>',
             `<script src="${scriptSrc}" defer></script>`,
         ].join('\n');
-    }, [publicKey, resolvedBase, title, launcherLabel, autoOpen, label, scriptSrc]);
+    }, [
+        publicKey,
+        resolvedBase,
+        mode,
+        mountSelector,
+        safeContainerId,
+        containerHeight,
+        title,
+        launcherLabel,
+        autoOpen,
+        includeTheme,
+        hasCustomTheme,
+        themeDelta,
+        label,
+        scriptSrc,
+    ]);
 
     const proxyConfigSnippet = [
         '<script>',
@@ -168,6 +260,11 @@ export function EmbedCodeDialog({
                     <DialogTitle className="flex items-center gap-2">
                         Embed the widget
                         <Badge variant="muted">{projectKey}</Badge>
+                        {mode === 'inline' && (
+                            <Badge variant="muted" data-testid="admin-widget-embed-mode-inline">
+                                inline chat
+                            </Badge>
+                        )}
                     </DialogTitle>
                     <DialogDescription>
                         Paste the snippet into the host site, just before the closing{' '}
@@ -220,12 +317,31 @@ export function EmbedCodeDialog({
                         </div>
                         <Alert variant="info">
                             <Info aria-hidden />
-                            <AlertTitle>Two tags, nothing else</AlertTitle>
+                            <AlertTitle>
+                                {mode === 'inline'
+                                    ? 'A container + two tags'
+                                    : 'Two tags, nothing else'}
+                            </AlertTitle>
                             <AlertDescription>
-                                The first <code className="font-mono">&lt;script&gt;</code> sets
-                                the configuration; the second downloads the widget. The host
-                                page's origin must be in the list above or the request is
-                                rejected (403).
+                                {mode === 'inline' ? (
+                                    <>
+                                        The <code className="font-mono">&lt;div&gt;</code> is where
+                                        the chat renders — give it the height you want. The first{' '}
+                                        <code className="font-mono">&lt;script&gt;</code> sets the
+                                        configuration and the{' '}
+                                        <code className="font-mono">mount</code> target; the second
+                                        downloads the widget. The host page's origin must be in the
+                                        list above or the request is rejected (403).
+                                    </>
+                                ) : (
+                                    <>
+                                        The first{' '}
+                                        <code className="font-mono">&lt;script&gt;</code> sets the
+                                        configuration; the second downloads the widget. The host
+                                        page's origin must be in the list above or the request is
+                                        rejected (403).
+                                    </>
+                                )}
                             </AlertDescription>
                         </Alert>
                     </TabsContent>
@@ -242,16 +358,47 @@ export function EmbedCodeDialog({
                                     placeholder="Assistant"
                                 />
                             </div>
-                            <div className="grid gap-1.5">
-                                <Label htmlFor="embed-opt-launcher">Launcher label</Label>
-                                <Input
-                                    id="embed-opt-launcher"
-                                    data-testid="admin-widget-embed-opt-launcher"
-                                    value={launcherLabel}
-                                    onChange={(e) => setLauncherLabel(e.target.value)}
-                                    placeholder="Ask"
-                                />
-                            </div>
+                            {mode === 'helper' && (
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="embed-opt-launcher">Launcher label</Label>
+                                    <Input
+                                        id="embed-opt-launcher"
+                                        data-testid="admin-widget-embed-opt-launcher"
+                                        value={launcherLabel}
+                                        onChange={(e) => setLauncherLabel(e.target.value)}
+                                        placeholder="Ask"
+                                    />
+                                </div>
+                            )}
+                            {mode === 'inline' && (
+                                <>
+                                    <div className="grid gap-1.5">
+                                        <Label htmlFor="embed-opt-container">Container id</Label>
+                                        <Input
+                                            id="embed-opt-container"
+                                            data-testid="admin-widget-embed-opt-container"
+                                            value={containerId}
+                                            onChange={(e) => setContainerId(e.target.value)}
+                                            placeholder="askmydocs-chat"
+                                        />
+                                    </div>
+                                    <div className="grid gap-1.5">
+                                        <Label htmlFor="embed-opt-height">
+                                            Container height (px)
+                                        </Label>
+                                        <Input
+                                            id="embed-opt-height"
+                                            type="number"
+                                            min={200}
+                                            max={2000}
+                                            data-testid="admin-widget-embed-opt-height"
+                                            value={height}
+                                            onChange={(e) => setHeight(e.target.value)}
+                                            placeholder="600"
+                                        />
+                                    </div>
+                                </>
+                            )}
                             <div className="grid gap-1.5 sm:col-span-2">
                                 <Label htmlFor="embed-opt-apibase">
                                     API base URL
@@ -267,20 +414,47 @@ export function EmbedCodeDialog({
                                     placeholder="https://kb.example.com"
                                 />
                             </div>
-                            <label
-                                className="flex items-center gap-2 text-sm sm:col-span-2"
-                                htmlFor="embed-opt-autoopen"
-                            >
-                                <input
-                                    id="embed-opt-autoopen"
-                                    type="checkbox"
-                                    data-testid="admin-widget-embed-opt-autoopen"
-                                    checked={autoOpen}
-                                    onChange={(e) => setAutoOpen(e.target.checked)}
-                                    className="size-4 accent-[var(--accent-a)]"
-                                />
-                                Open the panel automatically on page load
-                            </label>
+                            {mode === 'helper' && (
+                                <label
+                                    className="flex items-center gap-2 text-sm sm:col-span-2"
+                                    htmlFor="embed-opt-autoopen"
+                                >
+                                    <input
+                                        id="embed-opt-autoopen"
+                                        type="checkbox"
+                                        data-testid="admin-widget-embed-opt-autoopen"
+                                        checked={autoOpen}
+                                        onChange={(e) => setAutoOpen(e.target.checked)}
+                                        className="size-4 accent-[var(--accent-a)]"
+                                    />
+                                    Open the panel automatically on page load
+                                </label>
+                            )}
+                            {theme && (
+                                <label
+                                    className="flex items-center gap-2 text-sm sm:col-span-2"
+                                    htmlFor="embed-opt-theme"
+                                >
+                                    <input
+                                        id="embed-opt-theme"
+                                        type="checkbox"
+                                        data-testid="admin-widget-embed-opt-theme"
+                                        checked={includeTheme}
+                                        disabled={!hasCustomTheme}
+                                        onChange={(e) => setIncludeTheme(e.target.checked)}
+                                        className="size-4 accent-[var(--accent-a)]"
+                                    />
+                                    <span>
+                                        Bake the saved appearance inline
+                                        {!hasCustomTheme && (
+                                            <span className="text-muted-foreground">
+                                                {' '}
+                                                (currently default — nothing to bake)
+                                            </span>
+                                        )}
+                                    </span>
+                                </label>
+                            )}
                         </div>
                         <CodeBlock
                             code={snippet}
