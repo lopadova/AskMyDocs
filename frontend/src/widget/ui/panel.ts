@@ -8,40 +8,67 @@
  */
 import { Bridge, type BridgeEvents } from '../core/bridge';
 import type { Artifact } from '../core/bridge';
-import type { Citation, ToolCall, WidgetConfig } from '../types';
+import type { Citation, ToolCall, WidgetConfig, WidgetMode, WidgetTheme } from '../types';
+import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, sanitizeTheme } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
 
+const DEFAULT_TITLE = 'Assistente';
+const DEFAULT_LAUNCHER_LABEL = 'Chiedi all’assistente';
+
 export class WidgetPanel {
+    private readonly root: HTMLElement;
+    private readonly cfg: WidgetConfig;
+    /** Modalità di layout decisa dal loader (dipende dal mount). Autoritativa
+     *  per il layout: il `theme.mode` server è solo informativo. */
+    private readonly mode: WidgetMode;
     private readonly bridge: Bridge;
     private readonly launcher: HTMLButtonElement;
+    private readonly launcherIconSlot: HTMLElement;
+    private readonly launcherLabelEl: HTMLElement;
     private readonly panel: HTMLElement;
+    private readonly header: HTMLElement;
+    private readonly titleEl: HTMLElement;
     private readonly messages: HTMLElement;
     private readonly status: HTMLElement;
     private readonly input: HTMLTextAreaElement;
     private readonly send: HTMLButtonElement;
+    /** <style> del tema, dentro `root` (scope shadow) — aggiornabile. */
+    private readonly themeStyle: HTMLStyleElement;
+    /** Logo opzionale nell'header (creato on-demand). */
+    private logo: HTMLImageElement | null = null;
+    /** Tema server da /setup (null finché non risolto). */
+    private serverTheme: Partial<WidgetTheme> | null = null;
+    /** Tema effettivo applicato (default < server < inline). */
+    private theme: WidgetTheme = DEFAULT_THEME;
     private confirmBar: HTMLElement | null = null;
 
-    constructor(root: HTMLElement, cfg: WidgetConfig) {
-        const title = cfg.title ?? 'Assistente';
-        const launcherLabel = cfg.launcherLabel ?? 'Chiedi all’assistente';
+    constructor(root: HTMLElement, cfg: WidgetConfig, mode: WidgetMode = 'helper') {
+        this.root = root;
+        this.cfg = cfg;
+        this.mode = mode;
 
+        // <style> del tema dentro root (sibling delle classi, scope shadow).
+        this.themeStyle = this.el('style', '', { 'data-testid': 'askmydocs-widget-theme' });
+
+        // Launcher = icona (slot) + etichetta. Icona/etichetta li popola
+        // applyTheme; aria-label garantisce il nome accessibile (R15).
         this.launcher = this.el('button', 'amd-launcher', { 'data-testid': 'askmydocs-widget-launcher', type: 'button' });
-        this.launcher.textContent = `💬 ${launcherLabel}`;
+        this.launcherIconSlot = this.el('span', 'amd-launcher-icon', { 'aria-hidden': 'true' });
+        this.launcherLabelEl = this.el('span', 'amd-launcher-label');
+        this.launcher.append(this.launcherIconSlot, this.launcherLabelEl);
 
         this.panel = this.el('section', 'amd-panel', {
             'data-testid': 'askmydocs-widget-panel',
             'data-open': 'false',
             'data-state': 'idle',
             role: 'dialog',
-            'aria-label': title,
         });
 
-        const header = this.el('header', 'amd-header');
-        const titleEl = this.el('span', 'amd-title');
-        titleEl.textContent = title;
+        this.header = this.el('header', 'amd-header');
+        this.titleEl = this.el('span', 'amd-title');
         const close = this.el('button', 'amd-close', { 'data-testid': 'askmydocs-widget-close', type: 'button', 'aria-label': 'Chiudi' });
         close.textContent = '×';
-        header.append(titleEl, close);
+        this.header.append(this.titleEl, close);
 
         this.messages = this.el('div', 'amd-messages', { 'data-testid': 'askmydocs-widget-messages', role: 'log', 'aria-live': 'polite' });
         this.status = this.el('div', 'amd-status', { 'data-testid': 'askmydocs-widget-status', 'aria-live': 'polite' });
@@ -57,8 +84,8 @@ export class WidgetPanel {
         this.send.textContent = 'Invia';
         composer.append(this.input, this.send);
 
-        this.panel.append(header, this.messages, this.status, composer);
-        root.append(this.launcher, this.panel);
+        this.panel.append(this.header, this.messages, this.status, composer);
+        root.append(this.themeStyle, this.launcher, this.panel);
 
         this.launcher.addEventListener('click', () => this.toggle());
         close.addEventListener('click', () => this.setOpen(false));
@@ -75,8 +102,90 @@ export class WidgetPanel {
 
         this.bridge = new Bridge(cfg, this.events());
 
-        if (cfg.autoOpen) {
+        // Fase 1: tema inline + default subito. Fase 2: ri-applica col server.
+        this.applyTheme();
+        void this.init();
+
+        if (this.mode === 'inline') {
+            // Blocco chat a pagina: sempre aperto, statico, senza launcher/close
+            // (nascosti via CSS .amd-mode-inline). role=region anziché dialog: è
+            // una sezione inline, non un overlay modale (R15). Niente focus forzato
+            // al boot → non scrolla la pagina verso il widget.
+            this.root.classList.add('amd-mode-inline');
+            this.panel.setAttribute('role', 'region');
+            this.panel.dataset.open = 'true';
+        } else if (cfg.autoOpen) {
             this.setOpen(true);
+        }
+    }
+
+    /** Fase 2: carica /setup e ri-applica il tema fondendo quello server. */
+    private async init(): Promise<void> {
+        const setup = await this.bridge.loadSetup();
+        const serverTheme = setup && typeof setup.theme === 'object' ? setup.theme : null;
+        if (serverTheme) {
+            this.serverTheme = serverTheme as Partial<WidgetTheme>;
+            this.applyTheme();
+        }
+    }
+
+    /**
+     * Calcola il tema effettivo (default < server < inline) e lo applica: var
+     * CSS via {@link buildThemeCss}, classi lato/forma, icona/etichetta del
+     * launcher, logo/titolo dell'header. Precedenza ai top-level cfg.title /
+     * cfg.launcherLabel (back-compat).
+     */
+    private applyTheme(): void {
+        this.theme = sanitizeTheme({
+            ...DEFAULT_THEME,
+            ...(this.serverTheme ?? {}),
+            ...(this.cfg.theme ?? {}),
+        });
+        const t = this.theme;
+
+        this.themeStyle.textContent = buildThemeCss(t);
+
+        // Lato (classe su root) + forma (classe su launcher).
+        this.root.classList.toggle('amd-side-left', t.launcherSide === 'left');
+        this.launcher.classList.remove('amd-shape-pill', 'amd-shape-rounded', 'amd-shape-circle');
+        this.launcher.classList.add(`amd-shape-${t.launcherShape}`);
+
+        // Icona del launcher: URL custom > SVG built-in > nessuna.
+        this.launcherIconSlot.replaceChildren();
+        if (t.launcherIconUrl !== '') {
+            const img = this.el('img', '', { src: t.launcherIconUrl, alt: '' });
+            this.launcherIconSlot.append(img);
+            this.launcherIconSlot.style.display = '';
+        } else {
+            const svg = launcherIconSvg(t.launcherIcon);
+            if (svg !== '') {
+                // SVG = costante fidata (mai input utente) — vedi styles.ts.
+                this.launcherIconSlot.innerHTML = svg;
+                this.launcherIconSlot.style.display = '';
+            } else {
+                this.launcherIconSlot.style.display = 'none';
+            }
+        }
+
+        // Etichetta launcher + titolo pannello (top-level config vince).
+        const launcherLabel = this.cfg.launcherLabel || t.launcherLabel || DEFAULT_LAUNCHER_LABEL;
+        this.launcherLabelEl.textContent = launcherLabel;
+        this.launcher.setAttribute('aria-label', launcherLabel);
+
+        const title = this.cfg.title || t.panelTitle || DEFAULT_TITLE;
+        this.titleEl.textContent = title;
+        this.panel.setAttribute('aria-label', title);
+
+        // Logo header (https, sanificato): crea/aggiorna o rimuovi.
+        if (t.headerLogoUrl !== '') {
+            if (!this.logo) {
+                this.logo = this.el('img', 'amd-logo', { alt: '' });
+                this.header.insertBefore(this.logo, this.header.firstChild);
+            }
+            this.logo.src = t.headerLogoUrl;
+        } else if (this.logo) {
+            this.logo.remove();
+            this.logo = null;
         }
     }
 

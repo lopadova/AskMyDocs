@@ -47,6 +47,7 @@ const MAX_AUTO_STEPS = 12;
 export class Bridge {
     private readonly transport: Transport;
     private readonly executor = new Executor();
+    private readonly skill?: string;
     private sessionId: string | null = null;
     private busy = false;
 
@@ -55,10 +56,25 @@ export class Bridge {
         private readonly events: BridgeEvents,
     ) {
         this.transport = new Transport(cfg);
+        this.skill = cfg.skill;
     }
 
     isBusy(): boolean {
         return this.busy;
+    }
+
+    /**
+     * Carica il manifest da GET /api/widget/setup (skill, tool, e — nuovo — il
+     * `theme` server). Resiliente (R14 lato widget): un fallimento NON rompe la
+     * chat, il widget resta sul tema inline+default. Ritorna l'oggetto setup o
+     * null se la chiamata fallisce.
+     */
+    async loadSetup(): Promise<Record<string, unknown> | null> {
+        try {
+            return await this.transport.setup(this.skill);
+        } catch {
+            return null;
+        }
     }
 
     async sendUserMessage(message: string): Promise<void> {

@@ -17,8 +17,78 @@ export interface WidgetConfig {
     title?: string;
     /** Etichetta del bottone lanciatore. */
     launcherLabel?: string;
-    /** Apre il pannello al caricamento. */
+    /** Apre il pannello al caricamento (solo modalità `helper`). */
     autoOpen?: boolean;
+    /**
+     * Modalità di resa del widget (precedenza sul `theme.mode` server):
+     *   - `helper` (default) launcher flottante → pannello a comparsa;
+     *   - `inline`           blocco chat che riempie {@link WidgetConfig.mount}.
+     * L'embed snippet la "congela" inline perché il mount è specifico del sito.
+     */
+    mode?: WidgetMode;
+    /**
+     * Selettore CSS del container in cui montare la chat in modalità `inline`
+     * (es. `'#askmydocs-chat'`). Obbligatorio per `inline`; ignorato in `helper`.
+     * Se il container non esiste il widget logga un errore e non monta (R14).
+     */
+    mount?: string;
+    /**
+     * Tema grafico INLINE opzionale (precedenza massima: inline > server > default).
+     * Parziale: ogni campo assente cade sul tema server (/setup) o sul default.
+     */
+    theme?: Partial<WidgetTheme>;
+}
+
+/**
+ * Modalità di layout del widget. `helper` = launcher flottante + pannello a
+ * comparsa (kitt). `inline` = blocco chat che riempie il container ospite (chat
+ * legata a una pagina). Mirror di WidgetThemeService::MODES (PHP).
+ */
+export type WidgetMode = 'helper' | 'inline';
+
+/** Chiave di font ammessa (mappa su uno stack sicuro — vedi FONT_STACKS). */
+export type WidgetFontKey = 'system' | 'inter' | 'roboto' | 'georgia' | 'mono';
+export type LauncherSide = 'right' | 'left';
+export type LauncherShape = 'pill' | 'rounded' | 'circle';
+export type LauncherIcon = 'chat' | 'sparkles' | 'help' | 'none';
+
+/**
+ * Identità grafica del widget. Forma piatta e tipizzata, speculare a
+ * WidgetThemeService::defaults() (PHP) — R9 docs-match-code. Tutti i valori
+ * sono validati/sanificati prima di finire in CSS (sanitizeTheme).
+ */
+export interface WidgetTheme {
+    // Modalità di layout (helper = launcher flottante, inline = blocco a pagina)
+    mode: WidgetMode;
+    // Colori (solo hex #rgb/#rrggbb/#rrggbbaa)
+    accent: string;
+    background: string;
+    foreground: string;
+    muted: string;
+    border: string;
+    headerBackground: string;
+    headerForeground: string;
+    launcherBackground: string;
+    launcherForeground: string;
+    userBubbleBackground: string;
+    userBubbleForeground: string;
+    assistantBubbleBackground: string;
+    assistantBubbleForeground: string;
+    // Tipografia
+    fontFamily: WidgetFontKey;
+    fontSize: number;
+    // Launcher
+    launcherSide: LauncherSide;
+    launcherShape: LauncherShape;
+    launcherLabel: string;
+    launcherIcon: LauncherIcon;
+    launcherIconUrl: string;
+    // Pannello
+    panelWidth: number;
+    panelHeight: number;
+    panelRadius: number;
+    panelTitle: string;
+    headerLogoUrl: string;
 }
 
 export interface SnapshotField {
