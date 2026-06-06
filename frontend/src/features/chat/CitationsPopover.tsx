@@ -160,8 +160,18 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
         }
         const rect = wrapRef.current.getBoundingClientRect();
         const estimatedHeight = 170;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const spaceAbove = rect.top;
+        // Measure available space against the scrollable thread container,
+        // not the window: the popover is position:absolute inside
+        // [data-testid="chat-thread"] (overflow:auto), so it's clipped at
+        // the thread's edges — not the viewport's, which sits below the
+        // composer + suggested-followups. Falling back to the window covers
+        // jsdom (zero rects) and any host without the thread testid.
+        const scroller = wrapRef.current.closest('[data-testid="chat-thread"]');
+        const bounds = scroller?.getBoundingClientRect();
+        const bottomEdge = bounds ? bounds.bottom : window.innerHeight;
+        const topEdge = bounds ? bounds.top : 0;
+        const spaceBelow = bottomEdge - rect.bottom;
+        const spaceAbove = rect.top - topEdge;
         setPlacement(spaceBelow < estimatedHeight && spaceAbove > spaceBelow ? 'top' : 'bottom');
     }, [open]);
 
