@@ -34,15 +34,22 @@ directly. The endpoint requires Sanctum auth and triggers the same
 ingest flow server-side. Useful for teams that don't want to gate on
 a git commit.
 
-## The 5 templates
+## The 6 templates
 
 | Skill | Produces | Trigger |
 |---|---|---|
+| `compile-repo-canonical` | The whole `kb/` tree for a repository — project-index + modules + decisions + standards + integrations + domain-concepts + runbooks + rejected-approaches, cross-wikilinked | "generate the canonical docs for this repo", "bootstrap the knowledge base", "compile kb/ from the codebase" |
 | `promote-decision` | ADR-style canonical decision MD | "we decided to X", "let's go with Y approach" |
 | `promote-module-kb` | `module-kb` canonical MD with 9 standard sections | "document how module X works", "write the module KB" |
 | `promote-runbook` | `runbook` canonical MD (trigger / actions / rollback / escalation) | "turn this procedure into a runbook", "document the incident response" |
 | `link-kb-note` | Wikilink additions to existing canonical notes | "connect these documents", "what else relates to X?" |
 | `session-close` | Structured list of candidate artifacts | session wrap-up, sprint closeout |
+
+`compile-repo-canonical` is the repository-wide orchestrator: it surveys
+the codebase, plans the typed-document inventory (with a human-review
+stop), then applies the same per-type contracts the single-artifact
+skills use across the whole repo at once. The other five remain the tools
+for one-document-at-a-time work.
 
 Every produced doc includes:
 - YAML frontmatter with `slug`, `type`, `status`, `owners`, `tags`,
