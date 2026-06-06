@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>KITT — Pagina di riferimento annotata (wizard multi-step)</title>
+
+    <!--
+    ============================================================================
+    KITT — PAGINA DI RIFERIMENTO ("fatta bene")
+    ============================================================================
+    Questa pagina è un TEMPLATE da copiare per chi integra il widget KITT e
+    vuole il massimo dal supporto a compilazione form + navigazione.
+
+    Mostra, su un wizard a 3 step, TUTTO il vocabolario `data-kitt-*` che lo
+    SnapshotBuilder del widget legge davvero (frontend/src/widget/dom/snapshot.ts):
+
+      • data-kitt-region   → sezioni / step          (+ data-kitt-active)
+      • data-kitt-field    → campi                    (+ required/sensitive/help)
+      • data-kitt-input    → l'input reale nel wrapper (quando il wrapper != input)
+      • data-kitt-action   → bottoni azionabili (verb) (+ reason-disabled/help)
+      • data-kitt-message  → banner error/warning/info che KITT legge
+      • data-kitt-locale   → lingue disponibili        (+ data-kitt-active)
+      • data-kitt-skip     → sottoalbero che KITT deve ignorare
+
+    Regola d'oro: più annoti, meno KITT "improvvisa" sull'outline euristico, e
+    più affidabile diventa il form-filling. I valori di `data-kitt-action`
+    (i "verb") sono identità STABILI: non cambiarli quando cambi testo/lingua/CSS.
+
+    Per provarla: configura `window.AskMyDocsWidget` in fondo con la tua pk_ e
+    apiBase, poi servi questo file da un dominio in allowlist sulla key.
+    ============================================================================
+    -->
+
+    <style>
+        :root { --line: #e5e7eb; --ink: #1f2937; --muted: #6b7280; --brand: #2563eb; }
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; margin: 0; color: var(--ink); background: #f9fafb; }
+        header { background: #111827; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 16px; }
+        header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+        nav.locale { margin-left: auto; display: flex; gap: 8px; }
+        nav.locale button { background: transparent; border: 1px solid #374151; color: #d1d5db; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        nav.locale button[data-kitt-active="true"] { background: #fff; color: #111827; border-color: #fff; }
+        main { max-width: 760px; margin: 28px auto; padding: 0 20px; }
+
+        ol.steps { display: flex; gap: 8px; list-style: none; padding: 0; margin: 0 0 24px; }
+        ol.steps li { flex: 1; text-align: center; font-size: 13px; color: var(--muted); border-top: 3px solid var(--line); padding-top: 8px; }
+        ol.steps li[aria-current="step"] { color: var(--brand); border-color: var(--brand); font-weight: 600; }
+
+        section.step { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 22px; margin-bottom: 18px; }
+        section.step[hidden] { display: none; }
+        section.step h2 { margin: 0 0 4px; font-size: 18px; }
+        section.step p.lead { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+
+        .field { margin-bottom: 16px; }
+        .field > label { display: block; font-weight: 600; margin-bottom: 4px; }
+        .field .help { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .field .req { color: #dc2626; }
+        input, select, textarea { width: 100%; padding: 9px 11px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
+        .row { display: flex; gap: 14px; }
+        .row > .field { flex: 1; }
+
+        .actions { display: flex; gap: 10px; margin-top: 8px; }
+        button.btn { padding: 10px 16px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        button.btn-primary { background: var(--brand); color: #fff; }
+        button.btn-ghost { background: #f3f4f6; color: var(--ink); }
+        button.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+        .msg { border-radius: 8px; padding: 10px 12px; font-size: 14px; margin-bottom: 14px; }
+        .msg-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .msg-info  { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+        dl.recap { display: grid; grid-template-columns: 200px 1fr; gap: 6px 16px; margin: 0; }
+        dl.recap dt { color: var(--muted); }
+        dl.recap dd { margin: 0; font-weight: 600; }
+        footer.note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    </style>
+</head>
+
+<!--
+  active_context: lo snapshot riporta la lingua attiva leggendo l'elemento
+  [data-kitt-locale][data-kitt-active="true"]. Qui dichiariamo le lingue
+  disponibili come switcher: KITT può usare il tool `set_locale`.
+-->
+<body>
+    <header>
+        <h1>Onboarding fornitore — esempio annotato KITT</h1>
+        <nav class="locale" aria-label="Lingua">
+            <button type="button" data-kitt-locale="it" data-kitt-active="true">IT</button>
+            <button type="button" data-kitt-locale="en">EN</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Indicatore di step. È puro outline visivo: niente data-kitt-* qui,
+             gli step "veri" sono le <section data-kitt-region>. -->
+        <ol class="steps" aria-label="Avanzamento">
+            <li aria-current="step">1. Anagrafica</li>
+            <li>2. Pagamento</li>
+            <li>3. Riepilogo</li>
+        </ol>
+
+        <form id="wizard" novalidate>
+
+            <!-- ================= STEP 1 — ANAGRAFICA =================
+                 region attiva: data-kitt-active="true". Quando passi allo step 2
+                 sposta l'attributo active sulla region successiva (vedi script). -->
+            <section class="step" data-kitt-region="anagrafica" data-kitt-active="true"
+                     data-kitt-help="Dati anagrafici del fornitore. Tutti i campi marcati con * sono obbligatori.">
+                <h2>Anagrafica</h2>
+                <p class="lead">Chi sei. KITT può compilare questi campi al posto tuo.</p>
+
+                <div class="row">
+                    <!-- Campo required. Il wrapper porta data-kitt-field; l'input
+                         interno è risolto automaticamente, ma marcarlo con
+                         data-kitt-input rende l'aggancio esplicito. La label è
+                         collegata via for/id → finisce nello snapshot. -->
+                    <div class="field" data-kitt-field="ragione_sociale" data-kitt-required
+                         data-kitt-help="Denominazione legale completa, come da visura.">
+                        <label for="ragione_sociale">Ragione sociale <span class="req">*</span></label>
+                        <input id="ragione_sociale" name="ragione_sociale" type="text" data-kitt-input>
+                        <span class="help">Es. "Acme S.r.l."</span>
+                    </div>
+
+                    <div class="field" data-kitt-field="partita_iva" data-kitt-required
+                         data-kitt-help="11 cifre numeriche per fornitori italiani.">
+                        <label for="partita_iva">Partita IVA <span class="req">*</span></label>
+                        <input id="partita_iva" name="partita_iva" type="text" inputmode="numeric" data-kitt-input>
+                    </div>
+                </div>
+
+                <!-- Select con option statiche: KITT le vede nello snapshot e può
+                     scegliere SOLO tra queste (il validator rifiuta valori fuori lista). -->
+                <div class="field" data-kitt-field="categoria" data-kitt-required
+                     data-kitt-help="Categoria merceologica principale del fornitore.">
+                    <label for="categoria">Categoria <span class="req">*</span></label>
+                    <select id="categoria" name="categoria" data-kitt-input>
+                        <option value="">— seleziona —</option>
+                        <option value="servizi">Servizi</option>
+                        <option value="hardware">Hardware</option>
+                        <option value="software">Software</option>
+                        <option value="consulenza">Consulenza</option>
+                    </select>
+                </div>
+
+                <!-- Combobox async: data-kitt-options-source dice a KITT che le
+                     opzioni NON sono nel DOM ma vanno cercate (tool combobox_search /
+                     combobox_set). Il tipo nello snapshot diventa "combobox-async". -->
+                <div class="field" data-kitt-field="paese" data-kitt-required
+                     data-kitt-options-source="/api/countries"
+                     data-kitt-help="Inizia a digitare il nome del paese e seleziona dalla lista.">
+                    <label for="paese">Paese sede legale <span class="req">*</span></label>
+                    <input id="paese" name="paese" type="text" role="combobox"
+                           aria-expanded="false" autocomplete="off" data-kitt-input>
+                </div>
+
+                <div class="actions">
+                    <!-- verb "next": KITT avanza con goto_step o cliccando questa action -->
+                    <button type="button" class="btn btn-primary"
+                            data-kitt-action="next"
+                            data-kitt-help="Vai allo step Pagamento. Valida prima i campi obbligatori.">
+                        Avanti →
+                    </button>
+                </div>
+            </section>
+
+            <!-- ================= STEP 2 — PAGAMENTO ================= -->
+            <section class="step" data-kitt-region="pagamento" hidden
+                     data-kitt-help="Coordinate di pagamento. L'IBAN è un dato sensibile.">
+                <h2>Pagamento</h2>
+                <p class="lead">Dove accreditare i pagamenti.</p>
+
+                <!-- DATO SENSIBILE: data-kitt-sensitive → lo snapshot espone il
+                     campo (nome, label, "filled") ma MAI il valore. KITT sa che
+                     c'è un IBAN e se è compilato, ma non lo legge né lo logga. -->
+                <div class="field" data-kitt-field="iban" data-kitt-required data-kitt-sensitive
+                     data-kitt-help="IBAN del conto su cui ricevere i pagamenti. Dato sensibile: non verrà letto dal widget.">
+                    <label for="iban">IBAN <span class="req">*</span></label>
+                    <input id="iban" name="iban" type="text" autocomplete="off" data-kitt-input>
+                    <span class="help">27 caratteri per l'Italia. Non condividere l'IBAN in chat.</span>
+                </div>
+
+                <div class="field" data-kitt-field="intestatario" data-kitt-required
+                     data-kitt-help="Intestatario del conto, se diverso dalla ragione sociale.">
+                    <label for="intestatario">Intestatario conto <span class="req">*</span></label>
+                    <input id="intestatario" name="intestatario" type="text" data-kitt-input>
+                </div>
+
+                <!-- Checkbox: type nello snapshot = "checkbox", value = booleano.
+                     KITT usa il tool `toggle`. -->
+                <div class="field" data-kitt-field="fatturazione_elettronica"
+                     data-kitt-help="Attiva se il fornitore emette fattura elettronica.">
+                    <label style="display:flex;gap:8px;align-items:center;font-weight:600">
+                        <input type="checkbox" id="fatturazione_elettronica"
+                               name="fatturazione_elettronica" data-kitt-input style="width:auto">
+                        Fatturazione elettronica attiva
+                    </label>
+                </div>
+
+                <div class="field" data-kitt-field="note"
+                     data-kitt-help="Note libere per l'ufficio acquisti (facoltativo).">
+                    <label for="note">Note</label>
+                    <textarea id="note" name="note" rows="3" data-kitt-input></textarea>
+                </div>
+
+                <div class="actions">
+                    <button type="button" class="btn btn-ghost"
+                            data-kitt-action="back"
+                            data-kitt-help="Torna allo step Anagrafica.">← Indietro</button>
+                    <button type="button" class="btn btn-primary"
+                            data-kitt-action="next"
+                            data-kitt-help="Vai al Riepilogo finale.">Avanti →</button>
+                </div>
+            </section>
+
+            <!-- ================= STEP 3 — RIEPILOGO ================= -->
+            <section class="step" data-kitt-region="riepilogo" hidden
+                     data-kitt-help="Riepilogo finale. Il submit invia la richiesta e richiede conferma esplicita.">
+                <h2>Riepilogo</h2>
+                <p class="lead">Controlla i dati prima di inviare.</p>
+
+                <!-- Banner che KITT LEGGE: data-kitt-message="error|warning|info".
+                     Compare/sparisce via script in base alla validazione. KITT lo
+                     usa per spiegare all'utente perché il submit è bloccato. -->
+                <div id="form-error" class="msg msg-error" data-kitt-message="error" hidden>
+                    Completa tutti i campi obbligatori prima di inviare.
+                </div>
+                <div class="msg msg-info" data-kitt-message="info">
+                    Inviando dichiari che i dati sono corretti e aggiornati.
+                </div>
+
+                <dl class="recap" aria-label="Riepilogo dati">
+                    <dt>Ragione sociale</dt><dd data-bind="ragione_sociale">—</dd>
+                    <dt>Partita IVA</dt><dd data-bind="partita_iva">—</dd>
+                    <dt>Categoria</dt><dd data-bind="categoria">—</dd>
+                    <dt>IBAN</dt><dd>•••• (nascosto)</dd>
+                </dl>
+
+                <div class="actions">
+                    <button type="button" class="btn btn-ghost"
+                            data-kitt-action="back"
+                            data-kitt-help="Torna allo step Pagamento.">← Indietro</button>
+
+                    <!-- SUBMIT: verb stabile, confirm lato policy/manifest
+                         (confirmation_required: ["submit_form"]). reason-disabled
+                         dice a KITT PERCHÉ non può ancora inviare → niente
+                         tentativi a vuoto su un bottone disabilitato. -->
+                    <button type="submit" class="btn btn-primary" id="submit-btn"
+                            data-kitt-action="submit"
+                            data-kitt-reason-disabled="Mancano campi obbligatori: completa Anagrafica e Pagamento."
+                            data-kitt-help="Invia la richiesta di onboarding. Richiede conferma esplicita."
+                            disabled>
+                        Invia richiesta
+                    </button>
+                </div>
+                <p id="ok" class="help" style="color:#16a34a;font-weight:600" hidden>Richiesta inviata ✓</p>
+            </section>
+        </form>
+
+        <!-- Esempio di sottoalbero IGNORATO: banner promo, debug, widget di terzi.
+             data-kitt-skip → KITT non lo legge mai, non sporca lo snapshot. -->
+        <aside data-kitt-skip aria-hidden="true">
+            <footer class="note">Banner promozionale / debug — invisibile a KITT grazie a data-kitt-skip.</footer>
+        </aside>
+    </main>
+
+    <!--
+      ===== Logica della pagina (NON è KITT) =====
+      Gestisce navigazione step, sposta data-kitt-active, abilita il submit
+      quando i required sono pieni, mostra/nasconde il banner d'errore.
+      È esattamente lo "stato reale" che lo snapshot fotografa ad ogni turno.
+    -->
+    <script>
+        (function () {
+            const form = document.getElementById('wizard');
+            const steps = Array.from(form.querySelectorAll('section.step'));
+            const required = () => form.querySelectorAll('[data-kitt-required] [data-kitt-input]');
+            const submitBtn = document.getElementById('submit-btn');
+            const errBox = document.getElementById('form-error');
+
+            function show(index) {
+                steps.forEach((s, i) => {
+                    s.hidden = i !== index;
+                    // sposta data-kitt-active sulla region visibile: l'active_context
+                    // dello snapshot deve sempre riflettere lo step corrente.
+                    if (i === index) s.setAttribute('data-kitt-active', 'true');
+                    else s.removeAttribute('data-kitt-active');
+                });
+                document.querySelectorAll('ol.steps li').forEach((li, i) =>
+                    li.setAttribute('aria-current', i === index ? 'step' : 'false'));
+                refresh();
+            }
+
+            function allFilled() {
+                return Array.from(required()).every((el) =>
+                    el.type === 'checkbox' ? true : String(el.value || '').trim() !== '');
+            }
+
+            function refresh() {
+                const ready = allFilled();
+                submitBtn.disabled = !ready;
+                errBox.hidden = ready;
+                document.querySelectorAll('[data-bind]').forEach((dd) => {
+                    const el = form.querySelector('[name="' + dd.getAttribute('data-bind') + '"]');
+                    if (el && el.value) dd.textContent = el.value;
+                });
+            }
+
+            let current = 0;
+            form.addEventListener('click', (e) => {
+                const verb = e.target.closest('[data-kitt-action]')?.getAttribute('data-kitt-action');
+                if (verb === 'next' && current < steps.length - 1) show(++current);
+                if (verb === 'back' && current > 0) show(--current);
+            });
+            form.addEventListener('input', refresh);
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!allFilled()) { errBox.hidden = false; return; }
+                document.getElementById('ok').hidden = false;
+            });
+
+            show(0);
+        })();
+    </script>
+
+    <!--
+      ===== Aggancio del widget KITT =====
+      Sostituisci pk_ e apiBase con i tuoi. La key porta tenant+project+skill
+      (lato server). La skill decide tool_enabled, auto_annotation_rules e policy.
+    -->
+    <script>
+        window.AskMyDocsWidget = {
+            key: 'pk_live_SOSTITUISCI_QUI',
+            apiBase: 'https://kb.tuodominio.com',
+            title: 'Assistente onboarding',
+            launcherLabel: 'Ti aiuto a compilare',
+            autoOpen: false,
+        };
+    </script>
+    <script src="https://kb.tuodominio.com/widget/askmydocs-widget.js" defer></script>
+</body>
+</html>

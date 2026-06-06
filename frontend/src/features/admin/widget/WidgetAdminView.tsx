@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { WidgetKeysView } from './WidgetKeysView';
 import { WidgetSessionsView } from './WidgetSessionsView';
+import { WidgetIntegrationGuideView } from './WidgetIntegrationGuideView';
 
-type Tab = 'keys' | 'sessions';
+type Tab = 'keys' | 'sessions' | 'guide';
 
 /**
- * M6.4+M6.5 — Widget admin container with tabs for Keys and Sessions.
+ * M6.4+M6.5 — Widget admin container with tabs for Keys, Sessions and the
+ * integration guide (the DOM-annotation hand-off command).
  * R11 testid, R15 a11y.
  */
 export function WidgetAdminView() {
@@ -55,6 +57,24 @@ export function WidgetAdminView() {
                 >
                     Sessions
                 </button>
+                <button
+                    data-testid="admin-widget-tab-guide"
+                    role="tab"
+                    aria-selected={tab === 'guide'}
+                    aria-controls="admin-widget-panel-guide"
+                    onClick={() => setTab('guide')}
+                    style={{
+                        padding: '8px 16px',
+                        border: 'none',
+                        borderBottom: tab === 'guide' ? '2px solid var(--color-brand, #4f46e5)' : '2px solid transparent',
+                        background: 'transparent',
+                        color: tab === 'guide' ? 'var(--fg-1)' : 'var(--fg-2)',
+                        cursor: 'pointer',
+                        fontWeight: tab === 'guide' ? 600 : 400,
+                    }}
+                >
+                    Integration
+                </button>
             </nav>
 
             <div
@@ -72,6 +92,14 @@ export function WidgetAdminView() {
                 hidden={tab !== 'sessions'}
             >
                 {tab === 'sessions' && <WidgetSessionsView />}
+            </div>
+            <div
+                id="admin-widget-panel-guide"
+                role="tabpanel"
+                aria-labelledby="admin-widget-tab-guide"
+                hidden={tab !== 'guide'}
+            >
+                {tab === 'guide' && <WidgetIntegrationGuideView />}
             </div>
         </div>
     );
