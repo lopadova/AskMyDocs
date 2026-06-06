@@ -57,6 +57,36 @@ test.describe('KITT widget — chat embeddabile', () => {
 
         await expect(page.getByTestId('askmydocs-widget-error')).toBeVisible({ timeout: 15_000 });
     });
+
+    test('applica il tema inline: il launcher usa il colore del theme', async ({ page }) => {
+        await page.goto('/widget-demo');
+
+        const launcher = page.getByTestId('askmydocs-widget-launcher');
+        await expect(launcher).toBeVisible({ timeout: 15_000 });
+        // La pagina demo imposta theme.launcherBackground = #16a34a, applicato
+        // in fase 1 (inline, sincrono) prima del primo paint → rgb(22,163,74).
+        await expect(launcher).toHaveCSS('background-color', 'rgb(22, 163, 74)');
+    });
+
+    test('modalità inline: blocco chat montato nel container, sempre aperto, senza launcher', async ({ page }) => {
+        await page.goto('/widget-demo?mode=inline');
+
+        // Il pannello è renderizzato dentro il container ospite e già aperto:
+        // nessun click sul launcher (che in inline non esiste come affordance).
+        const panel = page.getByTestId('askmydocs-widget-panel');
+        await expect(panel).toBeVisible({ timeout: 15_000 });
+        await expect(panel).toHaveAttribute('data-open', 'true');
+        await expect(page.getByTestId('askmydocs-widget-launcher')).toBeHidden();
+
+        await page.getByTestId('askmydocs-widget-input').fill('Posso lavorare da remoto?');
+        await page.getByTestId('askmydocs-widget-send').click();
+
+        await expect(page.getByTestId('askmydocs-widget-message').last()).toContainText(
+            /remote|remoto|knowledge base/i,
+            { timeout: 15_000 },
+        );
+        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
+    });
 });
 
 /*

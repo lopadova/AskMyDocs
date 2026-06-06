@@ -7,6 +7,55 @@ RAG engine and can both **read** and **act on** the host page's DOM
 
 ---
 
+## Layout modes — Helper launcher vs Inline chat
+
+The widget renders in one of two layouts, chosen per key (admin **Widget → Keys**,
+field *Widget type*, also editable under **Appearance**) and baked into the snippet
+by the **Embed** dialog. This is **independent** from the authentication mode
+(A browser / B proxy, below).
+
+- **`helper`** (default) — a floating launcher button pinned to a page corner that
+  opens the chat in a popover. The classic site assistant (KITT).
+- **`inline`** — the chat is a full block that fills a container you place on the
+  page (100% of the mount element's width and height), with **no launcher**. Use it
+  for a chat bound to a page.
+
+### Helper (default)
+
+```html
+<script>
+  window.AskMyDocsWidget = { key: 'pk_live_abc123', apiBase: 'https://kb.example.com' };
+</script>
+<script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
+```
+
+### Inline chat
+
+Place a container and point `mount` at it (a CSS selector). The container controls
+the size; the chat fills it:
+
+```html
+<div id="askmydocs-chat" style="height: 600px;"></div>
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_abc123',
+    apiBase: 'https://kb.example.com',
+    mode: 'inline',
+    mount: '#askmydocs-chat',
+  };
+</script>
+<script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
+```
+
+`mode` and `mount` are **top-level** config (siblings of `key`), not part of the
+`theme` block. If `mount` is missing or matches no element, the widget logs an error
+to the console and does **not** mount — there is no silent fallback to a floating
+launcher (R14). The key's saved type is stored server-side (`widget_keys.theme_config.mode`)
+and surfaced via `GET /api/widget/setup` so the admin **Embed** dialog generates the
+correct snippet automatically.
+
+---
+
 ## Mode A — Browser Embed (default)
 
 The simplest integration. The widget authenticates with a **public key**
@@ -132,6 +181,61 @@ Response: { "token": "wt_...", "expires_at": "..." }
 | A (browser) | `X-Widget-Key: pk_…` | Public key | Required | Standard |
 | A + session token | `Authorization: Bearer *** | Session token (`wt_…`) | Origin-bound | Enhanced |
 | B (proxy) | `Authorization: Bearer ***` | Secret hash (`sk_…`) | None | High (server-to-server) |
+
+---
+
+## Appearance / Theming
+
+Each widget key carries an optional **theme** (launcher button + chat panel
+graphics, typography). It is delivered two ways, merged with this precedence:
+
+```
+inline (host snippet)  >  server (GET /api/widget/setup)  >  built-in default
+```
+
+- **Server-side (recommended):** edit the theme in the admin UI
+  (**Widget → Keys → Appearance**, super-admin / `manageWidgetKeys`). It is
+  stored per key (`widget_keys.theme_config`) and the widget loads it from
+  `/api/widget/setup` at boot — change the look without re-pasting the snippet.
+- **Inline:** bake the theme into the embed snippet (the **Embed** dialog has a
+  *"Bake the saved appearance inline"* toggle). Useful for a frozen snapshot or
+  to override the server theme on a specific host.
+
+```html
+<script>
+  window.AskMyDocsWidget = {
+    key: 'pk_live_abc123',
+    apiBase: 'https://kb.example.com',
+    theme: {
+      accent: '#10b981',
+      launcherShape: 'circle',      // pill | rounded | circle
+      launcherSide: 'left',         // right | left
+      launcherIcon: 'sparkles',     // chat | sparkles | help | none
+      fontFamily: 'inter',          // system | inter | roboto | georgia | mono
+      panelWidth: 420,
+    },
+  };
+</script>
+<script src="https://kb.example.com/widget/askmydocs-widget.js" defer></script>
+```
+
+**Theme fields** (all optional; omitted fields fall back as above):
+
+| Group | Fields |
+|-------|--------|
+| Colours (hex) | `accent`, `background`, `foreground`, `muted`, `border`, `headerBackground`, `headerForeground`, `launcherBackground`, `launcherForeground`, `userBubbleBackground`, `userBubbleForeground`, `assistantBubbleBackground`, `assistantBubbleForeground` |
+| Typography | `fontFamily` (allowlist), `fontSize` (12–18) |
+| Launcher | `launcherSide` (`right`/`left`), `launcherShape` (`pill`/`rounded`/`circle`), `launcherLabel`, `launcherIcon` (`chat`/`sparkles`/`help`/`none`), `launcherIconUrl` (https) |
+| Panel | `panelWidth` (320–480), `panelHeight` (420–680), `panelRadius` (0–24), `panelTitle`, `headerLogoUrl` (https) |
+
+**Security (R19):** every value is validated and sanitized on **both** sides —
+the backend rejects invalid input with `422`, and the widget re-sanitizes inline
+themes (colours must be hex, numbers are clamped, fonts come from an allowlist,
+image URLs must be `https`). The theme flows into a `<style>` inside the widget's
+Shadow DOM, so a malformed value can never break out or inject CSS. The single
+source of truth for defaults + validation is `App\Services\Widget\WidgetThemeService`
+(PHP) mirrored by `frontend/src/widget/ui/styles.ts` (`DEFAULT_THEME`,
+`sanitizeTheme`, `buildThemeCss`).
 
 ---
 

@@ -227,7 +227,11 @@ if (app()->environment(['local', 'testing'])) {
             ],
         );
 
-        return view('widget-demo', ['publicKey' => $key->public_key]);
+        // ?mode=inline esercita il widget come blocco chat montato in un
+        // container della pagina; default helper (launcher flottante).
+        $mode = request()->query('mode') === 'inline' ? 'inline' : 'helper';
+
+        return view('widget-demo', ['publicKey' => $key->public_key, 'mode' => $mode]);
     })->name('widget.demo');
 }
 

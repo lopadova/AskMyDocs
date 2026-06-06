@@ -12,16 +12,25 @@
         label { display: block; font-weight: 600; margin: 12px 0 4px; }
         input, select { width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; }
         button { margin-top: 16px; padding: 10px 16px; border: none; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+        .amd-inline-host { height: 560px; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
     </style>
 </head>
 <body>
     <header>
-        <h1 style="margin:0;font-size:18px">KITT Widget — pagina demo (non-SPA)</h1>
+        <h1 style="margin:0;font-size:18px">KITT Widget — pagina demo (non-SPA) — modalità {{ $mode }}</h1>
     </header>
 
     <main>
         <p>Pagina ospite di prova: il widget legge questo DOM (euristica + <code>data-kitt-*</code>)
            e risponde dalla knowledge base, oppure agisce sul form sottostante.</p>
+
+        @if ($mode === 'inline')
+            {{-- Modalità inline: il widget riempie questo container (niente launcher). --}}
+            <section class="card">
+                <h2>Chat (inline)</h2>
+                <div id="askmydocs-chat" class="amd-inline-host" data-testid="demo-inline-host"></div>
+            </section>
+        @endif
 
         <section class="card" data-kitt-region="account-form" data-kitt-active="true"
                  data-kitt-help="Form profilo utente della demo.">
@@ -50,9 +59,21 @@
         window.AskMyDocsWidget = {
             key: @json($publicKey),
             apiBase: '',
+@if ($mode === 'inline')
+            mode: 'inline',
+            mount: '#askmydocs-chat',
+@endif
             title: 'Assistente Demo',
+@if ($mode !== 'inline')
             launcherLabel: 'Chiedi',
             autoOpen: false,
+@endif
+            // Tema inline di demo: dimostra la personalizzazione grafica
+            // (precedenza inline > server > default). #16a34a = rgb(22,163,74).
+            theme: {
+                accent: '#16a34a',
+                launcherBackground: '#16a34a',
+            },
         };
     </script>
     <script src="/widget/askmydocs-widget.js" defer></script>
