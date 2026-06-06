@@ -32,6 +32,7 @@ class WidgetKey extends Model
         'is_active',
         'label',
         'last_used_at',
+        'theme_config',
     ];
 
     protected $casts = [
@@ -39,6 +40,7 @@ class WidgetKey extends Model
         'rate_limit' => 'integer',
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
+        'theme_config' => 'array',
     ];
 
     /** Non esporre mai l'hash del secret nelle serializzazioni JSON. */
