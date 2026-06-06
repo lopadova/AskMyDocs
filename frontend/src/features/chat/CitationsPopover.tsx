@@ -143,6 +143,12 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
     const wrapRef = useRef<HTMLSpanElement>(null);
     const [placement, setPlacement] = useState<'top' | 'bottom'>('bottom');
     const popoverId = `chat-citation-popover-${index}`;
+    // Hover and keyboard focus are tracked separately so the popover stays
+    // open while EITHER is active (R15). Collapsed into one boolean,
+    // onMouseLeave closed it while the chip was still focused (and onBlur
+    // while still hovered) — the flicker Copilot flagged.
+    const [hovered, setHovered] = useState(false);
+    const [focused, setFocused] = useState(false);
 
     // Prefer opening below the chip (keeps the answer above readable). Flip
     // above only when there clearly isn't room below but there is above —
@@ -163,12 +169,33 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
         <span
             ref={wrapRef}
             style={{ position: 'relative', display: 'inline-flex', maxWidth: '100%' }}
-            onMouseEnter={() => onOpenChange(true)}
-            onMouseLeave={() => onOpenChange(false)}
-            onFocus={() => onOpenChange(true)}
-            onBlur={() => onOpenChange(false)}
+            onMouseEnter={() => {
+                setHovered(true);
+                onOpenChange(true);
+            }}
+            onMouseLeave={() => {
+                setHovered(false);
+                // Close only when focus isn't also keeping it open. Guard on
+                // `open` so leaving THIS chip never dismisses another chip's
+                // popover (the parent tracks a single open index).
+                if (!focused && open) {
+                    onOpenChange(false);
+                }
+            }}
+            onFocus={() => {
+                setFocused(true);
+                onOpenChange(true);
+            }}
+            onBlur={() => {
+                setFocused(false);
+                if (!hovered && open) {
+                    onOpenChange(false);
+                }
+            }}
             onKeyDown={(e) => {
                 if (e.key === 'Escape' && open) {
+                    setHovered(false);
+                    setFocused(false);
                     onOpenChange(false);
                 }
             }}

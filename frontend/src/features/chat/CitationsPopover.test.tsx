@@ -75,6 +75,26 @@ describe('CitationsPopover', () => {
         expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
     });
 
+    it('keeps the popover open when the mouse leaves while the chip is still focused (R15)', () => {
+        render(<CitationsPopover citations={citations} />);
+        const chip = screen.getByTestId('chat-citation-0');
+        const wrap = chip.parentElement as HTMLElement;
+
+        // Hover opens it, then the keyboard takes over (focus).
+        fireEvent.mouseEnter(wrap);
+        fireEvent.focusIn(chip);
+        expect(screen.getByTestId('chat-citations-popover')).toBeInTheDocument();
+
+        // Mouse leaves but focus REMAINS → must stay open (the bug: a single
+        // hover/focus boolean let mouseLeave close it under the keyboard).
+        fireEvent.mouseLeave(wrap);
+        expect(screen.getByTestId('chat-citations-popover')).toBeInTheDocument();
+
+        // Blur with no hover left → now it closes.
+        fireEvent.focusOut(chip);
+        expect(screen.queryByTestId('chat-citations-popover')).toBeNull();
+    });
+
     it('is not openable without an onOpenSource handler', () => {
         render(<CitationsPopover citations={citations} />);
         expect(screen.getByTestId('chat-citation-0')).toHaveAttribute('data-openable', 'false');
