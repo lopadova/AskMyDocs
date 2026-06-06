@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Code2, Info, KeyRound, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { Ban, Code2, Globe, Info, KeyRound, Palette, Plus, RotateCw, Trash2 } from 'lucide-react';
 
 import { api } from '../../../lib/api';
+import { DEFAULT_THEME, sanitizeTheme } from '../../../widget/ui/styles';
+import type { WidgetMode, WidgetTheme } from '../../../widget/types';
+import { WidgetAppearanceDialog } from './WidgetAppearanceDialog';
+import { WidgetOriginsDialog } from './WidgetOriginsDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,6 +37,8 @@ interface WidgetKeyRow {
     is_active: boolean;
     last_used_at: string | null;
     sessions_count: number;
+    /** Resolved appearance theme (always complete — backend merges defaults). */
+    theme?: WidgetTheme;
     created_at: string;
     updated_at: string;
 }
@@ -56,6 +62,24 @@ interface EmbedTarget {
     label: string;
     allowedOrigins: string[];
     secret?: string;
+    /** Saved appearance — lets the embed dialog bake it inline. */
+    theme?: WidgetTheme;
+}
+
+/** Target passed to the appearance editor. */
+interface AppearanceTarget {
+    keyId: number;
+    label: string;
+    projectKey: string;
+    theme: WidgetTheme;
+}
+
+/** Target passed to the allowed-origins editor. */
+interface OriginsTarget {
+    keyId: number;
+    label: string;
+    projectKey: string;
+    origins: string[];
 }
 
 /** Pull a human message out of an axios error (422 validation first, then message). */
@@ -87,6 +111,24 @@ function instanceOrigin(): string {
     return typeof window !== 'undefined' ? window.location.origin : '';
 }
 
+/** The two widget layouts, chosen at creation (stored in the key's theme). */
+const MODE_OPTIONS: { value: WidgetMode; label: string; hint: string }[] = [
+    {
+        value: 'helper',
+        label: 'Helper — floating launcher (KITT)',
+        hint: 'A button pinned to the page corner that opens the chat in a popover. Classic site assistant.',
+    },
+    {
+        value: 'inline',
+        label: 'Inline chat — full block',
+        hint: 'The whole chat is embedded at 100% of a container you place on the page. For a chat bound to a page.',
+    },
+];
+
+/** shadcn-styled control class shared by the native <select> here. */
+const SELECT_CLASS =
+    'border-input bg-background ring-offset-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none';
+
 /**
  * M6.4 — Widget admin keys management view.
  *
@@ -100,12 +142,15 @@ export function WidgetKeysView() {
     const [showCreate, setShowCreate] = useState(false);
     const [newLabel, setNewLabel] = useState('');
     const [newProjectKey, setNewProjectKey] = useState('');
+    const [newMode, setNewMode] = useState<WidgetMode>('helper');
     const [newOrigins, setNewOrigins] = useState('');
     const [newRateLimit, setNewRateLimit] = useState('');
     const [newSkill, setNewSkill] = useState('');
     const [rotatedCreds, setRotatedCreds] = useState<RotateKeyResponse | null>(null);
     const [createdCreds, setCreatedCreds] = useState<CreateKeyResponse | null>(null);
     const [embedTarget, setEmbedTarget] = useState<EmbedTarget | null>(null);
+    const [appearanceTarget, setAppearanceTarget] = useState<AppearanceTarget | null>(null);
+    const [originsTarget, setOriginsTarget] = useState<OriginsTarget | null>(null);
 
     const keys = useQuery({
         queryKey: ['admin-widget-keys'],
@@ -118,6 +163,7 @@ export function WidgetKeysView() {
     const resetCreateForm = () => {
         setNewLabel('');
         setNewProjectKey('');
+        setNewMode('helper');
         setNewOrigins('');
         setNewRateLimit('');
         setNewSkill('');
@@ -141,6 +187,11 @@ export function WidgetKeysView() {
             }
             if (newSkill.trim() !== '') {
                 payload.skill = newSkill.trim();
+            }
+            // Only persist a theme when the operator picks a non-default layout —
+            // keeps `theme_config` null (minimal snippet) for plain helper keys.
+            if (newMode !== 'helper') {
+                payload.theme = { mode: newMode };
             }
 
             const { data } = await api.post<CreateKeyResponse>(
@@ -254,6 +305,29 @@ export function WidgetKeysView() {
                     </CardHeader>
                     <CardContent className="grid gap-4">
                         <div className="grid gap-1.5">
+                            <Label htmlFor="wk-mode">
+                                Widget type <span className="text-destructive">*</span>
+                            </Label>
+                            <select
+                                id="wk-mode"
+                                data-testid="admin-widget-keys-mode"
+                                value={newMode}
+                                onChange={(e) => setNewMode(e.target.value as WidgetMode)}
+                                className={SELECT_CLASS}
+                            >
+                                {MODE_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                        {o.label}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="text-muted-foreground text-xs">
+                                {MODE_OPTIONS.find((o) => o.value === newMode)?.hint}
+                                {' '}You can change this later under <em>Appearance</em>.
+                            </p>
+                        </div>
+
+                        <div className="grid gap-1.5">
                             <Label htmlFor="wk-label">
                                 Key label <span className="text-destructive">*</span>
                             </Label>
@@ -299,8 +373,10 @@ export function WidgetKeysView() {
                             />
                             <p className="text-muted-foreground text-xs">
                                 Comma- or newline-separated list of sites allowed to load the
-                                widget. The server rejects requests from any other origin. Leave
-                                empty to allow any origin — not recommended in production.
+                                widget. The server matches the browser origin exactly and rejects
+                                any other. Leave empty to block all browser embeds — only
+                                server-side proxy mode (the secret) will work. You can change this
+                                later under <em>Origins</em>.
                             </p>
                         </div>
 
@@ -388,6 +464,7 @@ export function WidgetKeysView() {
                             label: createdCreds.data.label,
                             allowedOrigins: createdCreds.data.allowed_origins,
                             secret: createdCreds.plain_secret,
+                            theme: createdCreds.data.theme,
                         })
                     }
                     onDismiss={() => setCreatedCreds(null)}
@@ -407,6 +484,7 @@ export function WidgetKeysView() {
                             label: rotatedCreds.data.label,
                             allowedOrigins: rotatedCreds.data.allowed_origins,
                             secret: rotatedCreds.plain_secret,
+                            theme: rotatedCreds.data.theme,
                         })
                     }
                     onDismiss={() => setRotatedCreds(null)}
@@ -452,6 +530,7 @@ export function WidgetKeysView() {
                                 <th>Label</th>
                                 <th>Public Key</th>
                                 <th>Project</th>
+                                <th>Mode</th>
                                 <th>Origins</th>
                                 <th>Rate</th>
                                 <th>Status</th>
@@ -470,6 +549,14 @@ export function WidgetKeysView() {
                                     <td className="font-medium">{key.label}</td>
                                     <td className="font-mono text-[11px]">{key.public_key}</td>
                                     <td>{key.project_key}</td>
+                                    <td>
+                                        <Badge
+                                            variant="muted"
+                                            data-testid={`admin-widget-keys-mode-${key.id}`}
+                                        >
+                                            {key.theme?.mode === 'inline' ? 'Inline' : 'Helper'}
+                                        </Badge>
+                                    </td>
                                     <td className="max-w-[180px] truncate">
                                         {key.allowed_origins.length === 0 ? (
                                             <span className="text-muted-foreground">any</span>
@@ -505,6 +592,7 @@ export function WidgetKeysView() {
                                                         projectKey: key.project_key,
                                                         label: key.label,
                                                         allowedOrigins: key.allowed_origins,
+                                                        theme: key.theme,
                                                     })
                                                 }
                                                 title="Get the embed snippet"
@@ -512,6 +600,44 @@ export function WidgetKeysView() {
                                             >
                                                 <Code2 aria-hidden />
                                                 Embed
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                data-testid={`admin-widget-keys-appearance-${key.id}`}
+                                                onClick={() =>
+                                                    setAppearanceTarget({
+                                                        keyId: key.id,
+                                                        label: key.label,
+                                                        projectKey: key.project_key,
+                                                        theme: sanitizeTheme(key.theme ?? DEFAULT_THEME),
+                                                    })
+                                                }
+                                                title="Customize the launcher and chat appearance"
+                                                aria-label={`Customize appearance for ${key.label}`}
+                                            >
+                                                <Palette aria-hidden />
+                                                Appearance
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                data-testid={`admin-widget-keys-origins-${key.id}`}
+                                                onClick={() =>
+                                                    setOriginsTarget({
+                                                        keyId: key.id,
+                                                        label: key.label,
+                                                        projectKey: key.project_key,
+                                                        origins: key.allowed_origins,
+                                                    })
+                                                }
+                                                title="Edit the websites allowed to load this widget"
+                                                aria-label={`Edit allowed origins for ${key.label}`}
+                                            >
+                                                <Globe aria-hidden />
+                                                Origins
                                             </Button>
                                             {key.is_active && (
                                                 <>
@@ -604,6 +730,37 @@ export function WidgetKeysView() {
                     apiBase={instanceOrigin()}
                     allowedOrigins={embedTarget.allowedOrigins}
                     secret={embedTarget.secret}
+                    theme={embedTarget.theme}
+                />
+            )}
+
+            {appearanceTarget && (
+                <WidgetAppearanceDialog
+                    open={appearanceTarget !== null}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setAppearanceTarget(null);
+                        }
+                    }}
+                    keyId={appearanceTarget.keyId}
+                    label={appearanceTarget.label}
+                    projectKey={appearanceTarget.projectKey}
+                    initialTheme={appearanceTarget.theme}
+                />
+            )}
+
+            {originsTarget && (
+                <WidgetOriginsDialog
+                    open={originsTarget !== null}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setOriginsTarget(null);
+                        }
+                    }}
+                    keyId={originsTarget.keyId}
+                    label={originsTarget.label}
+                    projectKey={originsTarget.projectKey}
+                    initialOrigins={originsTarget.origins}
                 />
             )}
         </section>

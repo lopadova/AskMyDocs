@@ -8,6 +8,7 @@ vi.mock('../../../lib/api', () => ({
     api: {
         get: vi.fn(),
         post: vi.fn(),
+        patch: vi.fn(),
         delete: vi.fn(),
     },
 }));
@@ -249,5 +250,151 @@ describe('WidgetKeysView', () => {
         const snippet = await screen.findByTestId('admin-widget-embed-snippet');
         expect(snippet.textContent).toContain('pk_embed_one');
         expect(snippet.textContent).toContain('window.AskMyDocsWidget');
+    });
+
+    it('includes theme.mode=inline in the create payload when inline is selected', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 10,
+                    label: 'Inline',
+                    public_key: 'pk_inline',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    theme: { mode: 'inline' },
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_x',
+                public_key: 'pk_inline',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Inline' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-mode'), {
+            target: { value: 'inline' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys',
+                expect.objectContaining({ theme: { mode: 'inline' } }),
+            );
+        });
+    });
+
+    it('omits the theme block from the create payload for a plain helper key', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 11,
+                    label: 'Helper',
+                    public_key: 'pk_h',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_h',
+                public_key: 'pk_h',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'Helper' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalled();
+        });
+        expect(mockedApi.post.mock.calls[0][1]).not.toHaveProperty('theme');
+    });
+
+    it('shows the widget mode badge from the key theme', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 3,
+                        label: 'Inline Key',
+                        public_key: 'pk_in',
+                        project_key: 'main',
+                        allowed_origins: [],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        theme: { mode: 'inline' },
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-widget-keys-mode-3').textContent).toBe('Inline');
+        });
+    });
+
+    it('opens the origins editor from a table row, prefilled with the current origins', async () => {
+        mockedApi.get.mockResolvedValueOnce({
+            data: {
+                data: [
+                    {
+                        id: 5,
+                        label: 'Production',
+                        public_key: 'pk_origins_one',
+                        project_key: 'main',
+                        allowed_origins: ['https://acme.com', 'https://www.acme.com'],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+
+        fireEvent.click(await screen.findByTestId('admin-widget-keys-origins-5'));
+
+        expect(await screen.findByTestId('admin-widget-origins-dialog')).toBeDefined();
+        const input = (await screen.findByTestId(
+            'admin-widget-origins-input',
+        )) as HTMLTextAreaElement;
+        expect(input.value).toBe('https://acme.com\nhttps://www.acme.com');
     });
 });
