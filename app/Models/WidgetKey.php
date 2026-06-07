@@ -29,6 +29,7 @@ class WidgetKey extends Model
         'allowed_origins',
         'rate_limit',
         'skill',
+        'host_tools_enabled',
         'is_active',
         'label',
         'last_used_at',
@@ -38,6 +39,7 @@ class WidgetKey extends Model
     protected $casts = [
         'allowed_origins' => 'array',
         'rate_limit' => 'integer',
+        'host_tools_enabled' => 'boolean',
         'is_active' => 'boolean',
         'last_used_at' => 'datetime',
         'theme_config' => 'array',

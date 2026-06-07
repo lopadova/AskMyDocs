@@ -123,6 +123,73 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
     }
 
+    public function test_store_defaults_host_tools_enabled_to_false(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'No host tools',
+            'project_key' => 'my-project',
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.host_tools_enabled', false);
+
+        $row = WidgetKey::query()->where('public_key', $response->json('public_key'))->firstOrFail();
+        $this->assertFalse($row->host_tools_enabled);
+    }
+
+    public function test_store_persists_host_tools_enabled_when_requested(): void
+    {
+        $user = $this->superAdmin();
+
+        $response = $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Host tools on',
+            'project_key' => 'gescat',
+            'skill' => 'gescat-assistant@1',
+            'host_tools_enabled' => true,
+        ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.host_tools_enabled', true);
+
+        $row = WidgetKey::query()->where('public_key', $response->json('public_key'))->firstOrFail();
+        $this->assertTrue($row->host_tools_enabled);
+    }
+
+    public function test_update_can_toggle_host_tools_enabled(): void
+    {
+        $user = $this->superAdmin();
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'gescat',
+            'public_key' => 'pk_host_tools',
+            'secret_hash' => bcrypt('sk_host_tools'),
+            'label' => 'Host tools key',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'gescat-assistant@1',
+            'host_tools_enabled' => false,
+            'is_active' => true,
+        ]);
+
+        // Enable.
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'host_tools_enabled' => true,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.host_tools_enabled', true);
+        $this->assertTrue($key->fresh()->host_tools_enabled);
+
+        // Disable again — false must survive the update path.
+        $this->actingAs($user)->patchJson("/api/admin/widget-keys/{$key->id}", [
+            'host_tools_enabled' => false,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.host_tools_enabled', false);
+        $this->assertFalse($key->fresh()->host_tools_enabled);
+    }
+
     public function test_update_modifies_mutable_fields(): void
     {
         $user = $this->superAdmin();

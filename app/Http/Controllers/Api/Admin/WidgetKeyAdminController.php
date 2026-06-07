@@ -53,6 +53,7 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'skill' => ['nullable', 'string', 'max:100'],
+            'host_tools_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 
         $plainSecret = 'sk_'.Str::random(40);
@@ -67,6 +68,7 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins' => $validated['allowed_origins'] ?? [],
             'rate_limit' => $validated['rate_limit'] ?? 60,
             'skill' => $validated['skill'] ?? 'askmydocs-assistant@1',
+            'host_tools_enabled' => $validated['host_tools_enabled'] ?? false,
             'is_active' => true,
             // Tema esplicito solo se fornito; altrimenti null → il widget
             // risolve i default (snippet di create resta minimale).
@@ -94,6 +96,7 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'skill' => ['nullable', 'string', 'max:100'],
+            'host_tools_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 
         // Il tema vive sulla colonna `theme_config` (nome diverso dalla chiave
@@ -185,6 +188,7 @@ final class WidgetKeyAdminController extends Controller
             'allowed_origins' => $row->allowed_origins ?? [],
             'rate_limit' => $row->rate_limit,
             'skill' => $row->skill,
+            'host_tools_enabled' => $row->host_tools_enabled,
             'is_active' => $row->is_active,
             'last_used_at' => $row->last_used_at?->toIso8601String(),
             'sessions_count' => $row->sessions()->count(),
