@@ -115,7 +115,18 @@ final class WidgetOrchestratorService
 
         $manifest = $this->skills->get((string) $session->skill) ?? [];
         $enabled = array_values(array_filter((array) ($manifest['tools_enabled'] ?? []), 'is_string'));
-        $tools = $this->catalog->openAiTools($enabled);
+
+        // F1.4 — host tools (HTP): definizioni fornite inline dalla pagina ospite
+        // dentro snapshot.host_tools. Sono ammessi all'LLM SOLO se la skill ha
+        // host_tools_enabled === true; altrimenti il ramo è ignorato del tutto.
+        // Filtrati per host_tools_allowlist (prefisso/nome) quando presente.
+        $hostTools = $this->resolveHostTools($manifest, $snapshot);
+        $hostToolNames = array_map(static fn (array $t): string => (string) $t['name'], $hostTools);
+
+        $tools = array_merge(
+            $this->catalog->openAiTools($enabled),
+            $this->wrapHostTools($hostTools),
+        );
 
         $result = null;
         if (is_string($userMessage) && $userMessage !== '') {
@@ -144,6 +155,14 @@ final class WidgetOrchestratorService
             $call = $response->toolCalls[0];
             $name = (string) ($call['name'] ?? '');
             $args = $this->decodeArgs((string) ($call['arguments'] ?? '{}'));
+
+            // F1.4 — host tool: NON validato contro lo snapshot (lo schema vive
+            // sulla pagina ospite, non nel catalogo/snapshot DOM) e NON eseguito
+            // server-side: si ritorna al FE marcato execution:"host" perché lo
+            // esegua FE-proxied verso l'app ospite (spec §3.3).
+            if (in_array($name, $hostToolNames, true)) {
+                return $this->finishWithToolCall($session, $snapshot, $name, $args, $response, $start, isHost: true);
+            }
 
             $verdict = $this->toolValidator->validate($name, $args, $snapshot, $enabled, $navigateAllowlist);
             if ($verdict['ok']) {
@@ -205,10 +224,10 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $args
      * @return array<string, mixed>
      */
-    private function finishWithToolCall(WidgetSession $session, array $snapshot, string $name, array $args, AiResponse $response, float $start): array
+    private function finishWithToolCall(WidgetSession $session, array $snapshot, string $name, array $args, AiResponse $response, float $start, bool $isHost = false): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
-        $def = $this->catalog->definition($name) ?? [];
+        $def = $isHost ? [] : ($this->catalog->definition($name) ?? []);
 
         $this->addStep(
             $session,
@@ -221,13 +240,27 @@ final class WidgetOrchestratorService
             latency: $latency,
         );
 
-        $status = match ($name) {
-            'ask_user' => WidgetSession::STATUS_WAITING_USER,
-            'report_done' => WidgetSession::STATUS_COMPLETED,
-            'report_blocked' => WidgetSession::STATUS_BLOCKED,
+        // F1.4 — un host tool lascia la sessione in attesa dell'esecuzione
+        // FE-proxied verso l'app ospite (come un tool BE: WAITING_TOOL).
+        $status = match (true) {
+            $isHost => WidgetSession::STATUS_WAITING_TOOL,
+            $name === 'ask_user' => WidgetSession::STATUS_WAITING_USER,
+            $name === 'report_done' => WidgetSession::STATUS_COMPLETED,
+            $name === 'report_blocked' => WidgetSession::STATUS_BLOCKED,
             default => WidgetSession::STATUS_WAITING_TOOL,
         };
         $this->resetErrors($session, $status);
+
+        // F1.4 — `execution` è il marcatore canonico verso il FE (spec §3.3):
+        // "host" = FE-proxied all'app ospite, "be" = /exec-tool AskMyDocs,
+        // "fe" = executor DOM del widget. `is_be_tool` resta per retro-compat
+        // (lo legge il widget JS attuale per instradare i tool BE).
+        $isBeTool = ! $isHost && ($def['side'] ?? WidgetToolCatalog::SIDE_FE) === WidgetToolCatalog::SIDE_BE;
+        $execution = match (true) {
+            $isHost => 'host',
+            $isBeTool => 'be',
+            default => 'fe',
+        };
 
         return [
             'session' => $this->sessionPayload($session),
@@ -236,7 +269,9 @@ final class WidgetOrchestratorService
                 'tool' => $name,
                 'args' => $args,
                 'confirmation_required' => (bool) ($def['confirm'] ?? false),
-                'is_be_tool' => ($def['side'] ?? WidgetToolCatalog::SIDE_FE) === WidgetToolCatalog::SIDE_BE,
+                'is_be_tool' => $isBeTool,
+                'is_host_tool' => $isHost,
+                'execution' => $execution,
             ],
             'bot_message' => $response->content !== '' ? $response->content : null,
             'meta' => $this->turnMeta($response, $latency),
@@ -317,7 +352,18 @@ final class WidgetOrchestratorService
         $ok = data_get($step->args_json, 'ok');
         $okText = $ok === false ? 'false' : 'true';
 
-        return '[risultato] '.(string) $step->tool.' ok='.$okText.' '.$this->json(data_get($step->args_json, 'diagnostic', []));
+        // F1.5 — reinietta l'artifact come risultato del tool nel contesto LLM.
+        // È la STESSA pipeline dei tool FE: lo step KIND_TOOL_RESULT è persistito
+        // in runTurn da execTool/host/FE; qui viene reso come messaggio user per
+        // l'LLM. I tool host (e BE) ritornano un `artifact` con i dati reali —
+        // è quello che il modello deve vedere per continuare il ragionamento; i
+        // tool FE DOM ritornano un `diagnostic` (esito dell'azione sul DOM).
+        $payload = data_get($step->args_json, 'artifact');
+        if ($payload === null) {
+            $payload = data_get($step->args_json, 'diagnostic', []);
+        }
+
+        return '[risultato] '.(string) $step->tool.' ok='.$okText.' '.$this->json($payload);
     }
 
     /**
@@ -381,6 +427,102 @@ final class WidgetOrchestratorService
         }
 
         return array_values(array_unique(array_map('strval', $origins)));
+    }
+
+    /**
+     * F1.4 — Host tools ammessi per questo turno.
+     *
+     * Guard: se la skill non ha host_tools_enabled === true, il ramo
+     * snapshot.host_tools è ignorato del tutto (nessun host tool all'LLM).
+     * Lo snapshot è già stato validato/sanitizzato dal WidgetSnapshotValidator
+     * (F1.3): ogni voce ha name valido ed execution === "host". Qui filtriamo
+     * ancora per host_tools_allowlist (se presente): un host tool è ammesso se
+     * il suo name inizia con uno dei prefissi/uguaglia un nome in allowlist.
+     *
+     * @param  array<string, mixed>  $manifest
+     * @param  array<string, mixed>  $snapshot
+     * @return list<array<string, mixed>>
+     */
+    private function resolveHostTools(array $manifest, array $snapshot): array
+    {
+        if (($manifest['host_tools_enabled'] ?? null) !== true) {
+            return [];
+        }
+
+        $hostTools = $snapshot['host_tools'] ?? null;
+        if (! is_array($hostTools)) {
+            return [];
+        }
+
+        $allowlist = array_values(array_filter((array) ($manifest['host_tools_allowlist'] ?? []), 'is_string'));
+
+        $resolved = [];
+        foreach ($hostTools as $tool) {
+            if (! is_array($tool)) {
+                continue;
+            }
+            $name = $tool['name'] ?? null;
+            if (! is_string($name) || $name === '') {
+                continue;
+            }
+            if (! $this->hostToolAllowed($name, $allowlist)) {
+                continue;
+            }
+            $resolved[] = $tool;
+        }
+
+        return $resolved;
+    }
+
+    /**
+     * Un host tool è ammesso se l'allowlist è vuota (nessun filtro) oppure se
+     * il suo name inizia con uno dei prefissi/uguaglia un nome dell'allowlist.
+     *
+     * @param  list<string>  $allowlist
+     */
+    private function hostToolAllowed(string $name, array $allowlist): bool
+    {
+        if ($allowlist === []) {
+            return true;
+        }
+
+        foreach ($allowlist as $prefix) {
+            if ($prefix !== '' && str_starts_with($name, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Wrappa gli host tools nel formato function-calling OpenAI, identico a
+     * WidgetToolCatalog::openAiTools(). Le definizioni host arrivano già con
+     * name/description/parameters (contratto HTP); i campi extra (returns,
+     * execution) non sono passati all'LLM.
+     *
+     * @param  list<array<string, mixed>>  $hostTools
+     * @return list<array{type: string, function: array<string, mixed>}>
+     */
+    private function wrapHostTools(array $hostTools): array
+    {
+        $wrapped = [];
+        foreach ($hostTools as $tool) {
+            $parameters = is_array($tool['parameters'] ?? null)
+                ? $tool['parameters']
+                : ['type' => 'object', 'properties' => (object) []];
+
+            $wrapped[] = [
+                'type' => 'function',
+                'function' => [
+                    'name' => (string) $tool['name'],
+                    'description' => is_string($tool['description'] ?? null) ? $tool['description'] : '',
+                    'parameters' => $parameters,
+                ],
+            ];
+        }
+
+        return $wrapped;
     }
 
     /**
