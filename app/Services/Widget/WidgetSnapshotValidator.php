@@ -27,7 +27,16 @@ final class WidgetSnapshotValidator
         'actions' => 200,
         'messages' => 50,
         'locales_available' => 20,
+        // F1.3 — host tools forniti inline dall'app ospite (HTP). Cap basso:
+        // sono definizioni di tool spedite all'LLM, non dati di pagina.
+        'host_tools' => 64,
     ];
+
+    /** F1.3 — un host tool valido deve dichiarare `execution: "host"`. */
+    private const HOST_TOOL_EXECUTION = 'host';
+
+    /** F1.3 — il `name` di un host tool deve matchare il regex function-name OpenAI/Gemini. */
+    private const HOST_TOOL_NAME_REGEX = '/^[a-zA-Z0-9_-]+$/';
 
     private const OUTLINE_CAPS = [
         'headings' => 30,
@@ -87,7 +96,81 @@ final class WidgetSnapshotValidator
             $snapshot['page_outline'] = $this->sanitizeOutline($snapshot['page_outline']);
         }
 
+        // F1.3 — host tools (HTP inline): valida + sanitizza + scarta i malformati.
+        if (array_key_exists('host_tools', $snapshot)) {
+            $snapshot['host_tools'] = $this->sanitizeHostTools($snapshot['host_tools']);
+        }
+
         return $snapshot;
+    }
+
+    /**
+     * F1.3 — Valida e sanitizza il ramo opzionale `snapshot.host_tools`.
+     *
+     * Ogni voce è un oggetto `{ name, description, parameters, returns?, execution }`
+     * dichiarato inline dalla pagina ospite (contratto HTP, spec §3.4-C). Un host
+     * tool è MALFORMATO — e quindi SCARTATO — se:
+     *   - non è un array associativo;
+     *   - `name` manca o non matcha `^[a-zA-Z0-9_-]+$` (regex function-name);
+     *   - `execution` non è esattamente `"host"`.
+     *
+     * I testi (`description`) sono sanitizzati come il resto dello snapshot. Lo
+     * schema `parameters` NON è sanitizzato come testo né passato a
+     * enforceSensitiveNull: è una DEFINIZIONE di tool (struttura JSON-Schema),
+     * non un valore inserito dall'utente. Le voci valide sono preservate.
+     *
+     * @param  mixed  $hostTools  il valore grezzo di snapshot.host_tools
+     * @return list<array<string, mixed>>  solo le voci valide, sanitizzate
+     */
+    private function sanitizeHostTools(mixed $hostTools): array
+    {
+        if (! is_array($hostTools)) {
+            return [];
+        }
+
+        $clean = [];
+        foreach ($hostTools as $tool) {
+            $sanitized = $this->sanitizeHostTool($tool);
+            if ($sanitized !== null) {
+                $clean[] = $sanitized;
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Valida + sanitizza un singolo host tool, o ritorna null se malformato.
+     *
+     * @param  mixed  $tool
+     * @return array<string, mixed>|null
+     */
+    private function sanitizeHostTool(mixed $tool): ?array
+    {
+        if (! is_array($tool)) {
+            return null;
+        }
+
+        $name = $tool['name'] ?? null;
+        if (! is_string($name) || ! preg_match(self::HOST_TOOL_NAME_REGEX, $name)) {
+            return null;
+        }
+
+        $execution = $tool['execution'] ?? null;
+        if ($execution !== self::HOST_TOOL_EXECUTION) {
+            return null;
+        }
+
+        if (isset($tool['description']) && is_string($tool['description'])) {
+            $tool['description'] = $this->sanitizeText($tool['description']);
+        }
+
+        if (isset($tool['returns']) && is_string($tool['returns'])) {
+            $tool['returns'] = $this->sanitizeText($tool['returns']);
+        }
+
+        // `parameters` resta intatto: è uno schema (definizione), non testo utente.
+        return $tool;
     }
 
     /**
