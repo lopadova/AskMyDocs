@@ -185,6 +185,25 @@ final class WidgetHostToolsTest extends TestCase
         $this->assertNotContains('articoli__searchArticoli', $this->lastToolNames());
     }
 
+    public function test_host_tools_are_ignored_when_widget_key_switch_is_off_even_with_skill_on(): void
+    {
+        $this->fakeLlm($this->chatMessage('Risposta.'));
+
+        // Doppio gate: skill gescat-assistant@1 PUÒ usare host tools (capability),
+        // ma l'interruttore operativo della key è OFF → ramo ignorato del tutto.
+        $key = $this->makeKey(['host_tools_enabled' => false]);
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot([$this->hostTool('articoli__searchArticoli')]),
+            'message' => 'Cerca la pera rossa',
+        ])->assertOk();
+
+        $names = $this->lastToolNames();
+        $this->assertNotContains('articoli__searchArticoli', $names, 'host tool escluso se la key ha l\'interruttore OFF');
+        // i tool BE/FE della skill restano comunque presenti (degrada a solo-RAG/FE).
+        $this->assertContains('search_knowledge_base', $names);
+    }
+
     public function test_allowlist_filters_out_a_host_tool_outside_the_allowed_prefixes(): void
     {
         $this->fakeLlm($this->chatMessage('Risposta.'));
