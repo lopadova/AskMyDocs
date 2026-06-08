@@ -34,6 +34,8 @@ interface WidgetKeyRow {
     allowed_origins: string[];
     rate_limit: number;
     skill: string;
+    /** Operational switch: the host app may provide tools to the widget (HTP). */
+    host_tools_enabled: boolean;
     is_active: boolean;
     last_used_at: string | null;
     sessions_count: number;
@@ -146,6 +148,7 @@ export function WidgetKeysView() {
     const [newOrigins, setNewOrigins] = useState('');
     const [newRateLimit, setNewRateLimit] = useState('');
     const [newSkill, setNewSkill] = useState('');
+    const [newHostTools, setNewHostTools] = useState(false);
     const [rotatedCreds, setRotatedCreds] = useState<RotateKeyResponse | null>(null);
     const [createdCreds, setCreatedCreds] = useState<CreateKeyResponse | null>(null);
     const [embedTarget, setEmbedTarget] = useState<EmbedTarget | null>(null);
@@ -167,6 +170,7 @@ export function WidgetKeysView() {
         setNewOrigins('');
         setNewRateLimit('');
         setNewSkill('');
+        setNewHostTools(false);
     };
 
     const createKey = useMutation({
@@ -180,6 +184,7 @@ export function WidgetKeysView() {
                 label: newLabel.trim(),
                 project_key: newProjectKey.trim(),
                 allowed_origins: origins,
+                host_tools_enabled: newHostTools,
             };
             const rate = Number.parseInt(newRateLimit, 10);
             if (newRateLimit.trim() !== '' && Number.isFinite(rate)) {
@@ -233,6 +238,19 @@ export function WidgetKeysView() {
     const destroyKey = useMutation({
         mutationFn: async (id: number) => {
             await api.delete(`/api/admin/widget-keys/${id}`);
+        },
+        onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
+        },
+    });
+
+    // Edit path for the operational host-tools switch (PATCH host_tools_enabled).
+    // Keeps the value coupled to the orchestrator double-gate (skill AND key).
+    const toggleHostTools = useMutation({
+        mutationFn: async (vars: { id: number; enabled: boolean }) => {
+            await api.patch(`/api/admin/widget-keys/${vars.id}`, {
+                host_tools_enabled: vars.enabled,
+            });
         },
         onSuccess: async () => {
             await qc.invalidateQueries({ queryKey: ['admin-widget-keys'] });
@@ -413,6 +431,30 @@ export function WidgetKeysView() {
                             </div>
                         </div>
 
+                        <div className="grid gap-1.5">
+                            <label
+                                htmlFor="wk-host-tools"
+                                className="flex items-center gap-2 text-sm font-medium"
+                            >
+                                <input
+                                    id="wk-host-tools"
+                                    type="checkbox"
+                                    data-testid="admin-widget-keys-host-tools-toggle"
+                                    checked={newHostTools}
+                                    onChange={(e) => setNewHostTools(e.target.checked)}
+                                    className="size-4 accent-[var(--accent-a)]"
+                                />
+                                Enable host tools (the host app provides tools to the widget)
+                            </label>
+                            <p className="text-muted-foreground text-xs">
+                                Operational switch for this customer. When on, the embedding
+                                page can declare tools the assistant may call (HTP). Host tools
+                                reach the model only when this is on <em>and</em> the assigned
+                                skill is allowed to use them. Default off — you can change it
+                                later from the list.
+                            </p>
+                        </div>
+
                         {createKey.isError && (
                             <Alert
                                 variant="destructive"
@@ -508,6 +550,20 @@ export function WidgetKeysView() {
                 </Alert>
             )}
 
+            {/* Host-tools toggle failure (R14: never fail silently) */}
+            {toggleHostTools.isError && (
+                <Alert
+                    variant="destructive"
+                    data-testid="admin-widget-keys-host-tools-error"
+                >
+                    <Ban aria-hidden />
+                    <AlertTitle>Could not update host tools.</AlertTitle>
+                    <AlertDescription>
+                        {extractApiError(toggleHostTools.error)}
+                    </AlertDescription>
+                </Alert>
+            )}
+
             {/* Empty state */}
             {keys.data && keys.data.length === 0 && (
                 <div
@@ -533,6 +589,7 @@ export function WidgetKeysView() {
                                 <th>Mode</th>
                                 <th>Origins</th>
                                 <th>Rate</th>
+                                <th>Host tools</th>
                                 <th>Status</th>
                                 <th>Sessions</th>
                                 <th>Last Used</th>
@@ -565,6 +622,30 @@ export function WidgetKeysView() {
                                         )}
                                     </td>
                                     <td className="whitespace-nowrap">{key.rate_limit}/min</td>
+                                    <td>
+                                        <label
+                                            htmlFor={`wk-host-tools-${key.id}`}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <input
+                                                id={`wk-host-tools-${key.id}`}
+                                                type="checkbox"
+                                                data-testid={`admin-widget-keys-${key.id}-host-tools-toggle`}
+                                                checked={key.host_tools_enabled}
+                                                disabled={toggleHostTools.isPending}
+                                                onChange={(e) =>
+                                                    toggleHostTools.mutate({
+                                                        id: key.id,
+                                                        enabled: e.target.checked,
+                                                    })
+                                                }
+                                                className="size-4 accent-[var(--accent-a)]"
+                                            />
+                                            <span className="text-muted-foreground text-xs">
+                                                {key.host_tools_enabled ? 'On' : 'Off'}
+                                            </span>
+                                        </label>
+                                    </td>
                                     <td>
                                         <Badge
                                             data-testid={`admin-widget-keys-status-${key.id}`}
