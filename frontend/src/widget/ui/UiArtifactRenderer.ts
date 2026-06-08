@@ -31,52 +31,59 @@ export class UiArtifactRenderer {
      * Il chiamante (panel.ts) lo appende al messaggio.
      */
     render(artifact: Artifact, hasResults: boolean, interactionMode: string): HTMLElement {
-        const type = this.sanitizeType(artifact.componentType);
+        // F1.7 — gli host tool gescat possono restituire componentType extra non
+        // nativi (ui-articolo-card, ui-categoria-card): li mappiamo su un renderer
+        // supportato normalizzandone le props PRIMA della whitelist, così il
+        // fallback è informativo invece di una card vuota.
+        const { componentType, componentProps } = this.normalizeExtraType(artifact);
+        const type = this.sanitizeType(componentType);
         const wrapper = document.createElement('div');
         wrapper.className = `amd-artifact amd-artifact--${type}`;
         wrapper.dataset.testid = 'askmydocs-widget-artifact-container';
+        // Conserva il tipo originale per debugging/E2E (fallback osservabile).
+        wrapper.dataset.sourceComponentType = this.safe(artifact.componentType, 64);
         wrapper.setAttribute('data-interactionMode', interactionMode);
         wrapper.setAttribute('data-hasResults', String(hasResults));
 
         switch (type) {
             case 'ui-data-table':
-                this.renderDataTable(artifact.componentProps, wrapper);
+                this.renderDataTable(componentProps, wrapper);
                 break;
             case 'ui-kpi':
-                this.renderKpi(artifact.componentProps, wrapper);
+                this.renderKpi(componentProps, wrapper);
                 break;
             case 'ui-kpi-grid':
-                this.renderKpiGrid(artifact.componentProps, wrapper);
+                this.renderKpiGrid(componentProps, wrapper);
                 break;
             case 'ui-alert':
-                this.renderAlert(artifact.componentProps, wrapper);
+                this.renderAlert(componentProps, wrapper);
                 break;
             case 'ui-card':
-                this.renderCard(artifact.componentProps, wrapper);
+                this.renderCard(componentProps, wrapper);
                 break;
             case 'ui-badge':
-                this.renderBadge(artifact.componentProps, wrapper);
+                this.renderBadge(componentProps, wrapper);
                 break;
             case 'ui-toast':
-                this.renderToast(artifact.componentProps, wrapper);
+                this.renderToast(componentProps, wrapper);
                 break;
             case 'ui-list':
-                this.renderList(artifact.componentProps, wrapper);
+                this.renderList(componentProps, wrapper);
                 break;
             case 'ui-chart':
-                this.renderChart(artifact.componentProps, wrapper);
+                this.renderChart(componentProps, wrapper);
                 break;
             case 'markdown':
-                this.renderMarkdown(artifact.componentProps, wrapper);
+                this.renderMarkdown(componentProps, wrapper);
                 break;
             case 'code-block':
-                this.renderCodeBlock(artifact.componentProps, wrapper);
+                this.renderCodeBlock(componentProps, wrapper);
                 break;
             case 'citations':
-                this.renderCitations(artifact.componentProps, wrapper);
+                this.renderCitations(componentProps, wrapper);
                 break;
             default:
-                this.renderGeneric(artifact.componentProps, wrapper);
+                this.renderGeneric(componentProps, wrapper);
         }
 
         return wrapper;
@@ -90,6 +97,59 @@ export class UiArtifactRenderer {
         }
 
         return 'ui-card'; // fallback generico
+    }
+
+    /**
+     * F1.7 — Mapping dei componentType extra gescat su renderer supportati.
+     *
+     * gescat (AiArtifactComponentEnum) può restituire:
+     *   ui-kpi-grid, ui-badge, ui-toast, ui-chart, code-block, ui-alert  → GIÀ nativi
+     *     (whitelist + renderer dedicato), nessuna normalizzazione necessaria.
+     *   ui-articolo-card, ui-categoria-card                              → FALLBACK
+     *     verso ui-card normalizzando le props di dominio (title/body/footer),
+     *     così la card è informativa invece che vuota.
+     *   qualsiasi altro tipo sconosciuto                                 → resta com'è
+     *     e cade nel fallback generico di sanitizeType (ui-card → renderGeneric con
+     *     dump JSON sicuro), senza rompere.
+     */
+    private normalizeExtraType(artifact: Artifact): { componentType: string; componentProps: Record<string, unknown> } {
+        const props = artifact.componentProps ?? {};
+
+        if (artifact.componentType === 'ui-articolo-card' || artifact.componentType === 'ui-categoria-card') {
+            return { componentType: 'ui-card', componentProps: this.cardPropsFromDomainCard(props) };
+        }
+
+        return { componentType: artifact.componentType, componentProps: props };
+    }
+
+    /**
+     * F1.7 — Normalizza le props di una card di dominio gescat (articolo/categoria)
+     * nello shape atteso da renderCard ({title, body, footer}). Best effort sui nomi
+     * di campo più comuni; se non trova nulla, ricade su un dump compatto leggibile.
+     */
+    private cardPropsFromDomainCard(props: Record<string, unknown>): Record<string, unknown> {
+        // Se già nello shape ui-card, passa attraverso.
+        if (props.title !== undefined || props.body !== undefined || props.footer !== undefined) {
+            return props;
+        }
+
+        const title = props.nome ?? props.descrizione ?? props.label ?? props.codice ?? props.name ?? '';
+
+        const bodyParts: string[] = [];
+        for (const [k, v] of Object.entries(props)) {
+            if (v === null || v === undefined || typeof v === 'object') {
+                continue;
+            }
+            if (k === 'nome' || k === 'descrizione' || k === 'label' || k === 'name') {
+                continue;
+            }
+            bodyParts.push(`${k}: ${String(v)}`);
+        }
+
+        return {
+            title,
+            body: bodyParts.length > 0 ? bodyParts.join('\n') : undefined,
+        };
     }
 
     // --- Helpers ---
