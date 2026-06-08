@@ -204,7 +204,7 @@ export class Transport {
         // L'host può rispondere 200 con ok:true o 422 con ok:false: in entrambi i casi
         // il body porta la chiave `ok` ed è un esito di dominio, non un errore di rete.
         if (typeof data.ok === 'boolean') {
-            return data as HostExecResponse;
+            return data as unknown as HostExecResponse;
         }
 
         // Nessun contratto `ok` riconoscibile e risposta non-OK → errore di trasporto.
@@ -217,7 +217,7 @@ export class Transport {
         }
 
         // 2xx ma senza `ok`: normalizziamo a ok:true con artifact eventuale.
-        return data as HostExecResponse;
+        return { ok: true, ...(data as Record<string, unknown>) } as unknown as HostExecResponse;
     }
 
     private url(path: string): string {
