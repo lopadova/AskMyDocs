@@ -284,6 +284,69 @@ validated against the current snapshot before execution:
 
 ---
 
+## Host Tools (F1.7) — FE-proxied tools from the embedding app
+
+Beyond DOM tools and the AskMyDocs BE tool (`search_knowledge_base`), the
+widget can route **host tools** defined and executed by the embedding app
+(e.g. gescat domain tools). The host tools never run through the DOM
+executor or `/exec-tool`: the widget proxies them to the host app using
+the **logged-in user's session cookie** (FE-proxied mode).
+
+### Embed configuration (data-attributes)
+
+```html
+<meta name="csrf-token" content="…">  <!-- Laravel standard -->
+
+<script
+  src="https://kb.example.com/widget/askmydocs-widget.js"
+  data-public-key="pk_live_…"
+  data-api-base="https://kb.example.com"
+  data-skill="gescat-assistant@1"
+  data-host-manifest-url="/admin/ai/tools-manifest"
+  data-host-exec-url="/admin/ai/tools-exec"
+  defer></script>
+```
+
+`data-*` attributes take precedence over the `window.AskMyDocsWidget`
+object. The CSRF token is read from `<meta name="csrf-token">` first,
+falling back to `data-csrf-token` on the embed script.
+
+### Flow
+
+1. **Manifest** — if `data-host-manifest-url` is set, on session start the
+   widget does `fetch(url, { credentials: 'same-origin' })`, expects
+   `{ schema_version, tools:[{name,description,parameters,execution:"host"}] }`,
+   and includes those `tools` as `snapshot.host_tools` so the orchestrator
+   passes them to the LLM. The fetch is **non-blocking**: on any failure
+   `host_tools` is omitted and the widget continues in RAG-only mode.
+2. **Execution** — when the orchestrator returns a `tool_call` marked
+   `execution: "host"` (or `is_host_tool: true`), the widget does
+   `POST {data-host-exec-url}` with
+   `{ tool, args, session_ref: <public_session_id> }`, headers
+   `{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': <token> }`,
+   `credentials: 'same-origin'`. Expected response:
+   `{ ok:true, artifact:{…} }` or `{ ok:false, error, message }`.
+3. **Reinjection** — the artifact is rendered (reusing `UiArtifactRenderer`)
+   and the next turn posts `POST …/step` with
+   `tool_result: { tool, execution:"host", ok, artifact }`.
+4. **Errors** — on `ok:false`, a missing `data-host-exec-url`, or a network
+   error, the widget shows an error in the thread **and** still reinjects a
+   `tool_result` with `ok:false` so the LLM can react and the session never
+   hangs.
+
+### Artifact mapping (gescat → widget renderer)
+
+The widget renderer is the source of truth. Native types
+(`ui-data-table`, `ui-kpi`, `ui-kpi-grid`, `ui-alert`, `ui-card`,
+`ui-badge`, `ui-toast`, `ui-list`, `ui-chart`, `markdown`, `code-block`,
+`citations`) render with their dedicated renderer. gescat extras
+`ui-articolo-card` / `ui-categoria-card` fall back to `ui-card` with
+normalized props; any other unknown type falls back to a safe `ui-card`
+render (never throws). The original `componentType` is kept on the
+container's `data-source-component-type` for debugging/E2E.
+
+---
+
 ## Widget Events
 
 The widget dispatches custom events on the host page's `window` object
