@@ -117,10 +117,12 @@ final class WidgetOrchestratorService
         $enabled = array_values(array_filter((array) ($manifest['tools_enabled'] ?? []), 'is_string'));
 
         // F1.4 — host tools (HTP): definizioni fornite inline dalla pagina ospite
-        // dentro snapshot.host_tools. Sono ammessi all'LLM SOLO se la skill ha
-        // host_tools_enabled === true; altrimenti il ramo è ignorato del tutto.
+        // dentro snapshot.host_tools. Doppio gate: ammessi all'LLM SOLO se la
+        // skill ha host_tools_enabled === true (capability) E la widget key della
+        // sessione ha host_tools_enabled === true (interruttore operativo del
+        // cliente, gestito da UI admin); altrimenti il ramo è ignorato del tutto.
         // Filtrati per host_tools_allowlist (prefisso/nome) quando presente.
-        $hostTools = $this->resolveHostTools($manifest, $snapshot);
+        $hostTools = $this->resolveHostTools($manifest, $snapshot, $session);
         $hostToolNames = array_map(static fn (array $t): string => (string) $t['name'], $hostTools);
 
         $tools = array_merge(
@@ -432,8 +434,15 @@ final class WidgetOrchestratorService
     /**
      * F1.4 — Host tools ammessi per questo turno.
      *
-     * Guard: se la skill non ha host_tools_enabled === true, il ramo
-     * snapshot.host_tools è ignorato del tutto (nessun host tool all'LLM).
+     * Doppio gate (capability skill AND interruttore key):
+     *  - se la skill non ha host_tools_enabled === true, il ramo
+     *    snapshot.host_tools è ignorato del tutto (nessun host tool all'LLM);
+     *  - se la widget key della sessione non ha host_tools_enabled === true,
+     *    idem: il cliente ha l'interruttore operativo spento (gestito da UI
+     *    admin) e gli host tools NON vanno passati all'LLM (degrada a
+     *    solo-RAG/FE tools, nessuna eccezione).
+     * La key è recuperata via la relazione tenant-aware $session->widgetKey
+     * (BelongsToTenant su WidgetKey, stesso accesso usato in navigateAllowlist).
      * Lo snapshot è già stato validato/sanitizzato dal WidgetSnapshotValidator
      * (F1.3): ogni voce ha name valido ed execution === "host". Qui filtriamo
      * ancora per host_tools_allowlist (se presente): un host tool è ammesso se
@@ -443,9 +452,15 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return list<array<string, mixed>>
      */
-    private function resolveHostTools(array $manifest, array $snapshot): array
+    private function resolveHostTools(array $manifest, array $snapshot, WidgetSession $session): array
     {
         if (($manifest['host_tools_enabled'] ?? null) !== true) {
+            return [];
+        }
+
+        // Interruttore operativo per-cliente: la widget key deve avere il flag ON.
+        $key = $session->widgetKey;
+        if ($key === null || $key->host_tools_enabled !== true) {
             return [];
         }
 
