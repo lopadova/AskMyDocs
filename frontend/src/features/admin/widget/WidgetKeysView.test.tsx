@@ -365,6 +365,210 @@ describe('WidgetKeysView', () => {
         });
     });
 
+    it('sends host_tools_enabled=true in the create payload when the toggle is checked (R16)', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 20,
+                    label: 'HostTools',
+                    public_key: 'pk_ht',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    host_tools_enabled: true,
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_ht',
+                public_key: 'pk_ht',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'HostTools' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+
+        const toggle = screen.getByTestId(
+            'admin-widget-keys-host-tools-toggle',
+        ) as HTMLInputElement;
+        // Drive the actual state transition: starts off, click flips it on.
+        expect(toggle.checked).toBe(false);
+        fireEvent.click(toggle);
+        expect(toggle.checked).toBe(true);
+
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys',
+                expect.objectContaining({ host_tools_enabled: true }),
+            );
+        });
+    });
+
+    it('defaults host_tools_enabled=false in the create payload when left unchecked', async () => {
+        mockedApi.get.mockResolvedValue({ data: { data: [] } });
+        mockedApi.post.mockResolvedValueOnce({
+            data: {
+                data: {
+                    id: 21,
+                    label: 'NoHostTools',
+                    public_key: 'pk_nht',
+                    project_key: 'main',
+                    allowed_origins: [],
+                    rate_limit: 60,
+                    skill: 'askmydocs-assistant@1',
+                    host_tools_enabled: false,
+                    is_active: true,
+                    last_used_at: null,
+                    sessions_count: 0,
+                    created_at: '2026-05-30T00:00:00Z',
+                    updated_at: '2026-05-30T00:00:00Z',
+                },
+                plain_secret: 'sk_nht',
+                public_key: 'pk_nht',
+            },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-btn'));
+        fireEvent.change(await screen.findByTestId('admin-widget-keys-label'), {
+            target: { value: 'NoHostTools' },
+        });
+        fireEvent.change(screen.getByTestId('admin-widget-keys-project'), {
+            target: { value: 'main' },
+        });
+        fireEvent.click(screen.getByTestId('admin-widget-keys-create-submit'));
+
+        await waitFor(() => {
+            expect(mockedApi.post).toHaveBeenCalledWith(
+                '/api/admin/widget-keys',
+                expect.objectContaining({ host_tools_enabled: false }),
+            );
+        });
+    });
+
+    it('reflects the API host_tools value in the row toggle and PATCHes the new value on edit (R16)', async () => {
+        // Initial load: key has host tools OFF; refetch after PATCH returns ON.
+        mockedApi.get
+            .mockResolvedValueOnce({
+                data: {
+                    data: [
+                        {
+                            id: 7,
+                            label: 'Edit Key',
+                            public_key: 'pk_edit',
+                            project_key: 'main',
+                            allowed_origins: [],
+                            rate_limit: 60,
+                            skill: 'askmydocs-assistant@1',
+                            host_tools_enabled: false,
+                            is_active: true,
+                            last_used_at: null,
+                            sessions_count: 0,
+                            created_at: '2026-05-30T00:00:00Z',
+                            updated_at: '2026-05-30T00:00:00Z',
+                        },
+                    ],
+                },
+            })
+            .mockResolvedValue({
+                data: {
+                    data: [
+                        {
+                            id: 7,
+                            label: 'Edit Key',
+                            public_key: 'pk_edit',
+                            project_key: 'main',
+                            allowed_origins: [],
+                            rate_limit: 60,
+                            skill: 'askmydocs-assistant@1',
+                            host_tools_enabled: true,
+                            is_active: true,
+                            last_used_at: null,
+                            sessions_count: 0,
+                            created_at: '2026-05-30T00:00:00Z',
+                            updated_at: '2026-05-30T00:00:00Z',
+                        },
+                    ],
+                },
+            });
+        mockedApi.patch.mockResolvedValueOnce({ data: { data: {} } });
+
+        renderWithQuery(<WidgetKeysView />);
+
+        const toggle = (await screen.findByTestId(
+            'admin-widget-keys-7-host-tools-toggle',
+        )) as HTMLInputElement;
+        // Value populated from the API: OFF.
+        expect(toggle.checked).toBe(false);
+
+        fireEvent.click(toggle);
+
+        await waitFor(() => {
+            expect(mockedApi.patch).toHaveBeenCalledWith('/api/admin/widget-keys/7', {
+                host_tools_enabled: true,
+            });
+        });
+
+        // After the invalidate + refetch returns ON, the toggle reflects it.
+        await waitFor(() => {
+            expect(
+                (
+                    screen.getByTestId(
+                        'admin-widget-keys-7-host-tools-toggle',
+                    ) as HTMLInputElement
+                ).checked,
+            ).toBe(true);
+        });
+    });
+
+    it('surfaces a host-tools PATCH error in the DOM instead of swallowing it (R14)', async () => {
+        mockedApi.get.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 8,
+                        label: 'Err Key',
+                        public_key: 'pk_err',
+                        project_key: 'main',
+                        allowed_origins: [],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        host_tools_enabled: false,
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+        mockedApi.patch.mockRejectedValueOnce({
+            response: { data: { message: 'Host tools update failed.' } },
+        });
+
+        renderWithQuery(<WidgetKeysView />);
+
+        fireEvent.click(
+            await screen.findByTestId('admin-widget-keys-8-host-tools-toggle'),
+        );
+
+        const err = await screen.findByTestId('admin-widget-keys-host-tools-error');
+        expect(err.textContent).toContain('Host tools update failed.');
+    });
+
     it('opens the origins editor from a table row, prefilled with the current origins', async () => {
         mockedApi.get.mockResolvedValueOnce({
             data: {
