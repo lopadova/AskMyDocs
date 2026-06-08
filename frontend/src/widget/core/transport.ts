@@ -5,7 +5,7 @@
  * sollevati come WidgetError con status + codice così la UI può mostrarli
  * (R14: mai trattare un fallimento come successo).
  */
-import type { Snapshot, ToolResult, TurnResponse } from '../types';
+import type { HostExecResponse, HostManifest, HostTool, HostToolResult, Snapshot, ToolResult, TurnResponse } from '../types';
 import type { WidgetConfig } from '../types';
 import type { ExecToolResponse } from './bridge';
 
@@ -78,7 +78,7 @@ export class Transport {
         sessionId: string,
         snapshot: Snapshot,
         message: string | null,
-        toolResult: ToolResult | null,
+        toolResult: ToolResult | HostToolResult | null,
     ): Promise<TurnResponse> {
         const res = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/step`), {
             method: 'POST',
@@ -109,6 +109,115 @@ export class Transport {
         });
 
         return this.parse<ExecToolResponse>(res);
+    }
+
+    /**
+     * F1.7 — Recupera il manifest host tools dall'app ospite.
+     * `fetch(hostManifestUrl, { credentials: 'same-origin' })`, si aspetta
+     * `{ schema_version, tools: [...] }`. Non bloccante: su qualsiasi errore
+     * (rete, status non-OK, JSON malformato, shape inattesa) ritorna `[]` e logga,
+     * così il widget continua a funzionare in solo-RAG.
+     */
+    async fetchHostManifest(hostManifestUrl: string): Promise<HostTool[]> {
+        try {
+            const res = await fetch(hostManifestUrl, {
+                method: 'GET',
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (!res.ok) {
+                // eslint-disable-next-line no-console
+                console.warn(`[AskMyDocsWidget] host manifest fetch non-OK (${res.status}); continuo in solo-RAG.`);
+
+                return [];
+            }
+            const data = (await res.json()) as Partial<HostManifest>;
+            const tools = Array.isArray(data?.tools) ? data.tools : [];
+
+            // Difesa in profondità: tieni solo le voci con shape host-tool valida.
+            return tools.filter(
+                (t): t is HostTool =>
+                    !!t &&
+                    typeof t.name === 'string' &&
+                    t.name !== '' &&
+                    t.execution === 'host' &&
+                    typeof t.parameters === 'object' &&
+                    t.parameters !== null,
+            );
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            // eslint-disable-next-line no-console
+            console.warn(`[AskMyDocsWidget] host manifest fetch fallito: ${message}; continuo in solo-RAG.`);
+
+            return [];
+        }
+    }
+
+    /**
+     * F1.7 — Esegue un host tool sull'app ospite (FE-proxied). A differenza di
+     * /exec-tool (canale token-based verso AskMyDocs), questa chiamata va all'app
+     * ospite stessa: usa il cookie di sessione (`credentials: 'same-origin'`) e
+     * l'header `X-CSRF-TOKEN` (pattern Laravel). Non passa per ResolveWidgetKey.
+     *
+     * Ritorna sempre il body parsato (`{ ok, artifact | error, message }`): un
+     * `ok:false` 422 dall'host NON è un errore di trasporto, va gestito dal Bridge
+     * inviando comunque un tool_result così l'LLM può reagire (no sessione appesa).
+     * Solleva WidgetError solo su fallimento di rete o body non-JSON con status non-OK
+     * e senza payload `ok`.
+     */
+    async execHostTool(
+        hostExecUrl: string,
+        tool: string,
+        args: Record<string, unknown>,
+        sessionRef: string,
+        csrfToken: string,
+    ): Promise<HostExecResponse> {
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        };
+        if (csrfToken !== '') {
+            headers['X-CSRF-TOKEN'] = csrfToken;
+        }
+
+        let res: Response;
+        try {
+            res = await fetch(hostExecUrl, {
+                method: 'POST',
+                headers,
+                credentials: 'same-origin',
+                body: JSON.stringify({ tool, args, session_ref: sessionRef }),
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            throw new WidgetError(`Host tool request failed: ${message}`, 0, 'host_exec_network_error');
+        }
+
+        const text = await res.text();
+        let data: Record<string, unknown> = {};
+        try {
+            data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+        } catch {
+            data = {};
+        }
+
+        // L'host può rispondere 200 con ok:true o 422 con ok:false: in entrambi i casi
+        // il body porta la chiave `ok` ed è un esito di dominio, non un errore di rete.
+        if (typeof data.ok === 'boolean') {
+            return data as unknown as HostExecResponse;
+        }
+
+        // Nessun contratto `ok` riconoscibile e risposta non-OK → errore di trasporto.
+        if (!res.ok) {
+            const message =
+                (typeof data.message === 'string' && data.message) ||
+                (typeof data.error === 'string' && data.error) ||
+                `Host tool request failed (${res.status}).`;
+            throw new WidgetError(message, res.status, typeof data.error === 'string' ? data.error : 'host_exec_error');
+        }
+
+        // 2xx ma senza `ok`: normalizziamo a ok:true con artifact eventuale.
+        return { ok: true, ...(data as Record<string, unknown>) } as unknown as HostExecResponse;
     }
 
     private url(path: string): string {
