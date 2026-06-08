@@ -43,8 +43,9 @@ declare global {
 const embedScript: HTMLScriptElement | null =
     document.currentScript instanceof HTMLScriptElement ? document.currentScript : null;
 
-/** Legge il CSRF token dall'app ospite: `<meta name="csrf-token">` o `data-csrf-token`. */
-function readCsrfToken(script: HTMLScriptElement | null): string | undefined {
+/** Legge il CSRF token dall'app ospite: `<meta name="csrf-token">` o `data-csrf-token`.
+ *  Esportato per i test (R16). */
+export function readCsrfToken(script: HTMLScriptElement | null): string | undefined {
     const meta = document.querySelector('meta[name="csrf-token"]');
     const metaToken = meta?.getAttribute('content');
     if (metaToken && metaToken !== '') {
@@ -59,8 +60,9 @@ function readCsrfToken(script: HTMLScriptElement | null): string | undefined {
  * F1.7 — Risolve la config unendo l'oggetto globale `window.AskMyDocsWidget` con
  * i `data-*` dello script di embed (questi ultimi prevalgono). Mappa esplicita
  * dei nomi data-attribute al contratto condiviso con l'app ospite gescat.
+ * Esportato per i test (R16).
  */
-function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetConfig> {
+export function resolveConfig(script: HTMLScriptElement | null): Partial<WidgetConfig> {
     const global = window.AskMyDocsWidget ?? {};
     const ds = script?.dataset ?? ({} as DOMStringMap);
 

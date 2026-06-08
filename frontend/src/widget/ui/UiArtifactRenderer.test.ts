@@ -187,4 +187,44 @@ describe('UiArtifactRenderer', () => {
         expect(el.getAttribute('data-hasResults')).toBe('false');
         expect(el.getAttribute('data-interactionMode')).toBe('selection');
     });
+
+    // --- F1.7: fallback artifact per componentType gescat ---
+
+    it('maps gescat ui-articolo-card to ui-card with normalized domain props', () => {
+        const el = render('ui-articolo-card', { nome: 'Pera Rossa', codice: 'ART-42', prezzo: '1.20' });
+        // Cade su ui-card (renderer dedicato), non sul dump generico.
+        expect(el.classList.contains('amd-artifact--ui-card')).toBe(true);
+        expect(el.querySelector('[data-testid="askmydocs-widget-artifact-card"]')).not.toBeNull();
+        // Il nome diventa il titolo; i campi scalari finiscono nel body.
+        expect(el.textContent).toContain('Pera Rossa');
+        expect(el.textContent).toContain('codice: ART-42');
+        // Il tipo originale resta osservabile per debugging/E2E.
+        expect(el.dataset.sourceComponentType).toBe('ui-articolo-card');
+    });
+
+    it('maps gescat ui-categoria-card to ui-card', () => {
+        const el = render('ui-categoria-card', { nome: 'Frutta' });
+        expect(el.classList.contains('amd-artifact--ui-card')).toBe(true);
+        expect(el.textContent).toContain('Frutta');
+        expect(el.dataset.sourceComponentType).toBe('ui-categoria-card');
+    });
+
+    it('preserves native gescat types (ui-kpi-grid) without forcing the fallback', () => {
+        const el = render('ui-kpi-grid', { items: [{ label: 'Totale', value: '10' }] });
+        expect(el.classList.contains('amd-artifact--ui-kpi-grid')).toBe(true);
+        expect(el.querySelector('[data-testid="askmydocs-widget-kpi-grid"]')).not.toBeNull();
+    });
+
+    it('falls back safely (no throw) for a fully unknown gescat type, recording the source type', () => {
+        // sanitizeType mappa il tipo sconosciuto su ui-card: rendering sicuro,
+        // nessuna eccezione; il tipo originale resta osservabile.
+        let el!: HTMLElement;
+        expect(() => {
+            el = render('ui-mystery-widget', { title: 'Sconosciuto', body: 'corpo' });
+        }).not.toThrow();
+        expect(el.classList.contains('amd-artifact--ui-card')).toBe(true);
+        expect(el.querySelector('[data-testid="askmydocs-widget-artifact-card"]')).not.toBeNull();
+        expect(el.textContent).toContain('Sconosciuto');
+        expect(el.dataset.sourceComponentType).toBe('ui-mystery-widget');
+    });
 });
