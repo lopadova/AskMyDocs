@@ -135,7 +135,7 @@ final class WidgetOrchestratorService
             $result = $this->retrieval->retrieve($userMessage, (string) $session->project_key, null);
         }
 
-        $systemPrompt = $this->buildSystemPrompt($snapshot, $result);
+        $systemPrompt = $this->buildSystemPrompt($snapshot, $result, $hostTools);
         $baseMessages = $this->buildMessages($session);
         $navigateAllowlist = $this->navigateAllowlist($session);
 
@@ -299,11 +299,26 @@ final class WidgetOrchestratorService
     }
 
     /**
+     * Compone il system prompt del turno. Riceve la STESSA lista di host tool
+     * già risolta in runTurn e passata all'LLM ($hostTools), così prompt e
+     * tool list concordano: il template elenca esattamente i tool che il
+     * modello può chiamare (niente ri-risoluzione divergente). Quando non ci
+     * sono host tool il blocco di guida dominio non viene reso (R43: degrado
+     * pulito, comportamento KITT/DOM invariato).
+     *
      * @param  array<string, mixed>  $snapshot
+     * @param  list<array<string, mixed>>  $hostTools  host tool risolti per il turno
      */
-    private function buildSystemPrompt(array $snapshot, ?SearchResult $result): string
+    private function buildSystemPrompt(array $snapshot, ?SearchResult $result, array $hostTools = []): string
     {
         $hasKb = $result !== null && ! $result->primary->isEmpty();
+
+        // Solo name + description: è ciò che serve al modello per riconoscere
+        // il tool nel prompt (gli stessi campi passati a wrapHostTools per l'LLM).
+        $promptHostTools = array_map(static fn (array $t): array => [
+            'name' => (string) $t['name'],
+            'description' => is_string($t['description'] ?? null) ? $t['description'] : '',
+        ], $hostTools);
 
         return view('prompts.widget_kitt', [
             'hasKb' => $hasKb,
@@ -311,6 +326,8 @@ final class WidgetOrchestratorService
             'expanded' => $result?->expanded ?? collect(),
             'rejected' => $result?->rejected ?? collect(),
             'snapshotJson' => $this->json($snapshot),
+            'hasHostTools' => $promptHostTools !== [],
+            'hostTools' => $promptHostTools,
         ])->render();
     }
 
