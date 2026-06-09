@@ -73,6 +73,9 @@ function spyEvents(): { events: BridgeEvents; artifacts: Array<{ componentType: 
         onError: (m) => errors.push(m),
         onConfirm: vi.fn(),
         onArtifact: (a) => artifacts.push({ componentType: a.componentType }),
+        onPointAt: vi.fn(),
+        onTourStep: vi.fn(),
+        onClearOverlay: vi.fn(),
     };
 
     return { events, artifacts, errors, answers };

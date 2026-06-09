@@ -40,6 +40,15 @@ export interface BridgeEvents {
     onConfirm: (toolCall: ToolCall, accept: () => void, reject: () => void) => void;
     /** M4: emette l'artifact restituito da un tool BE nella chat. */
     onArtifact: (artifact: Artifact, hasResults: boolean, interactionMode: string) => void;
+    /**
+     * M4.8 — feedback visivo agentico. `move_cursor` → freccia sul target;
+     * `tour_step` → backdrop+spotlight+tooltip; un nuovo messaggio utente o un
+     * esito terminale (done/blocked) → clear. `target` è `null` quando il nome
+     * non risolve nessun elemento (il loop prosegue comunque).
+     */
+    onPointAt: (target: HTMLElement | null, name: string) => void;
+    onTourStep: (target: HTMLElement | null, message: string, index: number, total: number) => void;
+    onClearOverlay: () => void;
 }
 
 const MAX_AUTO_STEPS = 12;
@@ -97,6 +106,9 @@ export class Bridge {
         if (this.busy) {
             return;
         }
+        // M4.8: un nuovo messaggio utente chiude qualsiasi overlay agentico
+        // (freccia/tour) lasciato dal turno precedente.
+        this.events.onClearOverlay();
         await this.guard(async () => {
             if (this.sessionId) {
                 const snapshot = buildSnapshot();
@@ -166,6 +178,7 @@ export class Bridge {
             return;
         }
         if (res.type === 'blocked') {
+            this.events.onClearOverlay();
             this.events.onBlocked(res.reason ?? 'Blocked.');
 
             return;
@@ -188,11 +201,14 @@ export class Bridge {
             return;
         }
         if (call.tool === 'report_done') {
+            // M4.8: fine task → chiudi l'overlay agentico (es. fine tour).
+            this.events.onClearOverlay();
             this.events.onDone(String(call.args.summary ?? 'Done.'));
 
             return;
         }
         if (call.tool === 'report_blocked') {
+            this.events.onClearOverlay();
             this.events.onBlocked(String(call.args.reason ?? 'Blocked.'));
 
             return;
@@ -218,6 +234,10 @@ export class Bridge {
 
         const execute = async (): Promise<void> => {
             this.events.onAction(call.tool, call.args);
+            // M4.8: i tool visivi attivano l'overlay agentico PRIMA di eseguire il
+            // runner DOM. L'esecuzione (scroll/focus) e la reiniezione del
+            // tool_result restano invariate: il loop prosegue normalmente.
+            this.maybeEmitOverlay(call);
             const result = await this.executor.run(call.tool, call.args);
             const snapshot = buildSnapshot();
             const next = await this.transport.step(this.sessionId as string, snapshot, null, result);
@@ -239,6 +259,34 @@ export class Bridge {
         }
 
         await execute();
+    }
+
+    /**
+     * M4.8 — intercetta i tool visivi (`move_cursor` / `tour_step`) e attiva
+     * l'overlay agentico tramite gli eventi del Bridge. Risolve il target con la
+     * stessa logica DOM dell'executor (`resolveTarget`), così l'overlay indica
+     * esattamente l'elemento che il runner tocca. Non altera il loop: l'executor
+     * esegue comunque il tool (scroll/focus) e il tool_result viene reiniettato.
+     */
+    private maybeEmitOverlay(call: ToolCall): void {
+        if (call.tool === 'move_cursor') {
+            const name = String(call.args.target ?? '');
+            this.events.onPointAt(this.executor.resolveTarget(name), name);
+
+            return;
+        }
+        if (call.tool === 'tour_step') {
+            const name = String(call.args.highlight_target ?? '');
+            const message = String(call.args.message ?? '');
+            const index = Number(call.args.step_index ?? 0);
+            const total = Number(call.args.step_total ?? 1);
+            this.events.onTourStep(
+                this.executor.resolveTarget(name),
+                message,
+                Number.isFinite(index) ? index : 0,
+                Number.isFinite(total) ? total : 1,
+            );
+        }
     }
 
     /**
