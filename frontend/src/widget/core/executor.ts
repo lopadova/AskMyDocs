@@ -78,6 +78,7 @@ export class Executor {
     }
 
     private findActionTarget(target: string): HTMLElement | null {
+        // --- Match esatti (prioritari, invariati): nessuna regressione. ---
         const annotated = document.querySelector(`[data-kitt-action="${CSS.escape(target)}"]`);
         if (annotated instanceof HTMLElement) {
             return annotated;
@@ -97,7 +98,73 @@ export class Executor {
             }
         }
 
+        // --- Fallback tolleranti (DOPO i match esatti). Servono quando il
+        //     modello passa la label visibile o l'id di una region invece del
+        //     verb esatto di data-kitt-action: senza questi, freccia/spotlight
+        //     di tour_step/move_cursor non si ancorano (ritorno null). ---
+        return this.findActionTargetFuzzy(target);
+    }
+
+    /**
+     * Risoluzione tollerante del target, provata solo dopo i match esatti:
+     *   a. data-kitt-action confrontato case-insensitive;
+     *   b. bottone/[role=button]/a.btn/a.ui-btn il cui testo CONTIENE target
+     *      (case-insensitive, trim) — utile per label parziali;
+     *   c. target == region → azione primaria dentro la region (primo
+     *      data-kitt-action o bottone visibile).
+     * Ritorna il primo match VISIBILE.
+     */
+    private findActionTargetFuzzy(target: string): HTMLElement | null {
+        const needle = target.trim().toLowerCase();
+        if (needle === '') {
+            return null;
+        }
+
+        // a. data-kitt-action case-insensitive.
+        for (const el of Array.from(document.querySelectorAll('[data-kitt-action]'))) {
+            if (!(el instanceof HTMLElement)) continue;
+            if ((el.getAttribute('data-kitt-action') ?? '').trim().toLowerCase() === needle && this.isVisible(el)) {
+                return el;
+            }
+        }
+
+        // b. bottone il cui testo CONTIENE il target (substring case-insensitive).
+        const buttons = document.querySelectorAll('button, [role="button"], a.btn, a.ui-btn');
+        for (const el of Array.from(buttons)) {
+            if (!(el instanceof HTMLElement)) continue;
+            const text = (el.textContent ?? '').trim().toLowerCase();
+            if (text !== '' && text.includes(needle) && this.isVisible(el)) {
+                return el;
+            }
+        }
+
+        // c. target è una region → azione primaria visibile dentro la region.
+        const region = document.querySelector(`[data-kitt-region="${CSS.escape(target)}"]`);
+        if (region instanceof HTMLElement) {
+            const primary = region.querySelector('[data-kitt-action], button, [role="button"], a.btn, a.ui-btn');
+            if (primary instanceof HTMLElement && this.isVisible(primary)) {
+                return primary;
+            }
+        }
+
         return null;
+    }
+
+    /**
+     * Visibile = nel layout (offsetParent o rettangolo non nullo) e non
+     * nascosto via display/visibility. jsdom non calcola il layout, quindi
+     * lì un elemento montato è considerato visibile salvo display:none /
+     * visibility:hidden esplicito — coerente con i test in jsdom.
+     */
+    private isVisible(el: HTMLElement): boolean {
+        const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+        if (style && (style.display === 'none' || style.visibility === 'hidden')) {
+            return false;
+        }
+        const rects = el.getClientRects().length > 0;
+        const box = el.offsetWidth > 0 || el.offsetHeight > 0;
+
+        return rects || box || el.offsetParent !== null || style != null;
     }
 
     private findField(name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null {
