@@ -9,6 +9,7 @@
 import { Bridge, type BridgeEvents } from '../core/bridge';
 import type { Artifact } from '../core/bridge';
 import type { Citation, ToolCall, WidgetConfig, WidgetMode, WidgetTheme } from '../types';
+import { OverlaySystem } from './overlay';
 import { DEFAULT_THEME, buildThemeCss, launcherIconSvg, sanitizeTheme } from './styles';
 import { UiArtifactRenderer } from './UiArtifactRenderer';
 
@@ -41,6 +42,11 @@ export class WidgetPanel {
     /** Tema effettivo applicato (default < server < inline). */
     private theme: WidgetTheme = DEFAULT_THEME;
     private confirmBar: HTMLElement | null = null;
+    /**
+     * M4.8 — feedback visivo agentico (freccia/tour). Monta su `<body>` della
+     * pagina ospite (non nello shadow root) per coprire l'intera viewport.
+     */
+    private readonly overlay = new OverlaySystem();
 
     constructor(root: HTMLElement, cfg: WidgetConfig, mode: WidgetMode = 'helper') {
         this.root = root;
@@ -205,6 +211,9 @@ export class WidgetPanel {
             onError: (message) => this.appendSystem(message, 'error'),
             onConfirm: (toolCall, accept, reject) => this.showConfirm(toolCall, accept, reject),
             onArtifact: (artifact, hasResults, interactionMode) => this.renderArtifact(artifact, hasResults, interactionMode),
+            onPointAt: (target) => this.overlay.pointAt(target),
+            onTourStep: (target, message, index, total) => this.overlay.tourStep(target, message, index, total),
+            onClearOverlay: () => this.overlay.clear(),
         };
     }
 
