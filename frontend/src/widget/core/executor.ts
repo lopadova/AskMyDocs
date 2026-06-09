@@ -230,8 +230,198 @@ export class Executor {
         return { input, dropdown };
     }
 
+    // --- Select2 (jQuery) support ---------------------------------------
+    //
+    // I campi gestiti da Select2 NON sono un `<input>` dentro il wrapper:
+    // sono un `<select class="select2-hidden-accessible">` (spesso con
+    // `data-kitt-input`) affiancato da un `<span class="select2-container">`.
+    // La casella di ricerca (`.select2-search__field`) e la lista risultati
+    // (`.select2-results__options`) vengono montate a livello `document.body`
+    // (in `.select2-container--open`) SOLO quando il dropdown è aperto.
+    // Questo branch replica l'handler dedicato di KITT2 (DomLookup.js +
+    // ComboboxSearchTool/ComboboxSetTool) adattato a TypeScript.
+
+    /** Vero se il `<select>` risolto per `field` è potenziato da Select2. */
+    private findSelect2(field: string): HTMLSelectElement | null {
+        const wrapper = document.querySelector(`[data-kitt-field="${CSS.escape(field)}"]`);
+        if (!wrapper) return null;
+
+        const candidate = (wrapper.matches('select') ? wrapper : null)
+            ?? wrapper.querySelector('select[data-kitt-input]')
+            ?? wrapper.querySelector('select');
+        if (!(candidate instanceof HTMLSelectElement)) return null;
+
+        const isHidden = candidate.classList.contains('select2-hidden-accessible')
+            || (candidate.nextElementSibling?.classList.contains('select2-container') ?? false);
+
+        return isHidden ? candidate : null;
+    }
+
+    /** Trova il `.select2-container` visibile associato al `<select>` nativo. */
+    private findSelect2Container(select: HTMLSelectElement): HTMLElement | null {
+        const id = select.getAttribute('id');
+        if (id) {
+            const byId = document.querySelector(`.select2-container[id*="-${CSS.escape(id)}-container"], .select2-container[id*="${CSS.escape(id)}"]`);
+            if (byId instanceof HTMLElement) return byId;
+        }
+        let sib = select.nextElementSibling;
+        while (sib) {
+            if (sib.classList.contains('select2-container')) return sib as HTMLElement;
+            sib = sib.nextElementSibling;
+        }
+        const inWrap = select.parentElement?.querySelector('.select2-container');
+
+        return inWrap instanceof HTMLElement ? inWrap : null;
+    }
+
+    /**
+     * Apre il dropdown Select2 (via jQuery se disponibile, altrimenti click
+     * sulla `.select2-selection`) e ritorna l'input di ricerca, montato a
+     * livello body in `.select2-container--open .select2-search__field`.
+     */
+    private openSelect2(select: HTMLSelectElement): HTMLInputElement | null {
+        const jq = (window as unknown as { jQuery?: (el: unknown) => { select2: (cmd: string) => void } }).jQuery;
+        if (typeof jq === 'function') {
+            try {
+                jq(select).select2('open');
+            } catch {
+                /* fallback DOM sotto */
+            }
+        }
+        const existing = document.querySelector('.select2-container--open .select2-search__field');
+        if (existing instanceof HTMLInputElement) return existing;
+
+        const container = this.findSelect2Container(select);
+        const selection = container?.querySelector('.select2-selection');
+        if (selection instanceof HTMLElement) {
+            selection.click();
+        }
+        const opened = document.querySelector('.select2-container--open .select2-search__field');
+
+        return opened instanceof HTMLInputElement ? opened : null;
+    }
+
+    /**
+     * Esclude i nodi placeholder di Select2 ("No results", "Searching…",
+     * "Loading more…") che sono `.select2-results__option` ma con
+     * role="alert"/"presentation"/"group" o classe message/loading — non
+     * vanno contati come opzioni valide.
+     */
+    private isSelect2PlaceholderNode(node: Element): boolean {
+        if (node.classList.contains('loading-results') || node.classList.contains('select2-results__message')) return true;
+        const role = node.getAttribute('role');
+
+        return role === 'alert' || role === 'presentation' || role === 'group';
+    }
+
+    /**
+     * Poll sulle opzioni del dropdown Select2 aperto (container globale).
+     * Legge label dal textContent e value da `data-select2-id`/`jQuery data`,
+     * con fallback alla label, escludendo i placeholder.
+     */
+    private async pollSelect2Options(timeoutMs: number): Promise<Array<{ value: string; label: string; el: HTMLElement }>> {
+        const start = Date.now();
+        const jq = (window as unknown as { jQuery?: (el: unknown) => { data: (k: string) => { id?: unknown; text?: unknown } | undefined } }).jQuery;
+
+        const extract = (): Array<{ value: string; label: string; el: HTMLElement }> => {
+            const list = document.querySelector('.select2-container--open .select2-results__options');
+            if (!list) return [];
+            const out: Array<{ value: string; label: string; el: HTMLElement }> = [];
+            for (const node of Array.from(list.querySelectorAll('.select2-results__option, [role="option"]'))) {
+                if (!(node instanceof HTMLElement)) continue;
+                if (this.isSelect2PlaceholderNode(node)) continue;
+                const label = (node.textContent ?? '').trim();
+                if (!label) continue;
+                let value = node.getAttribute('data-select2-id') ?? '';
+                if (typeof jq === 'function') {
+                    try {
+                        const d = jq(node).data('data');
+                        if (d && d.id !== undefined) value = String(d.id);
+                        else if (d && d.text) value = String(d.text);
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                out.push({ value: value || label, label, el: node });
+                if (out.length >= 20) break;
+            }
+
+            return out;
+        };
+
+        while (Date.now() - start < timeoutMs) {
+            const list = document.querySelector('.select2-container--open .select2-results__options');
+            const loading = list?.querySelector('.loading-results, .select2-results__option.loading-results');
+            if (list && !loading) {
+                const opts = extract();
+                if (opts.length > 0) return opts;
+            }
+            await new Promise((r) => setTimeout(r, 200));
+        }
+
+        return extract();
+    }
+
+    /** combobox_search (Select2): apre, digita query nella search box globale, ritorna opzioni. */
+    private async comboboxSearchSelect2(field: string, query: string, select: HTMLSelectElement): Promise<ToolResult> {
+        const container = this.findSelect2Container(select);
+        container?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+        const search = this.openSelect2(select);
+        if (!search) {
+            return fail('combobox_search', `Select2 dropdown for field "${field}" did not open.`);
+        }
+        search.focus();
+        search.value = query;
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        search.dispatchEvent(new Event('keyup', { bubbles: true }));
+
+        const found = await this.pollSelect2Options(8000);
+        const options = found.map((o) => ({ value: o.value, label: o.label }));
+
+        return ok('combobox_search', { actual: `searched "${query}"`, field, options_count: options.length, options });
+    }
+
+    /** combobox_set (Select2): apre, digita query, clicca l'option che matcha value. */
+    private async comboboxSetSelect2(field: string, value: string, query: string | undefined, select: HTMLSelectElement): Promise<ToolResult> {
+        const container = this.findSelect2Container(select);
+        container?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+        const search = this.openSelect2(select);
+        if (!search) {
+            return fail('combobox_set', `Select2 dropdown for field "${field}" did not open.`);
+        }
+        const searchQuery = query ?? value;
+        search.focus();
+        search.value = searchQuery;
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        search.dispatchEvent(new Event('keyup', { bubbles: true }));
+
+        const options = await this.pollSelect2Options(8000);
+        const want = value.toLowerCase();
+        const match = options.find((o) => o.value.toLowerCase() === want || o.label.toLowerCase() === want)
+            ?? options.find((o) => o.label.toLowerCase().includes(want));
+        if (!match) {
+            return fail('combobox_set', `No option matching "${value}". Available: ${options.map((o) => o.label).join(', ')}`);
+        }
+
+        match.el.scrollIntoView({ block: 'nearest' });
+        // Select2 ascolta mouseup sul risultato; aggiungiamo click per robustezza.
+        match.el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        match.el.click();
+
+        // Verifica selezione: chip/rendered aggiornata nella selection del container.
+        const rendered = (container?.querySelector('.select2-selection__rendered, .select2-selection__choice')?.textContent ?? '').trim();
+
+        return ok('combobox_set', { actual: rendered || value, field });
+    }
+
     /** combobox_search: apre dropdown, digita query, ritorna opzioni trovate */
     private async comboboxSearch(field: string, query: string): Promise<ToolResult> {
+        // Branch Select2: il campo è un <select> potenziato da jQuery Select2.
+        const select2 = this.findSelect2(field);
+        if (select2) return this.comboboxSearchSelect2(field, query, select2);
+
         const combo = this.findCombobox(field);
         if (!combo) return fail('combobox_search', `Combobox field "${field}" not found.`);
 
@@ -248,6 +438,10 @@ export class Executor {
 
     /** combobox_set: atomico — cerca, digita, seleziona l'option che matcha value */
     private async comboboxSet(field: string, value: string, query?: string): Promise<ToolResult> {
+        // Branch Select2: stesso rilevamento di comboboxSearch.
+        const select2 = this.findSelect2(field);
+        if (select2) return this.comboboxSetSelect2(field, value, query, select2);
+
         const combo = this.findCombobox(field);
         if (!combo) return fail('combobox_set', `Combobox field "${field}" not found.`);
 
