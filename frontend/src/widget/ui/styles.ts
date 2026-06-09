@@ -162,6 +162,71 @@ export const BASE_WIDGET_CSS = `
 export const WIDGET_CSS = BASE_WIDGET_CSS;
 
 /**
+ * CSS del feedback visivo agentico (M4.8 — `move_cursor` / `tour_step`).
+ *
+ * A differenza di {@link BASE_WIDGET_CSS} (iniettato nello shadow root, isolato),
+ * questo blocco va nel `<head>` della PAGINA OSPITE: backdrop, spotlight, freccia
+ * e tooltip devono coprire l'INTERA viewport, non solo la UI del widget — e lo
+ * shadow DOM non può stilare elementi del light DOM. Lo monta {@link OverlaySystem}.
+ *
+ * Backdrop+spotlight: approccio "box-shadow inset gigante" — `.amd-spotlight` è
+ * un div sul rect del target con una box-shadow di spread enorme che oscura tutto
+ * FUORI dal suo rettangolo, lasciando il target nitido (il "buco" è il div).
+ * Più robusto di una SVG mask: niente quirk di `<mask>`/`clip-path`, scala al
+ * resize, e il box porta anche l'anello di evidenziazione.
+ *
+ * Classi prefissate `amd-` per non collidere col sito ospite. z-index ereditato
+ * dal wrapper `.amd-overlay` (montato sotto il launcher del widget).
+ */
+export const OVERLAY_CSS = `
+.amd-overlay, .amd-overlay * { box-sizing: border-box; }
+.amd-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    animation: amd-overlay-fade 160ms ease-out;
+}
+.amd-spotlight {
+    position: fixed; top: 0; left: 0; width: 0; height: 0;
+    border-radius: 10px;
+    /* "buco" sul target: box-shadow gigante che oscura tutto FUORI dal box. */
+    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55), 0 0 0 3px rgba(59, 130, 246, 0.9);
+    outline: 2px solid rgba(255, 255, 255, 0.85);
+    outline-offset: 2px;
+    transition: top 180ms ease, left 180ms ease, width 180ms ease, height 180ms ease;
+    pointer-events: none;
+}
+.amd-cursor {
+    position: fixed; top: 0; left: 0;
+    pointer-events: none;
+    filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
+    animation: amd-cursor-pulse 1.1s ease-in-out infinite;
+}
+.amd-cursor svg { display: block; }
+.amd-tooltip {
+    position: fixed; top: 0; left: 0;
+    max-width: 300px;
+    background: #0f172a; color: #f8fafc;
+    border-radius: 10px; padding: 12px 14px;
+    font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    pointer-events: auto;
+}
+.amd-tooltip-step {
+    font-size: 12px; font-weight: 700; opacity: 0.7;
+    margin-bottom: 4px; letter-spacing: 0.02em;
+}
+.amd-tooltip-body { font-size: 14px; }
+@keyframes amd-overlay-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes amd-cursor-pulse {
+    0%, 100% { transform: translate(-50%, -100%) scale(1); }
+    50% { transform: translate(-50%, -100%) scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .amd-backdrop, .amd-spotlight, .amd-cursor { animation: none; transition: none; }
+}
+`;
+
+/**
  * SVG built-in del launcher (costanti fidate, 24×24, currentColor). Niente
  * markup/emoji arbitrario dall'utente (R19).
  */
