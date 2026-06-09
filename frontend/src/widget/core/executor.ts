@@ -67,6 +67,16 @@ export class Executor {
         }
     }
 
+    /**
+     * Risolve l'elemento DOM ospite per nome (verb di action / id / testid /
+     * testo), riusando la stessa logica dei runner. Pubblico perché l'overlay
+     * agentico (tour_step / move_cursor) deve trovare lo stesso target che i
+     * tool risolvono, senza duplicare i selettori `data-kitt-*`.
+     */
+    resolveTarget(target: string): HTMLElement | null {
+        return this.findActionTarget(target);
+    }
+
     private findActionTarget(target: string): HTMLElement | null {
         const annotated = document.querySelector(`[data-kitt-action="${CSS.escape(target)}"]`);
         if (annotated instanceof HTMLElement) {
