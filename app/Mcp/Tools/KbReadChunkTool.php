@@ -28,12 +28,14 @@ class KbReadChunkTool extends Tool
 
     public function handle(Request $request): Response
     {
-        // R30 — scope to the MCP-resolved tenant AND require the parent
-        // document to be visible (whereHas re-applies the document's
-        // project/ACL scope), so a client bound to tenant A cannot read
-        // tenant B's chunk_text by enumerating the global auto-increment id.
-        // KnowledgeChunk has no global read scope, so the bare findOrFail
-        // here was completely unscoped.
+        // R30 — scope to the MCP-resolved tenant (forTenant) so a client
+        // bound to tenant A cannot read tenant B's chunk_text by enumerating
+        // the global auto-increment id; KnowledgeChunk has no global read
+        // scope, so the bare findOrFail here was completely unscoped. The
+        // whereHas('document') additionally requires a non-trashed parent
+        // document to exist (and applies AccessScopeScope only when a user is
+        // authenticated — MCP runs token-only, so it is the forTenant scope,
+        // not an ACL check, that enforces the tenant boundary here).
         $chunk = KnowledgeChunk::query()
             ->forTenant(app(TenantContext::class)->current())
             ->whereHas('document')

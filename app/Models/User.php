@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -119,7 +120,12 @@ class User extends Authenticatable
             return [self::PROJECT_WILDCARD];
         }
 
+        // R30 — User is a cross-tenant identity, so memberships must be
+        // scoped to the ACTIVE tenant. Without this, a membership granted in
+        // tenant B would loosen project access while operating in tenant A
+        // whenever the project_key overlaps.
         return $this->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
             ->pluck('project_key')
             ->unique()
             ->values()
@@ -134,7 +140,9 @@ class User extends Authenticatable
      */
     public function allowedScopesFor(string $projectKey): array
     {
+        // R30 — scope to the active tenant (see allowedProjects()).
         $membership = $this->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->first();
 

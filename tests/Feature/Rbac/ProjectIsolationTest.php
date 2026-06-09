@@ -41,6 +41,11 @@ final class ProjectIsolationTest extends TestCase
         $this->seed(RbacSeeder::class);
         Cache::flush();
 
+        // Explicit known baseline — the flag is process-global config state;
+        // pin it OFF so test_off_* never depends on execution order even if a
+        // future runner reuses the application instance across tests.
+        config()->set('kb.project_isolation.enabled', false);
+
         $this->seedDoc('proj-1', 'Project One secret');
         $this->seedDoc('proj-2', 'Project Two doc');
         $this->seedDoc('proj-3', 'Project Three doc');

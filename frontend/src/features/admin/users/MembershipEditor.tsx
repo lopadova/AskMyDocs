@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import type { AdminMembership } from '../admin.api';
 import {
@@ -51,6 +51,19 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
     const list = memberships.data?.data ?? [];
     const existingKeys = list.map((m) => m.project_key);
     const availableKeys = projectKeys.filter((k) => !existingKeys.includes(k));
+
+    // R17 — projectKeys arrives asynchronously (useKbProjects). When the add
+    // row is open but the current selection isn't a valid option yet (initial
+    // '' before the list resolved, or the picked key just got consumed by a
+    // successful add), snap the selection to the first available key so the
+    // controlled <select> and the Add CTA stay consistent. The membership
+    // guard prevents an update loop once newProjectKey is a valid option.
+    useEffect(() => {
+        if (!adding || availableKeys.length === 0) return;
+        if (!availableKeys.includes(newProjectKey)) {
+            setNewProjectKey(availableKeys[0]);
+        }
+    }, [adding, availableKeys, newProjectKey]);
 
     return (
         <div
@@ -154,7 +167,10 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
                     type="button"
                     className="focus-ring"
                     data-testid="membership-add"
-                    onClick={() => setAdding(true)}
+                    onClick={() => {
+                        setNewProjectKey(availableKeys[0] ?? '');
+                        setAdding(true);
+                    }}
                     disabled={availableKeys.length === 0}
                     style={{
                         ...smallSecondary,
