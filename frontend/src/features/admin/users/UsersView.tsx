@@ -9,11 +9,11 @@ import { UsersTable } from './UsersTable';
 import { UserDrawer, type DrawerMode } from './UserDrawer';
 import {
     useDeleteUser,
-    useKbProjects,
     useRestoreUser,
     useToggleActive,
     useUsers,
 } from './users.api';
+import { useKbProjects } from '../kb/kb-tree.api';
 
 /*
  * Admin Users page. Filter bar (search + role + active + with_trashed)
@@ -254,7 +254,7 @@ export function UsersView() {
                     open={drawerOpen}
                     user={drawerUser}
                     roles={roles}
-                    projectKeys={projectsQuery.data ?? []}
+                    projectKeys={projectsQuery.data?.projects ?? []}
                     onClose={() => setDrawerOpen(false)}
                 />
             </div>

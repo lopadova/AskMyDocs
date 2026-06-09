@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import type { AdminMembership } from '../admin.api';
 import {
@@ -49,10 +49,15 @@ export function MembershipEditor({ userId, projectKeys }: MembershipEditorProps)
     }
 
     const list = memberships.data?.data ?? [];
-    const existingKeys = list.map((m) => m.project_key);
-    const availableKeys = projectKeys.filter((k) => !existingKeys.includes(k));
+    // Memoised so its identity is stable across renders (only recomputed when
+    // the project list or the membership rows actually change) — otherwise the
+    // sync effect below would re-run on every render.
+    const availableKeys = useMemo(
+        () => projectKeys.filter((k) => !list.some((m) => m.project_key === k)),
+        [projectKeys, list],
+    );
 
-    // R17 — projectKeys arrives asynchronously (useKbProjects). When the add
+    // R17 — projectKeys arrives asynchronously. When the add
     // row is open but the current selection isn't a valid option yet (initial
     // '' before the list resolved, or the picked key just got consumed by a
     // successful add), snap the selection to the first available key so the

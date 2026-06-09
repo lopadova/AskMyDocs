@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    adminKbApi,
     adminUsersApi,
     type AdminMembership,
     type AdminMembershipInput,
@@ -27,19 +26,6 @@ export function useUsers(q: AdminUsersQuery = {}) {
         queryKey: [...USERS_KEY, 'list', q],
         queryFn: () => adminUsersApi.list(q),
         staleTime: 15_000,
-    });
-}
-
-/**
- * Distinct project keys for the active tenant — drives the membership
- * editor's project picker. R18: derive options from the DB, never a
- * hard-coded subset.
- */
-export function useKbProjects() {
-    return useQuery<string[]>({
-        queryKey: ['admin', 'kb', 'projects'],
-        queryFn: async () => (await adminKbApi.projects()).projects,
-        staleTime: 60_000,
     });
 }
 
