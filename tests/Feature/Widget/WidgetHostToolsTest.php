@@ -151,6 +151,26 @@ final class WidgetHostToolsTest extends TestCase
         )));
     }
 
+    /**
+     * Il system prompt è il primo messaggio (role=system) inviato al provider:
+     * OpenAiProvider::chatWithHistory lo antepone come messages[0]. È esattamente
+     * la stringa renderizzata da WidgetOrchestratorService::buildSystemPrompt,
+     * quindi ispezionandolo proviamo cosa ha visto davvero il modello.
+     */
+    private function lastSystemPrompt(): string
+    {
+        $body = end($this->capturedChatBodies) ?: [];
+        $messages = is_array($body['messages'] ?? null) ? $body['messages'] : [];
+
+        foreach ($messages as $message) {
+            if (is_array($message) && ($message['role'] ?? null) === 'system') {
+                return (string) ($message['content'] ?? '');
+            }
+        }
+
+        return '';
+    }
+
     // ─── F1.4 ──────────────────────────────────────────────────────────
 
     public function test_host_tools_are_included_in_the_llm_tool_list_when_enabled(): void
@@ -168,6 +188,54 @@ final class WidgetHostToolsTest extends TestCase
         $this->assertContains('articoli__searchArticoli', $names, 'host tool deve essere nella tool list');
         // i tool FE/BE della skill restano presenti accanto agli host tools.
         $this->assertContains('search_knowledge_base', $names);
+    }
+
+    public function test_system_prompt_carries_domain_tool_guidance_and_real_tool_names_when_host_tools_present(): void
+    {
+        $this->fakeLlm($this->chatMessage('Ecco i risultati.'));
+
+        $key = $this->makeKey(); // gescat-assistant@1 → host_tools_enabled true
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot([
+                $this->hostTool('articoli__searchArticoli'),
+                $this->hostTool('nodi__searchNodi'),
+            ]),
+            'message' => 'Cerca la pera rossa',
+        ])->assertOk();
+
+        $prompt = $this->lastSystemPrompt();
+        // Il blocco di guida dominio è presente...
+        $this->assertStringContainsString('STRUMENTI DATI DI DOMINIO', $prompt);
+        $this->assertStringContainsString('NON richiedono alcun campo o elemento nella pagina', $prompt);
+        $this->assertStringContainsString('Preferisci il tool di dominio a `search_knowledge_base`', $prompt);
+        // ...con i nomi REALI degli host tool del turno (quelli passati all'LLM).
+        $this->assertStringContainsString('articoli__searchArticoli', $prompt);
+        $this->assertStringContainsString('nodi__searchNodi', $prompt);
+    }
+
+    public function test_system_prompt_omits_domain_tool_guidance_when_no_host_tools(): void
+    {
+        $this->fakeLlm($this->chatMessage('Risposta.'));
+
+        // Interruttore key OFF: nessun host tool risolto → blocco NON reso (R43).
+        $key = $this->makeKey(['host_tools_enabled' => false]);
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->snapshot([$this->hostTool('articoli__searchArticoli')]),
+            'message' => 'Cerca la pera rossa',
+        ])->assertOk();
+
+        $prompt = $this->lastSystemPrompt();
+        // Degrado pulito: il blocco di guida dominio NON compare. (Il nome del
+        // tool può comparire nel JSON dello snapshot CURRENT PAGE — è il dato
+        // grezzo della pagina — ma NON nella guida operativa, che è ciò che
+        // cambia il comportamento del modello.)
+        $this->assertStringNotContainsString('STRUMENTI DATI DI DOMINIO', $prompt);
+        $this->assertStringNotContainsString('NON richiedono alcun campo o elemento nella pagina', $prompt);
+        $this->assertStringNotContainsString('Preferisci il tool di dominio a `search_knowledge_base`', $prompt);
+        // La base KITT/DOM resta invariata (regole inviolabili + snapshot).
+        $this->assertStringContainsString('CURRENT PAGE', $prompt);
     }
 
     public function test_host_tools_are_ignored_when_skill_has_host_tools_disabled(): void
