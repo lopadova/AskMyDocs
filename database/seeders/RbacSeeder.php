@@ -19,9 +19,11 @@ use Spatie\Permission\PermissionRegistrar;
  *    can grant detokenise + admin-view access to without escalating to
  *    full system admin. DPOs see PII tooling but NOT command runner
  *    or destructive admin commands.
- *  - 12 permissions (kb.* for content, users/roles/permissions for admin,
- *    commands/logs/insights/admin.access for ops panel,
- *    pii.detokenize for PII reverse lookup).
+ *  - 15 permissions (kb.* for content incl. kb.read.all_projects for the
+ *    per-project isolation "see all projects" capability, users/roles/
+ *    permissions for admin, commands/logs/insights/admin.access for ops
+ *    panel, pii.detokenize for PII reverse lookup, tenant.cross-access for
+ *    the X-Tenant-Id override).
  *  - Backfill: assign `viewer` to every existing user and create a
  *    viewer-role membership against every existing project_key so PR3
  *    deploy does not lock out the userbase.
@@ -53,6 +55,13 @@ class RbacSeeder extends Seeder
         'roles.manage',
         'permissions.view',
         'kb.read.any',
+        // Per-project isolation "see all projects" capability. When
+        // config('kb.project_isolation.enabled') is ON, this — NOT the
+        // blanket kb.read.any — is what grants tenant-wide cross-project
+        // read. Granted to admin + super-admin only; every other user is
+        // then scoped to their project_memberships. When isolation is OFF
+        // this permission is inert (kb.read.any remains the lever).
+        'kb.read.all_projects',
         'kb.edit.any',
         'kb.delete.any',
         'kb.promote.any',
@@ -119,6 +128,9 @@ class RbacSeeder extends Seeder
         $admin->syncPermissions([
             'users.manage',
             'kb.read.any',
+            // admin sees all projects even when per-project isolation is ON
+            // (super-admin gets this via Permission::all()).
+            'kb.read.all_projects',
             'kb.edit.any',
             'kb.delete.any',
             'kb.promote.any',

@@ -7,6 +7,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Per-project isolation (within a tenant)
+    |--------------------------------------------------------------------------
+    |
+    | OFF (default): the historical model — any user holding `kb.read.any`
+    | (viewer/editor/admin/super-admin by seed) reads EVERY project in their
+    | tenant. `project_memberships` are dormant. No behaviour change for
+    | existing deployments.
+    |
+    | ON: the "see all projects" capability switches from the blanket
+    | `kb.read.any` to the dedicated `kb.read.all_projects` permission
+    | (granted to admin + super-admin only). Every other user is constrained
+    | to the project_key set of their `project_memberships` rows — so an
+    | operator grants a user EITHER all-projects (via the permission/role)
+    | OR a specific set of N projects (via memberships). Enforced uniformly
+    | by AccessScopeScope across chat, search, autocomplete and the admin KB
+    | surface; cross-project content can no longer appear in answers or
+    | citations. Tenant isolation is unconditional and unaffected by this
+    | flag. (MCP tokens are tenant-scoped service credentials with no user
+    | identity, so they remain tenant-wide regardless of this flag.)
+    |
+    */
+    'project_isolation' => [
+        'enabled' => env('KB_PROJECT_ISOLATION_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Embedding Cache
     |--------------------------------------------------------------------------
     |

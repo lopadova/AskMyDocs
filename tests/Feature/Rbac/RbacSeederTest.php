@@ -39,6 +39,7 @@ class RbacSeederTest extends TestCase
             'kb.delete.any',
             'kb.edit.any',
             'kb.promote.any',
+            'kb.read.all_projects',
             'kb.read.any',
             'logs.view',
             'permissions.view',
@@ -82,8 +83,9 @@ class RbacSeederTest extends TestCase
         // v4.2/W4 sub-PR 5 — 4 pre-W4 roles + `dpo` = 5.
         $this->assertSame(5, Role::count());
         // 11 pre-H2 + `commands.destructive` (H2) + `pii.detokenize` (W4)
-        // + `tenant.cross-access` (v8.0.3 C1) = 14.
-        $this->assertSame(14, Permission::count());
+        // + `tenant.cross-access` (v8.0.3 C1) + `kb.read.all_projects`
+        // (per-project isolation) = 15.
+        $this->assertSame(15, Permission::count());
     }
 
     public function test_seeder_backfills_existing_users_with_viewer_role_and_project_membership(): void

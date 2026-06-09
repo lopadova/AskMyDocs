@@ -18,7 +18,9 @@ use Illuminate\Support\Facades\DB;
  *   1. Bypass when `config('rbac.enforced')` is false.
  *   2. Bypass in unauthenticated contexts (console commands, system jobs,
  *      setUp() before actingAs()).
- *   3. Bypass for users with the global `kb.read.any` permission.
+ *   3. Bypass for users who can read all projects (canReadAllProjects():
+ *      `kb.read.any` when per-project isolation is OFF, `kb.read.all_projects`
+ *      when it is ON — see config/kb.php `project_isolation.enabled`).
  *   4. Constrain project_key to the user's allowed project set.
  *   5. Exclude rows that have a matching deny ACL row for subject=user /
  *      permission=view.
@@ -42,7 +44,7 @@ class AccessScopeScope implements Scope
             return;
         }
 
-        if ($user->can('kb.read.any')) {
+        if ($user->canReadAllProjects()) {
             return;
         }
 

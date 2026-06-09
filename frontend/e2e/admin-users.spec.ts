@@ -42,6 +42,32 @@ test.describe('Admin Users', () => {
         await expect(page.getByTestId('users-table').locator('tbody tr', {
             hasText: 'playwright@demo.local',
         })).toBeVisible({ timeout: 10_000 });
+
+        // Now actually assign a project membership (the create flow closes the
+        // drawer in create-mode, and memberships only exist once the user
+        // does — so reopen the freshly-created user in edit mode).
+        const row = page.locator('tbody tr', { hasText: 'playwright@demo.local' });
+        await row.locator('[data-testid^="users-row-"][data-testid$="-edit"]').click();
+        await expect(page.getByTestId('user-drawer')).toBeVisible();
+        await expect(page.getByTestId('user-drawer')).toHaveAttribute('data-mode', 'edit');
+
+        await page.getByTestId('user-drawer-tab-memberships').click();
+        await expect(page.getByTestId('membership-editor')).toHaveAttribute('data-state', 'ready', {
+            timeout: 10_000,
+        });
+        // A brand-new user has no memberships yet.
+        await expect(page.getByTestId('memberships-empty')).toBeVisible();
+
+        // Grant access to the seeded `hr-portal` project (DemoSeeder seeds
+        // knowledge_documents under hr-portal + engineering, so the picker —
+        // derived from GET /api/admin/kb/projects — offers both).
+        await page.getByTestId('membership-add').click();
+        await page.getByTestId('membership-add-project').selectOption('hr-portal');
+        await page.getByTestId('membership-add-role').selectOption('admin');
+        await page.getByTestId('membership-add-save').click();
+
+        // The membership row materialises for the chosen project.
+        await expect(page.getByTestId('membership-hr-portal')).toBeVisible({ timeout: 10_000 });
     });
 
     test('happy — edit user — swap role viewer -> editor', async ({ page }) => {
