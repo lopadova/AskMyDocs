@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeDocument;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -27,7 +28,14 @@ class KbReadDocumentTool extends Tool
 
     public function handle(Request $request): Response
     {
-        $document = KnowledgeDocument::with('chunks')
+        // R30 — scope the lookup to the MCP-resolved tenant so a client
+        // bound to tenant A cannot read tenant B's documents by enumerating
+        // the global auto-increment id. Mirrors every sibling KB MCP tool
+        // (e.g. KbDocumentBySlugTool); the bare findOrFail here was the one
+        // read-by-id path that bypassed the tenant boundary.
+        $document = KnowledgeDocument::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->with('chunks')
             ->findOrFail((int) $request->get('document_id'));
 
         return Response::json([

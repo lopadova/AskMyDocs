@@ -3,6 +3,7 @@
 namespace App\Mcp\Tools;
 
 use App\Models\KnowledgeChunk;
+use App\Support\TenantContext;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -27,7 +28,16 @@ class KbReadChunkTool extends Tool
 
     public function handle(Request $request): Response
     {
-        $chunk = KnowledgeChunk::with('document')
+        // R30 — scope to the MCP-resolved tenant AND require the parent
+        // document to be visible (whereHas re-applies the document's
+        // project/ACL scope), so a client bound to tenant A cannot read
+        // tenant B's chunk_text by enumerating the global auto-increment id.
+        // KnowledgeChunk has no global read scope, so the bare findOrFail
+        // here was completely unscoped.
+        $chunk = KnowledgeChunk::query()
+            ->forTenant(app(TenantContext::class)->current())
+            ->whereHas('document')
+            ->with('document')
             ->findOrFail((int) $request->get('chunk_id'));
 
         return Response::json([

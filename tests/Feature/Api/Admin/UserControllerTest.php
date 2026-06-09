@@ -337,6 +337,80 @@ class UserControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Privilege-escalation ceiling (security review v8.8)
+    // ------------------------------------------------------------------
+
+    public function test_admin_cannot_create_user_with_super_admin_role(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->postJson('/api/admin/users', [
+                'name' => 'Climber',
+                'email' => 'climber@demo.local',
+                'password' => 'Super$tr0ngP@ss1',
+                'roles' => ['super-admin'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['roles']);
+
+        $this->assertDatabaseMissing('users', ['email' => 'climber@demo.local']);
+    }
+
+    public function test_admin_cannot_promote_existing_user_to_super_admin(): void
+    {
+        $admin = $this->makeAdmin();
+        $victim = $this->makeViewer('puppet');
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/users/{$victim->id}", [
+                'roles' => ['super-admin'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['roles']);
+
+        $victim->refresh();
+        $this->assertFalse($victim->hasRole('super-admin'));
+    }
+
+    public function test_admin_can_still_assign_subordinate_roles(): void
+    {
+        $admin = $this->makeAdmin();
+
+        // editor + viewer carry only permissions admin already holds, so the
+        // ceiling must NOT block them (no privilege amplification).
+        $this->actingAs($admin)
+            ->postJson('/api/admin/users', [
+                'name' => 'Editor Person',
+                'email' => 'editor-person@demo.local',
+                'password' => 'Super$tr0ngP@ss1',
+                'roles' => ['editor', 'viewer'],
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.roles', ['editor', 'viewer']);
+    }
+
+    public function test_super_admin_can_assign_super_admin_role(): void
+    {
+        $superAdmin = User::create([
+            'name' => 'Root',
+            'email' => 'root@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $superAdmin->assignRole('super-admin');
+
+        $this->actingAs($superAdmin)
+            ->postJson('/api/admin/users', [
+                'name' => 'Second Root',
+                'email' => 'second-root@demo.local',
+                'password' => 'Super$tr0ngP@ss1',
+                'roles' => ['super-admin'],
+            ])
+            ->assertStatus(201)
+            ->assertJsonPath('data.roles', ['super-admin']);
+    }
+
+    // ------------------------------------------------------------------
     // RBAC — non-admin / guest
     // ------------------------------------------------------------------
 

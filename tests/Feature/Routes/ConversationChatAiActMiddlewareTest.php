@@ -64,6 +64,40 @@ final class ConversationChatAiActMiddlewareTest extends TestCase
         );
     }
 
+    public function test_conversation_messages_post_carries_tenant_authorize_middleware(): void
+    {
+        // Security review v8.8 (R30 / v8.0.3 C1): the SPA chat path drives
+        // tenant-scoped RAG retrieval off the X-Tenant-Id header. Without
+        // AuthorizeTenantHeader here, any authenticated user could send
+        // `X-Tenant-Id: victim` and read another tenant's KB.
+        $middleware = $this->resolveMiddlewareFor('POST', 'conversations/{conversation}/messages');
+
+        $this->assertMiddlewareIncludesAlias(
+            $middleware,
+            'tenant.authorize',
+            \App\Http\Middleware\AuthorizeTenantHeader::class,
+            'Security review v8.8: POST /conversations/{id}/messages must carry '
+            . 'tenant.authorize — same cross-tenant guard as the /api/* groups.',
+        );
+    }
+
+    public function test_conversation_messages_stream_post_carries_tenant_authorize_middleware(): void
+    {
+        $middleware = $this->resolveMiddlewareFor(
+            'POST',
+            'conversations/{conversation}/messages/stream',
+        );
+
+        $this->assertMiddlewareIncludesAlias(
+            $middleware,
+            'tenant.authorize',
+            \App\Http\Middleware\AuthorizeTenantHeader::class,
+            'Security review v8.8: the SSE chat variant must also carry '
+            . 'tenant.authorize — it is the primary UX path and drives the '
+            . 'same tenant-scoped retrieval.',
+        );
+    }
+
     public function test_conversation_messages_post_mounts_consent_gate_when_host_opts_in(): void
     {
         // Structural assertion against routes/web.php: re-loading the

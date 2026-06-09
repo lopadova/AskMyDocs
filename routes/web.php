@@ -65,8 +65,19 @@ Route::middleware('auth')->group(function () {
         $chatPostMiddleware[] = 'ai.consent:' . $aiActConsentFeature;
     }
 
-    // Conversation AJAX endpoints (session auth, no Sanctum needed)
-    Route::prefix('conversations')->group(function () use ($chatPostMiddleware) {
+    // Conversation AJAX endpoints (session auth, no Sanctum needed).
+    //
+    // SECURITY (R30 / v8.0.3 C1): `tenant.authorize` MUST gate this group.
+    // `ResolveTenant` honours an inbound `X-Tenant-Id` header unconditionally
+    // (it runs before the user is resolved), and the SPA chat path
+    // (`POST /conversations/{id}/messages` + the SSE variant below) drives
+    // tenant-scoped RAG retrieval off `TenantContext->current()`. Without
+    // `AuthorizeTenantHeader` here, any authenticated user could send
+    // `X-Tenant-Id: victim` and receive answers + citations grounded in
+    // another tenant's knowledge base. This mirrors the `/api/*` groups in
+    // routes/api.php, which already carry the guard; the conversation
+    // surface (the SPA's real chat path) was the gap.
+    Route::prefix('conversations')->middleware('tenant.authorize')->group(function () use ($chatPostMiddleware) {
         Route::get('/', [ConversationController::class, 'index']);
         Route::post('/', [ConversationController::class, 'store']);
         Route::patch('/{conversation}', [ConversationController::class, 'update']);
@@ -114,7 +125,11 @@ Route::middleware('auth')->group(function () {
 // route lives OUTSIDE the `auth` group so the `use ($chatPostMiddleware)`
 // binding from the closure above is not in scope.
 $aiActConsentFeatureSse = (string) config('ai-act-compliance.consent.gate_chat_feature', '');
-$chatSseMiddleware = ['auth.sse', 'redact-chat-pii', 'ai.disclosure'];
+// SECURITY (R30 / v8.0.3 C1): `tenant.authorize` runs right after `auth.sse`
+// so a foreign `X-Tenant-Id` header is rejected before the streaming RAG
+// retrieval reads another tenant's KB. Same guard as the synchronous
+// conversations group above.
+$chatSseMiddleware = ['auth.sse', 'tenant.authorize', 'redact-chat-pii', 'ai.disclosure'];
 if ($aiActConsentFeatureSse !== '') {
     $chatSseMiddleware[] = 'ai.consent:' . $aiActConsentFeatureSse;
 }
