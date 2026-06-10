@@ -1,6 +1,6 @@
 ---
 name: team-scope-wiring
-description: How to wire an admin SPA page (or the chat) to the global TEAM (= tenant) switcher in the topbar — the X-Tenant-Id header is automatic via the shared axios client, switching team clears the TanStack cache and remounts the route outlet, project options must come from tenant-scoped endpoints. Trigger when wiring an admin page to the team scope, when adding a NEW admin page or feature folder under frontend/src/features/, when touching a project picker / project filter, or when a page shows stale cross-team data after a team switch.
+description: How to wire an admin SPA page (or the chat) to the global TEAM (= tenant) switcher in the topbar — every authenticated route lives under /app/{teamHash}/…, the X-Tenant-Id header is automatic via the shared axios client, switching team rewrites the URL hash + clears the TanStack cache + remounts the route outlet, project options must come from tenant-scoped endpoints. Trigger when wiring an admin page to the team scope, when adding a NEW admin page / route / feature folder under frontend/src/features/, when adding a `navigate(...)` call, when touching a project picker / project filter, or when a page shows stale cross-team data after a team switch.
 ---
 
 # Team-scope wiring — cablare una pagina al team switcher
@@ -14,18 +14,41 @@ sincronizzata da `useAuthStore.setMe` a ogni bootstrap/login leggendo la
 chiave `teams` di `GET /api/auth/me` (costruita da
 `app/Services/Auth/UserTeamsResolver.php`).
 
-Tre meccanismi rendono il cablaggio "gratis" per la maggior parte delle pagine:
+Ogni team ha un **hash di routing univoco** (BE `app/Support/TeamHash.php`
+= `substr(sha256(tenant_id), 0, 12)`, esposto nella chiave `teams` di
+`/api/auth/me`). **Tutte** le rotte autenticate vivono sotto
+`/app/{teamHash}/…`. L'URL è la **fonte di verità** del team attivo:
+`TeamGate` (in `frontend/src/routes/index.tsx`) possiede il segmento
+`$teamHash`, sincronizza lo store sull'hash dell'URL e, se il segmento
+non è un hash valido (vecchio bookmark `/app/admin/kb`), re-prefissa
+l'intero path sotto l'hash del team attivo. Il cambio team nel
+TeamSwitcher è una **navigazione** che scambia il segmento hash, non un
+set diretto dello store.
+
+Quattro meccanismi rendono il cablaggio "gratis" per la maggior parte delle pagine:
 
 1. **Header automatico** — l'interceptor in `frontend/src/lib/api.ts`
    timbra `X-Tenant-Id` su ogni richiesta dell'axios condiviso (esclusi
    `/api/auth/`, `/sanctum/`, `/testing/`). Lato BE `ResolveTenant` lo
    risolve nel `TenantContext`; `AuthorizeTenantHeader` autorizza via
    membership (`project_memberships` nel tenant) o `tenant.cross-access`.
-2. **Cache flush** — `switchTeam()` fa `queryClient.cancelQueries()` +
+2. **URL hash-prefissato** — il segmento `{teamHash}` è in ogni rotta;
+   un deep-link a `/app/{altroHash}/…` cambia team da solo via TeamGate.
+3. **Cache flush** — `switchTeam()` fa `queryClient.cancelQueries()` +
    `queryClient.clear()`: ogni query montata rifetcha sotto il nuovo team.
-3. **Remount keyed** — in `AppShell` l'`<Outlet />` è dentro un div
+4. **Remount keyed** — in `AppShell` l'`<Outlet />` è dentro un div
    `key={currentTeam}`: lo stato locale di pagina (picker, selezioni,
    filtri free-text) si azzera da solo al cambio team.
+
+### Navigazione: passa SEMPRE l'hash
+Ogni `navigate(...)` / `<Navigate>` / `href` / `BrowserRouter basename`
+verso una rotta `/app/…` deve includere il segmento team. Pattern:
+`navigate({ to: '/app/$teamHash/admin/kb', params: { teamHash } })`,
+con `const teamHash = useTeamStore(selectCurrentHash) ?? ''`. Per i
+`fetch`/`location.assign` raw, interpolare `/app/${teamHash}/…`. I
+selettori `selectCurrentTeam` / `selectCurrentHash` vivono in
+`frontend/src/lib/team-store.ts`. Le rotte in `nav-config.ts` usano il
+literal `/app/$teamHash/…` e `AppShell.onNav` passa `params: { teamHash }`.
 
 ## Checklist per pagina (in ordine)
 
