@@ -6,6 +6,7 @@ import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 import { ExplorerView } from './explorer/ExplorerView';
+import { ExplorerPreviewPane } from './explorer/ExplorerPreviewPane';
 import {
     loadExplorerPrefs,
     saveExplorerPrefs,
@@ -13,7 +14,7 @@ import {
     type ExplorerPrefs,
     type ExplorerTileSize,
 } from './explorer/explorer-prefs';
-import { resolveExistingPath } from './explorer/explorer-utils';
+import { findDocById, resolveExistingPath } from './explorer/explorer-utils';
 import { ToastHost } from '../shared/Toast';
 
 type KbViewMode = 'tree' | 'explorer';
@@ -169,6 +170,24 @@ export function KbView() {
         setFocusedDocId(doc.meta.id);
     }
 
+    // Resolve the focused doc node from the tree for the preview pane.
+    // Returns null if the doc vanished from the tree (e.g. deleted under
+    // a filter that now hides it) — the pane just closes.
+    const focusedNode = useMemo(() => {
+        if (focusedDocId === null || !treeQuery.data) {
+            return null;
+        }
+        return findDocById(treeQuery.data.tree, focusedDocId);
+    }, [focusedDocId, treeQuery.data]);
+
+    function handleOpenDetail(docId: number) {
+        // Hand off from the lightweight preview to the full tree+detail
+        // view with this doc selected.
+        setView('tree');
+        setSelectedDocId(docId);
+        setActiveTab('preview');
+    }
+
     function updatePrefs(next: Partial<ExplorerPrefs>) {
         setPrefs((prev) => {
             const merged = { ...prev, ...next };
@@ -308,7 +327,9 @@ export function KbView() {
                     <div
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: 'minmax(240px, 320px) 1fr',
+                            gridTemplateColumns: focusedNode
+                                ? 'minmax(220px, 280px) 1fr minmax(280px, 380px)'
+                                : 'minmax(240px, 320px) 1fr',
                             gap: 14,
                             flex: 1,
                             minHeight: 0,
@@ -340,6 +361,13 @@ export function KbView() {
                             focusedDocId={focusedDocId}
                             onOpenDoc={handleOpenDoc}
                         />
+                        {focusedNode ? (
+                            <ExplorerPreviewPane
+                                node={focusedNode}
+                                onClose={() => setFocusedDocId(null)}
+                                onOpenDetail={handleOpenDetail}
+                            />
+                        ) : null}
                     </div>
                 ) : (
                 <div

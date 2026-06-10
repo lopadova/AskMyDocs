@@ -5,17 +5,18 @@ import {
     childrenAtPath,
     deepFilterDocs,
     descendantDocCount,
+    findDocById,
     folderEntries,
     resolveExistingPath,
 } from './explorer-utils';
 
-function doc(name: string, path: string, title: string | null = null): KbTreeNode {
+function doc(name: string, path: string, id: number, title: string | null = null): KbTreeNode {
     return {
         type: 'doc',
         name,
         path,
         meta: {
-            id: path.length,
+            id,
             project_key: 'hr-portal',
             title,
             slug: null,
@@ -35,16 +36,16 @@ const tree: KbTreeNode[] = [
         name: 'policies',
         path: 'policies',
         children: [
-            doc('remote.md', 'policies/remote.md', 'Remote Work Policy'),
+            doc('remote.md', 'policies/remote.md', 1, 'Remote Work Policy'),
             {
                 type: 'folder',
                 name: 'hr',
                 path: 'policies/hr',
-                children: [doc('pto.md', 'policies/hr/pto.md', 'PTO')],
+                children: [doc('pto.md', 'policies/hr/pto.md', 2, 'PTO')],
             },
         ],
     },
-    doc('readme.md', 'readme.md'),
+    doc('readme.md', 'readme.md', 3),
 ];
 
 describe('explorer-utils', () => {
@@ -95,6 +96,15 @@ describe('explorer-utils', () => {
 
     it('deepFilterDocs returns nothing for an empty term', () => {
         expect(deepFilterDocs(tree, '   ')).toEqual([]);
+    });
+
+    it('findDocById locates a nested doc by id', () => {
+        const found = findDocById(tree, 2);
+        expect(found?.path).toBe('policies/hr/pto.md');
+    });
+
+    it('findDocById returns null for an unknown id', () => {
+        expect(findDocById(tree, 999999)).toBeNull();
     });
 
     it('breadcrumbSegments builds an accumulating trail', () => {
