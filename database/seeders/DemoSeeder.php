@@ -11,10 +11,13 @@ use App\Models\KnowledgeDocument;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 use RuntimeException;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -126,8 +129,99 @@ class DemoSeeder extends Seeder
         $this->seedCanonicalGraph();
         $this->seedConversations($admin);
         $this->seedChatLogs($admin);
+        $this->seedAcmeTenant($admin);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * Second tenant (`acme`) for the team-switcher E2E. Everything above
+     * stays on `default` — existing specs see no change; the bootstrap
+     * team is `default` (first in the /api/auth/me ordering).
+     *
+     * Only admin@demo.local gets an acme membership: the viewer account
+     * deliberately does NOT, so the failure-path spec can assert the
+     * team is absent from the viewer's switcher.
+     */
+    private function seedAcmeTenant(User $admin): void
+    {
+        // Label row for the switcher (package `tenants` table). Guarded:
+        // a deployment without the AI Act package migrations still seeds
+        // the rest and the switcher falls back to a humanised slug.
+        if (Schema::hasTable('tenants')) {
+            Tenant::query()->updateOrCreate(
+                ['slug' => 'acme'],
+                ['name' => 'Acme Corp', 'status' => 'active'],
+            );
+        }
+
+        ProjectMembership::firstOrCreate(
+            ['tenant_id' => 'acme', 'user_id' => $admin->id, 'project_key' => 'acme-kb'],
+            ['role' => 'member', 'scope_allowlist' => null],
+        );
+
+        // Point the request-scoped context at acme so every tenant-aware
+        // model the helpers below create (docs, chunks, audits, chat
+        // logs) auto-fills tenant_id='acme' via BelongsToTenant.
+        $ctx = app(TenantContext::class);
+        $previous = $ctx->current();
+        $ctx->set('acme');
+        try {
+            $this->upsertDoc(
+                projectKey: 'acme-kb',
+                slug: 'acme-onboarding',
+                title: 'Acme Onboarding Guide',
+                sourcePath: 'acme/onboarding.md',
+                canonicalType: 'standard',
+                preview: 'Welcome to Acme. Day 1: collect your badge at reception. Day 2: security training. Day 3: meet your team lead.',
+            );
+            $this->upsertDoc(
+                projectKey: 'acme-kb',
+                slug: 'acme-support-runbook',
+                title: 'Acme Support Runbook',
+                sourcePath: 'acme/support-runbook.md',
+                canonicalType: 'runbook',
+                preview: 'Tier-1 tickets resolve within 4 business hours. Escalate to tier-2 via the #acme-support channel with the ticket id.',
+            );
+            $this->seedAcmeChatLogs($admin);
+        } finally {
+            $ctx->set($previous);
+        }
+    }
+
+    /**
+     * Two acme chat logs — strictly fewer than the five `default` ones,
+     * so the dashboard KPI is a differentiating signal after a team
+     * switch (R16: a leaked default payload cannot equal the acme one).
+     */
+    private function seedAcmeChatLogs(User $admin): void
+    {
+        $hasAcmeLogs = \App\Models\ChatLog::query()
+            ->forTenant('acme')
+            ->exists();
+        if ($hasAcmeLogs) {
+            return;
+        }
+
+        $now = \Illuminate\Support\Carbon::now();
+        foreach ([['acme-kb', 1000, 100, 150], ['acme-kb', 700, 60, 90]] as $idx => [$project, $latency, $promptTokens, $completionTokens]) {
+            \App\Models\ChatLog::create([
+                'session_id' => (string) \Illuminate\Support\Str::uuid(),
+                'user_id' => $admin->id,
+                'question' => 'Acme demo question #'.($idx + 1),
+                'answer' => 'Acme demo answer.',
+                'project_key' => $project,
+                'ai_provider' => 'openai',
+                'ai_model' => 'gpt-4o',
+                'chunks_count' => 2,
+                'sources' => [],
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
+                'total_tokens' => $promptTokens + $completionTokens,
+                'latency_ms' => $latency,
+                'created_at' => $now->copy()->subHours($idx + 1)->toDateTimeString(),
+            ]);
+        }
     }
 
     private function seedProjectMemberships(User $admin): void
