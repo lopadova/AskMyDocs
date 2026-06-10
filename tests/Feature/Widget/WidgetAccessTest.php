@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Widget;
 
 use App\Models\WidgetKey;
+use App\Models\WidgetSessionToken;
+use App\Services\Widget\WidgetSessionTokenService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -166,6 +168,42 @@ final class WidgetAccessTest extends TestCase
             ->getJson('/api/widget/setup?skill=nope@9')
             ->assertStatus(404)
             ->assertJsonPath('error', 'skill_not_found');
+    }
+
+    /** #10 — modalità session-token: SOLO `Authorization: Bearer wt_…`, niente X-Widget-Key. */
+    public function test_session_token_mode_authenticates_without_x_widget_key(): void
+    {
+        $key = $this->makeKey(['allowed_origins' => ['https://allowed.test']]);
+        $minted = app(WidgetSessionTokenService::class)->mint($key, null, 'https://allowed.test');
+
+        // Esattamente ciò che invia transport.ts in token mode: nessun X-Widget-Key.
+        $this->withHeaders([
+            'Authorization' => 'Bearer '.$minted['token'],
+            'Origin' => 'https://allowed.test',
+        ])->getJson('/api/widget/setup')
+            ->assertOk()
+            ->assertJsonPath('project', $key->project_key);
+    }
+
+    /** #12 — un 429 sul rate-limit NON deve bruciare il token single-use. */
+    public function test_session_token_is_not_consumed_on_rate_limit_429(): void
+    {
+        $key = $this->makeKey(['rate_limit' => 1, 'allowed_origins' => ['https://allowed.test']]);
+        $service = app(WidgetSessionTokenService::class);
+
+        // Esaurisce il bucket per-key con una richiesta pk.
+        $this->withHeaders(['X-Widget-Key' => $key->public_key, 'Origin' => 'https://allowed.test'])
+            ->getJson('/api/widget/setup')->assertOk();
+
+        // Token presentato con bucket pieno → 429, MA il token resta non consumato.
+        $minted = $service->mint($key, null, 'https://allowed.test');
+        $this->withHeaders(['Authorization' => 'Bearer '.$minted['token'], 'Origin' => 'https://allowed.test'])
+            ->getJson('/api/widget/setup')
+            ->assertStatus(429);
+
+        $row = WidgetSessionToken::where('token', hash('sha256', $minted['token']))->first();
+        $this->assertNotNull($row);
+        $this->assertNull($row->consumed_at, 'Il token non deve essere consumato su un 429.');
     }
 
     public function test_per_key_rate_limit_returns_429(): void

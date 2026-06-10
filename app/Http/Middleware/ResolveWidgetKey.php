@@ -43,6 +43,15 @@ final class ResolveWidgetKey
 
     public function handle(Request $request, Closure $next): Response
     {
+        // #10 — il branch session-token (wt_) va PRIMA del requisito X-Widget-Key:
+        // in token mode il client invia SOLO `Authorization: Bearer wt_…` (niente
+        // X-Widget-Key, vedi transport.ts). Il token risolve key+tenant da sé;
+        // richiedere prima X-Widget-Key rendeva la modalità M5.2 morta (401).
+        $bearer = (string) ($request->bearerToken() ?? '');
+        if ($bearer !== '' && str_starts_with($bearer, 'wt_')) {
+            return $this->resolveFromSessionToken($request, $next, $bearer);
+        }
+
         $publicKey = (string) $request->header('X-Widget-Key', '');
         if ($publicKey === '') {
             return $this->deny(401, 'widget_key_missing', 'Missing X-Widget-Key header.');
@@ -59,13 +68,6 @@ final class ResolveWidgetKey
 
         // Modalità: proxy (B) se arriva un Bearer che combacia col secret;
         // altrimenti browser (A) con controllo Origin.
-        // M5.2: se il Bearer inizia con "wt_", è un session token —
-        // consumalo atomicamente (R21) e risolvi la key da lì.
-        $bearer = (string) ($request->bearerToken() ?? '');
-        if ($bearer !== '' && str_starts_with($bearer, 'wt_')) {
-            return $this->resolveFromSessionToken($request, $next, $bearer);
-        }
-
         $mode = ($bearer !== '' && $key->matchesSecret($bearer))
             ? self::MODE_PROXY
             : self::MODE_BROWSER;
@@ -159,8 +161,22 @@ final class ResolveWidgetKey
     {
         $tokenService = app(\App\Services\Widget\WidgetSessionTokenService::class);
         $origin = $request->header('Origin');
-        $result = $tokenService->consume($bearer, $origin);
 
+        // #12 — rate-limit PRIMA del consumo single-use: una lettura read-only del
+        // token dà la key per il bucket, così un 429 NON brucia il token (il retry
+        // conforme dell'utente può riuscire). Specchio del path pk-mode, che
+        // controlla il rate-limit prima di qualsiasi mutazione di stato.
+        $key = $tokenService->peekKey($bearer);
+        if ($key === null || ! $key->is_active) {
+            return $this->deny(401, 'session_token_invalid', 'Session token is invalid, expired, or already used.');
+        }
+        if ($rl = $this->rateLimited($request, $key)) {
+            return $rl;
+        }
+
+        // Consumo atomico (R21) DOPO il rate-limit. consume() ri-valida tutto
+        // (scadenza/consumo/origin/key attiva) sotto lock.
+        $result = $tokenService->consume($bearer, $origin);
         if ($result === null) {
             return $this->deny(401, 'session_token_invalid', 'Session token is invalid, expired, or already used.');
         }
@@ -176,10 +192,6 @@ final class ResolveWidgetKey
         // Imposta anche la sessione risolta dal token, se presente
         if ($result['session'] !== null) {
             $request->attributes->set('widget_session', $result['session']);
-        }
-
-        if ($rl = $this->rateLimited($request, $key)) {
-            return $rl;
         }
 
         $key->forceFill(['last_used_at' => now()])->saveQuietly();

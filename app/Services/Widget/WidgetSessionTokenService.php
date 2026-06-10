@@ -14,13 +14,14 @@ use Illuminate\Support\Str;
  * WidgetSessionTokenService — conia e consume token di sessione
  * origin-bound per la modalità browser (A) del widget (M5.2).
  *
- * Il consumo è ATOMICO (R21): lockForUpdate + update nella stessa transazione.
- * La UNIQUE su `consumed_at` non è la guardia principale qui (il lock è la
- * guardia), ma una constraint di integrità: due consumazioni concorrenti
- * della stessa riga non possono entrambe scrivere consumed_at = null → una
- * fallisce per lock, l'altra procede. Se il lock fallisce, la transazione
- * viene rolback. La constraint UNIQUE non esiste su consumed_at (è nullable),
- * quindi la guardia vera è il lockForUpdate.
+ * Il consumo è ATOMICO (R21): lockForUpdate + write DENTRO la stessa
+ * transazione, e SOLO dopo aver superato tutte le validazioni (origin, key
+ * attiva). Due consumazioni concorrenti della stessa riga serializzano sul
+ * lock: la prima scrive consumed_at, la seconda lo legge già consumato → null.
+ *
+ * #14 — a riposo il token è persistito come hash sha256 (mai in chiaro), come
+ * AdminCommandNonce/CommandRunnerService: un dump/replica/SQLi non espone
+ * bearer live replay-abili.
  */
 final class WidgetSessionTokenService
 {
@@ -42,7 +43,8 @@ final class WidgetSessionTokenService
 
         WidgetSessionToken::create([
             'tenant_id' => $key->tenant_id,
-            'token' => $plain,
+            // #14 — persiste SOLO l'hash; il plaintext torna una volta al chiamante.
+            'token' => $this->hash($plain),
             'widget_key_id' => $key->id,
             'widget_session_id' => $session?->id,
             'origin' => $origin,
@@ -53,6 +55,19 @@ final class WidgetSessionTokenService
             'token' => $plain,
             'expires_at' => $expiresAt->toIso8601String(),
         ];
+    }
+
+    /**
+     * #12 — Lookup READ-ONLY (non consuma): ritorna la WidgetKey del token per
+     * il rate-limit PRE-consumo, così un 429 non brucia il token single-use.
+     */
+    public function peekKey(string $token): ?WidgetKey
+    {
+        $row = WidgetSessionToken::query()
+            ->where('token', $this->hash($token))
+            ->first();
+
+        return $row?->widgetKey;
     }
 
     /**
@@ -70,7 +85,7 @@ final class WidgetSessionTokenService
         return DB::transaction(function () use ($token, $origin): ?array {
             /** @var WidgetSessionToken|null $row */
             $row = WidgetSessionToken::query()
-                ->where('token', $token)
+                ->where('token', $this->hash($token))
                 ->lockForUpdate()
                 ->first();
 
@@ -78,10 +93,16 @@ final class WidgetSessionTokenService
                 return null;
             }
 
-            // Origin-bound: il token è valido solo se l'origin corrisponde
-            // (se presente sul token). Se il token non ha origin, è valido
-            // da qualsiasi origin (uso iniziale).
-            if ($row->origin !== null && $origin !== null) {
+            // #11 — origin binding: un token origin-bound DEVE arrivare con un
+            // Origin corrispondente. Se la richiesta non porta Origin, RIFIUTA:
+            // prima il check era saltato quando UNO dei due lati era null, quindi
+            // (a) un token senza origin era replay-abile da qualsiasi origin e
+            // (b) un token origin-bound replay-ato via curl SENZA header Origin
+            // bypassava il binding.
+            if ($row->origin !== null) {
+                if ($origin === null) {
+                    return null;
+                }
                 $normalizedRequest = rtrim(strtolower(trim($origin)), '/');
                 $normalizedToken = rtrim(strtolower(trim($row->origin)), '/');
                 if ($normalizedRequest !== $normalizedToken) {
@@ -89,13 +110,16 @@ final class WidgetSessionTokenService
                 }
             }
 
-            // R21: consumo atomico — lockForUpdate + update nella stessa tx
-            $row->forceFill(['consumed_at' => now()])->save();
-
+            // #13 — valida la key PRIMA di bruciare il token (R21: la mutazione è
+            // condizionata al successo). Presentare un token per una key revocata
+            // NON deve consumarlo senza concedere accesso.
             $key = $row->widgetKey;
             if ($key === null || ! $key->is_active) {
                 return null;
             }
+
+            // R21 — consumo atomico: write DENTRO il lock, solo a validazione superata.
+            $row->forceFill(['consumed_at' => now()])->save();
 
             return [
                 'key' => $key,
@@ -103,5 +127,10 @@ final class WidgetSessionTokenService
                 'origin' => $row->origin,
             ];
         });
+    }
+
+    private function hash(string $token): string
+    {
+        return hash('sha256', $token);
     }
 }

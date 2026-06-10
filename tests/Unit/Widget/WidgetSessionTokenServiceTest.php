@@ -41,10 +41,12 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $this->assertNotEmpty($result['expires_at']);
 
         $this->assertDatabaseHas('widget_session_tokens', [
-            'token' => $result['token'],
+            'token' => hash('sha256', $result['token']),
             'widget_key_id' => $this->key->id,
             'origin' => 'https://allowed.test',
         ]);
+        // #14 — il plaintext NON deve esistere a riposo (solo l'hash sha256).
+        $this->assertDatabaseMissing('widget_session_tokens', ['token' => $result['token']]);
     }
 
     public function test_mint_with_session_links_token_to_session(): void
@@ -61,7 +63,7 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $result = $this->service->mint($this->key, $session, null);
 
         $this->assertDatabaseHas('widget_session_tokens', [
-            'token' => $result['token'],
+            'token' => hash('sha256', $result['token']),
             'widget_session_id' => $session->id,
         ]);
     }
@@ -71,7 +73,7 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $result = $this->service->mint($this->key, null, null);
 
         $this->assertDatabaseHas('widget_session_tokens', [
-            'token' => $result['token'],
+            'token' => hash('sha256', $result['token']),
             'origin' => null,
         ]);
     }
@@ -94,7 +96,7 @@ final class WidgetSessionTokenServiceTest extends TestCase
 
         $this->service->consume($minted['token'], null);
 
-        $token = WidgetSessionToken::where('token', $minted['token'])->first();
+        $token = WidgetSessionToken::where('token', hash('sha256', $minted['token']))->first();
         $this->assertNotNull($token->consumed_at);
     }
 
@@ -116,7 +118,7 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $minted = $this->service->mint($this->key, null, null);
 
         // Expire the token
-        WidgetSessionToken::where('token', $minted['token'])
+        WidgetSessionToken::where('token', hash('sha256', $minted['token']))
             ->update(['expires_at' => now()->subMinutes(5)]);
 
         $result = $this->service->consume($minted['token'], null);
@@ -143,6 +145,30 @@ final class WidgetSessionTokenServiceTest extends TestCase
 
         $result = $this->service->consume($minted['token'], 'https://any.test');
         $this->assertNotNull($result);
+    }
+
+    /** #11 — un token ORIGIN-BOUND presentato SENZA header Origin → rifiutato. */
+    public function test_consume_rejects_origin_bound_token_when_request_has_no_origin(): void
+    {
+        $minted = $this->service->mint($this->key, null, 'https://allowed.test');
+
+        // Replay via curl senza header Origin: prima bypassava il binding.
+        $result = $this->service->consume($minted['token'], null);
+        $this->assertNull($result);
+    }
+
+    /** #12 — peekKey ritorna la key senza consumare il token. */
+    public function test_peek_key_returns_key_without_consuming(): void
+    {
+        $minted = $this->service->mint($this->key, null, null);
+
+        $peeked = $this->service->peekKey($minted['token']);
+        $this->assertNotNull($peeked);
+        $this->assertSame($this->key->id, $peeked->id);
+
+        // Il token NON è stato consumato → consume successivo riesce.
+        $consumed = $this->service->consume($minted['token'], null);
+        $this->assertNotNull($consumed);
     }
 
     public function test_consume_rejects_inactive_key(): void

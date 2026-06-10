@@ -14,12 +14,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * a ogni richiesta dal browser.
  *
  * Flusso M5.2:
- *   1. POST /api/widget/session-token → conia un token HMAC a breve scadenza
+ *   1. POST /api/widget/session-token → conia un token a breve scadenza
  *   2. Il FE usa il token in `Authorization: Bearer <token>` al posto di
  *      X-Widget-Key nelle richieste successive
- *   3. Il consumo è ATOMICO (R21): lockForUpdate + write nella stessa transazione,
- *      o UNIQUE su consumed_at — nessun TOCTOU.
+ *   3. Il consumo è ATOMICO (R21): lockForUpdate + write nella stessa transazione
+ *      (la colonna `token` è UNIQUE; `consumed_at` è un nullable timestamp — il
+ *      lock è la guardia di single-use, non un UNIQUE su consumed_at).
  *
+ * #14: a riposo si persiste l'hash sha256 del bearer, mai il plaintext.
  * R31: BelongsToTenant + tenant_id in $fillable.
  */
 class WidgetSessionToken extends Model
