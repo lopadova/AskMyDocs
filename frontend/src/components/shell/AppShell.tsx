@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Outlet, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { Sidebar } from './Sidebar';
 import { NAV_ITEMS, SECTION_ROUTES, deriveSection, type SidebarSection } from './nav-config';
@@ -6,8 +6,9 @@ import { Topbar } from './Topbar';
 import { CommandPalette } from './CommandPalette';
 import { TweaksPanel } from './TweaksPanel';
 import { useDensity, useFontPair, useTheme } from './hooks';
-import { PROJECTS, USERS, type Project, type SeedUser } from '../../lib/seed';
+import { USERS, type SeedUser } from '../../lib/seed';
 import { useAuthStore } from '../../lib/auth-store';
+import { useTeamStore, type Team } from '../../lib/team-store';
 
 // Active-section detection is centralised in nav-config.deriveSection, which
 // resolves the LONGEST route prefix (so `/app/admin/kb/synonyms` → `synonyms`,
@@ -48,14 +49,15 @@ export function AppShell() {
     const [density, setDensity] = useDensity('balanced');
     const [font, setFont] = useFontPair('geist');
     const [tweaksOpen, setTweaksOpen] = useState(false);
-    const [projectIndex, setProjectIndex] = useState(0);
 
     const navigate = useNavigate();
     const matchRoute = useMatchRoute();
     const section = deriveSectionFromMatch(matchRoute);
     const storeUser = useAuthStore((s) => s.user);
-    const storeProjects = useAuthStore((s) => s.projects);
     const storeRoles = useAuthStore((s) => s.roles);
+    const teams = useTeamStore((s) => s.teams);
+    const currentTeam = useTeamStore((s) => s.currentTeam);
+    const switchTeam = useTeamStore((s) => s.switchTeam);
 
     const sidebarUser = storeUser
         ? {
@@ -78,41 +80,20 @@ export function AppShell() {
           }
         : USERS[0];
 
-    // Topbar / ProjectSwitcher need the rich Project shape (key, label,
-    // color, docs). When the auth store has real backend memberships,
-    // map them to that shape, looking up label/color/docs from the
-    // seeded PROJECTS table when available, and falling back to a
-    // synthetic record (humanised key + neutral colour) otherwise.
-    // Keeps `projectCount` and the switcher in lockstep — Copilot PR #33
-    // flagged the previous mismatch where projectCount came from
-    // storeProjects but the switcher always rendered PROJECTS.
-    const projects: Project[] = useMemo(() => {
-        if (storeProjects.length === 0) {
-            return PROJECTS;
-        }
-        return storeProjects.map((sp) => {
-            const seeded = PROJECTS.find((p) => p.key === sp.project_key);
-            if (seeded) {
-                return seeded;
-            }
-            return {
-                key: sp.project_key,
-                label: sp.project_key
-                    .split('-')
-                    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                    .join(' '),
-                color: '#8b5cf6',
-                docs: 0,
-                members: 0,
-            };
-        });
-    }, [storeProjects]);
+    // Active team object for the Topbar switcher. Before the first
+    // `/api/auth/me` sync (or for a guest preview) the store is empty —
+    // fall back to a synthetic `default` team so the shell never crashes
+    // on an undefined team.
+    const activeTeam: Team = teams.find((t) => t.tenant_id === currentTeam) ?? {
+        tenant_id: currentTeam ?? 'default',
+        name: 'Default',
+        projects: [],
+    };
 
-    // Clamp the index whenever the project list shrinks — otherwise
-    // an out-of-bounds index would yield `undefined` and crash the
-    // Topbar.
-    const safeProjectIndex = projectIndex < projects.length ? projectIndex : 0;
-    const projectCount = projects.length;
+    // Sidebar badge: projects the user can access INSIDE the active team
+    // (the switcher shows the same number per team — kept in lockstep by
+    // deriving both from the same Team record).
+    const projectCount = activeTeam.projects.length;
 
     const onNav = useCallback(
         (id: SidebarSection) => {
@@ -137,20 +118,20 @@ export function AppShell() {
             <Sidebar active={section} onNav={onNav} user={sidebarUser} projectCount={projectCount} />
             <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <Topbar
-                    project={projects[safeProjectIndex]}
-                    projects={projects}
-                    onProjectChange={(p) => {
-                        const idx = projects.findIndex((pp) => pp.key === p.key);
-                        if (idx >= 0) {
-                            setProjectIndex(idx);
-                        }
-                    }}
+                    team={activeTeam}
+                    teams={teams}
+                    onTeamChange={(t) => switchTeam(t.tenant_id)}
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}
                     crumbs={[NAV_ITEMS.find((i) => i.id === section)?.label ?? 'Admin']}
                 />
-                <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
+                {/* Keyed on the active team: switching team remounts the
+                  * whole route subtree, wiping page-local state (project
+                  * pickers, tree selections, free-text filters) that
+                  * would otherwise leak across tenants. Pairs with the
+                  * queryClient.clear() in team-store.switchTeam. */}
+                <div key={activeTeam.tenant_id} style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     <Outlet />
                 </div>
             </main>
