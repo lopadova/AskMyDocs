@@ -162,6 +162,32 @@ class KbTreeControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // Meta contract (R27 — additive only)
+    // ------------------------------------------------------------------
+
+    /**
+     * The explorer grid (G-phase follow-up) renders `title` + `updated_at`
+     * straight from the tree meta. Both keys were ADDED to the original
+     * lean meta — assert they ship with the right types so a future
+     * refactor cannot silently drop or sub-objectify them (R27).
+     */
+    public function test_doc_meta_includes_title_and_updated_at(): void
+    {
+        $admin = $this->makeAdmin();
+        $this->makeDoc('hr-portal', 'policies/remote-work.md', canonical: true, slug: 'remote-work');
+
+        $response = $this->actingAs($admin)
+            ->getJson('/api/admin/kb/tree')
+            ->assertOk();
+
+        $docNode = $this->findDocNode($response->json('tree'), 'policies/remote-work.md');
+        $this->assertNotNull($docNode);
+        $this->assertSame('remote-work', $docNode['meta']['title']);
+        $this->assertIsString($docNode['meta']['updated_at']);
+        $this->assertNotEmpty($docNode['meta']['updated_at']);
+    }
+
+    // ------------------------------------------------------------------
     // Project scoping
     // ------------------------------------------------------------------
 

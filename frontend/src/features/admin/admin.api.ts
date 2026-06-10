@@ -327,11 +327,13 @@ export type KbTreeMode = 'canonical' | 'raw' | 'all';
 export interface KbTreeDocMeta {
     id: number;
     project_key: string;
+    title: string | null;
     slug: string | null;
     canonical_type: string | null;
     canonical_status: string | null;
     is_canonical: boolean;
     indexed_at: string | null;
+    updated_at: string | null;
     deleted_at: string | null;
 }
 
