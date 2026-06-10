@@ -5,9 +5,10 @@ import { TeamSwitcher } from './TeamSwitcher';
 import type { Team } from '../../lib/team-store';
 
 const TEAMS: Team[] = [
-    { tenant_id: 'default', name: 'Default', projects: [] },
+    { tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] },
     {
         tenant_id: 'acme',
+        hash: 'acme00acme00',
         name: 'Acme Corporation',
         projects: [
             { project_key: 'acme-kb', role: 'admin', scope: [] },

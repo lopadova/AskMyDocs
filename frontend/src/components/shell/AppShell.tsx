@@ -20,7 +20,9 @@ import { useTeamStore, type Team } from '../../lib/team-store';
 // section's deeper sub-pages still resolve to their own (longer) route fuzzily
 // — e.g. `/app/admin/kb/time-machine/$docId` matches `kb` (Knowledge).
 function deriveSectionFromMatch(match: ReturnType<typeof useMatchRoute>): SidebarSection | null {
-    return deriveSection((route) => Boolean(match({ to: route, fuzzy: route !== '/app/admin' })));
+    return deriveSection((route) =>
+        Boolean(match({ to: route, fuzzy: route !== '/app/$teamHash/admin' })),
+    );
 }
 
 // The sidebar footer shows ONE role label. Pick the most privileged of the
@@ -57,7 +59,6 @@ export function AppShell() {
     const storeRoles = useAuthStore((s) => s.roles);
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
-    const switchTeam = useTeamStore((s) => s.switchTeam);
 
     const sidebarUser = storeUser
         ? {
@@ -83,9 +84,11 @@ export function AppShell() {
     // Active team object for the Topbar switcher. Before the first
     // `/api/auth/me` sync (or for a guest preview) the store is empty —
     // fall back to a synthetic `default` team so the shell never crashes
-    // on an undefined team.
+    // on an undefined team. (In practice TeamGate only mounts AppShell
+    // once the URL hash resolved to a real team.)
     const activeTeam: Team = teams.find((t) => t.tenant_id === currentTeam) ?? {
         tenant_id: currentTeam ?? 'default',
+        hash: '',
         name: 'Default',
         projects: [],
     };
@@ -97,9 +100,9 @@ export function AppShell() {
 
     const onNav = useCallback(
         (id: SidebarSection) => {
-            navigate({ to: SECTION_ROUTES[id] });
+            navigate({ to: SECTION_ROUTES[id], params: { teamHash: activeTeam.hash } });
         },
-        [navigate],
+        [navigate, activeTeam.hash],
     );
 
     return (
@@ -120,7 +123,16 @@ export function AppShell() {
                 <Topbar
                     team={activeTeam}
                     teams={teams}
-                    onTeamChange={(t) => switchTeam(t.tenant_id)}
+                    onTeamChange={(t) => {
+                        // The URL is the source of truth for the active
+                        // team: swap the hash segment and let TeamGate
+                        // sync the store + clear the query cache. Search
+                        // params are deliberately dropped — deep-link
+                        // state (doc ids, filters) belongs to the
+                        // previous team.
+                        const rest = window.location.pathname.replace(/^\/app\/[^/]+/, '');
+                        navigate({ to: `/app/${t.hash}${rest}` });
+                    }}
                     theme={theme}
                     setTheme={setTheme}
                     onToggleTweaks={() => setTweaksOpen((o) => !o)}

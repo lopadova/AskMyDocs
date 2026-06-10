@@ -10,6 +10,12 @@ export type TeamProject = {
 
 export type Team = {
     tenant_id: string;
+    /**
+     * Unique URL routing segment (BE-computed, App\Support\TeamHash):
+     * every SPA route lives under /app/{hash}/…. The FE never computes
+     * hashes — it only matches the ones /api/auth/me delivered.
+     */
+    hash: string;
     name: string;
     projects: TeamProject[];
 };
@@ -63,6 +69,16 @@ function isSelectable(tenantId: string | null, teams: Team[]): tenantId is strin
  * is honoured only if it still belongs to the same user AND still exists
  * in the fresh team list — otherwise it falls back to the first team.
  */
+/** Active Team record, or null before the first sync. */
+export function selectCurrentTeam(state: Pick<TeamState, 'teams' | 'currentTeam'>): Team | null {
+    return state.teams.find((t) => t.tenant_id === state.currentTeam) ?? null;
+}
+
+/** Routing hash of the active team (`/app/{hash}/…`), or null pre-sync. */
+export function selectCurrentHash(state: Pick<TeamState, 'teams' | 'currentTeam'>): string | null {
+    return selectCurrentTeam(state)?.hash ?? null;
+}
+
 export const useTeamStore = create<TeamState>()(
     persist(
         (set, get) => ({

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { api } from '../../../lib/api';
+import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, pushToast } from '../shared/Toast';
 import { callbackErrorMessage } from './status-utils';
@@ -44,6 +45,7 @@ type CallbackState =
 
 export function ConnectorCallback({ connectorKey }: ConnectorCallbackProps) {
     const navigate = useNavigate();
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const [state, setState] = useState<CallbackState>({ phase: 'idle' });
 
     useEffect(() => {
@@ -66,7 +68,14 @@ export function ConnectorCallback({ connectorKey }: ConnectorCallbackProps) {
                 // user can see the success state.
                 window.setTimeout(() => {
                     if (!cancelled) {
-                        navigate({ to: '/app/admin/connectors' });
+                        // getState(): inside an effect-scheduled timeout —
+                        // reading the store imperatively avoids a stale
+                        // closure on the hook value.
+                        const hash = selectCurrentHash(useTeamStore.getState()) ?? '';
+                        navigate({
+                            to: '/app/$teamHash/admin/connectors',
+                            params: { teamHash: hash },
+                        });
                     }
                 }, 600);
             })
@@ -170,7 +179,12 @@ export function ConnectorCallback({ connectorKey }: ConnectorCallbackProps) {
                                 type="button"
                                 data-testid="callback-back"
                                 className="focus-ring"
-                                onClick={() => navigate({ to: '/app/admin/connectors' })}
+                                onClick={() =>
+                                    navigate({
+                                        to: '/app/$teamHash/admin/connectors',
+                                        params: { teamHash },
+                                    })
+                                }
                                 style={{
                                     padding: '6px 14px',
                                     fontSize: 13,

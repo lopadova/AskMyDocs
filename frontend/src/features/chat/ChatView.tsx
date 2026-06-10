@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
-import { useTeamStore } from '../../lib/team-store';
+import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
@@ -87,6 +87,7 @@ export function ChatView(): ReactNode {
     // conversation, same as the BE contract has always allowed.
     const teams = useTeamStore((s) => s.teams);
     const currentTeam = useTeamStore((s) => s.currentTeam);
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
     const projectKey = activeTeam?.projects[0]?.project_key ?? null;
     const projectLabel = projectKey ?? 'default';
@@ -117,7 +118,11 @@ export function ChatView(): ReactNode {
         if (citation.document_id == null) {
             return;
         }
-        navigate({ to: '/app/admin/kb', search: { doc: citation.document_id, tab: 'preview' } });
+        navigate({
+            to: '/app/$teamHash/admin/kb',
+            params: { teamHash },
+            search: { doc: citation.document_id, tab: 'preview' },
+        });
     };
 
     // After a turn settles, if the conversation is still untitled, ask the BE
@@ -282,10 +287,10 @@ export function ChatView(): ReactNode {
     const onSelect = (id: number | null) => {
         setActive(id);
         if (id !== null) {
-            navigate({ to: `/app/chat/${id}` });
+            navigate({ to: `/app/${teamHash}/chat/${id}` });
             return;
         }
-        navigate({ to: '/app/chat' });
+        navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
     };
 
     const requireConversation = async (): Promise<number | null> => {
@@ -298,7 +303,7 @@ export function ChatView(): ReactNode {
                 old ? [created, ...old] : [created],
             );
             setActive(created.id);
-            navigate({ to: `/app/chat/${created.id}` });
+            navigate({ to: `/app/${teamHash}/chat/${created.id}` });
             return created.id;
         } catch {
             return null;
@@ -414,7 +419,7 @@ export function ChatView(): ReactNode {
                 old ? [result.conversation, ...old] : [result.conversation],
             );
             setActive(result.conversation.id);
-            navigate({ to: `/app/chat/${result.conversation.id}` });
+            navigate({ to: `/app/${teamHash}/chat/${result.conversation.id}` });
         } catch (err) {
             // Branch is a non-critical action — log and let the user
             // retry. We don't surface a separate error banner; the
@@ -487,7 +492,9 @@ export function ChatView(): ReactNode {
             <ConversationList
                 projectKey={projectKey}
                 onSelect={onSelect}
-                onNewAnonymous={() => navigate({ to: '/app/chat/anonymous' })}
+                onNewAnonymous={() =>
+                    navigate({ to: '/app/$teamHash/chat/anonymous', params: { teamHash } })
+                }
             />
             <div
                 style={{

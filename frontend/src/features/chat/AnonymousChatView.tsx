@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Icon } from '../../components/Icons';
 import { Markdown } from '../../lib/markdown';
+import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { anonymousChatApi, type AnonymousChatAnswer, type MessageCitation } from './chat.api';
 import { AnonymousChatBanner } from './AnonymousChatBanner';
 import { CitationsPopover } from './CitationsPopover';
@@ -34,6 +35,7 @@ interface AnonymousTurn {
 
 export function AnonymousChatView(): ReactNode {
     const navigate = useNavigate();
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const [turns, setTurns] = useState<AnonymousTurn[]>([]);
     const [draft, setDraft] = useState('');
     // Sentinel at the very end of the thread — scrolled into view after a turn
@@ -112,7 +114,7 @@ export function AnonymousChatView(): ReactNode {
                     type="button"
                     className="btn"
                     data-testid="anonymous-chat-back"
-                    onClick={() => navigate({ to: '/app/chat' })}
+                    onClick={() => navigate({ to: '/app/$teamHash/chat', params: { teamHash } })}
                     aria-label="Back to saved chats"
                 >
                     <Icon.Chevron size={13} style={{ transform: 'rotate(180deg)' }} />

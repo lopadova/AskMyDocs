@@ -47,15 +47,18 @@ api.interceptors.response.use(
     (error: unknown) => {
         // The backend refused the active team (membership revoked, tenant
         // archived, stale persisted value): snap back to the first valid
-        // team so the next interactions work, but keep REJECTING so the
-        // failing caller surfaces its error state (R14) instead of
-        // silently retrying.
+        // team, then force a FULL re-bootstrap from /app — the URL still
+        // carries the refused team's hash and the cached team list is by
+        // definition stale, so an in-SPA fix would loop (TeamGate keeps
+        // honouring the URL). Still REJECT so the failing caller surfaces
+        // its error state (R14) before the reload lands.
         if (
             axios.isAxiosError(error) &&
             error.response?.status === 403 &&
             (error.response.data as { error?: string } | undefined)?.error === 'tenant_forbidden'
         ) {
             useTeamStore.getState().resetToFirstTeam();
+            window.location.assign('/app');
         }
         return Promise.reject(error);
     },

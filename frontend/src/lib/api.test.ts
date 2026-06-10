@@ -4,8 +4,8 @@ import { api } from './api';
 import { useTeamStore, type Team } from './team-store';
 
 const TEAMS: Team[] = [
-    { tenant_id: 'default', name: 'Default', projects: [] },
-    { tenant_id: 'acme', name: 'Acme', projects: [] },
+    { tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] },
+    { tenant_id: 'acme', hash: 'acme00acme00', name: 'Acme', projects: [] },
 ];
 
 /*

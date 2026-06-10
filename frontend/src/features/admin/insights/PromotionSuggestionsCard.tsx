@@ -1,4 +1,5 @@
 import type { PromotionSuggestion } from './insights.api';
+import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 
 export interface PromotionSuggestionsCardProps {
     items: PromotionSuggestion[];
@@ -13,6 +14,7 @@ export interface PromotionSuggestionsCardProps {
  */
 export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProps) {
     const state = items.length === 0 ? 'empty' : 'ready';
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     return (
         <div
             data-testid="insight-card-promotions"
@@ -91,7 +93,7 @@ export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProp
                                 // doc id so the E2E can assert the chain.
                                 onClick={() => {
                                     window.location.assign(
-                                        `/app/admin/kb?doc=${item.document_id}&tab=meta&promote=1`,
+                                        `/app/${teamHash}/admin/kb?doc=${item.document_id}&tab=meta&promote=1`,
                                     );
                                 }}
                                 style={{
