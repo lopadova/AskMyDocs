@@ -13,19 +13,17 @@ import {
     useToggleActive,
     useUsers,
 } from './users.api';
+import { useKbProjects } from '../kb/kb-tree.api';
 
 /*
  * Admin Users page. Filter bar (search + role + active + with_trashed)
  * feeds the /api/admin/users query; the table below renders results
  * with inline actions + a drawer for edit / create.
  *
- * The `DemoSeeder` ships with `hr-portal` + `engineering` projects, so
- * membership editor options are statically derived for now — a project
- * picker backed by KB metadata can land in a follow-up once the
- * project-list endpoint exists.
+ * The membership editor's project picker is derived from the live
+ * tenant project list (GET /api/admin/kb/projects) — R18: never a
+ * hard-coded subset.
  */
-
-const DEFAULT_PROJECT_KEYS = ['hr-portal', 'engineering'];
 
 export function UsersView() {
     const [q, setQ] = useState('');
@@ -47,6 +45,7 @@ export function UsersView() {
         per_page: 50,
     });
     const rolesQuery = useRoles();
+    const projectsQuery = useKbProjects();
 
     const deleteUser = useDeleteUser();
     const restoreUser = useRestoreUser();
@@ -255,7 +254,7 @@ export function UsersView() {
                     open={drawerOpen}
                     user={drawerUser}
                     roles={roles}
-                    projectKeys={DEFAULT_PROJECT_KEYS}
+                    projectKeys={projectsQuery.data?.projects ?? []}
                     onClose={() => setDrawerOpen(false)}
                 />
             </div>

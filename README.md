@@ -1361,6 +1361,28 @@ including commercial use.
 
 ## Changelog
 
+**v8.9.0 — Tenant & Project Isolation Hardening** is a security-review
+release: a deep audit of every content-surfacing path (chat answer, search,
+JSON API, MCP tools, admin GUI) confirmed **tenant isolation is absolute** —
+a user in one tenant can never see, retrieve, or have cited any document,
+chunk, citation or graph node from another tenant — and fixed the handful of
+residual gaps it surfaced: the SPA chat routes (`POST /conversations/{id}/messages`
++ the SSE variant) now carry `tenant.authorize` (closing an `X-Tenant-Id`
+cross-tenant retrieval hole), the MCP read-by-id tools (`KbReadDocumentTool` /
+`KbReadChunkTool`) are tenant-scoped, the admin Users CRUD enforces a
+role-assignment privilege ceiling (an `admin` can no longer grant
+`super-admin`), an admin-insights IDOR is closed, and the legacy Blade chat
+sanitises Markdown through DOMPurify. It also introduces **opt-in per-project
+isolation** (`KB_PROJECT_ISOLATION_ENABLED`, default **OFF** — no behaviour
+change for existing deployments): when ON, the "see all projects" capability
+moves from the blanket `kb.read.any` to a dedicated `kb.read.all_projects`
+permission (admin/super-admin), and every other user is constrained to their
+assigned `project_memberships` set (1..N projects), enforced uniformly across
+chat, search, autocomplete and the admin KB surface so cross-project content
+never appears in answers or citations. The admin Users → Project memberships
+editor now derives its project picker from the live tenant project list. Both
+flag states are covered by tests (R43).
+
 See [`CHANGELOG.md`](CHANGELOG.md) for detailed release notes from
 v1.0 through v8.8.3. **v8.8.3** is the **KB Lifecycle Intelligence — Plus**
 cycle plus three follow-on releases: **v8.8.0** added the delete-trigger

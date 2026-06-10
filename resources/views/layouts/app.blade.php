@@ -9,6 +9,13 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    {{-- SECURITY: assistant/KB-derived markdown is rendered into the DOM via
+         Alpine x-html (an innerHTML sink). DOMPurify sanitises the composed
+         HTML before it is injected, neutralising <script>, inline event
+         handlers and javascript: URLs that could ride in on poisoned KB
+         content or LLM output. Loaded non-deferred so it is available before
+         the chat component renders its first message. --}}
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
     <script>
         tailwind.config = {

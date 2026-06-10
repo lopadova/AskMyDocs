@@ -192,7 +192,13 @@ class AdminInsightsController extends Controller
         // doesn't preempt the viewer-403 middleware chain. Soft-deleted
         // docs are still valid targets for tag suggestions (the Meta
         // tab opens on trashed docs for forensic inspection).
-        $doc = KnowledgeDocument::withTrashed()->find($documentId);
+        // R30 — scope to the active tenant so a tenant-A admin can't probe a
+        // tenant-B document id (foreign slug + 200/404 existence oracle). The
+        // chunk read inside suggestTagsForDocument is already tenant-scoped;
+        // this closes the residual metadata/existence leak on the lookup.
+        $doc = KnowledgeDocument::withTrashed()
+            ->forTenant(app(\App\Support\TenantContext::class)->current())
+            ->find($documentId);
         if ($doc === null) {
             return response()->json([
                 'message' => 'Document not found.',

@@ -97,7 +97,11 @@ final class TenantReadScopeTest extends TestCase
         // query — Copilot flagged these as previously-missed openings.
         // `\\?` tolerates a leading backslash on a fully-qualified
         // `\App\Models\X::query(` reference.
-        $readPattern = '/(?:\\\\App\\\\Models\\\\)?\b('.$modelAlternation.')::(query|where|find|findOrFail|whereNotNull|distinct|pluck|withTrashed|onlyTrashed|withoutGlobalScopes)\s*\(/';
+        // `with` is included because `Model::with(...)->findOrFail(...)` is a
+        // read entry point too — its omission let KbReadDocumentTool /
+        // KbReadChunkTool ship an unscoped cross-tenant read past this guard
+        // (security review v8.8).
+        $readPattern = '/(?:\\\\App\\\\Models\\\\)?\b('.$modelAlternation.')::(query|with|where|find|findOrFail|whereNotNull|distinct|pluck|withTrashed|onlyTrashed|withoutGlobalScopes)\s*\(/';
 
         $violations = [];
 

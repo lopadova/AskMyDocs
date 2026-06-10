@@ -223,6 +223,81 @@ class AdminInsightsControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // document/{id}/ai-suggestions — cross-tenant IDOR (R30)
+    // ------------------------------------------------------------------
+
+    /**
+     * Security review v8.8 — a super-admin acting in tenant 'acme' must NOT
+     * be able to probe a document id that belongs to tenant 'umbrella'.
+     * Before the fix the controller's `find($documentId)` was global, so the
+     * foreign-tenant doc resolved and the response leaked its existence (and,
+     * via the AI path, its metadata). The `forTenant()` scope closes it: the
+     * foreign id is now "not found" → 404.
+     */
+    public function test_document_suggestions_404_for_foreign_tenant_doc(): void
+    {
+        $super = $this->makeSuperAdmin();
+
+        // Document owned by tenant 'umbrella'.
+        $foreign = $this->makeDocForTenant('umbrella');
+
+        // No provider call should ever happen on the 404 path; fake anyway so
+        // a regression that *did* resolve the doc can't reach the network.
+        Http::fake();
+
+        // Super-admin is operating inside tenant 'acme'. In production
+        // `ResolveTenant` sets this from the request; under Testbench that
+        // global middleware is not wired, so we pin the request-scoped
+        // TenantContext directly — exactly the state the controller reads via
+        // `app(TenantContext::class)->current()`.
+        $this->actAsTenant('acme');
+
+        $this->actingAs($super)
+            ->getJson("/api/admin/insights/document/{$foreign->id}/ai-suggestions")
+            ->assertStatus(404);
+    }
+
+    /**
+     * Positive counterpart: the same super-admin acting in tenant 'acme'
+     * requesting an 'acme'-owned document id does NOT 404. The happy path
+     * would call the AI provider, so we fake it (mirrors
+     * test_document_suggestions_happy) and assert a clean 200.
+     */
+    public function test_document_suggestions_resolves_own_tenant_doc(): void
+    {
+        $super = $this->makeSuperAdmin();
+
+        $own = $this->makeDocForTenant('acme', ['metadata' => ['tags' => ['cache']]]);
+        $own->chunks()->create([
+            'project_key' => $own->project_key,
+            'chunk_order' => 0,
+            'chunk_hash' => str_repeat('c', 64),
+            'heading_path' => '# Caching',
+            'chunk_text' => 'Redis eviction policies discussion for caching tiers.',
+            'metadata' => [],
+            'embedding' => [],
+        ]);
+
+        Http::fake([
+            '*' => Http::response([
+                'choices' => [[
+                    'message' => ['content' => '["redis","eviction-policy"]'],
+                    'finish_reason' => 'stop',
+                ]],
+                'model' => 'gpt-4o-mini',
+                'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
+            ], 200),
+        ]);
+
+        $this->actAsTenant('acme');
+
+        $this->actingAs($super)
+            ->getJson("/api/admin/insights/document/{$own->id}/ai-suggestions")
+            ->assertOk()
+            ->assertJsonPath('data.document_id', $own->id);
+    }
+
+    // ------------------------------------------------------------------
     // RBAC
     // ------------------------------------------------------------------
 
@@ -299,6 +374,34 @@ class AdminInsightsControllerTest extends TestCase
         $u->assignRole('viewer');
 
         return $u;
+    }
+
+    /**
+     * Pin the request-scoped TenantContext, simulating what `ResolveTenant`
+     * does in production (that global middleware is not wired under Testbench).
+     * The controller reads the active tenant via this same singleton.
+     */
+    private function actAsTenant(string $tenantId): void
+    {
+        app(\App\Support\TenantContext::class)->set($tenantId);
+    }
+
+    /**
+     * Create a KnowledgeDocument owned by a specific tenant. Sets the active
+     * TenantContext before create so BelongsToTenant auto-fills tenant_id,
+     * then resets it so the create-time tenant does not bleed into the request
+     * under test (the caller pins the request tenant via actAsTenant()).
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeDocForTenant(string $tenantId, array $overrides = []): KnowledgeDocument
+    {
+        $ctx = app(\App\Support\TenantContext::class);
+        $ctx->set($tenantId);
+        $doc = $this->makeDoc(array_merge(['project_key' => 'demo'], $overrides));
+        $ctx->reset();
+
+        return $doc;
     }
 
     /**

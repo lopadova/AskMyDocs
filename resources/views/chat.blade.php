@@ -209,6 +209,7 @@ function chatApp() {
 
         async init() {
             this.initSpeech();
+            this.bindRichContentActions();
             await this.loadConversations();
             if (INITIAL_CONVERSATION_ID) await this.selectConversation(INITIAL_CONVERSATION_ID);
         },
@@ -315,39 +316,106 @@ function chatApp() {
 
         // ── Rich Content Rendering ──────────────────────────────
 
+        // SECURITY: this output is injected via x-html (innerHTML). Every
+        // attacker-influenceable value (KB/LLM content, action labels, chart
+        // JSON) is escaped on the way in, and the final composed HTML is run
+        // through DOMPurify before return so no inline handler / <script> /
+        // javascript: URL survives. The action/copy/download controls carry
+        // NO inline handlers (DOMPurify would strip them anyway) — they are
+        // driven by the delegated listener in bindRichContentActions(), keyed
+        // off data-amd-* attributes.
+        escAttr(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        },
+
+        escText(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        },
+
         renderRichContent(text, msgId) {
             if (!text) return '';
+            const copyClasses = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition';
+            const downloadClasses = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition';
             // Extract chart blocks and replace with canvas placeholders
             let processed = text.replace(/~~~chart\s*\n([\s\S]*?)\n~~~/g, (_, json) => {
                 const chartId = 'chart-' + msgId + '-' + Math.random().toString(36).substr(2, 6);
-                return `<div class="my-3 p-3 bg-gray-50 rounded-lg border"><canvas id="${chartId}" data-chart='${json.replace(/'/g, "&#39;")}'></canvas></div>`;
+                return `<div class="my-3 p-3 bg-gray-50 rounded-lg border"><canvas id="${chartId}" data-chart="${this.escAttr(json)}"></canvas></div>`;
             });
-            // Extract action blocks and replace with buttons
+            // Extract action blocks and replace with buttons (delegated handlers)
             processed = processed.replace(/~~~actions\s*\n([\s\S]*?)\n~~~/g, (_, json) => {
-                try {
-                    const actions = JSON.parse(json);
-                    return '<div class="my-3 flex flex-wrap gap-2">' + actions.map(a => {
-                        if (a.action === 'copy') {
-                            return `<button onclick="navigator.clipboard.writeText(this.dataset.content).then(()=>{this.textContent='Copiato!';setTimeout(()=>this.textContent='${a.label}',1500)})" data-content="${a.data?.replace(/"/g,'&quot;') || ''}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>${a.label}</button>`;
-                        }
-                        if (a.action === 'download') {
-                            const blob = `data:text/plain;charset=utf-8,${encodeURIComponent(a.data || '')}`;
-                            return `<a href="${blob}" download="${a.filename || 'file.txt'}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>${a.label}</a>`;
-                        }
-                        return '';
-                    }).join('') + '</div>';
-                } catch { return ''; }
+                let actions;
+                try { actions = JSON.parse(json); } catch { return ''; }
+                if (!Array.isArray(actions)) return '';
+                return '<div class="my-3 flex flex-wrap gap-2">' + actions.map(a => {
+                    if (a && a.action === 'copy') {
+                        return `<button type="button" data-amd-action="copy" data-amd-content="${this.escAttr(a.data || '')}" data-amd-label="${this.escAttr(a.label || 'Copia')}" class="${copyClasses}"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>${this.escText(a.label || 'Copia')}</button>`;
+                    }
+                    if (a && a.action === 'download') {
+                        return `<button type="button" data-amd-action="download" data-amd-content="${this.escAttr(a.data || '')}" data-amd-filename="${this.escAttr(a.filename || 'file.txt')}" class="${downloadClasses}"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>${this.escText(a.label || 'Download')}</button>`;
+                    }
+                    return '';
+                }).join('') + '</div>';
             });
-            // Render markdown
+            // Render markdown, then add a delegated copy button to code blocks
+            let html;
             try {
-                let html = marked.parse(processed, { breaks: true, gfm: true });
-                // Add copy button to code blocks
-                html = html.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, attrs, code) => {
-                    const raw = code.replace(/<[^>]+>/g, '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"');
-                    return `<pre style="position:relative"><code${attrs}>${code}</code><button class="code-copy-btn" onclick="navigator.clipboard.writeText(this.dataset.code).then(()=>{this.textContent='Copiato!';setTimeout(()=>this.textContent='Copia',1500)})" data-code="${raw.replace(/"/g,'&quot;')}">Copia</button></pre>`;
-                });
-                return html;
-            } catch { return text; }
+                html = marked.parse(processed, { breaks: true, gfm: true });
+            } catch {
+                html = this.escText(text);
+            }
+            html = html.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, attrs, code) => {
+                const raw = code.replace(/<[^>]+>/g, '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"');
+                return `<pre style="position:relative"><code${attrs}>${code}</code><button type="button" class="code-copy-btn" data-amd-code="${this.escAttr(raw)}">Copia</button></pre>`;
+            });
+            // Final defence: sanitise the composed HTML before x-html injects it.
+            if (typeof DOMPurify !== 'undefined') {
+                return DOMPurify.sanitize(html);
+            }
+            // DOMPurify failed to load — fail closed (escape rather than inject raw HTML).
+            return this.escText(text);
+        },
+
+        // Delegated handlers for the rich-content controls. Attached once to
+        // the message container so they survive DOMPurify (which strips the
+        // inline on* handlers the markup used to carry).
+        bindRichContentActions() {
+            const container = this.$refs.messagesContainer;
+            if (!container || container.__amdBound) return;
+            container.__amdBound = true;
+            container.addEventListener('click', (event) => {
+                const codeBtn = event.target.closest('.code-copy-btn');
+                if (codeBtn) {
+                    navigator.clipboard.writeText(codeBtn.dataset.amdCode || '').then(() => {
+                        codeBtn.textContent = 'Copiato!';
+                        setTimeout(() => { codeBtn.textContent = 'Copia'; }, 1500);
+                    });
+                    return;
+                }
+                const actionBtn = event.target.closest('[data-amd-action]');
+                if (!actionBtn) return;
+                if (actionBtn.dataset.amdAction === 'copy') {
+                    const label = actionBtn.dataset.amdLabel || 'Copia';
+                    navigator.clipboard.writeText(actionBtn.dataset.amdContent || '').then(() => {
+                        actionBtn.textContent = 'Copiato!';
+                        setTimeout(() => { actionBtn.textContent = label; }, 1500);
+                    });
+                    return;
+                }
+                if (actionBtn.dataset.amdAction === 'download') {
+                    const blob = new Blob([actionBtn.dataset.amdContent || ''], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = actionBtn.dataset.amdFilename || 'file.txt';
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    URL.revokeObjectURL(url);
+                }
+            });
         },
 
         renderCharts(msgId, text) {

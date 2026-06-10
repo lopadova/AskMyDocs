@@ -11,6 +11,34 @@ moats and roadmap, see [README.md](README.md).
 
 ---
 
+### v8.9.0 — 2026-06-10 (Tenant & Project Isolation Hardening)
+
+Security-review release. Deep audit of every content-surfacing path
+(chat answer sync + stream, hybrid search, JSON API, all MCP tools,
+GraphExpander, RejectedApproachInjector, citations, admin KB GUI)
+confirmed **tenant isolation is absolute** and fixed the residual gaps.
+
+- **Cross-tenant chat-route leak (HIGH):** `POST /conversations/{id}/messages`
+  and the SSE stream variant now carry `tenant.authorize`, closing an
+  `X-Tenant-Id` header path that steered RAG retrieval into another tenant's KB.
+- **MCP read-by-id cross-tenant leak (HIGH):** `KbReadDocumentTool` /
+  `KbReadChunkTool` now scope by `forTenant`; the `TenantReadScopeTest`
+  architecture guard was tightened to catch `::with(...)->findOrFail()` entry points.
+- **Privilege escalation (HIGH):** `RoleAssignmentGuard` blocks an `admin`
+  from assigning a role carrying permissions it lacks (e.g. `super-admin`).
+- **Legacy-chat stored XSS (MEDIUM):** `/chat-legacy` Markdown is sanitised via
+  DOMPurify; rich-content controls moved to delegated listeners.
+- **Admin-insights IDOR (LOW):** `documentSuggestions` lookup is tenant-scoped.
+- **Opt-in per-project isolation** (`KB_PROJECT_ISOLATION_ENABLED`, default OFF):
+  when ON, the "all projects" capability moves to a dedicated
+  `kb.read.all_projects` permission (admin/super-admin) and every other user is
+  constrained to their `project_memberships` set (1..N projects), enforced via
+  `AccessScopeScope` across chat/search/autocomplete/admin KB. `User`
+  membership reads are tenant-scoped (R30). Admin project picker derives from
+  the live project list (R18). Both flag states tested (R43).
+
+---
+
 ### v8.6.0 — 2026-05-27 (Live chat actions)
 
 Wired up chat UI surfaces that looked interactive but did nothing — the

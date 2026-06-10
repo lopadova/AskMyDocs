@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\KbPath;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -26,10 +27,9 @@ class User extends Authenticatable
     // every call site, API + console.
     protected string $guard_name = 'web';
 
-    // Sentinel value returned by allowedProjects() when the user has the
-    // global `kb.read.any` permission (super-admin / admin / editor /
-    // viewer all have it by default — see RbacSeeder). Consumers check
-    // for `in_array('*', ...)` before filtering the project_key column.
+    // Sentinel value returned by allowedProjects() when the user can read
+    // ALL projects in their tenant (see canReadAllProjects()). Consumers
+    // check for `in_array('*', ...)` before filtering the project_key column.
     public const PROJECT_WILDCARD = '*';
 
     protected $fillable = [
@@ -84,20 +84,48 @@ class User extends Authenticatable
     }
 
     /**
+     * Whether this user can read EVERY project in their tenant (the
+     * "all-projects" capability).
+     *
+     * - Per-project isolation OFF (default): the historical lever
+     *   `kb.read.any` (held by viewer/editor/admin/super-admin) — no
+     *   behaviour change for existing deployments.
+     * - Per-project isolation ON: the dedicated `kb.read.all_projects`
+     *   permission (admin/super-admin only by seed). Every other user is
+     *   then constrained to their `project_memberships`, so an operator can
+     *   grant a user EITHER all-projects (this permission / an admin role)
+     *   OR a specific set of N projects (via memberships).
+     */
+    public function canReadAllProjects(): bool
+    {
+        if (config('kb.project_isolation.enabled', false)) {
+            return $this->can('kb.read.all_projects');
+        }
+
+        return $this->can('kb.read.any');
+    }
+
+    /**
      * List of project_key values this user can access.
      *
-     * - Returns [User::PROJECT_WILDCARD] when the user holds `kb.read.any`.
-     *   Callers must treat that as "no project filter".
+     * - Returns [User::PROJECT_WILDCARD] when the user can read all projects
+     *   (see canReadAllProjects()). Callers must treat that as "no project
+     *   filter".
      * - Returns the concrete project_key set of `project_memberships` rows
      *   otherwise. Empty array means "no access to any project".
      */
     public function allowedProjects(): array
     {
-        if ($this->can('kb.read.any')) {
+        if ($this->canReadAllProjects()) {
             return [self::PROJECT_WILDCARD];
         }
 
+        // R30 — User is a cross-tenant identity, so memberships must be
+        // scoped to the ACTIVE tenant. Without this, a membership granted in
+        // tenant B would loosen project access while operating in tenant A
+        // whenever the project_key overlaps.
         return $this->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
             ->pluck('project_key')
             ->unique()
             ->values()
@@ -112,7 +140,9 @@ class User extends Authenticatable
      */
     public function allowedScopesFor(string $projectKey): array
     {
+        // R30 — scope to the active tenant (see allowedProjects()).
         $membership = $this->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
             ->where('project_key', $projectKey)
             ->first();
 
@@ -139,7 +169,14 @@ class User extends Authenticatable
      */
     public function hasDocumentAccess(KnowledgeDocument $doc, string $permission = 'view'): bool
     {
-        if ($this->can("kb.{$permission}.any")) {
+        // The read wildcard honours per-project isolation (canReadAllProjects);
+        // write wildcards (edit/delete/promote) keep their dedicated `.any`
+        // permission semantics regardless of the read-isolation flag.
+        $hasGlobalGrant = $permission === 'view'
+            ? $this->canReadAllProjects()
+            : $this->can("kb.{$permission}.any");
+
+        if ($hasGlobalGrant) {
             return true;
         }
 
