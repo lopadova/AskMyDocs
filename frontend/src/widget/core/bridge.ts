@@ -111,7 +111,7 @@ export class Bridge {
         this.events.onClearOverlay();
         await this.guard(async () => {
             if (this.sessionId) {
-                const snapshot = buildSnapshot();
+                const snapshot = this.snapshotWithHostTools();
                 const res = await this.transport.step(this.sessionId, snapshot, message, null);
                 await this.handle(res, 0);
 
@@ -137,8 +137,20 @@ export class Bridge {
                 ? await this.transport.fetchHostManifest(this.cfg.hostManifestUrl)
                 : [];
         }
+
+        return this.snapshotWithHostTools();
+    }
+
+    /**
+     * #8 — costruisce lo snapshot ALLEGANDO sempre gli host tools già risolti.
+     * L'orchestrator rilegge `snapshot.host_tools` ad OGNI turno (non solo il
+     * primo): se i turni successivi inviassero uno snapshot "nudo", gli host
+     * tool sparirebbero dal turno 2 in poi e l'LLM non potrebbe più chiamarli
+     * (validator → "tool non abilitato" → consecutive_errors → blocked).
+     */
+    private snapshotWithHostTools(): Snapshot {
         const snapshot = buildSnapshot();
-        if (this.hostTools.length > 0) {
+        if (this.hostTools && this.hostTools.length > 0) {
             snapshot.host_tools = this.hostTools;
         }
 
@@ -213,22 +225,28 @@ export class Bridge {
 
             return;
         }
+        // #16 — il cap MAX_AUTO_STEPS vale per OGNI tool che continua il loop
+        // (host, BE, DOM), non solo i DOM tool. I percorsi host/BE NON devono
+        // resettare la profondità a 0: altrimenti il cap client (12) non scatta
+        // mai e una catena di tool BE/host gira fino al cap server (~100) →
+        // amplificazione costo/DoS da un singolo messaggio utente.
+        if (depth >= MAX_AUTO_STEPS) {
+            this.events.onError('Reached the maximum number of automatic actions.');
+
+            return;
+        }
+
         if (isHostTool(call)) {
             // F1.7: host tool dell'app ospite → instrada all'endpoint exec dell'host
             // (FE-proxied), renderizza l'artifact e reinietta il risultato in /step.
             // NON passa per l'executor DOM né per /exec-tool.
-            await this.handleHostTool(call);
+            await this.handleHostTool(call, depth);
             return;
         }
         if (call.is_be_tool) {
             // M4: tool server-side → chiama /exec-tool, renderizza artifact, poi
             // decide se continuare il loop o attendere l'utente.
-            await this.handleBeTool(call);
-            return;
-        }
-        if (depth >= MAX_AUTO_STEPS) {
-            this.events.onError('Reached the maximum number of automatic actions.');
-
+            await this.handleBeTool(call, depth);
             return;
         }
 
@@ -239,7 +257,7 @@ export class Bridge {
             // tool_result restano invariate: il loop prosegue normalmente.
             this.maybeEmitOverlay(call);
             const result = await this.executor.run(call.tool, call.args);
-            const snapshot = buildSnapshot();
+            const snapshot = this.snapshotWithHostTools();
             const next = await this.transport.step(this.sessionId as string, snapshot, null, result);
             await this.handle(next, depth + 1);
         };
@@ -296,7 +314,7 @@ export class Bridge {
      *   - has_results=true, interactionMode='selection' → WaitingUser, attende selezione
      *   - has_results=true, interactionMode='view' → WaitingUser, attende prossimo messaggio
      */
-    private async handleBeTool(call: ToolCall): Promise<void> {
+    private async handleBeTool(call: ToolCall, depth: number): Promise<void> {
         try {
             const result = await this.transport.execTool(
                 this.sessionId as string,
@@ -308,11 +326,13 @@ export class Bridge {
             this.events.onArtifact(result.artifact, result.has_results, result.interaction_mode);
 
             if (!result.has_results) {
-                // Il tool non ha prodotto risultati → auto-msg al LLM per continuare
+                // Il tool non ha prodotto risultati → auto-msg al LLM per continuare.
+                // #16 — depth+1 (NON 0): mantiene il cap MAX_AUTO_STEPS attraverso
+                // la catena BE.
                 const autoMsg = `Il tool "${call.tool}" non ha trovato risultati per la query richiesta.`;
-                const snapshot = buildSnapshot();
+                const snapshot = this.snapshotWithHostTools();
                 const next = await this.transport.step(this.sessionId as string, snapshot, autoMsg, null);
-                await this.handle(next, 0);
+                await this.handle(next, depth + 1);
             }
             // has_results=true → la UI mostra l'artifact e il bridge attende il prossimo
             // messaggio utente (se interactionMode='selection' l'utente seleziona una riga;
@@ -337,7 +357,7 @@ export class Bridge {
      *   - errore di rete / config mancante → errore nel thread + tool_result
      *                ok:false → loop (best effort, mai sessione appesa)
      */
-    private async handleHostTool(call: ToolCall): Promise<void> {
+    private async handleHostTool(call: ToolCall, depth: number): Promise<void> {
         const sessionId = this.sessionId as string;
         const hostExecUrl = (this.cfg.hostExecUrl ?? '').trim();
 
@@ -351,7 +371,7 @@ export class Bridge {
                 ok: false,
                 error: 'host_exec_url_missing',
                 message: 'Host exec URL is not configured on the embed.',
-            });
+            }, depth);
 
             return;
         }
@@ -379,7 +399,7 @@ export class Bridge {
                     execution: 'host',
                     ok: true,
                     artifact: result.artifact,
-                });
+                }, depth);
 
                 return;
             }
@@ -394,7 +414,7 @@ export class Bridge {
                 ok: false,
                 error: result.error ?? 'host_tool_failed',
                 message: errorMessage,
-            });
+            }, depth);
         } catch (error) {
             // Errore di trasporto/rete: best effort, reinietta comunque un ok:false.
             const message = error instanceof WidgetError || error instanceof Error ? error.message : String(error);
@@ -405,7 +425,7 @@ export class Bridge {
                 ok: false,
                 error: 'host_exec_network_error',
                 message,
-            });
+            }, depth);
         }
     }
 
@@ -415,9 +435,10 @@ export class Bridge {
      * (ok / ok:false / errore di rete) per non lasciare la sessione appesa. Se anche
      * lo /step fallisce, l'errore risale alla guard() che lo mostra nel thread.
      */
-    private async reinjectHostResult(sessionId: string, toolResult: HostToolResult): Promise<void> {
-        const snapshot = buildSnapshot();
+    private async reinjectHostResult(sessionId: string, toolResult: HostToolResult, depth: number): Promise<void> {
+        const snapshot = this.snapshotWithHostTools();
         const next = await this.transport.step(sessionId, snapshot, null, toolResult);
-        await this.handle(next, 0);
+        // #16 — depth+1 (NON 0): la reiniezione host mantiene il cap del loop.
+        await this.handle(next, depth + 1);
     }
 }

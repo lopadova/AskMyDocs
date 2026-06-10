@@ -297,14 +297,15 @@ final class WidgetSessionTest extends TestCase
             'origin' => 'https://allowed.test',
         ]);
 
-        // Stubba il ChatRetrievalService nel container per il SearchKnowledgeBaseTool
-        $chunk = (object) [
-            'id' => 'chunk-1',
-            'title' => 'Guida Setup',
-            'source' => 'docs',
-            'similarity' => 0.92,
-            'relevance_score' => null,
-            'content' => str_repeat('Contenuto del documento. ', 20),
+        // Stubba il ChatRetrievalService nel container per il SearchKnowledgeBaseTool.
+        // Chunk nella shape REALE di produzione (ARRAY con chunk_id/document.title/…).
+        $chunk = [
+            'chunk_id' => 'chunk-1',
+            'document' => ['id' => 7, 'title' => 'Guida Setup', 'source_path' => 'docs/setup.md'],
+            'heading_path' => 'Setup',
+            'rerank_score' => 0.92,
+            'vector_score' => 0.80,
+            'chunk_text' => str_repeat('Contenuto del documento. ', 20),
         ];
         $collection = collect([$chunk]);
 
@@ -319,6 +320,8 @@ final class WidgetSessionTest extends TestCase
         $retrieval->shouldReceive('retrieve')
             ->once()
             ->andReturn($searchResult);
+        // #4 — il tool applica il grounding gate condiviso; qui i chunk sono groundati.
+        $retrieval->shouldReceive('shouldRefuse')->andReturn(false);
 
         // Bind nel container per la risoluzione automatica in SearchKnowledgeBaseTool
         $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);

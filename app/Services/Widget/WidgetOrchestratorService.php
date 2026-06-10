@@ -130,25 +130,41 @@ final class WidgetOrchestratorService
             $this->wrapHostTools($hostTools),
         );
 
+        // #4 — Stesso grounding gate delle altre chat channel (v8.1): i chunk
+        // sotto-floor NON diventano contesto KB autorevole con citazioni sulla
+        // widget PUBBLICA (era il refusal-bypass sulla superficie più esposta).
+        // shouldRefuse() ⇒ trattiamo la KB come assente: niente context groundato,
+        // niente citazioni; l'agente o esegue un'azione DOM o dichiara di non
+        // avere l'informazione in KB.
         $result = null;
         if (is_string($userMessage) && $userMessage !== '') {
-            $result = $this->retrieval->retrieve($userMessage, (string) $session->project_key, null);
+            $retrieved = $this->retrieval->retrieve($userMessage, (string) $session->project_key, null);
+            $result = $this->retrieval->shouldRefuse($retrieved) ? null : $retrieved;
         }
 
         $systemPrompt = $this->buildSystemPrompt($snapshot, $result, $hostTools);
         $baseMessages = $this->buildMessages($session);
         $navigateAllowlist = $this->navigateAllowlist($session);
 
+        // #7/#15 — i tool si inviano SOLO se il provider attivo espone il
+        // function-calling OpenAI-shape (openai/openrouter/fake). Mandare i tool
+        // a un provider che li droppa (anthropic/gemini/regolo) farebbe degradare
+        // il widget a chat-only in SILENZIO (toolCalls sempre []); meglio non
+        // inviarli affatto e degradare in modo pulito. E quando la lista è vuota,
+        // la chiave `tools` va OMESSA del tutto: `"tools": []` è un 400 su OpenAI.
+        $toolsForTurn = $this->providerSupportsToolCalling() ? $tools : [];
+
         $start = microtime(true);
         $errors = (int) data_get($session->meta, 'consecutive_errors', 0);
         $extra = [];
 
         for ($attempt = 0; $attempt < self::MAX_TOOL_RETRIES; $attempt++) {
-            $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), [
-                'tools' => $tools,
-                'tool_choice' => $tools === [] ? 'none' : 'auto',
-                'temperature' => 0,
-            ]);
+            $options = ['temperature' => 0];
+            if ($toolsForTurn !== []) {
+                $options['tools'] = $toolsForTurn;
+                $options['tool_choice'] = 'auto';
+            }
+            $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), $options);
 
             if ($response->toolCalls === []) {
                 return $this->finishWithAnswer($session, $snapshot, $response, $result, $start);
@@ -555,6 +571,22 @@ final class WidgetOrchestratorService
         }
 
         return $wrapped;
+    }
+
+    /**
+     * #7 — Il provider AI attivo espone il function-calling OpenAI-shape?
+     *
+     * Specchio di HostBridge::TOOL_CAPABLE_PROVIDERS (openai/openrouter) + 'fake'
+     * (il FakeProvider emette tool_call scriptate per l'E2E agentico, R13).
+     * Anthropic/Gemini/Regolo droppano `options.tools` e non popolano mai
+     * AiResponse::toolCalls: senza questo gate il loop agentico cadrebbe in
+     * SILENZIO su finishWithAnswer ad ogni turno (R43 OFF-path).
+     */
+    private function providerSupportsToolCalling(): bool
+    {
+        $provider = (string) (config('ai.default') ?? 'openai');
+
+        return in_array($provider, ['openai', 'openrouter', 'fake'], true);
     }
 
     /**

@@ -70,14 +70,16 @@ final class SearchKnowledgeBaseToolTest extends TestCase
     /** Risultati RAG trovati → artifact ui-data-table, has_results=true, interaction_mode=selection. */
     public function test_execute_con_risultati_ritorna_data_table(): void
     {
-        // Chunk fittizio con le proprietà attese dal tool
-        $chunk = (object) [
-            'id' => 'chunk-1',
-            'title' => 'Guida Setup',
-            'source' => 'docs',
-            'similarity' => 0.92,
-            'relevance_score' => null,
-            'content' => str_repeat('Contenuto del documento. ', 20),
+        // Chunk nella shape REALE di produzione: ARRAY con chunk_id / document.title
+        // / rerank_score / chunk_text (KbSearchService::search mappa ad array). Il
+        // vecchio fixture (object) mascherava il bug "read property on array" → 500.
+        $chunk = [
+            'chunk_id' => 'chunk-1',
+            'document' => ['id' => 7, 'title' => 'Guida Setup', 'source_path' => 'docs/setup.md'],
+            'heading_path' => 'Setup',
+            'rerank_score' => 0.92,
+            'vector_score' => 0.80,
+            'chunk_text' => str_repeat('Contenuto del documento. ', 20),
         ];
 
         $collection = collect([$chunk]);
@@ -94,6 +96,8 @@ final class SearchKnowledgeBaseToolTest extends TestCase
             ->once()
             ->with('setup', 'docs-v3', null)
             ->andReturn($searchResult);
+        // #4 — il tool applica il grounding gate: qui i chunk sono groundati.
+        $retrieval->shouldReceive('shouldRefuse')->once()->with($searchResult)->andReturn(false);
 
         $tool = new SearchKnowledgeBaseTool($retrieval);
         $session = WidgetSession::factory()->make(['project_key' => 'docs-v3']);
@@ -105,6 +109,40 @@ final class SearchKnowledgeBaseToolTest extends TestCase
         $this->assertSame('selection', $result['interaction_mode']);
         $this->assertCount(1, $result['artifact']['componentProps']['rows']);
         $this->assertSame('Guida Setup', $result['artifact']['componentProps']['rows'][0]['title']);
+        // Reads shape-agnostic: id da chunk_id, similarity da rerank_score, preview da chunk_text.
+        $this->assertSame('chunk-1', $result['artifact']['componentProps']['rows'][0]['id']);
+        $this->assertSame(0.92, $result['artifact']['componentProps']['rows'][0]['similarity']);
+        $this->assertStringContainsString('Contenuto del documento', $result['artifact']['componentProps']['rows'][0]['content_preview']);
+    }
+
+    /** #4 — chunk presenti ma sotto-floor (shouldRefuse=true) → ui-alert, niente data-table. */
+    public function test_execute_chunk_sotto_floor_rifiutati_ritorna_alert_info(): void
+    {
+        $chunk = [
+            'chunk_id' => 'c-low',
+            'document' => ['id' => 1, 'title' => 'Doc debole'],
+            'rerank_score' => 0.10,
+            'vector_score' => 0.12,
+            'chunk_text' => 'contenuto poco rilevante',
+        ];
+        $searchResult = new SearchResult(
+            primary: collect([$chunk]),
+            expanded: new Collection(),
+            rejected: new Collection(),
+        );
+
+        $retrieval = Mockery::mock(ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->once()->andReturn($searchResult);
+        $retrieval->shouldReceive('shouldRefuse')->once()->with($searchResult)->andReturn(true);
+
+        $tool = new SearchKnowledgeBaseTool($retrieval);
+        $session = WidgetSession::factory()->make(['project_key' => 'docs-v3']);
+
+        $result = $tool->execute(['query' => 'qualcosa'], $session);
+
+        $this->assertFalse($result['has_results']);
+        $this->assertSame('ui-alert', $result['artifact']['componentType']);
+        $this->assertSame('info', $result['artifact']['componentProps']['level']);
     }
 
     /** supports() con isBuiltin=true → controlla tools_enabled. */
