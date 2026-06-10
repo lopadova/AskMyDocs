@@ -103,6 +103,30 @@ describe('TreeView', () => {
         expect(node?.type).toBe('doc');
     });
 
+    it('fires onFolderSelect AND still toggles expansion when a folder is clicked', () => {
+        const onFolderSelect = vi.fn();
+        renderTree({ onFolderSelect });
+
+        const folder = screen.getByTestId('kb-tree-node-policies');
+        // Seeded folder renders open (depth < 1) so the child doc is visible.
+        expect(screen.getByTestId('kb-tree-node-policies/remote-work-policy.md')).toBeInTheDocument();
+
+        fireEvent.click(folder);
+
+        // Navigation callback fired with the folder path…
+        expect(onFolderSelect).toHaveBeenCalledTimes(1);
+        expect(onFolderSelect).toHaveBeenCalledWith('policies');
+        // …and the toggle still ran (folder collapsed → child gone).
+        expect(screen.queryByTestId('kb-tree-node-policies/remote-work-policy.md')).toBeNull();
+    });
+
+    it('does not break folder toggling when onFolderSelect is omitted', () => {
+        renderTree();
+        const folder = screen.getByTestId('kb-tree-node-policies');
+        fireEvent.click(folder);
+        expect(screen.queryByTestId('kb-tree-node-policies/remote-work-policy.md')).toBeNull();
+    });
+
     it('fires onModeChange when filter dropdown changes (drives query key)', () => {
         const onModeChange = vi.fn();
         renderTree({ onModeChange });
