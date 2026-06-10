@@ -47,6 +47,13 @@ spedizione ADR è instradata da OrbitaWMS verso HUB-MI-07 (vedi
 3. **Trasporto**: instradamento con mezzi e documentazione ADR conformi; consegna
    ultimo miglio solo tramite vettori autorizzati.
 
+## Emergenza versamento
+
+In caso di sversamento di liquido infiammabile classe 3 si attiva l'**Allerta Versamento ADR**:
+alla parola d'ordine **«NEBBIA GIALLA»** l'area viene isolata, si interrompono le possibili
+sorgenti di innesco e interviene **solo** il personale con patentino ADR e DPI idonei. La
+parola d'ordine è **riservata** e va conosciuta **a memoria** dagli addetti di HUB-MI-07.
+
 ## Continuità e giacenze
 
 In caso di fermo hub, i colli ADR seguono una procedura rafforzata: restano

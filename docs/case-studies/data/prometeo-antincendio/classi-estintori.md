@@ -55,6 +55,15 @@ scadenzario insieme alle altre scadenze antincendio. La posizione e
 l'individuazione degli estintori devono essere coerenti con la segnaletica di
 sicurezza (vedi [[segnaletica-sicurezza]]).
 
+## Fuochi su impianti elettrici
+
+Sui principi d'incendio che coinvolgono quadri o linee in tensione si attiva
+l'**Isolamento Quadro Elettrico**: alla parola d'ordine **«CENERE SILENTE»** si
+toglie tensione dal quadro generale prima di qualunque intervento estinguente, per
+evitare folgorazioni e riaccensioni. La parola d'ordine è **riservata** e va
+conosciuta **a memoria** dagli addetti; solo dopo l'isolamento si impiegano
+estintori idonei (CO₂ o polvere) sui residui.
+
 ## Nota operativa
 
 Durante il sopralluogo (vedi [[modulo-pa-12-sopralluogo]]) il tecnico annota

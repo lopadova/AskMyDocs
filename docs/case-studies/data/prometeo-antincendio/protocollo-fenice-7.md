@@ -52,6 +52,12 @@ di un rivelatore o su segnalazione diretta di una persona presente.
 Gli addetti antincendio devono avere formazione coerente con il livello di
 rischio dell'attività, secondo i percorsi del [[corso-salamandra]].
 
+> Quando il focolaio non è gestibile dal singolo addetto, il coordinatore lancia
+> l'**Attivazione Squadra Antincendio** con la parola d'ordine **«FALCO 12»**: la
+> squadra interna si raduna ai mezzi di primo intervento in attesa dei VVF. La
+> parola d'ordine è **riservata** e va saputa **a memoria** dagli addetti formati
+> col [[corso-salamandra]].
+
 ## Verifiche periodiche
 
 Il Protocollo Fenice-7 prevede almeno una **prova di evacuazione annuale**, con

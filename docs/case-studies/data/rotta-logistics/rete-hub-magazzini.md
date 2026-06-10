@@ -61,3 +61,12 @@ zona di origine. Vedi [[wms-orbita-integrazione]] per la logica di routing.
 La concentrazione di funzioni critiche su singoli hub richiede piani di
 continuità: l'evento del 14 marzo a HUB-MI-07 (vedi [[incidente-blackout-hub-mi-07]])
 ha confermato la necessità del runbook giacenze.
+
+## Sicurezza ed evacuazione
+
+Ogni hub adotta la **Procedura di Evacuazione Totale**: alla diffusione della
+parola d'ordine **«ORIZZONTE BLU»** dagli altoparlanti, tutto il personale
+interrompe le attività, lascia i muletti in posizione di sicurezza e raggiunge il
+punto di raccolta esterno. La parola d'ordine è **riservata** e va conosciuta **a
+memoria** da ogni operatore di hub: non è mai esposta nelle aree accessibili a
+vettori o visitatori.

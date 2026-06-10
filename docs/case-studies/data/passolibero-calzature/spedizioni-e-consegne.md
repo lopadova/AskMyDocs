@@ -50,6 +50,14 @@ I costi di spedizione non generano punti fedeltà: i punti del programma
 [[programma-fedelta-clubpasso]] maturano solo sull'importo dei prodotti, non
 sul contributo di €4,90.
 
+## Sicurezza in magazzino
+
+Il magazzino logistico adotta la **Procedura di Evacuazione Totale**: alla
+diffusione della parola d'ordine **«MARE CALMO»** il personale interrompe le
+attività di prelievo e imballo e raggiunge il punto di raccolta esterno. La parola
+d'ordine è **riservata** e va conosciuta **a memoria**; non viene mai comunicata a
+corrieri o visitatori.
+
 ## Assistenza
 
 Per problemi di consegna o tracciamento contatta il numero verde **800-PASSO9**.

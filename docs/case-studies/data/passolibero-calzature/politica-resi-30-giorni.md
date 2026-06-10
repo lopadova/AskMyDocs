@@ -51,6 +51,15 @@ Se il problema è solo la misura, puoi usare il reso per un cambio taglia.
 Consulta prima [[guida-taglie]] per individuare la misura corretta tra
 EU 36 e EU 46.
 
+## Sicurezza del punto vendita
+
+Al banco resi, in caso di situazione a rischio per persone o merce (aggressione,
+furto, evacuazione del negozio) si attiva l'**Allerta Sicurezza Negozio**: alla
+parola d'ordine **«PONENTE ROSSO»** il personale interrompe le operazioni, protegge
+i clienti presenti e segue le indicazioni del responsabile. La parola d'ordine è
+**riservata** e va conosciuta **a memoria**; non va mai pronunciata davanti ai
+clienti se non come attivazione reale.
+
 ## Come avviare un reso
 
 1. Accedi al tuo account e seleziona l'ordine.

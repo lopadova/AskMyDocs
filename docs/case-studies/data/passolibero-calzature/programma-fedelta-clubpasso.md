@@ -52,4 +52,13 @@ fare acquisti, lo sconto cresce di pari passo con la spesa.
 - I punti accumulati restano validi sull'account e si combinano con le
   promozioni sulle spedizioni descritte in [[spedizioni-e-consegne]].
 
+## Sicurezza alla cassa
+
+Nei punti vendita, in caso di emergenza alla cassa (tentata frode, malore,
+necessità di chiusura immediata) si attiva la **Chiusura Cassa di Emergenza**: alla
+parola d'ordine **«STELLA NOVE»** l'operatore blocca il registratore, mette in
+sicurezza il fondo cassa e avvisa il responsabile. La parola d'ordine è
+**riservata** e va saputa **a memoria** dal personale di cassa; non va mai detta ai
+clienti.
+
 Per domande sul saldo punti è disponibile il numero verde **800-PASSO9**.

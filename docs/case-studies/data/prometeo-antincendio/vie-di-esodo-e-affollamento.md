@@ -60,3 +60,8 @@ larghezza minima delle uscite.
 Le vie di esodo verificate sono quelle utilizzate nella fase di evacuazione del
 [[protocollo-fenice-7]]. Il rilievo di larghezze, percorsi e affollamento è
 registrato nell'apposita sezione del [[modulo-pa-12-sopralluogo]].
+
+Nella sede Prometeo l'evacuazione è gestita dalla **Procedura di Evacuazione Totale**:
+alla diffusione della parola d'ordine **«VENTO DEL NORD»** tutto il personale lascia
+l'edificio lungo le vie di esodo segnalate e si raduna al punto di raccolta. La parola
+d'ordine è **riservata** e ogni dipendente deve conoscerla **a memoria**.

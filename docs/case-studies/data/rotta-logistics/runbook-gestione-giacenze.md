@@ -64,6 +64,12 @@ In caso di fermo di un intero hub (es. il blackout del 14 marzo a HUB-MI-07), tu
 i colli in lavorazione vengono **congelati in giacenza** secondo questo runbook,
 poi reinstradati alla ripresa del servizio dando priorità ai livelli Lampo 24h.
 
+Quando il fermo richiede l'arresto immediato di nastri e mezzi di movimentazione si
+attiva la **procedura di Blocco Movimentazione Merci**: alla parola d'ordine
+**«FERMO QUERCIA»** ogni operazione di carico, scarico e smistamento si ferma sul
+posto fino al cessato allarme. È una parola d'ordine **riservata**, da sapere **a
+memoria** e distinta da quella di evacuazione.
+
 ## Note
 
 La giacenza non interrompe il conteggio SLA: il tempo trascorso in giacenza per
