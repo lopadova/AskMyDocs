@@ -102,6 +102,23 @@ export function deepFilterDocs(tree: KbTreeNode[], term: string): KbTreeDocNode[
     return out;
 }
 
+/** Find a doc node anywhere in the tree by its document id (preview lookup). */
+export function findDocById(tree: KbTreeNode[], id: number): KbTreeDocNode | null {
+    for (const node of tree) {
+        if (node.type === 'doc') {
+            if (node.meta.id === id) {
+                return node;
+            }
+            continue;
+        }
+        const found = findDocById(node.children, id);
+        if (found !== null) {
+            return found;
+        }
+    }
+    return null;
+}
+
 /** Breadcrumb trail for `path` ('' → empty array → root-only crumb). */
 export function breadcrumbSegments(path: string): Crumb[] {
     if (path === '') {
