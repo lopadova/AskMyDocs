@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from 'axios';
+import { useTeamStore } from './team-store';
 
 /*
  * Single axios instance shared by the SPA.
@@ -22,6 +23,43 @@ export const api: AxiosInstance = axios.create({
         'X-Requested-With': 'XMLHttpRequest',
     },
 });
+
+/*
+ * Routes that must NEVER carry the tenant header:
+ * - `/api/auth/*` + `/sanctum/*`: a stale persisted team would otherwise
+ *   403 the bootstrap `me()` call and lock the user out before the team
+ *   list can re-sync.
+ * - `/testing/*`: E2E reset/seed endpoints operate deployment-wide.
+ */
+const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/sanctum/', '/testing/'];
+
+api.interceptors.request.use((config) => {
+    const team = useTeamStore.getState().currentTeam;
+    const url = config.url ?? '';
+    if (team !== null && !TENANT_EXEMPT_PREFIXES.some((p) => url.startsWith(p))) {
+        config.headers['X-Tenant-Id'] = team;
+    }
+    return config;
+});
+
+api.interceptors.response.use(
+    (response) => response,
+    (error: unknown) => {
+        // The backend refused the active team (membership revoked, tenant
+        // archived, stale persisted value): snap back to the first valid
+        // team so the next interactions work, but keep REJECTING so the
+        // failing caller surfaces its error state (R14) instead of
+        // silently retrying.
+        if (
+            axios.isAxiosError(error) &&
+            error.response?.status === 403 &&
+            (error.response.data as { error?: string } | undefined)?.error === 'tenant_forbidden'
+        ) {
+            useTeamStore.getState().resetToFirstTeam();
+        }
+        return Promise.reject(error);
+    },
+);
 
 let csrfPrimed = false;
 
