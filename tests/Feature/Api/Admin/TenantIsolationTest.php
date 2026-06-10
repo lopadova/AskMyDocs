@@ -73,6 +73,31 @@ final class TenantIsolationTest extends TestCase
             ->assertOk();
     }
 
+    public function test_admin_with_membership_in_requested_tenant_may_switch_via_header(): void
+    {
+        // Team-switcher path (2026-06-10): no cross-access permission, but
+        // a project_memberships row in 'acme' lets the user operate there.
+        $admin = $this->makeUser('admin');
+        \App\Models\ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $admin->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+
+        $this->actingAs($admin)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->getJson('/api/admin/kb/tags')
+            ->assertOk();
+
+        // The membership opens 'acme' ONLY — any other tenant stays 403.
+        $this->actingAs($admin)
+            ->withHeader('X-Tenant-Id', 'umbrella')
+            ->getJson('/api/admin/kb/tags')
+            ->assertStatus(403)
+            ->assertJsonPath('error', 'tenant_forbidden');
+    }
+
     public function test_regular_admin_without_header_operates_in_default_tenant(): void
     {
         $admin = $this->makeUser('admin');

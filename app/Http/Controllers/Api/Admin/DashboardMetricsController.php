@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Pii\Inspectors\InsightsRedactionFormatter;
 use App\Services\Admin\AdminMetricsService;
 use App\Services\Admin\HealthCheckService;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -16,8 +17,10 @@ use Illuminate\Support\Facades\Cache;
  * Three JSON reads — overview / series / health — backed by
  * {@see AdminMetricsService} and {@see HealthCheckService}. The two
  * data-heavy endpoints are wrapped in a 30-second `Cache::remember`
- * keyed by `(project,days)` so repeated polls from the SPA don't
- * re-aggregate the chat_logs table on every request.
+ * keyed by `(tenant,project,days)` so repeated polls from the SPA don't
+ * re-aggregate the chat_logs table on every request. The tenant MUST be
+ * part of the key (R30): the service aggregates per active tenant, and
+ * a key without it would serve one team's cached numbers to another.
  *
  * Health is NOT cached — the dashboard treats it as a freshness probe
  * and each of its checks is cheap (a DB ping, a Schema::hasTable, a
@@ -32,6 +35,7 @@ class DashboardMetricsController extends Controller
         private readonly AdminMetricsService $metrics,
         private readonly HealthCheckService $health,
         private readonly InsightsRedactionFormatter $piiFormatter,
+        private readonly TenantContext $tenant,
     ) {}
 
     public function overview(Request $request): JsonResponse
@@ -116,6 +120,12 @@ class DashboardMetricsController extends Controller
 
     private function cacheKey(string $kind, ?string $project, int $days): string
     {
-        return sprintf('admin.metrics.%s.%s.%d', $kind, $project ?? 'all', $days);
+        return sprintf(
+            'admin.metrics.%s.%s.%s.%d',
+            $kind,
+            $this->tenant->current(),
+            $project ?? 'all',
+            $days,
+        );
     }
 }
