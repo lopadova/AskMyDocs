@@ -29,7 +29,11 @@ class ProjectMembershipController extends Controller
 {
     public function index(User $user): AnonymousResourceCollection
     {
+        // R30 — list ONLY the active team's memberships. Without the scope
+        // the Users screen showed (and let admins edit) rows belonging to
+        // every tenant the target user is a member of.
         $memberships = $user->projectMemberships()
+            ->forTenant(app(TenantContext::class)->current())
             ->orderBy('project_key')
             ->paginate(100);
 
@@ -65,6 +69,8 @@ class ProjectMembershipController extends Controller
 
     public function update(MembershipUpdateRequest $request, ProjectMembership $membership): MembershipResource
     {
+        $this->assertActiveTenant($membership);
+
         $data = $request->validated();
 
         if (array_key_exists('role', $data)) {
@@ -82,8 +88,24 @@ class ProjectMembershipController extends Controller
 
     public function destroy(ProjectMembership $membership): JsonResponse
     {
+        $this->assertActiveTenant($membership);
+
         $membership->delete();
 
         return response()->json(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * R30 — the implicit binding resolves by id with no tenant scope, so an
+     * admin operating in tenant A could mutate tenant B's membership rows
+     * by guessing ids. 404 (not 403) hides the row's existence, matching
+     * the v8.9.0 cross-tenant-membership posture.
+     */
+    private function assertActiveTenant(ProjectMembership $membership): void
+    {
+        abort_unless(
+            $membership->tenant_id === app(TenantContext::class)->current(),
+            Response::HTTP_NOT_FOUND,
+        );
     }
 }
