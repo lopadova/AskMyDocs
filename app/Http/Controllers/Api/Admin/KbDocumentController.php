@@ -14,7 +14,7 @@ use App\Models\KnowledgeDocument;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\DocumentDeleter;
-use App\Support\KbDiskResolver;
+use App\Support\KbDocumentFileLocator;
 use App\Support\KbPath;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -46,9 +46,10 @@ use Throwable;
  * the history endpoint must tolerate a null `doc_id` + `slug` (raw
  * non-canonical rows simply return an empty page).
  *
- * Disk reads (raw / download / print) use `KbDiskResolver::forProject()`
- * (R8) so per-project disks resolved in PR1 are honoured. `source_path`
- * is always normalised via {@see KbPath::normalize()} (R1).
+ * Disk reads (raw / download / print) resolve disk + path through
+ * {@see KbDocumentFileLocator} (R8) so per-project disks resolved in PR1
+ * are honoured. `source_path` is always normalised via
+ * {@see KbPath::normalize()} (R1).
  */
 class KbDocumentController extends Controller
 {
@@ -723,31 +724,17 @@ class KbDocumentController extends Controller
         return [$query, $count, $recent];
     }
 
+    /**
+     * Disk + path resolution lives in {@see KbDocumentFileLocator} so the
+     * bulk ZIP exporter shares the exact read-path semantics (R1 / R8).
+     */
     private function resolveDiskFor(KnowledgeDocument $document): string
     {
-        $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $stamped = $metadata['disk'] ?? null;
-        if (is_string($stamped) && $stamped !== '') {
-            return $stamped;
-        }
-
-        return KbDiskResolver::forProject($document->project_key);
+        return KbDocumentFileLocator::diskFor($document);
     }
 
-    /**
-     * Join the KB path prefix (KB_PATH_PREFIX, R8) with the document's
-     * normalised source_path. Matches the prefix resolution done by
-     * {@see DocumentDeleter::forceDelete()} so the same file that was
-     * written during ingest is the one we read now.
-     */
     private function fullPathFor(KnowledgeDocument $document, string $normalizedPath): string
     {
-        $metadata = is_array($document->metadata) ? $document->metadata : [];
-        $prefix = array_key_exists('prefix', $metadata)
-            ? (string) $metadata['prefix']
-            : (string) config('kb.sources.path_prefix', '');
-        $prefix = trim($prefix, '/');
-
-        return $prefix === '' ? $normalizedPath : $prefix.'/'.$normalizedPath;
+        return KbDocumentFileLocator::fullPathFor($document, $normalizedPath);
     }
 }
