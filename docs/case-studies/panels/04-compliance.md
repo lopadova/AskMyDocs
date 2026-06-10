@@ -1,6 +1,6 @@
 # Gruppo "Compliance"
 
-Il gruppo **Compliance** della sidebar admin raccoglie i tre pannelli che presidiano gli obblighi normativi della piattaforma: la conformità all'EU AI Act, la produzione di report di compliance trimestrali a prova di manomissione e la console di redazione/tokenizzazione dei dati personali (PII). Sono strumenti pensati per i ruoli di governance (admin, super-admin e, dove previsto, il DPO) e per i forniscono evidenze auditabili a revisori e autorità. Alcuni pannelli sono montati dietro pacchetti esterni e feature-flag: quando il flag è spento devono degradare in modo pulito (404/stato "non disponibile"), mai con un 500.
+Il gruppo **Compliance** della sidebar admin raccoglie i tre pannelli che presidiano gli obblighi normativi della piattaforma: la conformità all'EU AI Act, la produzione di report di compliance trimestrali a prova di manomissione e la console di redazione/tokenizzazione dei dati personali (PII). Sono strumenti pensati per i ruoli di governance (admin, super-admin e, dove previsto, il DPO) e forniscono evidenze auditabili a revisori e autorità. Alcuni pannelli sono montati dietro pacchetti esterni e feature-flag: quando il flag è spento devono degradare in modo pulito (404/stato "non disponibile"), mai con un 500.
 
 I tre pannelli sono definiti nel gruppo `compliance` di `frontend/src/components/shell/nav-config.ts` e instradati in `frontend/src/routes/index.tsx`.
 

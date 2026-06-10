@@ -75,14 +75,15 @@ configurate (`AI_EMBEDDINGS_PROVIDER` + relativa API key — l'ingest calcola gl
 embedding dei chunk); comandi lanciati dalla **root del progetto**.
 
 ```bash
-cd /Users/marco/www/AskMyDocs
+cd /path/to/AskMyDocs   # la root del repository
 docs/case-studies/ingest.sh
 ```
 
 Lo script [`ingest.sh`](ingest.sh), per ciascuna azienda:
 
-1. copia `data/<key>/*.md` → `storage/app/kb/case-studies/<key>/` (il disco
-   `kb` è la sorgente da cui legge l'ingestione);
+1. copia `data/<key>/*.md` sul **disco `kb`** in `<root>/<KB_PATH_PREFIX>/case-studies/<key>/`
+   (root e prefix risolti dalla config, non hard-coded; il disco `kb` è la
+   sorgente da cui legge l'ingestione, e lo script richiede un disco `local`);
 2. lancia `php artisan kb:ingest-folder case-studies/<key> --project=<key> --recursive --sync`;
 3. concede a **tutti gli utenti** la `ProjectMembership` sui tre progetti (così
    compaiono nel Project Switcher);
