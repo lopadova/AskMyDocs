@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
-import type { KbTreeMode, KbTreeNode } from '../admin.api';
+import type { KbTreeDocNode, KbTreeMode, KbTreeNode } from '../admin.api';
 import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
+import { ExplorerView } from './explorer/ExplorerView';
+import {
+    loadExplorerPrefs,
+    saveExplorerPrefs,
+    type ExplorerLayout,
+    type ExplorerPrefs,
+    type ExplorerTileSize,
+} from './explorer/explorer-prefs';
+import { resolveExistingPath } from './explorer/explorer-utils';
 import { ToastHost } from '../shared/Toast';
+
+type KbViewMode = 'tree' | 'explorer';
 
 /*
  * Phase G1 + G2 + G3 — KB Explorer shell.
@@ -29,9 +40,14 @@ import { ToastHost } from '../shared/Toast';
 
 const VALID_TABS: KbDetailTab[] = ['preview', 'source', 'meta', 'history', 'graph'];
 
-function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
+function parseInitialUrl(): {
+    docId: number | null;
+    tab: KbDetailTab;
+    view: KbViewMode;
+    path: string;
+} {
     if (typeof window === 'undefined') {
-        return { docId: null, tab: 'preview' };
+        return { docId: null, tab: 'preview', view: 'tree', path: '' };
     }
     const params = new URLSearchParams(window.location.search);
     const rawDoc = params.get('doc');
@@ -40,10 +56,12 @@ function parseInitialUrl(): { docId: number | null; tab: KbDetailTab } {
     const tab = (VALID_TABS as string[]).includes(rawTab ?? '')
         ? (rawTab as KbDetailTab)
         : 'preview';
-    return { docId, tab };
+    const view: KbViewMode = params.get('view') === 'explorer' ? 'explorer' : 'tree';
+    const path = params.get('path') ?? '';
+    return { docId, tab, view, path };
 }
 
-function syncUrl(docId: number | null, tab: KbDetailTab) {
+function syncUrl(docId: number | null, tab: KbDetailTab, view: KbViewMode, path: string) {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     if (docId === null) {
@@ -52,6 +70,16 @@ function syncUrl(docId: number | null, tab: KbDetailTab) {
         params.set('doc', String(docId));
     }
     params.set('tab', tab);
+    if (view === 'explorer') {
+        params.set('view', 'explorer');
+    } else {
+        params.delete('view');
+    }
+    if (view === 'explorer' && path !== '') {
+        params.set('path', path);
+    } else {
+        params.delete('path');
+    }
     const next = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState(null, '', next);
 }
@@ -68,6 +96,15 @@ export function KbView() {
     const [selectedDocId, setSelectedDocId] = useState<number | null>(initial.docId);
     const [activeTab, setActiveTab] = useState<KbDetailTab>(initial.tab);
 
+    // Explorer mode state. `view` + `path` deep-link via the URL;
+    // layout/size are per-operator prefs in localStorage. `focusedDocId`
+    // is the doc shown in the explorer preview pane (distinct from the
+    // tree's selectedDocId which drives the full detail view).
+    const [view, setView] = useState<KbViewMode>(initial.view);
+    const [path, setPath] = useState<string>(initial.path);
+    const [prefs, setPrefs] = useState<ExplorerPrefs>(() => loadExplorerPrefs());
+    const [focusedDocId, setFocusedDocId] = useState<number | null>(null);
+
     const treeQuery = useKbTree({
         project: project || null,
         mode,
@@ -81,12 +118,26 @@ export function KbView() {
     const projectsQuery = useKbProjects();
     const projectOptions = projectsQuery.data?.projects ?? [];
 
-    // Keep the URL in sync with (selectedDocId, activeTab). Runs on every
-    // state change — history.replaceState is cheap and idempotent, so
-    // this also covers the restore→trash toggle round-trip.
+    // Keep the URL in sync with (selectedDocId, activeTab, view, path).
+    // Runs on every state change — history.replaceState is cheap and
+    // idempotent, so this also covers the restore→trash toggle round-trip.
     useEffect(() => {
-        syncUrl(selectedDocId, activeTab);
-    }, [selectedDocId, activeTab]);
+        syncUrl(selectedDocId, activeTab, view, path);
+    }, [selectedDocId, activeTab, view, path]);
+
+    // R17 — when the tree refetches (e.g. a folder is emptied by a bulk
+    // delete) or a deep-link points at a path that never existed, snap
+    // the explorer to the nearest live ancestor instead of rendering a
+    // dead folder.
+    useEffect(() => {
+        if (view !== 'explorer' || !treeQuery.data) {
+            return;
+        }
+        const resolved = resolveExistingPath(treeQuery.data.tree, path);
+        if (resolved !== path) {
+            setPath(resolved);
+        }
+    }, [view, treeQuery.data, path]);
 
     const state: TreeState = treeQuery.isLoading
         ? 'loading'
@@ -100,12 +151,30 @@ export function KbView() {
         setSelectedPath(path);
         setSelectedNode(node);
         if (node !== null && node.type === 'doc') {
-            setSelectedDocId(node.meta.id);
-            // Default to preview when jumping to a new doc.
-            setActiveTab('preview');
-        } else {
+            if (view === 'explorer') {
+                // In explorer mode the tree drives the preview pane, not
+                // the full detail view.
+                setFocusedDocId(node.meta.id);
+            } else {
+                setSelectedDocId(node.meta.id);
+                // Default to preview when jumping to a new doc.
+                setActiveTab('preview');
+            }
+        } else if (view !== 'explorer') {
             setSelectedDocId(null);
         }
+    }
+
+    function handleOpenDoc(doc: KbTreeDocNode) {
+        setFocusedDocId(doc.meta.id);
+    }
+
+    function updatePrefs(next: Partial<ExplorerPrefs>) {
+        setPrefs((prev) => {
+            const merged = { ...prev, ...next };
+            saveExplorerPrefs(merged);
+            return merged;
+        });
     }
 
     function handleDeleted() {
@@ -153,9 +222,46 @@ export function KbView() {
                                 margin: 0,
                             }}
                         >
-                            Browse the canonical + raw document tree. Select a doc to preview it.
+                            Browse the canonical + raw document tree, or switch to the
+                            filesystem explorer to grid-browse, preview, and bulk-manage docs.
                         </p>
                     </div>
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                        }}
+                    >
+                        <div
+                            data-testid="kb-view-toggle"
+                            role="group"
+                            aria-label="View mode"
+                            style={{ display: 'flex', gap: 4 }}
+                        >
+                            <button
+                                type="button"
+                                data-testid="kb-view-toggle-tree"
+                                aria-label="Tree view"
+                                aria-pressed={view === 'tree'}
+                                className="focus-ring"
+                                onClick={() => setView('tree')}
+                                style={viewToggleStyle(view === 'tree')}
+                            >
+                                <Icon.List size={14} /> Tree
+                            </button>
+                            <button
+                                type="button"
+                                data-testid="kb-view-toggle-explorer"
+                                aria-label="Explorer view"
+                                aria-pressed={view === 'explorer'}
+                                className="focus-ring"
+                                onClick={() => setView('explorer')}
+                                style={viewToggleStyle(view === 'explorer')}
+                            >
+                                <Icon.Grid size={14} /> Explorer
+                            </button>
+                        </div>
                     <div
                         data-testid="kb-project-picker"
                         style={{
@@ -195,8 +301,47 @@ export function KbView() {
                             ))}
                         </select>
                     </div>
+                    </div>
                 </div>
 
+                {view === 'explorer' ? (
+                    <div
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(240px, 320px) 1fr',
+                            gap: 14,
+                            flex: 1,
+                            minHeight: 0,
+                        }}
+                    >
+                        <TreeView
+                            data={treeQuery.data}
+                            state={state}
+                            q={q}
+                            onQChange={setQ}
+                            mode={mode}
+                            onModeChange={setMode}
+                            withTrashed={withTrashed}
+                            onWithTrashedChange={setWithTrashed}
+                            selectedPath={selectedPath}
+                            onSelect={handleSelect}
+                            onFolderSelect={setPath}
+                        />
+                        <ExplorerView
+                            tree={treeQuery.data?.tree}
+                            state={state}
+                            path={path}
+                            onPathChange={setPath}
+                            q={q}
+                            layout={prefs.layout}
+                            size={prefs.size}
+                            onLayoutChange={(next: ExplorerLayout) => updatePrefs({ layout: next })}
+                            onSizeChange={(next: ExplorerTileSize) => updatePrefs({ size: next })}
+                            focusedDocId={focusedDocId}
+                            onOpenDoc={handleOpenDoc}
+                        />
+                    </div>
+                ) : (
                 <div
                     style={{
                         display: 'grid',
@@ -260,10 +405,26 @@ export function KbView() {
                         )}
                     </div>
                 </div>
+                )}
             </div>
             <ToastHost />
         </AdminShell>
     );
+}
+
+function viewToggleStyle(active: boolean) {
+    return {
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        padding: '6px 10px',
+        fontSize: 12,
+        border: '1px solid ' + (active ? 'var(--accent)' : 'var(--hairline)'),
+        background: active ? 'var(--grad-accent-soft)' : 'var(--bg-0)',
+        color: active ? 'var(--accent-fg)' : 'var(--fg-2)',
+        borderRadius: 8,
+        cursor: 'pointer',
+    } as const;
 }
 
 function EmptyDetail() {
