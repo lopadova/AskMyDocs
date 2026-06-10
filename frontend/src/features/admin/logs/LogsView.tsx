@@ -23,12 +23,19 @@ type LogsTab = 'chat' | 'audit' | 'app' | 'activity' | 'failed';
 
 const VALID_TABS: LogsTab[] = ['chat', 'audit', 'app', 'activity', 'failed'];
 
-const TABS: Array<{ id: LogsTab; label: string }> = [
+/*
+ * `global: true` marks tabs whose data is deployment-wide BY DESIGN and
+ * does not change with the topbar team switcher: the application log
+ * tail is one file per host, `activity_log` (spatie) and `failed_jobs`
+ * carry no tenant column. Chat Logs + Canonical Audit are tenant-scoped
+ * (LogViewerController applies the active tenant, R30).
+ */
+const TABS: Array<{ id: LogsTab; label: string; global?: boolean }> = [
     { id: 'chat', label: 'Chat Logs' },
     { id: 'audit', label: 'Canonical Audit' },
-    { id: 'app', label: 'Application' },
-    { id: 'activity', label: 'Activity' },
-    { id: 'failed', label: 'Failed Jobs' },
+    { id: 'app', label: 'Application', global: true },
+    { id: 'activity', label: 'Activity', global: true },
+    { id: 'failed', label: 'Failed Jobs', global: true },
 ];
 
 function parseInitialTab(): LogsTab {
@@ -121,6 +128,25 @@ export function LogsView() {
                                 }}
                             >
                                 {entry.label}
+                                {entry.global && (
+                                    <span
+                                        data-testid={`logs-tab-${entry.id}-global-badge`}
+                                        title="Deployment-wide data — not filtered by the selected team"
+                                        style={{
+                                            marginLeft: 6,
+                                            padding: '1px 6px',
+                                            fontSize: 9.5,
+                                            fontFamily: 'var(--font-mono)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.05em',
+                                            color: 'var(--fg-3)',
+                                            border: '1px solid var(--hairline)',
+                                            borderRadius: 999,
+                                        }}
+                                    >
+                                        global
+                                    </span>
+                                )}
                             </button>
                         );
                     })}
