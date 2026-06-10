@@ -8,6 +8,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Models\Message;
+use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -15,16 +16,24 @@ use Illuminate\Support\Facades\Schema;
 /**
  * Read-only admin metrics aggregation.
  *
- * Every method scopes by an optional `project_key` and a rolling window
- * in days. Queries are aggregated on the database side (COUNT, SUM, AVG,
- * GROUP BY) — never load-and-filter in PHP (R3). Soft-deleted documents
- * are automatically hidden by the SoftDeletes trait / AccessScopeScope
- * on the Eloquent reads; the raw table-count queries on `knowledge_*`
- * explicitly filter `deleted_at IS NULL` so R2 is honoured even for
- * non-Eloquent aggregates.
+ * Every method scopes by the ACTIVE TENANT (R30), an optional
+ * `project_key`, and a rolling window in days. Queries are aggregated on
+ * the database side (COUNT, SUM, AVG, GROUP BY) — never load-and-filter
+ * in PHP (R3). Soft-deleted documents are automatically hidden by the
+ * SoftDeletes trait / AccessScopeScope on the Eloquent reads; the raw
+ * table-count queries on `knowledge_*` explicitly filter
+ * `deleted_at IS NULL` so R2 is honoured even for non-Eloquent
+ * aggregates. The raw queries carry an explicit `tenant_id` filter for
+ * the same reason — `DB::table()` bypasses every Eloquent scope.
+ *
+ * Deliberately NOT tenant-scoped: `failed_jobs` / `jobs` (queue
+ * infrastructure is global) and `embedding_cache` (a cross-tenant
+ * reuse layer by design — see the EmbeddingCache model docblock).
  */
 class AdminMetricsService
 {
+    public function __construct(private readonly TenantContext $tenant) {}
+
     /**
      * Headline KPIs shown on the dashboard KPI strip.
      *
@@ -43,8 +52,11 @@ class AdminMetricsService
     public function kpiOverview(?string $projectKey = null, int $days = 7): array
     {
         $since = Carbon::now()->subDays(max(1, $days));
+        $tenantId = $this->tenant->current();
 
-        $docsQuery = DB::table('knowledge_documents')->whereNull('deleted_at');
+        $docsQuery = DB::table('knowledge_documents')
+            ->where('tenant_id', $tenantId)
+            ->whereNull('deleted_at');
         if ($projectKey !== null) {
             $docsQuery->where('project_key', $projectKey);
         }
@@ -63,6 +75,7 @@ class AdminMetricsService
                 '=',
                 'knowledge_documents.id'
             )
+            ->where('knowledge_documents.tenant_id', $tenantId)
             ->whereNull('knowledge_documents.deleted_at');
         if ($projectKey !== null) {
             $chunksQuery->where('knowledge_documents.project_key', $projectKey);
@@ -70,7 +83,9 @@ class AdminMetricsService
 
         $totalChunks = (int) $chunksQuery->count();
 
-        $chatQuery = DB::table('chat_logs')->where('created_at', '>=', $since);
+        $chatQuery = DB::table('chat_logs')
+            ->where('tenant_id', $tenantId)
+            ->where('created_at', '>=', $since);
         if ($projectKey !== null) {
             $chatQuery->where('project_key', $projectKey);
         }
@@ -126,6 +141,8 @@ class AdminMetricsService
                 ->where('created_at', '>=', $since);
         }
 
+        $query->where('tenant_id', $this->tenant->current());
+
         if ($projectKey !== null) {
             $query->where('project_key', $projectKey);
         }
@@ -152,6 +169,7 @@ class AdminMetricsService
                 COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
                 COALESCE(SUM(completion_tokens), 0) as completion_tokens,
                 COALESCE(SUM(total_tokens), 0) as total_tokens')
+            ->where('tenant_id', $this->tenant->current())
             ->where('created_at', '>=', $since);
 
         if ($projectKey !== null) {
@@ -177,16 +195,20 @@ class AdminMetricsService
     {
         $since = Carbon::now()->subDays(max(1, $days));
 
+        $tenantId = $this->tenant->current();
+
         $base = DB::table('messages')
+            ->where('tenant_id', $tenantId)
             ->where('role', 'assistant')
             ->where('created_at', '>=', $since);
 
         if ($projectKey !== null) {
             // messages table does not carry project_key directly; scope via
             // the owning conversation so project filters are honoured.
-            $base->whereIn('conversation_id', function ($sub) use ($projectKey) {
+            $base->whereIn('conversation_id', function ($sub) use ($projectKey, $tenantId) {
                 $sub->select('id')
                     ->from('conversations')
+                    ->where('tenant_id', $tenantId)
                     ->where('project_key', $projectKey);
             });
         }
@@ -221,6 +243,7 @@ class AdminMetricsService
 
         $query = DB::table('chat_logs')
             ->selectRaw('project_key, COUNT(*) as cnt')
+            ->where('tenant_id', $this->tenant->current())
             ->where('created_at', '>=', $since)
             ->whereNotNull('project_key');
 
@@ -261,8 +284,10 @@ class AdminMetricsService
         // scoped to `hr-portal` would see audit rows and chats from
         // every other tenant mixed in.
         $half = max(1, (int) ceil($limit / 2));
+        $tenantId = $this->tenant->current();
 
         $chatsQuery = DB::table('chat_logs as cl')
+            ->where('cl.tenant_id', $tenantId)
             ->leftJoin('users as u', 'u.id', '=', 'cl.user_id')
             ->select([
                 'cl.id',
@@ -295,7 +320,8 @@ class AdminMetricsService
 
         $audits = [];
         if (Schema::hasTable('kb_canonical_audit')) {
-            $auditQuery = DB::table('kb_canonical_audit');
+            $auditQuery = DB::table('kb_canonical_audit')
+                ->where('tenant_id', $tenantId);
             if ($projectKey !== null) {
                 $auditQuery->where('project_key', $projectKey);
             }
@@ -323,6 +349,10 @@ class AdminMetricsService
 
     private function cacheHitRate(Carbon $since): float
     {
+        // No tenant filter on purpose: embedding_cache is a cross-tenant
+        // reuse layer keyed by (text_hash, provider, model) — see the
+        // EmbeddingCache model docblock. The hit-rate KPI is therefore a
+        // deployment-wide figure, not a per-team one.
         if (! Schema::hasTable('embedding_cache')) {
             return 0.0;
         }
@@ -352,6 +382,7 @@ class AdminMetricsService
                 '=',
                 'knowledge_documents.id'
             )
+            ->where('knowledge_documents.tenant_id', $this->tenant->current())
             ->whereNull('knowledge_documents.deleted_at');
 
         if ($projectKey !== null) {
