@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
-import { PROJECTS } from '../../lib/seed';
+import { useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
@@ -79,9 +79,17 @@ export function ChatView(): ReactNode {
         }
     }, [params.conversationId, activeId, setActive]);
 
-    const project = PROJECTS[0];
-    const projectLabel = project?.label ?? 'default';
-    const projectKey = project?.key ?? null;
+    // Active project = first project the user can access in the ACTIVE
+    // TEAM (team-store, synced from /api/auth/me `teams`). Replaces the
+    // old `PROJECTS[0]` seed literal (R18), which pinned every chat to
+    // 'hr-portal' regardless of the user's real memberships or team.
+    // Null (no membership in this team) degrades to a project-less
+    // conversation, same as the BE contract has always allowed.
+    const teams = useTeamStore((s) => s.teams);
+    const currentTeam = useTeamStore((s) => s.currentTeam);
+    const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
+    const projectKey = activeTeam?.projects[0]?.project_key ?? null;
+    const projectLabel = projectKey ?? 'default';
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
