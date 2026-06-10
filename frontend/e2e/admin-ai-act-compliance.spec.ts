@@ -8,7 +8,7 @@ seededTest.describe('Admin AI Act compliance scaffold', () => {
         // The secondary AdminShell rail is gone; every section is reached from
         // the single primary sidebar now.
         await page.getByTestId('sidebar-nav-ai-act-compliance').click();
-        await expect(page).toHaveURL(/\/app\/admin\/ai-act-compliance$/);
+        await expect(page).toHaveURL(/\/admin\/ai-act-compliance$/);
         await expect(page.getByTestId('admin-ai-act-compliance')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-ai-act-compliance')).toHaveAttribute('data-state', 'ready');
         await expect(page.getByTestId('admin-ai-act-compliance-title')).toHaveText('AI Act compliance');

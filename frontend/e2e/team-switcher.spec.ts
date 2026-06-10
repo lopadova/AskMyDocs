@@ -13,21 +13,41 @@ import { test } from './fixtures';
  * a leaked cross-tenant payload cannot produce the expected number
  * by coincidence.
  *
+ * Each team carries a unique routing hash (BE: App\Support\TeamHash =
+ * substr(sha256(tenant_id), 0, 12)); every authenticated URL lives
+ * under /app/{teamHash}/…. These are the deterministic values for the
+ * two seeded tenants.
+ *
  * R13: every scenario hits the real backend with real seeded data —
  * zero `page.route` interception. The forged-header scenario is a
  * REAL request the middleware rejects, not an injected response.
  */
 
+const DEFAULT_HASH = '37a8eec1ce19';
+const ACME_HASH = '822b33ad87c1';
+
 test.describe('Team switcher', () => {
-    test('switching team re-scopes the dashboard KPIs', async ({ page }) => {
+    test('a legacy hash-less URL redirects under the active team hash', async ({ page }) => {
+        // /app/admin/kb has no team segment (old bookmark / external link).
+        // TeamGate re-prefixes it with the bootstrap team's hash.
+        await page.goto('/app/admin/kb');
+        await expect(page.getByTestId('kb-view')).toBeVisible({ timeout: 15_000 });
+        await expect(page).toHaveURL(new RegExp(`/app/${DEFAULT_HASH}/admin/kb`));
+    });
+
+    test('switching team re-scopes the dashboard KPIs and rewrites the URL hash', async ({
+        page,
+    }) => {
         await page.goto('/app/admin');
 
         const kpiStrip = page.getByTestId('kpi-strip');
         await expect(kpiStrip).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
 
-        // Bootstrap team is `default` (first in /api/auth/me ordering).
+        // Bootstrap team is `default` (first in /api/auth/me ordering); its
+        // hash is in the URL.
         const trigger = page.getByTestId('team-switcher-trigger');
         await expect(trigger).toHaveText(/Default/);
+        await expect(page).toHaveURL(new RegExp(`/app/${DEFAULT_HASH}/admin`));
         await expect(page.getByTestId('kpi-card-chats')).toContainText('5');
         await expect(page.getByTestId('kpi-card-docs')).toContainText('3');
 
@@ -41,10 +61,24 @@ test.describe('Team switcher', () => {
         );
         await page.getByTestId('team-switcher-item-acme').click();
 
-        // The whole dashboard refetches under X-Tenant-Id: acme.
+        // The URL segment flips to acme's hash and the whole dashboard
+        // refetches under X-Tenant-Id: acme.
         await expect(trigger).toHaveText(/Acme Corp/);
+        await expect(page).toHaveURL(new RegExp(`/app/${ACME_HASH}/admin`));
         await expect(kpiStrip).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         await expect(page.getByTestId('kpi-card-chats')).toContainText('2');
+        await expect(page.getByTestId('kpi-card-docs')).toContainText('2');
+    });
+
+    test('deep-linking another team hash switches into it directly', async ({ page }) => {
+        // The URL is the source of truth: landing on acme's hash makes
+        // acme the active team without touching the switcher.
+        await page.goto(`/app/${ACME_HASH}/admin`);
+
+        const trigger = page.getByTestId('team-switcher-trigger');
+        await expect(trigger).toHaveText(/Acme Corp/, { timeout: 15_000 });
+        const kpiStrip = page.getByTestId('kpi-strip');
+        await expect(kpiStrip).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         await expect(page.getByTestId('kpi-card-docs')).toContainText('2');
     });
 
@@ -68,20 +102,15 @@ test.describe('Team switcher', () => {
         await expect(page.getByTestId('kpi-card-chats')).toContainText('2');
     });
 
-    test('switching team re-scopes the KB explorer and the chat logs', async ({ page }) => {
-        await page.goto('/app/admin');
-
-        const trigger = page.getByTestId('team-switcher-trigger');
-        await expect(trigger).toHaveText(/Default/, { timeout: 15_000 });
-        await trigger.click();
-        await page.getByTestId('team-switcher-item-acme').click();
-        await expect(trigger).toHaveText(/Acme Corp/);
-
-        // KB explorer: the project picker derives its options from the
-        // tenant-scoped GET /api/admin/kb/projects (R18) — under acme it
-        // must offer ONLY acme-kb (hr-portal / engineering live in
-        // `default`). Full navigation also re-exercises persistence.
-        await page.goto('/app/admin/kb');
+    test('acme-hash URLs scope the KB explorer and the chat logs to acme', async ({ page }) => {
+        // KB explorer under acme's hash: the project picker derives its
+        // options from the tenant-scoped GET /api/admin/kb/projects (R18)
+        // — under acme it must offer ONLY acme-kb (hr-portal / engineering
+        // live in `default`).
+        await page.goto(`/app/${ACME_HASH}/admin/kb`);
+        await expect(page.getByTestId('team-switcher-trigger')).toHaveText(/Acme Corp/, {
+            timeout: 15_000,
+        });
         const select = page.getByTestId('kb-project-select');
         await expect(select).toBeVisible({ timeout: 15_000 });
         await expect(select.locator('option')).toHaveText(['All projects', 'acme-kb'], {
@@ -89,8 +118,9 @@ test.describe('Team switcher', () => {
         });
 
         // Logs → Chat Logs tab: exactly the 2 seeded acme rows; the 5
-        // default-tenant rows must not surface.
-        await page.goto('/app/admin/logs?tab=chat');
+        // default-tenant rows must not surface. Query string survives the
+        // team-hash routing.
+        await page.goto(`/app/${ACME_HASH}/admin/logs?tab=chat`);
         await expect(page.getByTestId('chat-logs-table')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('[data-testid^="chat-log-row-"]')).toHaveCount(2);
 

@@ -54,7 +54,7 @@ seededTest.describe('Admin Flows — admin (mount + nav)', () => {
         // data-testid="admin-flows-host" is unconditional —
         // independent of the iframe load state — so the assertion
         // doesn't race the iframe network roundtrip.
-        await expect(page).toHaveURL(/\/app\/admin\/flows$/);
+        await expect(page).toHaveURL(/\/admin\/flows$/);
         await expect(page.getByTestId('admin-flows-host')).toBeVisible({ timeout: 15_000 });
 
         // Phase 2: the cockpit is no longer iframe-embedded (it brought its

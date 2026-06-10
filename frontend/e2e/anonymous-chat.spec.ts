@@ -29,7 +29,7 @@ test.describe('Anonymous chat', () => {
 
         await page.getByTestId('chat-new-anonymous-chat').click();
 
-        await expect(page).toHaveURL(/\/app\/chat\/anonymous$/);
+        await expect(page).toHaveURL(/\/chat\/anonymous$/);
         const view = page.getByTestId('anonymous-chat-view');
         await expect(view).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         await expect(page.getByTestId('anonymous-chat-banner')).toBeVisible();

@@ -130,7 +130,7 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
         //    is authorized for /app/admin/kb.)
         await expect(page.getByTestId('chat-citation-0')).toHaveAttribute('data-openable', 'true');
         await page.getByTestId('chat-citation-0').click();
-        await expect(page).toHaveURL(/\/app\/admin\/kb\?.*doc=\d+/, { timeout: 15_000 });
+        await expect(page).toHaveURL(/\/admin\/kb\?.*doc=\d+/, { timeout: 15_000 });
         await expect(page.getByTestId('kb-detail')).toBeVisible({ timeout: 15_000 });
     });
 });

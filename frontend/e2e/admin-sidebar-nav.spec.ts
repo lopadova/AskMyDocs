@@ -20,12 +20,15 @@ import { test as seededTest } from './fixtures';
  * All tests hit the real backend with seeded DemoSeeder data (R13 — no
  * internal-route interception).
  */
+// URL patterns match the SUFFIX (not the `/app/{teamHash}` prefix) so
+// they stay valid under the per-team routing introduced in the team
+// switcher work — every authenticated URL is /app/{teamHash}/admin/….
 const SECTIONS = [
-    { testid: 'sidebar-nav-dashboard', url: /\/app\/admin$/, heading: 'Dashboard' },
-    { testid: 'sidebar-nav-kb', url: /\/app\/admin\/kb/, heading: 'Knowledge Base' },
-    { testid: 'sidebar-nav-insights', url: /\/app\/admin\/insights$/, heading: 'AI Insights' },
-    { testid: 'sidebar-nav-users', url: /\/app\/admin\/users$/, heading: 'Users' },
-    { testid: 'sidebar-nav-maintenance', url: /\/app\/admin\/maintenance$/, heading: 'Maintenance' },
+    { testid: 'sidebar-nav-dashboard', url: /\/admin$/, heading: 'Dashboard' },
+    { testid: 'sidebar-nav-kb', url: /\/admin\/kb/, heading: 'Knowledge Base' },
+    { testid: 'sidebar-nav-insights', url: /\/admin\/insights$/, heading: 'AI Insights' },
+    { testid: 'sidebar-nav-users', url: /\/admin\/users$/, heading: 'Users' },
+    { testid: 'sidebar-nav-maintenance', url: /\/admin\/maintenance$/, heading: 'Maintenance' },
 ] as const;
 
 seededTest.describe('Primary sidebar links to the real admin views', () => {
@@ -51,11 +54,11 @@ seededTest.describe('Primary sidebar links to the real admin views', () => {
 
     seededTest('the old placeholder paths redirect to the real admin views', async ({ page }) => {
         for (const [from, expected] of [
-            ['/app/dashboard', /\/app\/admin$/],
-            ['/app/kb', /\/app\/admin\/kb/],
-            ['/app/insights', /\/app\/admin\/insights$/],
-            ['/app/users', /\/app\/admin\/users$/],
-            ['/app/maintenance', /\/app\/admin\/maintenance$/],
+            ['/app/dashboard', /\/admin$/],
+            ['/app/kb', /\/admin\/kb/],
+            ['/app/insights', /\/admin\/insights$/],
+            ['/app/users', /\/admin\/users$/],
+            ['/app/maintenance', /\/admin\/maintenance$/],
         ] as const) {
             await page.goto(from);
             await expect(page).toHaveURL(expected, { timeout: 15_000 });
@@ -72,7 +75,7 @@ seededTest.describe('Unified sidebar — newly-surfaced sections', () => {
             await expect(page.getByTestId('sidebar-nav-roles')).toBeVisible({ timeout: 15_000 });
 
             await page.getByTestId('sidebar-nav-roles').click();
-            await expect(page).toHaveURL(/\/app\/admin\/roles$/);
+            await expect(page).toHaveURL(/\/admin\/roles$/);
             await expect(page.getByTestId('sidebar-nav-roles')).toHaveAttribute('aria-current', 'page');
             await expect(page.getByTestId('admin-shell')).toBeVisible();
         },
