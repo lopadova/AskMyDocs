@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b frontend/tsconfig.json && vite build",
+    "build": "tsc -b frontend/tsconfig.json && vite build && vite build --config vite.widget.config.ts",
     "build:widget": "vite build --config vite.widget.config.ts",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",

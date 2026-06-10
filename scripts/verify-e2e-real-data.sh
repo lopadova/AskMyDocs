@@ -30,6 +30,11 @@ TARGET_GLOB="${1:-frontend/e2e}"
 INTERNAL_PATTERNS=(
   '/api/admin/'
   '/api/kb/'
+  '/api/widget/'        # KITT embeddable widget — public key-based API; the
+                        # agentic E2E drives the real orchestrator/executor,
+                        # so any /api/widget/* interception must carry the
+                        # `R13: failure injection` marker (e.g. the 401
+                        # key-rejected case in widget.spec.ts).
   '/api/auth/'
   '/api/me/'             # v8.0.1 — per-user self-service endpoints (chat-preferences, etc.)
   '/api/notifications'   # v8.0/W1.4 — per-user notification feed

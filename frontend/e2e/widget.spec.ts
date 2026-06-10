@@ -90,79 +90,19 @@ test.describe('KITT widget — chat embeddabile', () => {
 });
 
 /*
- * M4.14 — Scenari agentici completi: multi-step DOM (type + click) e
- * artifact BE (search_knowledge_base → ui-data-table).
+ * M4.14 — Scenari agentici end-to-end contro il VERO backend (R13).
  *
- * Il FakeProvider non emette tool_call, quindi intercettiamo le risposte
- * API con page.route() per simulare il comportamento agentico del LLM.
- * Il resto (snapshot, executor DOM, bridge) gira realmente nel browser.
+ * Con AI_PROVIDER=fake il FakeProvider emette una sequenza di tool_call
+ * SCRIPTATA (vedi app/Ai/Providers/FakeProvider::scriptToolCalls):
+ *   - "compila il profilo" → type(full-name) → click(submit) → report_done;
+ *   - "policy / remote work" → search_knowledge_base (tool BE) → risposta.
+ * NESSUNA rotta interna /api/widget/* è stubbata: snapshot, orchestratore,
+ * executor DOM, bridge e /exec-tool girano realmente sul backend seeded.
+ * È esattamente questo che cattura le regressioni del wire-format agentico
+ * (lo stub precedente le nascondeva, R13).
  */
-test.describe('KITT widget — scenario agentico M4', () => {
-    /** Costruisce la risposta JSON per /sessions/start con tool_call DOM. */
-    function toolCallStart(sessionId: string, tool: string, args: Record<string, unknown>, botMessage = '') {
-        return {
-            type: 'tool_call',
-            session: { id: sessionId, status: 'waiting_tool' },
-            tool_call: { tool, args, confirmation_required: false, is_be_tool: false },
-            bot_message: botMessage,
-        };
-    }
-
-    /** Costruisce la risposta JSON per /sessions/{id}/step con tool_call DOM. */
-    function toolCallStep(tool: string, args: Record<string, unknown>, botMessage = '') {
-        return {
-            type: 'tool_call',
-            session: { status: 'waiting_tool' },
-            tool_call: { tool, args, confirmation_required: false, is_be_tool: false },
-            bot_message: botMessage,
-        };
-    }
-
-    /** Costruisce la risposta JSON per report_done (chiusura sessione). */
-    function reportDoneStep(summary: string) {
-        return {
-            type: 'tool_call',
-            session: { status: 'completed' },
-            tool_call: { tool: 'report_done', args: { summary }, confirmation_required: false, is_be_tool: false },
-            bot_message: '',
-        };
-    }
-
-    test('compila il campo nome e salva: scenario agentico multi-step (type → click → report_done)', async ({ page }) => {
-        const sessionId = 'sess-agentico-001';
-        let stepCount = 0;
-
-        // Intercetta /start → il "LLM" chiede di compilare il campo full-name
-        await page.route('**/api/widget/sessions/start', (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify(toolCallStart(
-                    sessionId,
-                    'type',
-                    { field: 'full-name', value: 'Mario Rossi' },
-                    'Compilo il campo nome per te.',
-                )),
-            }),
-        );
-
-        // Intercetta /step: turno 1 → click submit, turno 2 → report_done
-        await page.route('**/api/widget/sessions/*/step', (route) => {
-            stepCount++;
-            if (stepCount === 1) {
-                return route.fulfill({
-                    status: 200,
-                    contentType: 'application/json',
-                    body: JSON.stringify(toolCallStep('click', { target: 'submit' }, 'Ora clicco su Salva profilo.')),
-                });
-            }
-            return route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify(reportDoneStep('Profilo compilato e salvato con successo.')),
-            });
-        });
-
+test.describe('KITT widget — scenario agentico M4 (dati reali)', () => {
+    test('compila il campo nome e salva: type → click → report_done (orchestratore reale)', async ({ page }) => {
         await page.goto('/widget-demo');
 
         const launcher = page.getByTestId('askmydocs-widget-launcher');
@@ -172,83 +112,39 @@ test.describe('KITT widget — scenario agentico M4', () => {
         const panel = page.getByTestId('askmydocs-widget-panel');
         await expect(panel).toHaveAttribute('data-open', 'true');
 
-        // Invia il messaggio utente che innesca il loop agentico
+        // "compila il profilo" innesca lo script agentico del FakeProvider.
         await page.getByTestId('askmydocs-widget-input').fill('Compila il profilo per me');
         await page.getByTestId('askmydocs-widget-send').click();
 
-        // Verifica che il campo sia stato compilato dall'executor (DOM reale)
-        await expect(page.locator('#full-name')).toHaveValue('Mario Rossi', { timeout: 10_000 });
-
-        // Verifica che il submit sia stato cliccato → il form mostra "Form inviato"
-        await expect(page.locator('#demo-result')).toContainText('Form inviato', { timeout: 10_000 });
-
-        // La sessione deve terminare (report_done) → panel torna idle
+        // L'executor DOM reale ha scritto nel campo full-name…
+        await expect(page.locator('#full-name')).toHaveValue('Mario Rossi', { timeout: 15_000 });
+        // …e cliccato Salva → il form della pagina ospite mostra "Form inviato".
+        await expect(page.locator('#demo-result')).toContainText('Form inviato', { timeout: 15_000 });
+        // report_done chiude il turno → panel torna idle.
         await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
     });
 
-    test('tool BE search_knowledge_base ritorna artifact ui-data-table nella chat', async ({ page }) => {
-        const sessionId = 'sess-artifact-001';
-
-        // Intercetta /start → il "LLM" chiama search_knowledge_base (BE tool)
-        await page.route('**/api/widget/sessions/start', (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    type: 'tool_call',
-                    session: { id: sessionId, status: 'waiting_tool' },
-                    tool_call: {
-                        tool: 'search_knowledge_base',
-                        args: { query: 'remote work policy' },
-                        confirmation_required: false,
-                        is_be_tool: true,
-                    },
-                    bot_message: 'Cerco nella knowledge base per te.',
-                }),
-            }),
-        );
-
-        // Intercetta /exec-tool → ritorna artifact ui-data-table
-        await page.route('**/api/widget/sessions/*/exec-tool', (route) =>
-            route.fulfill({
-                status: 200,
-                contentType: 'application/json',
-                body: JSON.stringify({
-                    artifact: {
-                        componentType: 'ui-data-table',
-                        componentProps: {
-                            columns: [
-                                { key: 'title', label: 'Titolo' },
-                                { key: 'source', label: 'Fonte' },
-                            ],
-                            rows: [
-                                { title: 'Remote Work Policy', source: 'HR Handbook' },
-                                { title: 'WFH Guidelines', source: 'IT Security' },
-                            ],
-                        },
-                    },
-                    has_results: true,
-                    interaction_mode: 'selection',
-                }),
-            }),
-        );
-
+    test('search_knowledge_base: il tool BE reale ritorna un artifact renderizzato in chat', async ({ page }) => {
         await page.goto('/widget-demo');
 
         const launcher = page.getByTestId('askmydocs-widget-launcher');
         await expect(launcher).toBeVisible({ timeout: 15_000 });
         await launcher.click();
 
-        // Invia il messaggio utente che innesca la ricerca
+        const panel = page.getByTestId('askmydocs-widget-panel');
+        await expect(panel).toHaveAttribute('data-open', 'true');
+
+        // "policy / remote work" innesca search_knowledge_base (tool BE): il
+        // widget chiama il VERO /api/widget/sessions/{id}/exec-tool, che esegue
+        // SearchKnowledgeBaseTool sulla retrieval reale e ritorna un artifact
+        // (data-table con risultati, o alert se la KB del progetto demo è
+        // vuota). In entrambi i casi l'artifact REALE viene renderizzato in chat.
         await page.getByTestId('askmydocs-widget-input').fill('Qual è la policy sul remote work?');
         await page.getByTestId('askmydocs-widget-send').click();
 
-        // Verifica che l'artifact ui-data-table sia renderizzato nella chat
-        // UiArtifactRenderer crea un wrapper con classe amd-artifact--ui-data-table
-        const artifact = page.locator('.amd-artifact--ui-data-table').first();
+        const artifact = page.locator('.amd-artifact').first();
         await expect(artifact).toBeVisible({ timeout: 15_000 });
-
-        // Verifica che i dati del artifact siano visibili (titolo del documento)
-        await expect(artifact).toContainText('Remote Work Policy', { timeout: 10_000 });
+        // Il turno si chiude con la risposta testuale → panel idle.
+        await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
     });
 });
