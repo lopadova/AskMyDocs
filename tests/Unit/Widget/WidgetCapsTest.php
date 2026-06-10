@@ -76,6 +76,46 @@ final class WidgetCapsTest extends TestCase
         $this->assertTrue(true);
     }
 
+    // ─── Snapshot byte cap (#23) ───────────────────────────────────
+
+    public function test_snapshot_exceeding_byte_cap_returns_422(): void
+    {
+        // Conteggi conformi (un solo field) ma stringa enorme: passa i count cap,
+        // supera il byte cap → 422 snapshot_too_large (mai 200 muto, R14).
+        config(['widget.snapshot_max_bytes' => 1024]);
+
+        $snapshot = $this->validSnapshot();
+        $snapshot['fields'] = [
+            ['name' => 'big', 'label' => 'Big', 'type' => 'text', 'value' => str_repeat('x', 4000)],
+        ];
+
+        $response = $this->withHeaders([
+            'X-Widget-Key' => $this->key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->postJson('/api/widget/sessions/start', [
+            'snapshot' => $snapshot,
+            'message' => 'ciao',
+        ]);
+
+        $response->assertStatus(422)->assertJsonPath('error', 'snapshot_too_large');
+    }
+
+    public function test_snapshot_within_byte_cap_is_accepted(): void
+    {
+        // OFF/ON entrambi gli stati (R43): sotto il cap il path procede (non 422 size).
+        config(['widget.snapshot_max_bytes' => 262144]);
+
+        $response = $this->withHeaders([
+            'X-Widget-Key' => $this->key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])->postJson('/api/widget/sessions/start', [
+            'snapshot' => $this->validSnapshot(),
+            'message' => 'ciao',
+        ]);
+
+        $this->assertNotSame('snapshot_too_large', $response->json('error'));
+    }
+
     // ─── Step cap ──────────────────────────────────────────────────
 
     public function test_session_step_count_at_cap_triggers_blocked(): void

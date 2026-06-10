@@ -62,6 +62,21 @@ final class WidgetSnapshotValidator
         foreach (self::OUTLINE_CAPS as $key => $cap) {
             $this->assertCount($outline[$key] ?? [], $cap, "page_outline.{$key}");
         }
+
+        // #23 — i cap di conteggio NON limitano la dimensione: 500 field con
+        // stringhe da molti KB passano ma fanno esplodere il prompt-token budget
+        // e gonfiano la persistenza longText ad ogni turno. Cap totale sui byte
+        // dello snapshot serializzato (difesa in profondità lato server).
+        $maxBytes = $this->snapshotMaxBytes();
+        if ($maxBytes > 0) {
+            $encoded = json_encode($snapshot);
+            $size = $encoded !== false ? strlen($encoded) : 0;
+            if ($size > $maxBytes) {
+                throw new InvalidArgumentException(
+                    "Snapshot exceeds the maximum size of {$maxBytes} bytes (got {$size})."
+                );
+            }
+        }
     }
 
     /**
@@ -186,38 +201,14 @@ final class WidgetSnapshotValidator
     public function enforceSensitiveNull(array $snapshot): array
     {
         if (is_array($snapshot['fields'] ?? null)) {
-            $snapshot['fields'] = array_map(function (mixed $field): mixed {
-                if (! is_array($field)) {
-                    return $field;
-                }
-
-                // Se il campo è marcato sensitive e ha un value non-null, forza a null
-                if (! empty($field['sensitive']) && array_key_exists('value', $field) && $field['value'] !== null) {
-                    $field['value'] = null;
-                }
-
-                return $field;
-            }, $snapshot['fields']);
+            $snapshot['fields'] = $this->nullSensitiveValues($snapshot['fields']);
         }
 
-        // Controlla anche regions che potrebbero contenere sotto-campi sensitive
+        // Anche regions[].fields possono contenere sotto-campi sensitive.
         if (is_array($snapshot['regions'] ?? null)) {
             $snapshot['regions'] = array_map(function (mixed $region): mixed {
-                if (! is_array($region)) {
-                    return $region;
-                }
-
-                if (is_array($region['fields'] ?? null)) {
-                    $region['fields'] = array_map(function (mixed $field): mixed {
-                        if (! is_array($field)) {
-                            return $field;
-                        }
-                        if (! empty($field['sensitive']) && array_key_exists('value', $field) && $field['value'] !== null) {
-                            $field['value'] = null;
-                        }
-
-                        return $field;
-                    }, $region['fields']);
+                if (is_array($region) && is_array($region['fields'] ?? null)) {
+                    $region['fields'] = $this->nullSensitiveValues($region['fields']);
                 }
 
                 return $region;
@@ -225,6 +216,42 @@ final class WidgetSnapshotValidator
         }
 
         return $snapshot;
+    }
+
+    /**
+     * #3 — Annulla il value di OGNI campo sensibile. Sensibile = marcato
+     * `sensitive` dal client OPPURE (difesa in profondità: il BE non si fida
+     * del flag del client) di `type` password/hidden. Così un campo password
+     * non marcato dal FE non persiste comunque il valore in chiaro nel prompt
+     * LLM o negli step.
+     *
+     * @param  list<mixed>  $fields
+     * @return list<mixed>
+     */
+    private function nullSensitiveValues(array $fields): array
+    {
+        return array_map(function (mixed $field): mixed {
+            if (! is_array($field)) {
+                return $field;
+            }
+            if ($this->isSensitiveField($field) && array_key_exists('value', $field) && $field['value'] !== null) {
+                $field['value'] = null;
+            }
+
+            return $field;
+        }, $fields);
+    }
+
+    /**
+     * @param  array<string, mixed>  $field
+     */
+    private function isSensitiveField(array $field): bool
+    {
+        if (! empty($field['sensitive'])) {
+            return true;
+        }
+
+        return in_array(strtolower((string) ($field['type'] ?? '')), ['password', 'hidden'], true);
     }
 
     /**
@@ -282,6 +309,20 @@ final class WidgetSnapshotValidator
         }
 
         return $outline;
+    }
+
+    /**
+     * Cap byte dello snapshot (#23). config() richiede il container Laravel;
+     * alcuni unit test istanziano il validator a mano (PHPUnit\Framework\TestCase
+     * senza app bootstrap) → fallback sicuro al default.
+     */
+    private function snapshotMaxBytes(): int
+    {
+        try {
+            return (int) config('widget.snapshot_max_bytes', 262144);
+        } catch (\Throwable) {
+            return 262144;
+        }
     }
 
     private function assertCount(mixed $value, int $cap, string $label): void

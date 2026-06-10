@@ -331,6 +331,38 @@ final class WidgetToolValidatorTest extends TestCase
         $this->assertFalse($result['ok']);
     }
 
+    /**
+     * #9 — open redirect via slash-backslash: i browser normalizzano '\' → '/'
+     * per http(s), quindi '/\evil.com' diventa '//evil.com' cross-origin. Deve
+     * essere rifiutato come una protocol-relative, non passare come path relativo.
+     *
+     * @param  string  $url
+     */
+    #[Test]
+    #[\PHPUnit\Framework\Attributes\DataProvider('backslashOpenRedirectUrls')]
+    public function navigate_to_rejects_backslash_open_redirect(string $url): void
+    {
+        $result = $this->validator->validate(
+            'navigate_to', ['url' => $url],
+            $this->baseSnapshot(),
+            $this->allToolsEnabled(),
+            ['https://trusted.example.com'],
+        );
+        $this->assertFalse($result['ok'], "URL '{$url}' should be rejected as an open redirect.");
+    }
+
+    /** @return list<array{string}> */
+    public static function backslashOpenRedirectUrls(): array
+    {
+        return [
+            ['/\\evil.com'],
+            ['/%5cevil.com'],
+            ['/%5Cevil.com'],
+            ['\\\\evil.com'],
+            ['/\\/evil.com'],
+        ];
+    }
+
     // ── M5.11: navigate_to dangerous schemes (R19) ──────────────────────────
 
     #[Test]

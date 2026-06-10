@@ -208,7 +208,12 @@ Route::get('/healthz', fn () => response('ok', 200, ['Content-Type' => 'text/pla
 | a local/testing così non è esposta in produzione.
 |
 */
-if (app()->environment(['local', 'testing'])) {
+// #44 — `testing` (E2E) monta sempre la demo; in `local` serve il flag
+// ESPLICITO widget.demo_enabled (default OFF) così uno staging box lasciato a
+// APP_ENV=local non conia una credenziale attiva per visitatori anonimi.
+$widgetDemoAllowed = app()->environment('testing')
+    || (app()->environment('local') && (bool) config('widget.demo_enabled'));
+if ($widgetDemoAllowed) {
     Route::get('/widget-demo', function () {
         $key = \App\Models\WidgetKey::firstOrCreate(
             ['public_key' => 'pk_demo_local'],

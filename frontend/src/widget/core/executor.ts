@@ -206,6 +206,12 @@ export class Executor {
         if (!input || input instanceof HTMLSelectElement) {
             return fail('type', `Field "${field}" not found or not typeable.`);
         }
+        // #2 — non scrivere MAI in campi credenziali/nascosti, anche se il server
+        // lo chiede: previene il pre-fill programmatico di password/hidden da
+        // output LLM prompt-injected.
+        if (input instanceof HTMLInputElement && (input.type === 'password' || input.type === 'hidden')) {
+            return fail('type', `Field "${field}" is a sensitive input and cannot be typed into.`);
+        }
         input.focus();
         input.value = append ? input.value + value : value;
         input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -265,17 +271,36 @@ export class Executor {
         if (url === '') {
             return fail('navigate_to', 'Empty URL.');
         }
-        // Il backend ha già validato l'allowlist; qui eseguiamo soltanto.
-        location.href = url;
+        // #9 — difesa in profondità client-side (il backend valida l'allowlist
+        // d'origine, ma non ci fidiamo del solo backend). Rifiuta gli URL
+        // protocol-relative, incluso '/\evil.com' che i browser normalizzano in
+        // '//evil.com' (open redirect cross-origin), e gli schemi non-http(s).
+        const probe = url.replace(/\\/g, '/').replace(/%5c/gi, '/');
+        if (probe.startsWith('//')) {
+            return fail('navigate_to', 'Protocol-relative navigation is not allowed.');
+        }
+        let parsed: URL;
+        try {
+            parsed = new URL(url, location.href);
+        } catch {
+            return fail('navigate_to', `Invalid URL "${url}".`);
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return fail('navigate_to', 'Only http(s) navigation is allowed.');
+        }
+        location.href = parsed.toString();
 
-        return ok('navigate_to', { actual: 'navigating', url });
+        return ok('navigate_to', { actual: 'navigating', url: parsed.toString() });
     }
 
     private async submit(): Promise<ToolResult> {
         const focusForm = (document.activeElement as HTMLElement | null)?.closest('form');
-        const form = focusForm ?? document.querySelector('[data-kitt-region] form') ?? document.forms[0] ?? null;
+        // #2 — niente fallback a document.forms[0]: il server NON deve poter
+        // submittare una form ARBITRARIA che l'utente non ha toccato. Solo la
+        // form focalizzata o una form dentro una region annotata data-kitt.
+        const form = focusForm ?? document.querySelector('[data-kitt-region] form') ?? null;
         if (!(form instanceof HTMLFormElement)) {
-            return fail('submit_form', 'No form found to submit.');
+            return fail('submit_form', 'No focused or annotated form found to submit.');
         }
         form.requestSubmit();
 

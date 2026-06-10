@@ -56,6 +56,35 @@ describe('widget SnapshotBuilder', () => {
         expect(pw?.value).toBeNull();
     });
 
+    it('#3 — never exposes a password input value even WITHOUT data-kitt-sensitive', () => {
+        document.body.innerHTML = `
+            <div data-kitt-field="pwd">
+                <input id="pw2" type="password" data-kitt-input value="hunter2" />
+            </div>
+        `;
+
+        const snap = buildSnapshot();
+        const pw = snap.fields.find((f) => f.name === 'pwd');
+
+        // sensibilità dedotta dal tipo dell'input, non dall'attributo.
+        expect(pw?.sensitive).toBe(true);
+        expect(pw?.value).toBeNull();
+    });
+
+    it('#3 — never exposes a hidden input value even WITHOUT data-kitt-sensitive', () => {
+        document.body.innerHTML = `
+            <div data-kitt-field="tok">
+                <input id="tok2" type="hidden" data-kitt-input value="csrf-abc" />
+            </div>
+        `;
+
+        const snap = buildSnapshot();
+        const tok = snap.fields.find((f) => f.name === 'tok');
+
+        expect(tok?.sensitive).toBe(true);
+        expect(tok?.value).toBeNull();
+    });
+
     it('collects unannotated buttons/inputs into the page outline', () => {
         document.body.innerHTML = `
             <h1>Heading</h1>

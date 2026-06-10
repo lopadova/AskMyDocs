@@ -48,6 +48,12 @@
                         <option value="enterprise">Enterprise</option>
                     </select>
                 </div>
+                {{-- #3 — campo password annotato SENZA data-kitt-sensitive: il suo
+                     valore non deve MAI finire nello snapshot (dedotto dal type). --}}
+                <div data-kitt-field="secret">
+                    <label for="secret">Password</label>
+                    <input id="secret" name="secret" type="password" data-kitt-input>
+                </div>
                 <button type="submit" data-kitt-action="submit"
                         data-kitt-help="Salva il profilo. Richiede conferma.">Salva profilo</button>
             </form>

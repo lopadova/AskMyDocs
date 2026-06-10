@@ -190,13 +190,20 @@ final class WidgetToolValidator
             return false;
         }
 
+        // #9 (R19) — i browser normalizzano '\' → '/' per gli schemi speciali
+        // (http/https), quindi '/\evil.com' e '/%5cevil.com' diventano
+        // '//evil.com' = navigazione protocol-relative CROSS-ORIGIN. Normalizziamo
+        // backslash + percent-encoding PRIMA dei controlli, così il ramo
+        // same-origin non li lascia passare come path relativi (open redirect).
+        $probe = str_replace(['\\', '%5c', '%5C'], '/', $url);
+
         // M5.11 (R19) — block protocol-relative URLs ("//host/path").
-        if (str_starts_with($url, '//')) {
+        if (str_starts_with($probe, '//')) {
             return false;
         }
 
-        // Path relativo same-origin (starts with single /).
-        if (str_starts_with($url, '/') && ! str_starts_with($url, '//')) {
+        // Path relativo same-origin (starts with single /, dopo normalizzazione).
+        if (str_starts_with($probe, '/')) {
             return true;
         }
 

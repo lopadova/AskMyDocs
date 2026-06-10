@@ -164,6 +164,24 @@ function fieldValue(input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEl
     return input.value;
 }
 
+/**
+ * #3 — un input è sensibile (il suo valore NON va mai serializzato nello
+ * snapshot) se è una password, un campo hidden, o un campo carta/credenziale
+ * (autocomplete "cc-" prefix, "current-password", "new-password") — a
+ * prescindere dalla presenza di data-kitt-sensitive. Difende anche le pagine
+ * annotate a mano che dimenticano l'attributo.
+ */
+function isSensitiveInput(input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null): boolean {
+    if (!(input instanceof HTMLInputElement)) {
+        return false;
+    }
+    if (input.type === 'password' || input.type === 'hidden') {
+        return true;
+    }
+    const ac = (input.autocomplete || '').toLowerCase();
+    return ac.startsWith('cc-') || ac === 'current-password' || ac === 'new-password';
+}
+
 function labelFor(wrapper: Element, input: Element | null): string {
     const id = input?.id;
     if (id) {
@@ -187,7 +205,9 @@ function fields(scope: ParentNode): SnapshotField[] {
             return;
         }
         const input = resolveInput(el);
-        const sensitive = el.hasAttribute('data-kitt-sensitive');
+        // #3 — sensibile dall'attributo data-kitt-sensitive OPPURE dedotto dal
+        // tipo dell'input (password/hidden/cc-*): il value non viene mai serializzato.
+        const sensitive = el.hasAttribute('data-kitt-sensitive') || isSensitiveInput(input);
         const region = el.closest('[data-kitt-region]');
 
         let options: Array<{ value: string; label: string }> | null = null;

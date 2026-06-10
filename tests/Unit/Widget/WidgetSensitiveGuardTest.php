@@ -75,6 +75,40 @@ final class WidgetSensitiveGuardTest extends TestCase
         $this->assertSame('Rome', $result['fields'][0]['value']);
     }
 
+    /** #3 — type=password SENZA flag sensitive → comunque nullato (BE re-deriva). */
+    public function test_password_type_without_sensitive_flag_is_forced_to_null(): void
+    {
+        $snapshot = [
+            'fields' => [
+                ['name' => 'pwd', 'label' => 'Password', 'type' => 'password', 'value' => 'hunter2'],
+            ],
+        ];
+
+        $result = $this->validator->enforceSensitiveNull($snapshot);
+
+        $this->assertNull($result['fields'][0]['value']);
+    }
+
+    /** #3 — type=hidden SENZA flag sensitive → nullato (token/csrf/id nascosti). */
+    public function test_hidden_type_without_sensitive_flag_is_forced_to_null(): void
+    {
+        $snapshot = [
+            'fields' => [
+                ['name' => '_token', 'label' => '', 'type' => 'hidden', 'value' => 'csrf-abc123'],
+            ],
+            'regions' => [
+                ['name' => 'form', 'fields' => [
+                    ['name' => 'secret', 'type' => 'password', 'value' => 'p@ss'],
+                ]],
+            ],
+        ];
+
+        $result = $this->validator->enforceSensitiveNull($snapshot);
+
+        $this->assertNull($result['fields'][0]['value']);
+        $this->assertNull($result['regions'][0]['fields'][0]['value']);
+    }
+
     public function test_sensitive_field_in_region_is_forced_to_null(): void
     {
         $snapshot = [

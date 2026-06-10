@@ -87,6 +87,31 @@ test.describe('KITT widget — chat embeddabile', () => {
         );
         await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });
     });
+
+    test('#3 — il valore di un campo password non lascia mai la pagina nello snapshot', async ({ page }) => {
+        await page.goto('/widget-demo');
+
+        // L'utente digita una password nel form ospite (campo annotato data-kitt
+        // ma SENZA data-kitt-sensitive: la sensibilità è dedotta dal type).
+        const secret = 'SuperSegreta-12345';
+        await page.locator('#secret').fill(secret);
+
+        // Osserva (NON stubba: page.on, non page.route → R13 ok) il corpo della
+        // POST /sessions/start che porta lo snapshot al backend.
+        const startReq = page.waitForRequest(
+            (r) => r.url().includes('/api/widget/sessions/start') && r.method() === 'POST',
+        );
+
+        const launcher = page.getByTestId('askmydocs-widget-launcher');
+        await expect(launcher).toBeVisible({ timeout: 15_000 });
+        await launcher.click();
+        await page.getByTestId('askmydocs-widget-input').fill('Posso lavorare da remoto?');
+        await page.getByTestId('askmydocs-widget-send').click();
+
+        const body = (await startReq).postData() ?? '';
+        expect(body.length).toBeGreaterThan(0);
+        expect(body).not.toContain(secret);
+    });
 });
 
 /*

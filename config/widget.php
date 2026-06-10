@@ -54,6 +54,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | #23 — Snapshot total-size cap (bytes)
+    |--------------------------------------------------------------------------
+    |
+    | I cap di conteggio (fields/actions/…) non limitano la dimensione: uno
+    | snapshot conforme nei conteggi ma con stringhe enormi fa esplodere il
+    | prompt-token budget e la persistenza longText per turno. Cap totale sui
+    | byte dello snapshot serializzato (oltre → 422). 0 disabilita il cap.
+    */
+    'snapshot_max_bytes' => (int) env('WIDGET_SNAPSHOT_MAX_BYTES', 262144),
+
+    /*
+    |--------------------------------------------------------------------------
+    | #44 — Demo page (/widget-demo)
+    |--------------------------------------------------------------------------
+    |
+    | La pagina demo pubblica conia/riusa una WidgetKey ATTIVA (pk_demo_local)
+    | per il tenant default. Oltre al gate d'ambiente (local|testing) richiede
+    | questo flag ESPLICITO (default OFF) così un box di staging lasciato a
+    | APP_ENV=local non espone una credenziale funzionante a visitatori anonimi.
+    */
+    'demo_enabled' => (bool) env('WIDGET_DEMO_ENABLED', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | M5.10 — Session retention (days)
     |--------------------------------------------------------------------------
     |
