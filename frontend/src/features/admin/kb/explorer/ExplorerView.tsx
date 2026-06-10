@@ -1,9 +1,11 @@
-import { useMemo, type MouseEvent, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import { Icon } from '../../../../components/Icons';
-import type { KbTreeDocNode, KbTreeNode } from '../../admin.api';
+import { adminKbDocumentApi, type KbTreeDocNode, type KbTreeNode } from '../../admin.api';
 import type { TreeState } from '../TreeView';
 import { FolderTile } from './FolderTile';
 import { DocCard } from './DocCard';
+import { BulkToolbar } from './BulkToolbar';
+import { useExplorerSelection } from './useExplorerSelection';
 import type { ExplorerLayout, ExplorerTileSize } from './explorer-prefs';
 import {
     breadcrumbSegments,
@@ -22,11 +24,11 @@ import {
  * loads (zero extra fetches). "Folders" are virtual — derived from the
  * documents' source_path segments by KbTreeService.
  *
- * Selection + bulk toolbar are wired by the parent (KbView) and are
- * optional here so the view renders before they exist; when
- * `onToggleDoc` is absent the cards hide their checkboxes (no
- * multi-select). When `q` is non-empty the grid flattens to a global
- * search result across every folder (breadcrumb hidden).
+ * Selection lives here via useExplorerSelection (doc-only, keyed by id,
+ * pruned whenever the visible set changes). Multi-select + bulk actions
+ * activate only when the parent supplies `onBulkDelete` / `onBulkRestore`
+ * — otherwise the grid is read-only (no checkboxes). When `q` is
+ * non-empty the grid flattens to a global search across every folder.
  */
 
 export interface ExplorerViewProps {
@@ -42,12 +44,10 @@ export interface ExplorerViewProps {
     onSizeChange: (next: ExplorerTileSize) => void;
     focusedDocId: number | null;
     onOpenDoc: (doc: KbTreeDocNode) => void;
-    // ── Selection (wired in WU8; optional so WU6 renders without it) ──
-    selectedIds?: Set<number>;
-    onActivateDoc?: (doc: KbTreeDocNode, e: MouseEvent) => void;
-    onToggleDoc?: (doc: KbTreeDocNode) => void;
-    onSelectAll?: (checked: boolean) => void;
-    bulkToolbar?: ReactNode;
+    // ── Bulk actions (optional — enables multi-select when supplied) ──
+    onBulkDelete?: (ids: number[], force: boolean) => void;
+    onBulkRestore?: (ids: number[]) => void;
+    bulkBusy?: boolean;
 }
 
 export function ExplorerView(props: ExplorerViewProps) {
@@ -63,16 +63,13 @@ export function ExplorerView(props: ExplorerViewProps) {
         onSizeChange,
         focusedDocId,
         onOpenDoc,
-        selectedIds,
-        onActivateDoc,
-        onToggleDoc,
-        onSelectAll,
-        bulkToolbar,
+        onBulkDelete,
+        onBulkRestore,
+        bulkBusy = false,
     } = props;
 
     const searching = q.trim() !== '';
-    const selectable = onToggleDoc !== undefined;
-    const selected = selectedIds ?? EMPTY;
+    const selectable = onBulkDelete !== undefined || onBulkRestore !== undefined;
 
     // Current-folder contents, OR flattened search results across the
     // whole tree when a search term is present.
@@ -90,13 +87,28 @@ export function ExplorerView(props: ExplorerViewProps) {
         return folderEntries(level);
     }, [tree, path, q, searching]);
 
+    const docIds = useMemo(() => docs.map((d) => d.meta.id), [docs]);
+    const selection = useExplorerSelection(docIds);
+
     const isEmpty = folders.length === 0 && docs.length === 0;
     const crumbs = breadcrumbSegments(path);
-    const docIds = docs.map((d) => d.meta.id);
-    const allSelected = docIds.length > 0 && docIds.every((id) => selected.has(id));
+    const allSelected = docIds.length > 0 && docIds.every((id) => selection.isSelected(id));
+    const someSelected = !allSelected && docIds.some((id) => selection.isSelected(id));
 
-    const activate = onActivateDoc ?? ((doc: KbTreeDocNode) => onOpenDoc(doc));
-    const toggle = onToggleDoc ?? (() => {});
+    const selectedIds = [...selection.selectedIds];
+    const trashedCount = docs.filter(
+        (d) => selection.isSelected(d.meta.id) && d.meta.deleted_at !== null,
+    ).length;
+
+    function dispatchBulkDelete(force: boolean) {
+        onBulkDelete?.(selectedIds, force);
+        selection.clear();
+    }
+
+    function dispatchBulkRestore() {
+        onBulkRestore?.(selectedIds.filter((id) => docs.find((d) => d.meta.id === id)?.meta.deleted_at !== null));
+        selection.clear();
+    }
 
     const renderState: TreeState = state === 'ready' && isEmpty ? 'empty' : state;
 
@@ -107,7 +119,7 @@ export function ExplorerView(props: ExplorerViewProps) {
             style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: 10,
+                gap: 0,
                 minHeight: 0,
                 height: '100%',
                 border: '1px solid var(--hairline)',
@@ -126,11 +138,21 @@ export function ExplorerView(props: ExplorerViewProps) {
                 onSizeChange={onSizeChange}
                 selectable={selectable}
                 allSelected={allSelected}
-                someSelected={!allSelected && docIds.some((id) => selected.has(id))}
-                onSelectAll={onSelectAll}
+                someSelected={someSelected}
+                onSelectAll={selection.selectAll}
             />
 
-            {bulkToolbar}
+            {selectable ? (
+                <BulkToolbar
+                    count={selection.selectedIds.size}
+                    trashedCount={trashedCount}
+                    zipHref={adminKbDocumentApi.zipUrl(selectedIds)}
+                    isBusy={bulkBusy}
+                    onDelete={dispatchBulkDelete}
+                    onRestore={dispatchBulkRestore}
+                    onClear={selection.clear}
+                />
+            ) : null}
 
             <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
                 {state === 'loading' ? (
@@ -149,83 +171,47 @@ export function ExplorerView(props: ExplorerViewProps) {
                     </div>
                 ) : null}
                 {state === 'ready' && !isEmpty ? (
-                    layout === 'list' ? (
-                        <div
-                            role="listbox"
-                            aria-label="Documents"
-                            data-testid="kb-explorer-grid"
-                            data-layout="list"
-                            style={{ display: 'flex', flexDirection: 'column' }}
-                        >
-                            {folders.map((folder) => (
-                                <FolderTile
-                                    key={folder.path}
-                                    folder={folder}
-                                    layout="list"
-                                    size={size}
-                                    onOpen={onPathChange}
-                                />
-                            ))}
-                            {docs.map((doc) => (
-                                <DocCard
-                                    key={doc.meta.id}
-                                    doc={doc}
-                                    layout="list"
-                                    size={size}
-                                    selectable={selectable}
-                                    selected={selected.has(doc.meta.id)}
-                                    focused={doc.meta.id === focusedDocId}
-                                    onActivate={activate}
-                                    onToggle={toggle}
-                                    onOpen={onOpenDoc}
-                                />
-                            ))}
-                        </div>
-                    ) : (
-                        <div
-                            role="listbox"
-                            aria-label="Documents"
-                            data-testid="kb-explorer-grid"
-                            data-layout="grid"
-                            style={{
-                                display: 'flex',
-                                flexWrap: 'wrap',
-                                gap: 12,
-                                alignContent: 'flex-start',
-                            }}
-                        >
-                            {folders.map((folder) => (
-                                <FolderTile
-                                    key={folder.path}
-                                    folder={folder}
-                                    layout="grid"
-                                    size={size}
-                                    onOpen={onPathChange}
-                                />
-                            ))}
-                            {docs.map((doc) => (
-                                <DocCard
-                                    key={doc.meta.id}
-                                    doc={doc}
-                                    layout="grid"
-                                    size={size}
-                                    selectable={selectable}
-                                    selected={selected.has(doc.meta.id)}
-                                    focused={doc.meta.id === focusedDocId}
-                                    onActivate={activate}
-                                    onToggle={toggle}
-                                    onOpen={onOpenDoc}
-                                />
-                            ))}
-                        </div>
-                    )
+                    <div
+                        role="listbox"
+                        aria-label="Documents"
+                        aria-multiselectable={selectable}
+                        data-testid="kb-explorer-grid"
+                        data-layout={layout}
+                        style={
+                            layout === 'list'
+                                ? { display: 'flex', flexDirection: 'column' }
+                                : { display: 'flex', flexWrap: 'wrap', gap: 12, alignContent: 'flex-start' }
+                        }
+                    >
+                        {folders.map((folder) => (
+                            <FolderTile
+                                key={folder.path}
+                                folder={folder}
+                                layout={layout}
+                                size={size}
+                                onOpen={onPathChange}
+                            />
+                        ))}
+                        {docs.map((doc) => (
+                            <DocCard
+                                key={doc.meta.id}
+                                doc={doc}
+                                layout={layout}
+                                size={size}
+                                selectable={selectable}
+                                selected={selection.isSelected(doc.meta.id)}
+                                focused={doc.meta.id === focusedDocId}
+                                onActivate={(d, e) => selection.activate(d.meta.id, e)}
+                                onToggle={(d) => selection.toggle(d.meta.id)}
+                                onOpen={onOpenDoc}
+                            />
+                        ))}
+                    </div>
                 ) : null}
             </div>
         </div>
     );
 }
-
-const EMPTY: Set<number> = new Set();
 
 const mutedStyle = {
     padding: 16,
@@ -256,7 +242,7 @@ function Toolbar({
     selectable: boolean;
     allSelected: boolean;
     someSelected: boolean;
-    onSelectAll?: (checked: boolean) => void;
+    onSelectAll: (checked: boolean) => void;
 }) {
     return (
         <div
@@ -278,7 +264,7 @@ function Toolbar({
                     ref={(el) => {
                         if (el) el.indeterminate = someSelected;
                     }}
-                    onChange={(e) => onSelectAll?.(e.target.checked)}
+                    onChange={(e) => onSelectAll(e.target.checked)}
                     style={{ cursor: 'pointer' }}
                 />
             ) : null}

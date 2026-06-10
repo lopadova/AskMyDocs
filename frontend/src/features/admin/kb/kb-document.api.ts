@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     adminKbDocumentApi,
     adminKbGraphApi,
+    type KbBulkDeleteResponse,
+    type KbBulkRestoreResponse,
     type KbDocument,
     type KbGraphResponse,
     type KbHistoryResponse,
@@ -97,6 +99,35 @@ export function useDeleteKbDocument() {
         onSuccess: (_data, v) => {
             qc.invalidateQueries({ queryKey: KB_TREE_KEY });
             qc.invalidateQueries({ queryKey: [...KB_DOC_KEY, 'show', v.id] });
+        },
+    });
+}
+
+/**
+ * Explorer bulk multi-select: soft/force delete + restore over a batch
+ * of ids. Both invalidate the tree (rows appear/disappear) AND the doc
+ * key (a focused doc may have flipped trashed state). The affected ids
+ * could be invalidated individually, but the batch can span the whole
+ * tree, so a single key-level invalidation is simpler and correct.
+ */
+export function useBulkDeleteKbDocuments() {
+    const qc = useQueryClient();
+    return useMutation<KbBulkDeleteResponse, Error, { ids: number[]; force: boolean }>({
+        mutationFn: (v) => adminKbDocumentApi.bulkDelete(v.ids, v.force),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: KB_TREE_KEY });
+            qc.invalidateQueries({ queryKey: KB_DOC_KEY });
+        },
+    });
+}
+
+export function useBulkRestoreKbDocuments() {
+    const qc = useQueryClient();
+    return useMutation<KbBulkRestoreResponse, Error, { ids: number[] }>({
+        mutationFn: (v) => adminKbDocumentApi.bulkRestore(v.ids),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: KB_TREE_KEY });
+            qc.invalidateQueries({ queryKey: KB_DOC_KEY });
         },
     });
 }
