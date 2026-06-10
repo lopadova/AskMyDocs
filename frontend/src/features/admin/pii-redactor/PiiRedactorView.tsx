@@ -47,6 +47,16 @@ import './cross-mount/cross-mount.css';
 const PII_REDACTOR_API_BASE = '/admin/pii-redactor/api';
 const PII_REDACTOR_ROUTE_PREFIX = '/admin/pii-redactor';
 
+/*
+ * Team-scope note (see .claude/skills/team-scope-wiring, point 6): the
+ * PII STRATEGY config surfaced by this cross-mounted package SPA is
+ * deployment-wide by design — strategy / token store / detector list
+ * live in config, not in a tenant-aware table — so the topbar team
+ * switcher deliberately does not re-scope it. The audit-events table
+ * (`pii_redactor_admin_audit_events`) IS tenant-aware and follows the
+ * X-Tenant-Id header like every other axios call.
+ */
+
 export function PiiRedactorView() {
     const user = useAuthStore((state) => state.user);
     const roles = useAuthStore((state) => state.roles);

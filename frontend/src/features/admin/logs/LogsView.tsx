@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
+import { GlobalScopeBadge } from '../shared/GlobalScopeBadge';
 import { ChatLogsTab } from './ChatLogsTab';
 import { AuditTab } from './AuditTab';
 import { ApplicationLogTab } from './ApplicationLogTab';
@@ -129,23 +130,7 @@ export function LogsView() {
                             >
                                 {entry.label}
                                 {entry.global && (
-                                    <span
-                                        data-testid={`logs-tab-${entry.id}-global-badge`}
-                                        title="Deployment-wide data — not filtered by the selected team"
-                                        style={{
-                                            marginLeft: 6,
-                                            padding: '1px 6px',
-                                            fontSize: 9.5,
-                                            fontFamily: 'var(--font-mono)',
-                                            textTransform: 'uppercase',
-                                            letterSpacing: '0.05em',
-                                            color: 'var(--fg-3)',
-                                            border: '1px solid var(--hairline)',
-                                            borderRadius: 999,
-                                        }}
-                                    >
-                                        global
-                                    </span>
+                                    <GlobalScopeBadge testId={`logs-tab-${entry.id}-global-badge`} />
                                 )}
                             </button>
                         );

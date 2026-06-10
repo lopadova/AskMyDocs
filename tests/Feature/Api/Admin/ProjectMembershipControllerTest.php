@@ -200,6 +200,78 @@ class ProjectMembershipControllerTest extends TestCase
         $this->assertDatabaseMissing('project_memberships', ['id' => $m->id]);
     }
 
+    public function test_index_hides_memberships_of_other_tenants(): void
+    {
+        // R30 — the Users screen lists memberships of the ACTIVE team only.
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('xtenant');
+
+        ProjectMembership::create([
+            'user_id' => $user->id,
+            'project_key' => 'hr-portal',
+            'role' => 'member',
+        ]);
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->getJson("/api/admin/users/{$user->id}/memberships")
+            ->assertOk();
+
+        $keys = array_column($response->json('data'), 'project_key');
+        $this->assertSame(['hr-portal'], $keys);
+    }
+
+    public function test_store_writes_membership_into_the_active_tenant(): void
+    {
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('write');
+
+        $this->actingAs($admin)
+            ->postJson("/api/admin/users/{$user->id}/memberships", [
+                'project_key' => 'hr-portal',
+                'role' => 'member',
+            ])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('project_memberships', [
+            'user_id' => $user->id,
+            'project_key' => 'hr-portal',
+            'tenant_id' => 'default',
+        ]);
+    }
+
+    public function test_update_and_destroy_404_on_foreign_tenant_membership(): void
+    {
+        // R30 — implicit binding resolves by id with no tenant scope; the
+        // controller must 404 (existence-hiding) on rows of other tenants.
+        $admin = $this->makeAdmin();
+        $user = $this->makeViewer('idor');
+        $foreign = ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'member',
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/memberships/{$foreign->id}", ['role' => 'admin'])
+            ->assertStatus(404);
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/memberships/{$foreign->id}")
+            ->assertStatus(404);
+
+        $this->assertDatabaseHas('project_memberships', [
+            'id' => $foreign->id,
+            'role' => 'member',
+        ]);
+    }
+
     public function test_non_admin_gets_403(): void
     {
         $viewer = $this->makeViewer('rbac');
