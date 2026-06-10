@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useTeamStore, type Team } from './team-store';
 
 export type AuthUser = {
     id: number;
@@ -18,6 +19,8 @@ export type AuthMePayload = {
     roles: string[];
     permissions: string[];
     projects: AuthProject[];
+    /** Optional for BE compat: teams (= tenants) the user can switch into. */
+    teams?: Team[];
     preferences?: Record<string, string>;
 };
 
@@ -45,15 +48,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     permissions: [],
     projects: [],
     loading: true,
-    setMe: (me) =>
+    setMe: (me) => {
+        // Single sync point for the team store: covers both the bootstrap
+        // `/api/auth/me` call (guards.tsx) and the post-login refresh, and
+        // runs BEFORE `loading` flips false — RequireAuth keeps the route
+        // tree unmounted until then, so no query fires without a team.
+        useTeamStore.getState().syncFromMe(me.teams ?? [], me.user.id);
         set({
             user: me.user,
             roles: me.roles,
             permissions: me.permissions,
             projects: me.projects,
             loading: false,
-        }),
-    clear: () => set({ user: null, roles: [], permissions: [], projects: [], loading: false }),
+        });
+    },
+    clear: () => {
+        useTeamStore.getState().clear();
+        set({ user: null, roles: [], permissions: [], projects: [], loading: false });
+    },
     setLoading: (loading) => set({ loading }),
 }));
 
