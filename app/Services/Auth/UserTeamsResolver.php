@@ -6,6 +6,7 @@ namespace App\Services\Auth;
 
 use App\Http\Middleware\AuthorizeTenantHeader;
 use App\Models\User;
+use App\Support\TeamHash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
@@ -35,7 +36,7 @@ use Padosoft\AiActCompliance\MultiTenancy\Models\Tenant;
 final class UserTeamsResolver
 {
     /**
-     * @return list<array{tenant_id: string, name: string, projects: list<array{project_key: string, role: string, scope: array<mixed>}>}>
+     * @return list<array{tenant_id: string, hash: string, name: string, projects: list<array{project_key: string, role: string, scope: array<mixed>}>}>
      */
     public function resolve(User $user): array
     {
@@ -68,6 +69,9 @@ final class UserTeamsResolver
 
         $teams = array_map(static fn (string $tenantId): array => [
             'tenant_id' => $tenantId,
+            // Unique URL-safe routing segment: the SPA serves every team
+            // under /app/{hash}/… — see App\Support\TeamHash.
+            'hash' => TeamHash::for($tenantId),
             'name' => $labels[$tenantId] ?? Str::headline($tenantId),
             'projects' => $projectsByTenant[$tenantId] ?? [],
         ], $tenantIds);

@@ -104,8 +104,35 @@ class MeTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'teams')
             ->assertJsonPath('teams.0.tenant_id', 'default')
+            ->assertJsonPath('teams.0.hash', \App\Support\TeamHash::for('default'))
             ->assertJsonPath('teams.0.name', 'Default')
             ->assertJsonPath('teams.0.projects', []);
+    }
+
+    public function test_me_teams_hash_is_deterministic_unique_and_url_safe(): void
+    {
+        $user = $this->makeUser('hash@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+
+        $this->actingAs($user);
+
+        $teams = $this->getJson('/api/auth/me')->assertOk()->json('teams');
+
+        $hashes = array_column($teams, 'hash');
+        $this->assertSame($hashes, array_values(array_unique($hashes)), 'team hashes must be unique');
+        foreach ($hashes as $hash) {
+            $this->assertMatchesRegularExpression('/^[0-9a-f]{12}$/', $hash);
+        }
+
+        // Deterministic: a second call yields the same routing segments —
+        // bookmarked /app/{hash}/… URLs survive re-logins and deploys.
+        $again = array_column($this->getJson('/api/auth/me')->json('teams'), 'hash');
+        $this->assertSame($hashes, $again);
     }
 
     public function test_me_teams_groups_memberships_per_tenant_with_default_first(): void
@@ -224,7 +251,7 @@ class MeTest extends TestCase
                 'roles',
                 'permissions',
                 'projects',
-                'teams' => [['tenant_id', 'name', 'projects']],
+                'teams' => [['tenant_id', 'hash', 'name', 'projects']],
                 'preferences' => ['theme', 'density', 'language'],
             ]);
     }
