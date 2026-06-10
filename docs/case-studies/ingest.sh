@@ -18,8 +18,10 @@
 #
 # Prerequisiti: disco "kb" su filesystem LOCALE (questo helper copia con cp), DB
 # migrato, chiavi AI per gli embeddings configurate (AI_EMBEDDINGS_PROVIDER +
-# relativa API key). Per dischi remoti (es. S3) ingesta caricando i file via
-# Storage::disk('kb')->put() e poi lancia kb:ingest-folder.
+# relativa API key), e `php artisan tinker` disponibile (laravel/tinker è una
+# dipendenza dev: serve un `composer install` CON i pacchetti dev). Per dischi
+# remoti (es. S3) ingesta caricando i file via Storage::disk('kb')->put() e poi
+# lancia kb:ingest-folder.
 
 set -euo pipefail
 
@@ -29,6 +31,16 @@ ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${ROOT}"
 
 KB_SUBDIR="case-studies"
+
+# --- guard: tinker è una dipendenza dev (composer install con dev) -----------
+# Senza questo check, un'installazione --no-dev fallirebbe più avanti con
+# messaggi fuorvianti (config del disco non risolta, membership saltate).
+TINKER_OK="$(php artisan list --raw 2>/dev/null | grep -c '^tinker' || true)"
+if [ "${TINKER_OK:-0}" = "0" ]; then
+  echo "!! 'php artisan tinker' non disponibile (laravel/tinker è una dipendenza dev)."
+  echo "   Esegui 'composer install' (con i pacchetti dev) oppure 'composer require laravel/tinker'."
+  exit 1
+fi
 
 # --- risolvi disco kb (driver/root/prefix) dalla CONFIG, non hard-coded ------
 # tab-separato così un eventuale spazio nella root non rompe il parsing.
@@ -49,12 +61,20 @@ fi
 # base assoluta sul disco kb, rispettando KB_PATH_PREFIX
 KB_BASE="${KB_ROOT}/${KB_PREFIX:+${KB_PREFIX}/}${KB_SUBDIR}"
 
-# Le 3 aziende: <cartella sorgente> == <project key>
-PROJECTS=(
-  "rotta-logistics"
-  "prometeo-antincendio"
-  "passolibero-calzature"
-)
+# Le aziende: <cartella sorgente> == <project key>, derivate da data/ così la
+# lista vive in UN solo posto (aggiungere un dataset = aggiungere una cartella).
+PROJECTS=()
+shopt -s nullglob
+for d in "${SCRIPT_DIR}/data"/*/; do
+  PROJECTS+=("$(basename "${d}")")
+done
+shopt -u nullglob
+if [ "${#PROJECTS[@]}" -eq 0 ]; then
+  echo "!! nessun dataset in ${SCRIPT_DIR}/data — niente da ingerire."
+  exit 1
+fi
+# Stessa lista per i blocchi tinker (CSV via env: niente escaping fragile).
+KEYS_CSV="$(IFS=,; echo "${PROJECTS[*]}")"
 
 echo "==> AskMyDocs — ingest dei 3 dataset di case study"
 echo "    root progetto: ${ROOT}"
@@ -92,27 +112,37 @@ for KEY in "${PROJECTS[@]}"; do
   echo
 done
 
-echo "==> Concedo la membership dei 3 progetti a tutti gli utenti (tenant corrente)"
-php artisan tinker --execute='
-  $keys = ["rotta-logistics","prometeo-antincendio","passolibero-calzature"];
-  $tenant = app(\App\Support\TenantContext::class)->current();
-  foreach (\App\Models\User::all() as $u) {
-    foreach ($keys as $k) {
-      \App\Models\ProjectMembership::firstOrCreate(
-        ["tenant_id" => $tenant, "user_id" => $u->id, "project_key" => $k],
-        ["role" => "member", "scope_allowlist" => null]
-      );
+echo "==> Concedo la membership dei progetti a tutti gli utenti (tenant corrente)"
+USER_COUNT="$(php artisan tinker --execute='echo \App\Models\User::count();' | tail -n1 | tr -d '[:space:]')"
+if [ "${USER_COUNT:-0}" = "0" ]; then
+  echo "!! Nessun utente nel database: nessuna membership creata."
+  echo "   Crea/seeda gli utenti e RILANCIA ./ingest.sh (è idempotente): senza"
+  echo "   membership il Project Switcher NON mostrerà le aziende dei case study."
+else
+  CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
+    $keys = array_filter(array_map("trim", explode(",", (string) getenv("CASE_STUDY_KEYS"))));
+    $tenant = app(\App\Support\TenantContext::class)->current();
+    $userIds = \App\Models\User::query()->pluck("id");
+    foreach ($userIds as $uid) {
+      foreach ($keys as $k) {
+        \App\Models\ProjectMembership::firstOrCreate(
+          ["tenant_id" => $tenant, "user_id" => $uid, "project_key" => $k],
+          ["role" => "member", "scope_allowlist" => null]
+        );
+      }
     }
-  }
-  echo "membership ok (tenant=$tenant)\n";
-'
+    echo count($userIds)." utenti x ".count($keys)." progetti: membership ok (tenant=$tenant)\n";
+  '
+fi
 
 echo "==> Ricostruisco il grafo canonico (kb_nodes / kb_edges)"
-# Senza un queue worker, il CanonicalIndexerJob potrebbe non essere ancora
-# girato: rebuild-graph ripopola i nodi/archi dai documenti canonici in modo
-# sincrono. È un no-op se non ci sono documenti canonici.
+# --sync esegue gli indexer INLINE (nessun worker necessario): senza il flag il
+# comando troncherebbe il grafo e ACCODEREBBE i job, lasciandolo vuoto finché la
+# coda non viene drenata. Il rebuild è idempotente e fa da rete di sicurezza:
+# ri-indicizza anche i doc già processati dall'ingest --sync (costo accettabile
+# per ~33 documenti). È un no-op se non ci sono documenti canonici.
 for KEY in "${PROJECTS[@]}"; do
-  php artisan kb:rebuild-graph --project="${KEY}"
+  php artisan kb:rebuild-graph --project="${KEY}" --sync
 done
 
 # Se la coda è su redis/database, processa gli eventuali job residui.

@@ -28,6 +28,30 @@ cd "${ROOT}"
 DROP_MEMBERSHIPS=0
 [ "${1:-}" = "--memberships" ] && DROP_MEMBERSHIPS=1
 
+# --- guard: tinker è una dipendenza dev (composer install con dev) -----------
+# Senza questo check, un'installazione --no-dev produrrebbe APP_ENV vuoto e un
+# messaggio "BLOCCATO" fuorviante invece della vera causa.
+TINKER_OK="$(php artisan list --raw 2>/dev/null | grep -c '^tinker' || true)"
+if [ "${TINKER_OK:-0}" = "0" ]; then
+  echo "!! 'php artisan tinker' non disponibile (laravel/tinker è una dipendenza dev)."
+  echo "   Esegui 'composer install' (con i pacchetti dev) oppure 'composer require laravel/tinker'."
+  exit 1
+fi
+
+# Le aziende: <cartella dataset> == <project key>, derivate da data/ (stessa
+# single source di ingest.sh). CSV via env per i blocchi tinker.
+PROJECTS=()
+shopt -s nullglob
+for d in "${SCRIPT_DIR}/data"/*/; do
+  PROJECTS+=("$(basename "${d}")")
+done
+shopt -u nullglob
+if [ "${#PROJECTS[@]}" -eq 0 ]; then
+  echo "!! nessun dataset in ${SCRIPT_DIR}/data — niente da rimuovere."
+  exit 1
+fi
+KEYS_CSV="$(IFS=,; echo "${PROJECTS[*]}")"
+
 # --- Guardrail: solo ambienti usa-e-getta -----------------------------------
 APP_ENV_NOW="$(php artisan tinker --execute='echo app()->environment();' 2>/dev/null | tail -n1 | tr -d '[:space:]')"
 if [ "${APP_ENV_NOW}" != "local" ] && [ "${APP_ENV_NOW}" != "testing" ]; then
@@ -42,8 +66,8 @@ fi
 echo "==> AskMyDocs — teardown dei 3 dataset di case study (tenant corrente)"
 
 # Cancellazione documenti+grafo+file, tenant-scoped e chunked, via DocumentDeleter.
-php artisan tinker --execute='
-  $keys = ["rotta-logistics","prometeo-antincendio","passolibero-calzature"];
+CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
+  $keys = array_filter(array_map("trim", explode(",", (string) getenv("CASE_STUDY_KEYS"))));
   $tenant  = app(\App\Support\TenantContext::class)->current();
   $deleter = app(\App\Services\Kb\DocumentDeleter::class);
   $prefix  = trim((string) config("kb.sources.path_prefix", ""), "/");
@@ -64,11 +88,12 @@ php artisan tinker --execute='
 '
 
 if [ "${DROP_MEMBERSHIPS}" = "1" ]; then
-  echo "==> Rimuovo le ProjectMembership dei 3 progetti (tenant corrente)"
-  php artisan tinker --execute='
+  echo "==> Rimuovo le ProjectMembership dei progetti case study (tenant corrente)"
+  CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
+    $keys = array_filter(array_map("trim", explode(",", (string) getenv("CASE_STUDY_KEYS"))));
     $tenant = app(\App\Support\TenantContext::class)->current();
     $n = \App\Models\ProjectMembership::forTenant($tenant)
-      ->whereIn("project_key", ["rotta-logistics","prometeo-antincendio","passolibero-calzature"])
+      ->whereIn("project_key", $keys)
       ->delete();
     echo "membership rimosse: $n (tenant=$tenant)\n";
   '
