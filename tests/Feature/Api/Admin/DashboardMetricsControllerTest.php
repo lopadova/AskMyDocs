@@ -19,11 +19,16 @@ class DashboardMetricsControllerTest extends TestCase
     /**
      * Mirror the Auth controller tests: mount routes/api.php under
      * `api + web` middleware stack so Sanctum stateful + Spatie
-     * `role:` alias both resolve correctly.
+     * `role:` alias both resolve correctly. ResolveTenant is added
+     * explicitly (production prepends it in bootstrap/app.php, which
+     * Testbench does not execute) so X-Tenant-Id drives the active
+     * tenant in the cache-isolation test below.
      */
     protected function defineRoutes($router): void
     {
-        $router->middleware('api')->prefix('api')->group(__DIR__.'/../../../../routes/api.php');
+        $router->middleware(['api', \App\Http\Middleware\ResolveTenant::class])
+            ->prefix('api')
+            ->group(__DIR__.'/../../../../routes/api.php');
     }
 
     protected function setUp(): void
@@ -176,6 +181,65 @@ class DashboardMetricsControllerTest extends TestCase
             ->json('overview');
 
         $this->assertSame($before + 1, $differentKey['total_chats']);
+    }
+
+    public function test_overview_cache_does_not_leak_across_tenants(): void
+    {
+        // R30 — the cache key MUST include the tenant: the same
+        // (project, days) tuple requested from two tenants within the
+        // 30s TTL would otherwise serve tenant A's numbers to tenant B.
+        $super = User::create([
+            'name' => 'Super',
+            'email' => 'super-'.uniqid().'@demo.local',
+            'password' => Hash::make('secret123'),
+        ]);
+        $super->assignRole('super-admin');
+
+        // R16 — strictly differentiating fixture: 1 chat in 'default',
+        // 2 in 'acme', so a leaked cache CANNOT produce the expected
+        // number by coincidence.
+        $this->seedSomeData(); // 1 chat log in 'default'
+        foreach (['one', 'two'] as $ignored) {
+            ChatLog::create([
+                'tenant_id' => 'acme',
+                'session_id' => (string) \Illuminate\Support\Str::uuid(),
+                'question' => 'q',
+                'answer' => 'a',
+                'project_key' => 'acme-kb',
+                'ai_provider' => 'openai',
+                'ai_model' => 'gpt-4o',
+                'chunks_count' => 0,
+                'sources' => [],
+                'prompt_tokens' => 1,
+                'completion_tokens' => 1,
+                'total_tokens' => 2,
+                'latency_ms' => 50,
+                'created_at' => Carbon::now()->toDateTimeString(),
+            ]);
+        }
+
+        // Prime the cache from the default tenant...
+        $defaultChats = $this->actingAs($super)
+            ->getJson('/api/admin/metrics/overview?days=7')
+            ->assertOk()
+            ->json('overview.total_chats');
+        $this->assertSame(1, $defaultChats);
+
+        // ...then the SAME request from 'acme' within the TTL must
+        // aggregate acme's data, not replay the cached default payload.
+        $acmeChats = $this->actingAs($super)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->getJson('/api/admin/metrics/overview?days=7')
+            ->assertOk()
+            ->json('overview.total_chats');
+        $this->assertSame(2, $acmeChats);
+
+        $acmeDocs = $this->actingAs($super)
+            ->withHeader('X-Tenant-Id', 'acme')
+            ->getJson('/api/admin/metrics/overview?days=7')
+            ->assertOk()
+            ->json('overview.total_docs');
+        $this->assertSame(0, $acmeDocs, 'acme has no documents; a non-zero count means the default-tenant cache leaked');
     }
 
     public function test_days_parameter_is_clamped(): void
