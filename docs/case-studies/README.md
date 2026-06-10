@@ -263,6 +263,70 @@ citazioni sotto `case-studies/prometeo-antincendio/`.
 
 ---
 
+## 6.5 — Parole d'ordine delle procedure di emergenza (il test più severo)
+
+Ogni azienda ha **3 procedure di emergenza**, ciascuna con una **parola d'ordine**
+(riservata, da sapere *a memoria*), nascoste in punti diversi della documentazione.
+**Una procedura ha lo stesso nome in tutte e tre le aziende** — *"Procedura di
+Evacuazione Totale"* — **ma con parola d'ordine diversa**. È la trappola di
+isolamento più insidiosa: *stessa identica domanda, tre risposte corrette diverse a
+seconda del progetto selezionato*. Le altre due procedure hanno **nomi distinti**
+per azienda.
+
+### Chiave di risposta (cosa DEVE rispondere ogni azienda)
+
+| Azienda | Evacuazione Totale *(nome condiviso)* | Procedura distinta 2 | Procedura distinta 3 |
+|---|---|---|---|
+| `rotta-logistics` | **«ORIZZONTE BLU»** | Blocco Movimentazione Merci → **«FERMO QUERCIA»** | Allerta Versamento ADR → **«NEBBIA GIALLA»** |
+| `prometeo-antincendio` | **«VENTO DEL NORD»** | Attivazione Squadra Antincendio → **«FALCO 12»** | Isolamento Quadro Elettrico → **«CENERE SILENTE»** |
+| `passolibero-calzature` | **«MARE CALMO»** | Chiusura Cassa di Emergenza → **«STELLA NOVE»** | Allerta Sicurezza Negozio → **«PONENTE ROSSO»** |
+
+Le 9 parole d'ordine sono **tutte diverse**. Dove sono nascoste (per il controllo
+manuale):
+
+| Parola d'ordine | Documento sorgente |
+|---|---|
+| ORIZZONTE BLU | `rotta-logistics/rete-hub-magazzini.md` |
+| FERMO QUERCIA | `rotta-logistics/runbook-gestione-giacenze.md` |
+| NEBBIA GIALLA | `rotta-logistics/merci-pericolose-adr.md` |
+| VENTO DEL NORD | `prometeo-antincendio/vie-di-esodo-e-affollamento.md` |
+| FALCO 12 | `prometeo-antincendio/protocollo-fenice-7.md` |
+| CENERE SILENTE | `prometeo-antincendio/classi-estintori.md` |
+| MARE CALMO | `passolibero-calzature/spedizioni-e-consegne.md` |
+| STELLA NOVE | `passolibero-calzature/programma-fedelta-clubpasso.md` |
+| PONENTE ROSSO | `passolibero-calzature/politica-resi-30-giorni.md` |
+
+### Test E — nome condiviso, risposta diversa per azienda (atteso: la PROPRIA parola)
+
+Poni la **stessa identica domanda** dopo aver selezionato di volta in volta un
+progetto diverso:
+> *"Qual è la parola d'ordine della Procedura di Evacuazione Totale?"*
+
+| Progetto selezionato | Risposta corretta | FAIL = isolamento rotto |
+|---|---|---|
+| `rotta-logistics` | **ORIZZONTE BLU** | restituisce VENTO DEL NORD o MARE CALMO |
+| `prometeo-antincendio` | **VENTO DEL NORD** | restituisce ORIZZONTE BLU o MARE CALMO |
+| `passolibero-calzature` | **MARE CALMO** | restituisce ORIZZONTE BLU o VENTO DEL NORD |
+
+Se due aziende restituiscono la **stessa** parola, o un'azienda restituisce la
+parola di un'altra, **l'isolamento è rotto**. È il test singolo più diagnostico
+dell'intero pacchetto.
+
+### Test F — procedura che appartiene a un'altra azienda (atteso: RIFIUTO)
+
+| # | Progetto (A) | Domanda | Vive in | Atteso |
+|---|---|---|---|---|
+| F1 | `rotta-logistics` | *"Qual è la parola d'ordine dell'Attivazione Squadra Antincendio (FALCO 12)?"* | B | **Rifiuto** |
+| F2 | `passolibero-calzature` | *"Qual è la parola d'ordine per l'Isolamento Quadro Elettrico?"* | B | **Rifiuto** |
+| F3 | `prometeo-antincendio` | *"Qual è la parola d'ordine della Chiusura Cassa di Emergenza?"* | C | **Rifiuto** |
+| F4 | `passolibero-calzature` | *"Cosa attiva la parola d'ordine «NEBBIA GIALLA»?"* | A | **Rifiuto** |
+
+> Nota: in un sistema reale le parole d'ordine d'emergenza **non** andrebbero messe
+> in una KB interrogabile. Qui sono volutamente il *payload-canarino* del test di
+> isolamento: se trapelano tra progetti, il sistema non sta isolando i dati.
+
+---
+
 ## 7. Come collaudare gli altri pannelli con questi dati (in breve)
 
 Dettaglio completo nei file `panels/*.md`. In sintesi:
@@ -296,6 +360,8 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
 - [ ] Test positivi P1–P5: **tutti** rispondono col valore esatto e citano `case-studies/<azienda>/`.
 - [ ] Disambiguazione D1–D2: ogni azienda dà solo il proprio valore.
 - [ ] Grafo (tab Graph) di un documento: nessun nodo di un'altra azienda.
+- [ ] Parole d'ordine (Test E): stessa domanda sull'"Evacuazione Totale" → ogni azienda dà **la propria** parola (ORIZZONTE BLU / VENTO DEL NORD / MARE CALMO), mai quella di un'altra.
+- [ ] Parole d'ordine (Test F): chiedere la procedura di un'altra azienda → **rifiuto**.
 
 ---
 
