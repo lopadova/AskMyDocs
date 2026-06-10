@@ -545,7 +545,63 @@ export const adminKbDocumentApi = {
         );
         return data;
     },
+    // Explorer bulk multi-select operations.
+    async bulkDelete(ids: number[], force: boolean): Promise<KbBulkDeleteResponse> {
+        const { data } = await api.post<KbBulkDeleteResponse>(
+            '/api/admin/kb/documents/bulk-delete',
+            { ids, force },
+        );
+        return data;
+    },
+    async bulkRestore(ids: number[]): Promise<KbBulkRestoreResponse> {
+        const { data } = await api.post<KbBulkRestoreResponse>(
+            '/api/admin/kb/documents/bulk-restore',
+            { ids },
+        );
+        return data;
+    },
+    // The ZIP endpoint is a GET so it can be triggered by a native
+    // browser download (anchor href) riding the session cookies.
+    zipUrl(ids: number[]): string {
+        const qs = ids.map((id) => `ids[]=${encodeURIComponent(id)}`).join('&');
+        return `/api/admin/kb/documents/zip?${qs}`;
+    },
 };
+
+// Per-id bulk result echoed by bulk-delete / bulk-restore. `status`
+// values mirror the controller contract; `summary` is a sentinel-keyed
+// tally the toolbar surfaces as a toast.
+export interface KbBulkResult {
+    id: number;
+    status: string;
+    mode?: string;
+    file_deleted?: boolean;
+}
+
+export interface KbBulkDeleteResponse {
+    ok: boolean;
+    mode: 'soft' | 'hard';
+    results: KbBulkResult[];
+    summary: {
+        requested: number;
+        deleted: number;
+        already_trashed: number;
+        not_found: number;
+        failed: number;
+    };
+}
+
+export interface KbBulkRestoreResponse {
+    ok: boolean;
+    results: KbBulkResult[];
+    summary: {
+        requested: number;
+        restored: number;
+        not_trashed: number;
+        not_found: number;
+        failed: number;
+    };
+}
 
 // Phase G3 — validation error envelope surfaced by CanonicalParser
 // when the submitted body carries a `---` fence with invalid frontmatter.

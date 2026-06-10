@@ -4,6 +4,7 @@ import { AdminShell } from '../shell/AdminShell';
 import type { KbTreeDocNode, KbTreeMode, KbTreeNode } from '../admin.api';
 import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
+import { useBulkDeleteKbDocuments, useBulkRestoreKbDocuments } from './kb-document.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 import { ExplorerView } from './explorer/ExplorerView';
 import { ExplorerPreviewPane } from './explorer/ExplorerPreviewPane';
@@ -15,7 +16,7 @@ import {
     type ExplorerTileSize,
 } from './explorer/explorer-prefs';
 import { findDocById, resolveExistingPath } from './explorer/explorer-utils';
-import { ToastHost } from '../shared/Toast';
+import { ToastHost, useToast } from '../shared/Toast';
 
 type KbViewMode = 'tree' | 'explorer';
 
@@ -119,6 +120,11 @@ export function KbView() {
     const projectsQuery = useKbProjects();
     const projectOptions = projectsQuery.data?.projects ?? [];
 
+    const toast = useToast();
+    const bulkDeleteMut = useBulkDeleteKbDocuments();
+    const bulkRestoreMut = useBulkRestoreKbDocuments();
+    const bulkBusy = bulkDeleteMut.isPending || bulkRestoreMut.isPending;
+
     // Keep the URL in sync with (selectedDocId, activeTab, view, path).
     // Runs on every state change — history.replaceState is cheap and
     // idempotent, so this also covers the restore→trash toggle round-trip.
@@ -200,6 +206,54 @@ export function KbView() {
         // Force the tree to refetch so the deleted row disappears (or
         // flips to trashed badge when with_trashed is on).
         treeQuery.refetch();
+    }
+
+    function handleBulkDelete(ids: number[], force: boolean) {
+        if (ids.length === 0) {
+            return;
+        }
+        bulkDeleteMut.mutate(
+            { ids, force },
+            {
+                onSuccess: (res) => {
+                    const s = res.summary;
+                    const verb = force ? 'hard-deleted' : 'deleted';
+                    if (s.failed > 0) {
+                        toast.error(
+                            `${s.deleted} ${verb}, ${s.failed} failed.`,
+                            'kb-explorer-bulk-toast',
+                        );
+                    } else {
+                        toast.success(
+                            `${s.deleted} document${s.deleted === 1 ? '' : 's'} ${verb}.`,
+                            'kb-explorer-bulk-toast',
+                        );
+                    }
+                    treeQuery.refetch();
+                },
+                onError: () => toast.error('Bulk delete failed.', 'kb-explorer-bulk-toast'),
+            },
+        );
+    }
+
+    function handleBulkRestore(ids: number[]) {
+        if (ids.length === 0) {
+            return;
+        }
+        bulkRestoreMut.mutate(
+            { ids },
+            {
+                onSuccess: (res) => {
+                    const s = res.summary;
+                    toast.success(
+                        `${s.restored} document${s.restored === 1 ? '' : 's'} restored.`,
+                        'kb-explorer-bulk-toast',
+                    );
+                    treeQuery.refetch();
+                },
+                onError: () => toast.error('Bulk restore failed.', 'kb-explorer-bulk-toast'),
+            },
+        );
     }
 
     return (
@@ -360,6 +414,9 @@ export function KbView() {
                             onSizeChange={(next: ExplorerTileSize) => updatePrefs({ size: next })}
                             focusedDocId={focusedDocId}
                             onOpenDoc={handleOpenDoc}
+                            onBulkDelete={handleBulkDelete}
+                            onBulkRestore={handleBulkRestore}
+                            bulkBusy={bulkBusy}
                         />
                         {focusedNode ? (
                             <ExplorerPreviewPane
