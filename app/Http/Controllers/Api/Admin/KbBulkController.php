@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Requests\Admin\Kb\BulkDocumentIdsRequest;
 use App\Models\KnowledgeDocument;
+use App\Services\Admin\KbZipExporter;
 use App\Services\Kb\DocumentDeleter;
 use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
@@ -30,9 +33,10 @@ use Throwable;
  *    deleter's documented bulk contract.
  *
  * RBAC: the route middleware (`role:admin|super-admin`) gates the
- * endpoints. These are POSTs, which the AdminAuthorizationMatrixTest
- * cannot probe (it only issues getJson) — explicit per-role 403/401
- * coverage lives in KbBulkControllerTest instead (R32).
+ * endpoints. bulk-delete / bulk-restore are POSTs, which the
+ * AdminAuthorizationMatrixTest cannot probe (it only issues getJson) —
+ * explicit per-role 403/401 coverage lives in KbBulkControllerTest
+ * instead (R32). The GET zip endpoint IS a matrix row.
  */
 class KbBulkController extends Controller
 {
@@ -164,6 +168,48 @@ class KbBulkController extends Controller
             'results' => $results,
             'summary' => $summary,
         ]);
+    }
+
+    /**
+     * GET /api/admin/kb/documents/zip?ids[]=1&ids[]=2
+     *
+     * Streams a ZIP of the markdown files backing the selected docs.
+     * GET on purpose: the SPA triggers a native browser download via an
+     * anchor that rides the session cookies, and a GET route is
+     * probeable by the authorization matrix (R32). 100 ids ≈ 1 KB of
+     * query string — well within limits.
+     *
+     * Trashed docs are exportable (their files stay on disk until the
+     * retention prune) — forensic export is a legitimate admin use.
+     * 404 when nothing is exportable: zero ids resolved in-tenant OR
+     * every resolved file is missing on disk. An empty archive must
+     * never ship under 200 (R14).
+     */
+    public function zip(BulkDocumentIdsRequest $request, KbZipExporter $exporter): BinaryFileResponse|JsonResponse
+    {
+        /** @var array<int, int> $ids */
+        $ids = array_map(intval(...), $request->validated()['ids']);
+
+        $docs = $this->resolveBatch($ids);
+        $missing = array_values(array_diff($ids, $docs->keys()->all()));
+
+        $result = $exporter->export($docs->values(), $missing);
+
+        if ($result->tmpPath === null) {
+            return response()->json(
+                [
+                    'message' => 'Nothing to export — no requested document has a file on disk.',
+                    'skipped' => $result->skipped,
+                ],
+                Response::HTTP_NOT_FOUND,
+            );
+        }
+
+        $filename = 'kb-export-'.Carbon::now()->format('Ymd-His').'.zip';
+
+        return response()
+            ->download($result->tmpPath, $filename, ['Content-Type' => 'application/zip'])
+            ->deleteFileAfterSend(true);
     }
 
     /**

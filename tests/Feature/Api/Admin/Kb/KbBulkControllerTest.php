@@ -267,6 +267,145 @@ class KbBulkControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // zip export
+    // ------------------------------------------------------------------
+
+    public function test_zip_streams_archive_with_source_path_entries_and_manifest(): void
+    {
+        $admin = $this->makeAdmin();
+        $a = $this->makeDoc('hr-portal', 'policies/a.md', canonical: true, slug: 'a');
+        $b = $this->makeDoc('hr-portal', 'runbooks/b.md', canonical: false, slug: null);
+        Storage::disk('kb')->put('policies/a.md', "# A\n");
+        Storage::disk('kb')->put('runbooks/b.md', "# B\n");
+
+        $response = $this->actingAs($admin)
+            ->get('/api/admin/kb/documents/zip?ids[]='.$a->id.'&ids[]='.$b->id)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/zip');
+
+        $this->assertMatchesRegularExpression(
+            '/kb-export-\d{8}-\d{6}\.zip/',
+            (string) $response->headers->get('Content-Disposition'),
+        );
+
+        // Read the archive BEFORE the response is sent in a real cycle —
+        // deleteFileAfterSend wipes the temp file on send, but in the
+        // test harness the file is still on disk here.
+        $zipPath = $response->baseResponse->getFile()->getPathname();
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($zipPath));
+
+        // Entry names preserve the folder structure (no basename collisions).
+        $this->assertSame("# A\n", $zip->getFromName('policies/a.md'));
+        $this->assertSame("# B\n", $zip->getFromName('runbooks/b.md'));
+
+        $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $this->assertIsArray($manifest);
+        $this->assertCount(2, $manifest['included']);
+        $this->assertSame([], $manifest['skipped']);
+    }
+
+    public function test_zip_skips_missing_file_and_reports_it_in_manifest(): void
+    {
+        $admin = $this->makeAdmin();
+        $ok = $this->makeDoc('hr-portal', 'policies/ok.md', canonical: true, slug: 'ok');
+        $ghost = $this->makeDoc('hr-portal', 'policies/ghost.md', canonical: true, slug: 'ghost');
+        Storage::disk('kb')->put('policies/ok.md', "# OK\n");
+        // ghost.md deliberately NOT written to disk.
+
+        $response = $this->actingAs($admin)
+            ->get('/api/admin/kb/documents/zip?ids[]='.$ok->id.'&ids[]='.$ghost->id)
+            ->assertOk();
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($response->baseResponse->getFile()->getPathname()));
+        $this->assertSame("# OK\n", $zip->getFromName('policies/ok.md'));
+        $this->assertFalse($zip->getFromName('policies/ghost.md'));
+
+        $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $this->assertSame('missing_on_disk', $manifest['skipped'][0]['reason']);
+        $this->assertSame('policies/ghost.md', $manifest['skipped'][0]['path']);
+    }
+
+    public function test_zip_includes_trashed_doc_whose_file_is_still_on_disk(): void
+    {
+        $admin = $this->makeAdmin();
+        $doc = $this->makeDoc('hr-portal', 'policies/trashed.md', canonical: true, slug: 'trashed');
+        Storage::disk('kb')->put('policies/trashed.md', "# Trashed\n");
+        $doc->delete();
+
+        $response = $this->actingAs($admin)
+            ->get('/api/admin/kb/documents/zip?ids[]='.$doc->id)
+            ->assertOk();
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($response->baseResponse->getFile()->getPathname()));
+        $this->assertSame("# Trashed\n", $zip->getFromName('policies/trashed.md'));
+        $zip->close();
+    }
+
+    public function test_zip_returns_404_when_nothing_exportable(): void
+    {
+        $admin = $this->makeAdmin();
+
+        // Unknown ids — zero resolve.
+        $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/zip?ids[]=987654')
+            ->assertNotFound();
+
+        // Resolved doc but no file on disk — still nothing exportable,
+        // an empty zip must never ship under 200 (R14).
+        $ghost = $this->makeDoc('hr-portal', 'policies/ghost.md', canonical: true, slug: 'ghost');
+        $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/zip?ids[]='.$ghost->id)
+            ->assertNotFound()
+            ->assertJsonPath('skipped.0.reason', 'missing_on_disk');
+    }
+
+    public function test_zip_reports_cross_tenant_id_as_not_found_in_manifest(): void
+    {
+        $admin = $this->makeAdmin();
+        $mine = $this->makeDoc('hr-portal', 'policies/mine.md', canonical: true, slug: 'mine');
+        Storage::disk('kb')->put('policies/mine.md', "# Mine\n");
+
+        $foreign = $this->makeDoc('hr-portal', 'policies/foreign.md', canonical: true, slug: 'foreign');
+        $foreign->tenant_id = 'tenant-b';
+        $foreign->save();
+        Storage::disk('kb')->put('policies/foreign.md', "# Foreign\n");
+
+        $response = $this->actingAs($admin)
+            ->get('/api/admin/kb/documents/zip?ids[]='.$mine->id.'&ids[]='.$foreign->id)
+            ->assertOk();
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($response->baseResponse->getFile()->getPathname()));
+        // R30: the foreign doc's bytes must NOT leak into the archive.
+        $this->assertFalse($zip->getFromName('policies/foreign.md'));
+        $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+        $zip->close();
+
+        $this->assertSame('not_found', $manifest['skipped'][0]['reason']);
+        $this->assertSame($foreign->id, $manifest['skipped'][0]['id']);
+    }
+
+    public function test_zip_validates_payload(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/zip')
+            ->assertUnprocessable();
+
+        $this->actingAs($admin)
+            ->getJson('/api/admin/kb/documents/zip?'.http_build_query(['ids' => range(1, 101)]))
+            ->assertUnprocessable();
+    }
+
+    // ------------------------------------------------------------------
     // RBAC (compensates the GET-only authorization matrix, R32)
     // ------------------------------------------------------------------
 
