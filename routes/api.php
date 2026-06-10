@@ -305,6 +305,11 @@ Route::middleware([
             ->name('api.admin.kb.documents.bulk_delete');
         Route::post('/kb/documents/bulk-restore', [\App\Http\Controllers\Api\Admin\KbBulkController::class, 'bulkRestore'])
             ->name('api.admin.kb.documents.bulk_restore');
+        // GET so the SPA can ride an <a download> with session cookies;
+        // same BEFORE-the-apiResource ordering constraint as above or
+        // `zip` becomes a `{document}` id lookup.
+        Route::get('/kb/documents/zip', [\App\Http\Controllers\Api\Admin\KbBulkController::class, 'zip'])
+            ->name('api.admin.kb.documents.zip');
 
         Route::apiResource('kb/documents', KbDocumentController::class)
             ->only(['show', 'destroy'])
