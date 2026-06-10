@@ -1,15 +1,15 @@
 import { Fragment } from 'react';
 import { Icon } from '../Icons';
-import { ProjectSwitcher } from './ProjectSwitcher';
+import { TeamSwitcher } from './TeamSwitcher';
 import { Tooltip } from './Tooltip';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
-import type { Project } from '../../lib/seed';
+import type { Team } from '../../lib/team-store';
 import type { Theme } from './hooks';
 
 export type TopbarProps = {
-    project: Project;
-    projects: Project[];
-    onProjectChange: (p: Project) => void;
+    team: Team;
+    teams: Team[];
+    onTeamChange: (t: Team) => void;
     theme: Theme;
     setTheme: (t: Theme) => void;
     onToggleTweaks: () => void;
@@ -17,9 +17,9 @@ export type TopbarProps = {
 };
 
 export function Topbar({
-    project,
-    projects,
-    onProjectChange,
+    team,
+    teams,
+    onTeamChange,
     theme,
     setTheme,
     onToggleTweaks,
@@ -40,7 +40,7 @@ export function Topbar({
                 zIndex: 5,
             }}
         >
-            <ProjectSwitcher project={project} projects={projects} onChange={onProjectChange} />
+            <TeamSwitcher team={team} teams={teams} onChange={onTeamChange} />
             <div
                 style={{
                     display: 'flex',
