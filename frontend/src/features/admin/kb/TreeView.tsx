@@ -37,6 +37,13 @@ export interface TreeViewProps {
     onWithTrashedChange: (next: boolean) => void;
     selectedPath: string | null;
     onSelect: (path: string | null, meta: KbTreeNode | null) => void;
+    /**
+     * Optional: fired (in ADDITION to the open/close toggle) when a
+     * folder row is clicked. The explorer view uses it to navigate the
+     * grid to that virtual path; in plain tree mode the prop is
+     * undefined and folder rows only expand/collapse as before.
+     */
+    onFolderSelect?: (path: string) => void;
 }
 
 export function TreeView(props: TreeViewProps) {
@@ -51,6 +58,7 @@ export function TreeView(props: TreeViewProps) {
         onWithTrashedChange,
         selectedPath,
         onSelect,
+        onFolderSelect,
     } = props;
 
     const visible = useMemo(() => {
@@ -227,6 +235,7 @@ export function TreeView(props: TreeViewProps) {
                                 depth={0}
                                 selectedPath={selectedPath}
                                 onSelect={onSelect}
+                                onFolderSelect={onFolderSelect}
                             />
                         ))}
                     </ul>
@@ -241,9 +250,10 @@ interface TreeNodeProps {
     depth: number;
     selectedPath: string | null;
     onSelect: (path: string | null, meta: KbTreeNode | null) => void;
+    onFolderSelect?: (path: string) => void;
 }
 
-function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
+function TreeNode({ node, depth, selectedPath, onSelect, onFolderSelect }: TreeNodeProps) {
     const [open, setOpen] = useState(depth < 1);
 
     if (node.type === 'folder') {
@@ -260,7 +270,10 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
                     className="focus-ring"
                     data-testid={`kb-tree-node-${node.path}`}
                     data-type="folder"
-                    onClick={() => setOpen(!open)}
+                    onClick={() => {
+                        setOpen(!open);
+                        onFolderSelect?.(node.path);
+                    }}
                     style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -301,6 +314,7 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
                                 depth={depth + 1}
                                 selectedPath={selectedPath}
                                 onSelect={onSelect}
+                                onFolderSelect={onFolderSelect}
                             />
                         ))}
                     </ul>

@@ -12,6 +12,7 @@ import { SourceTab } from './SourceTab';
 import { MetaTab } from './MetaTab';
 import { HistoryTab } from './HistoryTab';
 import { GraphTab } from './GraphTab';
+import { ConfirmDialog } from './ConfirmDialog';
 import { useToast } from '../shared/Toast';
 
 /*
@@ -190,10 +191,18 @@ export function DocumentDetail(props: DocumentDetailProps) {
 
             {confirm !== null ? (
                 <ConfirmDialog
-                    mode={confirm.mode}
+                    title={confirm.mode === 'force' ? 'Force delete document?' : 'Delete document?'}
+                    body={
+                        confirm.mode === 'force'
+                            ? 'This permanently removes the row, chunks, graph nodes, and the file on disk. Cannot be undone.'
+                            : 'The document will be soft-deleted. It can be restored later from the trash view.'
+                    }
+                    confirmLabel={confirm.mode === 'force' ? 'Force delete' : 'Delete'}
+                    tone="danger"
                     isSubmitting={deleteMut.isPending}
                     onCancel={() => setConfirm(null)}
                     onConfirm={handleDelete}
+                    dataAttrs={{ 'data-mode': confirm.mode }}
                 />
             ) : null}
         </div>
@@ -515,91 +524,3 @@ function HeaderButton({
     );
 }
 
-function ConfirmDialog({
-    mode,
-    isSubmitting,
-    onCancel,
-    onConfirm,
-}: {
-    mode: 'soft' | 'force';
-    isSubmitting: boolean;
-    onCancel: () => void;
-    onConfirm: () => void;
-}) {
-    const title = mode === 'force' ? 'Force delete document?' : 'Delete document?';
-    const body =
-        mode === 'force'
-            ? 'This permanently removes the row, chunks, graph nodes, and the file on disk. Cannot be undone.'
-            : 'The document will be soft-deleted. It can be restored later from the trash view.';
-    return (
-        <div
-            data-testid="kb-detail-confirm"
-            data-mode={mode}
-            style={{
-                position: 'fixed',
-                inset: 0,
-                background: 'rgba(0, 0, 0, 0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 500,
-            }}
-        >
-            <div
-                role="dialog"
-                aria-modal="true"
-                style={{
-                    background: 'var(--bg-0)',
-                    border: '1px solid var(--hairline)',
-                    borderRadius: 10,
-                    padding: 16,
-                    width: 420,
-                    maxWidth: '90vw',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                }}
-            >
-                <h3 style={{ margin: 0, fontSize: 15, color: 'var(--fg-0)' }}>{title}</h3>
-                <p style={{ margin: 0, fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.45 }}>{body}</p>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button
-                        type="button"
-                        data-testid="kb-detail-confirm-cancel"
-                        onClick={onCancel}
-                        disabled={isSubmitting}
-                        style={{
-                            padding: '6px 12px',
-                            fontSize: 12,
-                            border: '1px solid var(--hairline)',
-                            background: 'var(--bg-1)',
-                            color: 'var(--fg-1)',
-                            borderRadius: 6,
-                            cursor: 'pointer',
-                        }}
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        data-testid="kb-detail-confirm-submit"
-                        onClick={onConfirm}
-                        disabled={isSubmitting}
-                        style={{
-                            padding: '6px 12px',
-                            fontSize: 12,
-                            border: '1px solid var(--danger-fg, #b91c1c)',
-                            background: 'var(--danger-soft, rgba(220, 38, 38, 0.12))',
-                            color: 'var(--danger-fg, #b91c1c)',
-                            borderRadius: 6,
-                            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                            opacity: isSubmitting ? 0.6 : 1,
-                        }}
-                    >
-                        {isSubmitting ? 'Working…' : mode === 'force' ? 'Force delete' : 'Delete'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
