@@ -184,11 +184,13 @@ class KbTreeService
         return [
             'id' => $doc->id,
             'project_key' => $doc->project_key,
+            'title' => $doc->title,
             'slug' => $doc->slug,
             'canonical_type' => $doc->canonical_type,
             'canonical_status' => $doc->canonical_status,
             'is_canonical' => (bool) $doc->is_canonical,
             'indexed_at' => optional($doc->indexed_at)->toIso8601String(),
+            'updated_at' => optional($doc->updated_at)->toIso8601String(),
             'deleted_at' => optional($doc->deleted_at)->toIso8601String(),
         ];
     }
