@@ -329,6 +329,12 @@ const adminRolesRoute = createRoute({
 const adminKbSearchSchema = z.object({
     doc: z.coerce.number().int().positive().optional(),
     tab: z.enum(['preview', 'source', 'meta', 'history', 'graph']).optional(),
+    // `view=explorer` switches the KB page from the tree+detail layout
+    // to the filesystem explorer; `path` is the current virtual folder
+    // ('' = root). Declared here so TanStack preserves the query string
+    // on navigation; KbView reads them via parseInitialUrl on mount.
+    view: z.enum(['tree', 'explorer']).optional(),
+    path: z.string().optional(),
 });
 
 const adminKbRoute = createRoute({
