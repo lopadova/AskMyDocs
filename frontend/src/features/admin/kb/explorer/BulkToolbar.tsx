@@ -92,6 +92,7 @@ export function BulkToolbar({
             <a
                 data-testid="kb-explorer-bulk-zip"
                 href={zipHref}
+                download
                 style={btnStyle}
             >
                 <Icon.Download size={13} /> Download ZIP
