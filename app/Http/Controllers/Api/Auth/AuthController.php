@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\Auth\UserTeamsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -65,7 +66,7 @@ class AuthController extends Controller
         return response()->json(null, 204);
     }
 
-    public function me(Request $request): JsonResponse
+    public function me(Request $request, UserTeamsResolver $teams): JsonResponse
     {
         $user = $request->user();
 
@@ -92,6 +93,10 @@ class AuthController extends Controller
             'roles' => $user->getRoleNames(),
             'permissions' => $user->getAllPermissions()->pluck('name'),
             'projects' => $projects,
+            // R27 — additive: the legacy cross-tenant `projects` list above
+            // stays untouched; `teams` groups the same memberships per
+            // tenant for the SPA team switcher.
+            'teams' => $teams->resolve($user),
             'preferences' => [
                 'theme' => 'dark',
                 'density' => 'balanced',
