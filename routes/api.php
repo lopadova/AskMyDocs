@@ -296,6 +296,16 @@ Route::middleware([
                 ->findOrFail($id);
         });
 
+        // Bulk multi-select operations (explorer toolbar). Static path
+        // segments under /kb/documents/ — registered BEFORE the
+        // apiResource so they can never be captured by the `{document}`
+        // implicit binding (a later registration would turn
+        // `bulk-delete` into a document id lookup → misleading 404).
+        Route::post('/kb/documents/bulk-delete', [\App\Http\Controllers\Api\Admin\KbBulkController::class, 'bulkDelete'])
+            ->name('api.admin.kb.documents.bulk_delete');
+        Route::post('/kb/documents/bulk-restore', [\App\Http\Controllers\Api\Admin\KbBulkController::class, 'bulkRestore'])
+            ->name('api.admin.kb.documents.bulk_restore');
+
         Route::apiResource('kb/documents', KbDocumentController::class)
             ->only(['show', 'destroy'])
             ->names([
