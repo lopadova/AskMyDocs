@@ -2,6 +2,7 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
+    Navigate,
     Outlet,
     redirect,
     useNavigate,
@@ -15,6 +16,7 @@ import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
+import { ProjectsList } from '../features/admin/projects/ProjectsList';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -236,12 +238,29 @@ const teamRoute = createRoute({
     component: TeamGate,
 });
 
+// True only when the URL's `$teamHash` segment is a real team. The
+// in-team redirects below guard on this: for a LEGACY hash-less URL
+// (`/app/admin`) `$teamHash` captured "admin", which is NOT a team.
+// These were `beforeLoad` redirects, but beforeLoad fires DURING route
+// matching with that bogus "admin" param and races TeamGate's effect —
+// producing a corrupt URL like `/app/{hash}/admin/chat`. As guarded
+// components they render null for an unknown hash and let TeamGate's
+// effect re-prefix the whole path unambiguously; for a real hash they
+// redirect as before.
+function useHashIsKnownTeam(teamHash: string): boolean {
+    return useTeamStore((s) => s.teams.some((t) => t.hash === teamHash));
+}
+
+function TeamIndexRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/chat" params={{ teamHash }} replace />;
+}
+
 const teamIndexRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: '/',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/chat', params });
-    },
+    component: TeamIndexRedirect,
 });
 
 // Copilot #11 fix: flat chat routes instead of nesting
@@ -277,33 +296,46 @@ const chatConversationRoute = createRoute({
 // links there directly (AppShell SECTION_ROUTES). The old paths redirect to
 // the real targets so any stale bookmark / deep link lands on the working
 // view instead of a dead-end stub.
+function DashboardAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin" params={{ teamHash }} replace />;
+}
+function KbAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/kb" params={{ teamHash }} replace />;
+}
+function InsightsAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/insights" params={{ teamHash }} replace />;
+}
+function UsersAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/users" params={{ teamHash }} replace />;
+}
+
 const dashboardRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'dashboard',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/admin', params });
-    },
+    component: DashboardAliasRedirect,
 });
 const kbRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'kb',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/admin/kb', params });
-    },
+    component: KbAliasRedirect,
 });
 const insightsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'insights',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/admin/insights', params });
-    },
+    component: InsightsAliasRedirect,
 });
 const usersRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'users',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/admin/users', params });
-    },
+    component: UsersAliasRedirect,
 });
 // Phase H1 — admin Log Viewer route. Same flat RBAC pattern as
 // AdminKbRoute: the RequireRole gate lives inside the component so
@@ -327,12 +359,16 @@ const adminLogsRoute = createRoute({
     path: 'admin/logs',
     component: AdminLogsRoute,
 });
+function MaintenanceAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/maintenance" params={{ teamHash }} replace />;
+}
+
 const maintenanceRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'maintenance',
-    beforeLoad: ({ params }) => {
-        throw redirect({ to: '/app/$teamHash/admin/maintenance', params });
-    },
+    component: MaintenanceAliasRedirect,
 });
 
 // Phase H2 — admin Maintenance panel route. Same flat RBAC pattern as
@@ -369,6 +405,27 @@ const adminRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin',
     component: AdminRoute,
+});
+
+// v8.9 — Admin Projects registry. Same flat-RBAC pattern: the
+// RequireRole gate lives inside the component so a viewer hitting
+// /app/{hash}/admin/projects sees <AdminForbidden />. AdminShell wraps
+// here (route level) — like AdminSynonymsRoute — so ProjectsList stays
+// Router-context-free for Vitest.
+function AdminProjectsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="projects">
+                <ProjectsList />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminProjectsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/projects',
+    component: AdminProjectsRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -1071,6 +1128,7 @@ const teamChildren = [
     logsRoute,
     maintenanceRoute,
     adminRoute,
+    adminProjectsRoute,
     adminUsersRoute,
     adminRolesRoute,
     adminKbRoute,
