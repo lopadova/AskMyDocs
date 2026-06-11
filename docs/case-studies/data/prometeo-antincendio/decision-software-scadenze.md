@@ -1,5 +1,5 @@
 ---
-id: DEC-2026-0007
+id: DEC-SCADENZARIO-0001
 slug: decision-scadenzario-pro
 type: decision
 status: accepted

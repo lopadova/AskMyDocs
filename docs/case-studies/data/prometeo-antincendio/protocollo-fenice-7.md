@@ -1,5 +1,5 @@
 ---
-id: ROTTA-FENICE-0007
+id: RUN-FENICE-0007
 slug: protocollo-fenice-7
 type: runbook
 status: accepted

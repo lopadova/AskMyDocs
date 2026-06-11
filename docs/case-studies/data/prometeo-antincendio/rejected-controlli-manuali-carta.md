@@ -1,8 +1,8 @@
 ---
-id: ROTTA-0001
+id: REJ-CARTA-0001
 slug: rejected-controlli-manuali-carta
 type: rejected-approach
-status: superseded
+status: accepted
 project: prometeo-antincendio
 owners: [Direzione Tecnica]
 tags: [scadenze, approccio-scartato, carta]

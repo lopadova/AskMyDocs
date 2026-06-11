@@ -1,5 +1,5 @@
 ---
-id: DEC-2026-0007
+id: PL-DEC-0001
 slug: decision-vendita-solo-ecommerce
 type: decision
 status: accepted

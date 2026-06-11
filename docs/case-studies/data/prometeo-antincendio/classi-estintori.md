@@ -64,6 +64,18 @@ evitare folgorazioni e riaccensioni. La parola d'ordine è **riservata** e va
 conosciuta **a memoria** dagli addetti; solo dopo l'isolamento si impiegano
 estintori idonei (CO₂ o polvere) sui residui.
 
+## Posizionamento e distanze
+
+Lo standard interno Prometeo per capannoni e ambienti industriali prescrive:
+
+- **distanza massima di percorrenza di 30 metri** da qualunque postazione di
+  lavoro per raggiungere l'estintore più vicino;
+- **distanza minima di 15 metri tra due estintori** nello stesso capannone, per
+  evitare cluster ridondanti e garantire una copertura uniforme della superficie.
+
+Le deroghe (aree ad alto rischio, presenza di scaffalature intensive) vanno
+motivate nel verbale di sopralluogo.
+
 ## Nota operativa
 
 Durante il sopralluogo (vedi [[modulo-pa-12-sopralluogo]]) il tecnico annota

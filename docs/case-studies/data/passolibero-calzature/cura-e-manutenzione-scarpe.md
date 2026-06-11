@@ -1,5 +1,5 @@
 ---
-id: ROTTA-CARE-0001
+id: PL-CARE-0001
 slug: cura-e-manutenzione-scarpe
 type: runbook
 status: accepted

@@ -1,5 +1,5 @@
 ---
-id: ROTTA-PA12-0001
+id: RUN-PA12-0001
 slug: modulo-pa-12-sopralluogo
 type: runbook
 status: accepted
