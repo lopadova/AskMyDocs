@@ -47,6 +47,8 @@ return new class extends Migration
 
             // Lookup: token non scaduto per key
             $table->index(['widget_key_id', 'expires_at'], 'idx_wst_key_expires');
+            $table->index('widget_session_id', 'idx_wst_session');
+            $table->index('expires_at', 'idx_wst_expires');
         });
     }
 

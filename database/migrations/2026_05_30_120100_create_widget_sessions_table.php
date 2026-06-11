@@ -49,6 +49,9 @@ return new class extends Migration
 
             // Lookup tipico: sessioni di una key per stato.
             $table->index(['widget_key_id', 'status'], 'idx_widget_sessions_key_status');
+            // #28 — l'admin list filtra tenant_id e ordina per created_at:
+            // senza questo indice il DB fa un filesort per pagina su volumi grandi.
+            $table->index(['tenant_id', 'created_at'], 'idx_widget_sessions_tenant_created');
         });
     }
 

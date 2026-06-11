@@ -9,6 +9,8 @@ use App\Ai\AiResponse;
 use App\Models\WidgetKey;
 use App\Models\WidgetSession;
 use App\Models\WidgetSessionStep;
+use App\Services\ChatLog\ChatLogEntry;
+use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\SearchResult;
@@ -49,6 +51,7 @@ final class WidgetOrchestratorService
         private readonly ConfidenceCalculator $confidence,
         private readonly AiManager $ai,
         private readonly WidgetPiiMasker $piiMasker,
+        private readonly ChatLogManager $chatLog,
     ) {}
 
     /**
@@ -167,7 +170,7 @@ final class WidgetOrchestratorService
             $response = $this->ai->chatWithHistory($systemPrompt, array_merge($baseMessages, $extra), $options);
 
             if ($response->toolCalls === []) {
-                return $this->finishWithAnswer($session, $snapshot, $response, $result, $start);
+                return $this->finishWithAnswer($session, $snapshot, $response, $result, $start, $userMessage);
             }
 
             $call = $response->toolCalls[0];
@@ -203,7 +206,7 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @return array<string, mixed>
      */
-    private function finishWithAnswer(WidgetSession $session, array $snapshot, AiResponse $response, ?SearchResult $result, float $start): array
+    private function finishWithAnswer(WidgetSession $session, array $snapshot, AiResponse $response, ?SearchResult $result, float $start, ?string $userMessage = null): array
     {
         $latency = (int) ((microtime(true) - $start) * 1000);
         $citations = $result !== null ? $this->retrieval->buildCitations($result) : [];
@@ -227,6 +230,12 @@ final class WidgetOrchestratorService
         );
         $this->resetErrors($session, WidgetSession::STATUS_ACTIVE);
 
+        // #30 — logga il turno Q&A su chat_logs come ogni altra channel (web,
+        // API, MCP): senza, tab admin Chat Logs / AdminMetrics / AiInsights /
+        // chat-log:prune sono ciechi al traffico widget. ChatLogManager::log è
+        // never-throw (try/catch interno), quindi non rompe mai il percorso utente.
+        $this->logChat($session, $userMessage, $response, $result, $latency);
+
         return [
             'session' => $this->sessionPayload($session),
             'type' => 'message',
@@ -235,6 +244,44 @@ final class WidgetOrchestratorService
             'confidence' => $confidence,
             'meta' => $this->turnMeta($response, $latency),
         ];
+    }
+
+    /**
+     * #30 — Persiste il turno Q&A del widget su chat_logs (canale 'widget').
+     * Solo quando c'è una vera domanda utente (non sui turni di reiniezione
+     * tool, dove $userMessage è null).
+     */
+    private function logChat(WidgetSession $session, ?string $userMessage, AiResponse $response, ?SearchResult $result, int $latency): void
+    {
+        if (! is_string($userMessage) || $userMessage === '') {
+            return;
+        }
+
+        $request = request();
+
+        $this->chatLog->log(new ChatLogEntry(
+            sessionId: (string) $session->public_session_id,
+            userId: null,
+            question: $userMessage,
+            answer: $response->content,
+            projectKey: (string) $session->project_key,
+            aiProvider: $response->provider,
+            aiModel: $response->model,
+            chunksCount: $result?->primary->count() ?? 0,
+            sources: $result !== null ? $this->retrieval->collectSources($result) : [],
+            promptTokens: $response->promptTokens,
+            completionTokens: $response->completionTokens,
+            totalTokens: $response->totalTokens,
+            latencyMs: $latency,
+            clientIp: $request?->ip(),
+            userAgent: $request?->userAgent(),
+            extra: ['channel' => 'widget'],
+            // NON 'anonymous': quel flag attiva la data-minimisation della chat
+            // anonima (v8.8.3) che azzera question/answer. Il widget è
+            // key-autenticato e l'admin deve vedere il contenuto come per le
+            // altre channel; l'assenza di account è già riflessa da userId=null.
+            anonymous: false,
+        ));
     }
 
     /**
@@ -358,14 +405,26 @@ final class WidgetOrchestratorService
     {
         $messages = [];
 
-        foreach ($session->steps()->orderBy('step_index')->get() as $step) {
+        // #25 — seleziona SOLO le colonne usate da stepToMessage (niente longText
+        // snapshot_in_json/snapshot_out_json/diagnostic_json) e limita in SQL agli
+        // ultimi HISTORY_LIMIT step. Prima si caricavano TUTTI gli step con TUTTE
+        // le colonne ad ogni turno → O(n²) su sessioni vicine al cap (100 step ×
+        // snapshot multi-100KB) sul percorso pubblico per-visitatore.
+        $steps = $session->steps()
+            ->select(['step_index', 'kind', 'tool', 'args_json'])
+            ->orderByDesc('step_index')
+            ->limit(self::HISTORY_LIMIT)
+            ->get()
+            ->reverse();
+
+        foreach ($steps as $step) {
             [$role, $content] = $this->stepToMessage($step);
             if ($content !== '') {
                 $messages[] = ['role' => $role, 'content' => $content];
             }
         }
 
-        return array_slice($messages, -self::HISTORY_LIMIT);
+        return $messages;
     }
 
     /**

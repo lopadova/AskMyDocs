@@ -31,7 +31,10 @@ final class WidgetSessionAdminController extends Controller
         $tenantId = $this->tenantContext->current();
         $query = WidgetSession::query()
             ->where('tenant_id', $tenantId)
-            ->with('widgetKey:id,public_key,label');
+            ->with('widgetKey:id,public_key,label')
+            // #27 — un solo COUNT aggregato per riga invece di lazy-load dell'intera
+            // collection di step (con i longText snapshot) solo per contarli.
+            ->withCount('steps');
 
         if ($request->filled('widget_key_id')) {
             $query->where('widget_key_id', (int) $request->input('widget_key_id'));
@@ -41,8 +44,12 @@ final class WidgetSessionAdminController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        // #27 — clampa per_page: ?per_page=1000000 idraterebbe milioni di righe
+        // (memory exhaustion, R3).
+        $perPage = min(max((int) $request->input('per_page', 25), 1), 100);
+
         $rows = $query->orderByDesc('created_at')
-            ->paginate(perPage: (int) ($request->input('per_page', 25)))
+            ->paginate(perPage: $perPage)
             ->through(fn (WidgetSession $s): array => $this->serializeList($s));
 
         return response()->json([
@@ -99,7 +106,9 @@ final class WidgetSessionAdminController extends Controller
             'skill' => $s->skill,
             'mission' => $s->mission,
             'origin' => $s->origin,
-            'steps_count' => $s->steps->count(),
+            // #27 — usa il COUNT aggregato (withCount), non $s->steps->count()
+            // che lazy-loaderebbe l'intera collection.
+            'steps_count' => (int) ($s->steps_count ?? 0),
             'created_at' => $s->created_at->toIso8601String(),
             'updated_at' => $s->updated_at->toIso8601String(),
         ];

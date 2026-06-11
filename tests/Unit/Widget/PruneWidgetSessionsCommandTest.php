@@ -82,6 +82,32 @@ final class PruneWidgetSessionsCommandTest extends TestCase
         $this->assertDatabaseMissing('widget_session_steps', ['widget_session_id' => $oldSession->id]);
     }
 
+    /** #29 — i session token SCADUTI sono prunati; i validi restano (anche senza sessioni vecchie). */
+    public function test_expired_session_tokens_are_pruned(): void
+    {
+        $key = $this->makeKey();
+
+        $expired = \App\Models\WidgetSessionToken::create([
+            'tenant_id' => 'default',
+            'token' => hash('sha256', 'wt_expired'),
+            'widget_key_id' => $key->id,
+            'origin' => null,
+            'expires_at' => now()->subHour(),
+        ]);
+        $valid = \App\Models\WidgetSessionToken::create([
+            'tenant_id' => 'default',
+            'token' => hash('sha256', 'wt_valid'),
+            'widget_key_id' => $key->id,
+            'origin' => null,
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->artisan('widget:prune-sessions')->assertExitCode(0);
+
+        $this->assertDatabaseMissing('widget_session_tokens', ['id' => $expired->id]);
+        $this->assertDatabaseHas('widget_session_tokens', ['id' => $valid->id]);
+    }
+
     public function test_recent_sessions_are_kept(): void
     {
         $key = $this->makeKey();

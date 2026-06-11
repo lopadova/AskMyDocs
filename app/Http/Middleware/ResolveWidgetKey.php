@@ -86,7 +86,7 @@ final class ResolveWidgetKey
         $request->attributes->set(self::ATTR_MODE, $mode);
         $request->attributes->set(self::ATTR_PROJECT, $key->project_key);
 
-        $key->forceFill(['last_used_at' => now()])->saveQuietly();
+        $this->touchLastUsed($key);
 
         return $next($request);
     }
@@ -133,6 +133,21 @@ final class ResolveWidgetKey
         RateLimiter::hit($bucket, 60);
 
         return null;
+    }
+
+    /**
+     * #26 — Aggiorna last_used_at con throttle: una UPDATE per OGNI richiesta
+     * (incluse /setup e ogni /step) contendeva sulla singola riga hot della key.
+     * Scriviamo solo se mai usata o più vecchia di 60s.
+     */
+    private function touchLastUsed(WidgetKey $key): void
+    {
+        $last = $key->last_used_at;
+        if ($last !== null && $last->gt(now()->subSeconds(60))) {
+            return;
+        }
+
+        $key->forceFill(['last_used_at' => now()])->saveQuietly();
     }
 
     private function deny(int $status, string $error, string $message, int $retryAfter = 0): Response
@@ -194,7 +209,7 @@ final class ResolveWidgetKey
             $request->attributes->set('widget_session', $result['session']);
         }
 
-        $key->forceFill(['last_used_at' => now()])->saveQuietly();
+        $this->touchLastUsed($key);
 
         return $next($request);
     }

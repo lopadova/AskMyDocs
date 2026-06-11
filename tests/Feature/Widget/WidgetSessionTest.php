@@ -353,6 +353,49 @@ final class WidgetSessionTest extends TestCase
         $this->assertSame(1, $session->steps()->count());
     }
 
+    /** #30 — un turno di risposta del widget è loggato su chat_logs (canale 'widget'). */
+    public function test_answer_turn_is_logged_to_chat_logs(): void
+    {
+        $key = $this->makeKey();
+
+        // KB vuota → retrieval rifiutata ($result null); AiManager risponde testo.
+        $retrieval = \Mockery::mock(\App\Services\Kb\Chat\ChatRetrievalService::class);
+        $retrieval->shouldReceive('retrieve')->andReturn(
+            new \App\Services\Kb\Retrieval\SearchResult(collect(), collect(), collect()),
+        );
+        $retrieval->shouldReceive('shouldRefuse')->andReturn(true);
+        $this->app->instance(\App\Services\Kb\Chat\ChatRetrievalService::class, $retrieval);
+
+        $ai = \Mockery::mock(\App\Ai\AiManager::class);
+        $ai->shouldReceive('chatWithHistory')->andReturn(new \App\Ai\AiResponse(
+            content: 'Ecco la risposta.',
+            provider: 'fake',
+            model: 'fake-x',
+            promptTokens: 5,
+            completionTokens: 7,
+            totalTokens: 12,
+            finishReason: 'stop',
+            toolCalls: [],
+        ));
+        $this->app->instance(\App\Ai\AiManager::class, $ai);
+
+        $this->withHeaders($this->headers($key))->postJson('/api/widget/sessions/start', [
+            'snapshot' => ['page' => ['url' => 'https://allowed.test']],
+            'message' => 'Domanda di prova',
+        ])->assertOk()->assertJsonPath('type', 'message');
+
+        $this->assertDatabaseHas('chat_logs', [
+            'question' => 'Domanda di prova',
+            'answer' => 'Ecco la risposta.',
+            'project_key' => $key->project_key,
+            'ai_provider' => 'fake',
+        ]);
+
+        $log = \App\Models\ChatLog::where('question', 'Domanda di prova')->first();
+        $this->assertNotNull($log);
+        $this->assertSame('widget', data_get($log->extra, 'channel'));
+    }
+
     /** #19 — /exec-tool rispetta il cap di step come step(): oltre il cap → 422 session_blocked. */
     public function test_exec_tool_respects_max_steps_cap(): void
     {

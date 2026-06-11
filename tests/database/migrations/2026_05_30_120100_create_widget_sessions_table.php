@@ -35,6 +35,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['widget_key_id', 'status'], 'idx_widget_sessions_key_status');
+            $table->index(['tenant_id', 'created_at'], 'idx_widget_sessions_tenant_created');
         });
     }
 

@@ -47,6 +47,11 @@ return new class extends Migration
 
             // Lookup: token non scaduto per key
             $table->index(['widget_key_id', 'expires_at'], 'idx_wst_key_expires');
+            // #29 — Postgres non indicizza automaticamente le FK: senza questo
+            // indice il cascade delete da una sessione scansiona l'intera tabella.
+            $table->index('widget_session_id', 'idx_wst_session');
+            // #29 — il prune dei token scaduti filtra su expires_at.
+            $table->index('expires_at', 'idx_wst_expires');
         });
     }
 

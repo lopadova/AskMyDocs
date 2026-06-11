@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\WidgetSession;
+use App\Models\WidgetSessionToken;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
 
@@ -44,6 +45,16 @@ class PruneWidgetSessionsCommand extends Command
 
         $cutoff = now()->subDays($days);
         $cutoffIso = $cutoff->toIso8601String();
+
+        // #29 — prune dei session token SCADUTI a prescindere dalle sessioni: i
+        // token senza widget_session_id non cascadano da nessuna sessione e, non
+        // pruniti, crescerebbero illimitatamente (uno per boot del widget). Una
+        // volta scaduti (TTL ~30min) sono inutilizzabili. Pass chunked (R3).
+        $expiredTokens = $this->pruneExpiredTokens();
+        if ($expiredTokens > 0) {
+            $this->info("Deleted {$expiredTokens} expired widget session token(s).");
+        }
+
         $tenantIds = $this->resolveTenantIds($cutoff);
 
         if ($tenantIds === []) {
@@ -88,6 +99,26 @@ class PruneWidgetSessionsCommand extends Command
         $this->info("Total deleted: {$totalDeleted} row(s) across ".count($tenantIds).' tenant(s).');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * #29 — Elimina i session token scaduti (chunked, R3). Cross-tenant per
+     * design: i token sono short-lived e una volta scaduti sono inutilizzabili.
+     */
+    private function pruneExpiredTokens(): int
+    {
+        $deleted = 0;
+
+        WidgetSessionToken::query()
+            ->where('expires_at', '<', now())
+            ->chunkById(100, function ($rows) use (&$deleted): void {
+                $ids = $rows->pluck('id')->all();
+                if ($ids !== []) {
+                    $deleted += WidgetSessionToken::query()->whereIn('id', $ids)->delete();
+                }
+            });
+
+        return $deleted;
     }
 
     /**

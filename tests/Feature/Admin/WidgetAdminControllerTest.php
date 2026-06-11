@@ -654,6 +654,43 @@ final class WidgetAdminControllerTest extends TestCase
         $response->assertJsonStructure(['data', 'meta']);
     }
 
+    /** #27 — steps_count dal withCount aggregato (niente lazy-load) + per_page clampato. */
+    public function test_session_index_steps_count_and_per_page_clamp(): void
+    {
+        $user = $this->adminUser();
+
+        $key = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'test-project',
+            'public_key' => 'pk_sess_27',
+            'secret_hash' => bcrypt('sk_sess_27'),
+            'label' => 'Session Key 27',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        $session = WidgetSession::query()->create([
+            'tenant_id' => 'default',
+            'widget_key_id' => $key->id,
+            'project_key' => 'test-project',
+            'public_session_id' => \Illuminate\Support\Str::uuid(),
+            'status' => 'completed',
+            'skill' => 'askmydocs-assistant@1',
+        ]);
+        for ($i = 0; $i < 3; $i++) {
+            $session->steps()->create(['step_index' => $i, 'kind' => 'user_message']);
+        }
+
+        $response = $this->actingAs($user)->getJson('/api/admin/widget-sessions?per_page=1000000');
+
+        $response->assertOk();
+        // per_page enorme clampato a 100 (no memory exhaustion, R3).
+        $this->assertSame(100, $response->json('meta.per_page'));
+        $this->assertSame(3, $response->json('data.0.steps_count'));
+    }
+
     public function test_session_show_returns_detail_with_steps(): void
     {
         $user = $this->adminUser();

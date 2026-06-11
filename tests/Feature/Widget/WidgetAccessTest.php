@@ -240,6 +240,23 @@ final class WidgetAccessTest extends TestCase
         $this->assertNull($row->consumed_at, 'Il token non deve essere consumato su un 429.');
     }
 
+    /** #26 — last_used_at è aggiornato con throttle: due richieste ravvicinate → una sola scrittura. */
+    public function test_last_used_at_write_is_throttled(): void
+    {
+        $key = $this->makeKey(['allowed_origins' => ['https://allowed.test']]);
+        $headers = ['X-Widget-Key' => $key->public_key, 'Origin' => 'https://allowed.test'];
+
+        $this->withHeaders($headers)->getJson('/api/widget/setup')->assertOk();
+        $first = $key->fresh()->last_used_at;
+        $this->assertNotNull($first);
+
+        // Seconda richiesta subito dopo: il throttle (60s) NON deve riscrivere.
+        $this->withHeaders($headers)->getJson('/api/widget/setup')->assertOk();
+        $second = $key->fresh()->last_used_at;
+
+        $this->assertSame($first->toIso8601String(), $second->toIso8601String());
+    }
+
     public function test_per_key_rate_limit_returns_429(): void
     {
         $key = $this->makeKey([
