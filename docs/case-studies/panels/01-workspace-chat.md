@@ -168,8 +168,9 @@ adempimenti CPI per l'antincendio; taglie/cambi/resi per le calzature).
 1. Apri `/app/chat`, avvia una nuova chat.
 2. Nella **barra filtri** apri "+ Filter" e seleziona il progetto
    **`rotta-logistics`** (chip `project`).
-3. Chiedi una domanda di logistica, es. *"Qual è il tempo di transito standard per
-   una spedizione su pallet?"*.
+3. Chiedi una domanda di logistica, es. *"Qual è il tempo di transito di una
+   spedizione standard?"* (il dato — 2–3 giorni lavorativi — vive in
+   `servizi-spedizione.md`).
 4. **Atteso**: risposta ancorata con citazioni che puntano SOLO a documenti
    `rotta-logistics` (origine `primary`); badge di confidenza > 0. Nessuna fonte di
    altri progetti nella lista citazioni.

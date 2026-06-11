@@ -72,7 +72,19 @@ comportamento corretto quando chiedo all'azienda A un fatto che vive solo in B.
 
 **Prerequisiti**: DB migrato e raggiungibile; chiavi per gli **embeddings**
 configurate (`AI_EMBEDDINGS_PROVIDER` + relativa API key — l'ingest calcola gli
-embedding dei chunk); comandi lanciati dalla **root del progetto**.
+embedding dei chunk); `php artisan tinker` disponibile (laravel/tinker è una
+dipendenza **dev**: serve un `composer install` con i pacchetti dev); **utenti
+già creati/seedati** (lo script concede le membership agli utenti esistenti —
+se ne crei dopo, rilancia `ingest.sh`: è idempotente); comandi lanciati dalla
+**root del progetto**.
+
+> **Nota costi / Doc Insights**: con `KB_CHANGE_ANALYSIS_ENABLED` attivo
+> (default) l'ingest accoda un `AnalyzeDocumentChangeJob` per ciascuno dei 33
+> documenti canonici: perché le card di **Doc Insights** si popolino servono
+> anche le chiavi del provider **chat** (≈33 chiamate LLM a pagamento per run
+> completo). Per una demo senza costi LLM imposta
+> `KB_CHANGE_ANALYSIS_ENABLED=false` in `.env` (le card di Doc Insights
+> resteranno semplicemente vuote).
 
 ```bash
 cd /path/to/AskMyDocs   # la root del repository
@@ -114,7 +126,10 @@ Se hai girato `DemoSeeder`/`RbacSeeder`: `admin@demo.local` / `password`
 
 ---
 
-## 4. Mappa dei pannelli della sidebar (24 voci, 5 gruppi)
+## 4. Mappa dei pannelli della sidebar (23 voci, 5 gruppi)
+
+> La voce **Widget** documentata sotto arriva con la **PR #266**
+> (`feature/kitt-host-tools-foundation`): su `main` oggi le voci sono 23.
 
 Sorgente di verità: `frontend/src/components/shell/nav-config.ts` (gruppi/voci)
 e `frontend/src/routes/index.tsx` (route + ruoli). Documentazione di dettaglio,
@@ -163,7 +178,7 @@ con "a cosa serve / cosa vedi / come testarlo", nei file linkati.
 | **Eval Harness** | `/app/admin/eval-harness` | admin, super-admin, dpo, editor |
 | **MCP Tools** | `/app/admin/mcp-tools` | super-admin |
 | **MCP Tokens** | `/app/admin/mcp/tokens` | super-admin |
-| **Widget** | `/app/admin/widget` | super-admin |
+| **Widget** *(in arrivo con PR #266)* | `/app/admin/widget` | super-admin |
 | **Logs** | `/app/admin/logs` | admin, super-admin |
 | **Maintenance** | `/app/admin/maintenance` | admin, super-admin |
 
@@ -180,11 +195,13 @@ Non tutti i pannelli filtrano per azienda. Distinzione importante per sapere
 
 - **Per `project_key`** (qui l'isolamento è osservabile): **Chat** (filtro
   progetto), **Knowledge Base** (picker progetto → albero/grafo), **Doc
-  Insights**, **Content Gaps**, **Collections**, **Synonyms**, **Widget**
-  (chiavi per progetto), **Connectors**.
+  Insights**, **Content Gaps**, **Synonyms**, **Widget** (chiavi per progetto;
+  *in arrivo con PR #266*), **Connectors**.
 - **Solo per `tenant_id`** (aggregati di tutto il tenant, non per azienda):
   **Dashboard**, **AI Insights**, **Compliance**, **AI Act**, **PII Redactor**,
-  **Logs** — qui l'isolamento è a livello *tenant*, non *progetto*.
+  **Logs**, **Collections** (criteri semantici sull'intera KB del tenant,
+  nessuna dimensione progetto), **Workflows** (suggeritore tenant-wide) — qui
+  l'isolamento è a livello *tenant*, non *progetto*.
 - **Globali RBAC** (nessun dato KB): **Roles**, **Maintenance**, **MCP Tools**.
 
 ---
@@ -317,7 +334,7 @@ dell'intero pacchetto.
 
 | # | Progetto (A) | Domanda | Vive in | Atteso |
 |---|---|---|---|---|
-| F1 | `rotta-logistics` | *"Qual è la parola d'ordine dell'Attivazione Squadra Antincendio (FALCO 12)?"* | B | **Rifiuto** |
+| F1 | `rotta-logistics` | *"Qual è la parola d'ordine dell'Attivazione Squadra Antincendio?"* | B | **Rifiuto** |
 | F2 | `passolibero-calzature` | *"Qual è la parola d'ordine per l'Isolamento Quadro Elettrico?"* | B | **Rifiuto** |
 | F3 | `prometeo-antincendio` | *"Qual è la parola d'ordine della Chiusura Cassa di Emergenza?"* | C | **Rifiuto** |
 | F4 | `passolibero-calzature` | *"Cosa attiva la parola d'ordine «NEBBIA GIALLA»?"* | A | **Rifiuto** |
@@ -338,8 +355,10 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
   l'albero cambia completamente. *Isolamento KB visibile a occhio.*
 - **Doc Insights / Content Gaps**: filtra per progetto → vedi insight / domande
   senza risposta della sola azienda scelta.
-- **Synonyms / Collections**: crea un sinonimo o una collection su un progetto →
-  non deve comparire negli altri.
+- **Synonyms**: crea un sinonimo su un progetto → non deve comparire negli
+  altri progetti. **Collections**: sono per-tenant (nessuna dimensione
+  progetto): con i 3 dataset nello stesso tenant è atteso che l'anteprima
+  semantica possa contare documenti di più aziende — non è un difetto.
 - **Dashboard / AI Insights / Logs**: aggregano l'intero **tenant** → vedrai le
   tre aziende insieme nei "Top projects" e nei log di chat (è corretto: lì
   l'isolamento è a livello tenant, non progetto).
@@ -372,6 +391,13 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
 docs/case-studies/teardown.sh               # rimuove documenti+chunk+grafo+file su disco
 docs/case-studies/teardown.sh --memberships # rimuove anche le ProjectMembership
 ```
+
+> **Cosa NON rimuove il teardown**: gli artefatti creati altrove durante i
+> test restano e vanno ripuliti a mano dalla SPA se vuoi l'ambiente
+> immacolato — gruppi di **sinonimi** (POD/CPI/EU38), **collections**,
+> override dell'**Analysis Gate**, **tabular review**, **workflow** salvati,
+> righe di **Content Gaps**, e i **chat log / conversazioni / analisi AI**
+> generati dai turni di chat.
 
 ---
 

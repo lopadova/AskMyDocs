@@ -193,6 +193,11 @@ Query scoped per `tenant_id`.
 
 ## Widget
 
+> ⚠️ **Disponibile solo con la PR #266** (`feature/kitt-host-tools-foundation`):
+> su `main` questa voce di sidebar, le route `/app/admin/widget` e gli endpoint
+> `/api/admin/widget-keys` / `/api/admin/widget-sessions` **non esistono ancora**.
+> Saltare questa sezione finché la PR #266 non è merged.
+
 ### Percorso
 - **Route SPA**: `/app/admin/widget`.
 - **Sidebar**: gruppo **Operations** → voce **Widget** (icona `Chat`).

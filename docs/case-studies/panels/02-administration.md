@@ -118,13 +118,13 @@ Hook in `users.api.ts` su `adminUsersApi` + `useRoles()` per popolare i ruoli:
 
 Backend: `UserController` + `ProjectMembershipController`. Le membership e gli utenti sono scopati per tenant (binding `forTenant` su `membership`, R30).
 
-> Avvertenza tecnica: l'editor di membership offre come opzioni di progetto un set statico `DEFAULT_PROJECT_KEYS = ['hr-portal', 'engineering']` codificato nel componente (residuo del `DemoSeeder`). Per associare un utente ai progetti reali del case study (`rotta-logistics`, ecc.) può servire un picker progetti alimentato da `GET /api/admin/kb/projects`, oggi non ancora cablato in questo drawer.
+> Nota: il picker progetti del `MembershipEditor` è alimentato dalla lista REALE dei progetti del tenant (`useKbProjects()` → `GET /api/admin/kb/projects`, R18: mai un set hard-coded). Dopo aver eseguito `ingest.sh`, le tre aziende del case study (`rotta-logistics`, `prometeo-antincendio`, `passolibero-calzature`) compaiono quindi tra le opzioni del drawer e si possono assegnare normalmente.
 
 ### Come testarlo con i 3 dataset
 1. Aprire `/app/admin/users` come admin/super-admin.
 2. **Create**: cliccare "New user", compilare il form (es. un utente "viewer di logistica"), assegnare il ruolo `viewer`, salvare → toast `toast-user-created` e l'utente compare in tabella.
 3. **Filtri**: digitare parte dell'email in `users-filter-q`; selezionare `viewer` in `users-filter-role` → la tabella si restringe. Attivare "Include deleted" per vedere gli utenti soft-deleted.
-4. **Edit + memberships**: aprire un utente, tab "Project memberships", e (tenendo presente l'avvertenza sopra) assegnare un progetto con il relativo scope. Tab "Roles" per verificare ruoli e permessi effettivi.
+4. **Edit + memberships**: aprire un utente, tab "Project memberships", e assegnare uno dei progetti del case study con il relativo scope (le opzioni arrivano da `GET /api/admin/kb/projects`). Tab "Roles" per verificare ruoli e permessi effettivi.
 5. **Toggle/Delete/Restore**: disattivare un utente, eliminarlo (soft), poi con "Include deleted" attivo ripristinarlo.
 6. **Check di isolamento (livello tenant)**: la lista utenti è scopata sul tenant attivo. Le membership assegnate qui valgono per i `project_key` del tenant corrente; un amministratore di un altro tenant NON deve vedere questi utenti né le loro membership ai progetti del case study. Verificare inoltre che un'azione su un utente/membership non restituisca dati di un tenant diverso (le binding route `forTenant` impediscono IDOR cross-tenant).
 
