@@ -1,4 +1,5 @@
-import { test as baseTest, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { test as baseTest, expect } from './fixtures';
 
 /*
  * Widget host-tools switch — super-admin SPA scenarios.
