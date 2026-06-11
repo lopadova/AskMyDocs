@@ -54,6 +54,7 @@ final class CaseStudyDatasetTest extends TestCase
         'rotta-logistics' => [
             'HUB-MI-07',
             'HUB-NA-03',
+            'HUB-RM-05',
             'VeloxCorriere',
             'TurboPony',
             'OrbitaWMS',
@@ -80,6 +81,7 @@ final class CaseStudyDatasetTest extends TestCase
             '800-PASSO9',
             'MARE CALMO',
             'STELLA NOVE',
+            'PONENTE ROSSO',
         ],
     ];
 
