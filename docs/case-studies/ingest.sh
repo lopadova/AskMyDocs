@@ -145,13 +145,20 @@ for KEY in "${PROJECTS[@]}"; do
   php artisan kb:rebuild-graph --project="${KEY}" --sync
 done
 
-# Se la coda è su redis/database, processa gli eventuali job residui.
-# R4: un drain fallito deve far fallire lo script, non solo stampare un hint.
-echo "==> Processo gli eventuali job in coda"
-if ! php artisan queue:work --stop-when-empty --tries=1; then
-  echo "!! queue:work è fallito: il dataset potrebbe essere indicizzato solo parzialmente."
-  echo "   Ispeziona i job falliti con: php artisan queue:failed"
-  exit 1
+# Con QUEUE_CONNECTION=sync i job girano INLINE al dispatch: non c'è nulla da
+# drenare e `queue:work` sul driver sync fallirebbe, abortendo lo script. Drena
+# solo per connessioni reali (redis/database/...); lì un drain fallito è
+# bloccante (R4: un errore non va silenziato né dichiarato come successo).
+QUEUE_CONN="$(php artisan tinker --execute='echo config("queue.default");' 2>/dev/null | tail -n1 | tr -d '[:space:]')"
+if [ "${QUEUE_CONN}" = "sync" ]; then
+  echo "==> Coda 'sync': job già eseguiti inline, nessun drain necessario."
+else
+  echo "==> Processo gli eventuali job in coda (connessione '${QUEUE_CONN}')"
+  if ! php artisan queue:work --stop-when-empty --tries=1; then
+    echo "!! queue:work è fallito: il dataset potrebbe essere indicizzato solo parzialmente."
+    echo "   Ispeziona i job falliti con: php artisan queue:failed"
+    exit 1
+  fi
 fi
 
 echo
