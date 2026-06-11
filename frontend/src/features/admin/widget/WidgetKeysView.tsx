@@ -564,6 +564,18 @@ export function WidgetKeysView() {
                 </Alert>
             )}
 
+            {/* #32 — rotate/revoke/delete devono mostrare il fallimento (R14/R11):
+                un revoke fallito non deve sembrare riuscito. */}
+            {(rotateKey.isError || revokeKey.isError || destroyKey.isError) && (
+                <Alert variant="destructive" data-testid="admin-widget-keys-action-error">
+                    <Ban aria-hidden />
+                    <AlertTitle>The action could not be completed.</AlertTitle>
+                    <AlertDescription>
+                        {extractApiError(rotateKey.error ?? revokeKey.error ?? destroyKey.error)}
+                    </AlertDescription>
+                </Alert>
+            )}
+
             {/* Empty state */}
             {keys.data && keys.data.length === 0 && (
                 <div

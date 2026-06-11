@@ -87,7 +87,7 @@ Use the Artisan command (M5.1) or the admin UI (M6) to generate a
 as a bcrypt hash — it can never be recovered.
 
 ```bash
-php artisan widget:issue-secret <public_key>
+php artisan widget:emit-secret <public_key>
 # Output: sk_abcdefghijklmnopqrstuvwxyz  ← save this, it won't be shown again
 ```
 
@@ -423,5 +423,5 @@ Widget keys and sessions are managed via the admin SPA at
 php artisan widget:prune-sessions
 
 # Issue a new secret for an existing key
-php artisan widget:issue-secret <public_key>
+php artisan widget:emit-secret <public_key>
 ```

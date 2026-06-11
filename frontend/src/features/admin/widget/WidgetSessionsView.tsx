@@ -68,7 +68,9 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
  * R11 testids, R15 a11y, R14 states.
  */
 export function WidgetSessionsView() {
-    const [_filterKeyId] = useState<number | null>(null);
+    // #36 — niente più stato morto `_filterKeyId` (mai impostabile dalla UI).
+    // Il filtro per key resta supportato dal BE e potrà essere ricablato a una
+    // dropdown dedicata; finché non c'è il controllo, non portiamo stato inerte.
     const [filterStatus, setFilterStatus] = useState('');
     const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -76,7 +78,6 @@ export function WidgetSessionsView() {
         queryKey: ['admin-widget-sessions', filterStatus],
         queryFn: async () => {
             const params = new URLSearchParams();
-            if (_filterKeyId !== null) params.set('widget_key_id', String(_filterKeyId));
             if (filterStatus) params.set('status', filterStatus);
             const qs = params.toString();
             const { data } = await api.get<WidgetSessionsResponse>(`/api/admin/widget-sessions${qs ? `?${qs}` : ''}`);
@@ -113,6 +114,11 @@ export function WidgetSessionsView() {
                 >
                     <option value="">All statuses</option>
                     <option value="active">Active</option>
+                    {/* #33 — il dominio reale ha 7 stati: waiting_tool/waiting_user
+                        mancavano, rendendo non-filtrabili proprio le sessioni
+                        "appese" che l'operatore deve cercare. */}
+                    <option value="waiting_user">Waiting user</option>
+                    <option value="waiting_tool">Waiting tool</option>
                     <option value="completed">Completed</option>
                     <option value="blocked">Blocked</option>
                     <option value="aborted">Aborted</option>

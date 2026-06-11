@@ -12,6 +12,13 @@ vi.mock('../../../lib/api', () => ({
     },
 }));
 
+// #31 — controlla i ruoli: la tab Keys è super-admin, Sessions è admin+super-admin.
+let mockRoles: string[] = ['super-admin'];
+vi.mock('../../../lib/auth-store', () => ({
+    useAuthStore: (selector: (s: { roles: string[]; loading: boolean }) => unknown) =>
+        selector({ roles: mockRoles, loading: false }),
+}));
+
 import { api } from '../../../lib/api';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,7 +32,29 @@ function renderWithQuery(ui: React.ReactElement) {
 describe('WidgetAdminView', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockRoles = ['super-admin'];
         mockedApi.get.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
+    });
+
+    // #31 — un admin (non super-admin) vede SOLO la tab Sessions; niente Keys/Integration.
+    it('admin (non super-admin) sees only the Sessions tab (#31)', () => {
+        mockRoles = ['admin'];
+        renderWithQuery(<WidgetAdminView />);
+
+        expect(screen.getByTestId('admin-widget-tab-sessions')).toBeDefined();
+        expect(screen.queryByTestId('admin-widget-tab-keys')).toBeNull();
+        expect(screen.queryByTestId('admin-widget-tab-guide')).toBeNull();
+        // Default tab = sessions per un admin.
+        expect(screen.getByTestId('admin-widget-tab-sessions').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('super-admin sees Keys + Sessions + Integration tabs (#31)', () => {
+        mockRoles = ['super-admin'];
+        renderWithQuery(<WidgetAdminView />);
+
+        expect(screen.getByTestId('admin-widget-tab-keys')).toBeDefined();
+        expect(screen.getByTestId('admin-widget-tab-sessions')).toBeDefined();
+        expect(screen.getByTestId('admin-widget-tab-guide')).toBeDefined();
     });
 
     it('renders with testid', () => {

@@ -31,6 +31,17 @@ describe('WidgetSessionsView', () => {
         expect(screen.getByTestId('admin-widget-sessions-view')).toBeDefined();
     });
 
+    it('status filter includes all 7 statuses incl. waiting_tool/waiting_user (#33)', () => {
+        mockedApi.get.mockResolvedValueOnce({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
+        renderWithQuery(<WidgetSessionsView />);
+
+        const select = screen.getByTestId('admin-widget-sessions-filter-status');
+        const values = Array.from(select.querySelectorAll('option')).map((o) => o.getAttribute('value'));
+        expect(values).toEqual(
+            expect.arrayContaining(['', 'active', 'waiting_user', 'waiting_tool', 'completed', 'blocked', 'aborted', 'error']),
+        );
+    });
+
     it('shows empty state when no sessions', async () => {
         mockedApi.get.mockResolvedValueOnce({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
         renderWithQuery(<WidgetSessionsView />);

@@ -38,6 +38,11 @@ describe('WidgetAppearanceDialog', () => {
     // resolution can't poison the next test.
     beforeEach(() => mockedApi.patch.mockReset());
 
+    it('shows the layout-mode note (it does not propagate to embedded widgets) (#35)', () => {
+        renderDialog();
+        expect(screen.getByTestId('admin-widget-appearance-mode-note')).toBeDefined();
+    });
+
     it('saves the edited theme via PATCH with the changed colour', async () => {
         mockedApi.patch.mockResolvedValueOnce({ data: { data: {} } });
         const user = userEvent.setup();

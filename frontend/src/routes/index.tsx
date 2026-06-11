@@ -700,8 +700,11 @@ const adminCollectionsRoute = createRoute({
 });
 
 function AdminWidgetRoute() {
+    // #31 — admin + super-admin (NON solo super-admin): il gate BE
+    // `viewWidgetSessions` ammette `admin` per la tab Sessions. La gestione
+    // chiavi (tab Keys/Integration) resta super-admin, gated DENTRO WidgetAdminView.
     return (
-        <RequireRole roles={['super-admin']}>
+        <RequireRole roles={['admin', 'super-admin']}>
             <AdminShell section="widget">
                 <WidgetAdminView />
             </AdminShell>

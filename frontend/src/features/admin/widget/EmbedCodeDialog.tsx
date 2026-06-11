@@ -481,7 +481,7 @@ export function EmbedCodeDialog({
                                     <span>
                                         Rotate this key to mint a fresh secret, or run{' '}
                                         <code className="font-mono">
-                                            php artisan widget:issue-secret {publicKey}
+                                            php artisan widget:emit-secret {publicKey}
                                         </code>
                                         .
                                     </span>

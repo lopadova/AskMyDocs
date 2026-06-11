@@ -157,6 +157,18 @@ export function WidgetAppearanceDialog({
                     <p className="text-muted-foreground text-xs">
                         {MODE_OPTIONS.find((o) => o.value === theme.mode)?.hint}
                     </p>
+                    {/* #35 — il runtime fissa il layout all'embed time: il tipo qui
+                        vale per gli snippet NUOVI e per l'anteprima, non per i widget
+                        già installati (i colori si aggiornano live via /setup, il
+                        layout no). Evita di far credere che il cambio si propaghi. */}
+                    <p
+                        className="text-muted-foreground text-xs"
+                        data-testid="admin-widget-appearance-mode-note"
+                    >
+                        Applies to newly-generated embed snippets and the preview. Widgets already
+                        embedded keep the type set in their <code>&lt;script&gt;</code> tag — colors
+                        update live, layout does not.
+                    </p>
                 </div>
 
                 <div className="grid gap-5 lg:grid-cols-2">

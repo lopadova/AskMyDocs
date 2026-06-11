@@ -91,6 +91,42 @@ describe('WidgetKeysView', () => {
         expect(screen.getByTestId('admin-widget-keys-loading')).toBeDefined();
     });
 
+    it('surfaces an error when revoke fails (#32, R14)', async () => {
+        mockedApi.get.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 1,
+                        label: 'Production',
+                        public_key: 'pk_abc123',
+                        project_key: 'main',
+                        allowed_origins: [],
+                        rate_limit: 60,
+                        skill: 'askmydocs-assistant@1',
+                        is_active: true,
+                        last_used_at: null,
+                        sessions_count: 0,
+                        created_at: '2026-05-30T00:00:00Z',
+                        updated_at: '2026-05-30T00:00:00Z',
+                    },
+                ],
+            },
+        });
+        mockedApi.post.mockRejectedValue({ response: { data: { message: 'Revoke failed boom' } } });
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        renderWithQuery(<WidgetKeysView />);
+        await waitFor(() => screen.getByTestId('admin-widget-keys-revoke-1'));
+        fireEvent.click(screen.getByTestId('admin-widget-keys-revoke-1'));
+
+        // R14: il fallimento del revoke DEVE comparire in DOM (prima era muto).
+        await waitFor(() => {
+            expect(screen.getByTestId('admin-widget-keys-action-error')).toBeDefined();
+        });
+
+        confirmSpy.mockRestore();
+    });
+
     it('shows revoke button for active keys', async () => {
         mockedApi.get.mockResolvedValueOnce({
             data: {
