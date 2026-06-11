@@ -190,7 +190,7 @@ final class CaseStudyDatasetTest extends TestCase
                 self::assertArrayNotHasKey(
                     $key,
                     $seen,
-                    "doc_id `{$key}` is reused by [{$firstOwner}] and [{$project}/{$file}]: legal for the tenant-scoped unique, but ambiguous for a dataset built to demonstrate clean per-company separation."
+                    "doc_id `{$key}` is reused by [{$firstOwner}] and [{$project}/{$file}]: legal for the per-project `(project_key, doc_id)` unique (uq_kb_doc_doc_id), but ambiguous for a dataset built to demonstrate clean per-company separation."
                 );
                 $seen[$key] = "{$project}/{$file}";
             }
@@ -250,7 +250,9 @@ final class CaseStudyDatasetTest extends TestCase
                 }
 
                 foreach ($canaries as $canary) {
-                    self::assertStringNotContainsString(
+                    // Case-insensitive: un leak che differisce solo per maiuscole
+                    // (es. "salamandra" vs "Salamandra") viola comunque l'isolamento.
+                    self::assertStringNotContainsStringIgnoringCase(
                         $canary,
                         $markdown,
                         "Canary `{$canary}` belongs to [{$owner}] but appears in [{$path}]: the cross-company leak test would false-positive by design."
@@ -375,7 +377,15 @@ final class CaseStudyDatasetTest extends TestCase
                 $content = file_get_contents($absolute);
                 self::assertNotFalse($content, "Unable to read {$absolute}.");
 
-                $raw[$project . '/' . basename($absolute)] = $content;
+                // Un basename duplicato (es. foo.md + foo.markdown) sovrascriverebbe
+                // silenziosamente il primo file, rendendo il dataset non deterministico.
+                $key = $project . '/' . basename($absolute);
+                self::assertArrayNotHasKey(
+                    $key,
+                    $raw,
+                    "Duplicate basename `{$key}`: due file con lo stesso nome base rendono il dataset non deterministico."
+                );
+                $raw[$key] = $content;
             }
         }
 
