@@ -367,6 +367,20 @@ Route::middleware([
         Route::get('/compliance/reports/{report}/pdf', [ComplianceReportController::class, 'downloadPdf'])
             ->name('api.admin.compliance.reports.download_pdf');
 
+        // v8.9 — Admin RESTful CRUD on the `projects` registry. Per-tenant
+        // scope (R30), int-typed `id` param keeps route binding plain.
+        // No `show` route — the list carries everything the page needs.
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/projects`).
+        Route::apiResource('projects', \App\Http\Controllers\Api\Admin\ProjectController::class)
+            ->parameters(['projects' => 'id'])
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->names([
+                'index' => 'api.admin.projects.index',
+                'store' => 'api.admin.projects.store',
+                'update' => 'api.admin.projects.update',
+                'destroy' => 'api.admin.projects.destroy',
+            ]);
+
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
         // knowledge_document_tags. Controller methods take `int $id`

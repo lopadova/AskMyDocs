@@ -59,6 +59,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Core admin API group — middleware role:admin|super-admin ──
             '/api/admin/metrics/overview' => ['admin', 'super-admin'],
             '/api/admin/users' => ['admin', 'super-admin'],
+            '/api/admin/projects' => ['admin', 'super-admin'],
             '/api/admin/logs/chat' => ['admin', 'super-admin'],
             '/api/admin/insights/latest' => ['admin', 'super-admin'],
             '/api/admin/kb/tree' => ['admin', 'super-admin'],
