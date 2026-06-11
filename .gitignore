@@ -50,3 +50,7 @@ public/_serve_router.php
 
 # Playwright MCP browser session artifacts
 .playwright-mcp/
+
+# macOS Finder metadata (must never be committed) — #40
+.DS_Store
+**/.DS_Store

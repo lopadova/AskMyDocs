@@ -21,7 +21,9 @@ final class WidgetPiiMasker
     /**
      * Mask una stringa rimpiazzando i pattern PII con placeholder.
      * I pattern coprono: email, telefono (IT/intl), IBAN, numeri carta,
-     * token API/segreti comuni (sk_, pk_,Bearer).
+     * token API/segreti comuni (sk_, pk_, Bearer, JWT), Codice Fiscale e
+     * Partita IVA italiani (#42). Per una detection più ricca esiste
+     * padosoft/laravel-pii-redactor; questo masker resta always-on e leggero.
      */
     public function maskString(string $input): string
     {
@@ -71,6 +73,23 @@ final class WidgetPiiMasker
             '[JWT]',
             $result,
         );
+
+        // 7. Codice Fiscale italiano (#42) — 6 lettere, 2 cifre, 1 lettera, 2 cifre,
+        // 1 lettera, 3 cifre, 1 lettera (16 char). Era una delle PII IT che il
+        // padosoft/laravel-pii-redactor copre e questo masker no (drift GDPR).
+        $result = preg_replace(
+            '/\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/i',
+            '[CF]',
+            $result,
+        ) ?? $result;
+
+        // 8. Partita IVA italiana (#42) — 11 cifre. Le carte (13-19 cifre) e gli
+        // IBAN sono già mascherati sopra, quindi qui restano solo gli 11-cifre.
+        $result = preg_replace(
+            '/\b\d{11}\b/',
+            '[VAT]',
+            $result,
+        ) ?? $result;
 
         return $result;
     }

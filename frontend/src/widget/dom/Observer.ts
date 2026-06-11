@@ -19,6 +19,15 @@
  *   const observer = new Observer(autoAnnotator, { onStale: () => { ... } });
  *   observer.start();   // avvia il MutationObserver + listener
  *   observer.stop();    // disconnette tutto
+ *
+ * ⚠️ #43 — NON ANCORA CABLATO nel runtime del widget: `new Observer(...)` è
+ * usato solo dai test. La pipeline live costruisce lo snapshot on-demand
+ * (buildSnapshot). Limitazione nota da risolvere QUANDO verrà cablato: durante
+ * una mutation-storm onMutations() SOSTITUISCE i record invece di accumularli
+ * (i batch precedenti non vengono annotati), e i listener focusin/input/change/
+ * scroll chiamano markStale() senza il debounce documentato (callback onStale
+ * per frame di scroll). Fixare insieme al wiring; finché è dead-code la
+ * limitazione non ha impatto a runtime.
  */
 import { AutoAnnotator } from './AutoAnnotator';
 

@@ -38,6 +38,26 @@ final class WidgetPiiMaskerTest extends TestCase
         );
     }
 
+    // ─── #42 — Codice Fiscale & Partita IVA ─────────────────────────
+
+    public function test_masks_italian_codice_fiscale(): void
+    {
+        $this->assertSame(
+            'Il mio CF è [CF].',
+            $this->masker->maskString('Il mio CF è RSSMRA85T10A562S.'),
+        );
+        // case-insensitive
+        $this->assertStringContainsString('[CF]', $this->masker->maskString('rssmra85t10a562s'));
+    }
+
+    public function test_masks_italian_partita_iva(): void
+    {
+        $this->assertSame(
+            'P.IVA [VAT]',
+            $this->masker->maskString('P.IVA 12345678901'),
+        );
+    }
+
     // ─── maskString: telefono ───────────────────────────────────────
 
     public function test_masks_italian_phone_with_country_code(): void
