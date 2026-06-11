@@ -73,7 +73,12 @@ baseTest.describe('Widget host-tools switch — super-admin', () => {
                 r.url().includes(`/api/admin/widget-keys/${id}`) && r.request().method() === 'PATCH',
             { timeout: 15_000 },
         );
-        await rowToggle.uncheck();
+        // .click() (non .uncheck()): il toggle della LISTA è controllato dallo
+        // stato server (nessun optimistic update), quindi `checked` non si
+        // ribalta finché il refetch non completa — .uncheck() pretende il cambio
+        // di stato immediato e fallisce. Il click innesca la mutation; lo stato
+        // OFF persistito è verificato dopo il PATCH (not.toBeChecked sotto).
+        await rowToggle.click();
         const resp = await patch;
         if (!resp.ok()) {
             throw new Error(`PATCH host_tools failed: ${resp.status()} ${await resp.text()}`);
