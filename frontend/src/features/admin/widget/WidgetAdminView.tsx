@@ -18,7 +18,13 @@ type Tab = 'keys' | 'sessions' | 'guide';
 export function WidgetAdminView() {
     const roles = useAuthStore((s) => s.roles);
     const isSuperAdmin = roles.includes('super-admin');
-    const [tab, setTab] = useState<Tab>(isSuperAdmin ? 'keys' : 'sessions');
+    const [selectedTab, setTab] = useState<Tab>('keys');
+    // #31 — tab EFFETTIVA derivata dai ruoli, NON un useState sticky: lo
+    // useState iniziale si fissa al PRIMO render, quindi se i ruoli arrivano
+    // dopo il mount (race auth-store) un super-admin resterebbe bloccato sulla
+    // tab sbagliata. Derivandola, un super-admin atterra sempre su Keys appena
+    // i ruoli sono noti; un admin non-super vede solo Sessions.
+    const tab: Tab = isSuperAdmin ? selectedTab : 'sessions';
 
     return (
         <div data-testid="admin-widget-view" style={{ display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>

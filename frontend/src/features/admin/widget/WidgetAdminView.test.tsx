@@ -57,6 +57,24 @@ describe('WidgetAdminView', () => {
         expect(screen.getByTestId('admin-widget-tab-guide')).toBeDefined();
     });
 
+    // #31 — la tab è DERIVATA dai ruoli (non un useState sticky): un super-admin
+    // i cui ruoli arrivano DOPO il primo render deve comunque atterrare su Keys.
+    it('super-admin lands on the Keys tab when roles populate after mount (#31)', () => {
+        // primo render: ruoli non ancora caricati (race auth-store)
+        mockRoles = [];
+        const { rerender } = renderWithQuery(<WidgetAdminView />);
+        expect(screen.queryByTestId('admin-widget-tab-keys')).toBeNull();
+
+        // i ruoli arrivano → re-render: Keys è la tab selezionata, niente più "sticky".
+        mockRoles = ['super-admin'];
+        rerender(
+            <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+                <WidgetAdminView />
+            </QueryClientProvider>,
+        );
+        expect(screen.getByTestId('admin-widget-tab-keys').getAttribute('aria-selected')).toBe('true');
+    });
+
     it('renders with testid', () => {
         renderWithQuery(<WidgetAdminView />);
         expect(screen.getByTestId('admin-widget-view')).toBeDefined();
