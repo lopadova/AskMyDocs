@@ -58,6 +58,7 @@ final class CaseStudyDatasetTest extends TestCase
             'VeloxCorriere',
             'TurboPony',
             'OrbitaWMS',
+            'RL-',
             '800-ROTTA1',
             'ORIZZONTE BLU',
             'FERMO QUERCIA',
