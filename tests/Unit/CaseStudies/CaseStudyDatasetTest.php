@@ -109,7 +109,10 @@ final class CaseStudyDatasetTest extends TestCase
     public function test_every_project_has_the_expected_number_of_markdown_documents(): void
     {
         foreach (self::PROJECTS as $project) {
-            $files = glob(self::DATA_DIR . "/{$project}/*.md") ?: [];
+            $files = array_merge(
+                glob(self::DATA_DIR . "/{$project}/*.md") ?: [],
+                glob(self::DATA_DIR . "/{$project}/*.markdown") ?: [],
+            );
 
             self::assertCount(
                 self::DOCS_PER_PROJECT,
@@ -364,7 +367,10 @@ final class CaseStudyDatasetTest extends TestCase
         $raw = [];
 
         foreach (self::PROJECTS as $project) {
-            foreach (glob(self::DATA_DIR . "/{$project}/*.md") ?: [] as $absolute) {
+            foreach (array_merge(
+                glob(self::DATA_DIR . "/{$project}/*.md") ?: [],
+                glob(self::DATA_DIR . "/{$project}/*.markdown") ?: [],
+            ) as $absolute) {
                 $content = file_get_contents($absolute);
                 self::assertNotFalse($content, "Unable to read {$absolute}.");
 

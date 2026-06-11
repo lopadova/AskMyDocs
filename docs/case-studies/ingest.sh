@@ -90,12 +90,12 @@ for KEY in "${PROJECTS[@]}"; do
     continue
   fi
 
-  # Raccogli i .md SENZA silenziare errori: se non ce ne sono, fermati esplicitamente.
+  # Raccogli .md e .markdown (R18: il pipeline accetta entrambe le estensioni).
   shopt -s nullglob
-  MDS=( "${SRC}"/*.md )
+  MDS=( "${SRC}"/*.md "${SRC}"/*.markdown )
   shopt -u nullglob
   if [ "${#MDS[@]}" -eq 0 ]; then
-    echo "!! nessun documento .md in ${SRC} — salto ${KEY}"
+    echo "!! nessun documento .md/.markdown in ${SRC} — salto ${KEY}"
     continue
   fi
 
