@@ -349,7 +349,7 @@ final class CaseStudyDatasetTest extends TestCase
             [$project, $file] = explode('/', $path, 2);
 
             $doc = $parser->parse($markdown);
-            self::assertNotNull($doc, "[{$path}] must start with a ----fenced frontmatter block (otherwise it ingests as non-canonical).");
+            self::assertNotNull($doc, "[{$path}] must start with a `---`-fenced frontmatter block (otherwise it ingests as non-canonical).");
 
             $parsed[$project][$file] = $doc;
         }
