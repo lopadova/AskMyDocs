@@ -301,6 +301,12 @@ export class Executor {
         if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
             return fail('navigate_to', 'Only http(s) navigation is allowed.');
         }
+        // NB: nessun blocco client-side sull'ORIGINE cross-origin: l'allowlist
+        // d'origine per-key è server-side (WidgetToolValidator::navigateAllowed) e
+        // un URL assoluto arriva qui solo se il BE l'ha già autorizzato. Bloccare
+        // qui il cross-origin spezzerebbe le navigazioni allowlisted legittime.
+        // Questo guard copre i vettori che il BE potrebbe non normalizzare uguale
+        // (protocol-relative / backslash) + gli schemi pericolosi.
         location.href = parsed.toString();
 
         return ok('navigate_to', { actual: 'navigating', url: parsed.toString() });

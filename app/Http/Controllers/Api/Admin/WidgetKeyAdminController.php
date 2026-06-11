@@ -103,7 +103,10 @@ final class WidgetKeyAdminController extends Controller
         $tenantId = $this->tenantContext->current();
 
         $validated = $request->validate([
-            // #18 — label unica per (tenant, project) anche in update, ignorando se stessa.
+            // #18 — label unica per (tenant, project) anche in update, ignorando se
+            // stessa. NB: `project_key` NON è aggiornabile (non è tra i campi sotto),
+            // quindi scopiamo sull'attuale $row->project_key. Se in futuro si
+            // rendesse `project_key` modificabile, va aggiornato anche questo scope.
             'label' => [
                 'nullable', 'string', 'max:120',
                 Rule::unique('widget_keys', 'label')

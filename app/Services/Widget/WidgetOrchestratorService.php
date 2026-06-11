@@ -145,10 +145,6 @@ final class WidgetOrchestratorService
             $result = $this->retrieval->shouldRefuse($retrieved) ? null : $retrieved;
         }
 
-        $systemPrompt = $this->buildSystemPrompt($snapshot, $result, $hostTools);
-        $baseMessages = $this->buildMessages($session);
-        $navigateAllowlist = $this->navigateAllowlist($session);
-
         // #7/#15 — i tool si inviano SOLO se il provider attivo espone il
         // function-calling OpenAI-shape (openai/openrouter/fake). Mandare i tool
         // a un provider che li droppa (anthropic/gemini/regolo) farebbe degradare
@@ -156,6 +152,14 @@ final class WidgetOrchestratorService
         // inviarli affatto e degradare in modo pulito. E quando la lista è vuota,
         // la chiave `tools` va OMESSA del tutto: `"tools": []` è un 400 su OpenAI.
         $toolsForTurn = $this->providerSupportsToolCalling() ? $tools : [];
+
+        // R40 nit#2 — quando non ci sono tool disponibili (provider non
+        // tool-capable o nessun tool abilitato), il prompt NON deve istruire
+        // l'LLM a emettere tool_call: degrado pulito a solo-risposta (R43 OFF-path),
+        // niente istruzioni agentiche fuorvianti.
+        $systemPrompt = $this->buildSystemPrompt($snapshot, $result, $hostTools, $toolsForTurn !== []);
+        $baseMessages = $this->buildMessages($session);
+        $navigateAllowlist = $this->navigateAllowlist($session);
 
         $start = microtime(true);
         $errors = (int) data_get($session->meta, 'consecutive_errors', 0);
@@ -372,7 +376,7 @@ final class WidgetOrchestratorService
      * @param  array<string, mixed>  $snapshot
      * @param  list<array<string, mixed>>  $hostTools  host tool risolti per il turno
      */
-    private function buildSystemPrompt(array $snapshot, ?SearchResult $result, array $hostTools = []): string
+    private function buildSystemPrompt(array $snapshot, ?SearchResult $result, array $hostTools = [], bool $hasTools = true): string
     {
         $hasKb = $result !== null && ! $result->primary->isEmpty();
 
@@ -385,6 +389,7 @@ final class WidgetOrchestratorService
 
         return view('prompts.widget_kitt', [
             'hasKb' => $hasKb,
+            'hasTools' => $hasTools,
             'chunks' => $result?->primary ?? collect(),
             'expanded' => $result?->expanded ?? collect(),
             'rejected' => $result?->rejected ?? collect(),

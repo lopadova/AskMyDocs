@@ -147,7 +147,7 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $this->assertNotNull($result);
     }
 
-    /** #11 — un token ORIGIN-BOUND presentato SENZA header Origin → rifiutato. */
+    /** #11 — un token ORIGIN-BOUND presentato SENZA header Origin → rifiutato E NON consumato. */
     public function test_consume_rejects_origin_bound_token_when_request_has_no_origin(): void
     {
         $minted = $this->service->mint($this->key, null, 'https://allowed.test');
@@ -155,6 +155,10 @@ final class WidgetSessionTokenServiceTest extends TestCase
         // Replay via curl senza header Origin: prima bypassava il binding.
         $result = $this->service->consume($minted['token'], null);
         $this->assertNull($result);
+
+        // R21 — la mutazione è condizionata al successo: il token NON va bruciato.
+        $row = WidgetSessionToken::where('token', hash('sha256', $minted['token']))->first();
+        $this->assertNull($row->consumed_at);
     }
 
     /** #12 — peekKey ritorna la key senza consumare il token. */
@@ -171,6 +175,25 @@ final class WidgetSessionTokenServiceTest extends TestCase
         $this->assertNotNull($consumed);
     }
 
+    /**
+     * #12 (R40 must-fix) — peekKey NON ritorna la key per token scaduti o
+     * consumati: altrimenti il replay di un token morto raggiungerebbe il
+     * rate-limit (bucket della key incrementato) prima del 401 → DoS.
+     */
+    public function test_peek_key_returns_null_for_expired_or_consumed_token(): void
+    {
+        // Scaduto
+        $expired = $this->service->mint($this->key, null, null);
+        WidgetSessionToken::where('token', hash('sha256', $expired['token']))
+            ->update(['expires_at' => now()->subMinute()]);
+        $this->assertNull($this->service->peekKey($expired['token']));
+
+        // Consumato
+        $used = $this->service->mint($this->key, null, null);
+        $this->service->consume($used['token'], null);
+        $this->assertNull($this->service->peekKey($used['token']));
+    }
+
     public function test_consume_rejects_inactive_key(): void
     {
         $minted = $this->service->mint($this->key, null, null);
@@ -180,6 +203,11 @@ final class WidgetSessionTokenServiceTest extends TestCase
 
         $result = $this->service->consume($minted['token'], null);
         $this->assertNull($result);
+
+        // #13/R21 — presentare un token per una key revocata NON deve bruciarlo
+        // (la mutazione avviene SOLO a validazione superata).
+        $row = WidgetSessionToken::where('token', hash('sha256', $minted['token']))->first();
+        $this->assertNull($row->consumed_at);
     }
 
     public function test_consume_returns_linked_session(): void

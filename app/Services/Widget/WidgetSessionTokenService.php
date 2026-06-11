@@ -60,11 +60,19 @@ final class WidgetSessionTokenService
     /**
      * #12 — Lookup READ-ONLY (non consuma): ritorna la WidgetKey del token per
      * il rate-limit PRE-consumo, così un 429 non brucia il token single-use.
+     *
+     * Filtra SCADUTI/CONSUMATI: senza, il replay di un token morto raggiungerebbe
+     * comunque il rate-limit (incrementando il bucket della key) prima che
+     * consume() ritorni null — un attaccante con token usati potrebbe esaurire il
+     * bucket (DoS). consume() ri-valida tutto atomicamente sotto lock, quindi
+     * questo filtro non introduce TOCTOU.
      */
     public function peekKey(string $token): ?WidgetKey
     {
         $row = WidgetSessionToken::query()
             ->where('token', $this->hash($token))
+            ->where('expires_at', '>', now())
+            ->whereNull('consumed_at')
             ->first();
 
         return $row?->widgetKey;
