@@ -89,3 +89,34 @@ Consider whether this foundation should target `main` directly or a
 `feature/vX.Y` integration branch per R37 — and, separately, whether the PR
 should be split under the 20k-line Copilot cloud-review threshold so future
 pushes get the cloud reviewer back.
+
+## Round 2 — deep enterprise review (11 findings), commit `1fb1a0e9`
+
+A second external "deep enterprise review" of the full module surfaced 11
+findings; every one was verified against the real code and fixed:
+
+| # | Severity | Fix |
+|---|---|---|
+| BUG1 | 🔴 | `step()` denylist → **allowlist** status gate (BLOCKED/ERROR no longer re-enter via `resetErrors`); same contract as `execTool()`. |
+| BUG2 | 🔴 | status gate moved **before** the step-cap mutation (terminal COMPLETED no longer overwritten to BLOCKED). |
+| BUG3 | 🟠 | `index()` `withCount('sessions')` + single-row fallback in `serialize()` (kills N+1). |
+| BUG4 | 🟡 | `bcrypt()` → `Hash::make()` in `store()`/`rotate()`. |
+| BUG5 | 🟡 | `sanitizeText()` `preg_replace('/u')` null-coalesced `?? ''` (invalid-UTF-8 no longer fatal). |
+| BUG6 | 🟡 | Italian P.IVA masking now **checksum-validated** (Luhn-variant) — non-VAT 11-digit codes stay readable. |
+| R30 | 🟡 | `index()`/`findForTenant()` use `->forTenant()` not raw `where('tenant_id')`. |
+| ARCH | 🟡 | `providerSupportsToolCalling()` config-driven (`widget.tool_calling_providers`). |
+| RACE1/2 | 🟡 | documented as deliberate (soft step cap; conservative non-rolled-back rate-limit increment on the peekKey→consume TOCTOU). |
+
+Tests added (R16): `step()`→409 for BLOCKED/ERROR/ABORTED/COMPLETED with
+state-preservation asserts; COMPLETED-at-cap-not-overwritten; `sessions_count`
+accuracy **and** batching (query-log: zero standalone `count(*)` on
+`widget_sessions`); VAT valid-masked / non-VAT-untouched; invalid-UTF-8 no-crash.
+All backend, unchanged JSON shapes → no Playwright scenario warranted.
+
+**Gates:** full PHPUnit on PHP 8.5 = **2550 tests green** (only the 2 pre-existing
+`fnmatch` deprecations). **R40 local critic converged in 2 rounds → 0 must-fix,
+0 nit** (round 1 caught a real R16 gap: the "batched" test only proved accuracy →
+fixed with the query-log assertion). CI run `27330526788` on `1fb1a0e9`: all six
+checks pass (Playwright E2E 15m38s), `mergeState: CLEAN`. Cloud Copilot again
+declined (>20k lines) — local critic + CI are the gate of record. Still **not
+merged** by the standing "leave green" decision.
