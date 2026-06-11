@@ -167,7 +167,8 @@ test.describe('KITT widget — scenario agentico M4 (dati reali)', () => {
         await page.getByTestId('askmydocs-widget-input').fill('Qual è la policy sul remote work?');
         await page.getByTestId('askmydocs-widget-send').click();
 
-        const artifact = page.locator('.amd-artifact').first();
+        // R12 — testid stabile, non selettore CSS.
+        const artifact = page.getByTestId('askmydocs-widget-artifact-container').first();
         await expect(artifact).toBeVisible({ timeout: 15_000 });
         // Il turno si chiude con la risposta testuale → panel idle.
         await expect(panel).toHaveAttribute('data-state', 'idle', { timeout: 15_000 });

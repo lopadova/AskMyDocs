@@ -415,6 +415,10 @@ final class WidgetOrchestratorService
         // ultimi HISTORY_LIMIT step. Prima si caricavano TUTTI gli step con TUTTE
         // le colonne ad ogni turno → O(n²) su sessioni vicine al cap (100 step ×
         // snapshot multi-100KB) sul percorso pubblico per-visitatore.
+        // NB: il limite è per STEP, non per messaggio, ma è equivalente: ogni kind
+        // persistito (user_message/bot_message/tool_call/tool_result) produce
+        // sempre un content NON vuoto in stepToMessage — non esistono step a
+        // content vuoto che falserebbero il conteggio.
         $steps = $session->steps()
             ->select(['step_index', 'kind', 'tool', 'args_json'])
             ->orderByDesc('step_index')
