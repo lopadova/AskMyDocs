@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Models\Conversation;
+use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -11,12 +12,22 @@ use Illuminate\Routing\Controller;
 class ConversationController extends Controller
 {
     /**
-     * List current user's conversations, most recent first.
+     * List current user's conversations IN THE ACTIVE TEAM, most recent
+     * first.
+     *
+     * R30 — `conversations` is tenant-aware. Scoping only by `user_id`
+     * (the relation default) leaked the same list across every team the
+     * user belongs to, so the chat sidebar showed identical threads no
+     * matter which team was selected in the topbar. `forTenant()`
+     * constrains the list to the team the X-Tenant-Id header resolved.
+     * Implicit-binding routes (update/destroy/messages) are already
+     * tenant-scoped via Conversation::resolveRouteBinding().
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, TenantContext $tenant): JsonResponse
     {
         $conversations = $request->user()
             ->conversations()
+            ->forTenant($tenant->current())
             ->orderByDesc('updated_at')
             ->get(['id', 'title', 'project_key', 'created_at', 'updated_at']);
 
