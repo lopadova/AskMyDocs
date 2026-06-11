@@ -81,8 +81,12 @@ CASE_STUDY_KEYS="${KEYS_CSV}" php artisan tinker --execute='
         foreach ($docs as $d) { $deleter->delete($d, true); $count++; }
       });
     // Rimuove la directory (ormai vuota) sul disco kb configurato, rispettando KB_PATH_PREFIX.
+    // R4: il boolean di deleteDirectory NON va ignorato — se la delete fallisce
+    // (disco remoto/mal configurato, permessi) interrompiamo con errore esplicito.
     $dir = ($prefix === "" ? "" : $prefix."/")."case-studies/".$key;
-    \Illuminate\Support\Facades\Storage::disk("kb")->deleteDirectory($dir);
+    if (\Illuminate\Support\Facades\Storage::disk("kb")->deleteDirectory($dir) === false) {
+      throw new \RuntimeException("Rimozione della directory fallita sul disco kb: ".$dir);
+    }
     echo "$key: $count documenti rimossi (tenant=$tenant)\n";
   }
 '

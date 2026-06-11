@@ -149,7 +149,9 @@ done
 # Non silenziamo l'esito: se qualcosa fallisce, lo mostriamo + hint diagnostico.
 echo "==> Processo gli eventuali job in coda"
 if ! php artisan queue:work --stop-when-empty --tries=1; then
-  echo "!! queue:work ha restituito un errore. Ispeziona i job falliti con: php artisan queue:failed"
+  echo "!! queue:work è fallito: il dataset potrebbe essere indicizzato solo parzialmente."
+  echo "   Ispeziona i job falliti con: php artisan queue:failed"
+  exit 1
 fi
 
 echo

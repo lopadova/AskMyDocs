@@ -65,7 +65,7 @@ Genera **snapshot di compliance trimestrali** per un tenant, ne **verifica gli h
 
 ### Dati / endpoint
 - Client API: `frontend/src/features/admin/compliance/compliance-reports.api.ts`.
-- Controller: `app/Http/Controllers/Api/Admin/ComplianceReportController.php`; route in `routes/api.php` (linee 329–338).
+- Controller: `app/Http/Controllers/Api/Admin/ComplianceReportController.php`; route in `routes/api.php` sotto il prefisso `/api/admin/compliance`.
   - `GET /api/admin/compliance/reports` → lista (max 100, ordinata desc).
   - `POST /api/admin/compliance/reports` → genera lo snapshot (body `period_start`, `period_end` in `Y-m-d`).
   - `POST /api/admin/compliance/reports/{report}/verify` → ricalcola SHA-256 + HMAC e restituisce `{valid, expected_hash, actual_hash}`.
