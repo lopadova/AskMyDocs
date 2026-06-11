@@ -146,7 +146,7 @@ for KEY in "${PROJECTS[@]}"; do
 done
 
 # Se la coda è su redis/database, processa gli eventuali job residui.
-# Non silenziamo l'esito: se qualcosa fallisce, lo mostriamo + hint diagnostico.
+# R4: un drain fallito deve far fallire lo script, non solo stampare un hint.
 echo "==> Processo gli eventuali job in coda"
 if ! php artisan queue:work --stop-when-empty --tries=1; then
   echo "!! queue:work è fallito: il dataset potrebbe essere indicizzato solo parzialmente."
