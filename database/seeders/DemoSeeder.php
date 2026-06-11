@@ -129,9 +129,30 @@ class DemoSeeder extends Seeder
         $this->seedCanonicalGraph();
         $this->seedConversations($admin);
         $this->seedChatLogs($admin);
+        $this->seedProjects();
         $this->seedAcmeTenant($admin);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * Registry rows for the default-tenant projects. The migration
+     * backfill runs at migrate time (before any document exists), so a
+     * fresh `migrate:fresh` + seed would leave the `projects` table empty
+     * even though documents reference these keys — seed them here so the
+     * admin Projects page shows real rows on first load.
+     */
+    private function seedProjects(): void
+    {
+        foreach ([
+            ['key' => 'hr-portal', 'name' => 'HR Portal', 'desc' => 'People ops policies and guidelines.'],
+            ['key' => 'engineering', 'name' => 'Engineering', 'desc' => 'Runbooks and technical standards.'],
+        ] as $p) {
+            \App\Models\Project::updateOrCreate(
+                ['tenant_id' => 'default', 'project_key' => $p['key']],
+                ['name' => $p['name'], 'description' => $p['desc']],
+            );
+        }
     }
 
     /**
@@ -167,6 +188,10 @@ class DemoSeeder extends Seeder
         $previous = $ctx->current();
         $ctx->set('acme');
         try {
+            \App\Models\Project::updateOrCreate(
+                ['tenant_id' => 'acme', 'project_key' => 'acme-kb'],
+                ['name' => 'Acme KB', 'description' => 'Acme onboarding + support knowledge.'],
+            );
             $this->upsertDoc(
                 projectKey: 'acme-kb',
                 slug: 'acme-onboarding',
