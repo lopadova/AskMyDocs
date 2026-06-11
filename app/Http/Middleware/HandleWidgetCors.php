@@ -28,7 +28,7 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class HandleWidgetCors
 {
-    private const ALLOW_HEADERS = 'Content-Type, Authorization, X-Widget-Key, X-Widget-Step-Id, X-Requested-With';
+    private const ALLOW_HEADERS = 'Content-Type, Authorization, X-Widget-Key, X-Requested-With';
     private const ALLOW_METHODS = 'POST, GET, OPTIONS';
 
     public function handle(Request $request, Closure $next): Response
@@ -60,6 +60,14 @@ final class HandleWidgetCors
         $response->headers->set('Access-Control-Allow-Methods', self::ALLOW_METHODS);
         $response->headers->set('Access-Control-Allow-Headers', self::ALLOW_HEADERS);
         $response->headers->set('Access-Control-Max-Age', '600');
+        // #24 — il canale widget NON usa cookie: rimuovi l'eventuale
+        // Access-Control-Allow-Credentials aggiunto dal CORS GLOBALE (config/cors.php
+        // `paths: api/*` matcha anche api/widget/*) per le origini in
+        // CORS_ALLOWED_ORIGINS. Senza, una richiesta reale da un'origine elencata
+        // riceverebbe ACAO:<origin> + ACAC:true (riflessione credenziata) — proprio
+        // la combinazione che questo middleware dichiara di evitare. È prepended →
+        // gira per ULTIMO sulla response, quindi la rimozione vince sui due motori.
+        $response->headers->remove('Access-Control-Allow-Credentials');
         // L'output dipende dall'Origin → niente cache cross-origin sbagliata.
         $response->headers->set('Vary', 'Origin');
     }

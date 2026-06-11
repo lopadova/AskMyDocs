@@ -123,6 +123,59 @@ final class WidgetAdminControllerTest extends TestCase
         ]);
     }
 
+    /** #18 — una label duplicata per (tenant, project) → 422, NON 500. */
+    public function test_store_rejects_duplicate_label_with_422(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Marketing',
+            'project_key' => 'docs-v3',
+        ])->assertCreated();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Marketing',
+            'project_key' => 'docs-v3',
+        ])->assertStatus(422)->assertJsonValidationErrors('label');
+    }
+
+    /** #18 — la stessa label è ammessa su un PROGETTO diverso (uniqueness scoped). */
+    public function test_store_allows_same_label_on_a_different_project(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Marketing', 'project_key' => 'docs-v3',
+        ])->assertCreated();
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'Marketing', 'project_key' => 'engineering',
+        ])->assertCreated();
+    }
+
+    /** #15 — uno skill malformato (senza @versione) → 422. */
+    public function test_store_rejects_malformed_skill_with_422(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'WithSkill',
+            'project_key' => 'docs-v3',
+            'skill' => 'my-assistant',
+        ])->assertStatus(422)->assertJsonValidationErrors('skill');
+    }
+
+    /** #15 — uno skill ben formato (id@versione) è ammesso. */
+    public function test_store_accepts_well_formed_skill(): void
+    {
+        $user = $this->superAdmin();
+
+        $this->actingAs($user)->postJson('/api/admin/widget-keys', [
+            'label' => 'WithSkill2',
+            'project_key' => 'docs-v3',
+            'skill' => 'askmydocs-assistant@1',
+        ])->assertCreated();
+    }
+
     public function test_store_defaults_host_tools_enabled_to_false(): void
     {
         $user = $this->superAdmin();

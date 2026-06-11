@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\Schema;
  * emessa dal modello, tool_result rieseguito dal FE, messaggio utente,
  * messaggio bot. Permette audit deterministico + replay (spec §12).
  *
- * `idempotency_key` (UNIQUE) deduplica i doppi invii dello stesso step
- * (header X-Widget-Step-Id) — invariante consumata atomicamente (R21).
  * args_json / diagnostic_json passano dal WidgetPiiMasker prima del salvataggio.
  *
  * R31: tenant-aware. FK su widget_session_id con cascade.
@@ -44,9 +42,6 @@ return new class extends Migration
             $table->unsignedInteger('tokens_in')->nullable();
             $table->unsignedInteger('tokens_out')->nullable();
             $table->unsignedInteger('latency_ms')->nullable();
-
-            // Dedup atomico dello step (R21). Unique globale.
-            $table->string('idempotency_key', 100)->nullable()->unique();
 
             $table->timestamps();
 

@@ -37,7 +37,6 @@ class WidgetSessionStep extends Model
         'tokens_in',
         'tokens_out',
         'latency_ms',
-        'idempotency_key',
     ];
 
     protected $casts = [

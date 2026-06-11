@@ -195,4 +195,23 @@ describe('Transport', () => {
         const t = new Transport(baseConfig);
         await expect(t.setup()).rejects.toThrow(WidgetError);
     });
+
+    // --- #17: timeout/AbortController wiring ---
+
+    it('#17 — passes an AbortSignal to fetch (timeout wiring)', async () => {
+        const t = new Transport(baseConfig);
+        await t.setup();
+
+        const { init } = lastCall(fetchMock);
+        expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('#17 — an aborted fetch surfaces as a WidgetError with code "timeout"', async () => {
+        globalThis.fetch = vi.fn(async () => {
+            throw new DOMException('The operation was aborted.', 'AbortError');
+        }) as unknown as typeof fetch;
+
+        const t = new Transport(baseConfig);
+        await expect(t.setup()).rejects.toMatchObject({ code: 'timeout' });
+    });
 });

@@ -276,7 +276,8 @@ final class WidgetSessionTest extends TestCase
     // ─── M4: /exec-tool ────────────────────────────────────────────────
 
     /**
-     * M4.12 — /exec-tool happy path: tool BE abilitato → 200 con artifact + 2 step persistiti.
+     * M4.12 — /exec-tool happy path: tool BE abilitato → 200 con artifact + SOLO
+     * lo step risultato persistito (#20: niente tool_call duplicato).
      *
      * Il test usa WidgetAiToolRegistry con SearchKnowledgeBaseTool built-in
      * e stubba ChatRetrievalService per simulare risultati RAG.
@@ -336,17 +337,48 @@ final class WidgetSessionTest extends TestCase
             ->assertJsonPath('artifact.componentType', 'ui-data-table')
             ->assertJsonPath('interaction_mode', 'selection');
 
-        // Persistenza step: KIND_TOOL_CALL + KIND_TOOL_RESULT
-        $this->assertDatabaseHas('widget_session_steps', [
-            'widget_session_id' => $session->id,
-            'kind' => WidgetSessionStep::KIND_TOOL_CALL,
-            'tool' => 'search_knowledge_base',
-        ]);
+        // #20 — /exec-tool persiste SOLO il KIND_TOOL_RESULT: il KIND_TOOL_CALL
+        // è responsabilità dell'orchestrator (finishWithToolCall). Qui la sessione
+        // è seedata vuota, quindi dopo /exec-tool deve esserci ESATTAMENTE 1 step
+        // (il risultato), nessun tool_call duplicato.
         $this->assertDatabaseHas('widget_session_steps', [
             'widget_session_id' => $session->id,
             'kind' => WidgetSessionStep::KIND_TOOL_RESULT,
             'tool' => 'search_knowledge_base',
         ]);
+        $this->assertDatabaseMissing('widget_session_steps', [
+            'widget_session_id' => $session->id,
+            'kind' => WidgetSessionStep::KIND_TOOL_CALL,
+        ]);
+        $this->assertSame(1, $session->steps()->count());
+    }
+
+    /** #19 — /exec-tool rispetta il cap di step come step(): oltre il cap → 422 session_blocked. */
+    public function test_exec_tool_respects_max_steps_cap(): void
+    {
+        config(['widget.max_steps_per_session' => 2]);
+
+        $key = $this->makeKey();
+        $session = WidgetSession::create([
+            'tenant_id' => 'default',
+            'widget_key_id' => $key->id,
+            'project_key' => 'docs-v3',
+            'public_session_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'status' => WidgetSession::STATUS_WAITING_TOOL,
+            'skill' => 'askmydocs-assistant@1',
+        ]);
+        // Seed step fino al cap (2): la prossima /exec-tool deve bloccare.
+        for ($i = 0; $i < 2; $i++) {
+            $session->steps()->create(['step_index' => $i, 'kind' => WidgetSessionStep::KIND_USER_MESSAGE]);
+        }
+
+        $res = $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/exec-tool",
+            ['tool' => 'search_knowledge_base', 'args' => ['query' => 'x']],
+        );
+
+        $res->assertStatus(422)->assertJsonPath('error', 'session_blocked');
+        $this->assertSame(WidgetSession::STATUS_BLOCKED, $session->fresh()->status);
     }
 
     /** M4.12 — /exec-tool con tool non abilitato → 422 tool_not_enabled. */

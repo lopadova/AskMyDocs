@@ -157,7 +157,8 @@ final class WidgetAccessTest extends TestCase
             ->assertJsonPath('error', 'origin_not_allowed');
     }
 
-    public function test_unknown_skill_returns_404(): void
+    /** #21 — un ?skill DIVERSO da quello della key è rifiutato (no override). */
+    public function test_setup_rejects_a_skill_other_than_the_keys(): void
     {
         $key = $this->makeKey(['allowed_origins' => ['https://allowed.test']]);
 
@@ -166,6 +167,39 @@ final class WidgetAccessTest extends TestCase
             'Origin' => 'https://allowed.test',
         ])
             ->getJson('/api/widget/setup?skill=nope@9')
+            ->assertStatus(403)
+            ->assertJsonPath('error', 'skill_not_allowed');
+    }
+
+    /** #21 — un ?skill che COMBACIA con quello della key è ammesso. */
+    public function test_setup_accepts_the_keys_own_skill_via_query(): void
+    {
+        $key = $this->makeKey(['allowed_origins' => ['https://allowed.test']]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])
+            ->getJson('/api/widget/setup?skill='.urlencode($key->skill))
+            ->assertOk()
+            ->assertJsonPath('skill', $key->skill);
+    }
+
+    /** Se lo skill DELLA KEY non esiste nel registry → 404 skill_not_found. */
+    public function test_setup_returns_404_when_the_keys_own_skill_is_unknown(): void
+    {
+        // Creiamo direttamente una key con skill inesistente (bypassa la
+        // validazione admin che impedirebbe il salvataggio — #15).
+        $key = $this->makeKey([
+            'allowed_origins' => ['https://allowed.test'],
+            'skill' => 'ghost-skill@9',
+        ]);
+
+        $this->withHeaders([
+            'X-Widget-Key' => $key->public_key,
+            'Origin' => 'https://allowed.test',
+        ])
+            ->getJson('/api/widget/setup')
             ->assertStatus(404)
             ->assertJsonPath('error', 'skill_not_found');
     }

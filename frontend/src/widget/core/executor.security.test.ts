@@ -62,4 +62,12 @@ describe('Executor — security guards (#2 / #9)', () => {
         const res = await executor.run('submit_form', {});
         expect(res.ok).toBe(false);
     });
+
+    it('#38 — wait_for con timeout_ms non numerico non produce NaN e valuta la condizione', async () => {
+        document.body.innerHTML = `<button data-kitt-action="ready">Ready</button>`;
+        // Number('fast') = NaN → clampato al default 5000; la condizione è già
+        // vera → ok immediato (nessun hang, nessun "not met within NaNms").
+        const res = await executor.run('wait_for', { condition: 'ready', timeout_ms: 'fast' });
+        expect(res.ok).toBe(true);
+    });
 });

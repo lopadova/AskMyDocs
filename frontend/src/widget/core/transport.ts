@@ -35,7 +35,7 @@ export class Transport {
     /** M5.2: mint a session token via POST /api/widget/session-token.
      *  The token replaces X-Widget-Key on subsequent requests until consumed. */
     async mintSessionToken(sessionId?: string): Promise<{ token: string; expires_at: string }> {
-        const res = await fetch(this.url('/session-token'), {
+        const res = await this.fetchWithTimeout(this.url('/session-token'), {
             method: 'POST',
             headers: this.pkHeaders(),
             body: JSON.stringify(sessionId ? { session_id: sessionId } : {}),
@@ -59,13 +59,13 @@ export class Transport {
 
     async setup(skill?: string): Promise<Record<string, unknown>> {
         const query = skill ? `?skill=${encodeURIComponent(skill)}` : '';
-        const res = await fetch(this.url(`/setup${query}`), { method: 'GET', headers: this.headers() });
+        const res = await this.fetchWithTimeout(this.url(`/setup${query}`), { method: 'GET', headers: this.headers() });
 
         return this.parse<Record<string, unknown>>(res);
     }
 
     async start(snapshot: Snapshot, message: string | null): Promise<TurnResponse> {
-        const res = await fetch(this.url('/sessions/start'), {
+        const res = await this.fetchWithTimeout(this.url('/sessions/start'), {
             method: 'POST',
             headers: this.headers(),
             body: JSON.stringify({ snapshot, message, page_url: location.href }),
@@ -80,7 +80,7 @@ export class Transport {
         message: string | null,
         toolResult: ToolResult | HostToolResult | null,
     ): Promise<TurnResponse> {
-        const res = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/step`), {
+        const res = await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/step`), {
             method: 'POST',
             headers: this.headers(),
             body: JSON.stringify({ snapshot, message, tool_result: toolResult }),
@@ -90,7 +90,7 @@ export class Transport {
     }
 
     async cancel(sessionId: string): Promise<void> {
-        await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/cancel`), {
+        await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/cancel`), {
             method: 'POST',
             headers: this.headers(),
         });
@@ -102,7 +102,7 @@ export class Transport {
         tool: string,
         args: Record<string, unknown>,
     ): Promise<ExecToolResponse> {
-        const res = await fetch(this.url(`/sessions/${encodeURIComponent(sessionId)}/exec-tool`), {
+        const res = await this.fetchWithTimeout(this.url(`/sessions/${encodeURIComponent(sessionId)}/exec-tool`), {
             method: 'POST',
             headers: this.headers(),
             body: JSON.stringify({ tool, args }),
@@ -120,7 +120,7 @@ export class Transport {
      */
     async fetchHostManifest(hostManifestUrl: string): Promise<HostTool[]> {
         try {
-            const res = await fetch(hostManifestUrl, {
+            const res = await this.fetchWithTimeout(hostManifestUrl, {
                 method: 'GET',
                 headers: { Accept: 'application/json' },
                 credentials: 'same-origin',
@@ -182,7 +182,7 @@ export class Transport {
 
         let res: Response;
         try {
-            res = await fetch(hostExecUrl, {
+            res = await this.fetchWithTimeout(hostExecUrl, {
                 method: 'POST',
                 headers,
                 credentials: 'same-origin',
@@ -218,6 +218,31 @@ export class Transport {
 
         // 2xx ma senza `ok`: normalizziamo a ok:true con artifact eventuale.
         return { ok: true, ...(data as Record<string, unknown>) } as unknown as HostExecResponse;
+    }
+
+    /** Timeout di rete per OGNI richiesta widget (ms). */
+    private static readonly TIMEOUT_MS = 30_000;
+
+    /**
+     * #17 — fetch con AbortController + timeout. Senza, una risposta stallata
+     * (proxy che tiene aperta la connessione, retry lato server lungo) non si
+     * risolve MAI: la guard del Bridge resta busy=true e il widget diventa
+     * permanentemente non responsivo senza errore. Col timeout la fetch viene
+     * abortita → WidgetError 'timeout' → la guard mostra l'errore e resetta busy.
+     */
+    private async fetchWithTimeout(input: string, init: RequestInit = {}): Promise<Response> {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), Transport.TIMEOUT_MS);
+        try {
+            return await fetch(input, { ...init, signal: controller.signal });
+        } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                throw new WidgetError('La richiesta è scaduta. Riprova.', 0, 'timeout');
+            }
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
     }
 
     private url(path: string): string {

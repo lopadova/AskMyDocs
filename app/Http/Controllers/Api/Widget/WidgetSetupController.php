@@ -16,8 +16,8 @@ use Illuminate\Routing\Controller;
  * GET /api/widget/setup — manifest della skill per il widget FE.
  *
  * Ritorna il sottoinsieme che serve al client: tool abilitati + regole di
- * auto-annotazione + policy. La skill è quella configurata sulla key
- * (`?skill=` può richiederne un'altra, ma deve esistere). Gira dietro
+ * auto-annotazione + policy. La skill è SEMPRE quella configurata sulla key:
+ * `?skill=` è ammesso solo se combacia (vedi #21 sotto). Gira dietro
  * `widget.key`, quindi tenant/project/key sono già risolti dal middleware (R30).
  */
 final class WidgetSetupController extends Controller
@@ -28,6 +28,18 @@ final class WidgetSetupController extends Controller
         $key = $request->attributes->get(ResolveWidgetKey::ATTR_KEY);
 
         $skillId = (string) $request->query('skill', $key->skill);
+
+        // #21 — il widget pubblico usa SOLO lo skill della sua key: start/step
+        // caricano sempre $key->skill, quindi un ?skill diverso farebbe divergere
+        // l'annotazione/preview (da /setup) dal ragionamento della sessione.
+        // Un ?skill che combacia è ammesso; uno diverso → 403 (non un override).
+        if ($skillId !== (string) $key->skill) {
+            return response()->json([
+                'error' => 'skill_not_allowed',
+                'message' => 'This widget key is not configured for the requested skill.',
+            ], 403);
+        }
+
         $manifest = $skills->get($skillId);
 
         if ($manifest === null) {

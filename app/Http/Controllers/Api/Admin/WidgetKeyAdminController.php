@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -47,12 +48,22 @@ final class WidgetKeyAdminController extends Controller
     {
         $tenantId = $this->tenantContext->current();
         $validated = $request->validate([
-            'label' => ['required', 'string', 'max:120'],
+            // #18 — (tenant_id, project_key, label) è UNIQUE: una label duplicata
+            // dava 500 (violazione FK) invece di 422. La validazione la blocca prima.
+            'label' => [
+                'required', 'string', 'max:120',
+                Rule::unique('widget_keys', 'label')
+                    ->where('tenant_id', $tenantId)
+                    ->where('project_key', (string) $request->input('project_key')),
+            ],
             'project_key' => ['required', 'string', 'max:120'],
             'allowed_origins' => ['nullable', 'array'],
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
-            'skill' => ['nullable', 'string', 'max:100'],
+            // #15 — lo skill deve avere il formato `<id>@<versione>` del registry
+            // (es. askmydocs-assistant@1): uno skill malformato (es. "my-skill")
+            // farebbe risolvere zero tool → degrado/errore a runtime.
+            'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 
@@ -89,13 +100,22 @@ final class WidgetKeyAdminController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $row = $this->findForTenant($id);
+        $tenantId = $this->tenantContext->current();
 
         $validated = $request->validate([
-            'label' => ['nullable', 'string', 'max:120'],
+            // #18 — label unica per (tenant, project) anche in update, ignorando se stessa.
+            'label' => [
+                'nullable', 'string', 'max:120',
+                Rule::unique('widget_keys', 'label')
+                    ->where('tenant_id', $tenantId)
+                    ->where('project_key', $row->project_key)
+                    ->ignore($row->id),
+            ],
             'allowed_origins' => ['nullable', 'array'],
             'allowed_origins.*' => ['string', 'max:255'],
             'rate_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
-            'skill' => ['nullable', 'string', 'max:100'],
+            // #15 — formato skill del registry.
+            'skill' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9][a-z0-9-]*@[0-9]+$/'],
             'host_tools_enabled' => ['nullable', 'boolean'],
         ] + $this->theme->rules('theme'));
 

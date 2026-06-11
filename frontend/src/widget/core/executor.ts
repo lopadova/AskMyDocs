@@ -161,10 +161,23 @@ export class Executor {
         if (style && (style.display === 'none' || style.visibility === 'hidden')) {
             return false;
         }
-        const rects = el.getClientRects().length > 0;
-        const box = el.offsetWidth > 0 || el.offsetHeight > 0;
+        // #37 — niente più "|| style != null" (sempre vero: getComputedStyle
+        // ritorna SEMPRE), che rendeva morti i controlli di layout sotto e faceva
+        // risultare visibile anche un elemento a dimensione zero. In jsdom il
+        // layout non è calcolato (getClientRects sempre vuoto): lo rileviamo a
+        // livello documento e consideriamo visibile (salvo display:none /
+        // visibility:hidden già gestiti). In un browser vero usiamo il layout reale.
+        const layoutAvailable = (el.ownerDocument.body?.getClientRects().length ?? 0) > 0;
+        if (!layoutAvailable) {
+            return true;
+        }
 
-        return rects || box || el.offsetParent !== null || style != null;
+        return (
+            el.getClientRects().length > 0 ||
+            el.offsetWidth > 0 ||
+            el.offsetHeight > 0 ||
+            el.offsetParent !== null
+        );
     }
 
     private findField(name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null {
@@ -708,6 +721,11 @@ export class Executor {
 
     /** wait_for: attende una condizione DOM */
     private async waitFor(condition: string, timeoutMs: number): Promise<ToolResult> {
+        // #38 — clamp + guardia NaN: un timeout non finito o <= 0 → default 5000;
+        // cap superiore a 30s così un timeout enorme da output LLM non blocca il
+        // widget (busy) per minuti/ore, e un valore non numerico non produce NaN.
+        let timeout = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
+        timeout = Math.min(timeout, 30_000);
         const start = Date.now();
 
         // Condizioni note: elemento visibile, testo presente
@@ -722,14 +740,14 @@ export class Executor {
             return false;
         };
 
-        while (Date.now() - start < timeoutMs) {
+        while (Date.now() - start < timeout) {
             if (checkCondition()) {
                 return ok('wait_for', { actual: condition, waited_ms: Date.now() - start });
             }
             await new Promise((r) => setTimeout(r, 200));
         }
 
-        return fail('wait_for', `Condition "${condition}" not met within ${timeoutMs}ms.`);
+        return fail('wait_for', `Condition "${condition}" not met within ${timeout}ms.`);
     }
 
     /** tour_step: mostra un overlay tour sopra un elemento */

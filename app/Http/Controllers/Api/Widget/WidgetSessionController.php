@@ -191,6 +191,21 @@ final class WidgetSessionController extends Controller
             ], 409);
         }
 
+        // #19 — stesso cap di step(): /exec-tool ripetuti NON devono far crescere
+        // gli step illimitatamente (ogni call è una RAG retrieval completa).
+        $maxSteps = (int) config('widget.max_steps_per_session', 100);
+        if ($widgetSession->steps()->count() >= $maxSteps) {
+            $widgetSession->forceFill([
+                'status' => WidgetSession::STATUS_BLOCKED,
+                'blocked_reason' => 'Max steps per session exceeded.',
+            ])->save();
+
+            return response()->json([
+                'error' => 'session_blocked',
+                'message' => 'This session has exceeded the maximum number of steps.',
+            ], 422);
+        }
+
         $tool = (string) $data['tool'];
         $args = is_array($data['args'] ?? null) ? $data['args'] : [];
 
@@ -215,23 +230,18 @@ final class WidgetSessionController extends Controller
             ], 422);
         }
 
-        // Persiste lo step: tool BE eseguito con artifact result
-        // M5.6 — PII mascherata PRIMA del salvataggio.
+        // #20 — persiste SOLO il risultato. Il KIND_TOOL_CALL è già stato scritto
+        // dall'orchestrator (finishWithToolCall) quando ha emesso la tool_call:
+        // riscriverlo qui duplicava '[azione] …' nella history LLM e consumava il
+        // cap step due volte. M5.6 — PII mascherata PRIMA del salvataggio.
         $nextIndex = (int) ($widgetSession->steps()->max('step_index') ?? -1) + 1;
-        $widgetSession->steps()->create([
-            'step_index' => $nextIndex,
-            'kind' => WidgetSessionStep::KIND_TOOL_CALL,
-            'tool' => $tool,
-            'args_json' => $this->piiMasker->maskArray($args) ?? $args,
-        ]);
-        // Step successivo: risultato tool BE con artifact
         $resultArgs = [
             'ok' => $result['has_results'],
             'tool' => $tool,
             'artifact' => $result['artifact'],
         ];
         $widgetSession->steps()->create([
-            'step_index' => $nextIndex + 1,
+            'step_index' => $nextIndex,
             'kind' => WidgetSessionStep::KIND_TOOL_RESULT,
             'tool' => $tool,
             'args_json' => $this->piiMasker->maskArray($resultArgs) ?? $resultArgs,

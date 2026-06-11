@@ -33,8 +33,6 @@ return new class extends Migration
             $table->unsignedInteger('tokens_out')->nullable();
             $table->unsignedInteger('latency_ms')->nullable();
 
-            $table->string('idempotency_key', 100)->nullable()->unique();
-
             $table->timestamps();
 
             $table->index(['widget_session_id', 'step_index'], 'idx_widget_steps_session_order');
