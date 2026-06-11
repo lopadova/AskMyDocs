@@ -654,7 +654,14 @@ final class WidgetOrchestratorService
     {
         $provider = (string) (config('ai.default') ?? 'openai');
 
-        return in_array($provider, ['openai', 'openrouter', 'fake'], true);
+        // ARCH — lista config-driven (config/widget.php › tool_calling_providers,
+        // env WIDGET_TOOL_CALLING_PROVIDERS) invece di hardcoded: un operatore
+        // che cabla un nuovo provider tool-capable lo aggiunge senza patchare il
+        // codice. Default: openai/openrouter/fake (gli unici che oggi popolano
+        // AiResponse::toolCalls).
+        $capable = (array) config('widget.tool_calling_providers', ['openai', 'openrouter', 'fake']);
+
+        return in_array($provider, $capable, true);
     }
 
     /**

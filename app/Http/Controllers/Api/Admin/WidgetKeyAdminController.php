@@ -10,6 +10,7 @@ use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -31,10 +32,12 @@ final class WidgetKeyAdminController extends Controller
     /** List all widget keys for the current tenant. */
     public function index(): JsonResponse
     {
-        $tenantId = $this->tenantContext->current();
-
+        // R30 — scope via lo scope tenant-aware (BelongsToTenant), non un raw
+        // where('tenant_id'). #3 (perf) — withCount('sessions') batcha il
+        // conteggio in una sola subquery JOIN invece di una COUNT per riga (N+1).
         $rows = WidgetKey::query()
-            ->where('tenant_id', $tenantId)
+            ->forTenant($this->tenantContext->current())
+            ->withCount('sessions')
             ->orderByDesc('created_at')
             ->get();
 
@@ -74,7 +77,11 @@ final class WidgetKeyAdminController extends Controller
             'tenant_id' => $tenantId,
             'project_key' => $validated['project_key'],
             'public_key' => $publicKey,
-            'secret_hash' => bcrypt($plainSecret),
+            // #4 — Hash::make() rispetta config('hashing.driver'); bcrypt() lo
+            // bypassa e hardcoda l'algoritmo. WidgetKey::matchesSecret usa
+            // Hash::check, quindi un operatore con HASH_DRIVER=argon non deve
+            // ritrovarsi hash misti nella stessa colonna.
+            'secret_hash' => Hash::make($plainSecret),
             'label' => $validated['label'],
             'allowed_origins' => $validated['allowed_origins'] ?? [],
             'rate_limit' => $validated['rate_limit'] ?? 60,
@@ -160,7 +167,8 @@ final class WidgetKeyAdminController extends Controller
 
         $row->forceFill([
             'public_key' => $publicKey,
-            'secret_hash' => bcrypt($plainSecret),
+            // #4 — Hash::make() (vedi store): rispetta config('hashing.driver').
+            'secret_hash' => Hash::make($plainSecret),
         ])->save();
 
         return response()->json([
@@ -186,10 +194,9 @@ final class WidgetKeyAdminController extends Controller
     /** Find a WidgetKey scoped to the current tenant or 404. */
     private function findForTenant(int $id): WidgetKey
     {
-        $tenantId = $this->tenantContext->current();
-
+        // R30 — forTenant() (BelongsToTenant) invece di raw where('tenant_id').
         $row = WidgetKey::query()
-            ->where('tenant_id', $tenantId)
+            ->forTenant($this->tenantContext->current())
             ->where('id', $id)
             ->first();
 
@@ -214,7 +221,9 @@ final class WidgetKeyAdminController extends Controller
             'host_tools_enabled' => $row->host_tools_enabled,
             'is_active' => $row->is_active,
             'last_used_at' => $row->last_used_at?->toIso8601String(),
-            'sessions_count' => $row->sessions()->count(),
+            // #3 — usa l'attributo withCount quando presente (index()); fallback
+            // alla COUNT diretta per i percorsi single-row (store/update/rotate).
+            'sessions_count' => $row->sessions_count ?? $row->sessions()->count(),
             // Tema risolto (stored sui default) così l'editor admin parte sempre
             // da un oggetto completo, anche per le key senza tema esplicito.
             'theme' => $this->theme->resolve($row->theme_config),

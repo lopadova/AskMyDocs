@@ -98,6 +98,77 @@ final class WidgetAdminControllerTest extends TestCase
         $this->assertArrayNotHasKey('secret_hash', $response->json('data.0'));
     }
 
+    /**
+     * #3 — sessions_count è esatto e proviene dal withCount aggregato (una sola
+     * subquery JOIN, niente N+1 di una COUNT per riga). Due key con 2 e 0
+     * sessioni: l'index riporta i conteggi corretti per ciascuna.
+     */
+    public function test_index_sessions_count_is_accurate_and_batched(): void
+    {
+        $user = $this->superAdmin();
+
+        $withSessions = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'p-count',
+            'public_key' => 'pk_count_2',
+            'secret_hash' => Hash::make('sk_count_2'),
+            'label' => 'Key with sessions',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+        for ($i = 0; $i < 2; $i++) {
+            WidgetSession::query()->create([
+                'tenant_id' => 'default',
+                'widget_key_id' => $withSessions->id,
+                'project_key' => 'p-count',
+                'public_session_id' => \Illuminate\Support\Str::uuid(),
+                'status' => 'completed',
+                'skill' => 'askmydocs-assistant@1',
+            ]);
+        }
+
+        $withoutSessions = WidgetKey::query()->create([
+            'tenant_id' => 'default',
+            'project_key' => 'p-count',
+            'public_key' => 'pk_count_0',
+            'secret_hash' => Hash::make('sk_count_0'),
+            'label' => 'Key without sessions',
+            'allowed_origins' => [],
+            'rate_limit' => 60,
+            'skill' => 'askmydocs-assistant@1',
+            'is_active' => true,
+        ]);
+
+        // R16 — il test prova ENTRAMBE le proprietà del nome: accuracy E batching.
+        // Cattura le query della richiesta: con withCount il conteggio è una
+        // subquery dentro la SELECT su widget_keys, quindi NON deve esserci
+        // NESSUNA query standalone "count(*) … from widget_sessions" (l'N+1 ne
+        // emetterebbe una per riga). Se withCount venisse rimosso, perRowCounts > 0
+        // e il test fallisce.
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        $rows = collect(
+            $this->actingAs($user)->getJson('/api/admin/widget-keys')->assertOk()->json('data'),
+        )->keyBy('id');
+        $queries = \Illuminate\Support\Facades\DB::getQueryLog();
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+
+        // Accuracy.
+        $this->assertSame(2, $rows[$withSessions->id]['sessions_count']);
+        $this->assertSame(0, $rows[$withoutSessions->id]['sessions_count']);
+
+        // Batching: zero COUNT standalone su widget_sessions (la subquery
+        // aggregata vive DENTRO la select su widget_keys, che le contiene entrambe).
+        $perRowCounts = collect($queries)
+            ->map(fn (array $q): string => strtolower((string) $q['query']))
+            ->filter(fn (string $sql): bool => str_contains($sql, 'count(*)')
+                && str_contains($sql, 'widget_sessions')
+                && ! str_contains($sql, 'widget_keys'))
+            ->count();
+        $this->assertSame(0, $perRowCounts, 'sessions_count deve essere batched via withCount, non N+1.');
+    }
+
     public function test_store_creates_key_and_returns_secret_once(): void
     {
         $user = $this->superAdmin();

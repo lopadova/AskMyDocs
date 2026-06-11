@@ -83,15 +83,50 @@ final class WidgetPiiMasker
             $result,
         ) ?? $result;
 
-        // 8. Partita IVA italiana (#42) — 11 cifre. Le carte (13-19 cifre) e gli
-        // IBAN sono già mascherati sopra, quindi qui restano solo gli 11-cifre.
-        $result = preg_replace(
+        // 8. Partita IVA italiana (#42 / BUG6) — 11 cifre CON check digit valido.
+        // Il pattern context-free `\b\d{11}\b` mascherava QUALSIASI codice a 11
+        // cifre (id DB, codici logistici/retail, contatori) come [VAT], rendendo
+        // opachi i log di debug e perdendo dati non-PII in modo irreversibile.
+        // Ora la maschera scatta solo se il check digit (algoritmo Luhn-variant
+        // ufficiale della P.IVA) è valido: i codici a 11 cifre che non sono P.IVA
+        // restano in chiaro.
+        $result = preg_replace_callback(
             '/\b\d{11}\b/',
-            '[VAT]',
+            fn (array $m): string => $this->isValidItalianVat($m[0]) ? '[VAT]' : $m[0],
             $result,
         ) ?? $result;
 
         return $result;
+    }
+
+    /**
+     * Valida il check digit di una Partita IVA italiana (11 cifre).
+     *
+     * Algoritmo Luhn-variant ufficiale: le cifre in posizione pari (1-based)
+     * raddoppiano e, se > 9, si sottrae 9; la cifra di controllo (11ª) è
+     * (10 - (somma % 10)) % 10. Esempio valido: 00743110157.
+     */
+    private function isValidItalianVat(string $digits): bool
+    {
+        if (strlen($digits) !== 11 || ! ctype_digit($digits)) {
+            return false;
+        }
+
+        $sum = 0;
+        for ($i = 0; $i < 10; $i++) {
+            $d = (int) $digits[$i];
+            if ($i % 2 === 1) {            // posizione pari (1-based) → raddoppia
+                $d *= 2;
+                if ($d > 9) {
+                    $d -= 9;
+                }
+            }
+            $sum += $d;
+        }
+
+        $check = (10 - ($sum % 10)) % 10;
+
+        return $check === (int) $digits[10];
     }
 
     /**

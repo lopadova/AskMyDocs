@@ -262,8 +262,11 @@ final class WidgetSnapshotValidator
     {
         $str = str_replace(['<', '>'], ' ', $input);    // niente markup
         $str = str_replace('```', '   ', $str);          // niente code fence
-        $str = preg_replace('/[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]/u', '', $str); // zero-width
-        $str = preg_replace('/\s+/u', ' ', $str);       // collapse whitespace
+        // #5 — preg_replace con /u ritorna null su UTF-8 invalido (byte ostili in
+        // uno snapshot craftato): senza `?? ''` la seconda preg_replace e trim()
+        // riceverebbero null → TypeError fatale invece di sanitizzare.
+        $str = preg_replace('/[\x{200B}\x{200C}\x{200D}\x{2060}\x{FEFF}]/u', '', $str) ?? ''; // zero-width
+        $str = preg_replace('/\s+/u', ' ', $str) ?? '';       // collapse whitespace
 
         return trim($str);
     }

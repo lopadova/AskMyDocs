@@ -49,6 +49,21 @@ final class WidgetSnapshotSanitizeTest extends TestCase
         $this->assertSame('helloworld!', $this->validator->sanitizeText($input));
     }
 
+    /**
+     * BUG5 — UTF-8 invalido NON deve crashare: preg_replace con /u ritorna null
+     * su byte non-UTF-8 e, senza `?? ''`, la seconda preg_replace e trim()
+     * riceverebbero null → TypeError fatale. Qui un byte 0x80 isolato (sequenza
+     * di continuazione senza lead byte) deve essere gestito senza eccezioni.
+     */
+    public function test_sanitize_text_does_not_crash_on_invalid_utf8(): void
+    {
+        $input = "valido \x80 testo";
+
+        // Non deve sollevare TypeError: il risultato è una stringa (anche se
+        // il troncamento esatto dipende dalla gestione PCRE dei byte invalidi).
+        $this->assertIsString($this->validator->sanitizeText($input));
+    }
+
     public function test_sanitize_text_collapses_whitespace(): void
     {
         $this->assertSame(

@@ -78,6 +78,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Provider con function-calling OpenAI-shape (loop agentico)
+    |--------------------------------------------------------------------------
+    |
+    | L'orchestratore passa `options.tools` all'LLM solo per i provider che
+    | espongono il function-calling OpenAI-shape e popolano AiResponse::toolCalls.
+    | openai/openrouter lo fanno; 'fake' emette tool_call scriptate per l'E2E
+    | agentico (R13). Anthropic/Gemini/Regolo droppano `options.tools` nel loro
+    | adapter attuale: abilitarli qui senza prima cablare l'emissione dei
+    | toolCalls farebbe cadere il loop in SILENZIO su finishWithAnswer (R43).
+    | Lista CSV così un operatore che cabla un nuovo provider può aggiungerlo
+    | senza toccare il codice. Default: solo i provider realmente tool-capable.
+    */
+    'tool_calling_providers' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('WIDGET_TOOL_CALLING_PROVIDERS', 'openai,openrouter,fake')),
+    ))),
+
+    /*
+    |--------------------------------------------------------------------------
     | M5.10 — Session retention (days)
     |--------------------------------------------------------------------------
     |

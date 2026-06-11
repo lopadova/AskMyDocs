@@ -112,7 +112,32 @@ final class WidgetSessionController extends Controller
             return $sessionRl;
         }
 
-        // M5.5 — step cap: se la sessione ha troppi step, blocca
+        // Status gate FIRST, in allowlist (non denylist): solo gli stati che
+        // ammettono un nuovo turno proseguono. Un denylist su COMPLETED/ABORTED
+        // lasciava passare BLOCKED ed ERROR — e un turno valido su una sessione
+        // BLOCKED chiamava finishWithAnswer → resetErrors → status=ACTIVE,
+        // vanificando silenziosamente il blocco (idem ERROR ripartiva). Il gate
+        // precede il cap-step così un COMPLETED non può essere riscritto a
+        // BLOCKED dal ramo del cap. Stesso contratto di execTool().
+        if (! in_array($widgetSession->status, [
+            WidgetSession::STATUS_ACTIVE,
+            WidgetSession::STATUS_WAITING_USER,
+            WidgetSession::STATUS_WAITING_TOOL,
+        ], true)) {
+            return response()->json([
+                'error' => 'session_closed',
+                'message' => 'This widget session is not accepting new turns.',
+            ], 409);
+        }
+
+        // M5.5 — step cap: se la sessione ha troppi step, blocca.
+        // RACE accettata e documentata: due step() concorrenti sulla stessa
+        // sessione possono entrambi leggere count < cap e superarlo di N. Il cap
+        // è un soffitto UX "morbido", non un limite hard di billing; un
+        // lockForUpdate qui guarderebbe solo il gate, NON gli addStep
+        // dell'orchestrator (che girano fuori dal lock, durante la chiamata LLM),
+        // e tenere il lock per tutta la durata del turno LLM sarebbe peggio. Il
+        // per-session rate-limit (30/min) limita comunque la concorrenza reale.
         $maxSteps = (int) config('widget.max_steps_per_session', 100);
         if ($widgetSession->steps()->count() >= $maxSteps) {
             $widgetSession->forceFill([
@@ -124,13 +149,6 @@ final class WidgetSessionController extends Controller
                 'error' => 'session_blocked',
                 'message' => 'This session has exceeded the maximum number of steps.',
             ], 422);
-        }
-
-        if (in_array($widgetSession->status, [WidgetSession::STATUS_COMPLETED, WidgetSession::STATUS_ABORTED], true)) {
-            return response()->json([
-                'error' => 'session_closed',
-                'message' => 'This widget session is already closed.',
-            ], 409);
         }
 
         $payload = $orchestrator->step(

@@ -58,6 +58,20 @@ final class WidgetSessionTest extends TestCase
         ], $overrides);
     }
 
+    private function makeSession(WidgetKey $key, string $status, array $overrides = []): WidgetSession
+    {
+        return WidgetSession::create(array_merge([
+            'tenant_id' => 'default',
+            'widget_key_id' => $key->id,
+            'project_key' => 'docs-v3',
+            'public_session_id' => \Illuminate\Support\Str::uuid()->toString(),
+            'status' => $status,
+            'skill' => 'askmydocs-assistant@1',
+            'page_url' => 'https://allowed.test/account',
+            'origin' => 'https://allowed.test',
+        ], $overrides));
+    }
+
     private function fakeEmbeddings(): \GuzzleHttp\Promise\PromiseInterface
     {
         return Http::response([
@@ -527,5 +541,110 @@ final class WidgetSessionTest extends TestCase
         );
 
         $res->assertNotFound();
+    }
+
+    // ─── BUG1/BUG2 — step() status gate (allowlist, stati terminali → 409) ──
+
+    /**
+     * BUG1 — una sessione BLOCKED è un gate terminale: step() deve 409 e la
+     * sessione DEVE restare BLOCKED. Il vecchio denylist (solo COMPLETED/ABORTED)
+     * lasciava passare BLOCKED → un turno valido chiamava finishWithAnswer →
+     * resetErrors → status=ACTIVE, vanificando silenziosamente il blocco.
+     *
+     * Nessun Http::fake: il gate risponde 409 PRIMA di toccare orchestrator/LLM
+     * (se l'LLM venisse chiamato e rispondesse, il blocco verrebbe resettato —
+     * proprio il bug). shouldNotReceive non serve: senza fake una chiamata HTTP
+     * reale fallirebbe il test comunque.
+     */
+    public function test_step_on_blocked_session_is_rejected_and_stays_blocked(): void
+    {
+        $key = $this->makeKey();
+        $session = $this->makeSession($key, WidgetSession::STATUS_BLOCKED, [
+            'blocked_reason' => 'Too many invalid actions.',
+        ]);
+
+        $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/step",
+            ['snapshot' => $this->snapshot(), 'message' => 'riprova'],
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('error', 'session_closed');
+
+        // Invariante chiave (BUG1): il blocco NON è stato resettato ad ACTIVE.
+        $this->assertSame(WidgetSession::STATUS_BLOCKED, $session->fresh()->status);
+    }
+
+    /** BUG1 — una sessione ABORTED resta terminale per step() nel nuovo allowlist: 409. */
+    public function test_step_on_aborted_session_is_rejected(): void
+    {
+        $key = $this->makeKey();
+        $session = $this->makeSession($key, WidgetSession::STATUS_ABORTED);
+
+        $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/step",
+            ['snapshot' => $this->snapshot(), 'message' => 'riprova'],
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('error', 'session_closed');
+
+        $this->assertSame(WidgetSession::STATUS_ABORTED, $session->fresh()->status);
+    }
+
+    /** BUG1 — una sessione ERROR è terminale per step(): 409, stato invariato. */
+    public function test_step_on_error_session_is_rejected(): void
+    {
+        $key = $this->makeKey();
+        $session = $this->makeSession($key, WidgetSession::STATUS_ERROR);
+
+        $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/step",
+            ['snapshot' => $this->snapshot(), 'message' => 'riprova'],
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('error', 'session_closed');
+
+        $this->assertSame(WidgetSession::STATUS_ERROR, $session->fresh()->status);
+    }
+
+    /** BUG1/BUG2 — una sessione COMPLETED è terminale per step(): 409, stato invariato. */
+    public function test_step_on_completed_session_is_rejected(): void
+    {
+        $key = $this->makeKey();
+        $session = $this->makeSession($key, WidgetSession::STATUS_COMPLETED);
+
+        $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/step",
+            ['snapshot' => $this->snapshot(), 'message' => 'ancora'],
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('error', 'session_closed');
+
+        $this->assertSame(WidgetSession::STATUS_COMPLETED, $session->fresh()->status);
+    }
+
+    /**
+     * BUG2 — il gate di stato precede il cap-step: una sessione COMPLETED che
+     * ha raggiunto il cap NON deve essere riscritta a BLOCKED dal ramo del cap.
+     * Prima il check del cap girava per primo e corrompeva lo stato terminale.
+     */
+    public function test_step_on_completed_session_at_step_cap_is_not_overwritten_to_blocked(): void
+    {
+        config(['widget.max_steps_per_session' => 2]);
+
+        $key = $this->makeKey();
+        $session = $this->makeSession($key, WidgetSession::STATUS_COMPLETED);
+        for ($i = 0; $i < 2; $i++) {
+            $session->steps()->create(['step_index' => $i, 'kind' => WidgetSessionStep::KIND_USER_MESSAGE]);
+        }
+
+        $this->withHeaders($this->headers($key))->postJson(
+            "/api/widget/sessions/{$session->public_session_id}/step",
+            ['snapshot' => $this->snapshot(), 'message' => 'ancora'],
+        )
+            ->assertStatus(409)
+            ->assertJsonPath('error', 'session_closed');
+
+        // Lo stato terminale è preservato: il ramo del cap (che scriverebbe BLOCKED) non scatta.
+        $this->assertSame(WidgetSession::STATUS_COMPLETED, $session->fresh()->status);
     }
 }

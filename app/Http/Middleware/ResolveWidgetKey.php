@@ -185,6 +185,15 @@ final class ResolveWidgetKey
         if ($key === null || ! $key->is_active) {
             return $this->deny(401, 'session_token_invalid', 'Session token is invalid, expired, or already used.');
         }
+        // RACE 2 (TOCTOU benigna e voluta): tra peekKey e consume un altro thread
+        // può consumare lo stesso token; in quel caso consume() ritorna null →
+        // 401 (gestito sotto). Il RateLimiter::hit qui incrementa comunque il
+        // bucket della key anche sul path che poi fallisce il consumo: è un
+        // conteggio CONSERVATIVO (limita di più, mai di meno) e NON viene
+        // rollback-ato. Accettato: un decremento compensativo riaprirebbe una
+        // finestra di brute-force sul rate-limit. peekKey filtra già
+        // scaduti/consumati, quindi un token morto non raggiunge nemmeno questo
+        // incremento.
         if ($rl = $this->rateLimited($request, $key)) {
             return $rl;
         }

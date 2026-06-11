@@ -52,9 +52,21 @@ final class WidgetPiiMaskerTest extends TestCase
 
     public function test_masks_italian_partita_iva(): void
     {
+        // 00743110157 è una P.IVA con check digit VALIDO (algoritmo ufficiale).
         $this->assertSame(
             'P.IVA [VAT]',
-            $this->masker->maskString('P.IVA 12345678901'),
+            $this->masker->maskString('P.IVA 00743110157'),
+        );
+    }
+
+    public function test_does_not_mask_non_vat_eleven_digit_codes(): void
+    {
+        // BUG6 — un codice a 11 cifre col check digit NON valido (id DB, codice
+        // logistico) NON deve essere mascherato come [VAT]: il pattern
+        // context-free `\b\d{11}\b` perdeva dati non-PII in modo irreversibile.
+        $this->assertSame(
+            'Ordine 12345678901 spedito',
+            $this->masker->maskString('Ordine 12345678901 spedito'),
         );
     }
 
