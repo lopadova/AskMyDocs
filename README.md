@@ -52,6 +52,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 - [Why AskMyDocs — the 5 moats](#why-askmydocs--the-5-moats)
 - [✨ Universal Connectors](#universal-connectors)
 - [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
+- [✨ KITT — Knowledge Interface Tour Toolkit](#kitt--knowledge-interface-tour-toolkit)
 - [Features by area](#features-by-area)
   - [Retrieval & Knowledge](#retrieval--knowledge)
   - [Chat & Conversation](#chat--conversation)
@@ -203,6 +204,35 @@ and hit Stop; click Regenerate; hover the assistant message and pick
 Branch (a new conversation forks from that point); pick a follow-up
 pill chip to chain into the next prompt; hover any code block for the
 Copy button.
+
+---
+
+## ✨ KITT — Knowledge Interface Tour Toolkit
+
+**KITT (Knowledge Interface Tour Toolkit) is a one-`<script>` embeddable, page-aware, agentic AI assistant for any website — it answers grounded questions with citations, *reads the page*, and (when allowed) drives it: clicks, types, navigates, submits, and calls your backend tools.**
+
+![AskMyDoc - KITT.jpeg](resources/screenshots/AskMyDoc%20-%20KITT.jpeg)
+
+Most "chat widget" products are a stateless text box bolted to a generic
+LLM. **KITT** is the embeddable surface of the *same* AskMyDocs retrieval
+stack — grounded, cited, tenant-isolated — **plus** a bounded ReAct loop
+that perceives and acts on the host page. A customer pastes a snippet; the
+widget captures a structured snapshot of the current page (regions, fields,
+actions, messages, outline) and reasons about what's actually on screen.
+
+- **Embed in one snippet** — `<script>window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }</script>` + the async loader. Two layouts: a floating `helper` launcher or an `inline` mounted block. Theme, title, skill all configurable via `window.AskMyDocsWidget` or `data-*` attrs.
+- **Grounded + cited, never a generic bot** — the widget runs the first-party `KbSearchService` + reranker + refusal gate, scoped to the key's tenant + project. The browser **never** names a tenant — tenant/project are resolved server-side from the key (R30); cross-key/cross-tenant session access is `404` (anti-IDOR).
+- **Agentic by design** — the LLM emits tool calls executed in the page DOM (`click` / `type` / `select` / `navigate_to` / `submit_form` / `wait_for` + ~15 more), or server-side via `/exec-tool` (`search_knowledge_base`), in a bounded loop with per-session step + consecutive-error caps. **Skills** (JSON manifests under `resources/widget/skills/*`) declare which tools, what auto-annotation rules, and the run policies.
+- **Host-Tools Protocol (HTP)** — your app can expose its *own* tools to the agent ("create order", "set rate"), **double-gated** (per key *and* per skill) and **off by default**. The page is annotated with stable, verb-based `data-kitt-*` attributes (`region` / `field` / `action` / `message` / `locale` / `skip`); `data-kitt-sensitive` and `type=password`/`hidden` values are force-nulled server-side so secrets never reach the LLM or the step log.
+- **Secure embedding** — exact-match `Origin` allowlist (browser mode) or `sk_` secret (server-to-server); **single-use, origin-bound session tokens** consumed atomically under a lock (R21, hashed at rest, rate-limit checked *before* burn); snapshot byte + count caps; `javascript:`/`data:`/protocol-relative navigation blocked on both server and client; PII masked on every persisted step (Italian VAT masking is checksum-validated so non-PII codes stay readable).
+- **Full admin surface** — `/app/admin/widget` (super-admin): create / rotate / revoke keys, manage allowed origins + theme, toggle host-tools, copy the ready-made embed snippet, and replay every session step (PII-masked).
+
+**Try it.** As super-admin, open `/app/admin/widget`, create a key (set a
+`project_key` + your site's origin), copy the **Embed code** snippet into
+your page, and reload. Locally, set `WIDGET_DEMO_ENABLED=true` and open
+`/widget-demo` for a self-contained annotated demo page (add `?mode=inline`
+for the inline layout). Full developer guide:
+[`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md).
 
 ### Database
 ```env
@@ -682,6 +712,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Laravel scheduler (13+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
 | Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
+| Widget admin SPA (`/app/admin/widget`) | Manage the KITT embeddable widget: key CRUD + rotate (`pk_`/`sk_` returned once) + revoke, allowed-origins editor, theme designer (validated + sanitised), per-key `host_tools_enabled` toggle, copy-ready embed snippet, and a read-only sessions browser with PII-masked step replay. Key management is `manageWidgetKeys` (super-admin); session inspection is `viewWidgetSessions` (admin + super-admin); everything tenant-scoped. Sessions + steps pruned by `widget:prune-sessions` (daily, `WIDGET_SESSION_RETENTION_DAYS` default 90) which also prunes expired session tokens | v8.10 |
 
 ### Integrations & Extensibility
 
@@ -698,6 +729,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Connector framework + 7 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 7 native connectors: `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (all inline for v4.5; extracted to `padosoft/askmydocs-connector-*` packages in v4.6 per ADR 0008 D1) | v4.5 |
 | **MCP client framework** | AskMyDocs as MCP **CLIENT** (outward direction) — tenant-scoped `McpServerRegistry` + `McpToolCallingService` orchestrates multi-turn tool-calling loops (max 3 iterations, configurable); `McpToolAuthorizer` gates per-user/per-server/per-tool access; v7.0/W6.3.B retired the v5.0 Node sidecar and now drives JSON-RPC directly over native HTTP / SSE / stdio transports via `padosoft/askmydocs-mcp-pack`; `McpHandshakeService` persists initialize+tools/list under `mcp_servers.handshake_response_json`; immutable audit trail in `mcp_tool_call_audit` (with `transport_error` status when the upstream connection is unreachable but not timing out); admin API for server CRUD + handshake + tool-list management; `AI_AGENTIC_ENABLED` master switch; OpenAI + OpenRouter providers wire tool schemas automatically | v5.0 |
 | **MCP admin web panel** (optional companion) | Standalone Laravel package `padosoft/askmydocs-mcp-pack-admin` ships a React SPA that cross-mounts under `/admin/mcp-pack` and surfaces every MCP-side capability above through 12 routes (Dashboard, Servers list + new-server wizard, per-server detail with 7 tabs, Tools matrix + try-it, Resources tree, Prompts playground, Audit log + drilldown, Circuit breakers, OpenAPI explorer, Settings, Help). **v1.1.0** (shipped 2026-05-18) drives the full live `padosoft/askmydocs-mcp-pack` v1.5+ REST surface end-to-end — 22 typed endpoints, 23 TanStack Query hooks across read+write paths, R21 two-call confirm-token protocol on tool invoke / audit replay / breaker reset, SSE live-feed consumer, 154 Vitest specs covering every binding. Composer-discoverable, RBAC-gated, dark+light themed — see [Optional: mount the MCP admin web panel](#optional-mount-the-mcp-admin-web-panel) | v7.0 |
+| **KITT embeddable agentic widget** | A one-`<script>` embeddable, page-aware, agentic chat widget served at `/widget/askmydocs-widget.js` and driven by `/api/widget/*` (gated by the `widget.key` middleware — public `pk_` + `Origin` allowlist, `sk_` secret for server-to-server, or single-use origin-bound `wt_` session tokens consumed atomically per R21). Runs the first-party retrieval stack (grounded + cited, tenant/project resolved server-side from the key — R30) inside a bounded ReAct loop: the widget captures a structured page snapshot and the LLM emits tool calls run in the page DOM (~20 FE verbs: `click`/`type`/`select`/`navigate_to`/`submit_form`/`wait_for`/…) or server-side via `/exec-tool` (`search_knowledge_base`). **Skills** are JSON manifests (`resources/widget/skills/*`) declaring `tools_enabled` + `auto_annotation_rules` + `default_policies`; the **Host-Tools Protocol** lets a host app expose its own tools, double-gated per key (`host_tools_enabled`) **and** per skill. Pages annotate with stable verb-based `data-kitt-*` attributes; `data-kitt-sensitive`/`password`/`hidden` values are force-nulled server-side. Tool schemas are sent only to providers in `config('widget.tool_calling_providers')` (default `openai,openrouter,fake`); otherwise it degrades to plain grounded chat. See [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md) | v8.10 |
 
 ### Quality & Observability
 
@@ -1219,6 +1251,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.8.1** | ✅ shipped 2026-06-04 (v8.8.3 GA · PR #258) | **Live-verification patch.** Driving a REAL browser against live pgvector + a real OpenRouter key (not mocks) surfaced 4 bugs the mocked suites missed: (1) chat **citation `project_key`** must be read from the chunk, not the unselected `document` relation — the W6 chat **Related** panel was dead in production; (2) the primary sidebar dead-ended on `Coming in Phase…` **placeholders** while the real Dashboard / Knowledge / AI-Insights / Users / Maintenance views sat under `/app/admin/*` (e2e navigated there directly, so never caught it) → repointed + redirects + placeholder components deleted; (3) the sidebar **role label** was hardcoded from a seed constant → now reads the real auth-store role (least-privilege fallback); (4) the **AI Act** page had an **infinite iframe recursion** (a v6.0 redirect placeholder looped the iframe back into the host SPA) → replaced with a **native panel** on the real `/api/admin/ai-act-compliance/*` endpoints. Adds a gated `tests/Live/Rag` end-to-end suite (real pgvector + AI, `LIVE_RAG=1`, throwaway tenant, full teardown). New rule **R42** — on a transient external-API failure (429 / 5xx / stream-idle-timeout / no-connection) never stop: wait ~60 s and retry in a loop. |
 | **v8.8.2** | ✅ shipped 2026-06-04 (v8.8.3 GA · PR #260) | **Unified admin navigation + center-only sister mounts.** Removes the confusing "double menu": the primary sidebar and a near-identical secondary `AdminShell` rail are merged into ONE grouped, collapsible sidebar driven by a single `nav-config.ts` source of truth (23 sections, 5 groups); `AdminShell` is reduced to a content-only wrapper. Each sister-package admin now mounts **center-only** — no second sidebar / nested chrome: **Flows** → a native host landing (live KPIs) + the full cockpit via `target=_blank` (no iframe); **PII Redactor** + **Eval Harness** cross-mounts drop their own sidebar/header into an in-content tab strip; **Eval** additionally probes its data API and shows a clean "unavailable" landing when it isn't wired (safe with the flag ON or OFF). New rule **R43** — a boolean feature flag is tested in BOTH states (OFF and ON), never just enabled; the OFF path must degrade cleanly (404 / disabled / unavailable), never a 500. 9-round Copilot R36 loop to 0 must-fix; the whole admin surface re-verified live (1 nav, 0 nested chrome, every backing API healthy). |
 | **v8.8.3** | ✅ shipped 2026-06-04 (PR #262) | **Anonymous chat.** A "New anonymous chat" button opens a self-contained `/app/chat/anonymous` view that posts the stateless `POST /api/kb/chat` with `anonymous:true`: the turn is **never persisted** (no `conversations` / `messages` row — in-memory only, lost on refresh) and `chat_logs` are written **minimally or not at all** per `CHAT_LOG_ANONYMOUS_LEVEL` (`minimal` keeps only the by-norm operational fields — provider / model / token counts / latency / chunks / project — under a fresh per-request session id and strips question / answer / sources / user_id / client_ip / user_agent; `none` writes no row). PII is **force-redacted with a non-persistent mask strategy BEFORE** retrieval / LLM / minimal-log / content-gap, so an anonymous turn is *more* redacted than a normal stateless turn — never a bypass — and every other guard still applies (tenant isolation, RBAC, AI-Act disclosure/consent, the `no_relevant_context` refusal short-circuit R26, and the content-gap rollup records the **redacted** query). Feature-flagged `KB_ANONYMOUS_CHAT_ENABLED` (default **OFF**, R43 both-states): when off the BE rejects an `anonymous:true` turn with **422** and the SPA renders a clean disabled landing via the `GET /api/kb/chat/anonymous-config` probe — a probe **failure** surfaces as an error, not a silent off-state (R14). +13 PHPUnit (7 anon controller + existing chat suite) + 6 Vitest + 2 Playwright (R13 real-data; `KB_ANONYMOUS_CHAT_ENABLED=true` in the E2E web-server). The R40 local critic caught the R14 probe-error bug + an R30 test-scoping nit before the first push. |
+| **v8.10** | ✅ shipped 2026-06-12 | **KITT embeddable agentic widget.** A one-`<script>` embeddable, page-aware, agentic chat widget (loader at `/widget/askmydocs-widget.js`, API under `/api/widget/*` behind the `widget.key` middleware). Runs the first-party grounded+cited retrieval stack (tenant/project resolved server-side from the key — R30) inside a bounded ReAct loop: captures a structured page snapshot, executes ~20 FE DOM tools (`click`/`type`/`select`/`navigate_to`/`submit_form`/…) and BE tools (`/exec-tool` → `search_knowledge_base`); JSON **skill** manifests (`tools_enabled` + `auto_annotation_rules` + `default_policies`); a double-gated **Host-Tools Protocol** (per key + per skill); `data-kitt-*` page annotation with server-side sensitive-value nulling. Three auth modes (public `pk_` + `Origin` allowlist / `sk_` server-to-server / single-use origin-bound `wt_` session tokens, R21-atomic); 4 tables (`widget_keys` / `widget_sessions` / `widget_session_steps` / `widget_session_tokens`); admin SPA at `/app/admin/widget` (key CRUD/rotate/revoke + origins + theme + host-tools toggle + embed snippet + PII-masked session replay); `widget:prune-sessions` retention. See [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md). |
 | **Future** | ⏳ planned for v8.x or v9.0 | SSO / SCIM enterprise auth (SAML / OAuth / SCIM provisioning) + content export/portability — surfaced by the v8.8 Affine gap audit, deferred to a dedicated cycle; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 per A7/A10 of the killer-features plan |
 
 For the strategic reasoning behind v4.5+ see
@@ -1238,6 +1271,7 @@ For the strategic reasoning behind v4.5+ see
 | [`docs/v4-platform/STATUS-*`](docs/v4-platform/) | Per-cycle weekly status docs (v4.0 W1–W8 / v4.1 W4.1 / v4.2 W1–W5 / v4.3 W1–W4 / v4.4 W1–W4 / v4.5 W1–W8 / v4.6 W4 / v4.7 W1–W3) — what shipped, test count delta, RC tag SHAs |
 | [`docs/v4-platform/ROADMAP-v4-v5-v6.md`](docs/v4-platform/ROADMAP-v4-v5-v6.md) | Multi-major roadmap — v4.5 → v4.6 → v4.7 → v5.0 → v6.0 with Wn breakdowns, acceptance gates, and locked-in decision dates |
 | [`docs/connectors/README.md`](docs/connectors/README.md) | Connector framework developer guide — 10-method `ConnectorInterface` contract + composer-package auto-discovery + helper traits + the four channels available to a new connector author |
+| [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md) | KITT embeddable widget developer guide — embed snippet + config, the 3 auth modes, the full `/api/widget/*` API, skills + tools, `data-kitt-*` page annotation, the Host-Tools Protocol, admin SPA, tables, env vars, security model + troubleshooting |
 | [`docs/v4-platform/RUNBOOK-live-fixture-recording.md`](docs/v4-platform/RUNBOOK-live-fixture-recording.md) | Junior-proof per-provider runbook for recording fresh fixtures — exact dev-console URLs, sidebar paths, button labels, scopes, env vars produced, verification one-liner with expected output |
 | [`docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md`](docs/v4-platform/INTEGRATION-ROADMAP-sister-packages.md) | Per-sister-package integration timeline + status: regolo / pii-redactor / flow / eval-harness + the 3 admin SPAs + patent-box-tracker (external) |
 | [`docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md`](docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md) | Competitor audit vs Glean / Notion AI / ChatGPT Enterprise / M365 Copilot / Mendable / Vectara — feature parity matrix + 5 moats + top 5 v4.5+ gaps |
@@ -1259,6 +1293,9 @@ The chat surface and admin shell, page by page.
 ![AskMyDoc - Manteinance.png](resources/screenshots/AskMyDoc%20-%20Manteinance.png)
 ![AskMyDoc - Logs.png](resources/screenshots/AskMyDoc%20-%20Logs.png)
 ![AskMyDoc - Ai.png](resources/screenshots/AskMyDoc%20-%20Ai.png)
+
+*KITT embeddable agentic widget (on a host page)*
+![AskMyDoc - KITT.jpeg](resources/screenshots/AskMyDoc%20-%20KITT.jpeg)
 
 **Admin pages in detail.**
 
@@ -1360,6 +1397,37 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.10.0 — KITT Embeddable Agentic Widget** ships a one-`<script>`
+embeddable, page-aware, agentic chat widget. A customer pastes a snippet
+(`window.AskMyDocsWidget = { key: 'pk_…', apiBase: '…' }` + the async loader
+at `/widget/askmydocs-widget.js`) and gets the **first-party retrieval stack**
+— grounded, cited, tenant/project resolved server-side from the key (R30) —
+inside a **bounded ReAct loop**: the widget captures a structured snapshot of
+the host page (regions / fields / actions / messages / outline) and the LLM
+emits tool calls run in the page DOM (~20 FE verbs — `click` / `type` /
+`select` / `navigate_to` / `submit_form` / `wait_for` / …) or server-side via
+`/exec-tool` (`search_knowledge_base`). Behaviour is governed by JSON **skill**
+manifests (`resources/widget/skills/*`: `tools_enabled` + `auto_annotation_rules`
++ `default_policies`) and a double-gated **Host-Tools Protocol** (per key
+`host_tools_enabled` **and** per skill) that lets a host app expose its own
+tools; pages annotate with stable verb-based `data-kitt-*` attributes, and
+`data-kitt-sensitive` / `password` / `hidden` values are force-nulled
+server-side so secrets never reach the LLM or the step log. **Security**: three
+auth modes (public `pk_` + exact-match `Origin` allowlist, `sk_` secret for
+server-to-server, single-use **origin-bound** `wt_` session tokens consumed
+atomically under a lock per R21 + hashed at rest + rate-limit checked *before*
+burn); cross-key / cross-tenant session access is `404` (anti-IDOR); snapshot
+byte + count caps; `javascript:` / `data:` / protocol-relative navigation
+blocked on both server and client; PII masked on every persisted step (Italian
+VAT masking checksum-validated so non-PII codes stay readable). 4 tables
+(`widget_keys` / `widget_sessions` / `widget_session_steps` /
+`widget_session_tokens`), a super-admin **admin SPA** at `/app/admin/widget`
+(key CRUD / rotate / revoke + allowed-origins + theme designer + host-tools
+toggle + copy-ready embed snippet + PII-masked session replay), and a
+`widget:prune-sessions` retention sweep. Developer guide:
+[`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md); local demo at
+`/widget-demo` (`WIDGET_DEMO_ENABLED=true`).
 
 **v8.9.0 — Tenant & Project Isolation Hardening** is a security-review
 release: a deep audit of every content-surfacing path (chat answer, search,
