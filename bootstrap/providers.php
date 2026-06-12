@@ -4,6 +4,11 @@ $providers = [
     App\Providers\AppServiceProvider::class,
     App\Providers\AiServiceProvider::class,
     App\Providers\ChatLogServiceProvider::class,
+    // v8.9 — UI drag-and-drop upload progress wiring: KnowledgeDocument
+    // observer (doc-id link) + 3 queue-event listeners (item status
+    // lifecycle). Only acts on IngestDocumentJob runs carrying an upload
+    // batch-item id in metadata; a no-op for every other ingest path.
+    App\Providers\KbUploadServiceProvider::class,
     // v4.1/W4.1.B — PII redactor package SP. Listed explicitly because
     // package auto-discovery via `bootstrap/cache/packages.php` is
     // brittle on the Windows + Herd dev environment (artisan
