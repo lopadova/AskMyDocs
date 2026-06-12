@@ -35,6 +35,27 @@ describe('Executor — security guards (#2 / #9)', () => {
         expect(res.ok).toBe(false);
     });
 
+    it('#2 — type RIFIUTA un campo carta (autocomplete=cc-number) anche se type=text', async () => {
+        document.body.innerHTML = `<div data-kitt-field="card"><input data-kitt-input type="text" name="card" autocomplete="cc-number"></div>`;
+        const res = await executor.run('type', { field: 'card', value: '4111111111111111' });
+        expect(res.ok).toBe(false);
+        expect((document.querySelector('input') as HTMLInputElement).value).toBe('');
+    });
+
+    it('#2 — type RIFIUTA un campo current-password (autocomplete)', async () => {
+        document.body.innerHTML = `<div data-kitt-field="cur"><input data-kitt-input type="text" name="cur" autocomplete="current-password"></div>`;
+        const res = await executor.run('type', { field: 'cur', value: 'secret' });
+        expect(res.ok).toBe(false);
+        expect((document.querySelector('input') as HTMLInputElement).value).toBe('');
+    });
+
+    it('#2 — type RIFIUTA un campo new-password (autocomplete)', async () => {
+        document.body.innerHTML = `<div data-kitt-field="newpw"><input data-kitt-input type="text" name="newpw" autocomplete="new-password"></div>`;
+        const res = await executor.run('type', { field: 'newpw', value: 'secret' });
+        expect(res.ok).toBe(false);
+        expect((document.querySelector('input') as HTMLInputElement).value).toBe('');
+    });
+
     it('#2 — type accetta un input testo normale', async () => {
         document.body.innerHTML = `<div data-kitt-field="name"><input data-kitt-input type="text" name="name"></div>`;
         const res = await executor.run('type', { field: 'name', value: 'Mario' });

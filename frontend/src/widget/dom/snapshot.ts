@@ -171,7 +171,7 @@ function fieldValue(input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaEl
  * prescindere dalla presenza di data-kitt-sensitive. Difende anche le pagine
  * annotate a mano che dimenticano l'attributo.
  */
-function isSensitiveInput(input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null): boolean {
+export function isSensitiveInput(input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null): boolean {
     if (!(input instanceof HTMLInputElement)) {
         return false;
     }
