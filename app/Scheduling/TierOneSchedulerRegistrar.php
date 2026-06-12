@@ -66,6 +66,8 @@ final class TierOneSchedulerRegistrar
         ['gamification_recompute', 'gamification:recompute'],
         // v8.7/W5 — Cloud Time Machine archived-version retention.
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
+        // v8.9 — UI upload staging buffer retention sweep.
+        ['kb_prune_staging_batches', 'kb:prune-staging-batches'],
         // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).
         ['kb_wiki_maintain', 'kb:wiki-maintain'],
     ];

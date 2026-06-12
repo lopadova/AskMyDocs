@@ -276,6 +276,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_CRON', '20 4 * * *'),
         ],
+        // v8.9 — sweep stale UI-upload staging batches + their staged files.
+        'kb_prune_staging_batches' => [
+            'enabled' => (bool) env('SCHEDULE_KB_PRUNE_STAGING_BATCHES_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_PRUNE_STAGING_BATCHES_CRON', '15 4 * * *'),
+        ],
         // v8.11/P9 — scheduled Auto-Wiki maintenance (daily 04:40): rebuild
         // indices + lint + backfill un-enriched docs.
         'kb_wiki_maintain' => [
