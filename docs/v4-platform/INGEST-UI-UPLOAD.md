@@ -1,7 +1,7 @@
 # Ingest via UI — drag-and-drop upload modal (team-switcher section)
 
 **Branch:** `feature/team-switcher` (no new branch — section of the team switcher)
-**Status:** in progress
+**Status:** implemented (backend + frontend + tests green; full PHPUnit suite 2300 ✓)
 **Plan of record:** mirrors the approved working plan; this file is the git-tracked artefact.
 
 ---
@@ -87,17 +87,17 @@ R41 (teardown rollback before Mockery::close).
 
 ## Task checklist
 
-- [ ] **T0** Setup & tracking doc (this file).
+- [x] **T0** Setup & tracking doc (this file).
 - [x] **T1** `kb-staging` disk (`config/filesystems.php`) + `staging` block (`config/kb.php`) + `.env.example`.
-- [ ] **T2** Migrations `kb_ingest_batches` + `kb_ingest_batch_items`; models `KbIngestBatch`/`KbIngestBatchItem`; `TenantIdMandatoryTest`.
-- [ ] **T3** `KbUploadStagingService::stage` + `KbUploadController::store` + `StageKbUploadRequest` + `POST /uploads`.
-- [ ] **T4** `commit` (R21 gate + move-then-dispatch) + `CommitKbUploadRequest` + `POST /uploads/{b}/commit`.
-- [ ] **T5** index / inspect / delete-item / status / cancel + routes + RBAC matrix.
-- [ ] **T6** `KbUploadBatchItemProgress` listener + `KnowledgeDocument::created` observer + `transitionItem` + `KbUploadItemStatusChanged` event seam.
-- [ ] **T7** Async queue + worker docs (README/deploy/.env.example).
-- [ ] **T8** `kb:prune-staging-batches` command + scheduler slot + `config/askmydocs.php`.
-- [ ] **T9** Frontend modal under `frontend/src/features/admin/kb/upload/` + KbView wiring.
-- [ ] **T10** Tests: PHPUnit (stage/commit/partial/idempotency/tenant/progress/prune/listener) + Vitest + E2E `kb-upload.spec.ts`.
+- [x] **T2** Migrations `kb_ingest_batches` + `kb_ingest_batch_items`; models `KbIngestBatch`/`KbIngestBatchItem`; `TenantIdMandatoryTest` + `TenantReadScopeTest`.
+- [x] **T3** `KbUploadStagingService::stage` + `KbUploadController::store` + `StageKbUploadRequest` + `POST /uploads`.
+- [x] **T4** `commit` (R21 gate + move-then-dispatch) + `CommitKbUploadRequest` + `POST /uploads/{b}/commit`.
+- [x] **T5** index / inspect / delete-item / status / cancel + routes + RBAC matrix.
+- [x] **T6** `KbUploadBatchItemProgress` listener + `KnowledgeDocument::created` observer + `transitionItem` + `KbUploadItemStatusChanged` event seam.
+- [x] **T7** Async queue + worker docs (README/deploy/.env.example).
+- [x] **T8** `kb:prune-staging-batches` command + scheduler slot + `config/askmydocs.php` + `MaintenanceCommandController` description.
+- [x] **T9** Frontend modal under `frontend/src/features/admin/kb/upload/` + KbView wiring.
+- [x] **T10** Tests: PHPUnit (stage/commit/partial/idempotency R21/tenant R30/progress/prune/listener) + Vitest (dropzone) + E2E `kb-upload.spec.ts`. Full suite 2300 ✓, verify-e2e-real-data ✓, typecheck ✓.
 - [ ] **T11** *(separate PR)* Realtime via Reverb (enabled by the T6 seam).
 
 ## Out of scope (future)
