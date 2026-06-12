@@ -6,6 +6,7 @@ import { TreeView, type TreeState } from './TreeView';
 import { useKbProjects, useKbTree } from './kb-tree.api';
 import { DocumentDetail, type KbDetailTab } from './DocumentDetail';
 import { ToastHost } from '../shared/Toast';
+import { UploadModal } from './upload/UploadModal';
 
 /*
  * Phase G1 + G2 + G3 — KB Explorer shell.
@@ -67,6 +68,8 @@ export function KbView() {
     const [selectedNode, setSelectedNode] = useState<KbTreeNode | null>(null);
     const [selectedDocId, setSelectedDocId] = useState<number | null>(initial.docId);
     const [activeTab, setActiveTab] = useState<KbDetailTab>(initial.tab);
+    const [uploadSeed, setUploadSeed] = useState<{ projectKey: string | null; subPath: string; files: File[] } | null>(null);
+    const [uploadOpen, setUploadOpen] = useState(false);
 
     const treeQuery = useKbTree({
         project: project || null,
@@ -194,6 +197,30 @@ export function KbView() {
                                 </option>
                             ))}
                         </select>
+                        <button
+                            type="button"
+                            data-testid="kb-upload-open"
+                            aria-label="Upload documents"
+                            onClick={() => {
+                                setUploadSeed({ projectKey: project || null, subPath: '', files: [] });
+                                setUploadOpen(true);
+                            }}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '6px 12px',
+                                fontSize: 12.5,
+                                background: 'var(--accent, #6366f1)',
+                                border: '1px solid var(--accent, #6366f1)',
+                                borderRadius: 8,
+                                color: 'white',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <Icon.Upload size={14} />
+                            Upload
+                        </button>
                     </div>
                 </div>
 
@@ -261,6 +288,18 @@ export function KbView() {
                     </div>
                 </div>
             </div>
+            {uploadOpen && (
+                <UploadModal
+                    seed={uploadSeed}
+                    defaultProject={project || null}
+                    projectOptions={projectOptions}
+                    onClose={() => {
+                        setUploadOpen(false);
+                        setUploadSeed(null);
+                    }}
+                    onCommitted={() => treeQuery.refetch()}
+                />
+            )}
             <ToastHost />
         </AdminShell>
     );
