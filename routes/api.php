@@ -326,6 +326,20 @@ Route::middleware([
                 ->findOrFail($id);
         });
 
+        // v8.9 — KB upload (drag-and-drop) batches + items. R30 — tenant-scoped
+        // binding so an admin in tenant A cannot inspect/commit/cancel or
+        // delete an item of tenant B's batch by guessing the uuid (IDOR).
+        Route::bind('uploadBatch', function ($id) {
+            return \App\Models\KbIngestBatch::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+        Route::bind('uploadItem', function ($id) {
+            return \App\Models\KbIngestBatchItem::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+
         Route::apiResource('kb/documents', KbDocumentController::class)
             ->only(['show', 'destroy'])
             ->names([
@@ -380,6 +394,28 @@ Route::middleware([
                 'update' => 'api.admin.projects.update',
                 'destroy' => 'api.admin.projects.destroy',
             ]);
+
+        // v8.9 — Admin drag-and-drop KB upload: stage → review → commit →
+        // poll. Reuses the exact Artisan ingest pipeline (IngestDocumentJob)
+        // on commit. R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/uploads`). Bindings above scope every {uploadBatch}
+        // / {uploadItem} to the active tenant (R30).
+        Route::prefix('kb/uploads')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'index'])
+                ->name('api.admin.kb.uploads.index');
+            Route::post('/', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'store'])
+                ->name('api.admin.kb.uploads.store');
+            Route::get('/{uploadBatch}', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'show'])
+                ->name('api.admin.kb.uploads.show');
+            Route::get('/{uploadBatch}/status', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'status'])
+                ->name('api.admin.kb.uploads.status');
+            Route::post('/{uploadBatch}/commit', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'commit'])
+                ->name('api.admin.kb.uploads.commit');
+            Route::post('/{uploadBatch}/cancel', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'cancel'])
+                ->name('api.admin.kb.uploads.cancel');
+            Route::delete('/{uploadBatch}/items/{uploadItem}', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'destroyItem'])
+                ->name('api.admin.kb.uploads.items.destroy');
+        });
 
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
