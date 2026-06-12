@@ -33,6 +33,7 @@ export type SidebarSection =
     | 'eval-harness'
     | 'mcp-tools'
     | 'mcp-tokens'
+    | 'widget'
     | 'logs'
     | 'maintenance';
 
@@ -98,6 +99,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', route: '/app/admin/eval-harness' },
             { id: 'mcp-tools', label: 'MCP Tools', icon: 'Terminal', route: '/app/admin/mcp-tools' },
             { id: 'mcp-tokens', label: 'MCP Tokens', icon: 'Command', route: '/app/admin/mcp/tokens' },
+            { id: 'widget', label: 'Widget', icon: 'Chat', route: '/app/admin/widget' },
             { id: 'logs', label: 'Logs', icon: 'Activity', route: '/app/admin/logs' },
             { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', route: '/app/admin/maintenance' },
         ],

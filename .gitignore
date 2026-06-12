@@ -4,6 +4,7 @@
 /.claude/worktrees/
 /.claude/scheduled_tasks.lock
 /public/build/
+/public/widget/
 /public/hot
 /tailwind.config.d.ts
 /vite.config.d.ts
@@ -44,5 +45,12 @@ composer.lock
 # mangles spaced args). Not part of the app; do not commit.
 public/_serve_router.php
 
+# Hermes — task/handoff docs locali del widget KITT (non versionati)
+/Hermes/
+
 # Playwright MCP browser session artifacts
 .playwright-mcp/
+
+# macOS Finder metadata (must never be committed) — #40
+.DS_Store
+**/.DS_Store

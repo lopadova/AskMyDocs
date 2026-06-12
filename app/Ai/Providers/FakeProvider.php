@@ -52,6 +52,26 @@ final class FakeProvider implements AiProviderInterface
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
+        // Function-calling deterministico per il widget KITT (R13 / M4.14): quando
+        // l'orchestratore offre dei tool, il FakeProvider emette una sequenza di
+        // tool_call SCRIPTATA (per parola-chiave del messaggio utente + numero di
+        // azioni già in cronologia), così l'E2E agentico gira contro il VERO
+        // orchestratore/executor/bridge invece di stubbare le rotte interne.
+        // Nessun tool offerto (o nessun trigger) ⇒ risposta testuale canned.
+        $toolCalls = $this->scriptToolCalls($messages, $options);
+        if ($toolCalls !== []) {
+            return new AiResponse(
+                content: '',
+                provider: 'fake',
+                model: $this->modelName('chat_model'),
+                promptTokens: 11,
+                completionTokens: 7,
+                totalTokens: 18,
+                finishReason: 'tool_calls',
+                toolCalls: $toolCalls,
+            );
+        }
+
         return new AiResponse(
             content: self::ANSWER,
             provider: 'fake',
@@ -61,6 +81,115 @@ final class FakeProvider implements AiProviderInterface
             totalTokens: 28,
             finishReason: 'stop',
         );
+    }
+
+    /**
+     * Sequenza scriptata di tool_call deterministica per gli scenari agentici.
+     *
+     * @param  list<array{role: string, content: string}>  $messages
+     * @param  array<string, mixed>  $options
+     * @return list<array{name: string, arguments: string}>
+     */
+    private function scriptToolCalls(array $messages, array $options): array
+    {
+        // Attivo solo in modalità function-calling (tool offerti dall'orchestratore).
+        $tools = $options['tools'] ?? null;
+        if (! is_array($tools) || $tools === []) {
+            return [];
+        }
+
+        $intent = $this->latestUserIntent($messages);
+        if ($intent === '') {
+            return [];
+        }
+
+        // Quante tool_call sono già state emesse in cronologia ([azione] …).
+        $emitted = $this->countEmittedActions($messages);
+
+        // Scenario DOM multi-step: compila il profilo (type → click → report_done).
+        if ($this->intentMatches($intent, ['compila', 'profilo', 'fill the profile', 'profile'])) {
+            return match (true) {
+                $emitted === 0 => [$this->toolCall('type', ['field' => 'full-name', 'value' => 'Mario Rossi'])],
+                $emitted === 1 => [$this->toolCall('click', ['target' => 'submit'])],
+                default => [$this->toolCall('report_done', ['summary' => 'Profilo compilato e salvato con successo.'])],
+            };
+        }
+
+        // Scenario BE-tool: ricerca nella KB (search_knowledge_base → risposta testo).
+        if ($this->intentMatches($intent, ['policy', 'remote work', 'cerca', 'search'])) {
+            if ($emitted === 0) {
+                return [$this->toolCall('search_knowledge_base', ['query' => $intent])];
+            }
+
+            return [];
+        }
+
+        return [];
+    }
+
+    /**
+     * Ultimo messaggio utente "umano" (esclude le righe [risultato]/[azione]
+     * reiniettate dall'orchestratore nella cronologia).
+     *
+     * @param  list<array{role: string, content: string}>  $messages
+     */
+    private function latestUserIntent(array $messages): string
+    {
+        for ($i = count($messages) - 1; $i >= 0; $i--) {
+            $message = $messages[$i];
+            $content = (string) ($message['content'] ?? '');
+            if (($message['role'] ?? '') !== 'user') {
+                continue;
+            }
+            if (str_starts_with($content, '[risultato]') || str_starts_with($content, '[azione]')) {
+                continue;
+            }
+
+            return mb_strtolower(trim($content));
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<array{role: string, content: string}>  $messages
+     */
+    private function countEmittedActions(array $messages): int
+    {
+        $count = 0;
+        foreach ($messages as $message) {
+            if (($message['role'] ?? '') === 'assistant' && str_starts_with((string) ($message['content'] ?? ''), '[azione]')) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param  list<string>  $needles
+     */
+    private function intentMatches(string $intent, array $needles): bool
+    {
+        foreach ($needles as $needle) {
+            if (str_contains($intent, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $args
+     * @return array{name: string, arguments: string}
+     */
+    private function toolCall(string $name, array $args): array
+    {
+        return [
+            'name' => $name,
+            'arguments' => json_encode($args, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}',
+        ];
     }
 
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator

@@ -1,0 +1,168 @@
+{
+  "name": "gescat-assistant",
+  "version": "1.0.0",
+  "description": "Assistente AskMyDocs per gescat: RAG sulla knowledge base con citazioni, operatività DOM sulle pagine admin annotate (FE DOM tools + search_knowledge_base) e host tools forniti dall'app ospite (Host Tool Provider) per articoli, nodi e consumption rate.",
+  "applies_to": {
+    "annotations_optional": ["data-kitt-region", "data-kitt-field", "data-kitt-input", "data-kitt-action"]
+  },
+  "tools_enabled": [
+    "click",
+    "type",
+    "select",
+    "combobox_search",
+    "combobox_set",
+    "toggle",
+    "radio",
+    "set_locale",
+    "goto_step",
+    "scroll_to",
+    "submit_form",
+    "wait_for",
+    "read_page",
+    "navigate_to",
+    "move_cursor",
+    "tour_step",
+    "show_recap",
+    "search_knowledge_base",
+    "ask_user",
+    "report_done",
+    "report_blocked"
+  ],
+  "host_tools_enabled": true,
+  "host_tools_allowlist": [
+    "articoli__",
+    "nodi__",
+    "consumptionRate__"
+  ],
+  "default_policies": {
+    "max_steps": 30,
+    "max_consecutive_errors": 3,
+    "ask_before_submit": true,
+    "confirmation_required": ["submit_form", "navigate_to"],
+    "navigate_scope": "same-origin"
+  },
+  "default_mode": "copilot",
+  "default_locale": "it",
+  "auto_annotation_rules": [
+    {
+      "selector": "form button[type=\"submit\"]:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "submit",
+        "data-kitt-help": "Submit del form corrente. Richiede conferma esplicita."
+      }
+    },
+    {
+      "selector": "[data-testid$=\"-delete\"]:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "delete",
+        "data-kitt-help": "Cancella la risorsa. Richiede sempre conferma esplicita."
+      }
+    },
+    {
+      "selector": "button.btn-primary:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "${text}",
+        "data-kitt-action-from-text": "1"
+      }
+    },
+    {
+      "selector": "input[type=\"checkbox\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Checkbox: ${text}"
+      }
+    },
+    {
+      "selector": "select:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Select: ${text}"
+      }
+    },
+    {
+      "selector": "[role=\"tab\"]:not([data-kitt-tab])",
+      "attrs": {
+        "data-kitt-tab": "${text}",
+        "data-kitt-help": "Tab: ${text}"
+      }
+    },
+    {
+      "selector": "button[aria-label]:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "${aria-label}",
+        "data-kitt-help": "Azione: ${aria-label}"
+      }
+    },
+    {
+      "selector": "input[type=\"text\"]:not([data-kitt-field]):not([type=\"hidden\"])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Campo testo: ${aria-label}"
+      }
+    },
+    {
+      "selector": "input[type=\"email\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Campo email: ${aria-label}"
+      }
+    },
+    {
+      "selector": "input[type=\"search\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Campo di ricerca"
+      }
+    },
+    {
+      "selector": "textarea:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Area di testo: ${aria-label}"
+      }
+    },
+    {
+      "selector": "input[type=\"radio\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Radio: ${value}"
+      }
+    },
+    {
+      "selector": "a[href]:not([data-kitt-action]):not([href^=\"mailto:\"]):not([href^=\"tel:\"])",
+      "attrs": {
+        "data-kitt-action": "navigate",
+        "data-kitt-help": "Link: ${text}"
+      }
+    },
+    {
+      "selector": "button.btn-danger:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "danger-${text}",
+        "data-kitt-help": "Azione distruttiva: ${text}. Richiede conferma."
+      }
+    },
+    {
+      "selector": "[role=\"dialog\"] button.close:not([data-kitt-action])",
+      "attrs": {
+        "data-kitt-action": "close-dialog",
+        "data-kitt-help": "Chiude la finestra di dialogo"
+      }
+    },
+    {
+      "selector": "input[type=\"password\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Campo password",
+        "data-kitt-sensitive": "1"
+      }
+    },
+    {
+      "selector": "[role=\"combobox\"]:not([data-kitt-field])",
+      "attrs": {
+        "data-kitt-field": "${name}",
+        "data-kitt-help": "Combobox: ${aria-label}"
+      }
+    }
+  ]
+}

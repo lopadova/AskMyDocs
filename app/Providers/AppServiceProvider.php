@@ -154,6 +154,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerAiActComplianceGates();
         $this->registerTabularReviewGates();
         $this->registerWorkflowGates();
+        $this->registerWidgetGates();
     }
 
     /**
@@ -223,6 +224,34 @@ class AppServiceProvider extends ServiceProvider
                 return false;
             }
             return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+    }
+
+    /**
+     * Widget admin surface gates (M6).
+     *
+     * - manageWidgetKeys: super-admin only — rotates/revokes credentials
+     *   that gate cross-origin widget access; blast radius too large for
+     *   lower roles.
+     * - viewWidgetSessions: admin + super-admin — read-only inspection of
+     *   active/past widget sessions within tenant.
+     */
+    private function registerWidgetGates(): void
+    {
+        Gate::define('manageWidgetKeys', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
+        });
+
+        Gate::define('viewWidgetSessions', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['admin', 'super-admin']);
         });
     }
 

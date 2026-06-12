@@ -41,6 +41,7 @@ import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
+import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -698,6 +699,25 @@ const adminCollectionsRoute = createRoute({
     component: AdminCollectionsRoute,
 });
 
+function AdminWidgetRoute() {
+    // #31 — admin + super-admin (NON solo super-admin): il gate BE
+    // `viewWidgetSessions` ammette `admin` per la tab Sessions. La gestione
+    // chiavi (tab Keys/Integration) resta super-admin, gated DENTRO WidgetAdminView.
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="widget">
+                <WidgetAdminView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminWidgetRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/widget',
+    component: AdminWidgetRoute,
+});
+
 function AdminComplianceReportsRoute() {
     return (
         <RequireRole roles={['admin', 'super-admin']}>
@@ -843,6 +863,7 @@ const routeTree = rootRoute.addChildren([
         adminMcpToolsRoute,
         adminMcpTokensRoute,
         adminCollectionsRoute,
+        adminWidgetRoute,
         adminComplianceReportsRoute,
         adminNotificationsRoute,
         adminNotificationPreferencesRoute,

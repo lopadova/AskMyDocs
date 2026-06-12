@@ -14,3 +14,61 @@
     --color-accent-a: var(--accent-a);
     --color-accent-b: var(--accent-b);
 }
+
+/* ───────────────────────────────────────────────────────────────────
+ * shadcn/ui semantic tokens.
+ *
+ * Each token aliases an existing AskMyDocs palette variable from
+ * tokens.css. Those palette vars (`--bg-*`, `--fg-*`, `--accent-*`,
+ * `--err`, …) already flip between dark (`:root`) and light
+ * (`:root[data-theme="light"]`), so the shadcn components inherit the
+ * host theme automatically — we never restate the palette here, we only
+ * give it the names shadcn components expect.
+ *
+ * Only colours are bridged; radii keep Tailwind's defaults so the bare
+ * `rounded`/`rounded-lg` utilities used elsewhere (notifications,
+ * rich-content) are untouched. New `--color-*` names — no collision
+ * with existing utilities. */
+:root {
+    --background: var(--bg-0);
+    --foreground: var(--fg-0);
+    --card: var(--bg-1);
+    --card-foreground: var(--fg-0);
+    --popover: var(--bg-2);
+    --popover-foreground: var(--fg-0);
+    --primary: var(--accent-a);
+    --primary-foreground: #f6f5ff;
+    --secondary: var(--bg-3);
+    --secondary-foreground: var(--fg-1);
+    --muted: var(--bg-2);
+    --muted-foreground: var(--fg-2);
+    --accent: var(--bg-3);
+    --accent-foreground: var(--fg-0);
+    --destructive: var(--err);
+    --destructive-foreground: #fff;
+    --border: var(--panel-border);
+    --input: var(--panel-border-strong);
+    --ring: var(--accent-a);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+}

@@ -18,6 +18,8 @@ use App\Http\Controllers\Api\Admin\PiiStrategyController;
 use App\Http\Controllers\Api\Admin\ProjectMembershipController;
 use App\Http\Controllers\Api\Admin\McpServersAdminController;
 use App\Http\Controllers\Api\Admin\McpTenantTokenController;
+use App\Http\Controllers\Api\Admin\WidgetKeyAdminController;
+use App\Http\Controllers\Api\Admin\WidgetSessionAdminController;
 use App\Http\Controllers\Api\Admin\McpToolCallAuditController;
 use App\Http\Controllers\Api\Admin\RoleController;
 use App\Http\Controllers\Api\Admin\TabularReviewController;
@@ -37,6 +39,9 @@ use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
 use App\Http\Controllers\Api\KbResolveWikilinkController;
+use App\Http\Controllers\Api\Widget\WidgetSessionController;
+use App\Http\Controllers\Api\Widget\WidgetSessionTokenController;
+use App\Http\Controllers\Api\Widget\WidgetSetupController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -657,6 +662,69 @@ Route::middleware([
 
 /*
 |--------------------------------------------------------------------------
+| Admin — Widget key management (M6.2, gate: manageWidgetKeys)
+|--------------------------------------------------------------------------
+|
+| CRUD + rotate + revoke for WidgetKey, tenant-scoped (R30).
+| Same middleware stack as MCP tokens: EncryptCookies + StartSession + auth:sanctum
+| + tenant.authorize + can:manageWidgetKeys.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:manageWidgetKeys',
+])
+    ->prefix('admin/widget-keys')
+    ->group(function () {
+        Route::get('/', [WidgetKeyAdminController::class, 'index'])
+            ->name('api.admin.widget-keys.index');
+        Route::post('/', [WidgetKeyAdminController::class, 'store'])
+            ->name('api.admin.widget-keys.store');
+        Route::patch('/{id}', [WidgetKeyAdminController::class, 'update'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.update');
+        Route::delete('/{id}', [WidgetKeyAdminController::class, 'destroy'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.destroy');
+        Route::post('/{id}/rotate', [WidgetKeyAdminController::class, 'rotate'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.rotate');
+        Route::post('/{id}/revoke', [WidgetKeyAdminController::class, 'revoke'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-keys.revoke');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Widget session inspection (M6.3, gate: viewWidgetSessions)
+|--------------------------------------------------------------------------
+|
+| Read-only session list + detail for admin inspection, tenant-scoped (R30).
+| Gate `viewWidgetSessions` admits admin + super-admin (lower barrier
+| than key management since sessions are read-only).
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:viewWidgetSessions',
+])
+    ->prefix('admin/widget-sessions')
+    ->group(function () {
+        Route::get('/', [WidgetSessionAdminController::class, 'index'])
+            ->name('api.admin.widget-sessions.index');
+        Route::get('/{id}', [WidgetSessionAdminController::class, 'show'])
+            ->whereNumber('id')
+            ->name('api.admin.widget-sessions.show');
+    });
+
+/*
+|--------------------------------------------------------------------------
 | Admin — Eval Harness UI bootstrap config (gate-protected)
 |--------------------------------------------------------------------------
 |
@@ -925,4 +993,46 @@ Route::middleware([
         Route::post('/{id}/dismiss', [\App\Http\Controllers\Api\NotificationsController::class, 'dismiss'])
             ->whereNumber('id')
             ->name('api.notifications.dismiss');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Widget KITT — canale pubblico embeddabile (M1)
+|--------------------------------------------------------------------------
+|
+| FUORI dallo stack auth:sanctum. L'accesso è governato da `widget.key`
+| (modalità A browser pk+Origin / B proxy pk+secret-bearer): tenant + project
+| sono risolti DALLA KEY, mai dal client (R30). Il CORS dedicato è gestito da
+| HandleWidgetCors (prepended globale, scoped a api/widget/*), che risponde al
+| preflight OPTIONS prima del routing. `throttle:120,1` è la guardia coarse
+| pre-auth per IP; il limite fine per-key vive in ResolveWidgetKey. M2 aggiunge
+| sessions/start, sessions/{session}/step, /exec-tool, /cancel, /replay.
+|
+*/
+Route::middleware(['throttle:120,1', 'widget.key'])
+    ->prefix('widget')
+    ->group(function () {
+        Route::get('/setup', WidgetSetupController::class)
+            ->name('api.widget.setup');
+
+        // M5.2 — conia un session token opzionale (modalità browser A)
+        Route::post('/session-token', [WidgetSessionTokenController::class, 'mint'])
+            ->name('api.widget.session-token');
+
+        // M2 — loop ReAct: apertura sessione + turni. `{session}` è il
+        // public_session_id (UUID), risolto scoping sulla key chiamante
+        // dentro il controller (anti-IDOR, R30). /exec-tool + /replay in M4.
+        Route::post('/sessions/start', [WidgetSessionController::class, 'start'])
+            ->name('api.widget.sessions.start');
+        Route::post('/sessions/{session}/step', [WidgetSessionController::class, 'step'])
+            ->name('api.widget.sessions.step');
+        // M4 — esecuzione BE AiTool. Il FE chiama questo quando l'orchestratore
+        // emette una tool_call con is_be_tool=true.
+        Route::post('/sessions/{session}/exec-tool', [WidgetSessionController::class, 'execTool'])
+            ->name('api.widget.sessions.exec-tool');
+        Route::post('/sessions/{session}/cancel', [WidgetSessionController::class, 'cancel'])
+            ->name('api.widget.sessions.cancel');
+        // M5.9 — replay endpoint: ritorna gli step con PII mascherata, scope per key.
+        Route::get('/sessions/{session}/replay', [WidgetSessionController::class, 'replay'])
+            ->name('api.widget.sessions.replay');
     });

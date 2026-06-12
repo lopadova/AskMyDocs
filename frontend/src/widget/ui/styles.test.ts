@@ -1,0 +1,101 @@
+import { describe, it, expect } from 'vitest';
+
+import { DEFAULT_THEME, buildThemeCss, sanitizeTheme } from './styles';
+
+describe('sanitizeTheme', () => {
+    it('returns the full default theme for empty input', () => {
+        expect(sanitizeTheme({})).toEqual(DEFAULT_THEME);
+        expect(sanitizeTheme(undefined)).toEqual(DEFAULT_THEME);
+        expect(sanitizeTheme(null)).toEqual(DEFAULT_THEME);
+    });
+
+    it('keeps valid values and lowercases hex colours', () => {
+        const t = sanitizeTheme({
+            accent: '#FF8800',
+            fontFamily: 'inter',
+            fontSize: 16,
+            launcherShape: 'circle',
+            launcherSide: 'left',
+            panelWidth: 420,
+        });
+        expect(t.accent).toBe('#ff8800');
+        expect(t.fontFamily).toBe('inter');
+        expect(t.fontSize).toBe(16);
+        expect(t.launcherShape).toBe('circle');
+        expect(t.launcherSide).toBe('left');
+        expect(t.panelWidth).toBe(420);
+    });
+
+    it('rejects a CSS-injection colour and falls back to default (R19)', () => {
+        const t = sanitizeTheme({ accent: '#fff; } body { display: none } .x{', background: 'red' });
+        expect(t.accent).toBe(DEFAULT_THEME.accent);
+        expect(t.background).toBe(DEFAULT_THEME.background);
+    });
+
+    it('clamps numbers into range', () => {
+        expect(sanitizeTheme({ fontSize: 999 }).fontSize).toBe(18);
+        expect(sanitizeTheme({ fontSize: 1 }).fontSize).toBe(12);
+        expect(sanitizeTheme({ panelWidth: 9999 }).panelWidth).toBe(480);
+        expect(sanitizeTheme({ panelRadius: -50 }).panelRadius).toBe(0);
+    });
+
+    it('rejects non-allowlisted fonts and enums', () => {
+        const t = sanitizeTheme({ fontFamily: 'Comic Sans; }', launcherShape: 'hexagon', launcherIcon: '<svg>' });
+        expect(t.fontFamily).toBe('system');
+        expect(t.launcherShape).toBe('pill');
+        expect(t.launcherIcon).toBe('chat');
+    });
+
+    it('sanitizes the widget mode (helper default, inline allowed, garbage → helper)', () => {
+        expect(sanitizeTheme({}).mode).toBe('helper');
+        expect(sanitizeTheme({ mode: 'inline' }).mode).toBe('inline');
+        expect(sanitizeTheme({ mode: 'floating' }).mode).toBe('helper');
+    });
+
+    it('accepts an https image URL but rejects unsafe ones', () => {
+        expect(sanitizeTheme({ headerLogoUrl: 'https://cdn.example.com/l.png' }).headerLogoUrl).toBe(
+            'https://cdn.example.com/l.png',
+        );
+        expect(sanitizeTheme({ headerLogoUrl: 'http://cdn.example.com/l.png' }).headerLogoUrl).toBe('');
+        expect(sanitizeTheme({ launcherIconUrl: 'javascript:alert(1)' }).launcherIconUrl).toBe('');
+        expect(sanitizeTheme({ launcherIconUrl: 'https://x.com/a") url(' }).launcherIconUrl).toBe('');
+    });
+
+    it('strips control characters and caps label length', () => {
+        expect(sanitizeTheme({ launcherLabel: 'Ask\x00\x1f me' }).launcherLabel).toBe('Ask me');
+        expect(sanitizeTheme({ panelTitle: 'x'.repeat(200) }).panelTitle).toHaveLength(60);
+    });
+
+    it('merges with inline taking precedence over server (spread order)', () => {
+        const merged = sanitizeTheme({
+            ...DEFAULT_THEME,
+            ...{ accent: '#111111', fontSize: 12 }, // server
+            ...{ accent: '#222222' }, // inline wins
+        });
+        expect(merged.accent).toBe('#222222');
+        expect(merged.fontSize).toBe(12);
+    });
+});
+
+describe('buildThemeCss', () => {
+    it('emits sanitized CSS custom properties on .amd-root', () => {
+        const css = buildThemeCss(sanitizeTheme({ accent: '#10b981', fontFamily: 'mono', fontSize: 17 }));
+        expect(css).toContain('.amd-root{');
+        expect(css).toContain('--amd-accent:#10b981;');
+        expect(css).toContain('--amd-font-size:17px;');
+        expect(css).toContain("'SFMono-Regular'"); // mono stack
+    });
+
+    it('never leaks an injection payload into the CSS (R19)', () => {
+        const css = buildThemeCss(sanitizeTheme({ accent: '#fff; } body{display:none} .x{color:red' }));
+        expect(css).not.toContain('display:none');
+        expect(css).not.toContain('body{');
+        expect(css).toContain(`--amd-accent:${DEFAULT_THEME.accent};`);
+    });
+
+    it('does not emit the widget mode as a CSS var (it is structural, like launcherSide)', () => {
+        const css = buildThemeCss(sanitizeTheme({ mode: 'inline' }));
+        expect(css).not.toContain('mode');
+        expect(css).not.toContain('inline');
+    });
+});
