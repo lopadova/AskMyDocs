@@ -234,6 +234,18 @@ your page, and reload. Locally, set `WIDGET_DEMO_ENABLED=true` and open
 for the inline layout). Full developer guide:
 [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md).
 
+> **Security & embedding.** KITT is a cross-origin embeddable *and* an
+> agentic (page-driving) surface, so before embedding it on anything beyond a
+> public, low-sensitivity page, read the
+> [**Security & threat model**](docs/kitt/INTEGRATION.md#14-security--threat-model)
+> section of the integration guide — it documents exactly what is enforced and
+> *why* (tenant isolation, exact-match origin allowlist, no-credential CORS, no
+> host-page XSS, credential-field and navigation guards), the residual/inherent
+> risks of a public embeddable agent (public-key abuse, prompt-injection-driven
+> actions, data egress to the LLM), and the **best practices the operator and
+> the host site must follow to mitigate them** — including `data-kitt-skip` to
+> keep sensitive page regions out of the snapshot.
+
 ### Database
 ```env
 DB_CONNECTION=pgsql

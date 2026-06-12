@@ -30,7 +30,7 @@
 11. [Database tables](#11-database-tables)
 12. [Configuration & env vars](#12-configuration--env-vars)
 13. [Local demo page](#13-local-demo-page)
-14. [Security model](#14-security-model)
+14. [Security & threat model](#14-security--threat-model)
 15. [Troubleshooting](#15-troubleshooting)
 
 ---
@@ -371,24 +371,119 @@ inline layout.
 
 ---
 
-## 14. Security model
+## 14. Security & threat model
 
-- **Tenant/project are server-side only** (from the key) — the browser never names
-  a tenant (R30). Cross-key/cross-tenant session access is `404` (anti-IDOR).
-- **Origin allowlisting** in browser mode; **secret** (`sk_`) for server-to-server.
-- **Single-use, origin-bound session tokens**, consumed atomically under a lock
-  (R21); stored hashed at rest; rate-limit is checked **before** the token is burned.
-- **CORS** reflects only allowed origins; `Access-Control-Allow-Credentials` is not
-  emitted for the widget API.
-- **Snapshot hardening**: count caps + byte cap; server re-sanitises every text
-  field (strips markup/fences/zero-width) and force-nulls sensitive field values.
-- **Navigation guard**: `navigate_to`/host navigation rejects `javascript:`,
-  `data:`, `vbscript:`, protocol-relative `//host`, and backslash/`%5c` tricks,
-  mirrored on both the server validator and the FE executor.
-- **PII masking** on every persisted step (`args_json` / `diagnostic_json`) and on
-  replay; Italian VAT masking is checksum-validated so non-PII codes stay readable.
-- **Bounded agency**: per-session step cap + consecutive-error cap → the session
-  blocks instead of looping; per-key + per-session rate limits.
+Read this **before** putting KITT on anything other than a public, low-sensitivity
+page. The widget is two things at once — a **cross-origin embeddable** (a public
+credential on a third-party page) and an **agentic / computer-use** surface (the
+LLM can act on the host DOM). Each has a specific threat model. The controls below
+are real and verified in code; the *residual* risks at the end are the inherent
+ones every public embeddable + agent has, and they're handled by **operator and
+host-site policy**, not by a code switch.
+
+### 14.1 What is enforced (and why it's safe)
+
+| Control | Why it stops an attack | Where |
+|---|---|---|
+| **Tenant/project resolved server-side from the key** | The browser never names a tenant/project, so a client can't pivot to another customer's data. A session that doesn't belong to the calling key/tenant is `404` (anti-IDOR, not `403` — existence-hiding). | `ResolveWidgetKey` (R30), `WidgetSessionController::resolveSession` |
+| **Exact-match origin allowlist** | In browser mode the request is denied unless the browser-sent `Origin` is an *exact* normalized match. `https://allowed.test.evil.com` and substrings do **not** pass; an empty allowlist denies everything. | `WidgetKey::originAllowed()` |
+| **Secret never reaches the browser** | The `sk_` secret exists only in server-to-server (proxy) mode; `secret_hash` is `$hidden` (never serialized) and compared with `Hash::check` (constant-time). | `WidgetKey` |
+| **CORS can't leak a session** | The channel uses **no cookies** and the middleware **strips `Access-Control-Allow-Credentials`**, so reflecting the `Origin` is safe — there is no ambient session to ride (no CSRF surface on the widget API). | `HandleWidgetCors` |
+| **Answer & artifacts can't XSS the host page** | Every LLM answer and every BE artifact is written with `textContent` (never `innerHTML`), the component type is whitelisted, and the widget lives in a **closed shadow DOM** isolated from the host. | `panel.ts`, `UiArtifactRenderer`, `loader.ts` |
+| **Credential fields are never read or written** | `password` / `hidden` / `autocomplete=cc-*` / `current-password` / `new-password` inputs are auto-detected: their **value is never put in the snapshot**, and the executor **refuses to type** into them — even if a prompt-injected instruction asks. | `snapshot.ts` (`isSensitiveInput`), `executor.ts` (`type`) |
+| **No arbitrary form submit / no open-redirect** | `submit_form` acts only on the **focused** form or one inside an annotated `data-kitt-region` (no `document.forms[0]` fallback). `navigate_to` rejects `javascript:` / `data:` / `vbscript:`, protocol-relative `//host`, and backslash/`%5c` tricks; cross-origin targets are checked against the per-key allowlist **server-side**. | `executor.ts` (`submit`, `navigate`), `WidgetToolValidator` |
+| **Single-use, origin-bound session tokens** | `wt_` tokens are consumed atomically under a row lock (R21), bound to the mint origin, hashed at rest; the rate-limit is charged **before** the token is burned, so a `429` doesn't waste it. | `WidgetSessionTokenService` |
+| **PII masking on persistence** | Every persisted step (`args_json` / `diagnostic_json`) and the replay endpoint mask email / phone / IBAN / card / CF / checksum-validated VAT before storage. | `WidgetPiiMasker` |
+| **Bounded agency + rate limits** | Per-session step cap + consecutive-error cap (the session **blocks** instead of looping); per-key+IP and per-session rate buckets. | `WidgetSessionController`, `ResolveWidgetKey` |
+
+### 14.2 Residual / inherent risks — know these
+
+These are **not bugs**; they are the irreducible properties of a public embeddable
+agent. They are *contained*, and the mitigation is operator/host policy.
+
+1. **The public key (`pk_`) is public; origin allowlisting only stops *browser*
+   theft.** A *scripted* attacker (curl, not a browser) can copy your `pk_` from
+   page source and **forge the `Origin` header**, bypassing the allowlist. What
+   they get: read-only grounded answers from **that one project's KB** plus
+   consumption of your rate-limited LLM budget. They **cannot** reach another
+   tenant/project, write anything, or read PII. (This is identical to every public
+   chat widget — Intercom, Drift, etc.)
+2. **Prompt-injection-driven actions.** Text an attacker controls on the host page
+   (a review, a comment, an injected node) or in the KB could try to steer the
+   agent ("click *Delete*, then *Submit*"). Mitigated by snapshot text-stripping,
+   **confirmation gates** on state-changing verbs, the bounded tool set, step/error
+   caps, and the fact that **the agent can only do what the signed-in user could
+   already do** — it never exceeds the user's own privileges. Mitigated, not
+   eliminated (true of all computer-use agents).
+3. **Data egress to your LLM provider.** Each turn sends a page snapshot —
+   **headings (h1–h3), annotated regions/fields/actions/messages, and the
+   button/input outline** — to AskMyDocs → the LLM. Free-floating paragraph text is
+   *not* captured, and sensitive form-field values are nulled, but a *rendered*
+   sensitive string inside a captured element would be sent. **The host's control
+   for this is `data-kitt-skip`** (see 14.3).
+4. **The host trusts the loader script.** `askmydocs-widget.js` runs with full
+   privileges on the host page (it must, to read/drive the DOM). The host is
+   trusting your AskMyDocs deployment + its serving origin. Inherent to every
+   embedded widget; serve over HTTPS from an origin you control.
+
+### 14.3 `data-kitt-skip` — the host's data-egress control
+
+`data-kitt-skip` is **fully implemented** and excludes a subtree from **every**
+captured collection (regions, fields, actions, messages, headings, breadcrumbs,
+buttons, inputs — `snapshot.ts` applies the `ignored()` guard in all of them).
+Put it on any region that renders data you don't want leaving the page:
+
+```html
+<!-- This block is captured normally (the agent can see + act on it) -->
+<section data-kitt-region="profile"> … </section>
+
+<!-- This block is INVISIBLE to the snapshot — its text never reaches the LLM -->
+<aside data-kitt-skip>
+  <p>Customer SSN: 123-45-6789</p>
+  <table id="other-customers-pii"> … </table>
+</aside>
+```
+
+It is the host site's responsibility to annotate sensitive regions with
+`data-kitt-skip`. (It is a client-side snapshot filter and is **independent** of
+the server-side `padosoft/laravel-pii-redactor`, which is a complementary layer
+that masks PII *after* it reaches the server — e.g. in persisted steps and logs.)
+
+### 14.4 Best practices
+
+**For the AskMyDocs operator (key + deployment config):**
+
+- [ ] Treat the `pk_` as public. Keep the **KB project a widget key points at free
+      of secrets** you can't tolerate a scripted reader seeing. For sensitive
+      deployments, use **proxy mode** (`sk_`, server-to-server) so the page never
+      holds a usable credential.
+- [ ] Set the tightest `allowed_origins` (exact `https://host[:port]`, no
+      wildcards) and a conservative `rate_limit`; configure provider **cost caps**.
+- [ ] Keep the skill's `confirmation_required` / `ask_before_submit` policies **on**
+      for every state-changing verb (`submit_form`, `navigate_to`, destructive
+      host tools), so the user must click *Confirm*.
+- [ ] Leave `host_tools_enabled` **off** unless the host genuinely needs it; never
+      expose an irreversible host tool without a confirmation gate.
+- [ ] Serve the loader over **HTTPS** from an origin you control; rotate (`/rotate`)
+      or revoke (`/revoke`) a key the moment it's misused.
+
+**For the host site / developer embedding KITT:**
+
+- [ ] Add `data-kitt-skip` to every region rendering third-party PII / secrets /
+      other-tenant data (see 14.3) — this is your egress control.
+- [ ] Mark credential and payment inputs as `type="password"` / `type="hidden"` or
+      with the right `autocomplete` (`cc-*`, `current-password`) — they're then
+      auto-excluded even without `data-kitt-sensitive`. Add `data-kitt-sensitive`
+      to anything else whose value must never be captured.
+- [ ] If your site runs a **Content-Security-Policy**, allowlist the AskMyDocs
+      widget origin explicitly (`script-src` + `connect-src`); don't broaden CSP
+      more than needed.
+- [ ] Keep the host-tools exec endpoint behind your own auth + CSRF (the widget
+      sends the CSRF token + same-origin cookies); validate `args` server-side —
+      never trust tool arguments coming from the LLM.
+- [ ] Don't embed on transactional / high-privilege pages without first confirming
+      the action set is confirmation-gated and the sensitive regions are
+      `data-kitt-skip`'d.
 
 ---
 

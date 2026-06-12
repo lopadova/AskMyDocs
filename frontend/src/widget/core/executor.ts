@@ -7,6 +7,7 @@
  * I tool conversazionali (ask_user/report_done/report_blocked) e i tool BE
  * NON passano di qui: li gestisce il Bridge.
  */
+import { isSensitiveInput } from '../dom/snapshot';
 import type { ToolResult } from '../types';
 
 function ok(tool: string, diagnostic: Record<string, unknown>): ToolResult {
@@ -219,10 +220,13 @@ export class Executor {
         if (!input || input instanceof HTMLSelectElement) {
             return fail('type', `Field "${field}" not found or not typeable.`);
         }
-        // #2 — non scrivere MAI in campi credenziali/nascosti, anche se il server
-        // lo chiede: previene il pre-fill programmatico di password/hidden da
-        // output LLM prompt-injected.
-        if (input instanceof HTMLInputElement && (input.type === 'password' || input.type === 'hidden')) {
+        // #2 — non scrivere MAI in campi credenziali/sensibili, anche se il server
+        // lo chiede: previene il pre-fill programmatico da output LLM
+        // prompt-injected. Stesso predicato di snapshot.ts::isSensitiveInput
+        // (password/hidden + autocomplete cc-*/current-password/new-password), così
+        // il guard dell'executor copre l'INTERO insieme che lo snapshot già null-a
+        // — un campo carta/credenziale non viene né letto né compilato dall'agente.
+        if (isSensitiveInput(input)) {
             return fail('type', `Field "${field}" is a sensitive input and cannot be typed into.`);
         }
         input.focus();
