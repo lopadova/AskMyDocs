@@ -560,6 +560,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | UI upload staging (admin drag-and-drop)
+    |--------------------------------------------------------------------------
+    |
+    | Files uploaded through the admin SPA modal are first written to the
+    | `staging.disk` buffer, reviewed, then moved to the `sources.disk` and
+    | ingested on commit (same per-file IngestDocumentJob path as the CLI).
+    | `retention_hours` drives kb:prune-staging-batches (scheduled). The two
+    | size/count caps bound a single upload batch.
+    |
+    */
+
+    'staging' => [
+        'disk' => env('KB_STAGING_DISK', 'kb-staging'),
+        'retention_hours' => (int) env('KB_STAGING_RETENTION_HOURS', 24),
+        'max_files' => (int) env('KB_STAGING_MAX_FILES', 100),
+        'max_file_bytes' => (int) env('KB_STAGING_MAX_FILE_BYTES', 26214400), // 25 MiB
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Document deletion
     |--------------------------------------------------------------------------
     |

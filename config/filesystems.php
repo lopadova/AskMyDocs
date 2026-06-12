@@ -102,6 +102,28 @@ return [
 
         /*
         |----------------------------------------------------------------------
+        | KB staging disk (UI drag-and-drop upload buffer)
+        |----------------------------------------------------------------------
+        |
+        | Holds files uploaded through the admin SPA upload modal BEFORE the
+        | operator confirms the batch. On commit each staged file is moved to
+        | the canonical "kb" disk and ingested via IngestDocumentJob (the same
+        | pipeline as kb:ingest-folder). Kept on a dedicated disk so a staged
+        | file is NEVER walked by IngestFolderFlow / kb:prune-orphan-files and
+        | so it has its own retention sweep (kb:prune-staging-batches). Uses
+        | private visibility — never world-writable (R7).
+        |
+        */
+
+        'kb-staging' => [
+            'driver' => env('KB_STAGING_DISK_DRIVER', 'local'),
+            'root' => env('KB_STAGING_DISK_ROOT', storage_path('app/kb-staging')),
+            'throw' => false,
+            'visibility' => 'private',
+        ],
+
+        /*
+        |----------------------------------------------------------------------
         | Cloudflare R2 (S3-compatible)
         |----------------------------------------------------------------------
         |
