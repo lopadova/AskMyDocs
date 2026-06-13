@@ -73,21 +73,23 @@ final class AutoWikiGraphLinkerTest extends TestCase
 
         $this->assertTrue($result['linked']);
         $this->assertTrue($result['slug_assigned']);
-        $this->assertSame('cache-eviction', $result['slug']);
-        $this->assertSame('cache-eviction', $doc->fresh()->slug);
+        // Auto-assigned slugs are namespaced with `auto-` so they never squat on
+        // the human canonical slug namespace.
+        $this->assertSame('auto-cache-eviction', $result['slug']);
+        $this->assertSame('auto-cache-eviction', $doc->fresh()->slug);
 
         // Self node + dangling target node both exist, tenant-scoped.
-        $this->assertDatabaseHas('kb_nodes', ['tenant_id' => 'default', 'project_key' => 'docs-v3', 'node_uid' => 'cache-eviction']);
+        $this->assertDatabaseHas('kb_nodes', ['tenant_id' => 'default', 'project_key' => 'docs-v3', 'node_uid' => 'auto-cache-eviction']);
         $this->assertDatabaseHas('kb_nodes', ['project_key' => 'docs-v3', 'node_uid' => 'dec-cache']);
 
         // Inferred edge with the requested type + provenance.
-        $edge = KbEdge::query()->where('from_node_uid', 'cache-eviction')->where('to_node_uid', 'dec-cache')->first();
+        $edge = KbEdge::query()->where('from_node_uid', 'auto-cache-eviction')->where('to_node_uid', 'dec-cache')->first();
         $this->assertNotNull($edge);
         $this->assertSame('depends_on', $edge->edge_type);
         $this->assertSame('inferred', $edge->provenance);
 
         $this->assertDatabaseHas('kb_canonical_audit', [
-            'project_key' => 'docs-v3', 'event_type' => 'graph_rebuild', 'actor' => 'system:autowiki', 'slug' => 'cache-eviction',
+            'project_key' => 'docs-v3', 'event_type' => 'graph_rebuild', 'actor' => 'system:autowiki', 'slug' => 'auto-cache-eviction',
         ]);
     }
 
@@ -106,14 +108,40 @@ final class AutoWikiGraphLinkerTest extends TestCase
 
     public function test_slug_collision_appends_a_suffix(): void
     {
-        // An existing doc already owns the title-slug in this project.
-        $this->doc(['title' => 'Shared Title', 'slug' => 'shared-title']);
+        // An existing doc already owns the auto-namespaced title-slug.
+        $this->doc(['title' => 'Shared Title', 'slug' => 'auto-shared-title']);
         $doc = $this->withCrossRefs($this->doc(['title' => 'Shared Title']), []);
 
         $result = $this->linker()->link($doc);
 
-        $this->assertSame('shared-title-2', $result['slug']);
-        $this->assertSame('shared-title-2', $doc->fresh()->slug);
+        $this->assertSame('auto-shared-title-2', $result['slug']);
+        $this->assertSame('auto-shared-title-2', $doc->fresh()->slug);
+    }
+
+    public function test_auto_slug_does_not_squat_on_a_human_slug_namespace(): void
+    {
+        // A human canonical doc owns the clean slug 'cache-eviction'. An auto
+        // doc with the same title must NOT grab it (it gets 'auto-cache-eviction'),
+        // so the human doc's slug is never blocked.
+        $this->doc(['title' => 'Cache Eviction', 'slug' => 'cache-eviction', 'is_canonical' => true, 'generation_source' => 'human']);
+        $doc = $this->withCrossRefs($this->doc(['title' => 'Cache Eviction']), []);
+
+        $result = $this->linker()->link($doc);
+
+        $this->assertSame('auto-cache-eviction', $result['slug']);
+    }
+
+    public function test_duplicate_cross_references_are_deduped(): void
+    {
+        $doc = $this->withCrossRefs($this->doc(['slug' => 'dedupe-origin']), [
+            ['slug' => 'target', 'edge_type' => 'related_to'],
+            ['slug' => 'target', 'edge_type' => 'related_to'], // exact dup
+        ]);
+
+        $result = $this->linker()->link($doc);
+
+        $this->assertSame(1, $result['edges_created']);
+        $this->assertSame(1, KbEdge::query()->where('from_node_uid', 'dedupe-origin')->count());
     }
 
     public function test_replaces_only_inferred_edges_leaving_frontmatter_edges_intact(): void

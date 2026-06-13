@@ -79,10 +79,10 @@ final class WikiLinkTriSurfaceTest extends TestCase
         $doc = $this->doc(['title' => 'Linkable Doc']);
 
         $this->artisan('kb:wiki-link', ['document' => $doc->id])
-            ->expectsOutputToContain('Linked linkable-doc')
+            ->expectsOutputToContain('Linked auto-linkable-doc')
             ->assertSuccessful();
 
-        $this->assertDatabaseHas('kb_edges', ['from_node_uid' => 'linkable-doc', 'to_node_uid' => 'neighbour', 'provenance' => 'inferred']);
+        $this->assertDatabaseHas('kb_edges', ['from_node_uid' => 'auto-linkable-doc', 'to_node_uid' => 'neighbour', 'provenance' => 'inferred']);
     }
 
     public function test_command_fails_for_missing_doc(): void
@@ -100,9 +100,9 @@ final class WikiLinkTriSurfaceTest extends TestCase
             ->postJson("/api/admin/kb/documents/{$doc->id}/wiki-link")
             ->assertOk()
             ->assertJsonPath('data.linked', true)
-            ->assertJsonPath('data.slug', 'api-doc');
+            ->assertJsonPath('data.slug', 'auto-api-doc');
 
-        $this->assertSame(1, KbEdge::query()->where('from_node_uid', 'api-doc')->where('provenance', 'inferred')->count());
+        $this->assertSame(1, KbEdge::query()->where('from_node_uid', 'auto-api-doc')->where('provenance', 'inferred')->count());
     }
 
     public function test_api_rebuild_404_for_missing_doc(): void

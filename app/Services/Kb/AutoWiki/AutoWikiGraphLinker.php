@@ -44,6 +44,14 @@ use Illuminate\Support\Str;
  * Thin layers consume this ONE core across all three surfaces (R44): the
  * `kb:wiki-link` Artisan command, the admin re-link HTTP endpoint, and the
  * `KbRebuildWikiLinksTool` MCP tool.
+ *
+ * KNOWN LIMITATION (pre-existing schema, not introduced here): the
+ * `kb_nodes`/`kb_edges` uniques + composite FKs are keyed on `(project_key, …)`
+ * only, NOT `(tenant_id, project_key, …)`. Two DIFFERENT tenants that share a
+ * `project_key` therefore share graph rows. All reads here are tenant-scoped
+ * (R30) so within a tenant this is correct; the residual cross-tenant overlap
+ * needs a canonical-layer schema migration (tenant-scope those uniques/FKs) and
+ * is tracked as a follow-up, out of scope for P2.
  */
 class AutoWikiGraphLinker
 {
@@ -147,17 +155,25 @@ class AutoWikiGraphLinker
     }
 
     /**
-     * Derive a unique slug within the document's (tenant, project). Base is the
-     * slugified title (falling back to `auto-doc-{id}`); a numeric suffix is
-     * appended until the (project_key, slug) pair is free — so an auto slug can
-     * never collide with an existing human or auto slug.
+     * Derive a unique slug within the document's (tenant, project).
+     *
+     * Auto-assigned slugs are NAMESPACED with an `auto-` prefix so they never
+     * squat on the HUMAN canonical slug namespace: a human canonical doc
+     * declares a clean slug in its frontmatter, and if an auto doc had grabbed
+     * that same title-derived slug, the human doc's ingest would fail the
+     * `uq_kb_doc_slug (project_key, slug)` unique. The prefix also means an
+     * `auto-*` graph node can only pre-exist when this very doc already owned
+     * the slug, so {@see upsertSelfNode()} never hijacks a node it didn't make.
+     *
+     * Base is `auto-` + the slugified title (falling back to `auto-doc-{id}`);
+     * a numeric suffix is appended until the (project_key, slug) pair is free,
+     * checked against BOTH `knowledge_documents` (incl. soft-deleted) AND the
+     * `kb_nodes.node_uid` namespace where the slug is also used as the key.
      */
     private function deriveUniqueSlug(KnowledgeDocument $document): string
     {
-        $base = Str::slug((string) ($document->title ?? ''));
-        if ($base === '') {
-            $base = 'auto-doc-'.(int) $document->id;
-        }
+        $titleSlug = Str::slug((string) ($document->title ?? ''));
+        $base = $titleSlug !== '' ? 'auto-'.$titleSlug : 'auto-doc-'.(int) $document->id;
         // Bound the length so the suffix always fits inside the 255-char column.
         $base = Str::limit($base, 200, '');
 
@@ -171,14 +187,32 @@ class AutoWikiGraphLinker
         return $candidate;
     }
 
+    /**
+     * A slug is taken if another document holds it (incl. soft-deleted, so a
+     * restore can't resurrect a collision) OR a kb_node owned by a DIFFERENT
+     * document already uses it as node_uid. A dangling node (source_doc_id null)
+     * does NOT count as taken — {@see upsertSelfNode()} legitimately resolves it
+     * to this doc.
+     */
     private function slugTaken(KnowledgeDocument $document, string $slug): bool
     {
-        return KnowledgeDocument::query()
+        $docTaken = KnowledgeDocument::query()
             ->withTrashed()
             ->forTenant((string) $document->tenant_id)
             ->where('project_key', (string) $document->project_key)
             ->where('slug', $slug)
             ->whereKeyNot($document->id)
+            ->exists();
+        if ($docTaken) {
+            return true;
+        }
+
+        return KbNode::query()
+            ->forTenant((string) $document->tenant_id)
+            ->where('project_key', (string) $document->project_key)
+            ->where('node_uid', $slug)
+            ->whereNotNull('source_doc_id')
+            ->where('source_doc_id', '!=', (string) ($document->doc_id ?? ''))
             ->exists();
     }
 
@@ -319,6 +353,7 @@ class AutoWikiGraphLinker
         }
 
         $out = [];
+        $seen = [];
         foreach ($refs as $ref) {
             if (! is_array($ref)) {
                 continue;
@@ -328,6 +363,14 @@ class AutoWikiGraphLinker
                 continue;
             }
             $edgeType = is_string($ref['edge_type'] ?? null) ? trim($ref['edge_type']) : 'related_to';
+            // Dedupe by (slug, edge_type): the edge_uid is keyed on this pair, so
+            // a duplicate would just updateOrCreate the same row — keep the count
+            // + audit honest by collapsing it here.
+            $key = $slug.'|'.$edgeType;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
             $out[] = ['slug' => $slug, 'edge_type' => $edgeType];
         }
 
