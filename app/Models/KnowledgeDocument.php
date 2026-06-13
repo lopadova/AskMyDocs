@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToTenant;
 use App\Scopes\AccessScopeScope;
+use App\Support\Canonical\GenerationSource;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,6 +22,7 @@ class KnowledgeDocument extends Model
         'source_type',
         'title',
         'source_path',
+        'markdown_path',
         'mime_type',
         'language',
         'access_scope',
@@ -36,6 +38,7 @@ class KnowledgeDocument extends Model
         'canonical_type',
         'canonical_status',
         'is_canonical',
+        'generation_source',
         'retrieval_priority',
         'source_of_truth',
         'frontmatter_json',
@@ -132,5 +135,29 @@ class KnowledgeDocument extends Model
     public function scopeBySlug(Builder $query, string $projectKey, string $slug): Builder
     {
         return $query->where('project_key', $projectKey)->where('slug', $slug);
+    }
+
+    // -----------------------------------------------------------------
+    // v8.11 Auto-Wiki — provenance-tier scopes (see GenerationSource)
+    // -----------------------------------------------------------------
+
+    /**
+     * Only AUTO-tier documents (compiled / enriched by the AutoWikiCompiler).
+     * Second-class to human-curated: ranked below human `accepted` by the
+     * reranker firewall and promotable to `human` by an admin.
+     */
+    public function scopeAuto(Builder $query): Builder
+    {
+        return $query->where('generation_source', GenerationSource::Auto->value);
+    }
+
+    /**
+     * Only HUMAN-curated documents — the authoritative, human-vouched tier
+     * (ADR 0003). The inverse of `auto()`; explicit named scope so call sites
+     * never inline `where('generation_source', 'human')` and drift (R10).
+     */
+    public function scopeHumanCurated(Builder $query): Builder
+    {
+        return $query->where('generation_source', GenerationSource::Human->value);
     }
 }

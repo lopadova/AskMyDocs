@@ -153,6 +153,82 @@ return [
         'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
         'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
         'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),
+        // v8.11/P4 — when ON (global; per-(tenant,project) override via
+        // kb_analysis_settings), eligible change/delete suggestions are
+        // AUTO-APPLIED through SuggestionApplier (auto-add cross-refs,
+        // auto-deprecate dangling refs) instead of only suggested. Every
+        // application is audited + reversible (Time Machine). Default OFF —
+        // suggest-only stays the default; manual "Apply" from the UI is always
+        // available regardless of this flag (R43 both-states).
+        'autoapply_enabled' => (bool) env('KB_CHANGE_AUTOAPPLY_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Auto-Wiki — Karpathy LLM-Wiki auto-compilation (v8.11)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, after a document is ingested (md → chunked → embedded) the
+    | AutoWikiCompiler asks the LLM to auto-enrich the doc's frontmatter (tags,
+    | summary, aliases, cross-references) and synthesize concept pages, writing
+    | them as a SECOND-CLASS `auto` tier (generation_source='auto'). The auto
+    | tier is real, searchable and graph-navigable, but the reranker firewall
+    | (kb.canonical.auto_tier_penalty) ranks human-`accepted` above it, and an
+    | admin can promote auto → human. Suggest-only never applies here — the
+    | auto tier is its own reversible, audited layer that EXTENDS ADR 0003
+    | (the human-vouched tier keeps its human gate). Layered per-(tenant,
+    | project) override via kb_analysis_settings; R43 both-states.
+    |
+    | The LLM calls MAY target a model distinct from the main chat provider
+    | (KB_AUTOWIKI_AI_PROVIDER/_MODEL) — empty falls back to the default chat
+    | provider/model, so no behaviour change unless set.
+    |
+    */
+
+    'autowiki' => [
+        'enabled' => (bool) env('KB_AUTOWIKI_ENABLED', true),
+        'canonical_default' => (bool) env('KB_AUTOWIKI_CANONICAL', true),
+        'non_canonical_default' => (bool) env('KB_AUTOWIKI_NON_CANONICAL', true),
+        'debounce_minutes' => (int) env('KB_AUTOWIKI_DEBOUNCE_MINUTES', 60),
+        'neighbor_limit' => (int) env('KB_AUTOWIKI_NEIGHBORS', 5),
+        'queue' => env('KB_AUTOWIKI_QUEUE', 'default'),
+
+        // Dedicated AI model override for the auto-compile LLM calls. Empty =>
+        // fall back to the default chat provider/model (config('ai.default')).
+        'ai_provider' => env('KB_AUTOWIKI_AI_PROVIDER', null),
+        'ai_model' => env('KB_AUTOWIKI_AI_MODEL', null),
+
+        // P3 — agentic wiki-navigation retrieval (multi-hop + index-anchored).
+        // Default ON but only flipped after the benchmark proves the leap; its
+        // own dedicated model override (empty => default chat).
+        'retrieval_enabled' => (bool) env('KB_AUTOWIKI_RETRIEVAL_ENABLED', true),
+        'agentic_ai_provider' => env('KB_AGENTIC_AI_PROVIDER', null),
+        'agentic_ai_model' => env('KB_AGENTIC_AI_MODEL', null),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Source retention policy (v8.11)
+    |--------------------------------------------------------------------------
+    |
+    | Controls what is kept on ingest, globally (and per-connector via
+    | config/connectors.php overrides):
+    |   - full_copy      : original binary on the KB disk + chunks + the
+    |                      converted markdown as a first-class artifact
+    |                      (knowledge_documents.markdown_path). Today's default
+    |                      behaviour, plus the faithful markdown so it no longer
+    |                      has to be re-derived lossily from chunks.
+    |   - markdown_only  : converted markdown artifact + chunks; the original
+    |                      binary is dropped after conversion (smaller footprint).
+    |   - reference_only : only metadata + external_url/external_id + chunks/
+    |                      embeddings; the original is NOT copied — open on
+    |                      demand via the connector link/API (for Asana/Notion/
+    |                      Drive etc.).
+    |
+    */
+
+    'source_retention' => [
+        'mode' => env('KB_SOURCE_RETENTION', 'full_copy'),
     ],
 
     /*
@@ -465,6 +541,17 @@ return [
         'superseded_penalty' => (float) env('KB_CANONICAL_SUPERSEDED_PENALTY', 0.40),
         'deprecated_penalty' => (float) env('KB_CANONICAL_DEPRECATED_PENALTY', 0.40),
         'archived_penalty' => (float) env('KB_CANONICAL_ARCHIVED_PENALTY', 0.60),
+        // v8.11 Auto-Wiki firewall: a small rerank penalty applied to AUTO-tier
+        // documents (generation_source='auto') so a human-curated `accepted`
+        // doc on the same topic always outranks the auto-compiled one
+        // (anti-hallucination guarantee). Small by design — auto docs still
+        // rank above raw/non-canonical; the penalty only breaks ties against
+        // the human-vouched tier. 0 disables the firewall (auto == human rank).
+        // Default 0.02 < the canonical priority boost at default priority 50
+        // (0.001×50 = 0.05), so a default-priority AUTO doc still outranks raw
+        // (0.05−0.02 = 0.03 > 0) while a human `accepted` doc on the same topic
+        // outranks it by exactly this penalty.
+        'auto_tier_penalty' => (float) env('KB_CANONICAL_AUTO_TIER_PENALTY', 0.02),
         'audit_enabled' => env('KB_CANONICAL_AUDIT_ENABLED', true),
     ],
 
