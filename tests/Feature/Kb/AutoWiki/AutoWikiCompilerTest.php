@@ -132,6 +132,46 @@ final class AutoWikiCompilerTest extends TestCase
         ]);
     }
 
+    public function test_human_set_evidence_tier_survives_re_compilation(): void
+    {
+        // A human (via EvidenceTierService) has set this auto-tier doc to
+        // 'official'; there is no prior _autowiki block. A re-compile whose LLM
+        // guesses 'blog' must NOT clobber the human value in the column, though
+        // the fresh guess still lands in _autowiki (firewall: human > auto).
+        $doc = $this->doc(['evidence_tier' => 'official']);
+        $ai = $this->aiReturning([
+            'tags' => ['cache'], 'summary' => 's', 'aliases' => [], 'cross_references' => [],
+            'evidence_tier' => 'blog',
+        ]);
+
+        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+
+        $this->assertTrue($result['applied']);
+        $fresh = $doc->fresh();
+        $this->assertSame('official', $fresh->evidence_tier);                       // human override preserved
+        $this->assertSame('blog', $fresh->frontmatter_json['_autowiki']['evidence_tier']); // fresh guess recorded
+    }
+
+    public function test_auto_derived_evidence_tier_is_refreshed_on_re_compilation(): void
+    {
+        // First compile sets the column + _autowiki to 'blog' (auto, untouched
+        // by a human). A later compile with a better guess refreshes BOTH —
+        // auto values are not frozen ("knowledge improves over time").
+        $doc = $this->doc([
+            'evidence_tier' => 'blog',
+            'frontmatter_json' => ['_autowiki' => ['evidence_tier' => 'blog']],
+        ]);
+        $ai = $this->aiReturning([
+            'tags' => ['cache'], 'summary' => 's', 'aliases' => [], 'cross_references' => [],
+            'evidence_tier' => 'official',
+        ]);
+
+        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+
+        $this->assertTrue($result['applied']);
+        $this->assertSame('official', $doc->fresh()->evidence_tier); // auto value refreshed
+    }
+
     public function test_skips_a_human_curated_canonical_doc(): void
     {
         $doc = $this->doc(['is_canonical' => true, 'generation_source' => 'human', 'canonical_status' => 'accepted', 'slug' => 'human-doc']);

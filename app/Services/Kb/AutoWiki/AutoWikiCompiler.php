@@ -123,11 +123,15 @@ class AutoWikiCompiler
      * tag-overlap signal can use them is a follow-up increment; v8.11.1 stores
      * them at the document level.)
      *
-     * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}  $enrichment
+     * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>, evidence_tier: ?string}  $enrichment
      */
     private function apply(KnowledgeDocument $document, array $enrichment, string $provider, string $model): void
     {
         $frontmatter = is_array($document->frontmatter_json) ? $document->frontmatter_json : [];
+        // The evidence_tier the LLM derived on the PREVIOUS compile (if any) —
+        // captured before we overwrite the _autowiki block, to tell an auto
+        // value apart from a human override below.
+        $previousAutoTier = $frontmatter['_autowiki']['evidence_tier'] ?? null;
         $frontmatter['_autowiki'] = [
             'tags' => $enrichment['tags'],
             'summary' => $enrichment['summary'],
@@ -144,9 +148,15 @@ class AutoWikiCompiler
             'frontmatter_json' => $frontmatter,
             'generation_source' => GenerationSource::Auto->value,
         ];
-        // P1b — set the evidence_tier column only when the LLM produced a valid
-        // one, so a null reply never clobbers a previously-assessed/human-set tier.
-        if ($enrichment['evidence_tier'] !== null) {
+        // P1b firewall — a human override of evidence_tier MUST win over the LLM
+        // guess. The fresh derivation always lands in _autowiki, but the COLUMN
+        // is refreshed only when it is still null (never assessed) or still holds
+        // the previous auto-derived value (i.e. no human has touched it). A
+        // column value that differs from the last auto value was human-set
+        // (via EvidenceTierService) and is preserved.
+        $columnIsHumanSet = $document->evidence_tier !== null
+            && $document->evidence_tier !== $previousAutoTier;
+        if ($enrichment['evidence_tier'] !== null && ! $columnIsHumanSet) {
             $attributes['evidence_tier'] = $enrichment['evidence_tier'];
         }
 

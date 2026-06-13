@@ -17,9 +17,12 @@ use Tests\TestCase;
 /**
  * v8.11/P1b (AutoSci #67) — the evidence-tier capability across the R44 surfaces:
  * the shared EvidenceTierService (PHP), the `kb:evidence-tier` Artisan command
- * (PHP), and the admin HTTP API. (The MCP tool is a thin delegate to the same
- * service — covered by the service test + KnowledgeBaseServerRegistrationTest;
- * laravel/mcp is a suggest-only dep so its tools aren't instantiable in CI.)
+ * (PHP), and the admin HTTP API. The MCP tool (KbSetEvidenceTierTool) is a thin
+ * delegate to the SAME service: its registration is covered by
+ * KnowledgeBaseServerRegistrationTest and its resolution logic — including the
+ * (tenant, project) doc_id disambiguation — is exercised here via
+ * EvidenceTierService::findByDocId(). End-to-end MCP request/response execution
+ * needs the MCP server runtime, which these feature tests do not bootstrap.
  */
 final class EvidenceTierTriSurfaceTest extends TestCase
 {
