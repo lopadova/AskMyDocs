@@ -67,6 +67,17 @@ final class AutoWikiCompilerJobTest extends TestCase
         $this->assertFalse(AutoWikiCompilerJob::isVersionAlreadyCompiled($doc));
     }
 
+    public function test_does_not_throw_when_autowiki_block_is_corrupted_non_array(): void
+    {
+        // A manual edit could leave `_autowiki` as a non-array (e.g. a string);
+        // the guard must return false (re-run), never throw.
+        $doc = $this->doc([
+            'version_hash' => 'v1',
+            'frontmatter_json' => ['_autowiki' => 'corrupted-string'],
+        ]);
+        $this->assertFalse(AutoWikiCompilerJob::isVersionAlreadyCompiled($doc));
+    }
+
     // ── gate composition (the second handle() guard) — R43 both-states ──
 
     public function test_gate_off_path_blocks_compilation(): void

@@ -106,7 +106,14 @@ final class AutoWikiCompilerJob implements ShouldQueue
     public static function isVersionAlreadyCompiled(KnowledgeDocument $document): bool
     {
         $frontmatter = is_array($document->frontmatter_json) ? $document->frontmatter_json : [];
-        $compiledHash = $frontmatter['_autowiki']['source_version_hash'] ?? null;
+        // Guard the nested access: a manually-corrupted `_autowiki` that isn't an
+        // array (e.g. a string) would make `['source_version_hash']` throw — so a
+        // bad edit can never crash the gate; treat it as "not compiled" → re-run.
+        $autowiki = $frontmatter['_autowiki'] ?? null;
+        if (! is_array($autowiki)) {
+            return false;
+        }
+        $compiledHash = $autowiki['source_version_hash'] ?? null;
 
         return $compiledHash !== null && $compiledHash === $document->version_hash;
     }
