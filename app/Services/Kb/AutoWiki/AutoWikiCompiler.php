@@ -93,7 +93,7 @@ class AutoWikiCompiler
         // record source_version_hash — corrupting the doc with empty metadata
         // AND permanently idempotency-skipping any retry of the same version.
         // Skip instead so a later re-ingest (or a fixed model) can retry.
-        if ($enrichment['tags'] === [] && $enrichment['summary'] === '' && $enrichment['cross_references'] === []) {
+        if ($enrichment['tags'] === [] && $enrichment['summary'] === '' && $enrichment['aliases'] === [] && $enrichment['cross_references'] === []) {
             Log::warning('AutoWikiCompiler: empty enrichment, not applied', [
                 'document_id' => (int) $document->id,
                 'tenant_id' => (string) $document->tenant_id,
