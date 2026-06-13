@@ -13,6 +13,7 @@ use App\Services\Kb\Canonical\CanonicalParser;
 use App\Services\Kb\Pipeline\ChunkDraft;
 use App\Services\Kb\Pipeline\PipelineRegistry;
 use App\Services\Kb\Pipeline\SourceDocument;
+use App\Support\Canonical\GenerationSource;
 use App\Support\KbPath;
 use App\Support\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -524,6 +525,15 @@ class DocumentIngestor
             'canonical_type' => $canonical->type?->value,
             'canonical_status' => $canonical->status?->value,
             'retrieval_priority' => $canonical->retrievalPriority,
+            // v8.11/P3 — honour an explicit `generation_source: auto` frontmatter
+            // key so AI-synthesized canonical pages (concept pages) land in the
+            // auto tier instead of the human-default. Any other value (or absent)
+            // => 'human', identical to the column default, so human-authored
+            // canonical docs are unaffected (the frontmatter is the source of
+            // truth, preserved across re-ingest).
+            'generation_source' => (($canonical->frontmatter['generation_source'] ?? null) === GenerationSource::Auto->value)
+                ? GenerationSource::Auto->value
+                : GenerationSource::Human->value,
             'frontmatter_json' => array_merge($canonical->frontmatter, [
                 '_derived' => [
                     'related_slugs' => $canonical->relatedSlugs,

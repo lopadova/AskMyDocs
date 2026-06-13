@@ -188,6 +188,53 @@ MD;
      * Mock that returns one dummy 3-float embedding per input text — lets
      * each test drive the chunk count via the markdown fixture itself.
      */
+    public function test_generation_source_auto_frontmatter_lands_in_the_auto_tier(): void
+    {
+        // v8.11/P3 — a synthesized concept page carries `generation_source: auto`
+        // in its canonical frontmatter; ingest must place it in the auto tier.
+        Queue::fake();
+        $this->app->instance(EmbeddingCacheService::class, $this->fakeEmbeddingCache());
+        $ingestor = app(DocumentIngestor::class);
+        $markdown = <<<'MD'
+---
+id: auto-cache
+slug: auto-cache
+type: domain-concept
+status: accepted
+generation_source: auto
+tags: [cache]
+---
+
+Concept body.
+MD;
+
+        $doc = $ingestor->ingestMarkdown('acme', 'domain-concepts/auto-cache.md', 'Cache', $markdown);
+
+        $this->assertTrue($doc->is_canonical);
+        $this->assertSame('auto', $doc->generation_source);
+    }
+
+    public function test_canonical_doc_without_generation_source_defaults_to_human(): void
+    {
+        Queue::fake();
+        $this->app->instance(EmbeddingCacheService::class, $this->fakeEmbeddingCache());
+        $ingestor = app(DocumentIngestor::class);
+        $markdown = <<<'MD'
+---
+id: DEC-1
+slug: dec-one
+type: decision
+status: accepted
+---
+
+Body.
+MD;
+
+        $doc = $ingestor->ingestMarkdown('acme', 'decisions/dec-one.md', 'Decision', $markdown);
+
+        $this->assertSame('human', $doc->generation_source);
+    }
+
     private function fakeEmbeddingCache(): EmbeddingCacheService
     {
         $cache = Mockery::mock(EmbeddingCacheService::class);

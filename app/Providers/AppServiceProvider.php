@@ -371,6 +371,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbEvidenceTierCommand::class,
             // v8.11/P2 — auto-wiki graph canonicalization PHP surface (R44).
             \App\Console\Commands\KbWikiLinkCommand::class,
+            // v8.11/P3 — concept-page synthesis PHP surface (R44).
+            \App\Console\Commands\KbSynthesizeConceptsCommand::class,
         ]);
     }
 

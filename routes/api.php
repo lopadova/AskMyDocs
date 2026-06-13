@@ -401,6 +401,12 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-link', [\App\Http\Controllers\Api\Admin\KbWikiLinkController::class, 'rebuild'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-link');
 
+        // v8.11/P3 — concept-page synthesis: sweep a project and synthesize
+        // auto-tier domain-concept pages. R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::post('/kb/concepts/synthesize', [\App\Http\Controllers\Api\Admin\KbConceptSynthesisController::class, 'synthesize'])
+            ->name('api.admin.kb.concepts.synthesize');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

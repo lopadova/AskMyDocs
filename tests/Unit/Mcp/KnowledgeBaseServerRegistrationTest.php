@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_sixteen_tools(): void
+    public function test_server_registers_exactly_seventeen_tools(): void
     {
-        $this->assertCount(16, $this->registeredTools());
+        $this->assertCount(17, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_concept_synthesis_write_tool(): void
+    {
+        // v8.11/P3 — the concept-page synthesis MCP write surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbSynthesizeConceptsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_evidence_tier_write_tool(): void
