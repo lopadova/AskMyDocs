@@ -10,6 +10,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\KbSearchService;
+use App\Support\Canonical\EvidenceTier;
 use App\Support\Canonical\GenerationSource;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
@@ -122,26 +123,44 @@ class AutoWikiCompiler
      * tag-overlap signal can use them is a follow-up increment; v8.11.1 stores
      * them at the document level.)
      *
-     * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}  $enrichment
+     * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>, evidence_tier: ?string}  $enrichment
      */
     private function apply(KnowledgeDocument $document, array $enrichment, string $provider, string $model): void
     {
         $frontmatter = is_array($document->frontmatter_json) ? $document->frontmatter_json : [];
+        // The evidence_tier the LLM derived on the PREVIOUS compile (if any) —
+        // captured before we overwrite the _autowiki block, to tell an auto
+        // value apart from a human override below.
+        $previousAutoTier = $frontmatter['_autowiki']['evidence_tier'] ?? null;
         $frontmatter['_autowiki'] = [
             'tags' => $enrichment['tags'],
             'summary' => $enrichment['summary'],
             'aliases' => $enrichment['aliases'],
             'cross_references' => $enrichment['cross_references'],
+            'evidence_tier' => $enrichment['evidence_tier'],
             'provider' => $provider,
             'model' => $model,
             'generated_at' => now()->toIso8601String(),
             'source_version_hash' => $document->version_hash,
         ];
 
-        $document->forceFill([
+        $attributes = [
             'frontmatter_json' => $frontmatter,
             'generation_source' => GenerationSource::Auto->value,
-        ])->save();
+        ];
+        // P1b firewall — a human override of evidence_tier MUST win over the LLM
+        // guess. The fresh derivation always lands in _autowiki, but the COLUMN
+        // is refreshed only when it is still null (never assessed) or still holds
+        // the previous auto-derived value (i.e. no human has touched it). A
+        // column value that differs from the last auto value was human-set
+        // (via EvidenceTierService) and is preserved.
+        $columnIsHumanSet = $document->evidence_tier !== null
+            && $document->evidence_tier !== $previousAutoTier;
+        if ($enrichment['evidence_tier'] !== null && ! $columnIsHumanSet) {
+            $attributes['evidence_tier'] = $enrichment['evidence_tier'];
+        }
+
+        $document->forceFill($attributes)->save();
 
         if ((bool) config('kb.canonical.audit_enabled', true)) {
             KbCanonicalAudit::create([
@@ -261,7 +280,7 @@ class AutoWikiCompiler
     /**
      * @param  array<string, mixed>  $decoded
      * @param  list<array{slug: ?string, title: ?string, snippet: string}>  $neighbours
-     * @return array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}
+     * @return array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>, evidence_tier: ?string}
      */
     private function validate(array $decoded, array $neighbours = []): array
     {
@@ -270,6 +289,8 @@ class AutoWikiCompiler
             'summary' => $this->scalar($decoded['summary'] ?? ''),
             'aliases' => $this->stringList($decoded['aliases'] ?? []),
             'cross_references' => $this->crossReferences($decoded['cross_references'] ?? [], $neighbours),
+            // P1b — evidence tier coerced to a valid taxonomy value, else null.
+            'evidence_tier' => EvidenceTier::tryFromLoose($decoded['evidence_tier'] ?? null)?->value,
         ];
     }
 

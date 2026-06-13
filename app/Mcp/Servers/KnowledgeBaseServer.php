@@ -17,6 +17,7 @@ use App\Mcp\Tools\KbReadDocumentTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
+use App\Mcp\Tools\KbSetEvidenceTierTool;
 use App\Mcp\Tools\KbSuggestSupersessionChainTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -49,6 +50,8 @@ class KnowledgeBaseServer extends Server
         KbDetectDecisionDebtTool::class,
         KbSuggestSupersessionChainTool::class,
         KbProposeCanonicalEditTool::class,
+        // v8.11/P1b — evidence-tier write surface (AutoSci #67)
+        KbSetEvidenceTierTool::class,
     ];
 
     protected function boot(): void

@@ -400,6 +400,7 @@ class KbSearchService
                     'canonical_type' => $chunk->document?->canonical_type,
                     'canonical_status' => $chunk->document?->canonical_status,
                     'generation_source' => $chunk->document?->generation_source ?? 'human',
+                    'evidence_tier' => $chunk->document?->evidence_tier,
                 ],
             ];
         });
@@ -540,6 +541,7 @@ class KbSearchService
                     'canonical_status' => $chunk->document?->canonical_status,
                     'retrieval_priority' => (int) ($chunk->document?->retrieval_priority ?? 50),
                     'generation_source' => $chunk->document?->generation_source ?? 'human',
+                    'evidence_tier' => $chunk->document?->evidence_tier,
                 ],
             ];
         });

@@ -39,6 +39,7 @@ class KnowledgeDocument extends Model
         'canonical_status',
         'is_canonical',
         'generation_source',
+        'evidence_tier',
         'retrieval_priority',
         'source_of_truth',
         'frontmatter_json',
@@ -159,5 +160,14 @@ class KnowledgeDocument extends Model
     public function scopeHumanCurated(Builder $query): Builder
     {
         return $query->where('generation_source', GenerationSource::Human->value);
+    }
+
+    /**
+     * v8.11/P1b — filter by evidence tier (AutoSci #67). One of the
+     * {@see \App\Support\Canonical\EvidenceTier} values.
+     */
+    public function scopeByEvidenceTier(Builder $query, string $tier): Builder
+    {
+        return $query->where('evidence_tier', $tier);
     }
 }

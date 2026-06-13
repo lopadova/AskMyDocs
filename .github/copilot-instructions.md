@@ -555,6 +555,30 @@ PRs and CI-fix PRs too.
 
 See full rule in `CLAUDE.md` R40 (load-bearing canonical version).
 
+### R44 — Every capability is tri-surface: PHP + HTTP API + MCP, over ONE core
+
+Iron rule, standing from **2026-06-13**. Every feature/capability we
+introduce — and every later modification of an existing one — MUST be
+exposed AND consumable across **all three** surfaces, built as thin
+layers over **ONE shared core service** (never three parallel
+implementations):
+
+1. **PHP** — an Artisan command and/or service/facade callable from app code.
+2. **HTTP API** — a RESTful endpoint, auth + RBAC-gated, with an R32
+   authorization-matrix row.
+3. **MCP** — a `Laravel\Mcp\Server\Tool` registered on
+   `KnowledgeBaseServer::$tools` (+ bump the registration-count test).
+
+A capability that lands on only one or two surfaces is a **gap, not a
+smaller feature** — close it in the same PR or file the follow-up. When
+you MODIFY a capability (new field, option, contract change), propagate
+to all three surfaces + their tests in the same PR so they never drift.
+Each surface is tested at its layer (service PHPUnit + HTTP feature test
++ MCP registration/contract test); UI surfaces add Vitest + Playwright.
+Intrinsically single-surface capabilities (e.g. a scheduler-only sweep
+with no caller-facing read) state WHY in the PR — a documented choice,
+never an omission. See full rule in `CLAUDE.md` R44.
+
 ---
 
 ## 7. Testing & CI
