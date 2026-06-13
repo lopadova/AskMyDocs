@@ -195,15 +195,18 @@ return [
 
         // Dedicated AI model override for the auto-compile LLM calls. Empty =>
         // fall back to the default chat provider/model (config('ai.default')).
-        'ai_provider' => env('KB_AUTOWIKI_AI_PROVIDER', null),
-        'ai_model' => env('KB_AUTOWIKI_AI_MODEL', null),
+        // NB: `?: null` normalizes a present-but-blank env var ("" from
+        // `KB_AUTOWIKI_AI_PROVIDER=` in .env) to null — env() returns "" not
+        // null in that case, which would otherwise resolve an EMPTY provider.
+        'ai_provider' => env('KB_AUTOWIKI_AI_PROVIDER') ?: null,
+        'ai_model' => env('KB_AUTOWIKI_AI_MODEL') ?: null,
 
         // P3 — agentic wiki-navigation retrieval (multi-hop + index-anchored).
         // Default ON but only flipped after the benchmark proves the leap; its
         // own dedicated model override (empty => default chat).
         'retrieval_enabled' => (bool) env('KB_AUTOWIKI_RETRIEVAL_ENABLED', true),
-        'agentic_ai_provider' => env('KB_AGENTIC_AI_PROVIDER', null),
-        'agentic_ai_model' => env('KB_AGENTIC_AI_MODEL', null),
+        'agentic_ai_provider' => env('KB_AGENTIC_AI_PROVIDER') ?: null,
+        'agentic_ai_model' => env('KB_AGENTIC_AI_MODEL') ?: null,
     ],
 
     /*
