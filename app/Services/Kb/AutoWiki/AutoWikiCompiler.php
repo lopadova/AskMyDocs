@@ -84,7 +84,9 @@ class AutoWikiCompiler
         ])->render();
 
         $response = $this->resolveProvider()->chat($systemPrompt, 'Produce the JSON now.', $this->chatOptions());
-        $enrichment = $this->validate($this->decodeLlmJson($response->content));
+        // Pass neighbours so cross_references are filtered to the real neighbour
+        // set (anti-hallucination: the LLM cannot persist an invented link).
+        $enrichment = $this->validate($this->decodeLlmJson($response->content), $neighbours);
 
         // Never write an EMPTY enrichment: a non-JSON / garbage LLM reply would
         // otherwise stamp an empty `_autowiki` block + flip the doc to `auto` +
@@ -115,9 +117,10 @@ class AutoWikiCompiler
 
     /**
      * Merge the enrichment into `frontmatter_json._autowiki` and flip the doc
-     * to the auto tier. Also mirrors the tags into chunk-facing metadata via
-     * the `_derived` sub-map convention so the reranker tag-overlap signal can
-     * use them. Audited (event 'updated', actor system:autowiki).
+     * to the auto tier. Audited (event 'updated', actor system:autowiki).
+     * (Mirroring the tags into per-chunk `metadata.search_tags` so the reranker
+     * tag-overlap signal can use them is a follow-up increment; v8.11.1 stores
+     * them at the document level.)
      *
      * @param  array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}  $enrichment
      */
@@ -142,6 +145,10 @@ class AutoWikiCompiler
 
         if ((bool) config('kb.canonical.audit_enabled', true)) {
             KbCanonicalAudit::create([
+                // Explicit tenant_id from the document (R30 defense-in-depth):
+                // don't rely on TenantContext being set if the compiler is ever
+                // invoked outside the job or the context drifts.
+                'tenant_id' => (string) $document->tenant_id,
                 'project_key' => (string) $document->project_key,
                 'doc_id' => $document->doc_id,
                 'slug' => $document->slug,
@@ -253,15 +260,16 @@ class AutoWikiCompiler
 
     /**
      * @param  array<string, mixed>  $decoded
+     * @param  list<array{slug: ?string, title: ?string, snippet: string}>  $neighbours
      * @return array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}
      */
-    private function validate(array $decoded): array
+    private function validate(array $decoded, array $neighbours = []): array
     {
         return [
             'tags' => $this->tagList($decoded['tags'] ?? []),
             'summary' => $this->scalar($decoded['summary'] ?? ''),
             'aliases' => $this->stringList($decoded['aliases'] ?? []),
-            'cross_references' => $this->crossReferences($decoded['cross_references'] ?? []),
+            'cross_references' => $this->crossReferences($decoded['cross_references'] ?? [], $neighbours),
         ];
     }
 
@@ -323,13 +331,34 @@ class AutoWikiCompiler
     }
 
     /**
+     * Cross-references are filtered to the REAL neighbour set (anti-hallucination,
+     * ADR 0014): an entry survives only when its slug matches a neighbour slug
+     * OR its title matches a neighbour title (case-insensitive). An invented
+     * reference the LLM emits despite the prompt is dropped, so the wiki never
+     * persists a dangling/incorrect link. With no neighbours, all are dropped.
+     *
+     * @param  list<array{slug: ?string, title: ?string, snippet: string}>  $neighbours
      * @return list<array{slug: string, title: string, why: string, edge_type: string}>
      */
-    private function crossReferences(mixed $raw): array
+    private function crossReferences(mixed $raw, array $neighbours): array
     {
         if (! is_array($raw)) {
             return [];
         }
+
+        $allowedSlugs = [];
+        $allowedTitles = [];
+        foreach ($neighbours as $n) {
+            $ns = is_string($n['slug'] ?? null) ? strtolower(trim($n['slug'])) : '';
+            $nt = is_string($n['title'] ?? null) ? strtolower(trim($n['title'])) : '';
+            if ($ns !== '') {
+                $allowedSlugs[$ns] = true;
+            }
+            if ($nt !== '') {
+                $allowedTitles[$nt] = true;
+            }
+        }
+
         $out = [];
         foreach ($raw as $entry) {
             if (! is_array($entry)) {
@@ -337,8 +366,14 @@ class AutoWikiCompiler
             }
             $slug = $this->scalar($entry['slug'] ?? '');
             $title = $this->scalar($entry['title'] ?? '');
-            // Drop an entry with no identifying slug AND no title (anti-hallucination).
+            // Drop an entry with no identifying slug AND no title.
             if ($slug === '' && $title === '') {
+                continue;
+            }
+            // Anti-hallucination allowlist: keep ONLY references to a real neighbour.
+            $slugOk = $slug !== '' && isset($allowedSlugs[strtolower($slug)]);
+            $titleOk = $title !== '' && isset($allowedTitles[strtolower($title)]);
+            if (! $slugOk && ! $titleOk) {
                 continue;
             }
             $edge = strtolower(trim((string) ($entry['edge_type'] ?? 'related_to')));

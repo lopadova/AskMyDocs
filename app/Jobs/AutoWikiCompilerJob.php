@@ -79,6 +79,8 @@ final class AutoWikiCompilerJob implements ShouldQueue
                     'document_id' => $this->documentId,
                     'tenant_id' => $this->tenantId,
                     'error' => $e->getMessage(),
+                    // Include the exception so Laravel logs the class + stack trace.
+                    'exception' => $e,
                 ]);
             }
         } finally {

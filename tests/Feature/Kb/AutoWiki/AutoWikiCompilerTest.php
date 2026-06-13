@@ -80,6 +80,24 @@ final class AutoWikiCompilerTest extends TestCase
         return $search;
     }
 
+    /**
+     * KbSearchService mock returning neighbour chunks (shape the compiler reads).
+     *
+     * @param  list<array{id: int, slug: string, title: string}>  $neighbours
+     */
+    private function searchReturning(array $neighbours): KbSearchService
+    {
+        $chunks = collect($neighbours)->map(fn (array $n, int $i): array => [
+            'chunk_id' => 1000 + $i,
+            'chunk_text' => "Snippet for {$n['title']}.",
+            'document' => ['id' => $n['id'], 'slug' => $n['slug'], 'title' => $n['title']],
+        ]);
+        $search = Mockery::mock(KbSearchService::class);
+        $search->shouldReceive('search')->andReturn($chunks);
+
+        return $search;
+    }
+
     public function test_enriches_a_raw_doc_into_the_auto_tier(): void
     {
         $doc = $this->doc();
@@ -90,7 +108,9 @@ final class AutoWikiCompilerTest extends TestCase
             'cross_references' => [['slug' => 'dec-cache', 'title' => 'Cache decision', 'why' => 'depends', 'edge_type' => 'depends_on']],
         ]);
 
-        $result = (new AutoWikiCompiler($ai, $this->searchEmpty()))->compile($doc);
+        // 'dec-cache' is a real neighbour, so the cross-reference survives the allowlist.
+        $search = $this->searchReturning([['id' => 99, 'slug' => 'dec-cache', 'title' => 'Cache decision']]);
+        $result = (new AutoWikiCompiler($ai, $search))->compile($doc);
 
         $this->assertTrue($result['applied']);
         $fresh = $doc->fresh();
@@ -98,6 +118,7 @@ final class AutoWikiCompilerTest extends TestCase
         $aw = $fresh->frontmatter_json['_autowiki'];
         $this->assertSame(['cache', 'eviction-policy'], $aw['tags']); // '#cache' dedupes to 'cache'
         $this->assertSame('Explains cache configuration and eviction.', $aw['summary']);
+        $this->assertSame('dec-cache', $aw['cross_references'][0]['slug']);
         $this->assertSame('depends_on', $aw['cross_references'][0]['edge_type']);
 
         $this->assertDatabaseHas('kb_canonical_audit', [
@@ -138,6 +159,29 @@ final class AutoWikiCompilerTest extends TestCase
         $this->assertTrue($result['applied']);
         $this->assertSame('openrouter', $result['provider']);
         $this->assertSame('qwen/qwen3', $result['model']);
+    }
+
+    public function test_hallucinated_cross_reference_not_in_neighbours_is_dropped(): void
+    {
+        $doc = $this->doc();
+        // LLM emits one real neighbour ref + one invented one — only the real survives.
+        $ai = $this->aiReturning([
+            'tags' => ['cache'],
+            'summary' => 's',
+            'aliases' => [],
+            'cross_references' => [
+                ['slug' => 'real-doc', 'title' => 'Real', 'why' => 'related', 'edge_type' => 'related_to'],
+                ['slug' => 'invented-doc', 'title' => 'Invented', 'why' => 'hallucinated', 'edge_type' => 'related_to'],
+            ],
+        ]);
+        $search = $this->searchReturning([['id' => 77, 'slug' => 'real-doc', 'title' => 'Real']]);
+
+        $result = (new AutoWikiCompiler($ai, $search))->compile($doc);
+
+        $this->assertTrue($result['applied']);
+        $refs = $doc->fresh()->frontmatter_json['_autowiki']['cross_references'];
+        $this->assertCount(1, $refs);
+        $this->assertSame('real-doc', $refs[0]['slug']); // 'invented-doc' dropped (anti-hallucination)
     }
 
     public function test_unparseable_llm_reply_is_not_applied_and_doc_is_untouched(): void
