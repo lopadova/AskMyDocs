@@ -184,6 +184,15 @@ class IngestDocumentJob implements ShouldQueue
             if ($documentId !== null && (bool) config('kb.change_analysis.enabled', true)) {
                 \App\Jobs\AnalyzeDocumentChangeJob::dispatch((int) $documentId, $this->tenantId);
             }
+
+            // v8.11/P1 — dispatch the async Auto-Wiki frontmatter enrichment
+            // (tags/summary/aliases/cross-refs into the auto tier). Like the
+            // change-analysis job it is itself gated (AutoWikiGate) + version-
+            // idempotent, so dispatching unconditionally here is cheap. Default-ON
+            // (R43): KB_AUTOWIKI_ENABLED=false → no dispatch, behaviour unchanged.
+            if ($documentId !== null && (bool) config('kb.autowiki.enabled', true)) {
+                \App\Jobs\AutoWikiCompilerJob::dispatch((int) $documentId, $this->tenantId);
+            }
         } finally {
             // Restore even on exception/throw so a failing job never leaves
             // the singleton stuck on this job's tenant for the next one.
