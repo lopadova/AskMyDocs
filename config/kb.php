@@ -153,13 +153,13 @@ return [
         'neighbor_limit' => (int) env('KB_CHANGE_ANALYSIS_NEIGHBORS', 5),
         'debounce_minutes' => (int) env('KB_CHANGE_ANALYSIS_DEBOUNCE_MINUTES', 60),
         'queue' => env('KB_CHANGE_ANALYSIS_QUEUE', 'default'),
-        // v8.11/P4 — when ON (global; per-(tenant,project) override via
-        // kb_analysis_settings), eligible change/delete suggestions are
-        // AUTO-APPLIED through SuggestionApplier (auto-add cross-refs,
-        // auto-deprecate dangling refs) instead of only suggested. Every
-        // application is audited + reversible (Time Machine). Default OFF —
-        // suggest-only stays the default; manual "Apply" from the UI is always
-        // available regardless of this flag (R43 both-states).
+        // v8.11/P4 (RESERVED — declared now as the cycle's config surface; the
+        // SuggestionApplier that reads this lands in a later v8.11.x release).
+        // When ON (global; per-(tenant,project) override via kb_analysis_settings),
+        // eligible change/delete suggestions will be AUTO-APPLIED (auto-add
+        // cross-refs, auto-deprecate dangling refs) instead of only suggested,
+        // audited + reversible (Time Machine). Default OFF — suggest-only stays
+        // the default; manual "Apply" from the UI is always available (R43).
         'autoapply_enabled' => (bool) env('KB_CHANGE_AUTOAPPLY_ENABLED', false),
     ],
 
@@ -208,11 +208,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Source retention policy (v8.11)
+    | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |
-    | Controls what is kept on ingest, globally (and per-connector via
-    | config/connectors.php overrides):
+    | NOTE: this knob + the `knowledge_documents.markdown_path` column are the
+    | foundation declared in v8.11.0; the INGEST WIRING that reads this mode and
+    | writes the markdown artifact / drops the original lands with the
+    | AutoWikiCompiler in a later v8.11.x release. Until then ingest behaves as
+    | before (`reference_only`-style metadata + chunks, original kept on disk).
+    |
+    | Intended (once wired) — what is kept on ingest, globally (and per-connector
+    | via config/connectors.php overrides):
     |   - full_copy      : original binary on the KB disk + chunks + the
     |                      converted markdown as a first-class artifact
     |                      (knowledge_documents.markdown_path). Today's default

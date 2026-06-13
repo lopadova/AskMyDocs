@@ -56,7 +56,9 @@ Introduce a **second-class `auto` tier**, discriminated by a new column
   human-vouched tier; the firewall ranking + the explicit promote action are
   load-bearing and covered by tests.
 - Source-retention policy (`full_copy`/`markdown_only`/`reference_only`) +
-  `markdown_path` give a faithful markdown artifact for diff/restore/compile
+  the `markdown_path` column are introduced here as the schema/config
+  foundation; once the ingest wiring lands (with the compiler, later in the
+  cycle) they will give a faithful markdown artifact for diff/restore/compile
   inputs instead of the lossy `reconstructContent()` re-derivation.
 
 This ADR is delivered incrementally across the v8.11 cycle: v8.11.0 ships the

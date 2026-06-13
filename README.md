@@ -1426,10 +1426,11 @@ still outranks raw — wired through `KbSearchService` / `GraphExpander` /
 override** for the upcoming auto-compile + agentic-retrieval LLM calls
 (`KB_AUTOWIKI_AI_PROVIDER`/`_MODEL`, `KB_AGENTIC_AI_PROVIDER`/`_MODEL` — empty
 falls back to the default chat provider, so you can point auto-compilation at a
-cheaper/smarter model than interactive chat); a **source-retention policy**
+cheaper/smarter model than interactive chat); the **schema + config foundation for a source-retention policy**
 (`KB_SOURCE_RETENTION` = `full_copy` | `markdown_only` | `reference_only`, global
-+ per-connector) plus a `markdown_path` artifact column so the converted markdown
-is a first-class artifact instead of only being re-derived lossily from chunks;
++ per-connector) plus a `markdown_path` artifact column — the ingest wiring that
+acts on the mode and writes the markdown artifact lands with the compiler in a
+later v8.11.x release;
 and **ADR 0014**, which *extends* (does not revoke) ADR 0003 — the human tier
 keeps its human-gated promotion, while the `auto` tier is reversible, audited,
 and promotable `auto → human`. This is the foundation release of the cycle; the
