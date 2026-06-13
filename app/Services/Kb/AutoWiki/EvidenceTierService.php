@@ -8,6 +8,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeDocument;
 use App\Support\Canonical\EvidenceTier;
 use App\Support\TenantContext;
+use Illuminate\Support\Collection;
 
 /**
  * v8.11/P1b (AutoSci #67) — the single core for the evidence-tier capability.
@@ -63,11 +64,32 @@ final class EvidenceTierService
         ], EvidenceTier::cases());
     }
 
-    /** Resolve a document scoped to the active tenant (R30), or null. */
+    /** Resolve a document by primary key, scoped to the active tenant (R30), or null. */
     public function findForTenant(int|string $id): ?KnowledgeDocument
     {
         return KnowledgeDocument::query()
             ->forTenant($this->tenants->current())
             ->find($id);
+    }
+
+    /**
+     * Resolve documents by their `doc_id`, scoped to the active tenant (R30) and
+     * optionally to a project. `doc_id` is unique only per (tenant, project)
+     * (R10) — within a tenant two projects can legitimately share one — so this
+     * returns the full match set and lets the caller disambiguate rather than
+     * silently picking the first row.
+     *
+     * @return Collection<int, KnowledgeDocument>
+     */
+    public function findByDocId(string $docId, ?string $projectKey = null): Collection
+    {
+        return KnowledgeDocument::query()
+            ->forTenant($this->tenants->current())
+            ->where('doc_id', $docId)
+            ->when(
+                $projectKey !== null && $projectKey !== '',
+                fn ($q) => $q->where('project_key', $projectKey),
+            )
+            ->get();
     }
 }

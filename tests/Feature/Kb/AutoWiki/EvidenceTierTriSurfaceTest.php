@@ -83,6 +83,26 @@ final class EvidenceTierTriSurfaceTest extends TestCase
         ]);
     }
 
+    public function test_find_by_doc_id_is_project_scoped_to_avoid_cross_project_collision(): void
+    {
+        // Same doc_id, same tenant, two different projects — legitimate (R10).
+        $a = $this->doc(['doc_id' => 'shared-id', 'project_key' => 'proj-a']);
+        $b = $this->doc(['doc_id' => 'shared-id', 'project_key' => 'proj-b']);
+
+        $service = app(EvidenceTierService::class);
+
+        // Bare doc_id is ambiguous → the caller must see BOTH (never silently pick one).
+        $ambiguous = $service->findByDocId('shared-id');
+        $this->assertCount(2, $ambiguous);
+        $this->assertEqualsCanonicalizing(['proj-a', 'proj-b'], $ambiguous->pluck('project_key')->all());
+
+        // project_key disambiguates to exactly one.
+        $scoped = $service->findByDocId('shared-id', 'proj-b');
+        $this->assertCount(1, $scoped);
+        $this->assertSame($b->id, $scoped->first()->id);
+        $this->assertNotSame($a->id, $scoped->first()->id);
+    }
+
     public function test_service_taxonomy_shape(): void
     {
         $tax = app(EvidenceTierService::class)->taxonomy();
