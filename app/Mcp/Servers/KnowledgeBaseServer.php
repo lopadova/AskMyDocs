@@ -14,6 +14,7 @@ use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
 use App\Mcp\Tools\KbReadChunkTool;
 use App\Mcp\Tools\KbReadDocumentTool;
+use App\Mcp\Tools\KbRebuildWikiLinksTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
@@ -52,6 +53,8 @@ class KnowledgeBaseServer extends Server
         KbProposeCanonicalEditTool::class,
         // v8.11/P1b — evidence-tier write surface (AutoSci #67)
         KbSetEvidenceTierTool::class,
+        // v8.11/P2 — auto-wiki graph canonicalization write surface (AutoSci edges)
+        KbRebuildWikiLinksTool::class,
     ];
 
     protected function boot(): void

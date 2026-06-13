@@ -395,6 +395,12 @@ Route::middleware([
         Route::patch('/kb/documents/{id}/evidence-tier', [\App\Http\Controllers\Api\Admin\KbEvidenceTierController::class, 'update'])
             ->whereNumber('id')->name('api.admin.kb.documents.evidence-tier.update');
 
+        // v8.11/P2 — auto-wiki graph canonicalization (AutoSci edges): rebuild a
+        // doc's navigable graph (nodes + inferred edges). R32 — same admin KB
+        // group gate as the representative `/api/admin/kb/evidence-tiers` row.
+        Route::post('/kb/documents/{id}/wiki-link', [\App\Http\Controllers\Api\Admin\KbWikiLinkController::class, 'rebuild'])
+            ->whereNumber('id')->name('api.admin.kb.documents.wiki-link');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
