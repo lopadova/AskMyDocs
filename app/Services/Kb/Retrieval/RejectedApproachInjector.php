@@ -232,6 +232,7 @@ class RejectedApproachInjector
                 'canonical_type' => $doc?->canonical_type,
                 'canonical_status' => $doc?->canonical_status,
                 'retrieval_priority' => (int) ($doc?->retrieval_priority ?? 50),
+                'generation_source' => $doc?->generation_source ?? 'human',
                 'rejected_summary' => $this->extractRejectedSummary($doc),
             ],
         ];

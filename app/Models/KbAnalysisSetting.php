@@ -21,6 +21,9 @@ use Illuminate\Database\Eloquent\Model;
  * @property bool|null $canonical
  * @property bool|null $non_canonical
  * @property bool|null $delete_enabled
+ * @property bool|null $autowiki_enabled
+ * @property bool|null $autowiki_canonical
+ * @property bool|null $autowiki_non_canonical
  */
 class KbAnalysisSetting extends Model
 {
@@ -38,6 +41,10 @@ class KbAnalysisSetting extends Model
         'canonical',
         'non_canonical',
         'delete_enabled',
+        // v8.11 Auto-Wiki overrides (null inherits config('kb.autowiki.*')).
+        'autowiki_enabled',
+        'autowiki_canonical',
+        'autowiki_non_canonical',
     ];
 
     protected $casts = [
@@ -45,5 +52,8 @@ class KbAnalysisSetting extends Model
         'canonical' => 'boolean',
         'non_canonical' => 'boolean',
         'delete_enabled' => 'boolean',
+        'autowiki_enabled' => 'boolean',
+        'autowiki_canonical' => 'boolean',
+        'autowiki_non_canonical' => 'boolean',
     ];
 }

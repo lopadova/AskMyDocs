@@ -192,6 +192,7 @@ final class CounterfactualService
                 'is_canonical' => (bool) ($chunk->document?->is_canonical ?? false),
                 'canonical_type' => $chunk->document?->canonical_type,
                 'canonical_status' => $chunk->document?->canonical_status,
+                'generation_source' => $chunk->document?->generation_source ?? 'human',
             ],
         ]);
     }

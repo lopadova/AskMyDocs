@@ -6,6 +6,7 @@ use App\Services\Kb\Retrieval\PreambleMatchDetector;
 use App\Services\Kb\Retrieval\QueryTagExtractor;
 use App\Services\Kb\Retrieval\RecencyScorer;
 use App\Services\Kb\Retrieval\TagOverlapScorer;
+use App\Support\Canonical\GenerationSource;
 use Illuminate\Support\Collection;
 
 /**
@@ -273,11 +274,28 @@ class Reranker
         $boost = $priorityWeight * $priority;
         $penalty = $this->statusPenalty((string) ($doc['canonical_status'] ?? ''));
 
+        // v8.11 Auto-Wiki firewall — an AUTO-tier doc (generation_source='auto')
+        // takes a small extra penalty so a human-curated `accepted` doc on the
+        // same topic always outranks the auto-compiled one (anti-hallucination
+        // guarantee). Default-`human` rows (every pre-v8.11 doc) get 0 here, so
+        // ranking is byte-identical to pre-v8.11 until an auto doc exists.
+        $penalty += $this->autoTierPenalty((string) ($doc['generation_source'] ?? 'human'));
+
         return [
             'delta' => $boost - $penalty,
             'boost' => $boost,
             'penalty' => $penalty,
         ];
+    }
+
+    private function autoTierPenalty(string $generationSource): float
+    {
+        // Fallback MUST match config/kb.php (0.02): a 0.05 fallback would, when
+        // the key is absent, cancel the priority-50 canonical boost exactly and
+        // make an auto doc tie raw — breaking the "auto > raw" invariant.
+        return $generationSource === GenerationSource::Auto->value
+            ? (float) config('kb.canonical.auto_tier_penalty', 0.02)
+            : 0.0;
     }
 
     private function statusPenalty(string $status): float
