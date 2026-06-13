@@ -33,12 +33,16 @@ final class AutoWikiCompilerJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
-    public int $tries = 2;
+    // Best-effort enrichment: tries=1, no backoff. handle() swallows compile
+    // failures (see the catch), so a custom retry policy would be misleading —
+    // a transient failure simply leaves this version un-enriched and the NEXT
+    // ingest (new version_hash) re-dispatches. Rethrowing to use queue retries
+    // is NOT viable here: under the test sync queue this job runs INLINE after
+    // ingest, so a throw would break the already-committed ingest (the sibling
+    // AnalyzeDocumentChangeJob swallows for the same reason).
+    public int $tries = 1;
 
     public int $timeout = 120;
-
-    /** @var array<int,int> */
-    public array $backoff = [30, 120];
 
     public function __construct(
         public readonly int $documentId,
@@ -73,13 +77,18 @@ final class AutoWikiCompilerJob implements ShouldQueue
             try {
                 $compiler->compile($document);
             } catch (Throwable $e) {
-                // R14 — never let an enrichment failure break the ingest path;
-                // log loudly so it's visible, don't crash the worker.
-                Log::warning('AutoWikiCompilerJob: compile failed', [
+                // Best-effort, swallow-and-log: under the test sync queue this
+                // job runs INLINE right after the ingest flow, so a rethrow would
+                // break the already-committed ingest. Auto-wiki enrichment is
+                // non-critical metadata — a transient LLM/network failure simply
+                // leaves this version un-enriched; the next ingest (new
+                // version_hash) re-dispatches. (Handled "no usable output" returns
+                // applied=false inside compile() without throwing.) Log the
+                // exception object so Laravel records the class + stack trace.
+                Log::warning('AutoWikiCompilerJob: compile failed (best-effort, skipped)', [
                     'document_id' => $this->documentId,
                     'tenant_id' => $this->tenantId,
                     'error' => $e->getMessage(),
-                    // Include the exception so Laravel logs the class + stack trace.
                     'exception' => $e,
                 ]);
             }
