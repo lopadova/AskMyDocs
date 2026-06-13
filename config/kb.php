@@ -201,6 +201,16 @@ return [
         // scope). OFF => enrichment still runs but no graph is built (R43).
         'graph_enabled' => (bool) env('KB_AUTOWIKI_GRAPH_ENABLED', true),
 
+        // P3 — concept-page synthesis (project sweep, explicit trigger only —
+        // command/API/MCP/scheduler, never per-ingest). When ON (default), a
+        // sweep synthesizes an auto-tier `domain-concept` page for each
+        // recurring concept (a tag appearing in >= min_frequency docs) that has
+        // no page yet, capped at max_per_run per invocation. OFF => clean no-op
+        // (R43).
+        'concepts_enabled' => (bool) env('KB_AUTOWIKI_CONCEPTS_ENABLED', true),
+        'concepts_min_frequency' => (int) env('KB_AUTOWIKI_CONCEPTS_MIN_FREQUENCY', 3),
+        'concepts_max_per_run' => (int) env('KB_AUTOWIKI_CONCEPTS_MAX_PER_RUN', 5),
+
         // Dedicated AI model override for the auto-compile LLM calls. Empty =>
         // fall back to the default chat provider/model (config('ai.default')).
         // NB: `?: null` normalizes a present-but-blank env var ("" from
