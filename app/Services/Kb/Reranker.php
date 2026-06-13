@@ -6,6 +6,7 @@ use App\Services\Kb\Retrieval\PreambleMatchDetector;
 use App\Services\Kb\Retrieval\QueryTagExtractor;
 use App\Services\Kb\Retrieval\RecencyScorer;
 use App\Services\Kb\Retrieval\TagOverlapScorer;
+use App\Support\Canonical\GenerationSource;
 use Illuminate\Support\Collection;
 
 /**
@@ -292,7 +293,7 @@ class Reranker
         // Fallback MUST match config/kb.php (0.02): a 0.05 fallback would, when
         // the key is absent, cancel the priority-50 canonical boost exactly and
         // make an auto doc tie raw — breaking the "auto > raw" invariant.
-        return $generationSource === 'auto'
+        return $generationSource === GenerationSource::Auto->value
             ? (float) config('kb.canonical.auto_tier_penalty', 0.02)
             : 0.0;
     }
