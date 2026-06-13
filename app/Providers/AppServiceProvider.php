@@ -367,6 +367,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\NotificationsDigestWeeklyCommand::class,
             // v8.7/W5 — Cloud Time Machine archived-version retention.
             \App\Console\Commands\PruneArchivedVersionsCommand::class,
+            // v8.11/P1b — evidence-tier PHP surface (AutoSci #67, R44).
+            \App\Console\Commands\KbEvidenceTierCommand::class,
         ]);
     }
 

@@ -106,6 +106,7 @@ final class AutoWikiCompilerTest extends TestCase
             'summary' => 'Explains cache configuration and eviction.',
             'aliases' => ['caching'],
             'cross_references' => [['slug' => 'dec-cache', 'title' => 'Cache decision', 'why' => 'depends', 'edge_type' => 'depends_on']],
+            'evidence_tier' => 'official',
         ]);
 
         // 'dec-cache' is a real neighbour, so the cross-reference survives the allowlist.
@@ -120,6 +121,9 @@ final class AutoWikiCompilerTest extends TestCase
         $this->assertSame('Explains cache configuration and eviction.', $aw['summary']);
         $this->assertSame('dec-cache', $aw['cross_references'][0]['slug']);
         $this->assertSame('depends_on', $aw['cross_references'][0]['edge_type']);
+        // P1b — evidence_tier derived + persisted to both the column and _autowiki.
+        $this->assertSame('official', $aw['evidence_tier']);
+        $this->assertSame('official', $fresh->evidence_tier);
 
         $this->assertDatabaseHas('kb_canonical_audit', [
             'project_key' => 'docs-v3',

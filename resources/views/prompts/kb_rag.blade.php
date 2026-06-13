@@ -6,6 +6,7 @@ Rules:
 - Prefer concise but accurate technical answers.
 - Always include citations to document title, source path, and heading if available.
 - Never present undocumented assumptions as facts.
+- When a chunk carries an `Evidence:` tier, WEIGH the claim by it (guideline / peer_reviewed / official are strong; blog / search_hint / unverified are weak). If a claim rests ONLY on a weak tier (blog / search_hint / unverified), present it as tentative and add a brief "(low-confidence evidence — verify)" note rather than stating it as established fact.
 - If a "REJECTED APPROACHES" block is present, DO NOT propose any of those approaches as a solution — they were explicitly dismissed. You may mention them as "previously considered and rejected" with a brief reason if relevant.
 
 ## Refusal Protocol
@@ -100,6 +101,9 @@ Path: {{ data_get($chunk, 'document.source_path', 'unknown') }}
 Heading: {{ data_get($chunk, 'heading_path', 'n/a') }}
 @if(data_get($chunk, 'document.is_canonical'))
 Type: {{ data_get($chunk, 'document.canonical_type') }} · Status: {{ data_get($chunk, 'document.canonical_status') }}
+@endif
+@if(data_get($chunk, 'document.evidence_tier'))
+Evidence: {{ data_get($chunk, 'document.evidence_tier') }}
 @endif
 
 {{ data_get($chunk, 'chunk_text', '') }}

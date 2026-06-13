@@ -10,6 +10,7 @@ use App\Models\KbCanonicalAudit;
 use App\Models\KnowledgeChunk;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\KbSearchService;
+use App\Support\Canonical\EvidenceTier;
 use App\Support\Canonical\GenerationSource;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
@@ -132,16 +133,24 @@ class AutoWikiCompiler
             'summary' => $enrichment['summary'],
             'aliases' => $enrichment['aliases'],
             'cross_references' => $enrichment['cross_references'],
+            'evidence_tier' => $enrichment['evidence_tier'],
             'provider' => $provider,
             'model' => $model,
             'generated_at' => now()->toIso8601String(),
             'source_version_hash' => $document->version_hash,
         ];
 
-        $document->forceFill([
+        $attributes = [
             'frontmatter_json' => $frontmatter,
             'generation_source' => GenerationSource::Auto->value,
-        ])->save();
+        ];
+        // P1b — set the evidence_tier column only when the LLM produced a valid
+        // one, so a null reply never clobbers a previously-assessed/human-set tier.
+        if ($enrichment['evidence_tier'] !== null) {
+            $attributes['evidence_tier'] = $enrichment['evidence_tier'];
+        }
+
+        $document->forceFill($attributes)->save();
 
         if ((bool) config('kb.canonical.audit_enabled', true)) {
             KbCanonicalAudit::create([
@@ -261,7 +270,7 @@ class AutoWikiCompiler
     /**
      * @param  array<string, mixed>  $decoded
      * @param  list<array{slug: ?string, title: ?string, snippet: string}>  $neighbours
-     * @return array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>}
+     * @return array{tags: list<string>, summary: string, aliases: list<string>, cross_references: list<array<string,string>>, evidence_tier: ?string}
      */
     private function validate(array $decoded, array $neighbours = []): array
     {
@@ -270,6 +279,8 @@ class AutoWikiCompiler
             'summary' => $this->scalar($decoded['summary'] ?? ''),
             'aliases' => $this->stringList($decoded['aliases'] ?? []),
             'cross_references' => $this->crossReferences($decoded['cross_references'] ?? [], $neighbours),
+            // P1b — evidence tier coerced to a valid taxonomy value, else null.
+            'evidence_tier' => EvidenceTier::tryFromLoose($decoded['evidence_tier'] ?? null)?->value,
         ];
     }
 

@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_fourteen_tools(): void
+    public function test_server_registers_exactly_fifteen_tools(): void
     {
-        $this->assertCount(14, $this->registeredTools());
+        $this->assertCount(15, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_evidence_tier_write_tool(): void
+    {
+        // v8.11/P1b — the evidence-tier MCP write surface (AutoSci #67, R44).
+        $this->assertContains(\App\Mcp\Tools\KbSetEvidenceTierTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_five_base_retrieval_tools(): void

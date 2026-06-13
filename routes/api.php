@@ -387,6 +387,14 @@ Route::middleware([
         Route::patch('/kb/content-gaps/{id}/resolve', [\App\Http\Controllers\Api\Admin\KbContentGapController::class, 'resolve'])
             ->whereNumber('id')->name('api.admin.kb.content-gaps.resolve');
 
+        // v8.11/P1b — evidence-tier (AutoSci #67): taxonomy + human override.
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/evidence-tiers`).
+        Route::get('/kb/evidence-tiers', [\App\Http\Controllers\Api\Admin\KbEvidenceTierController::class, 'taxonomy'])
+            ->name('api.admin.kb.evidence-tiers.index');
+        Route::patch('/kb/documents/{id}/evidence-tier', [\App\Http\Controllers\Api\Admin\KbEvidenceTierController::class, 'update'])
+            ->whereNumber('id')->name('api.admin.kb.documents.evidence-tier.update');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

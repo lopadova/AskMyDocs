@@ -1379,6 +1379,45 @@ Graded on blast radius: one un-tested OFF path that 500s is a public incident
 the first time an operator flips a knob. Mirrors the private memory
 [[feedback_test_feature_flags_both_states]].
 
+### R44 — Every capability is tri-surface: PHP + HTTP API + MCP, over ONE core
+
+Iron rule, standing from **2026-06-13** (Lorenzo, during the Auto-Wiki epic).
+Every feature/capability we introduce — and every later modification of an
+existing one — MUST be **exposed AND consumable across all three surfaces**:
+
+1. **PHP** — an Artisan command and/or a service/facade callable from app code.
+2. **HTTP API** — a RESTful endpoint, auth + RBAC-gated (R32 matrix entry), with
+   the same request/response contract discipline as every other admin route.
+3. **MCP** — a `Laravel\Mcp\Server\Tool` (read or write) registered on
+   `KnowledgeBaseServer::$tools`, with a `schema()` and `handle()`.
+
+All three are **thin layers over ONE shared core service** — never three
+parallel implementations. The service holds the logic, the audit, the
+tenant-scoping (R30); the command/controller/tool only adapt input → core →
+output. A capability that lands on only one or two surfaces is a **gap, not a
+smaller feature** — close it in the same PR or file the follow-up explicitly.
+
+When you DESIGN a Px / feature / package integration, plan the three surfaces
+up front (the plan's "tri-surface exposure" line). When you MODIFY a capability
+(new field, new option, changed contract), propagate the change to all three
+surfaces + their tests in the same PR — so the surfaces never drift.
+
+Check:
+
+- [ ] New/changed capability has a PHP entry point (command or service method).
+- [ ] New/changed capability has an HTTP endpoint + an R32 authorization-matrix
+      row (representative endpoint → exact allow-set of roles).
+- [ ] New/changed capability has an MCP tool registered on
+      `KnowledgeBaseServer::$tools` (+ the registration-count test bumped).
+- [ ] All three delegate to the SAME core service — no duplicated logic.
+- [ ] Each surface is tested at its layer (service PHPUnit + HTTP feature test +
+      MCP registration/contract test); UI surfaces add Vitest + Playwright.
+
+The exception is a capability that is intrinsically single-surface (e.g. a
+scheduler-only maintenance sweep with no caller-facing read) — state WHY in the
+PR; absence of a surface is a deliberate, documented choice, never an omission.
+Mirrors the private memory [[feedback_tri_surface_php_api_mcp]].
+
 ---
 
 ## 8. Testing & CI
@@ -1415,7 +1454,7 @@ the first time an operator flips a knob. Mirrors the private memory
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R43 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R44 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the
