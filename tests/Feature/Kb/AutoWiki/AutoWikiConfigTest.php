@@ -35,4 +35,16 @@ final class AutoWikiConfigTest extends TestCase
             );
         }
     }
+
+    public function test_source_retention_mode_is_always_a_valid_non_empty_mode(): void
+    {
+        // A present-but-blank KB_SOURCE_RETENTION= must NOT resolve to "" (an
+        // invalid mode) — config normalizes it back to the default.
+        $mode = config('kb.source_retention.mode');
+        $this->assertContains(
+            $mode,
+            ['full_copy', 'markdown_only', 'reference_only'],
+            'source_retention.mode must be one of the three valid modes, never ""',
+        );
+    }
 }

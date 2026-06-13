@@ -237,7 +237,11 @@ return [
     */
 
     'source_retention' => [
-        'mode' => env('KB_SOURCE_RETENTION', 'full_copy'),
+        // `?: 'full_copy'` (not env(..., 'full_copy')): a present-but-blank
+        // KB_SOURCE_RETENTION= returns "" from env(), which is an INVALID mode —
+        // the default only kicks in when the var is ABSENT. Same normalization
+        // as the auto-wiki AI override knobs above.
+        'mode' => env('KB_SOURCE_RETENTION') ?: 'full_copy',
     ],
 
     /*
