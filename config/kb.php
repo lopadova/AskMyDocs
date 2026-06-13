@@ -193,6 +193,14 @@ return [
         'neighbor_limit' => (int) env('KB_AUTOWIKI_NEIGHBORS', 5),
         'queue' => env('KB_AUTOWIKI_QUEUE', 'default'),
 
+        // P2 — graph canonicalization. When ON (default), after a doc is
+        // enriched its allow-listed cross-references are materialised into real
+        // kb_edges (provenance='inferred') + the kb_nodes they connect, so the
+        // auto tier becomes navigable. An auto doc with no slug is given a
+        // stable per-project one so the WHOLE corpus participates (enterprise
+        // scope). OFF => enrichment still runs but no graph is built (R43).
+        'graph_enabled' => (bool) env('KB_AUTOWIKI_GRAPH_ENABLED', true),
+
         // Dedicated AI model override for the auto-compile LLM calls. Empty =>
         // fall back to the default chat provider/model (config('ai.default')).
         // NB: `?: null` normalizes a present-but-blank env var ("" from

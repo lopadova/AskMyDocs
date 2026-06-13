@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Models\KnowledgeDocument;
 use App\Services\Kb\AutoWiki\AutoWikiCompiler;
 use App\Services\Kb\AutoWiki\AutoWikiGate;
+use App\Services\Kb\AutoWiki\AutoWikiGraphLinker;
 use App\Support\TenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -55,6 +56,7 @@ final class AutoWikiCompilerJob implements ShouldQueue
         TenantContext $tenants,
         AutoWikiCompiler $compiler,
         AutoWikiGate $gate,
+        AutoWikiGraphLinker $linker,
     ): void {
         $previousTenant = $tenants->current();
         try {
@@ -75,7 +77,17 @@ final class AutoWikiCompilerJob implements ShouldQueue
             }
 
             try {
-                $compiler->compile($document);
+                $result = $compiler->compile($document);
+                // P2 — once the auto tier is enriched, materialise its
+                // cross-references into the navigable graph (nodes + inferred
+                // edges). Re-load so the linker sees the freshly-applied
+                // _autowiki block. Same best-effort envelope as compile().
+                if (($result['applied'] ?? false) === true) {
+                    $fresh = KnowledgeDocument::query()->forTenant($this->tenantId)->find($this->documentId);
+                    if ($fresh !== null) {
+                        $linker->link($fresh);
+                    }
+                }
             } catch (Throwable $e) {
                 // Best-effort, swallow-and-log: under the test sync queue this
                 // job runs INLINE right after the ingest flow, so a rethrow would
