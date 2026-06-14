@@ -431,6 +431,11 @@ Route::middleware([
         Route::post('/kb/wiki-navigate', [\App\Http\Controllers\Api\Admin\KbWikiNavigateController::class, 'navigate'])
             ->name('api.admin.kb.wiki-navigate');
 
+        // v8.11/P7 — cross-model review of an auto-tier page. R32 — same admin KB
+        // group gate as the representative `/api/admin/kb/evidence-tiers` row.
+        Route::post('/kb/documents/{id}/wiki-review', [\App\Http\Controllers\Api\Admin\KbWikiReviewController::class, 'review'])
+            ->whereNumber('id')->name('api.admin.kb.documents.wiki-review');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

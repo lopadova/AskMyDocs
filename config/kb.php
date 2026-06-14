@@ -211,6 +211,15 @@ return [
         'concepts_min_frequency' => (int) env('KB_AUTOWIKI_CONCEPTS_MIN_FREQUENCY', 3),
         'concepts_max_per_run' => (int) env('KB_AUTOWIKI_CONCEPTS_MAX_PER_RUN', 5),
 
+        // P7 — cross-model review / novelty gate. An independent review-LLM
+        // validates an auto page (grounding / cross-refs / novelty /
+        // contradictions) before it's trusted. Explicit trigger only (never
+        // per-ingest). Point the review model at a DIFFERENT provider/model than
+        // the compiler for true cross-model diversity (empty => default chat).
+        'review_enabled' => (bool) env('KB_AUTOWIKI_REVIEW_ENABLED', true),
+        'review_ai_provider' => env('KB_AUTOWIKI_REVIEW_AI_PROVIDER') ?: null,
+        'review_ai_model' => env('KB_AUTOWIKI_REVIEW_AI_MODEL') ?: null,
+
         // Dedicated AI model override for the auto-compile LLM calls. Empty =>
         // fall back to the default chat provider/model (config('ai.default')).
         // NB: `?: null` normalizes a present-but-blank env var ("" from
