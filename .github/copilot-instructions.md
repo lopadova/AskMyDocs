@@ -469,7 +469,17 @@ green; wait for Copilot review comments; fix any must-fix findings; repeat.
 Merge only when BOTH `reviewDecision = APPROVED` (or zero outstanding
 must-fix) AND all CI checks `COMPLETED + SUCCESS`. Green CI alone is not
 enough. Applies to all repos under `lopadova/*` and `padosoft/*`.
-See `.claude/skills/copilot-pr-review-loop/`.
+
+**Review-provider fallback (2026-06-14): Copilot first, Codex on
+out-of-budget.** When Copilot is out of budget for a prolonged period
+(HTTP 402 on the copilot-cli critic AND no cloud review fires after
+requesting), auto-switch to the **ChatGPT Codex connector**: post a PR
+comment `@codex review` (`gh pr comment <N> --body "@codex review"`) — the
+`chatgpt-codex-connector[bot]` then reviews like Copilot; re-comment
+`@codex review` after each fix. Run the same loop until 0 must-fix. An
+independent code-reviewer SUBAGENT stays as the always-on local pre-merge
+gate when both cloud bots are unavailable. See `CLAUDE.md` R36 +
+`.claude/skills/copilot-pr-review-loop/`.
 
 ### R37 — Branching: `feature/vX.Y` integration branches → `main` once per release
 For AskMyDocs: `main` = stable production. Each major release works in its
