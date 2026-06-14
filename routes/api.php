@@ -417,6 +417,14 @@ Route::middleware([
         Route::get('/kb/wiki-operations', [\App\Http\Controllers\Api\Admin\KbWikiIndexController::class, 'operations'])
             ->name('api.admin.kb.wiki-operations');
 
+        // v8.11/P5 — Auto-Wiki lint (dangling/orphan/stale/missing-index) + safe
+        // auto-fix. R32 — same admin KB group gate as the representative
+        // `/api/admin/kb/evidence-tiers` row.
+        Route::get('/kb/wiki-lint', [\App\Http\Controllers\Api\Admin\KbWikiLintController::class, 'report'])
+            ->name('api.admin.kb.wiki-lint.report');
+        Route::post('/kb/wiki-lint/fix', [\App\Http\Controllers\Api\Admin\KbWikiLintController::class, 'fix'])
+            ->name('api.admin.kb.wiki-lint.fix');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
