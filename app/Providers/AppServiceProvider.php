@@ -375,6 +375,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbSynthesizeConceptsCommand::class,
             // v8.11/P4 — Auto-Wiki indices PHP surface (R44).
             \App\Console\Commands\KbWikiIndexCommand::class,
+            // v8.11/P5 — Auto-Wiki lint PHP surface (R44).
+            \App\Console\Commands\KbWikiLintCommand::class,
         ]);
     }
 
