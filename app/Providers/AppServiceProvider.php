@@ -379,6 +379,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbWikiLintCommand::class,
             // v8.11/P6 — agentic graph-navigation PHP surface (R44).
             \App\Console\Commands\KbWikiNavigateCommand::class,
+            // v8.11/P7 — cross-model review PHP surface (R44).
+            \App\Console\Commands\KbWikiReviewCommand::class,
         ]);
     }
 

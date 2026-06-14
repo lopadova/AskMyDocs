@@ -19,6 +19,7 @@ use App\Mcp\Tools\KbRebuildWikiLinksTool;
 use App\Mcp\Tools\KbWikiHubTool;
 use App\Mcp\Tools\KbWikiLintTool;
 use App\Mcp\Tools\KbWikiNavigateTool;
+use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
@@ -69,6 +70,8 @@ class KnowledgeBaseServer extends Server
         KbWikiLintTool::class,
         // v8.11/P6 — agentic multi-hop graph navigation (primary agentic surface)
         KbWikiNavigateTool::class,
+        // v8.11/P7 — cross-model review / novelty gate
+        KbWikiReviewTool::class,
     ];
 
     protected function boot(): void

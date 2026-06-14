@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_twenty_one_tools(): void
+    public function test_server_registers_exactly_twenty_two_tools(): void
     {
-        $this->assertCount(21, $this->registeredTools());
+        $this->assertCount(22, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_wiki_review_tool(): void
+    {
+        // v8.11/P7 — the cross-model review MCP surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbWikiReviewTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_wiki_lint_tool(): void
