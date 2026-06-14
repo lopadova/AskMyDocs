@@ -49,10 +49,11 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 ## Table of Contents
 
 - [What it is](#what-it-is)
-- [Why AskMyDocs — the 5 moats](#why-askmydocs--the-5-moats)
+- [Why AskMyDocs — the 6 moats](#why-askmydocs--the-6-moats)
 - [✨ Universal Connectors](#universal-connectors)
 - [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
 - [✨ KITT — Knowledge Interface Tour Toolkit](#kitt--knowledge-interface-tour-toolkit)
+- [✨ Auto-Wiki — self-compiling agentic knowledge tier](#-auto-wiki--self-compiling-agentic-knowledge-tier-v811)
 - [Features by area](#features-by-area)
   - [Retrieval & Knowledge](#retrieval--knowledge)
   - [Chat & Conversation](#chat--conversation)
@@ -105,12 +106,13 @@ and anyone allergic to vendor lock-in.
 
 ---
 
-## Why AskMyDocs — the 5 moats
+## Why AskMyDocs — the 6 moats
 
-These five differentiators come from the public competitor audit at
+These differentiators come from the public competitor audit at
 [`docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md`](docs/v4-platform/AUDIT-2026-05-11-competitor-comparison.md)
-(Section 3, "Where AskMyDocs is genuinely AHEAD"). They are the moats
-no other public RAG platform — open-source or SaaS — currently ships.
+(Section 3, "Where AskMyDocs is genuinely AHEAD") plus the v8.11 Auto-Wiki
+cycle. They are the moats no other public RAG platform — open-source or SaaS —
+currently ships.
 
 | ★ | Moat | One-line |
 |:---:|---|---|
@@ -119,10 +121,11 @@ no other public RAG platform — open-source or SaaS — currently ships.
 | ★ | **PII redaction at 11 persistence boundaries** (default-OFF, granular per touch-point) | `padosoft/laravel-pii-redactor` v1.2 wired at 11 touch-points across observers, middleware, Monolog processor, failed-job listener, Flow payload redactor, insights inspector. EU-GDPR-grade *field-level* redaction inside the app boundary — not just data-residency. Every knob default-OFF so v3 / v4.0 hosts see byte-identical behaviour until they opt in. |
 | ★ | **MIT-licensed, self-hostable, on-prem feasible** (no $500K/yr vendor contract) | Vectara is the only competitor that ships on-prem ($500K/yr public list). Glean / Notion AI / ChatGPT Enterprise / M365 Copilot are SaaS-only. AskMyDocs runs on any Laravel + PostgreSQL + pgvector host with zero vendor lock-in; the entire sister-package stack is MIT and independently reusable. |
 | ★ | **Eval-harness CI gate + nightly LLM-as-judge + adversarial cohorts** | `padosoft/eval-harness` v1.2 RAG regression gate on every PR (4 datasets / 1 baseline + 3 adversarial / 7 metrics including custom `CitationGroundednessMetric` + `CosineGroundednessMetric`); `eval:nightly` Artisan cron at 05:30 UTC with three-fence cost guard, regression detection vs prior baseline, `Log::alert` + sidecar on regression; adversarial-lane nightly opt-in shipped in v4.4. Out-of-the-box eval surface nobody else publicly ships. |
+| ★ | **Self-compiling Auto-Wiki tier behind an anti-hallucination firewall** (v8.11) | A second-class **`auto` tier** the system *builds itself* — on ingest the LLM enriches frontmatter (tags / summary / cross-refs / evidence-tier), materialises a navigable graph, synthesizes new `domain-concept` pages, indexes + lints them, agentically navigates (multi-hop BFS), and cross-model-reviews its own output — yet the **reranker firewall always ranks human-`accepted` > auto > raw**, so machine knowledge never silently becomes authoritative. Every layer is reversible, audited, tenant-scoped, default-ON-but-degradable, and exposed PHP + HTTP API + MCP. No public RAG platform ships a self-maintaining knowledge tier *behind* a human-vouched firewall. |
 
-### Plus: a closed-loop **KB Lifecycle Intelligence** suite (v8.7 → v8.8)
+### Plus: a closed-loop **KB Lifecycle Intelligence** suite (v8.7 → v8.11)
 
-Beyond the five moats, the v8.7–v8.8 cycles shipped a closed governance loop most
+Beyond the moats, the v8.7–v8.11 cycles shipped a closed governance loop most
 RAG tools simply don't have — the exact capabilities the
 [2026 Affine KB Buyer's Guide](docs/v4-platform/AUDIT-2026-06-02-affine-buyers-guide-gap.md)
 tells buyers to demand:
@@ -140,6 +143,11 @@ tells buyers to demand:
   Policy" governance section, shipped.
 - **Graph-native navigation** — a chat-side **Related** panel walks the knowledge graph straight
   from a grounded answer.
+- **Self-compiling Auto-Wiki** (v8.11) — ingest auto-enriches frontmatter + materialises graph
+  edges, synthesizes recurring-concept pages, maintains per-tenant index hubs, lints wiki health,
+  agentically navigates multi-hop, cross-model-reviews auto pages, applies change/delete
+  suggestions, and self-maintains on a daily schedule — all behind the human > auto > raw
+  firewall. See the dedicated section below.
 
 ---
 
@@ -245,6 +253,49 @@ for the inline layout). Full developer guide:
 > actions, data egress to the LLM), and the **best practices the operator and
 > the host site must follow to mitigate them** — including `data-kitt-skip` to
 > keep sensitive page regions out of the snapshot.
+
+## ✨ Auto-Wiki — self-compiling agentic knowledge tier (v8.11)
+
+Inspired by Andrej Karpathy's *LLM-Wiki* pattern (raw → wiki → schema layers;
+ingest / query / lint ops) and **AutoSci** (concept pages + graph edges, entity
+index, BFS exploration, cross-model review), AskMyDocs **compiles its own wiki**
+on top of every ingested corpus — and keeps it healthy over time — without ever
+weakening the human-vouched authoritative tier.
+
+The cornerstone is a **second-class `auto` tier** (`knowledge_documents.generation_source ∈ {human, auto}`):
+AI-compiled knowledge is real, searchable and navigable, but an
+**anti-hallucination reranker firewall always ranks human-`accepted` > `auto` > raw**,
+and an admin can promote `auto` → human. Every layer is reversible, audited to
+`kb_canonical_audit`, tenant-scoped (R30), and config-gated (default-ON but
+cleanly degradable to today's behaviour, R43).
+
+Shipped incrementally across **v8.11.0 → v8.11.10** (each its own tagged release):
+
+| Phase | Capability |
+|---|---|
+| **Foundations** (v8.11.0) | The `auto` tier discriminator + reranker firewall + layered `AutoWikiGate` + dedicated AI-model override + source-retention config + ADR 0014. |
+| **Compiler** (v8.11.1) | After ingest, the LLM auto-enriches frontmatter — tags / summary / aliases / cross-references (allow-listed to real neighbours, anti-hallucination) → `frontmatter_json._autowiki`. |
+| **Evidence-tier** (v8.11.2) | An evidence-strength axis (`guideline > peer_reviewed > official > … > unverified`) derived in the same call + surfaced in the RAG prompt to flag low-confidence claims ([AutoSci #67](https://github.com/skyllwt/AutoSci/issues/67)). |
+| **Graph canonicalization** (v8.11.3) | Cross-references become real `kb_edges` + `kb_nodes` — the auto tier becomes *navigable*; every auto doc gets a stable `auto-`-namespaced slug. |
+| **Concept synthesis** (v8.11.4) | Recurring concepts across a project become **new `domain-concept` pages**, grounded in the docs that mention them (AutoSci `/prefill` dedup). |
+| **Indices + log** (v8.11.5) | Per-project roll-ups + a **per-tenant index hub** (the agentic map) + the auto-wiki operation log. |
+| **Lint / health** (v8.11.6) | Deterministic checks — dangling / orphan / stale-cross-ref / missing-index — with safe auto-fix. |
+| **Agentic navigation** (v8.11.7) | Multi-hop, cycle-safe **BFS** over the graph, anchor-driven from the index — the "navigate the wiki" primitive beyond 1-hop expansion. |
+| **Cross-model review** (v8.11.8) | An *independent* review-LLM audits each auto page for grounding / novelty / **contradictions** before it's trusted. |
+| **Apply engine** (v8.11.9) | Change/delete suggestions become concrete, audited, reversible mutations (add cross-ref / deprecate impacted) — manual + opt-in auto-apply (default-OFF). |
+| **Scheduled maintenance** (v8.11.10) | A daily sweep that rebuilds indices, lints, and backfills enrichment so "knowledge improves over time". |
+
+**Tri-surface everywhere (R44):** every capability is exposed and consumable via
+**PHP** (Artisan commands: `kb:evidence-tier`, `kb:wiki-link`,
+`kb:synthesize-concepts`, `kb:wiki-index`, `kb:wiki-lint`, `kb:wiki-navigate`,
+`kb:wiki-review`, `kb:apply-suggestion`, `kb:wiki-maintain`), **HTTP API**
+(RBAC-gated admin endpoints under `/api/admin/kb/*`), and **MCP** (the
+`enterprise-kb` server grew from 14 → **24 tools**, incl.
+`KbWikiNavigateTool` as the primary agentic surface) — all thin layers over one
+shared core service per capability.
+
+*Coming next:* an admin **Wiki Explorer / Health / Indices / Apply / Settings**
+SPA (v8.12.0) puts a web surface on the whole engine.
 
 ### Database
 ```env
@@ -652,7 +703,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | `PdfPageChunker` page-aware PDF chunking | Slices on the `## Page N` boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` for page-precise citations; intra-page split on `\n\n` when over `KB_CHUNK_HARD_CAP_TOKENS` | v3.0 |
 | Embedding cache (cross-tenant by design) | DB-backed LRU cache keyed on SHA-256(`text`) UNIQUE; eliminates redundant API calls on re-ingestion and repeated queries; `EmbeddingCacheService::flush($provider)` on provider/model change. Conditional approval gate via `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD` (default 5000) on v4.2+ | v1.0 |
 | Soft delete + retention sweep | `SoftDeletes` on `KnowledgeDocument`; hidden from every read path by default; `kb:prune-deleted` (03:30 daily) hard-deletes after `KB_SOFT_DELETE_RETENTION_DAYS` (default 30); cascades `kb_nodes` + `kb_edges` on final hard delete; immutable `kb_canonical_audit` row survives | v3.0 |
-| MCP server `enterprise-kb` (10 tools) | 5 retrieval tools (`kb.search` / `kb.read_document` / `kb.read_chunk` / `kb.recent_changes` / `kb.search_by_project`) + 5 canonical/promotion tools (`kb.graph.neighbours` / `kb.graph.subgraph` / `kb.documents.by_slug` / `kb.documents.by_type` / `kb.promotion.suggest`) exposed at `/mcp/kb` for Claude Desktop / Claude Code / any MCP-compatible agent | v3.0 |
+| MCP server `enterprise-kb` (24 tools) | 5 retrieval + 5 canonical/promotion tools (v3.0), 4 propose-only canonical tools (v7), and **10 Auto-Wiki tools** (v8.11: set-evidence-tier / rebuild-wiki-links / synthesize-concepts / build-wiki-index / wiki-hub / wiki-lint / **wiki-navigate** / wiki-review / apply-suggestion / wiki-maintain) exposed for Claude Desktop / Claude Code / any MCP-compatible agent. Every host capability is reachable via MCP (R44 tri-surface) | v3.0 · v8.11 |
 | Enterprise chat filters (10 dimensions) | `RetrievalFilters` DTO with `project_keys` / `tag_slugs` / `source_types` / `canonical_types` / `connector_types` / `doc_ids` / `folder_globs` / `date_from` / `date_to` / `languages`. Per-user saved presets with 404-not-403 cross-user isolation; `@mention` doc pinning via cursor-context detection | v3.0 |
 | Reranker canonical boost + status penalty | Reranker applies `priority × 0.003` canonical boost and `superseded −0.4` / `deprecated −0.4` / `archived −0.6` status penalties on top of the vector/keyword/heading fusion; non-canonical chunks get zero adjustment (legacy behaviour preserved) | v3.0 |
 | Source-aware chunkers + rich frontmatter capture | `PipelineRegistry::resolveChunker($sourceType)` dispatches per source (R23 FQCN-validated + `supports()` mutex-checked at boot) to: `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` / `MarkdownChunker`. Document-level metadata carries `connector` + `external_id` + `external_url` + native timestamps; chunk-level metadata carries `source_type` + `search_tags` (top-level) + `recency_bucket` + ACL hint + status + preamble-path | v4.5 |
@@ -665,6 +716,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Cloud Time Machine (version timeline + diff + restore) | Every re-ingest already retains the prior `knowledge_documents` row + its chunks (status `archived`); the Time Machine surfaces that history under **Admin → Time Machine** (`/app/admin/kb/time-machine/{id}`). `GET .../versions` lists the version timeline for a `(tenant, project, source_path)` family; `.../versions/diff?from=&to=` returns an in-house LCS line diff (`App\Support\MarkdownDiff`) of the reconstructed content; `POST .../restore-version` re-activates an archived version (transactional status-flip + canonical-identity transfer + `kb_canonical_audit` row) — no re-embedding, reuses retained chunks. `kb:prune-archived-versions` (daily) caps retained archived versions per family at `KB_KEEP_ARCHIVED_VERSIONS` (default 10); the live + soft-deleted rows are never pruned | v8.7 |
 | **Tabular Review** (spreadsheet-style document extraction) | `tabular_reviews` + `tabular_cells` tables; `TabularReviewExtractor` runs ONE multi-column LLM call per document (cost `O(documents)` not `O(documents × columns)`); 17 format types (Mike's 9 + 8 AskMyDocs-new including the LLM-free `json_path` shortcut leveraging v4.5/W5.5 source-aware metadata); R14 loud refusal with red flag + reasoning on no-evidence / LLM error / JSON parse failure; DB-level upsert keyed on the composite UNIQUE `(tenant_id, review_id, document_id, column_index)` prevents duplicate rows under concurrent generate/regenerate. Admin SPA at `/app/admin/tabular-reviews` (list / show / create + grid view with flag-tinted cells + a per-cell flag glyph and inline reasoning text, plus an `aria-label` combining summary + flag + reasoning so AT users get the same context as sighted users — R15); SSE streaming variant `POST /api/admin/tabular-reviews/{id}/generate-stream` is wired end-to-end on the BE and emits per-cell `event: cell` frames, but the v4.7 GA SPA still calls the synchronous `/generate` endpoint — the progressive-paint FE consumer ships in v4.7.x alongside the Glide Data Grid migration (ADR 0010 D1) | v4.7 GA |
 | **Workflows** (reusable prompt templates + AI-suggested catalogue) | `workflows` + `workflow_shares` + `hidden_workflows` tables; `WorkflowService` enforces ownership / share / hide semantics with per-user scope; `WorkflowSuggester` analyzes the tenant's KB (`MetadataPatternAnalyzer` detects recurring practices / projects / column patterns) and proposes up to 5 assistant + tabular workflow drafts via the LLM. 15 system-shipped templates (legal review / GDPR DPIA / DPA review / commercial agreement triage / privacy policy audit / vendor due diligence / employment policy review / regulatory mapping / risk register / litigation timeline / NDA review / IP-licensing review / consent record audit / processor-list extraction / contract-clause comparison). Admin SPA at `/app/admin/workflows` with Mine / Shared / System scope tabs + AI-suggest gallery + create dialog (**assistant type only in GA**; tabular create UI deferred to v4.7.x — tabular workflows ARE accepted by the JSON API and via the AI-suggest gallery's save-this path); email-based share model scales to invitees not yet on the platform | v4.7 GA |
+| **Auto-Wiki — self-compiling `auto` tier** | A second-class AI-compiled knowledge tier (`generation_source ∈ {human, auto}`) the system builds + maintains itself: ingest-time frontmatter enrichment (`AutoWikiCompiler`) + evidence-tier derivation + graph materialisation (`AutoWikiGraphLinker`, `auto-`-namespaced slugs) + concept-page synthesis (`ConceptSynthesizer`) + per-tenant index hub (`WikiIndexBuilder`, `kb_wiki_indices`) + wiki lint (`WikiLinter`) + multi-hop agentic navigation (`WikiNavigator`) + cross-model review (`AutoWikiReviewer`) + change/delete apply engine (`SuggestionApplier`, `kb_doc_analysis_applications`) + daily self-maintenance (`WikiMaintainer`, `kb:wiki-maintain`). The **reranker firewall** keeps human-`accepted` > `auto` > raw so machine knowledge never silently becomes authoritative; every layer reversible + audited + tenant-scoped + config-gated (R43) + tri-surface PHP/API/MCP (R44). See [the dedicated section](#-auto-wiki--self-compiling-agentic-knowledge-tier-v811) | v8.11 |
 
 ### Chat & Conversation
 
@@ -721,7 +773,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Per-user notification feed (bell + panel + API) | Top-bar `<NotificationBell />` polls `/api/notifications/unread-count` every 30s (R11 `data-state` + `aria-busy`); `/app/admin/notifications` full panel with `unread\|read\|dismissed\|all` tabs, BE-derived event-type filter (R18 — `GET /api/notifications/event-types`), pagination, per-row mark-read/dismiss, bulk mark-all-read scoped to the active filter; HMAC-signed one-click email unsubscribe; channels (`in_app`, `email`) ship as part of v8.0/W1.3, joined by **W2.1** external channels `discord` + `slack` + `teams` + generic `webhook` (all default-OFF — opt in by setting the corresponding `NOTIFICATIONS_DISCORD_URL` / `NOTIFICATIONS_SLACK_URL` / `NOTIFICATIONS_TEAMS_URL` / `NOTIFICATIONS_WEBHOOK_URL` env var; the generic webhook channel additionally signs every request with `X-AskMyDocs-Signature: sha256=<hmac>` when `NOTIFICATIONS_WEBHOOK_SECRET` is set). External-channel sends route through the queueable `SendExternalNotificationJob` with `[5, 30, 120]s` backoff (R14 — terminal failure recorded on the row's `channel_dispatch_log`); 4xx responses (except 429) are surfaced as `failed` immediately without retry. Per-user `notification_preferences` matrix wired in v8.0/W2; daily `notifications:prune` 04:10 retains rows for `NOTIFICATIONS_RETENTION_DAYS` (default 90, set 0 to disable) — see env block below. R21 atomic mark-read + dismiss (`whereNull('read_at')->update(...)` + COALESCE); R30 cross-tenant isolation enforced on every endpoint including mutations; presenter strips forensic `channel_dispatch_log` + `tenant_id` + `user_id` from the FE feed. | v8.0 |
 | Stale-doc review + weekly digest (KB lifecycle) | `kb:stale-review-sweep` (daily) fires a `kb_doc_stale_review` notification for any document untouched longer than `KB_HEALTH_STALE_REVIEW_MONTHS` (default 6, set 0 to disable) — time-based, every doc type, ACL-scoped to eligible reviewers, idempotent per content version via a `metadata.stale_review_notified_at` marker. `notifications:digest-weekly` (Monday) aggregates the week's `notification_events` per tenant into a `notification_digests` row and emails each email-opted-in user their OWN roundup (`WeeklyDigestMail`), stamping `sent_at` + `recipients_count` — so a user can keep noisy per-event email OFF and still get the Monday digest. Both slots are env-tunable (`SCHEDULE_KB_STALE_REVIEW_SWEEP_*` / `SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_*`). | v8.7 |
 | Cross-mounted admin SPAs (3 packages) | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (cross-mount since v4.4/W2) + `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` + `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (cross-mount since v4.4/W3, 3 fail-closed fences preserved). **Since v8.8.2 each package admin mounts center-only with no nested chrome (the host unified rail is the only menu):** the PII and Eval trees cross-mount their React panels directly; the Flow surface renders a native host panel (KPI probe of `/admin/flows/api/live` + section cards) that links out to the full Flow cockpit in a new tab (`target="_blank"`) — so no Blade+Alpine page is ever nested inside the host chrome. **This new-tab launcher supersedes ADR 0005's "flow-admin stays iframe-mounted" assumption** (the cockpit itself remains Blade+Alpine; only the host-side mounting changed) | v4.2 · v8.8.2 |
-| Laravel scheduler (13+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
+| Laravel scheduler (14+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / **`kb:wiki-maintain` 04:40 (v8.11/P9 — Auto-Wiki sweep: rebuild indices + lint + backfill enrichment)** / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
 | Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
 | Widget admin SPA (`/app/admin/widget`) | Manage the KITT embeddable widget: key CRUD + rotate (`pk_`/`sk_` returned once) + revoke, allowed-origins editor, theme designer (validated + sanitised), per-key `host_tools_enabled` toggle, copy-ready embed snippet, and a read-only sessions browser with PII-masked step replay. Key management is `manageWidgetKeys` (super-admin); session inspection is `viewWidgetSessions` (admin + super-admin); everything tenant-scoped. Sessions + steps pruned by `widget:prune-sessions` (daily, `WIDGET_SESSION_RETENTION_DAYS` default 90) which also prunes expired session tokens | v8.10 |
@@ -1221,6 +1273,22 @@ candidates from a transcript, `/candidates` validates a draft,
 (git push → GH Action) and operators (`kb:promote` CLI) commit
 canonical storage.
 
+**Auto-Wiki** (v8.11, ADR 0014) layers a second-class `auto` tier on top of the
+same persistence + graph. After ingest, `AutoWikiCompilerJob` → `AutoWikiCompiler`
+enriches `frontmatter_json._autowiki`; `AutoWikiGraphLinker` materialises the
+inferred `kb_edges`; `ConceptSynthesizer` writes new `domain-concept` pages
+through the *same* `DocumentIngestor::ingestMarkdown()` path; `WikiIndexBuilder`
+maintains `kb_wiki_indices` (per-project roll-ups + per-tenant hub);
+`WikiLinter`, `WikiNavigator` (multi-hop BFS), and `AutoWikiReviewer`
+(cross-model audit) operate over the graph; `SuggestionApplier` turns
+change/delete analyses into reversible mutations recorded in
+`kb_doc_analysis_applications`; and the daily `kb:wiki-maintain` sweep
+(`WikiMaintainer`) keeps it all fresh. The **reranker firewall**
+(`kb.canonical.auto_tier_penalty`) keeps human-`accepted` > `auto` > raw at
+retrieval time, so the auto tier never silently outranks vouched knowledge.
+Every capability is also exposed via the `enterprise-kb` **MCP** server (24
+tools) and RBAC-gated HTTP endpoints under `/api/admin/kb/*`.
+
 For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 
 ---
@@ -1421,6 +1489,32 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.11.2 → v8.11.10 — Auto-Wiki cycle complete (the self-compiling agentic
+knowledge tier).** Nine incremental releases finished the Auto-Wiki engine on top
+of the v8.11.0/v8.11.1 foundations, each merged + tagged + released on its own:
+**v8.11.2 evidence-tier** (an evidence-strength axis the compiler derives + the
+RAG prompt weights, AutoSci #67), **v8.11.3 graph canonicalization** (auto
+cross-refs → real `kb_edges`/`kb_nodes`, every auto doc gets an `auto-`-namespaced
+slug so the whole corpus is navigable), **v8.11.4 concept-page synthesis** (new
+`domain-concept` pages for recurring concepts, ingested via the one execution
+path; ingest now honours a `generation_source: auto` frontmatter key),
+**v8.11.5 wiki indices + operation log** (per-project roll-ups + a per-tenant
+index hub in `kb_wiki_indices`), **v8.11.6 wiki lint/health** (dangling / orphan
+/ stale-cross-ref / missing-index + safe auto-fix), **v8.11.7 agentic
+graph-navigation** (multi-hop cycle-safe BFS, anchor-driven from the index —
+`WikiNavigator`, the primary agentic surface), **v8.11.8 cross-model review /
+novelty gate** (an independent review-LLM audits grounding / novelty /
+contradictions before an auto page is trusted), **v8.11.9 apply engine**
+(change/delete suggestions → audited, reversible mutations; manual + opt-in
+auto-apply default-OFF), and **v8.11.10 scheduled maintenance** (a daily sweep
+that rebuilds indices, lints, and backfills enrichment). Throughout, the
+**anti-hallucination firewall holds** (human-`accepted` > `auto` > raw), every
+capability is **tri-surface (R44)** — PHP command + HTTP API + MCP tool over one
+shared core — and the `enterprise-kb` MCP server grew **14 → 24 tools**. The
+remaining phase is the admin **Wiki Explorer / Health / Indices / Apply /
+Settings** SPA (v8.12.0). ~115 PHPUnit across the cycle; every sub-PR went through
+an independent code-reviewer pass + green CI before merge.
 
 **v8.11.1 — Auto-Wiki Compiler** is the first functional increment of the
 Auto-Wiki cycle: it actually *auto-builds* wiki metadata on ingest. After a
