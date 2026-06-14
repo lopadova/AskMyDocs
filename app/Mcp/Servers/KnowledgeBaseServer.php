@@ -19,6 +19,7 @@ use App\Mcp\Tools\KbReadDocumentTool;
 use App\Mcp\Tools\KbRebuildWikiLinksTool;
 use App\Mcp\Tools\KbWikiHubTool;
 use App\Mcp\Tools\KbWikiLintTool;
+use App\Mcp\Tools\KbWikiMaintainTool;
 use App\Mcp\Tools\KbWikiNavigateTool;
 use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbRecentChangesTool;
@@ -75,6 +76,8 @@ class KnowledgeBaseServer extends Server
         KbWikiReviewTool::class,
         // v8.11/P8 — apply engine (change/delete suggestions)
         KbApplySuggestionTool::class,
+        // v8.11/P9 — scheduled wiki maintenance (on-demand trigger)
+        KbWikiMaintainTool::class,
     ];
 
     protected function boot(): void

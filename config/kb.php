@@ -220,6 +220,10 @@ return [
         'review_ai_provider' => env('KB_AUTOWIKI_REVIEW_AI_PROVIDER') ?: null,
         'review_ai_model' => env('KB_AUTOWIKI_REVIEW_AI_MODEL') ?: null,
 
+        // P9 — scheduled wiki maintenance: max un-enriched docs to backfill
+        // (dispatch the compiler for) per project per maintenance run.
+        'maintenance_backfill_limit' => (int) env('KB_AUTOWIKI_MAINTENANCE_BACKFILL_LIMIT', 25),
+
         // Dedicated AI model override for the auto-compile LLM calls. Empty =>
         // fall back to the default chat provider/model (config('ai.default')).
         // NB: `?: null` normalizes a present-but-blank env var ("" from

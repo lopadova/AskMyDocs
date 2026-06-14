@@ -256,6 +256,8 @@ class MaintenanceCommandController extends Controller
             'notifications_digest_weekly' => 'Weekly per-user notification digest email (v8.7/W2).',
             // v8.7/W5 — Cloud Time Machine retention.
             'kb_prune_archived_versions' => 'Hard-delete archived document versions beyond the retention cap (v8.7/W5).',
+            // v8.11/P9 — scheduled Auto-Wiki maintenance.
+            'kb_wiki_maintain' => 'Rebuild Auto-Wiki indices, lint wiki health, and backfill un-enriched docs (v8.11/P9).',
             // Composite-gated slots — only registered when the
             // upstream env flag is also on (see bootstrap/app.php).
             // Listed here so they appear in the widget when active.
