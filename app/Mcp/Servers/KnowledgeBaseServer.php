@@ -13,8 +13,10 @@ use App\Mcp\Tools\KbListDanglingWikilinksTool;
 use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
 use App\Mcp\Tools\KbReadChunkTool;
+use App\Mcp\Tools\KbBuildWikiIndexTool;
 use App\Mcp\Tools\KbReadDocumentTool;
 use App\Mcp\Tools\KbRebuildWikiLinksTool;
+use App\Mcp\Tools\KbWikiHubTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
@@ -58,6 +60,9 @@ class KnowledgeBaseServer extends Server
         KbRebuildWikiLinksTool::class,
         // v8.11/P3 — concept-page synthesis write surface (AutoSci concept pages)
         KbSynthesizeConceptsTool::class,
+        // v8.11/P4 — Auto-Wiki indices: build + read the navigation map
+        KbBuildWikiIndexTool::class,
+        KbWikiHubTool::class,
     ];
 
     protected function boot(): void

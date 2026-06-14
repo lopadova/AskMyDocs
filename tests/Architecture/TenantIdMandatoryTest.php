@@ -127,6 +127,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\WidgetSession::class,
         \App\Models\WidgetSessionStep::class,
         \App\Models\WidgetSessionToken::class,
+        // v8.11/P4 — Auto-Wiki index artifacts (per-project roll-up + per-tenant hub).
+        \App\Models\KbWikiIndex::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
