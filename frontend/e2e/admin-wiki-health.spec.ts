@@ -21,8 +21,10 @@ test.describe('Admin Wiki Health', () => {
         await expect(page.getByTestId('admin-wiki-health-view')).toBeVisible({ timeout: 15_000 });
 
         // Pick the seeded project; the option loads from the real projects API.
+        // Exact-match the option text — the DemoSeeder also creates `engineering`,
+        // which a bare `hasText: 'eng'` substring would collide with.
         const projectSelect = page.getByTestId('admin-wiki-health-project');
-        await expect(projectSelect.locator('option', { hasText: 'eng' })).toHaveCount(1, { timeout: 15_000 });
+        await expect(projectSelect.locator('option', { hasText: /^eng$/ })).toHaveCount(1, { timeout: 15_000 });
         await projectSelect.selectOption('eng');
 
         // Real lint report renders with the seeded dangling finding.
