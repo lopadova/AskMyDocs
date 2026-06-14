@@ -4,6 +4,7 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
+use App\Mcp\Tools\KbApplySuggestionTool;
 use App\Mcp\Tools\KbDocumentBySlugTool;
 use App\Mcp\Tools\KbDetectDecisionDebtTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
@@ -72,6 +73,8 @@ class KnowledgeBaseServer extends Server
         KbWikiNavigateTool::class,
         // v8.11/P7 — cross-model review / novelty gate
         KbWikiReviewTool::class,
+        // v8.11/P8 — apply engine (change/delete suggestions)
+        KbApplySuggestionTool::class,
     ];
 
     protected function boot(): void

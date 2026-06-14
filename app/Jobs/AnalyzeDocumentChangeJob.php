@@ -110,6 +110,19 @@ final class AnalyzeDocumentChangeJob implements ShouldQueue
                 (int) $row->suggestion_count,
                 (int) $row->impacted_count,
             );
+
+            // v8.11/P8 — opt-in auto-apply (default-OFF; the applier no-ops when
+            // `kb.change_analysis.autoapply_enabled` is false). Best-effort: a
+            // failure here must never break the (already-committed) analysis.
+            try {
+                app(\App\Services\Kb\Analysis\SuggestionApplier::class)->autoApply($row);
+            } catch (Throwable $applyError) {
+                \Illuminate\Support\Facades\Log::warning('AnalyzeDocumentChangeJob: auto-apply failed (best-effort, skipped)', [
+                    'analysis_id' => (int) $row->id,
+                    'tenant_id' => $this->tenantId,
+                    'error' => $applyError->getMessage(),
+                ]);
+            }
         } catch (Throwable $e) {
             // R14 — a failed analysis is recorded, not swallowed, so the
             // admin surface can show "analysis failed" rather than nothing.
