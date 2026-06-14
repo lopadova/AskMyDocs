@@ -22,6 +22,7 @@ import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
+import { WikiHealthView } from '../features/admin/wiki-health/WikiHealthView';
 import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -431,6 +432,23 @@ const adminContentGapsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb/content-gaps',
     component: AdminContentGapsRoute,
+});
+
+// v8.11/P10 — Wiki Health (Auto-Wiki lint report + safe auto-fix).
+function AdminWikiHealthRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="wiki-health">
+                <WikiHealthView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminWikiHealthRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/wiki-health',
+    component: AdminWikiHealthRoute,
 });
 
 // v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
@@ -846,6 +864,7 @@ const routeTree = rootRoute.addChildren([
         adminKbInsightsRoute,
         adminAnalysisSettingsRoute,
         adminContentGapsRoute,
+        adminWikiHealthRoute,
         adminKbTimeMachineRoute,
         adminLogsRoute,
         adminMaintenanceRoute,

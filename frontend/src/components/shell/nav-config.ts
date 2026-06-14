@@ -23,6 +23,7 @@ export type SidebarSection =
     | 'kb-insights'
     | 'analysis-settings'
     | 'content-gaps'
+    | 'wiki-health'
     | 'tabular-reviews'
     | 'workflows'
     | 'ai-act-compliance'
@@ -77,6 +78,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'kb-insights', label: 'Doc Insights', icon: 'Eye', route: '/app/admin/kb/insights' },
             { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Sliders', route: '/app/admin/kb/analysis-settings' },
             { id: 'content-gaps', label: 'Content Gaps', icon: 'Search', route: '/app/admin/kb/content-gaps' },
+            { id: 'wiki-health', label: 'Wiki Health', icon: 'Activity', route: '/app/admin/kb/wiki-health' },
             { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', route: '/app/admin/tabular-reviews' },
             { id: 'workflows', label: 'Workflows', icon: 'Branch', route: '/app/admin/workflows' },
         ],
