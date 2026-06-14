@@ -35,7 +35,7 @@ final class TenantReadScopeTest extends TestCase
         'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
-        'KbCollectionMember', 'KbDocAnalysis', 'KbEdge', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KnowledgeChunk',
+        'KbCollectionMember', 'KbDocAnalysis', 'KbEdge', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
