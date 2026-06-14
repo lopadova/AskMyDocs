@@ -601,6 +601,9 @@ return [
     'graph' => [
         'expansion_enabled' => env('KB_GRAPH_EXPANSION_ENABLED', true),
         'expansion_hops' => (int) env('KB_GRAPH_EXPANSION_HOPS', 1),
+        // P6 — default BFS depth for the multi-hop WikiNavigator (distinct from
+        // the legacy 1-hop GraphExpander above). Bounded 1..5 at the call site.
+        'expansion_depth' => (int) env('KB_GRAPH_EXPANSION_DEPTH', 2),
         'expansion_max_nodes' => (int) env('KB_GRAPH_EXPANSION_MAX_NODES', 20),
         'expansion_edge_types' => array_values(array_filter(array_map(
             'trim',

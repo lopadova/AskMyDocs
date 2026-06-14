@@ -18,6 +18,7 @@ use App\Mcp\Tools\KbReadDocumentTool;
 use App\Mcp\Tools\KbRebuildWikiLinksTool;
 use App\Mcp\Tools\KbWikiHubTool;
 use App\Mcp\Tools\KbWikiLintTool;
+use App\Mcp\Tools\KbWikiNavigateTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
@@ -66,6 +67,8 @@ class KnowledgeBaseServer extends Server
         KbWikiHubTool::class,
         // v8.11/P5 — Auto-Wiki lint / wiki health
         KbWikiLintTool::class,
+        // v8.11/P6 — agentic multi-hop graph navigation (primary agentic surface)
+        KbWikiNavigateTool::class,
     ];
 
     protected function boot(): void

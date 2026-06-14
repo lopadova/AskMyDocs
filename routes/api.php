@@ -425,6 +425,12 @@ Route::middleware([
         Route::post('/kb/wiki-lint/fix', [\App\Http\Controllers\Api\Admin\KbWikiLintController::class, 'fix'])
             ->name('api.admin.kb.wiki-lint.fix');
 
+        // v8.11/P6 — agentic multi-hop graph navigation (BFS from seeds or index
+        // anchors). R32 — same admin KB group gate as the representative
+        // `/api/admin/kb/evidence-tiers` row.
+        Route::post('/kb/wiki-navigate', [\App\Http\Controllers\Api\Admin\KbWikiNavigateController::class, 'navigate'])
+            ->name('api.admin.kb.wiki-navigate');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
