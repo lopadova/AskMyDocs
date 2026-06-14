@@ -381,6 +381,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbWikiNavigateCommand::class,
             // v8.11/P7 — cross-model review PHP surface (R44).
             \App\Console\Commands\KbWikiReviewCommand::class,
+            // v8.11/P8 — apply-engine PHP surface (R44).
+            \App\Console\Commands\KbApplySuggestionCommand::class,
         ]);
     }
 

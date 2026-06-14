@@ -436,6 +436,11 @@ Route::middleware([
         Route::post('/kb/documents/{id}/wiki-review', [\App\Http\Controllers\Api\Admin\KbWikiReviewController::class, 'review'])
             ->whereNumber('id')->name('api.admin.kb.documents.wiki-review');
 
+        // v8.11/P8 — apply engine: apply a change/delete suggestion (manual).
+        // R32 — same admin KB group gate as `/api/admin/kb/evidence-tiers`.
+        Route::post('/kb/analyses/{id}/apply', [\App\Http\Controllers\Api\Admin\KbApplySuggestionController::class, 'apply'])
+            ->whereNumber('id')->name('api.admin.kb.analyses.apply');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
