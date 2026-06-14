@@ -407,6 +407,16 @@ Route::middleware([
         Route::post('/kb/concepts/synthesize', [\App\Http\Controllers\Api\Admin\KbConceptSynthesisController::class, 'synthesize'])
             ->name('api.admin.kb.concepts.synthesize');
 
+        // v8.11/P4 — Auto-Wiki indices (index hub + project roll-ups) + the
+        // auto-wiki operation log. R32 — same admin KB group gate as the
+        // representative `/api/admin/kb/evidence-tiers` row.
+        Route::post('/kb/wiki-index', [\App\Http\Controllers\Api\Admin\KbWikiIndexController::class, 'rebuild'])
+            ->name('api.admin.kb.wiki-index.rebuild');
+        Route::get('/kb/wiki-index', [\App\Http\Controllers\Api\Admin\KbWikiIndexController::class, 'show'])
+            ->name('api.admin.kb.wiki-index.show');
+        Route::get('/kb/wiki-operations', [\App\Http\Controllers\Api\Admin\KbWikiIndexController::class, 'operations'])
+            ->name('api.admin.kb.wiki-operations');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

@@ -29,15 +29,22 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_seventeen_tools(): void
+    public function test_server_registers_exactly_nineteen_tools(): void
     {
-        $this->assertCount(17, $this->registeredTools());
+        $this->assertCount(19, $this->registeredTools());
     }
 
     public function test_server_registers_the_concept_synthesis_write_tool(): void
     {
         // v8.11/P3 — the concept-page synthesis MCP write surface (R44).
         $this->assertContains(\App\Mcp\Tools\KbSynthesizeConceptsTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_wiki_index_tools(): void
+    {
+        // v8.11/P4 — the Auto-Wiki index build + hub-read MCP surfaces (R44).
+        $this->assertContains(\App\Mcp\Tools\KbBuildWikiIndexTool::class, $this->registeredTools());
+        $this->assertContains(\App\Mcp\Tools\KbWikiHubTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_evidence_tier_write_tool(): void

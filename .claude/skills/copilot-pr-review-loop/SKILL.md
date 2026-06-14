@@ -286,8 +286,55 @@ Each CI run is ~2-5 minutes. Plan accordingly:
 - Push 3+: rare; if you reach push 4 without convergence, the issue is
   deeper than a quick fix — ask for human review.
 
+## Review-provider fallback: Copilot first → Codex on out-of-budget
+
+Standing from 2026-06-14 (Lorenzo). The cloud reviewer has a two-tier
+fallback; the local subagent is the always-on safety net.
+
+1. **Copilot is ALWAYS the first source.** Request it on PR open with
+   `gh pr create --reviewer copilot-pull-request-reviewer`; re-request with
+   `gh pr edit <N> --add-reviewer copilot-pull-request-reviewer` and/or a
+   `@copilot review` comment. Loop per the Rule above.
+
+2. **Detect prolonged out-of-budget.** The signature (seen across AskMyDocs
+   PRs #272–#274, 2026-06-13/14):
+   - the copilot-cli critic (R40) returns HTTP **402**
+     `additional_spend_limit_reached`, AND
+   - after requesting the cloud review, **no review fires** (empty
+     `reviewRequests`, no new `reviews`, 0 inline comments) for well past the
+     normal 1–7 min lag.
+   That is out-of-budget, not slowness — do NOT keep waiting or merge blind.
+
+3. **Auto-switch to the ChatGPT Codex connector.** Same loop, different bot:
+   ```bash
+   gh pr comment <N> --body "@codex review"
+   ```
+   The GitHub App **chatgpt-codex-connector**
+   (https://github.com/apps/chatgpt-codex-connector) must be installed on the
+   repo. It then posts a review (state `COMMENTED`) with inline findings, just
+   like Copilot. **Re-trigger after every fix** by ending the fix-reply comment
+   with `@codex review` on its own line (proven on
+   `padosoft/scalar-openapi-doc` PR #16, ~20 rounds). Read findings → fix →
+   `@codex review` → repeat until 0 must-fix.
+   - Verify which login posted: reviews come from `chatgpt-codex-connector`
+     (check `gh api repos/<owner>/<repo>/pulls/<N>/reviews`).
+   - If `@codex review` produces no reviewer after a fair wait, the app isn't
+     installed on that repo — fall through to step 4 and note it for the user.
+
+4. **Always-on local gate — code-reviewer SUBAGENT.** Regardless of which cloud
+   bot is live, run an independent `code-reviewer` subagent (Task tool) on the
+   `git diff <base>...HEAD` before merge — it's fast, billing-free, and has
+   caught real must-fix issues (the P2 auto-slug-squat) while Copilot budget was
+   out. When BOTH cloud bots are unavailable, the subagent's verdict carries the
+   merge (CI green + subagent 0 must-fix); schedule a **retroactive** cloud
+   review once budget returns.
+
+Order of authority for the cloud review: **Copilot → (out-of-budget) → Codex**;
+the subagent is the local belt-and-suspenders, not a replacement for the cloud
+pass when one is available. See [[feedback_review_escalation_copilot_then_codex]].
+
 ## Reference
 
 - `EXECUTION_PROTOCOL.md` Phase 4-5-6 (in private workspace)
-- `CLAUDE.md` rule R36 (Copilot review loop)
+- `CLAUDE.md` rule R36 (Copilot review loop + Codex fallback)
 - Lessons in `notes/lessons/v4.0.W1.B-lesson.md` (first instance)

@@ -963,7 +963,32 @@ the codebase, and to **every** PR — including docs-only PRs and CI-fix
 PRs. The only acceptable exception is a documented hotfix where every
 minute of delay is operationally costly; even then the post-merge
 review must run retroactively.
-→ See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
+
+**Review-provider fallback — Copilot first, Codex on out-of-budget
+(2026-06-14, Lorenzo):** the **first** cloud reviewer is ALWAYS GitHub
+Copilot (steps 3/5 above). But when Copilot is **out of budget for a
+prolonged period** — the symptom is HTTP **402** `additional_spend_limit_reached`
+on the copilot-cli critic (R40) AND no cloud review fires after
+requesting it (seen across PRs #272–#274) — do **NOT** stop or merge
+review-less: **automatically switch to the ChatGPT Codex connector** and
+run the SAME loop on it.
+- Codex = the GitHub App **chatgpt-codex-connector**
+  (https://github.com/apps/chatgpt-codex-connector), installed on the
+  repo. Trigger it by posting a PR comment whose body is **`@codex
+  review`** (`gh pr comment <N> --body "@codex review"`); it posts a
+  review (state `COMMENTED`) with inline findings like Copilot.
+- Re-trigger after every fix: end the fix-reply comment with `@codex
+  review` (proven on `padosoft/scalar-openapi-doc` PR #16, ~20 rounds).
+- Loop the same way: read findings → fix → `@codex review` → repeat until
+  0 must-fix, then merge (CI green + 0 outstanding must-fix).
+- **Always-on local gate:** regardless of which cloud bot is live, run an
+  independent **code-reviewer SUBAGENT** (Task tool) as the pre-merge
+  safety net — fast, billing-free, and it has caught real must-fix issues
+  while the Copilot budget was out. When BOTH cloud bots are unavailable,
+  the subagent review carries the merge (CI green + subagent 0 must-fix),
+  and a retroactive cloud review runs once budget returns.
+→ See `.claude/skills/copilot-pr-review-loop/SKILL.md` +
+  [[feedback_review_escalation_copilot_then_codex]].
 
 ### R38 — Heavy work belongs in CLI workflow steps, not behind `php artisan serve`
 **The architectural rule for any CI flake of the form
