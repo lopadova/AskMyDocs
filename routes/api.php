@@ -441,6 +441,11 @@ Route::middleware([
         Route::post('/kb/analyses/{id}/apply', [\App\Http\Controllers\Api\Admin\KbApplySuggestionController::class, 'apply'])
             ->whereNumber('id')->name('api.admin.kb.analyses.apply');
 
+        // v8.11/P9 — scheduled wiki maintenance, on-demand trigger. R32 — same
+        // admin KB group gate as `/api/admin/kb/evidence-tiers`.
+        Route::post('/kb/wiki-maintain', [\App\Http\Controllers\Api\Admin\KbWikiMaintainController::class, 'maintain'])
+            ->name('api.admin.kb.wiki-maintain');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).

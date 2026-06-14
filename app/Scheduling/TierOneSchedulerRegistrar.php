@@ -58,6 +58,8 @@ final class TierOneSchedulerRegistrar
         ['notifications_digest_weekly', 'notifications:digest-weekly'],
         // v8.7/W5 — Cloud Time Machine archived-version retention.
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
+        // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).
+        ['kb_wiki_maintain', 'kb:wiki-maintain'],
     ];
 
     public function register(Schedule $schedule): void

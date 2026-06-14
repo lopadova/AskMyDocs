@@ -251,6 +251,12 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_CRON', '20 4 * * *'),
         ],
+        // v8.11/P9 — scheduled Auto-Wiki maintenance (daily 04:40): rebuild
+        // indices + lint + backfill un-enriched docs.
+        'kb_wiki_maintain' => [
+            'enabled' => (bool) env('SCHEDULE_KB_WIKI_MAINTAIN_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_KB_WIKI_MAINTAIN_CRON', '40 4 * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,
