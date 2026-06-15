@@ -214,6 +214,7 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                 type="button"
                 data-testid={`chat-citation-${index}`}
                 data-origin={origin}
+                data-tier={citation.generation_source ?? 'human'}
                 data-openable={canOpen ? 'true' : 'false'}
                 aria-label={
                     canOpen
@@ -260,6 +261,27 @@ function CitationChip({ citation, index, open, onOpenChange, onOpenSource }: Cit
                 <span className="mono" style={{ ...ELLIPSIS, flex: '0 1 auto', fontSize: 11 }}>
                     {label}
                 </span>
+                {citation.generation_source === 'auto' && (
+                    <span
+                        data-testid={`chat-citation-${index}-tier`}
+                        title="Auto-compiled page (ranks below human-vouched content)"
+                        style={{
+                            flex: '0 0 auto',
+                            padding: '0 6px',
+                            fontSize: 9.5,
+                            lineHeight: '15px',
+                            borderRadius: 99,
+                            background: 'var(--bg-3)',
+                            border: '1px solid var(--warn, #d29922)',
+                            color: 'var(--warn, #d29922)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '.05em',
+                            fontFamily: 'var(--font-mono)',
+                        }}
+                    >
+                        auto
+                    </span>
+                )}
                 {heading && (
                     <>
                         <span aria-hidden="true" style={{ flex: '0 0 auto', color: 'var(--fg-4)' }}>
