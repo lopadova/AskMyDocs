@@ -59,6 +59,9 @@ class TestingController extends Controller
         // v8.11/P10 — an unhealthy Auto-Wiki graph (dangling/orphan/missing-index)
         // for the Wiki Health admin-screen E2E.
         'WikiHealthSeeder' => \Database\Seeders\WikiHealthSeeder::class,
+        // v8.11/P10 — two slugged canonical docs (human + auto) for the Wiki
+        // Indices admin-screen E2E (rebuild → hub roll-up appears).
+        'WikiIndicesSeeder' => \Database\Seeders\WikiIndicesSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse
