@@ -65,6 +65,9 @@ class TestingController extends Controller
         // v8.11/P10 — one completed analysis with an appliable cross-reference
         // for the Doc Insights "Apply" admin-screen E2E.
         'KbApplySuggestionSeeder' => \Database\Seeders\KbApplySuggestionSeeder::class,
+        // v8.11/P10 — one auto + one human wiki page for the Wiki Explorer
+        // admin-screen E2E (promote auto → becomes human/read-only).
+        'WikiExplorerSeeder' => \Database\Seeders\WikiExplorerSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse
