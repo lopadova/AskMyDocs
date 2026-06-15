@@ -24,6 +24,7 @@ export type SidebarSection =
     | 'analysis-settings'
     | 'content-gaps'
     | 'wiki-health'
+    | 'wiki-indices'
     | 'tabular-reviews'
     | 'workflows'
     | 'ai-act-compliance'
@@ -79,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'analysis-settings', label: 'Analysis Gate', icon: 'Sliders', route: '/app/admin/kb/analysis-settings' },
             { id: 'content-gaps', label: 'Content Gaps', icon: 'Search', route: '/app/admin/kb/content-gaps' },
             { id: 'wiki-health', label: 'Wiki Health', icon: 'Activity', route: '/app/admin/kb/wiki-health' },
+            { id: 'wiki-indices', label: 'Wiki Indices', icon: 'Book', route: '/app/admin/kb/wiki-indices' },
             { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', route: '/app/admin/tabular-reviews' },
             { id: 'workflows', label: 'Workflows', icon: 'Branch', route: '/app/admin/workflows' },
         ],
