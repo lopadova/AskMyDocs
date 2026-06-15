@@ -22,6 +22,16 @@
         ]
       },
       {
+        "group": "Guides",
+        "icon": "book-open",
+        "pages": [
+          "ingestion",
+          "chat-and-retrieval",
+          "canonical-and-promotion",
+          "auto-wiki"
+        ]
+      },
+      {
         "group": "Best Practices",
         "icon": "lightbulb",
         "pages": [
