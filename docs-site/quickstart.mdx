@@ -1,0 +1,117 @@
+---
+title: "Quickstart"
+description: "From a fresh clone to your first grounded, cited answer in about five minutes."
+icon: "bolt"
+---
+
+This walks you from a clone to a grounded answer. For the full prerequisite
+matrix and production hardening, see [Installation](/installation).
+
+<Note>
+  AskMyDocs is a Laravel 13 application. You need **PHP 8.3+**, **Composer**,
+  **Node 20+**, and a **PostgreSQL 15+** database with the **pgvector** extension.
+  The Quickstart uses OpenAI for chat + embeddings; any supported provider works
+  (see [AI providers](/ai-providers)).
+</Note>
+
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/lopadova/AskMyDocs.git
+    cd AskMyDocs
+    composer install
+    npm install && npm run build
+    ```
+  </Step>
+
+  <Step title="Configure the environment">
+    Copy the example env and set your database + one AI provider key.
+
+    ```bash
+    cp .env.example .env
+    php artisan key:generate
+    ```
+
+    Then edit `.env`:
+
+    ```env
+    DB_CONNECTION=pgsql
+    DB_HOST=127.0.0.1
+    DB_PORT=5432
+    DB_DATABASE=askmydocs
+    DB_USERNAME=postgres
+    DB_PASSWORD=secret
+
+    AI_PROVIDER=openai
+    AI_EMBEDDINGS_PROVIDER=openai
+    OPENAI_API_KEY=sk-...
+    ```
+
+    <Warning>
+      Embedding dimensions are part of the contract. The stock schema is sized
+      for a **1536-dim** model (`openai/text-embedding-3-small`). Switching to a
+      different-dimension model means migrating the `vector(N)` columns, flushing
+      the cache, and re-indexing — see [Installation](/installation#embedding-dimensions).
+    </Warning>
+  </Step>
+
+  <Step title="Migrate the database">
+    pgvector must be installed in PostgreSQL first (`CREATE EXTENSION vector;`).
+    Then run the migrations:
+
+    ```bash
+    php artisan migrate
+    ```
+  </Step>
+
+  <Step title="Ingest some documents">
+    Point the folder ingester at a directory of markdown and assign a project key.
+    Ingestion is idempotent — re-running on identical bytes is a no-op.
+
+    ```bash
+    php artisan kb:ingest-folder docs/ --project=handbook
+    ```
+
+    The same execution path is available over HTTP (`POST /api/kb/ingest`,
+    Sanctum-protected, batch ≤ 100). See [Ingestion](/ingestion).
+  </Step>
+
+  <Step title="Ask a grounded question">
+    Use the stateless JSON API:
+
+    ```bash
+    curl -X POST https://your-host/api/kb/chat \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{"question": "What is our remote-work policy?", "project_key": "handbook"}'
+    ```
+
+    The response carries the `answer`, the `citations` that grounded it, and a
+    `meta` block (provider, model, latency, retrieved-chunk count). Or open the
+    React chat UI at **`/app/chat`** for the streaming experience with inline
+    citations and suggested follow-ups.
+  </Step>
+</Steps>
+
+## What just happened
+
+1. Your markdown was chunked (section-aware), embedded, and upserted into
+   PostgreSQL on the idempotency tuple `(project_key, source_path, version_hash)`.
+2. Your question was embedded and run through **hybrid retrieval** — vector +
+   full-text — then fused by the [reranker](/architecture/retrieval-pipeline).
+3. The grounded context was composed into a prompt and sent to your provider via
+   `AiManager`, and the answer came back **with citations** to the exact chunks.
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Core concepts" icon="diagram-project" href="/core-concepts">
+    Understand the canonical layer and the knowledge graph.
+  </Card>
+  <Card title="Connectors" icon="plug" href="/connectors">
+    Pull from Google Drive, Notion, Confluence, Jira and more.
+  </Card>
+  <Card title="Admin panel" icon="gauge" href="/admin-panel">
+    Dashboards, RBAC, the KB explorer, logs, and maintenance.
+  </Card>
+</CardGroup>

@@ -1,5 +1,5 @@
 ---
-applyTo: "**/*.{php,ts,tsx,js,jsx,yml,yaml}"
+applyTo: "**/*.{php,ts,tsx,js,jsx,yml,yaml,mdx,json}"
 description: "AskMyDocs critical R-rules — auto-loaded by Copilot CLI + GitHub Copilot Code Review (path-scoped)"
 ---
 
@@ -158,6 +158,25 @@ real-data happy path, AND the injection block carries an
 `R13: failure injection` marker comment.
 
 `scripts/verify-e2e-real-data.sh` gates this in CI.
+
+---
+
+## R45 — Doc-site parity (Mintlify `/docs-site/`)
+
+A PR that adds/changes a capability — or edits `README.md` feature tables /
+changelog / roadmap — MUST also ship the corresponding **deep page** under
+`/docs-site/` and register it in `docs.json`. The doc-site is authored at
+academic / senior-architect depth: motivation → theory → design **with a Mermaid
+diagram** → data model → **ADR-style rationale** (link `/docs/adr/*`) → worked
+example → gotchas. NOT a condensed README paste.
+
+- `docs.json` must be valid JSON; every `navigation.groups[].pages[]` entry must
+  have a real file (Mintlify errors otherwise) — `must-fix`.
+- Every quoted column / env var / command / route must match the code (R9).
+- A README change with no matching `/docs-site/` change in the same PR is
+  `must-fix` (or an explicitly filed follow-up).
+
+See `.claude/skills/mintlify-doc-authoring/`.
 
 ---
 
