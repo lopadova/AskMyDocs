@@ -80,8 +80,8 @@ flowchart LR
 - **Why 1-hop graph expansion, not N-hop?** One hop captures the
   directly-related context (superseding decision, owning module) without
   exploding the prompt or pulling in weakly-related noise. Deeper multi-hop
-  navigation is a deliberate, separate agentic primitive
-  ([Auto-Wiki](/auto-wiki) `WikiNavigator`), not the default chat path.
+  navigation is a deliberate, separate agentic primitive (Auto-Wiki
+  `WikiNavigator`), not the default chat path.
 - **Why degrade to a no-op?** A tenant with zero canonical docs gets identical
   behaviour to plain hybrid RAG — existing consumers see no change until they
   canonicalize. Both components return empty in that case.
@@ -112,8 +112,8 @@ flowchart LR
   frontmatter, not arbitrarily.
 
 <CardGroup cols={2}>
-  <Card title="Canonical graph (architecture)" icon="share-nodes" href="/architecture/canonical-graph">
-    The kb_nodes / kb_edges schema and tenant-scoped FKs.
+  <Card title="Architecture overview" icon="share-nodes" href="/architecture/overview">
+    The kb_nodes / kb_edges schema and project-scoped composite FKs.
   </Card>
   <Card title="Anti-hallucination firewall" icon="shield-halved" href="/anti-hallucination-firewall">
     Why human-vouched knowledge always outranks machine output.

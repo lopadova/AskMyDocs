@@ -70,8 +70,8 @@ flowchart LR
 ## Worked example
 
 ```bash
-# Promote a doc, then pin its evidence tier as an operator override
-php artisan kb:evidence-tier set decisions/dec-cache-v2.md --tier=official --project=eng
+# Promote a doc (get its numeric id first), then pin its evidence tier as an operator override
+php artisan kb:evidence-tier 42 --set=official --tenant=eng
 ```
 
 Now a chat answer that leans on that doc renders an `Evidence: official` line for
@@ -88,7 +88,7 @@ low-confidence in the response.
   <Card title="Anti-hallucination firewall" icon="shield-halved" href="/anti-hallucination-firewall">
     The human &gt; auto &gt; raw trust ranking in the reranker.
   </Card>
-  <Card title="Retrieval pipeline" icon="layer-group" href="/architecture/retrieval-pipeline">
+  <Card title="Architecture overview" icon="layer-group" href="/architecture/overview">
     Where tiers and grounding plug into hybrid search.
   </Card>
 </CardGroup>

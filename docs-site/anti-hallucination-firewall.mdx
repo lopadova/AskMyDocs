@@ -6,7 +6,7 @@ icon: "shield-halved"
 
 ## Motivation / problem
 
-AskMyDocs deliberately lets an LLM *write* knowledge — the [Auto-Wiki](/auto-wiki)
+AskMyDocs deliberately lets an LLM *write* knowledge — the Auto-Wiki
 tier enriches frontmatter, synthesizes concept pages, and materialises graph
 edges. That is powerful and dangerous: the moment machine-generated content is
 indistinguishable from human-authored truth, every guarantee about grounding
@@ -59,7 +59,7 @@ flowchart TD
 
 - `knowledge_documents.generation_source` — `human` (default) | `auto`.
 - Reranker knobs: the canonical boost + status penalty weights (see
-  [Retrieval pipeline](/architecture/retrieval-pipeline)).
+  [Architecture overview](/architecture/overview)).
 - Auto-review verdict persisted to `frontmatter_json._autowiki.review` + audited
   (`system:autowiki-review`).
 - Promote/discard: `kb:wiki-promote`, `POST …/documents/{id}/wiki-{promote,discard}`,
@@ -81,8 +81,11 @@ flowchart TD
 
 ```bash
 # An auto-synthesized concept page is reviewed, then promoted across the firewall
-php artisan kb:wiki-review domain-concepts/caching.md          # cross-model audit
-php artisan kb:wiki-promote domain-concepts/caching.md --project=eng  # auto → human
+# (use the numeric knowledge_documents.id — e.g. 57)
+php artisan kb:wiki-review 57 --tenant=eng           # cross-model audit
+php artisan kb:wiki-promote 57 --tenant=eng          # auto → human
+# or discard it:
+php artisan kb:wiki-promote 57 --discard --tenant=eng
 ```
 
 Before promotion, the caching concept page is retrievable but always ranked below
@@ -99,7 +102,7 @@ human tier and the firewall treats it as authoritative.
   without risking authority — keep them coupled.
 
 <CardGroup cols={2}>
-  <Card title="Auto-Wiki" icon="wand-magic-sparkles" href="/auto-wiki">
+  <Card title="Core concepts" icon="wand-magic-sparkles" href="/core-concepts">
     The self-compiling tier the firewall contains.
   </Card>
   <Card title="Grounding & evidence tiers" icon="scale-balanced" href="/grounding-and-evidence-tiers">
