@@ -17,7 +17,7 @@ full React SPA admin shell ships alongside the chat: KPI dashboard, users
 + roles + RBAC, canonical KB explorer with inline editor and graph viewer,
 log viewer (five tabs), whitelisted Artisan maintenance runner, and a
 daily AI-insights panel. Every admin page runs behind Spatie roles, every
-mutation audit-trails into `kb_canonical_audit` or `admin_command_audits`,
+mutation audit-trails into `kb_canonical_audit` or `admin_command_audit`,
 and every destructive command requires a DB-backed single-use confirm
 token.
 
@@ -131,8 +131,12 @@ share the same slug / doc_id.
 `to_tsvector(<lang>, chunk_text)` (pgsql only, no-op elsewhere).
 
 ### `embedding_cache`
-`id`, `text_hash` (SHA-256, UNIQUE), `provider`, `model`,
+`id`, `text_hash` (SHA-256), `provider`, `model`,
 `embedding vector(N)`, `created_at`, `last_used_at` (LRU pruning).
+UNIQUE `(text_hash, provider, model)` (`embedding_cache_text_hash_provider_model_unique`
+— composite key so different provider/model pairs for the same text coexist
+as separate entries; upgraded from `UNIQUE(text_hash)` in migration
+`2026_05_03_000001_change_embedding_cache_unique_to_composite.php`).
 
 ### `chat_logs`
 `session_id`, `user_id?`, `question`, `answer`, `project_key?`, `ai_provider`,
@@ -160,9 +164,13 @@ decision_for, documented_by, affects, owned_by), `project_key`,
 `provenance` (wikilink | frontmatter_related | frontmatter_supersedes |
 frontmatter_superseded_by | inferred), `payload_json`.
 **Uniqueness:** `(project_key, edge_uid)` = `uq_kb_edges_project_uid`.
-**Composite FK (tenant-scoped)**: `(project_key, from_node_uid)` →
+**Composite FK (project-scoped)**: `(project_key, from_node_uid)` →
 `kb_nodes.(project_key, node_uid)` with ON DELETE CASCADE, same for
-`to_node_uid`. Cross-tenant edges are **structurally impossible**.
+`to_node_uid` — an edge must resolve to nodes in the **same project**
+(intra-project referential integrity). Cross-**tenant** isolation is **not**
+enforced by this FK (it is keyed on `project_key`, which is shared across
+tenants) but at the application layer via R30 `forTenant()` scoping. (A
+tenant-scoped composite-FK rebuild was considered and deferred.)
 
 ### `kb_canonical_audit` (immutable editorial trail)
 `id`, `project_key`, `doc_id?`, `slug?`, `event_type` (promoted | updated |
@@ -309,9 +317,10 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
   code that assumes either feature is "always populated".
 - **Canonical slug + doc_id are tenant-scoped, NOT global.** Two projects
   can legitimately share `dec-cache-v2`. The composite uniques are
-  `(project_key, slug)` and `(project_key, doc_id)`; composite FKs on
-  `kb_edges` make cross-tenant edges structurally impossible. Never
-  assume global slug uniqueness in new code.
+  `(project_key, slug)` and `(project_key, doc_id)`; the composite FKs on
+  `kb_edges` are **project-scoped** (intra-project referential integrity) —
+  cross-tenant isolation is the application-layer R30 `forTenant()` scope, not
+  the FK. Never assume global slug uniqueness in new code.
 
 ---
 
@@ -407,9 +416,10 @@ deliberately. 10-point operational checklist:
    both states; wrong for retrieval grounding.
 2. `scopeAccepted()` implies `canonical()` — don't re-implement status
    filtering by hand.
-3. Tenant-scoped composite FKs on `kb_edges` — never add an edge without
-   `project_key`. Cross-tenant edges are structurally impossible;
-   FK violations are bugs to fix, not silence.
+3. Project-scoped composite FKs on `kb_edges` — never add an edge without
+   `project_key` (the FK is `(project_key, node_uid)`; tenant isolation is the
+   application-layer R30 `forTenant()` scope, not the FK). FK violations are
+   bugs to fix, not silence.
 4. Slug + doc_id uniqueness is scoped per project. Two different projects
    CAN and SHOULD share `dec-cache-v2`.
 5. Hard delete cascades the graph via `DocumentDeleter::forceDelete()`;
@@ -831,11 +841,16 @@ active tenant via `forTenant($ctx->current())` (provided by the
 `BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
 different customers can legitimately share the same `project_key` — tenant
 boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
-Tenant-aware tables: knowledge_documents, knowledge_chunks,
-embedding_cache, chat_logs, conversations, messages, kb_nodes, kb_edges,
+Tenant-aware tables (authoritative list: `TenantIdMandatoryTest::TENANT_AWARE_MODELS`):
+knowledge_documents, knowledge_chunks,
+chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
-knowledge_document_tags, knowledge_document_acl, admin_command_audits,
+knowledge_document_tags, knowledge_document_acl, admin_command_audit,
 admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
+**`embedding_cache` is intentionally NOT tenant-aware** — a cross-tenant reuse
+layer keyed `UNIQUE(text_hash, provider, model)` (same text+provider+model embeds once
+across tenants); `TenantIdMandatoryTest` documents the exclusion. (`User` is likewise
+excluded as cross-tenant identity.)
 → See `.claude/skills/cross-tenant-isolation/SKILL.md`.
 
 ### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
