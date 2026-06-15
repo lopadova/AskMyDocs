@@ -166,9 +166,10 @@ when no canonical docs exist.
   `from_node_uid`, `to_node_uid`, `edge_type` (10 values), `project_key`,
   `source_doc_id`, `weight` (decimal 8,4), `provenance` (wikilink |
   frontmatter_* | inferred). UNIQUE `(project_key, edge_uid)`. **Composite
-  FKs** tenant-scoped: `(project_key, from/to_node_uid)` →
-  `kb_nodes.(project_key, node_uid)` with ON DELETE CASCADE. Cross-tenant
-  edges are **structurally impossible**.
+  FKs** project-scoped: `(project_key, from/to_node_uid)` →
+  `kb_nodes.(project_key, node_uid)` with ON DELETE CASCADE (intra-project
+  referential integrity). Cross-**tenant** isolation is the application-layer
+  R30 `forTenant()` scope, not this FK (`project_key` is shared across tenants).
 - **`kb_canonical_audit`** — immutable forensic trail. `project_key`,
   `doc_id?`, `slug?`, `event_type` (promoted | updated | deprecated |
   superseded | rejected_injection_used | graph_rebuild), `actor`,

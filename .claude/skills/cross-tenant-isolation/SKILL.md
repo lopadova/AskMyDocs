@@ -14,7 +14,7 @@ the active tenant. Pick one of:
 2. Explicit `where('tenant_id', $ctx->current())`
 
 Tenant-aware tables (sync with `TenantIdMandatoryTest::TENANT_AWARE_MODELS`):
-knowledge_documents, knowledge_chunks, embedding_cache, chat_logs,
+knowledge_documents, knowledge_chunks, chat_logs,
 conversations, messages, kb_nodes, kb_edges, kb_canonical_audit,
 project_memberships, kb_tags, knowledge_document_tags,
 knowledge_document_acl, admin_command_audit, admin_command_nonces,
