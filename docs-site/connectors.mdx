@@ -1,0 +1,79 @@
+---
+title: "Universal connectors"
+description: "Plug AskMyDocs into Google Drive, Notion, OneDrive, Evernote, Microsoft Fabric, Confluence and Jira — OAuth in, source-aware chunked + cited out — via a standalone connector-package framework."
+icon: "plug"
+---
+
+## Motivation
+
+Most "RAG over docs" tools expect a pile of pre-flattened markdown or ship a
+single brittle "Drive sync". AskMyDocs ships a real **connector framework** plus
+seven native connectors, so every external corpus lands in the canonical KB with
+its provenance, native IDs, ACL hints, and status preserved — and gets chunked
+the way that source actually wants to be chunked.
+
+## The seven native connectors
+
+| Connector | Auth | Notes |
+|---|---|---|
+| `google-drive` | OAuth2 | delta-query incremental sync |
+| `notion` | OAuth2 | block paginator |
+| `onedrive` | Microsoft Graph | delta-query; markdown/text/PDF |
+| `evernote` | OAuth | `.enex` bulk import |
+| `fabric` | API key | OAuth pending upstream |
+| `confluence` | Atlassian OAuth 2.0 3LO | `cloud_id` persisted, reusable by Jira |
+| `jira` | Atlassian OAuth 2.0 3LO | ADF→markdown + injection-safe JQL |
+
+Each is a **standalone `padosoft/askmydocs-connector-*` Composer package**,
+`composer require`-able and auto-discovered via
+`composer.json::extra.askmydocs.connectors`. They talk to AskMyDocs only through
+the `ConnectorIngestionContract` IoC bridge — no hard dependency on the host.
+
+## Source-aware chunking
+
+```mermaid
+flowchart LR
+    SRC[connector pull] --> REG["PipelineRegistry::resolveChunker()<br/>(R23: FQCN-validated + supports() mutex at boot)"]
+    REG --> N[NotionBlockChunker]
+    REG --> C[ConfluencePageChunker]
+    REG --> O[OfficeDocChunker]
+    REG --> J[JiraIssueChunker]
+    REG --> P[PdfPageChunker]
+    N & C & O & J & P --> ING[DocumentIngestor]
+```
+
+A per-source chunker is **mandatory** for every connector — never reuse the
+generic `MarkdownChunker`. Each populates rich frontmatter (document-level
+`connector` / `external_id` / `external_url` / native timestamps; chunk-level
+`source_type` / `search_tags` / `recency_bucket` / ACL hint / status) that drives
+`KbSearchService` facets and the reranker's Layer-4 signals.
+
+## Installing a connector
+
+```bash
+composer require padosoft/askmydocs-connector-notion
+```
+
+Then log in as a **super-admin** and open **`/app/admin/connectors`** — the React
+SPA handles the OAuth handshake (signed callback), persists a
+`connector_installations` + `connector_credentials` row, and the scheduler-driven
+`ConnectorSyncJob` runs incremental sync.
+
+## Gotchas & operations
+
+- Every new connector/document type MUST ship an ad-hoc chunker + rich frontmatter
+  + a retrieval-boost policy — this is a hard rule, not a nicety.
+- Connectors are gated by `manageConnectors` (super-admin only) — they expose
+  cross-tenant credential vaults + OAuth callbacks; the blast radius is too large
+  to widen without an ADR.
+- Live-fixture recording is opt-in (`tests/Live/Connectors/`, per-provider env
+  guard); CI runs only Unit + Feature.
+
+<CardGroup cols={2}>
+  <Card title="Ingestion" icon="file-import" href="/ingestion">
+    The one execution path every connector pull converges on.
+  </Card>
+  <Card title="Admin panel" icon="gauge" href="/admin-panel">
+    The connector OAuth + sync surface in the admin cockpit.
+  </Card>
+</CardGroup>

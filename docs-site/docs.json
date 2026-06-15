@@ -28,7 +28,12 @@
           "ingestion",
           "chat-and-retrieval",
           "canonical-and-promotion",
-          "auto-wiki"
+          "auto-wiki",
+          "connectors",
+          "kitt-widget",
+          "admin-panel",
+          "evidence-risk-review",
+          "pii-and-compliance"
         ]
       },
       {

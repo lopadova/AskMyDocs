@@ -1,0 +1,80 @@
+---
+title: "PII redaction & compliance"
+description: "Field-level PII redaction at every persistence boundary (GDPR-grade, default-off, granular per touch-point) plus the EU AI Act compliance pack — DSAR, bias monitoring, risk register, consent + disclosure, audit evidence."
+icon: "shield-halved"
+---
+
+## Motivation
+
+Regulated-industry RAG needs more than data residency: it needs **field-level
+redaction inside the application boundary** so PII never lands in a log, a cache,
+or an embedding — and an auditable compliance posture for GDPR and the EU AI Act.
+AskMyDocs wires both in, default-off and granular, so existing deployments see
+byte-identical behaviour until they opt in.
+
+## PII redaction at every persistence boundary
+
+`padosoft/laravel-pii-redactor` is wired at **11 persistence touch-points** so a
+piece of PII is redacted wherever it would otherwise be written:
+
+```mermaid
+flowchart TD
+    IN[chat / ingest / connector input] --> MW[chat-message middleware]
+    MW --> EMB[embedding-cache pre-redact]
+    MW --> OBS["Conversation/Message + ChatLog observers"]
+    OBS --> AUD["admin audit + insights observers"]
+    MW --> LOG[Monolog processor]
+    LOG --> FJ[failed-jobs sanitiser]
+    OBS --> FLOW[Flow payload redactor]
+```
+
+The touch-points span: the chat middleware, embedding-cache pre-redact, the
+AI-insights snippet sanitiser, the operator detokenize endpoint, a Monolog
+processor, a failed-job listener (deterministic UUID match), the
+`Conversation` / `Message` / `ChatLog` / audit / insights `creating`/`saving`
+observers, and the Flow payload-redactor contract. EU country packs (Italy,
+Germany, Spain), six checksum-validated detectors, four strategies (mask / hash /
+tokenise / drop), dual NER drivers. **Every knob is default-OFF.**
+
+A `tokenise` strategy is reversible: the operator **detokenize endpoint**
+(`POST /api/admin/logs/chat/{id}/detokenize`) round-trips a tokenised row back to
+the original, gated by a `dpo`/`super-admin` permission, every call audited.
+
+## EU AI Act compliance pack
+
+`padosoft/laravel-ai-act-compliance` adds a compliance domain + a companion admin
+SPA cross-mounted at `/app/admin/ai-act-compliance`:
+
+- **DSAR** — data-subject access/erasure requests (export + delete).
+- **Bias monitoring** — a pluggable metric registry (demographic parity /
+  equalized odds / calibration) with cohort-drift alerting.
+- **Risk register + FRIA** (Art. 27 fundamental-rights impact assessment).
+- **Consent + disclosure middleware** — `ai.consent` / `ai.disclosure`.
+- **Incident state machine**, human-review tracker, Article 30 attestation PDF,
+  a regulatory-feed auto-flagger, and DPO multi-org tenant management.
+
+## RBAC
+
+The `dpo` role exists specifically for these surfaces. PII admin is gated by
+`viewPiiRedactorAdmin` (admin / dpo / super-admin), detokenize by
+`detokenisePiiRedactor` (dpo / super-admin), raw samples by super-admin only; AI
+Act by `viewAiActCompliance` (admin / dpo / super-admin). All are in the R32
+authorization matrix.
+
+## Gotchas & operations
+
+- Every redaction knob is **default-OFF** — opt in per touch-point; a fresh deploy
+  redacts nothing until configured.
+- Redaction happens **inside** the app boundary (field-level), which is stronger
+  than data-residency alone — but it is not a substitute for transport/storage
+  encryption.
+- Detokenize is a privileged, audited reverse-lookup — never widen its gate.
+
+<CardGroup cols={2}>
+  <Card title="Multi-tenant isolation" icon="building-shield" href="/multi-tenant-isolation">
+    The tenant boundary that complements field-level redaction.
+  </Card>
+  <Card title="Evidence & Risk Review" icon="shield-check" href="/evidence-risk-review">
+    The answer-grounding risk firewall.
+  </Card>
+</CardGroup>
