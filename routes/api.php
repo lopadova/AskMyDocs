@@ -446,6 +446,16 @@ Route::middleware([
         Route::post('/kb/wiki-maintain', [\App\Http\Controllers\Api\Admin\KbWikiMaintainController::class, 'maintain'])
             ->name('api.admin.kb.wiki-maintain');
 
+        // v8.11/P10 — Wiki Explorer: browse typed wiki pages (auto/human tier),
+        // promote an auto page to the human-vouched tier, discard (soft-delete)
+        // an auto page. R32 — `/api/admin/kb/wiki-pages` is the matrix row.
+        Route::get('/kb/wiki-pages', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'index'])
+            ->name('api.admin.kb.wiki-pages');
+        Route::post('/kb/documents/{id}/wiki-promote', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'promote'])
+            ->whereNumber('id')->name('api.admin.kb.documents.wiki-promote');
+        Route::post('/kb/documents/{id}/wiki-discard', [\App\Http\Controllers\Api\Admin\KbWikiExplorerController::class, 'discard'])
+            ->whereNumber('id')->name('api.admin.kb.documents.wiki-discard');
+
         // v8.7/W5 — Cloud Time Machine: version timeline + diff + restore.
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/documents/1/versions`).
