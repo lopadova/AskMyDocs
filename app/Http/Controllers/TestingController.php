@@ -56,6 +56,9 @@ class TestingController extends Controller
         // v8.8/W6 — a persisted conversation citing a canonical doc + its
         // graph neighbour for the chat-side Related-panel E2E.
         'KbChatGraphSeeder' => \Database\Seeders\KbChatGraphSeeder::class,
+        // v8.11/P10 — an unhealthy Auto-Wiki graph (dangling/orphan/missing-index)
+        // for the Wiki Health admin-screen E2E.
+        'WikiHealthSeeder' => \Database\Seeders\WikiHealthSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse
