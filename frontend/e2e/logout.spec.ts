@@ -34,13 +34,13 @@ test.describe('Sign out', () => {
         await expect(page).toHaveURL(/\/login$/);
     });
 
-    // R13: failure injection — internal route intercept is permitted here
-    // because the happy-path variant above already exercises the real
-    // logout flow end-to-end against the live backend.
     test('surfaces an error and keeps the user signed in when logout fails', async ({ page }) => {
         await page.goto('/app/chat');
         await expect(page.getByTestId('appshell-root')).toBeVisible({ timeout: 15_000 });
 
+        // R13: failure injection — internal route intercept is permitted
+        // here because the happy-path variant above already exercises the
+        // real logout flow end-to-end against the live backend.
         await page.route('**/api/auth/logout', async (route) => {
             await route.fulfill({
                 status: 500,
