@@ -1,20 +1,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { Icon } from '../Icons';
 import { Avatar } from './Avatar';
 import { useAuthStore } from '../../lib/auth-store';
 import { logout } from '../../features/auth/auth.api';
 import { queryClient } from '../../lib/query-client';
-
-export type UserMenuProps = {
-    /*
-     * Hard-navigates to the login screen after a CONFIRMED sign-out. The
-     * default does a full document reload so every scrap of in-memory SPA
-     * state — the auth/team zustand stores AND the TanStack Query cache —
-     * is torn down, not just hidden. Injectable so Vitest can assert the
-     * post-logout transition without driving jsdom navigation.
-     */
-    onSignedOut?: () => void;
-};
 
 type Status = 'idle' | 'loading' | 'error';
 
@@ -37,8 +27,9 @@ type Status = 'idle' | 'loading' | 'error';
  * they are not. We clear + redirect ONLY after the 204 confirms the
  * server session is gone.
  */
-export function UserMenu({ onSignedOut }: UserMenuProps) {
+export function UserMenu() {
     const user = useAuthStore((s) => s.user);
+    const navigate = useNavigate();
     const [open, setOpen] = useState(false);
     const [status, setStatus] = useState<Status>('idle');
     const ref = useRef<HTMLDivElement | null>(null);
@@ -83,8 +74,6 @@ export function UserMenu({ onSignedOut }: UserMenuProps) {
         return null;
     }
 
-    const redirect = onSignedOut ?? (() => window.location.assign('/login'));
-
     const handleSignOut = async () => {
         if (status === 'loading') {
             return;
@@ -93,13 +82,16 @@ export function UserMenu({ onSignedOut }: UserMenuProps) {
         try {
             // 204 confirms the server session + CSRF token are gone.
             await logout();
-            // Only NOW is it safe to drop client state: clear the auth +
-            // team stores, then the query cache (it holds tenant-scoped
-            // data that must not survive into the next session), then
-            // hard-redirect so nothing authenticated lingers in memory.
+            // Only NOW is it safe to drop client state: clear the auth
+            // store, then the query cache (it holds tenant-scoped data that
+            // must not survive into the next session).
             useAuthStore.getState().clear();
             queryClient.clear();
-            redirect();
+            // Client-side nav to the SPA's React login — the SAME surface
+            // the RequireAuth guard bounces an unauthenticated user to. A
+            // full reload would instead hit Laravel's legacy Blade /login,
+            // which is served only outside the SPA's /app/* routes.
+            navigate({ to: '/login' });
         } catch {
             // Session is still valid server-side — keep the menu open and
             // let the user retry. Do NOT clear local state (R14).

@@ -5,6 +5,12 @@ import { UserMenu } from './UserMenu';
 import { useAuthStore } from '../../lib/auth-store';
 import { queryClient } from '../../lib/query-client';
 
+const navigateSpy = vi.fn();
+
+vi.mock('@tanstack/react-router', () => ({
+    useNavigate: () => navigateSpy,
+}));
+
 vi.mock('../../features/auth/auth.api', () => ({
     logout: vi.fn(),
 }));
@@ -17,6 +23,7 @@ const USER = { id: 7, name: 'Elena Rossi', email: 'elena@acme.io' };
 beforeEach(() => {
     useAuthStore.setState({ user: USER, roles: [], permissions: [], projects: [], loading: false });
     vi.mocked(logout).mockReset();
+    navigateSpy.mockReset();
 });
 
 afterEach(() => {
@@ -43,19 +50,18 @@ describe('UserMenu', () => {
         expect(screen.getByTestId('user-menu-logout')).toBeInTheDocument();
     });
 
-    it('signs out: calls logout, clears the auth store + query cache, then redirects', async () => {
+    it('signs out: calls logout, clears the auth store + query cache, then navigates to /login', async () => {
         const user = userEvent.setup();
         vi.mocked(logout).mockResolvedValue(undefined);
         const clearCache = vi.spyOn(queryClient, 'clear');
-        const onSignedOut = vi.fn();
 
-        render(<UserMenu onSignedOut={onSignedOut} />);
+        render(<UserMenu />);
         await user.click(screen.getByTestId('user-menu-trigger'));
         await user.click(screen.getByTestId('user-menu-logout'));
 
         await vi.waitFor(() => {
             expect(logout).toHaveBeenCalledTimes(1);
-            expect(onSignedOut).toHaveBeenCalledTimes(1);
+            expect(navigateSpy).toHaveBeenCalledWith({ to: '/login' });
         });
         // Local session state is dropped ONLY after the server confirms.
         expect(useAuthStore.getState().user).toBeNull();
@@ -66,9 +72,8 @@ describe('UserMenu', () => {
         const user = userEvent.setup();
         vi.mocked(logout).mockRejectedValue(new Error('network'));
         const clearCache = vi.spyOn(queryClient, 'clear');
-        const onSignedOut = vi.fn();
 
-        render(<UserMenu onSignedOut={onSignedOut} />);
+        render(<UserMenu />);
         await user.click(screen.getByTestId('user-menu-trigger'));
         await user.click(screen.getByTestId('user-menu-logout'));
 
@@ -79,7 +84,7 @@ describe('UserMenu', () => {
         // is still valid (clearing it would be a false "you're logged out").
         expect(useAuthStore.getState().user).toEqual(USER);
         expect(clearCache).not.toHaveBeenCalled();
-        expect(onSignedOut).not.toHaveBeenCalled();
+        expect(navigateSpy).not.toHaveBeenCalled();
         // The action stays retryable.
         expect(screen.getByTestId('user-menu-logout')).toHaveTextContent('Retry sign out');
     });
