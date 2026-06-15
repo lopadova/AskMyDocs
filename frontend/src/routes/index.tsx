@@ -603,7 +603,7 @@ function AdminWikiHealthRoute() {
 }
 
 const adminWikiHealthRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-health',
     component: AdminWikiHealthRoute,
 });
@@ -619,7 +619,7 @@ function AdminWikiIndicesRoute() {
 }
 
 const adminWikiIndicesRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-indices',
     component: AdminWikiIndicesRoute,
 });
@@ -635,7 +635,7 @@ function AdminWikiExplorerRoute() {
 }
 
 const adminWikiExplorerRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-explorer',
     component: AdminWikiExplorerRoute,
 });
@@ -651,7 +651,7 @@ function AdminAutoWikiSettingsRoute() {
 }
 
 const adminAutoWikiSettingsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/autowiki-settings',
     component: AdminAutoWikiSettingsRoute,
 });
@@ -957,7 +957,7 @@ function AdminWidgetRoute() {
 }
 
 const adminWidgetRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/widget',
     component: AdminWidgetRoute,
 });
@@ -1133,6 +1133,10 @@ const teamChildren = [
     adminRolesRoute,
     adminKbRoute,
     adminKbHealthRoute,
+    adminWikiHealthRoute,
+    adminWikiIndicesRoute,
+    adminWikiExplorerRoute,
+    adminAutoWikiSettingsRoute,
     adminTagsRoute,
     adminSynonymsRoute,
     adminKbInsightsRoute,
@@ -1155,6 +1159,7 @@ const teamChildren = [
     adminMcpToolsRoute,
     adminMcpTokensRoute,
     adminCollectionsRoute,
+    adminWidgetRoute,
     adminComplianceReportsRoute,
     adminNotificationsRoute,
     adminNotificationPreferencesRoute,
