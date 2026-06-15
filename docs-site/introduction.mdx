@@ -53,7 +53,7 @@ currently ships. Each links to the page that explains the theory, the design, an
 the decision rationale in depth.
 
 <CardGroup cols={2}>
-  <Card title="Human-gated canonical promotion" icon="user-check" href="/canonical-and-promotion">
+  <Card title="Human-gated canonical promotion" icon="user-check" href="/core-concepts">
     A three-stage pipeline holds the LLM at "draft"; only humans and operators
     commit canonical storage. Immutable editorial audit trail.
   </Card>
@@ -61,11 +61,11 @@ the decision rationale in depth.
     A retrieval-time knowledge graph folds in neighbours, and a ⚠ firewall stops
     the LLM re-proposing approaches your team already rejected.
   </Card>
-  <Card title="Self-compiling Auto-Wiki" icon="wand-magic-sparkles" href="/auto-wiki">
+  <Card title="Self-compiling Auto-Wiki" icon="wand-magic-sparkles" href="/anti-hallucination-firewall">
     A second-class <code>auto</code> tier the system builds and maintains itself —
     behind an anti-hallucination firewall that always ranks human &gt; auto &gt; raw.
   </Card>
-  <Card title="Field-level PII redaction" icon="shield-halved" href="/pii-and-compliance">
+  <Card title="Field-level PII redaction" icon="shield-halved" href="https://github.com/lopadova/AskMyDocs">
     GDPR-grade redaction wired at every persistence boundary, default-off and
     granular per touch-point — not just data residency.
   </Card>
@@ -73,7 +73,7 @@ the decision rationale in depth.
     Runs on any Laravel + PostgreSQL + pgvector host. Zero vendor lock-in; the
     entire sister-package stack is MIT and independently reusable.
   </Card>
-  <Card title="Eval-harness CI gate" icon="flask" href="/sister-packages">
+  <Card title="Eval-harness CI gate" icon="flask" href="https://github.com/lopadova/AskMyDocs">
     A RAG regression gate on every PR plus nightly LLM-as-judge and adversarial
     cohorts — an out-of-the-box eval surface nobody else publicly ships.
   </Card>

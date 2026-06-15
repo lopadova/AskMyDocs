@@ -22,6 +22,16 @@
         ]
       },
       {
+        "group": "Best Practices",
+        "icon": "lightbulb",
+        "pages": [
+          "institutional-memory",
+          "grounding-and-evidence-tiers",
+          "anti-hallucination-firewall",
+          "multi-tenant-isolation"
+        ]
+      },
+      {
         "group": "Architecture",
         "icon": "diagram-project",
         "pages": [

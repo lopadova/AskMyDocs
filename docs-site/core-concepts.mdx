@@ -23,9 +23,9 @@ layer adds nine node types — `project`, `module`, `decision`, `runbook`,
 `standard`, `incident`, `integration`, `domain-concept`, and `rejected-approach` —
 and a status lifecycle (`draft → accepted → deprecated → superseded`, etc.).
 
-Canonical identifiers (`slug`, `doc_id`) are **tenant-scoped, not global**: two
+Canonical identifiers (`slug`, `doc_id`) are **project-scoped, not global**: two
 projects can legitimately both own `dec-cache-v2`. Promotion is **always
-human-gated** (see [Canonical & promotion](/canonical-and-promotion)).
+human-gated** (see [Anti-hallucination firewall](/anti-hallucination-firewall)).
 
 ## 3. The knowledge graph
 
@@ -79,7 +79,7 @@ flowchart LR
     RR --> CTX
 ```
 
-Vector and keyword candidates are fused by the [reranker](/architecture/retrieval-pipeline),
+Vector and keyword candidates are fused by the reranker,
 boosted/penalised by canonical status, then expanded through the graph.
 
 ## 6. Multi-tenancy
@@ -103,7 +103,7 @@ depth.
   <Card title="Architecture overview" icon="sitemap" href="/architecture/overview">
     The full system design and request lifecycle.
   </Card>
-  <Card title="Canonical & promotion" icon="user-check" href="/canonical-and-promotion">
+  <Card title="Canonical & promotion" icon="user-check" href="/anti-hallucination-firewall">
     How a draft becomes a human-vouched canonical artifact.
   </Card>
 </CardGroup>
