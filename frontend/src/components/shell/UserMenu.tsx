@@ -37,12 +37,15 @@ export function UserMenu() {
     const reactId = useId();
     const menuId = `user-menu-${reactId}`;
 
-    const close = (returnFocus = false) => {
-        setOpen(false);
-        if (returnFocus) {
-            triggerRef.current?.focus();
-        }
-    };
+const close = (returnFocus = false) => {
+    setOpen(false);
+    if (status !== 'loading') {
+        setStatus('idle');
+    }
+    if (returnFocus) {
+        triggerRef.current?.focus();
+    }
+};
 
     useEffect(() => {
         if (!open) {
