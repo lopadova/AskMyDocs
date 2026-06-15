@@ -112,6 +112,25 @@ describe('CitationsPopover', () => {
         expect(onOpenSource).toHaveBeenCalledWith(expect.objectContaining({ document_id: 1 }));
     });
 
+    it('badges an auto-tier citation and carries data-tier (P10)', () => {
+        const tiered: MessageCitation[] = [
+            { document_id: 1, title: 'Auto Concept', source_path: 'domain-concepts/auto.md', headings: [], origin: 'primary', generation_source: 'auto' },
+            { document_id: 2, title: 'Human Decision', source_path: 'decisions/human.md', headings: [], origin: 'primary', generation_source: 'human' },
+        ];
+        render(<CitationsPopover citations={tiered} />);
+        // The auto page is badged + tagged; the human page is not badged.
+        expect(screen.getByTestId('chat-citation-0')).toHaveAttribute('data-tier', 'auto');
+        expect(screen.getByTestId('chat-citation-0-tier')).toHaveTextContent('auto');
+        expect(screen.getByTestId('chat-citation-1')).toHaveAttribute('data-tier', 'human');
+        expect(screen.queryByTestId('chat-citation-1-tier')).toBeNull();
+    });
+
+    it('defaults data-tier to human when generation_source is absent', () => {
+        render(<CitationsPopover citations={citations} />);
+        expect(screen.getByTestId('chat-citation-0')).toHaveAttribute('data-tier', 'human');
+        expect(screen.queryByTestId('chat-citation-0-tier')).toBeNull();
+    });
+
     it('does not open a citation that has no document_id even with a handler', () => {
         const onOpenSource = vi.fn();
         const danglingCitation: MessageCitation[] = [

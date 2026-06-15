@@ -109,6 +109,8 @@ export interface MessageCitation {
     slug?: string | null;
     project_key?: string | null;
     source_type?: string | null;
+    /** v8.11/P10 — provenance tier of the cited page (auto-compiled vs human-vouched). */
+    generation_source?: 'auto' | 'human';
     headings?: string[];
     chunks_used?: number;
     origin?: 'primary' | 'related' | 'rejected';

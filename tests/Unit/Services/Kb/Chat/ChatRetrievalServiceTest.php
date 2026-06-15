@@ -28,6 +28,46 @@ final class ChatRetrievalServiceTest extends TestCase
         return new ChatRetrievalService(Mockery::mock(KbSearchService::class));
     }
 
+    public function test_citation_carries_generation_source_tier(): void
+    {
+        // v8.11/P10 — the chat citation exposes the provenance tier so the UI can
+        // badge `auto` pages. Read from the fully-eager-loaded document relation.
+        $result = new SearchResult(
+            primary: collect([[
+                'chunk_id' => 1,
+                'project_key' => 'eng',
+                'chunk_text' => 'Auto-compiled concept.',
+                'heading_path' => 'C',
+                'rerank_score' => 0.9,
+                'document' => ['id' => 7, 'title' => 'Caching', 'source_path' => 'domain-concepts/c.md', 'slug' => 'concept-c', 'generation_source' => 'auto'],
+            ]]),
+            expanded: collect(),
+            rejected: collect(),
+        );
+
+        $this->assertSame('auto', $this->service()->buildCitations($result)[0]['generation_source']);
+    }
+
+    public function test_citation_generation_source_defaults_to_human(): void
+    {
+        // A doc without an explicit tier (legacy / non-auto) defaults to human
+        // so the firewall + the UI treat it as authoritative (R27 additive).
+        $result = new SearchResult(
+            primary: collect([[
+                'chunk_id' => 1,
+                'project_key' => 'eng',
+                'chunk_text' => 'x',
+                'heading_path' => 'C',
+                'rerank_score' => 0.9,
+                'document' => ['id' => 8, 'title' => 'D', 'source_path' => 'd.md'],
+            ]]),
+            expanded: collect(),
+            rejected: collect(),
+        );
+
+        $this->assertSame('human', $this->service()->buildCitations($result)[0]['generation_source']);
+    }
+
     public function test_citation_project_key_reads_from_the_chunk_not_the_document_select(): void
     {
         // v8.8 live-verification regression: the production retrieval select on

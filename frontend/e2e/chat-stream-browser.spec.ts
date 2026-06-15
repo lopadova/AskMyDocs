@@ -116,6 +116,12 @@ test.describe('Chat streaming — real SSE through the real @ai-sdk transport', 
         await expect(page.getByTestId('chat-citations')).toBeVisible({ timeout: 30_000 });
         await expect(page.getByTestId('chat-citation-0')).toBeVisible();
 
+        // v8.11/P10 — the citation carries its provenance tier; the seeded
+        // E2eStreamSeeder doc is human-vouched, so the chip is data-tier=human
+        // (and shows no `auto` badge). Proves the BE→FE tier flow end-to-end.
+        await expect(page.getByTestId('chat-citation-0')).toHaveAttribute('data-tier', 'human');
+        await expect(page.getByTestId('chat-citation-0-tier')).toHaveCount(0);
+
         // The stream reached its terminal state → the `finish` frame parsed
         // cleanly (the v8.4 crash #2 would have aborted before ready).
         await waitForThreadReady(page, 30_000);

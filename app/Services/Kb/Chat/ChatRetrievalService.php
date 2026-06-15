@@ -162,6 +162,13 @@ class ChatRetrievalService
                 // field production never loads (R13/R16).
                 'slug' => data_get($first, 'document.slug'),
                 'project_key' => data_get($first, 'project_key') ?? data_get($first, 'document.project_key'),
+                // v8.11/P10 — provenance tier of the cited page (R27 additive,
+                // default 'human' so pre-v8.11 clients + non-auto docs are
+                // unchanged). The chat UI badges `auto` citations so a reader
+                // can tell compiled pages from human-vouched ones. Read from the
+                // fully-eager-loaded document relation (not a column-restricted
+                // select), so it is reliably populated.
+                'generation_source' => data_get($first, 'document.generation_source', 'human'),
                 // R27 — `source_type` was present on the conversation
                 // channel's citations but not /api/kb/chat's; expose it on
                 // the unified shape so no channel loses a key it had.
