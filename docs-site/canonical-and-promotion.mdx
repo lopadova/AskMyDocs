@@ -13,23 +13,25 @@ storage** — the LLM proposes, humans dispose (ADR 0003).
 
 ## The nine canonical types
 
-A canonical document declares a `canonical_type` in its frontmatter:
+A canonical document declares its **`type`** in YAML frontmatter (persisted to
+the `canonical_type` column). The nine `CanonicalType` values:
 
-`project` · `module` · `decision` · `runbook` · `standard` · `incident` ·
-`integration` · `domain-concept` · `rejected-approach`
+`project-index` · `module-kb` · `decision` · `runbook` · `standard` ·
+`incident` · `integration` · `domain-concept` · `rejected-approach`
 
-…and a `canonical_status` lifecycle (`draft → accepted → deprecated →
-superseded`, …). Canonical identifiers (`slug`, `doc_id`) are **tenant-scoped,
-not global** — two projects can both own `dec-cache-v2`. The composite uniques are
-`(project_key, slug)` and `(project_key, doc_id)`.
+…and a **`status`** (persisted to `canonical_status`) drawn from the six
+`CanonicalStatus` values: `draft` · `review` · `accepted` · `superseded` ·
+`deprecated` · `archived`. Canonical identifiers (`slug`, `doc_id`) are
+**tenant-scoped, not global** — two projects can both own `dec-cache-v2`. The
+composite uniques are `(project_key, slug)` and `(project_key, doc_id)`.
 
 ## The promotion pipeline (human-gated)
 
 ```mermaid
 flowchart LR
-    T[transcript / draft] -->|POST /promotion/suggest| SUG["LLM extracts candidates<br/>writes NOTHING"]
+    T[transcript / draft] -->|POST /api/kb/promotion/suggest| SUG["LLM extracts candidates<br/>writes NOTHING"]
     SUG --> D[markdown draft]
-    D -->|POST /promotion/candidates| VAL["CanonicalParser validates<br/>writes NOTHING"]
+    D -->|POST /api/kb/promotion/candidates| VAL["CanonicalParser validates<br/>writes NOTHING"]
     VAL -->|valid| H{human / operator}
     H -->|git push → GH Action| ING[ingest → canonical]
     H -->|kb:promote| ING

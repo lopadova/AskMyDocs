@@ -21,7 +21,7 @@ sequenceDiagram
     U->>C: POST /api/kb/chat {question, filters}
     C->>S: searchWithContext(query)
     S->>S: embed → 3× over-retrieve (vector + FTS)
-    S->>S: Reranker fusion (0.6 vec + 0.3 kw + 0.1 head)<br/>+ canonical boost − status penalty
+    S->>S: Reranker fusion (0.55 vec + 0.25 kw + 0.05 head)<br/>+ canonical boost − status penalty
     S->>S: GraphExpander (1-hop) + RejectedApproachInjector
     S-->>C: SearchResult{primary, expanded, rejected, meta}
     C->>C: compose typed prompt (⚠ rejected + 📎 related + ## context)
@@ -36,8 +36,9 @@ Retrieval never relies on vector similarity alone:
 
 - **Vector** search over `pgvector` and **keyword** search over a Postgres FTS
   GIN index run in parallel, each over-retrieving ~3× the final `k`.
-- The **`Reranker`** fuses them — `0.6·vector + 0.3·keyword + 0.1·heading` — then
-  applies a **canonical boost** and a **status penalty**, so human-`accepted`
+- The **`Reranker`** fuses them — shipped defaults `0.55·vector + 0.25·keyword +
+  0.05·heading` (configurable via `kb.reranking.*`) — then applies a **canonical
+  boost** and a **status penalty**, so human-`accepted`
   canonical docs outrank `auto` outrank raw (the
   [anti-hallucination firewall](/anti-hallucination-firewall)).
 
