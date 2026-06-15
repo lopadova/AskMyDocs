@@ -55,8 +55,11 @@ flowchart TD
 
 ## Data model / contract
 
-- Every tenant-aware table carries `string('tenant_id', 50)->default('default')->index()`,
-  and composite uniques start with `tenant_id`.
+- Every tenant-aware table carries `string('tenant_id', 50)->default('default')->index()`.
+  Tables introduced with the multi-tenant refactor also start their composite uniques
+  with `tenant_id`; legacy v3 tables received the `tenant_id` column but their
+  pre-existing composite uniques were not rebuilt (explicitly deferred in the
+  `2026_04_28_000001_add_tenant_id_to_v3_tables.php` retrofit migration).
 - Tenant-aware tables include: `knowledge_documents`, `knowledge_chunks`,
   `chat_logs`, `conversations`, `messages`, `kb_nodes`, `kb_edges`,
   `kb_canonical_audit`, `project_memberships`, plus the admin/insights tables —
