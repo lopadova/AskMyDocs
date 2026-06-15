@@ -13,12 +13,15 @@ the active tenant. Pick one of:
 1. **`forTenant($tenantId)`** scope (preferred, provided by `BelongsToTenant`)
 2. Explicit `where('tenant_id', $ctx->current())`
 
-Tenant-aware tables (sync with `TenantIdMandatoryTest::TENANT_AWARE_MODELS`):
+Tenant-aware tables — **canonical list is `TenantIdMandatoryTest::TENANT_AWARE_MODELS`
+(`tests/Architecture/TenantIdMandatoryTest.php`)**; the excerpt below covers the
+most-touched tables but is NOT exhaustive:
 knowledge_documents, knowledge_chunks, chat_logs,
 conversations, messages, kb_nodes, kb_edges, kb_canonical_audit,
 project_memberships, kb_tags, knowledge_document_tags,
 knowledge_document_acl, admin_command_audit, admin_command_nonces,
 admin_insights_snapshots, chat_filter_presets.
+When in doubt, check the test file — it gates every new tenant-aware model.
 
 ## Why
 

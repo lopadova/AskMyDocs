@@ -19,7 +19,7 @@ dashboard, users + roles + RBAC, canonical KB explorer with inline
 editor and graph viewer, five-tab log viewer, whitelisted Artisan
 maintenance runner, and a daily AI insights panel. Every admin page is
 Spatie-role-gated and every mutation is audit-trailed
-(`kb_canonical_audit` for canonical changes, `admin_command_audits` for
+(`kb_canonical_audit` for canonical changes, `admin_command_audit` for
 commands).
 
 - PHP `^8.3`, Laravel `^13.0`, Sanctum `^4.2`.
@@ -175,9 +175,10 @@ when no canonical docs exist.
   superseded | rejected_injection_used | graph_rebuild), `actor`,
   `before_json`, `after_json`, `metadata_json`, `created_at`. No
   `updated_at`; no FK to `knowledge_documents` so rows survive hard deletes.
-- **`embedding_cache`** — `text_hash` UNIQUE (SHA-256), `provider`, `model`,
-  `embedding vector(N)`, `last_used_at` (LRU prune). Intentionally NOT
-  tenant-scoped — same text across projects reuses the embedding.
+- **`embedding_cache`** — `text_hash` (SHA-256), `provider`, `model`,
+  `embedding vector(N)`, `last_used_at` (LRU prune). UNIQUE
+  `(text_hash, provider, model)`. Intentionally NOT tenant-scoped — same
+  text+provider+model across projects reuses the embedding.
 - **`chat_logs`** — structured analytics; never the app log.
 - **`conversations` / `messages`** — user-scoped history; `messages.metadata`
   stores citations + provider/model telemetry; `messages.rating` feeds
@@ -446,12 +447,12 @@ Every Eloquent query against a tenant-aware table MUST be scoped to the
 active tenant via `forTenant($ctx->current())` (provided by the
 `BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
 customers can share the same `project_key` — tenant boundary is the only
-safe scope. Tenant-aware tables include: `knowledge_documents`,
-`knowledge_chunks`, `chat_logs`, `conversations`, `messages`, `kb_nodes`,
-`kb_edges`, `kb_canonical_audit`, `project_memberships`, `kb_tags`,
-`knowledge_document_tags`, `knowledge_document_acl`, `admin_command_audits`,
+safe scope. Tenant-aware tables (authoritative: `TenantIdMandatoryTest::TENANT_AWARE_MODELS`):
+`knowledge_documents`, `knowledge_chunks`, `chat_logs`, `conversations`, `messages`,
+`kb_nodes`, `kb_edges`, `kb_canonical_audit`, `project_memberships`, `kb_tags`,
+`knowledge_document_tags`, `knowledge_document_acl`, `admin_command_audit`,
 `admin_command_nonces`, `admin_insights_snapshots`, `chat_filter_presets`.
-`embedding_cache` is cross-tenant by design (global `UNIQUE(text_hash)`).
+`embedding_cache` is cross-tenant by design (global `UNIQUE(text_hash, provider, model)`).
 See `.claude/skills/cross-tenant-isolation/`.
 
 ### R31 — `tenant_id` mandatory on every tenant-aware Model + migration

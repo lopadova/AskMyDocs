@@ -17,7 +17,7 @@ full React SPA admin shell ships alongside the chat: KPI dashboard, users
 + roles + RBAC, canonical KB explorer with inline editor and graph viewer,
 log viewer (five tabs), whitelisted Artisan maintenance runner, and a
 daily AI-insights panel. Every admin page runs behind Spatie roles, every
-mutation audit-trails into `kb_canonical_audit` or `admin_command_audits`,
+mutation audit-trails into `kb_canonical_audit` or `admin_command_audit`,
 and every destructive command requires a DB-backed single-use confirm
 token.
 
@@ -131,8 +131,12 @@ share the same slug / doc_id.
 `to_tsvector(<lang>, chunk_text)` (pgsql only, no-op elsewhere).
 
 ### `embedding_cache`
-`id`, `text_hash` (SHA-256, UNIQUE), `provider`, `model`,
+`id`, `text_hash` (SHA-256), `provider`, `model`,
 `embedding vector(N)`, `created_at`, `last_used_at` (LRU pruning).
+UNIQUE `(text_hash, provider, model)` (`embedding_cache_text_hash_provider_model_unique`
+— composite key so different provider/model pairs for the same text coexist
+as separate entries; upgraded from `UNIQUE(text_hash)` in migration
+`2026_05_03_000001_change_embedding_cache_unique_to_composite.php`).
 
 ### `chat_logs`
 `session_id`, `user_id?`, `question`, `answer`, `project_key?`, `ai_provider`,
@@ -837,15 +841,16 @@ active tenant via `forTenant($ctx->current())` (provided by the
 `BelongsToTenant` trait) or an explicit `where('tenant_id', ...)`. Two
 different customers can legitimately share the same `project_key` — tenant
 boundary is the only safe scope. Cross-tenant leak = GDPR catastrophe.
-Tenant-aware tables: knowledge_documents, knowledge_chunks,
+Tenant-aware tables (authoritative list: `TenantIdMandatoryTest::TENANT_AWARE_MODELS`):
+knowledge_documents, knowledge_chunks,
 chat_logs, conversations, messages, kb_nodes, kb_edges,
 kb_canonical_audit, project_memberships, kb_tags,
-knowledge_document_tags, knowledge_document_acl, admin_command_audits,
+knowledge_document_tags, knowledge_document_acl, admin_command_audit,
 admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
 **`embedding_cache` is intentionally NOT tenant-aware** — a cross-tenant reuse
-layer keyed `UNIQUE(text_hash)` (identical text embeds once across tenants);
-`TenantIdMandatoryTest` documents the exclusion. (`User` is likewise excluded as
-cross-tenant identity.)
+layer keyed `UNIQUE(text_hash, provider, model)` (same text+provider+model embeds once
+across tenants); `TenantIdMandatoryTest` documents the exclusion. (`User` is likewise
+excluded as cross-tenant identity.)
 → See `.claude/skills/cross-tenant-isolation/SKILL.md`.
 
 ### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
