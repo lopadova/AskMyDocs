@@ -109,7 +109,7 @@ const close = (returnFocus = false) => {
                 type="button"
                 className="focus-ring"
                 data-testid="user-menu-trigger"
-                onClick={() => setOpen((o) => !o)}
+onClick={() => (open ? close() : setOpen(true))}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
