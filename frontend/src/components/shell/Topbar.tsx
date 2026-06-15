@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { Icon } from '../Icons';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { Tooltip } from './Tooltip';
+import { UserMenu } from './UserMenu';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
 import type { Project } from '../../lib/seed';
 import type { Theme } from './hooks';
@@ -99,6 +100,10 @@ export function Topbar({
                     <Icon.Sliders size={15} />
                 </button>
             </Tooltip>
+            {/* The account menu — and the ONLY way to sign out. The
+              * logout transport existed end-to-end but was never wired
+              * to any control; this is that control. */}
+            <UserMenu />
         </header>
     );
 }
