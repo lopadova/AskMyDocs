@@ -42,8 +42,8 @@ commands).
 ## 2. Core flows
 
 **Chat** — `KbChatController` → `KbSearchService::searchWithContext()`
-(pgvector + optional FTS + `Reranker` fusion `0.6·vec + 0.3·kw + 0.1·head`
-+ canonical boost + status penalty) → `GraphExpander` (1-hop walk of
+(pgvector + optional FTS + `Reranker` fusion `0.55·vec + 0.25·kw + 0.05·head`
+shipped defaults, via `kb.reranking.*` + canonical boost + status penalty) → `GraphExpander` (1-hop walk of
 `kb_edges` from canonical seeds, config-gated) → `RejectedApproachInjector`
 (cosine-correlates query vs `rejected-approach` canonical docs) →
 `SearchResult{ primary, expanded, rejected, meta }` → prompt from

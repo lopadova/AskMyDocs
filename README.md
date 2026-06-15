@@ -107,6 +107,18 @@ and anyone allergic to vendor lock-in.
 
 ---
 
+## 📖 Official Documentation
+
+The full documentation — quickstart, guides, integrations, architecture deep-dives,
+and API/CLI reference — lives at:
+
+### **→ [doc.askmydocs.padosoft.com](https://doc.askmydocs.padosoft.com/)**
+
+This README is the above-the-fold pitch; the documentation site is the
+authoritative, argued, diagrammed reference.
+
+---
+
 ## Why AskMyDocs — the 6 moats
 
 These differentiators come from the public competitor audit at

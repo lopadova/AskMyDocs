@@ -186,8 +186,8 @@ by design, so rows survive hard deletes for forensic access.
 
 ### Chat turn
 1. `KbChatController` validates → embeds query → `KbSearchService::searchWithContext()`
-   hybrid search (3× over-retrieval → reranker fusion `0.6·vec + 0.3·kw + 0.1·head`
-   + canonical boost + status penalty).
+   hybrid search (3× over-retrieval → reranker fusion `0.55·vec + 0.25·kw + 0.05·head`
+   shipped defaults, configurable via `kb.reranking.*` + canonical boost + status penalty).
 2. `GraphExpander` walks 1 hop of `kb_edges` from canonical seed docs
    (config-gated: `KB_GRAPH_EXPANSION_ENABLED=true` default, no-op when no
    canonical docs exist).
