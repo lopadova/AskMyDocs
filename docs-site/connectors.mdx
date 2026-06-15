@@ -59,6 +59,29 @@ SPA handles the OAuth handshake (signed callback), persists a
 `connector_installations` + `connector_credentials` row, and the scheduler-driven
 `ConnectorSyncJob` runs incremental sync.
 
+## Decision rationale (ADR-style)
+
+Two decisions are load-bearing; changing either needs a new ADR:
+
+- **Why ship connectors inline first, extract later? (ADR 0008)** The connector
+  framework had breaking shape changes through v4.5 W1–W6. Pushing every iteration
+  to seven separate `padosoft/*` packages during stabilisation would have doubled
+  the cycle length with zero consumer benefit. The framework was frozen in W7 and
+  extraction happened in v4.6 (ADR 0009).
+
+- **Why auto-discovery via `composer.json::extra.askmydocs.connectors`? (ADR 0009)**
+  A static FQCN list in `config/connectors.php` would require the operator to edit
+  host config on every `composer require`. Composer-extra discovery mirrors
+  Laravel's own `extra.laravel.providers` convention — data-driven, version-stable,
+  and inspectable without booting the app. A per-package service-provider approach
+  was rejected because it ties runtime registration to a specific framework method
+  signature.
+
+- **Why mandatory per-connector chunkers?** Forcing every source through the generic
+  `MarkdownChunker` destroys citation precision — a Jira issue's acceptance criteria
+  are not a section heading; a Notion block is not a paragraph. The mandatory chunker
+  requirement is a deliberate cost to preserve retrieval quality.
+
 ## Gotchas & operations
 
 - Every new connector/document type MUST ship an ad-hoc chunker + rich frontmatter

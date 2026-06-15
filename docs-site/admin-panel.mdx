@@ -63,6 +63,25 @@ core is also reachable as an Artisan command (PHP) and, where applicable, an MCP
 tool. Code-only is never "done": a capability lands on all three surfaces or the
 omission is a documented choice.
 
+## Worked example — running a maintenance command
+
+```bash
+# 1. Request a single-use confirm token (POST, RBAC-gated)
+curl -X POST https://host/api/admin/maintenance/token \
+  -H "Authorization: ******" \
+  -d '{"command":"kb:prune-deleted","args":{"--days":30}}'
+# → { "nonce": "tok_abc123", "expires_in": 300 }
+
+# 2. Execute — token is consumed atomically (lockForUpdate inside DB::transaction)
+curl -X POST https://host/api/admin/maintenance/run \
+  -H "Authorization: ******" \
+  -d '{"command":"kb:prune-deleted","args":{"--days":30},"nonce":"tok_abc123"}'
+# → { "output": "Pruned 47 documents.", "exit_code": 0, "audit_id": 1991 }
+```
+
+The nonce is single-use and backed by a composite UNIQUE constraint — a second
+identical request with the same `nonce` returns 409 Conflict, not a re-execution.
+
 ## Gotchas & operations
 
 - A new protected route / screen / gate / role MUST be added to the R32

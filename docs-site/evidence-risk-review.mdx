@@ -56,6 +56,38 @@ package, wired into AskMyDocs over **one** shared core service:
   review is stamped on write and reads are forced to that tenant; a client
   `tenant` filter cannot widen the scope.
 
+## Worked example
+
+Submit an artifact and read the verdicts:
+
+```bash
+curl -X POST https://host/api/admin/evidence-risk-review/submit \
+  -H "Authorization: ******" \
+  -d '{
+    "answer": "The cache TTL should be 60 minutes based on ADR 0002.",
+    "claims": ["cache TTL = 60 min", "source: ADR 0002"],
+    "sources": [{"doc_id": "dec-cache-v2", "project_key": "eng", "chunk_order": 1}]
+  }'
+```
+
+Response (abbreviated):
+
+```json
+{
+  "verdicts": [
+    { "claim": "cache TTL = 60 min",  "verdict": "keep",   "confidence": 0.94 },
+    { "claim": "source: ADR 0002",    "verdict": "soften", "confidence": 0.71,
+      "suggested_rewrite": "source: the cache-decision document (see citation)" }
+  ],
+  "evidence_tiers": { "dec-cache-v2": "guideline" },
+  "review_log_id": 4421,
+  "cost_class": "cheap"
+}
+```
+
+The `review_log_id` is the persisted, tenant-scoped row — queryable via
+`GET /api/admin/evidence-risk-review/reviews/{id}` or the admin FE.
+
 ## Gotchas & operations
 
 - Default-OFF means a fresh deploy ships the surface dormant — enable the flag to

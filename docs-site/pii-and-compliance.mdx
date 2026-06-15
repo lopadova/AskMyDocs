@@ -61,6 +61,26 @@ The `dpo` role exists specifically for these surfaces. PII admin is gated by
 Act by `viewAiActCompliance` (admin / dpo / super-admin). All are in the R32
 authorization matrix.
 
+## Decision rationale (ADR-style)
+
+Two decisions govern the compliance integration; changing either needs a new ADR:
+
+- **Why extracted packages over inline implementation? (ADR 0011)** Both compliance
+  surfaces (`padosoft/laravel-pii-redactor` and `padosoft/laravel-ai-act-compliance`)
+  ship as standalone Composer packages. The alternative — inline implementation —
+  was rejected because compliance logic evolves on a regulatory timeline (EU AI Act
+  enforcement dates, GDPR guidance updates) orthogonal to AskMyDocs feature releases.
+  Separate packages allow compliance updates to ship independently and allow
+  third-party Laravel hosts to adopt them. The host implements two contracts —
+  `UserDataExporter` and `UserDataDeleter` — to unlock DSAR; the contracts are all
+  the host knows about the compliance internals.
+
+- **Why default-OFF for every redaction knob? (R43)** Default-ON redaction would
+  silently change the stored representations of every existing deployment's data on
+  first upgrade — an irreversible migration with no opt-out. Default-OFF makes the
+  operator's deliberate choice the activation event, keeping upgrades safe and
+  byte-identical until intentionally configured.
+
 ## Gotchas & operations
 
 - Every redaction knob is **default-OFF** — opt in per touch-point; a fresh deploy
