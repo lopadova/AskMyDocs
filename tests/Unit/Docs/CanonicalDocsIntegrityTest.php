@@ -120,8 +120,10 @@ class CanonicalDocsIntegrityTest extends TestCase
         $this->assertStringContainsString('Canonical--KB', $this->readme);
         $this->assertStringContainsString('Knowledge%20Graph', $this->readme);
         $this->assertStringContainsString('Anti--Repetition', $this->readme);
-        // MCP badge now says "10 tools" not just "Server"
-        $this->assertStringContainsString('MCP-10%20tools', $this->readme);
+        // The MCP badge dropped its tool COUNT (it kept drifting: 10 → 14 → 25)
+        // in favour of a count-free "MCP Server" label — the capability is the
+        // message, not a number that needs maintaining on every roster change.
+        $this->assertStringContainsString('MCP-Server', $this->readme);
     }
 
     public function test_r10_rule_present_in_both_rule_files(): void
