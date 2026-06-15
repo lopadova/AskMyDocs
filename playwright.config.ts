@@ -104,6 +104,12 @@ export default defineConfig({
                   // (phpunit) + the AnonymousChatView Vitest disabled
                   // landing, per R43 (both states tested).
                   KB_ANONYMOUS_CHAT_ENABLED: 'true',
+                  // v8.13/P11 — light up the Evidence & Risk Review admin
+                  // surface so its happy-path spec exercises the real enabled
+                  // dashboards against seeded review rows (R13). The default-OFF
+                  // "unavailable" landing (flag off) is covered by the
+                  // EvidenceRiskReviewView Vitest (R43 both states).
+                  EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var

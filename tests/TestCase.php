@@ -114,6 +114,12 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class);
+        // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
+        // API mounts (api.enabled=true via the host config loaded in
+        // getEnvironmentSetUp) and the AdminAuthorizationMatrix can verify the
+        // secured `/api/admin/evidence-risk-review/*` group. The `-admin`
+        // package is dont-discovered (AskMyDocs renders the admin natively).
+        $app->register(\Padosoft\EvidenceRiskReview\EvidenceRiskReviewServiceProvider::class);
 
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
@@ -191,6 +197,25 @@ abstract class TestCase extends OrchestraTestCase
             (array) $app['config']->get('ai-act-compliance', []),
             require __DIR__.'/../config/ai-act-compliance.php',
         ));
+        // v8.13/P11 / R32 — host override of the evidence-risk-review package
+        // config. The package default `api.middleware` is `[]` (no auth/gate);
+        // loading the host config here applies the auth:sanctum +
+        // viewEvidenceRiskReview gate so AdminAuthorizationMatrixTest verifies
+        // the SECURE configuration, not the open package default. array_merge
+        // keeps the package's other top-level keys (mcp, budget, tiers,
+        // profiles) while the host's api + review_log + llm blocks win.
+        $app['config']->set('evidence-risk-review', array_merge(
+            (array) $app['config']->get('evidence-risk-review', []),
+            require __DIR__.'/../config/evidence-risk-review.php',
+        ));
+        // The host config defaults `api.enabled` to the (unset, hence false)
+        // `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` env (R43 default-OFF). Force it ON
+        // here so the bulk suite + AdminAuthorizationMatrixTest exercise the
+        // SECURED-AND-ENABLED surface (production-with-flag-on parity). The
+        // dedicated OFF-path regression (EvidenceRiskReviewAdminFlagTest)
+        // overrides this back to false in its own getEnvironmentSetUp to prove
+        // the clean 404 degrade.
+        $app['config']->set('evidence-risk-review.api.enabled', true);
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on

@@ -347,6 +347,16 @@ jobs:
           # KbChatAnonymousTest (phpunit) + the AnonymousChatView disabled
           # landing (Vitest), per R43.
           KB_ANONYMOUS_CHAT_ENABLED: 'true'
+          # v8.13/P11 — light up the Evidence & Risk Review admin surface so its
+          # happy-path spec exercises the real enabled dashboards against seeded
+          # review rows (R13). Same rationale as KB_ANONYMOUS_CHAT_ENABLED above:
+          # CI skips playwright.config.ts's webServer block (E2E_SKIP_WEBSERVER=1),
+          # so the flag the config sets there does NOT reach this server — it must
+          # be declared on THIS step's env. Read at runtime (no config:cache), so
+          # config('evidence-risk-review.api.enabled') resolves true and the
+          # package routes register. The default-OFF "unavailable" landing is
+          # covered by the EvidenceRiskReviewView Vitest (R43 both states).
+          EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

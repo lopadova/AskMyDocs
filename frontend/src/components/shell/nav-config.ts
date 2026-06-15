@@ -31,6 +31,7 @@ export type SidebarSection =
     | 'workflows'
     | 'ai-act-compliance'
     | 'compliance-reports'
+    | 'evidence-risk-review'
     | 'pii-redactor'
     | 'connectors'
     | 'flows'
@@ -95,6 +96,7 @@ export const NAV_GROUPS: NavGroup[] = [
         items: [
             { id: 'ai-act-compliance', label: 'AI Act', icon: 'Shield', route: '/app/admin/ai-act-compliance' },
             { id: 'compliance-reports', label: 'Compliance', icon: 'Check', route: '/app/admin/compliance/reports' },
+            { id: 'evidence-risk-review', label: 'Evidence & Risk', icon: 'Alert', route: '/app/admin/evidence-risk-review' },
             { id: 'pii-redactor', label: 'PII Redactor', icon: 'Eye', route: '/app/admin/pii-redactor' },
         ],
     },
