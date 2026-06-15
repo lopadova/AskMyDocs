@@ -67,6 +67,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/synonyms' => ['admin', 'super-admin'],
             '/api/admin/kb/analyses' => ['admin', 'super-admin'],
             '/api/admin/kb/analysis-settings' => ['admin', 'super-admin'],
+            '/api/admin/kb/autowiki-settings' => ['admin', 'super-admin'],
             '/api/admin/kb/content-gaps' => ['admin', 'super-admin'],
             '/api/admin/kb/evidence-tiers' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-index' => ['admin', 'super-admin'],

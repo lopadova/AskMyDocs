@@ -26,6 +26,7 @@ export type SidebarSection =
     | 'wiki-health'
     | 'wiki-indices'
     | 'wiki-explorer'
+    | 'autowiki-settings'
     | 'tabular-reviews'
     | 'workflows'
     | 'ai-act-compliance'
@@ -83,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'wiki-health', label: 'Wiki Health', icon: 'Activity', route: '/app/admin/kb/wiki-health' },
             { id: 'wiki-indices', label: 'Wiki Indices', icon: 'Book', route: '/app/admin/kb/wiki-indices' },
             { id: 'wiki-explorer', label: 'Wiki Explorer', icon: 'Folder', route: '/app/admin/kb/wiki-explorer' },
+            { id: 'autowiki-settings', label: 'Auto-Wiki Settings', icon: 'Sliders', route: '/app/admin/kb/autowiki-settings' },
             { id: 'tabular-reviews', label: 'Tabular Reviews', icon: 'Grid', route: '/app/admin/tabular-reviews' },
             { id: 'workflows', label: 'Workflows', icon: 'Branch', route: '/app/admin/workflows' },
         ],
