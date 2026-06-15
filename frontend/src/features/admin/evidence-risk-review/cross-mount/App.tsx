@@ -85,22 +85,31 @@ function VerdictBadge({ verdict }: { verdict: RiskVerdict }) {
     );
 }
 
-function useProfiles(): { profiles: ProfileMetadata[]; error: string | null } {
+function useProfiles(): { profiles: ProfileMetadata[]; error: string | null; loaded: boolean } {
     const [profiles, setProfiles] = useState<ProfileMetadata[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [loaded, setLoaded] = useState(false);
 
     useEffect(() => {
         let active = true;
         evidenceApi
             .listProfiles()
-            .then((rows) => active && setProfiles(rows))
-            .catch((cause) => active && setError(evidenceErrorMessage(cause)));
+            .then((rows) => {
+                if (!active) return;
+                setProfiles(rows);
+                setLoaded(true);
+            })
+            .catch((cause) => {
+                if (!active) return;
+                setError(evidenceErrorMessage(cause));
+                setLoaded(true);
+            });
         return () => {
             active = false;
         };
     }, []);
 
-    return { profiles, error };
+    return { profiles, error, loaded };
 }
 
 function ReviewsTab() {
@@ -327,8 +336,14 @@ function ReviewDetail({ reviewId, onClose }: { reviewId: string; onClose: () => 
 }
 
 function ProfilesTab() {
-    const { profiles, error } = useProfiles();
-    const state = error ? 'error' : profiles.length === 0 ? 'loading' : 'ready';
+    const { profiles, error, loaded } = useProfiles();
+    const state: 'loading' | 'error' | 'empty' | 'ready' = error
+        ? 'error'
+        : !loaded
+          ? 'loading'
+          : profiles.length === 0
+            ? 'empty'
+            : 'ready';
 
     return (
         <section className="err-section" data-testid="admin-evidence-risk-review-profiles" data-state={state} aria-busy={state === 'loading'}>
@@ -337,7 +352,12 @@ function ProfilesTab() {
                     {error}
                 </div>
             )}
-            {!error && profiles.length === 0 && <p className="err-muted">Loading profiles…</p>}
+            {state === 'loading' && <p className="err-muted">Loading profiles…</p>}
+            {state === 'empty' && (
+                <p className="err-muted" data-testid="admin-evidence-risk-review-profiles-empty">
+                    No risk profiles are configured.
+                </p>
+            )}
             <div className="err-grid">
                 {profiles.map((profile) => (
                     <article className="err-card" key={profile.key} data-testid={`admin-evidence-risk-review-profile-${profile.key}`}>
