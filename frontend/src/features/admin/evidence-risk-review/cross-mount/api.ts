@@ -15,6 +15,7 @@
 import type { AxiosError, AxiosRequestConfig } from 'axios';
 import { api } from '../../../../lib/api';
 import type {
+    EvidenceTier,
     Paginated,
     ProfileMetadata,
     ReviewLogFilters,
@@ -90,7 +91,23 @@ export const evidenceApi = {
     },
 
     async taxonomy(): Promise<Taxonomy> {
-        return request<Taxonomy>({ url: '/taxonomy' });
+        // The package serialises `tiers` as a MAP keyed by tier key
+        // (TierResolver::all() is associative), not a list — normalise to an
+        // array so the UI can sort/iterate it. `risk_checks` / `risk_verdicts` /
+        // `claim_assertiveness` come back as real lists. Tolerate both shapes.
+        const body = await request<{
+            tiers: Record<string, EvidenceTier> | EvidenceTier[];
+            risk_checks?: string[];
+            risk_verdicts?: Array<{ key: string; label?: string }>;
+            claim_assertiveness?: string[];
+        }>({ url: '/taxonomy' });
+
+        return {
+            tiers: Array.isArray(body.tiers) ? body.tiers : Object.values(body.tiers ?? {}),
+            risk_checks: body.risk_checks ?? [],
+            risk_verdicts: body.risk_verdicts ?? [],
+            claim_assertiveness: body.claim_assertiveness ?? [],
+        };
     },
 };
 
