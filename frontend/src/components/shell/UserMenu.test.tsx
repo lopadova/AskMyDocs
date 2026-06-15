@@ -89,6 +89,25 @@ describe('UserMenu', () => {
         expect(screen.getByTestId('user-menu-logout')).toHaveTextContent('Retry sign out');
     });
 
+    it('clears a prior sign-out error when the menu is reopened', async () => {
+        const user = userEvent.setup();
+        vi.mocked(logout).mockRejectedValue(new Error('network'));
+
+        render(<UserMenu />);
+        await user.click(screen.getByTestId('user-menu-trigger'));
+        await user.click(screen.getByTestId('user-menu-logout'));
+        expect(await screen.findByTestId('user-menu-error')).toBeInTheDocument();
+
+        // Close (Escape) then reopen — the menu must start clean, not stuck
+        // on the previous failure's "Retry sign out" / error banner.
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByTestId('user-menu-trigger'));
+
+        expect(screen.queryByTestId('user-menu-error')).not.toBeInTheDocument();
+        expect(screen.getByTestId('user-menu-logout')).toHaveTextContent('Sign out');
+        expect(screen.getByTestId('user-menu')).toHaveAttribute('data-state', 'idle');
+    });
+
     it('closes on Escape and returns focus to the trigger', async () => {
         const user = userEvent.setup();
         render(<UserMenu />);

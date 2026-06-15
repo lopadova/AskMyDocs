@@ -37,15 +37,17 @@ export function UserMenu() {
     const reactId = useId();
     const menuId = `user-menu-${reactId}`;
 
-const close = (returnFocus = false) => {
-    setOpen(false);
-    if (status !== 'loading') {
-        setStatus('idle');
-    }
-    if (returnFocus) {
-        triggerRef.current?.focus();
-    }
-};
+    const close = (returnFocus = false) => {
+        setOpen(false);
+        // Clear a lingering error so re-opening the menu starts clean —
+        // but never wipe an in-flight 'loading' state mid-request.
+        if (status !== 'loading') {
+            setStatus('idle');
+        }
+        if (returnFocus) {
+            triggerRef.current?.focus();
+        }
+    };
 
     useEffect(() => {
         if (!open) {
@@ -109,7 +111,7 @@ const close = (returnFocus = false) => {
                 type="button"
                 className="focus-ring"
                 data-testid="user-menu-trigger"
-onClick={() => (open ? close() : setOpen(true))}
+                onClick={() => (open ? close() : setOpen(true))}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
