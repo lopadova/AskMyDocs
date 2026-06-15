@@ -11,7 +11,7 @@ matrix and production hardening, see [Installation](/installation).
   AskMyDocs is a Laravel 13 application. You need **PHP 8.3+**, **Composer**,
   **Node 20+**, and a **PostgreSQL 15+** database with the **pgvector** extension.
   The Quickstart uses OpenAI for chat + embeddings; any supported provider works
-  (see [AI providers](/ai-providers)).
+  (see [AI providers](/installation)).
 </Note>
 
 <Steps>
@@ -73,7 +73,7 @@ matrix and production hardening, see [Installation](/installation).
     ```
 
     The same execution path is available over HTTP (`POST /api/kb/ingest`,
-    Sanctum-protected, batch ≤ 100). See [Ingestion](/ingestion).
+    Sanctum-protected, batch ≤ 100). See Ingestion.
   </Step>
 
   <Step title="Ask a grounded question">
@@ -98,7 +98,7 @@ matrix and production hardening, see [Installation](/installation).
 1. Your markdown was chunked (section-aware), embedded, and upserted into
    PostgreSQL on the idempotency tuple `(project_key, source_path, version_hash)`.
 2. Your question was embedded and run through **hybrid retrieval** — vector +
-   full-text — then fused by the [reranker](/architecture/retrieval-pipeline).
+   full-text — then fused by the [reranker](/core-concepts).
 3. The grounded context was composed into a prompt and sent to your provider via
    `AiManager`, and the answer came back **with citations** to the exact chunks.
 
@@ -108,10 +108,10 @@ matrix and production hardening, see [Installation](/installation).
   <Card title="Core concepts" icon="diagram-project" href="/core-concepts">
     Understand the canonical layer and the knowledge graph.
   </Card>
-  <Card title="Connectors" icon="plug" href="/connectors">
+  <Card title="Connectors" icon="plug" href="https://github.com/lopadova/AskMyDocs">
     Pull from Google Drive, Notion, Confluence, Jira and more.
   </Card>
-  <Card title="Admin panel" icon="gauge" href="/admin-panel">
+  <Card title="Admin panel" icon="gauge" href="https://github.com/lopadova/AskMyDocs">
     Dashboards, RBAC, the KB explorer, logs, and maintenance.
   </Card>
 </CardGroup>

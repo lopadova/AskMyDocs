@@ -69,7 +69,7 @@ OPENAI_API_KEY=sk-...
   auto-selects the first embeddings-capable provider with a configured key in a
   **dimension-safety-first** order (openai → openrouter → regolo → gemini), so a
   deployment never silently corrupts ingest writes with a mismatched dimension.
-  See [AI providers](/ai-providers) for the full matrix.
+  See AI providers for the full matrix.
 </Note>
 
 ## 4. Migrate
@@ -104,7 +104,7 @@ php artisan queue:work     # processes IngestDocumentJob + canonical indexing
 
 Open **`/app`** for the SPA (chat + admin), or hit the JSON API directly. Create
 your first admin user with the role seeder / `auth:grant` command (see
-[Admin panel](/admin-panel)).
+[Admin panel](https://github.com/lopadova/AskMyDocs)).
 
 ## Scheduler
 
@@ -122,7 +122,7 @@ system cron entry so they fire:
 | 03:30 | `kb:prune-deleted` | hard-delete expired soft-deletes |
 | 03:40 | `kb:rebuild-graph` | canonical graph rebuild |
 
-See [Scheduler & maintenance](/scheduler-and-maintenance) for the full list and
+See Scheduler & maintenance for the full list and
 the `--days=N` / `--project=` overrides.
 
 ## Next steps
@@ -131,7 +131,7 @@ the `--days=N` / `--project=` overrides.
   <Card title="Quickstart" icon="bolt" href="/quickstart">
     Ingest and ask your first question.
   </Card>
-  <Card title="Configuration reference" icon="gear" href="/configuration">
+  <Card title="Configuration reference" icon="gear">
     Every env knob, grouped by subsystem.
   </Card>
 </CardGroup>
