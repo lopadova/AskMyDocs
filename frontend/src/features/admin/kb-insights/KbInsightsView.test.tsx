@@ -7,10 +7,13 @@ import { KbInsightsView } from './KbInsightsView';
 import { api } from '../../../lib/api';
 
 const mockGet = vi.fn();
+const mockPost = vi.fn();
 
 beforeEach(() => {
     mockGet.mockReset();
+    mockPost.mockReset();
     vi.spyOn(api, 'get').mockImplementation(mockGet);
+    vi.spyOn(api, 'post').mockImplementation(mockPost);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -105,6 +108,39 @@ describe('KbInsightsView', () => {
         const err = await screen.findByTestId('admin-kb-insights-error');
         expect(err).toHaveAttribute('data-state', 'error');
         expect(screen.queryByTestId('admin-kb-insights-empty')).not.toBeInTheDocument();
+    });
+
+    it('applies a cross-reference and shows the success note (P8/P10)', async () => {
+        mockGet.mockResolvedValue(page([COMPLETED]));
+        mockPost.mockResolvedValue({ data: { data: { applied: true, action: 'add_cross_reference', target: 'dec' } } });
+        render(withQueryClient(<KbInsightsView />));
+        await userEvent.click(await screen.findByTestId('admin-kb-insight-1-crossref-dec-apply'));
+        await waitFor(() => expect(mockPost).toHaveBeenCalledWith('/api/admin/kb/analyses/1/apply', { type: 'cross_reference', target: 'dec' }));
+        const note = await screen.findByTestId('admin-kb-insight-1-crossref-dec-note');
+        expect(note).toHaveTextContent(/Applied/i);
+        expect(screen.getByTestId('admin-kb-insight-1-crossref-dec-apply')).toBeDisabled();
+    });
+
+    it('surfaces a 200-with-refusal distinctly from success (R14)', async () => {
+        mockGet.mockResolvedValue(page([COMPLETED]));
+        mockPost.mockResolvedValue({ data: { data: { applied: false, reason: 'firewall_human_doc', target: 'old' } } });
+        render(withQueryClient(<KbInsightsView />));
+        await userEvent.click(await screen.findByTestId('admin-kb-insight-1-impacted-old-apply'));
+        const note = await screen.findByTestId('admin-kb-insight-1-impacted-old-note');
+        expect(note).toHaveTextContent(/Not applied/i);
+        expect(note).toHaveTextContent('firewall_human_doc');
+        // A refusal does NOT disable the button — it can be retried.
+        expect(screen.getByTestId('admin-kb-insight-1-impacted-old-apply')).not.toBeDisabled();
+    });
+
+    it('surfaces an apply transport error as an alert (not silent)', async () => {
+        mockGet.mockResolvedValue(page([COMPLETED]));
+        mockPost.mockRejectedValue(new Error('apply boom 500'));
+        render(withQueryClient(<KbInsightsView />));
+        await userEvent.click(await screen.findByTestId('admin-kb-insight-1-crossref-dec-apply'));
+        const note = await screen.findByTestId('admin-kb-insight-1-crossref-dec-note');
+        expect(note).toHaveTextContent('apply boom 500');
+        expect(note).toHaveAttribute('role', 'alert');
     });
 
     it('changing the status filter re-queries with the status param', async () => {
