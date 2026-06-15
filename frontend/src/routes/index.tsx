@@ -33,6 +33,7 @@ import { InsightsView } from '../features/admin/insights/InsightsView';
 import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
 import { FlowsView } from '../features/admin/flows/FlowsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
+import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
@@ -644,6 +645,27 @@ const adminAiActComplianceRoute = createRoute({
     component: AdminAiActComplianceRoute,
 });
 
+// v8.13/P11 — Evidence & Risk Review admin surface. Native cross-mount of the
+// padosoft/laravel-evidence-risk-review HTTP API (see EvidenceRiskReviewView).
+// Same flat-RBAC pattern as the other admin SPAs: the FE <RequireRole> guard
+// short-circuits to <AdminForbidden /> for unprivileged roles; the package API
+// routes are gated server-side by `can:viewEvidenceRiskReview` (super-admin /
+// admin / dpo) AND only registered when EVIDENCE_RISK_REVIEW_ADMIN_ENABLED=true
+// (R43) — the view degrades to a clean "unavailable" landing when off.
+function AdminEvidenceRiskReviewRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin', 'dpo']}>
+            <EvidenceRiskReviewView />
+        </RequireRole>
+    );
+}
+
+const adminEvidenceRiskReviewRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/evidence-risk-review',
+    component: AdminEvidenceRiskReviewRoute,
+});
+
 const adminAiActComplianceSplatRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/ai-act-compliance/$',
@@ -929,6 +951,7 @@ const routeTree = rootRoute.addChildren([
         adminEvalHarnessSplatRoute,
         adminAiActComplianceRoute,
         adminAiActComplianceSplatRoute,
+        adminEvidenceRiskReviewRoute,
         adminConnectorsRoute,
         adminConnectorCallbackRoute,
         adminTabularReviewsRoute,

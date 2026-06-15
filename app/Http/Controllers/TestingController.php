@@ -68,6 +68,9 @@ class TestingController extends Controller
         // v8.11/P10 — one auto + one human wiki page for the Wiki Explorer
         // admin-screen E2E (promote auto → becomes human/read-only).
         'WikiExplorerSeeder' => \Database\Seeders\WikiExplorerSeeder::class,
+        // v8.13/P11 — two evidence-risk-review log rows (one keep, one flag)
+        // for the Evidence & Risk Review admin-screen E2E happy path.
+        'EvidenceRiskReviewSeeder' => \Database\Seeders\EvidenceRiskReviewSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

@@ -26,9 +26,19 @@ return [
     | The package ships `api.enabled => false` and `api.middleware => []` — i.e.
     | when an operator turns the API on, the review endpoints (submit / list /
     | show / profiles / taxonomy) would be reachable with NO authentication and
-    | NO authorization. The host enables the API and gates it with the same
-    | authenticated admin stack the rest of /api/admin/* uses, so the review log
-    | (which can contain tenant-scoped artifact text) is never exposed.
+    | NO authorization. The host re-declares the API as an opt-in admin surface
+    | and gates it with the same authenticated admin stack the rest of
+    | /api/admin/* uses, so the review log (which can contain tenant-scoped
+    | artifact text) is never exposed.
+    |
+    | DEFAULT-OFF (R43): `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` defaults to false,
+    | so a fresh deploy ships the admin surface (HTTP API + native FE) DORMANT —
+    | the package routes are never registered, the FE cross-mount shows a clean
+    | "unavailable" landing (never a 500), and the PHP/MCP surfaces the core
+    | package registers stay available regardless. Set the flag to true to light
+    | up the admin review-log dashboards. Both flag states are regression-locked
+    | (tests/Feature/Evidence/EvidenceRiskReviewAdminFlagTest — OFF degrades to a
+    | clean 404; the bulk suite + AdminAuthorizationMatrixTest run with it ON).
     |
     | Tenant scoping itself is enforced by the bound `TenantResolver`
     | (App\Providers\AppServiceProvider binds it to the host TenantContext), so
@@ -40,9 +50,16 @@ return [
     |
     */
     'api' => [
-        'enabled' => true,
+        'enabled' => env('EVIDENCE_RISK_REVIEW_ADMIN_ENABLED', false),
         'prefix' => env('EVIDENCE_RISK_REVIEW_API_PREFIX', 'api/admin/evidence-risk-review'),
         'middleware' => [
+            // tenant.resolve runs first so TenantContext carries the active
+            // tenant (from X-Tenant-Id / user / default) before the bound
+            // TenantResolver stamps + scopes the review log (R30). In
+            // production ResolveTenant is also globally prepended; declaring it
+            // here makes the package group tenant-aware regardless of the
+            // global stack and mirrors prod under Testbench.
+            'tenant.resolve',
             \Illuminate\Cookie\Middleware\EncryptCookies::class,
             \Illuminate\Session\Middleware\StartSession::class,
             'auth:sanctum',

@@ -208,6 +208,14 @@ abstract class TestCase extends OrchestraTestCase
             (array) $app['config']->get('evidence-risk-review', []),
             require __DIR__.'/../config/evidence-risk-review.php',
         ));
+        // The host config defaults `api.enabled` to the (unset, hence false)
+        // `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` env (R43 default-OFF). Force it ON
+        // here so the bulk suite + AdminAuthorizationMatrixTest exercise the
+        // SECURED-AND-ENABLED surface (production-with-flag-on parity). The
+        // dedicated OFF-path regression (EvidenceRiskReviewAdminFlagTest)
+        // overrides this back to false in its own getEnvironmentSetUp to prove
+        // the clean 404 degrade.
+        $app['config']->set('evidence-risk-review.api.enabled', true);
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on
