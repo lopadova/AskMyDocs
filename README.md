@@ -15,22 +15,20 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 
 
 <p align="center">
-  <a href="#quick-start-5-minutes"><img src="https://img.shields.io/badge/Laravel-13+-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
+  <a href="#quick-start-5-minutes"><img src="https://img.shields.io/badge/Laravel-FF2D20?style=flat-square&logo=laravel&logoColor=white" alt="Laravel"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Claude-Compatible-cc785c?style=flat-square&logo=anthropic&logoColor=white" alt="Claude"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/OpenAI-Compatible-412991?style=flat-square&logo=openai&logoColor=white" alt="OpenAI"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Gemini-Compatible-4285F4?style=flat-square&logo=google&logoColor=white" alt="Gemini"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/OpenRouter-Multi--Model-6366f1?style=flat-square" alt="OpenRouter"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Regolo.ai-EU-10b981?style=flat-square" alt="Regolo.ai"></a>
-  <a href="#features-by-area"><img src="https://img.shields.io/badge/MCP-10%20tools-0ea5e9?style=flat-square" alt="MCP Server"></a>
-  <a href="#features-by-area"><img src="https://img.shields.io/badge/Canonical--KB-9%20types-ff7a00?style=flat-square" alt="Canonical KB"></a>
-  <a href="#features-by-area"><img src="https://img.shields.io/badge/Knowledge%20Graph-10%20relations-7c3aed?style=flat-square" alt="Knowledge Graph"></a>
+  <a href="#features-by-area"><img src="https://img.shields.io/badge/MCP-Server-0ea5e9?style=flat-square" alt="MCP Server"></a>
+  <a href="#features-by-area"><img src="https://img.shields.io/badge/Canonical--KB-typed-ff7a00?style=flat-square" alt="Canonical KB"></a>
+  <a href="#features-by-area"><img src="https://img.shields.io/badge/Knowledge%20Graph-typed-7c3aed?style=flat-square" alt="Knowledge Graph"></a>
   <a href="#features-by-area"><img src="https://img.shields.io/badge/Anti--Repetition-%E2%9A%A0%EF%B8%8F%20built--in-dc2626?style=flat-square" alt="Anti-Repetition Memory"></a>
   <a href="#prerequisites"><img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License"></a>
-  <a href="#prerequisites"><img src="https://img.shields.io/badge/PHP-8.3+-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.3+"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/release-v8.4.0-blueviolet?style=flat-square" alt="Release v8.4.0"></a>
-  <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-7%20native-0ea5e9?style=flat-square" alt="7 Native Connectors"></a>
-  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-2063%20PHPUnit%20%2B%20494%20Vitest-brightgreen?style=flat-square" alt="2063 PHPUnit + 494 Vitest"></a>
+  <a href="#universal-connectors"><img src="https://img.shields.io/badge/connectors-native-0ea5e9?style=flat-square" alt="Native Connectors"></a>
+  <a href="#quality--observability"><img src="https://img.shields.io/badge/tests-PHPUnit%20%2B%20Vitest%20%2B%20Playwright-brightgreen?style=flat-square" alt="PHPUnit + Vitest + Playwright"></a>
 </p>
 
 <p align="center">
@@ -53,6 +51,7 @@ to Glean / Notion AI / ChatGPT Enterprise — without the per-seat lock-in.
 - [✨ Universal Connectors](#universal-connectors)
 - [✨ Modern Chat Surface (Vercel AI SDK UI)](#modern-chat-surface-vercel-ai-sdk-ui)
 - [✨ KITT — Knowledge Interface Tour Toolkit](#kitt--knowledge-interface-tour-toolkit)
+- [✨ Institutional Memory — anti-repetition retrieval over a living knowledge graph](#-institutional-memory--anti-repetition-retrieval-over-a-living-knowledge-graph)
 - [✨ Auto-Wiki — self-compiling agentic knowledge tier](#-auto-wiki--self-compiling-agentic-knowledge-tier-v811)
 - [Features by area](#features-by-area)
   - [Retrieval & Knowledge](#retrieval--knowledge)
@@ -255,6 +254,73 @@ for the inline layout). Full developer guide:
 > actions, data egress to the LLM), and the **best practices the operator and
 > the host site must follow to mitigate them** — including `data-kitt-skip` to
 > keep sensitive page regions out of the snapshot.
+
+## ✨ Institutional Memory — anti-repetition retrieval over a living knowledge graph
+
+**Your KB doesn't just store documents — it remembers what your team decided,
+refuses to let the LLM re-propose approaches you already rejected, and keeps that
+memory current by itself.**
+
+Commodity RAG treats your corpus as interchangeable chunks: it re-discovers the
+answer from zero on every query, never persists what was *already decided*, and
+happily re-suggests an option your team dismissed three quarters ago. AskMyDocs
+ships a **typed canonical layer** (decisions / runbooks / standards / incidents /
+integrations / domain-concepts / **rejected-approaches**) over a lightweight
+**knowledge graph** — and wires both straight into retrieval, so the memory is
+not a passive archive but an active participant in every answer.
+
+**How your searches benefit — on every query, automatically:**
+
+- **Graph-expanded recall** — `GraphExpander` walks `kb_edges` one hop out from
+  each canonical seed hit and folds the connected decisions / runbooks / concepts
+  into the result set, so the answer carries the surrounding context a bare vector
+  match would miss (config-gated; a clean no-op for tenants with no canonical docs).
+- **Anti-repetition firewall** — `RejectedApproachInjector` vector-correlates the
+  query against your `rejected-approach` docs and surfaces the dismissed options
+  under a ⚠ marker in the prompt, so the model stops re-proposing exactly what your
+  team already ruled out. This is the single most-requested behaviour commodity RAG
+  cannot give you, because it has nowhere to *store* a rejection.
+- **Evidence-aware weighting** — every retrieved chunk carries its evidence tier
+  (`guideline > peer_reviewed > official > … > unverified`); the prompt flags
+  low-confidence claims so an answer never leans on a blog post as if it were a
+  ratified standard.
+- **Trust-ranked fusion** — the reranker fuses vector + keyword + heading signals
+  and **always ranks human-`accepted` > `auto` > raw**, so machine-written
+  knowledge can enrich an answer but never silently outranks a human-vouched
+  decision.
+
+**How the memory self-updates and maintains itself** — the part that keeps it
+from rotting (the self-compiling engine detailed in the
+[Auto-Wiki](#-auto-wiki--self-compiling-agentic-knowledge-tier-v811) section below):
+
+- **On ingest**, an LLM compiler enriches each document's frontmatter (tags /
+  summary / cross-references) and materialises those cross-references into real
+  graph edges + nodes — so a freshly-landed doc becomes *navigable* immediately,
+  with zero manual linking.
+- **Recurring concepts** that appear across many documents are synthesized into
+  brand-new `domain-concept` pages, grounded *only* in the docs that mention them —
+  the KB grows its own connective tissue instead of waiting for someone to write it.
+- **A daily maintenance sweep** rebuilds the per-tenant index hubs, lints the graph
+  (dangling / orphan / stale cross-references, with safe auto-fix), and backfills
+  enrichment — so "knowledge improves over time" rather than decaying.
+- **An independent, cross-model review-LLM** audits every auto-generated page for
+  grounding, novelty and contradictions before it is trusted — and the entire
+  self-maintaining tier sits *behind* the human > auto > raw firewall, fully
+  reversible and audited.
+
+Every layer is tenant-scoped (R30), written to the immutable `kb_canonical_audit`
+trail, and config-gated (default-degradable, R43) — and, per R44, exposed across
+PHP + HTTP API + MCP. **No public RAG platform — open-source or SaaS — ships
+institutional memory that both *feeds retrieval* and *maintains itself* behind a
+human-vouched firewall.**
+
+**Try it.** Promote a `decision` doc and a `rejected-approach` doc (git push → GH
+Action, or the `kb:promote` CLI), then ask the chat a question near the rejected
+option: the ⚠ rejected-approaches block appears inside the grounded answer, and the
+chat-side **Related** panel walks the graph straight from the decision you just
+promoted.
+
+---
 
 ## ✨ Auto-Wiki — self-compiling agentic knowledge tier (v8.11)
 
