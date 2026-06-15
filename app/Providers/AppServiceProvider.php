@@ -33,8 +33,11 @@ use Padosoft\AskMyDocsMcpPack\Contracts\McpHostBridgeContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpServerRegistryContract;
 use Padosoft\AskMyDocsMcpPack\Contracts\McpToolAuthorizerContract;
 use App\Support\TenantContext;
+use App\Evidence\AiManagerEvidenceReviewer;
 use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
+use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
+use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
@@ -155,6 +158,61 @@ class AppServiceProvider extends ServiceProvider
         $this->registerTabularReviewGates();
         $this->registerWorkflowGates();
         $this->registerWidgetGates();
+        $this->registerEvidenceRiskReviewIntegration();
+        $this->registerEvidenceRiskReviewGates();
+    }
+
+    /**
+     * v8.13/P11 — wire the evidence-risk-review package to the host. Bound in
+     * boot() (not register()) so these win over the package's Null* defaults
+     * (same ordering rationale as the MCP adapters above).
+     */
+    private function registerEvidenceRiskReviewIntegration(): void
+    {
+        // R30 — scope the package's review-log read/write paths to the active
+        // host tenant. TenantContext::current() is always set behind
+        // tenant.authorize, so reads + writes are always tenant-bound.
+        $this->app->singleton(EvidenceTenantResolver::class, function ($app): EvidenceTenantResolver {
+            $ctx = $app->make(TenantContext::class);
+
+            return new class($ctx) implements EvidenceTenantResolver
+            {
+                public function __construct(private readonly TenantContext $ctx) {}
+
+                public function current(): ?string
+                {
+                    return $this->ctx->current();
+                }
+            };
+        });
+
+        // Optional LLM semantic-review pass over AiManager — only invoked when
+        // evidence-risk-review.llm.enabled is true (default-OFF, R43).
+        $this->app->singleton(EvidenceReviewerLlmContract::class, AiManagerEvidenceReviewer::class);
+    }
+
+    /**
+     * v8.13/P11 — Evidence Risk Review admin surface gates. Read gate admits
+     * super-admin / admin / dpo; write gate (used by the promote/apply paths)
+     * is super-admin / dpo only.
+     */
+    private function registerEvidenceRiskReviewGates(): void
+    {
+        Gate::define('viewEvidenceRiskReview', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin', 'dpo']);
+        });
+
+        Gate::define('manageEvidenceRiskReview', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'dpo']);
+        });
     }
 
     /**

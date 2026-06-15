@@ -102,6 +102,18 @@ $providers = [
     Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class,
     Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class,
     Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class,
+    // v8.13/P11 — Evidence Risk Review core package (padosoft/laravel-
+    // evidence-risk-review v1.1). Listed explicitly for the same
+    // auto-discovery brittleness rationale as the siblings above. Registers
+    // the review engine + the HTTP API, mounted at the secure host prefix
+    // via config/evidence-risk-review.php (auth:sanctum + tenant.authorize +
+    // can:viewEvidenceRiskReview). The companion `-admin` package is installed
+    // but `dont-discover`ed in composer.json — AskMyDocs renders the admin
+    // natively (cross-mount against this core's HTTP API), the established
+    // pattern for every sister admin surface. AppServiceProvider binds the
+    // package TenantResolver -> host TenantContext (R30) and the
+    // EvidenceReviewerLlmContract -> AiManager adapter (default-OFF, R43).
+    Padosoft\EvidenceRiskReview\EvidenceRiskReviewServiceProvider::class,
     // v4.2/W4 sub-PR 7 — Eval Harness UI SPA (padosoft/eval-harness-ui
     // v1.0.0). Listed explicitly because the package lives in
     // require-dev and Laravel's auto-discovery cache may exclude
