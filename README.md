@@ -83,8 +83,10 @@ MCP tools for any agentic client (Claude Desktop, Claude Code,
 Cursor, custom agents), and ships a full React admin SPA — KPI
 dashboard, canonical KB explorer with inline editor and graph viewer,
 log viewer (five tabs), whitelisted Artisan maintenance runner, daily
-AI-insights panel — all behind Spatie role-based access control with
-audit trails on every destructive mutation.
+AI-insights panel, and a self-compiling **Auto-Wiki** admin (health /
+indices / explorer with promote-auto→human / per-project settings,
+v8.12) — all behind Spatie role-based access control with audit trails
+on every destructive mutation.
 
 **Why.** Most "RAG over docs" tools treat your KB as a pile of
 interchangeable chunks. They re-discover the answer from zero on every
@@ -767,7 +769,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 
 | Feature | Description | Since |
 |---|---|---|
-| Admin SPA shell (`/app/admin/*`) | React 18+ (React 19 since v4.3) + TypeScript + Vite + TanStack Router/Query + shadcn/ui; dark-first glassmorphism; code-split routes (~400 KB initial gzipped); RBAC-gated via Spatie; sidebar visibility enforced server-side. **Since v8.8.2 a single unified, grouped + collapsible sidebar** (`nav-config.ts` SSOT — 23 sections in 5 groups) replaces the old primary-rail + secondary-`AdminShell`-rail double menu, and every admin surface now renders **center-only with no nested second admin shell** (cross-mounted sister-package admins drop their own sidebar/header into an in-content tab strip; the Flow surface launches its cockpit in a new tab) — so the host's unified rail is the only menu on any `/app/admin/*` page | v3.0 · v8.8.2 |
+| Admin SPA shell (`/app/admin/*`) | React 18+ (React 19 since v4.3) + TypeScript + Vite + TanStack Router/Query + shadcn/ui; dark-first glassmorphism; code-split routes (~400 KB initial gzipped); RBAC-gated via Spatie; sidebar visibility enforced server-side. **Since v8.8.2 a single unified, grouped + collapsible sidebar** (`nav-config.ts` SSOT — **28 sections in 5 groups** as of v8.12, the Knowledge group having gained the four Auto-Wiki admin screens) replaces the old primary-rail + secondary-`AdminShell`-rail double menu, and every admin surface now renders **center-only with no nested second admin shell** (cross-mounted sister-package admins drop their own sidebar/header into an in-content tab strip; the Flow surface launches its cockpit in a new tab) — so the host's unified rail is the only menu on any `/app/admin/*` page | v3.0 · v8.8.2 |
 | Dashboard KPIs + health | 6 KPIs (docs / chunks / chats / p95 latency / cache hit rate / canonical coverage) + 6 health probes (db / pgvector / queue / kb-disk / embeddings / chat) + 3 code-split recharts cards (chat volume area, token burn stacked, rating donut) + top projects + activity feed; 30s `Cache::remember` layer keyed by kind+project+days | v3.0 |
 | Users + Roles + Memberships | Filterable users table with soft-delete + restore; 3-tab edit drawer (Details / Roles / Memberships with `scope_allowlist` JSON editor); Spatie-backed role CRUD with grouped permission matrix; `project_memberships` rows scope canonical visibility per project | v3.0 |
 | KB Explorer (tree + 5 right-panel tabs) | Memory-safe `chunkById(100)` tree walker with canonical-aware modes (`canonical \| raw \| all`, `with_trashed=0\|1`); right-panel tabs Preview (remark-rendered + frontmatter pills) / Meta (canonical grid + AI tags) / **Source** (CodeMirror 6 editor with PATCH `/raw` → validate → write → audit → re-ingest) / **Graph** (1-hop tenant-scoped subgraph, SVG radial, ≤ 50 nodes) / **History** (paginated `kb_canonical_audit`) | v3.0 |
@@ -1287,12 +1289,15 @@ maintains `kb_wiki_indices` (per-project roll-ups + per-tenant hub);
 `WikiLinter`, `WikiNavigator` (multi-hop BFS), and `AutoWikiReviewer`
 (cross-model audit) operate over the graph; `SuggestionApplier` turns
 change/delete analyses into reversible mutations recorded in
-`kb_doc_analysis_applications`; and the daily `kb:wiki-maintain` sweep
+`kb_doc_analysis_applications`; `WikiExplorerService` lists pages by tier and
+**promotes auto→human** / discards them; and the daily `kb:wiki-maintain` sweep
 (`WikiMaintainer`) keeps it all fresh. The **reranker firewall**
 (`kb.canonical.auto_tier_penalty`) keeps human-`accepted` > `auto` > raw at
 retrieval time, so the auto tier never silently outranks vouched knowledge.
-Every capability is also exposed via the `enterprise-kb` **MCP** server (24
-tools) and RBAC-gated HTTP endpoints under `/api/admin/kb/*`.
+Every capability is also exposed via the `enterprise-kb` **MCP** server (25
+tools) and RBAC-gated HTTP endpoints under `/api/admin/kb/*`, and — since
+**v8.12** — administered from the SPA (Wiki Health / Indices / Explorer /
+Doc-Insights Apply / Auto-Wiki Settings + tier-badged chat citations).
 
 For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 
