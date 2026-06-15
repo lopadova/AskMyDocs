@@ -25,6 +25,7 @@ import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView'
 import { WikiHealthView } from '../features/admin/wiki-health/WikiHealthView';
 import { WikiIndicesView } from '../features/admin/wiki-indices/WikiIndicesView';
 import { WikiExplorerView } from '../features/admin/wiki-explorer/WikiExplorerView';
+import { AutoWikiSettingsView } from '../features/admin/autowiki-settings/AutoWikiSettingsView';
 import { TimeMachineView } from '../features/admin/time-machine/TimeMachineView';
 import { LogsView } from '../features/admin/logs/LogsView';
 import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
@@ -485,6 +486,22 @@ const adminWikiExplorerRoute = createRoute({
     component: AdminWikiExplorerRoute,
 });
 
+function AdminAutoWikiSettingsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="autowiki-settings">
+                <AutoWikiSettingsView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminAutoWikiSettingsRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/kb/autowiki-settings',
+    component: AdminAutoWikiSettingsRoute,
+});
+
 // v8.7/W5 — Cloud Time Machine (per-document version timeline + diff + restore).
 function AdminKbTimeMachineRoute() {
     const params = useParams({ strict: false }) as { docId?: string };
@@ -901,6 +918,7 @@ const routeTree = rootRoute.addChildren([
         adminWikiHealthRoute,
         adminWikiIndicesRoute,
         adminWikiExplorerRoute,
+        adminAutoWikiSettingsRoute,
         adminKbTimeMachineRoute,
         adminLogsRoute,
         adminMaintenanceRoute,

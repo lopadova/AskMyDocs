@@ -379,6 +379,14 @@ Route::middleware([
         Route::put('/kb/analysis-settings', [\App\Http\Controllers\Api\Admin\KbAnalysisSettingController::class, 'upsert'])
             ->name('api.admin.kb.analysis-settings.upsert');
 
+        // v8.11/P10 — per-(tenant, project) Auto-Wiki gate override (auto-build).
+        // R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/autowiki-settings`).
+        Route::get('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'index'])
+            ->name('api.admin.kb.autowiki-settings.index');
+        Route::put('/kb/autowiki-settings', [\App\Http\Controllers\Api\Admin\KbAutoWikiSettingController::class, 'upsert'])
+            ->name('api.admin.kb.autowiki-settings.upsert');
+
         // v8.8/W4 — content-gap analytics (questions the KB couldn't answer).
         // R32 — covered by the AdminAuthorizationMatrix
         // (`/api/admin/kb/content-gaps`).
