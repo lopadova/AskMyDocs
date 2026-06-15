@@ -72,6 +72,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/wiki-index' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-operations' => ['admin', 'super-admin'],
             '/api/admin/kb/wiki-lint' => ['admin', 'super-admin'],
+            '/api/admin/kb/wiki-pages' => ['admin', 'super-admin'],
             '/api/admin/kb/documents/1/versions' => ['admin', 'super-admin'],
             '/api/admin/kb/collections' => ['admin', 'super-admin'],
             '/api/admin/kb/projects' => ['admin', 'super-admin'],

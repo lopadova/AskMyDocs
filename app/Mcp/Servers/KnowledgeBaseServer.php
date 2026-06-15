@@ -21,6 +21,7 @@ use App\Mcp\Tools\KbWikiHubTool;
 use App\Mcp\Tools\KbWikiLintTool;
 use App\Mcp\Tools\KbWikiMaintainTool;
 use App\Mcp\Tools\KbWikiNavigateTool;
+use App\Mcp\Tools\KbWikiPromoteTool;
 use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbRecentChangesTool;
 use App\Mcp\Tools\KbSearchTool;
@@ -78,6 +79,8 @@ class KnowledgeBaseServer extends Server
         KbApplySuggestionTool::class,
         // v8.11/P9 — scheduled wiki maintenance (on-demand trigger)
         KbWikiMaintainTool::class,
+        // v8.11/P10 — Wiki Explorer promote/discard write surface.
+        KbWikiPromoteTool::class,
     ];
 
     protected function boot(): void

@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_twenty_four_tools(): void
+    public function test_server_registers_exactly_twenty_five_tools(): void
     {
-        $this->assertCount(24, $this->registeredTools());
+        $this->assertCount(25, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_wiki_promote_tool(): void
+    {
+        // v8.11/P10 — the Wiki Explorer promote/discard MCP write surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbWikiPromoteTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_wiki_review_tool(): void

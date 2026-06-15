@@ -385,6 +385,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbApplySuggestionCommand::class,
             // v8.11/P9 — scheduled wiki maintenance PHP surface (R44).
             \App\Console\Commands\KbWikiMaintainCommand::class,
+            // v8.11/P10 — Wiki Explorer promote/discard PHP surface (R44).
+            \App\Console\Commands\KbWikiPromoteCommand::class,
         ]);
     }
 
