@@ -1,0 +1,46 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "AskMyDocs",
+  "description": "Enterprise RAG + canonical knowledge graph + agentic tool use — self-hostable, MIT licensed.",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#818cf8",
+    "dark": "#4f46e5"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "icon": "rocket",
+        "pages": [
+          "introduction",
+          "quickstart",
+          "installation",
+          "core-concepts"
+        ]
+      },
+      {
+        "group": "Architecture",
+        "icon": "diagram-project",
+        "pages": [
+          "architecture/overview"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/lopadova/AskMyDocs"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/lopadova/AskMyDocs"
+    }
+  }
+}

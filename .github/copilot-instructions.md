@@ -589,6 +589,19 @@ Intrinsically single-surface capabilities (e.g. a scheduler-only sweep
 with no caller-facing read) state WHY in the PR — a documented choice,
 never an omission. See full rule in `CLAUDE.md` R44.
 
+### R45 — Doc-site parity: every feature/release/README change ships its Mintlify deep-doc
+
+The public docs live under **`/docs-site/`** (Mintlify, groups-based, deployed to
+`padosoft.mintlify.app`), separate from the internal `/docs/`. A PR that adds or
+changes a capability — or edits `README.md` feature tables / changelog / roadmap —
+MUST also add/update the corresponding **deep standalone page** under
+`/docs-site/` and register it in `docs.json`. The doc-site is authored at
+senior-architect / academic depth (motivation → theory → design with a Mermaid
+diagram → data model → ADR-style rationale linking `/docs/adr/*` → worked example
+→ gotchas), NOT a condensed README paste. `docs.json` must be valid JSON with a
+file for every nav entry. A README bump with no doc-site page is an incomplete PR.
+See full rule in `CLAUDE.md` R45 + `.claude/skills/mintlify-doc-authoring/`.
+
 ---
 
 ## 7. Testing & CI

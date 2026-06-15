@@ -1443,6 +1443,44 @@ scheduler-only maintenance sweep with no caller-facing read) — state WHY in th
 PR; absence of a surface is a deliberate, documented choice, never an omission.
 Mirrors the private memory [[feedback_tri_surface_php_api_mcp]].
 
+### R45 — Doc-site parity: every feature/release/README change ships its Mintlify deep-doc
+
+Standing convention from **2026-06-15** (Lorenzo). The public documentation site
+lives under **`/docs-site/`** (Mintlify, groups-based, deployed to
+`padosoft.mintlify.app` via the GitHub App on every push touching `docs-site/`).
+It is **separate** from the 162 internal dev docs in `/docs/` and is authored
+from scratch at senior-architect / academic depth — NOT a condensed README paste.
+
+When a PR adds or changes a capability — or edits `README.md` feature tables /
+changelog / roadmap — it MUST also add/update the corresponding **deep standalone
+page** under `/docs-site/` and register it in `docs.json`. The README is the
+above-the-fold pitch; the doc-site is the authoritative, argued, diagrammed
+reference. Shipping a feature with a README bump but no doc-site page is an
+**incomplete PR**.
+
+Each page follows the deep-doc template (motivation → theory → design **with a
+Mermaid diagram** → data model/contract → **ADR-style decision rationale**
+cross-linking `/docs/adr/*` → worked example → gotchas). The structural + depth
+model is the claude-mem docs
+(`github.com/thedotmack/claude-mem/tree/main/docs/public`): a deep **Architecture**
+group (one page per subsystem + a decisions narrative) + a conceptual **Best
+Practices** group. Every quoted column / env var / command / route must be
+accurate to the code (R9).
+
+Check:
+
+- [ ] New/changed capability has a deep `/docs-site/**.mdx` page registered in
+      `docs.json` under the right group.
+- [ ] Concept/architecture pages carry a Mermaid diagram + an ADR-rationale
+      section + a worked example.
+- [ ] README change → matching doc-site change in the SAME PR (or an explicit,
+      filed follow-up).
+- [ ] `docs.json` is valid JSON and every listed page file exists (Mintlify
+      errors on a nav entry without a file); `cd docs-site && mint dev` clean when
+      the CLI is available.
+
+→ See `.claude/skills/mintlify-doc-authoring/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
@@ -1479,7 +1517,7 @@ Mirrors the private memory [[feedback_tri_surface_php_api_mcp]].
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R44 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R45 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

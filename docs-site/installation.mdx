@@ -1,0 +1,137 @@
+---
+title: "Installation"
+description: "Prerequisites, database setup with pgvector, environment configuration, and the embedding-dimension contract."
+icon: "download"
+---
+
+## Prerequisites
+
+| Component | Version | Notes |
+|---|---|---|
+| PHP | `^8.3` | The application targets PHP 8.3+. |
+| Laravel | `^13.0` | Framework. |
+| Composer | latest | PHP dependency manager. |
+| Node.js | `20+` | Builds the React SPA + Vite assets. |
+| PostgreSQL | `≥ 15` | With the **pgvector** extension. |
+| Sanctum | `^4.2` | Ships with the app; powers SPA + token auth. |
+
+<Note>
+  SQLite is used **only** for the automated test suite (the `vector(N)` columns
+  swap to JSON text via the test migrations). Production and development run on
+  PostgreSQL + pgvector.
+</Note>
+
+## 1. Install dependencies
+
+```bash
+git clone https://github.com/lopadova/AskMyDocs.git
+cd AskMyDocs
+composer install
+npm install && npm run build
+cp .env.example .env
+php artisan key:generate
+```
+
+## 2. Provision PostgreSQL + pgvector
+
+pgvector must exist in the target database before migrating:
+
+```sql
+CREATE DATABASE askmydocs;
+\c askmydocs
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+Then point `.env` at it:
+
+```env
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=askmydocs
+DB_USERNAME=postgres
+DB_PASSWORD=secret
+```
+
+## 3. Choose AI providers
+
+Chat and embeddings are configured **separately** — Anthropic, for example, has
+no embeddings endpoint, so you pair it with an embeddings-capable provider.
+
+```env
+AI_PROVIDER=openai            # chat: openai | anthropic | gemini | openrouter | regolo
+AI_EMBEDDINGS_PROVIDER=openai # embeddings: openai | openrouter | gemini | regolo
+OPENAI_API_KEY=sk-...
+```
+
+<Note>
+  When `AI_PROVIDER=anthropic` and `AI_EMBEDDINGS_PROVIDER` is empty, AskMyDocs
+  auto-selects the first embeddings-capable provider with a configured key in a
+  **dimension-safety-first** order (openai → openrouter → regolo → gemini), so a
+  deployment never silently corrupts ingest writes with a mismatched dimension.
+  See [AI providers](/ai-providers) for the full matrix.
+</Note>
+
+## 4. Migrate
+
+```bash
+php artisan migrate
+```
+
+## 5. Embedding dimensions {#embedding-dimensions}
+
+<Warning>
+  **The embedding dimension is part of the schema contract.** The stock
+  `vector(N)` columns are sized for **1536 dimensions**
+  (`openai/text-embedding-3-small`, the default, which also matches OpenRouter's
+  default embeddings model). Choosing a different-dimension model — e.g.
+  `qwen/qwen3-embedding-4b` at 2560 dims — requires **all three** of:
+
+  1. migrating the `vector(N)` columns to the new dimension,
+  2. flushing `embedding_cache`,
+  3. re-indexing the corpus (re-ingest).
+
+  Mixing dimensions silently corrupts retrieval. Pick the embeddings model
+  before your first ingest.
+</Warning>
+
+## 6. Run it
+
+```bash
+php artisan serve          # http://localhost:8000
+php artisan queue:work     # processes IngestDocumentJob + canonical indexing
+```
+
+Open **`/app`** for the SPA (chat + admin), or hit the JSON API directly. Create
+your first admin user with the role seeder / `auth:grant` command (see
+[Admin panel](/admin-panel)).
+
+## Scheduler
+
+Several rotations run on the Laravel scheduler (`bootstrap/app.php`). Enable the
+system cron entry so they fire:
+
+```bash
+* * * * * cd /path/to/AskMyDocs && php artisan schedule:run >> /dev/null 2>&1
+```
+
+| Time (UTC) | Command | Purpose |
+|---|---|---|
+| 03:10 | `kb:prune-embedding-cache` | LRU cache rotation |
+| 03:20 | `chat-log:prune` | chat-log retention |
+| 03:30 | `kb:prune-deleted` | hard-delete expired soft-deletes |
+| 03:40 | `kb:rebuild-graph` | canonical graph rebuild |
+
+See [Scheduler & maintenance](/scheduler-and-maintenance) for the full list and
+the `--days=N` / `--project=` overrides.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Ingest and ask your first question.
+  </Card>
+  <Card title="Configuration reference" icon="gear" href="/configuration">
+    Every env knob, grouped by subsystem.
+  </Card>
+</CardGroup>
