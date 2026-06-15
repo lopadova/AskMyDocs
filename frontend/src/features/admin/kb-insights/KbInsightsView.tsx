@@ -1,16 +1,20 @@
 import { useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { listAnalyses, type DocAnalysis } from './analyses.api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { applySuggestion, listAnalyses, type DocAnalysis } from './analyses.api';
 
 /**
- * v8.7/W3–W4 — Doc Insights: read-only list of AI document-change analyses.
+ * v8.7/W3–W4 — Doc Insights: list of AI document-change analyses.
  *
  * Each card shows, for one ingest/modify, the LLM's enhancement suggestions,
  * cross-references, and the documents this change may have made obsolete /
- * in need of revision. Suggest-only — nothing here mutates a doc.
+ * in need of revision. Enhancement suggestions are advice only; cross-references
+ * and impacted docs can be APPLIED (v8.11/P8): a manual apply (admin actor) adds
+ * the cross-reference edge or deprecates the impacted doc, audited + reversible.
  *
- * R11 testids · R14 distinct loading / empty / error states · R15 a11y.
+ * R11 testids · R14 distinct loading / empty / error states + a 200-with-refusal
+ * surfaced distinctly from a transport error · R15 a11y.
  */
+type ApplyNote = { kind: 'ok' | 'refused' | 'error'; msg: string };
 export function KbInsightsView(): ReactNode {
     const [statusFilter, setStatusFilter] = useState<'' | 'completed' | 'failed'>('');
 
@@ -97,6 +101,33 @@ export function KbInsightsView(): ReactNode {
 
 function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
     const failed = row.status === 'failed';
+    const qc = useQueryClient();
+    const [notes, setNotes] = useState<Record<string, ApplyNote>>({});
+    const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+    const applyMutation = useMutation({
+        mutationFn: (vars: { type: 'cross_reference' | 'impacted'; target: string }) =>
+            applySuggestion(row.id, vars.type, vars.target),
+        onMutate: (vars) => setPendingKey(`${vars.type}:${vars.target}`),
+        onSuccess: (res, vars) => {
+            const key = `${vars.type}:${vars.target}`;
+            const note: ApplyNote = res.applied
+                ? { kind: 'ok', msg: `Applied — ${res.action ?? 'done'}.` }
+                : { kind: 'refused', msg: `Not applied — ${res.reason ?? 'refused'}.` };
+            setNotes((n) => ({ ...n, [key]: note }));
+            if (res.applied) {
+                qc.invalidateQueries({ queryKey: ['admin-kb-analyses'] });
+            }
+        },
+        onError: (err, vars) => {
+            const key = `${vars.type}:${vars.target}`;
+            setNotes((n) => ({ ...n, [key]: { kind: 'error', msg: err instanceof Error ? err.message : 'Apply failed.' } }));
+        },
+        onSettled: () => setPendingKey(null),
+    });
+
+    const apply = (type: 'cross_reference' | 'impacted', target: string) => applyMutation.mutate({ type, target });
+
     return (
         <article
             data-testid={`admin-kb-insight-${row.id}`}
@@ -140,10 +171,17 @@ function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
                     {row.analysis_json.impacted_docs.length > 0 && (
                         <Section title={`Impacted docs (${row.impacted_count})`} testid={`admin-kb-insight-${row.id}-impacted`}>
                             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-1)' }}>
-                                {row.analysis_json.impacted_docs.map((d, i) => (
-                                    <li key={i} style={{ margin: '2px 0' }}>
+                                {row.analysis_json.impacted_docs.map((d) => (
+                                    <li key={d.slug} style={{ margin: '4px 0' }}>
                                         <strong>{d.title || d.slug}</strong> — {d.impact}{' '}
                                         <em style={{ color: 'var(--accent, #6366f1)' }}>→ {d.suggested_action}</em>
+                                        <ApplyControl
+                                            testid={`admin-kb-insight-${row.id}-impacted-${d.slug}`}
+                                            label={`Deprecate ${d.slug}`}
+                                            pending={pendingKey === `impacted:${d.slug}`}
+                                            note={notes[`impacted:${d.slug}`]}
+                                            onApply={() => apply('impacted', d.slug)}
+                                        />
                                     </li>
                                 ))}
                             </ul>
@@ -152,8 +190,17 @@ function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
                     {row.analysis_json.cross_references.length > 0 && (
                         <Section title={`Cross-references (${row.analysis_json.cross_references.length})`} testid={`admin-kb-insight-${row.id}-crossrefs`}>
                             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: 'var(--fg-2)' }}>
-                                {row.analysis_json.cross_references.map((c, i) => (
-                                    <li key={i} style={{ margin: '2px 0' }}>{c.title || c.slug} — {c.why}</li>
+                                {row.analysis_json.cross_references.map((c) => (
+                                    <li key={c.slug} style={{ margin: '4px 0' }}>
+                                        {c.title || c.slug} — {c.why}
+                                        <ApplyControl
+                                            testid={`admin-kb-insight-${row.id}-crossref-${c.slug}`}
+                                            label={`Add cross-reference to ${c.slug}`}
+                                            pending={pendingKey === `cross_reference:${c.slug}`}
+                                            note={notes[`cross_reference:${c.slug}`]}
+                                            onApply={() => apply('cross_reference', c.slug)}
+                                        />
+                                    </li>
                                 ))}
                             </ul>
                         </Section>
@@ -161,6 +208,34 @@ function AnalysisCard({ row }: { row: DocAnalysis }): ReactNode {
                 </div>
             )}
         </article>
+    );
+}
+
+function ApplyControl({ testid, label, pending, note, onApply }: { testid: string; label: string; pending: boolean; note: ApplyNote | undefined; onApply: () => void }): ReactNode {
+    const applied = note?.kind === 'ok';
+    const noteColor = note?.kind === 'ok' ? 'var(--ok, #3fb950)' : note?.kind === 'refused' ? 'var(--warn, #d29922)' : 'var(--err, #c4391d)';
+    return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 8 }}>
+            <button
+                type="button"
+                data-testid={`${testid}-apply`}
+                onClick={onApply}
+                disabled={pending || applied}
+                aria-label={label}
+                style={{ fontSize: 10.5, padding: '1px 8px', borderRadius: 5, cursor: pending || applied ? 'default' : 'pointer', border: '1px solid var(--accent, #6366f1)', color: applied ? 'var(--fg-3)' : 'var(--accent, #6366f1)', background: 'transparent' }}
+            >
+                {pending ? 'Applying…' : applied ? 'Applied' : 'Apply'}
+            </button>
+            {note && (
+                <span
+                    data-testid={`${testid}-note`}
+                    role={note.kind === 'error' ? 'alert' : 'status'}
+                    style={{ fontSize: 10.5, color: noteColor }}
+                >
+                    {note.msg}
+                </span>
+            )}
+        </span>
     );
 }
 

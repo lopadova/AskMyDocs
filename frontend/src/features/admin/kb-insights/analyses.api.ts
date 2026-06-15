@@ -45,6 +45,29 @@ export interface AnalysesPage {
     meta: { current_page: number; last_page: number; per_page: number; total: number };
 }
 
+/**
+ * v8.11/P8+P10 — the result of applying ONE suggestion. A 200 with
+ * `applied: false` is a deliberate refusal (e.g. `firewall_human_doc`,
+ * `already_deprecated`, `target_unresolved`), NOT an error — the UI must surface
+ * the `reason` distinctly from a transport failure (R14).
+ */
+export interface ApplyResult {
+    applied: boolean;
+    reason?: string;
+    action?: string;
+    source?: string | null;
+    target?: string;
+}
+
+export async function applySuggestion(
+    id: number,
+    type: 'cross_reference' | 'impacted',
+    target: string,
+): Promise<ApplyResult> {
+    const { data } = await api.post<{ data: ApplyResult }>(`/api/admin/kb/analyses/${id}/apply`, { type, target });
+    return data.data;
+}
+
 export async function listAnalyses(params?: { projectKeys?: string[]; status?: string }): Promise<AnalysesPage> {
     const search = new URLSearchParams();
     for (const k of params?.projectKeys ?? []) {

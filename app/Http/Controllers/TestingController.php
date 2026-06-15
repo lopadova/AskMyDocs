@@ -62,6 +62,9 @@ class TestingController extends Controller
         // v8.11/P10 — two slugged canonical docs (human + auto) for the Wiki
         // Indices admin-screen E2E (rebuild → hub roll-up appears).
         'WikiIndicesSeeder' => \Database\Seeders\WikiIndicesSeeder::class,
+        // v8.11/P10 — one completed analysis with an appliable cross-reference
+        // for the Doc Insights "Apply" admin-screen E2E.
+        'KbApplySuggestionSeeder' => \Database\Seeders\KbApplySuggestionSeeder::class,
     ];
 
     public function reset(Request $request): JsonResponse

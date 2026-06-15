@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
+import { seedDb } from './setup-helpers';
 
 /*
  * v8.7/W3–W4 — Doc Insights (AI document-change analyses) admin view.
@@ -44,9 +45,34 @@ test.describe('Admin Doc Insights', () => {
         await expect(empty.or(list)).toBeVisible({ timeout: 15_000 });
     });
 
+    test('applies a cross-reference suggestion against real data (P8/P10)', async ({ page, request }) => {
+        await seedDb(request, 'KbApplySuggestionSeeder');
+
+        await page.goto('/app/admin/kb/insights');
+        await expect(page.getByTestId('admin-kb-insights-view')).toBeVisible({ timeout: 15_000 });
+
+        // The seeded analysis card renders with its appliable cross-reference.
+        // The testid carries the (dynamic) analysis id, so match on the suffix.
+        const applyBtn = page.locator('[data-testid$="-crossref-runbook-cache-apply"]').first();
+        await expect(applyBtn).toBeVisible({ timeout: 15_000 });
+
+        // Apply via the REAL POST endpoint; a manual apply (admin) succeeds.
+        const applyResp = page.waitForResponse(
+            (r) => /\/api\/admin\/kb\/analyses\/\d+\/apply$/.test(r.url()) && r.request().method() === 'POST',
+            { timeout: 15_000 },
+        );
+        await applyBtn.click();
+        const resp = await applyResp;
+        expect(resp.ok()).toBeTruthy();
+
+        const note = page.locator('[data-testid$="-crossref-runbook-cache-note"]').first();
+        await expect(note).toBeVisible({ timeout: 15_000 });
+        await expect(note).toContainText(/Applied/i);
+    });
+
     // R13: failure injection — stubs ONE request to /api/admin/kb/analyses
     // returning 503 so the error-state branch renders deterministically.
-    // The preceding two tests run against the real endpoint; this test is
+    // The preceding tests run against the real endpoint; this test is
     // the explicit failure-path coverage required by R12.
     test('shows error state when the analyses endpoint returns 503', async ({ page }) => {
         // R13: failure injection
