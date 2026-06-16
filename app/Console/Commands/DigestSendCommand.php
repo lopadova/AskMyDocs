@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\SendDigestWebhookJob;
 use App\Mail\DigestMail;
+use App\Models\EngagementDigestFeedEntry;
 use App\Models\KnowledgeDocument;
 use App\Models\NotificationPreference;
 use App\Models\User;
@@ -67,7 +68,7 @@ final class DigestSendCommand extends Command
                 if (! $dryRun) {
                     // Persist the in-app feed entry (W3) so the SPA "This week
                     // in your KB" card has the generated digest to show.
-                    \App\Models\EngagementDigestFeedEntry::create([
+                    EngagementDigestFeedEntry::create([
                         'tenant_id' => $payload->tenantId,
                         'frequency' => $payload->frequency,
                         'period_start' => $payload->periodStart,

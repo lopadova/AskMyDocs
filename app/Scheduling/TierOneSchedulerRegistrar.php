@@ -61,6 +61,7 @@ final class TierOneSchedulerRegistrar
         // v8.15/W2 — rich engagement digest (email + Discord/Slack/Teams).
         ['digest_weekly', 'digest:send --frequency=weekly'],
         ['digest_monthly', 'digest:send --frequency=monthly'],
+        ['digest_prune_feed', 'digest:prune-feed'],
         // v8.7/W5 — Cloud Time Machine archived-version retention.
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
         // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).

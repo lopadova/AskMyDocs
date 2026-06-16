@@ -127,6 +127,24 @@ final class DigestPreferencesTest extends TestCase
             ->assertJsonStructure(['digest' => ['metrics', 'new_docs', 'top_gaps'], 'enabled_sections']);
     }
 
+    public function test_prune_feed_drops_entries_past_retention(): void
+    {
+        EngagementDigestFeedEntry::create([
+            'tenant_id' => 'default', 'frequency' => 'weekly',
+            'period_start' => now()->subDays(200)->toDateString(), 'period_end' => now()->subDays(193)->toDateString(),
+            'payload' => ['metrics' => []], 'created_at' => now()->subDays(190),
+        ]);
+        EngagementDigestFeedEntry::create([
+            'tenant_id' => 'default', 'frequency' => 'weekly',
+            'period_start' => now()->subDays(7)->toDateString(), 'period_end' => now()->toDateString(),
+            'payload' => ['metrics' => []], 'created_at' => now(),
+        ]);
+
+        $this->artisan('digest:prune-feed', ['--days' => 120])->assertExitCode(0);
+
+        $this->assertDatabaseCount('engagement_digest_feed', 1);
+    }
+
     public function test_feed_is_tenant_isolated(): void
     {
         EngagementDigestFeedEntry::create([

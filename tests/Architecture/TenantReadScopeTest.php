@@ -72,6 +72,7 @@ final class TenantReadScopeTest extends TestCase
         'app/Console/Commands/PruneChatLogsCommand.php' => 'Tenant enumeration → per-tenant prune flow (scoped downstream).',
         'app/Console/Commands/PruneDeletedDocumentsCommand.php' => 'Tenant enumeration → per-tenant DocumentDeleter (scoped downstream).',
         'app/Console/Commands/PruneOrphanFilesCommand.php' => 'Orphan-file maintenance sweep; reconciles disk vs DB by design.',
+        'app/Console/Commands/DigestPruneFeedCommand.php' => 'Global digest-feed retention prune; intentionally instance-wide (same posture as the other prune sweeps).',
 
         // User→tenant DISCOVERY for DSAR/compliance: its whole job is to find
         // EVERY tenant a user touched (memberships, conversations, chat logs,
