@@ -94,6 +94,12 @@ return Application::configure(basePath: dirname(__DIR__))
             // sister-package context so config overrides resolve under
             // the same tenant the rest of AskMyDocs is using.
             'ai-act.tenant-context' => \Padosoft\AiActCompliance\MultiTenancy\Http\Middleware\TenantContextMiddleware::class,
+            // v8.14 — method-aware authorization for the laravel-ai-finops API.
+            // The finops package controllers do NO internal authorization;
+            // mounted in `config('ai-finops.routes.auth_middleware')` it gates
+            // safe methods (GET/HEAD) on `viewAiFinOps` (super-admin + admin) and
+            // mutating methods on `manageAiFinOps` (super-admin only).
+            'finops.authorize' => \App\Http\Middleware\FinOpsAuthorize::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated
