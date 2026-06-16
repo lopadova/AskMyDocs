@@ -78,6 +78,15 @@
           "architecture/security-and-threat-model",
           "architecture/decisions"
         ]
+      },
+      {
+        "group": "Reference",
+        "icon": "book-bookmark",
+        "pages": [
+          "reference/api",
+          "reference/cli",
+          "reference/adr-index"
+        ]
       }
     ]
   },
