@@ -47,9 +47,9 @@ flowchart TB
 
 | Phase | Capability | Surface |
 |---|---|---|
-| P1 | Frontmatter enrichment — tags, summary, aliases, cross-references | `kb:wiki-link` (compile on ingest) |
+| P1 | Frontmatter enrichment — tags, summary, aliases, cross-references | `AutoWikiCompilerJob` (async, dispatched on ingest); backfill via `kb:wiki-maintain --backfill` |
 | P1b | Evidence-tier surface | `kb:evidence-tier`, `KbSetEvidenceTierTool` |
-| P2 | Graph canonicalisation — materialise cross-refs as `kb_edges` (`provenance='inferred'`) | `kb:wiki-link` |
+| P2 | Graph canonicalisation — materialise cross-refs as `kb_edges` (`provenance='inferred'`, `AutoWikiGraphLinker`) | `kb:wiki-link` |
 | P3 | Concept-page synthesis — generate `domain-concept` pages for recurring tags | `kb:synthesize-concepts` |
 | P4 | Index rebuild — per-project roll-ups + per-tenant hub | `kb:wiki-index` |
 | P5 | Lint — dangling / orphan / stale / missing-index, with `--fix` | `kb:wiki-lint` |
@@ -112,7 +112,8 @@ Key env knobs (`config/kb.php`): `KB_AUTOWIKI_ENABLED` (true),
 ## Worked example
 
 ```bash
-# enrich + infer edges for one document
+# (P1 enrichment runs async on ingest via AutoWikiCompilerJob)
+# rebuild the auto-wiki graph — infer edges — for one document (P2)
 php artisan kb:wiki-link 4213 --tenant=acme
 
 # synthesise concept pages for tags appearing in ≥3 docs

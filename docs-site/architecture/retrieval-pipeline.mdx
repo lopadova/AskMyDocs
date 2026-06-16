@@ -90,15 +90,16 @@ of a single document can occupy the top-k.
 When hybrid search is enabled, semantic and FTS result lists are merged via
 **Reciprocal Rank Fusion** (`score = weight / (rrf_k + rank)`, `KB_RRF_K=60`,
 `KB_HYBRID_SEMANTIC_WEIGHT=0.70`, `KB_HYBRID_FTS_WEIGHT=0.30`) before reranking.
-The `meta.fusion_method` field records which path ran
+The `meta.search_strategy.fusion_method` field records which path ran
 (`rerank_weighted_sum` | `rrf` | `semantic_only`).
 
 ### Graph expansion & rejected injection
 
-`GraphExpander::expand()` walks 1 hop (`KB_GRAPH_EXPANSION_HOPS=1`) of `kb_edges`
-from the canonical seed docs in the primary set, restricted to the edge-type
-allow-list (`KB_GRAPH_EXPANSION_EDGE_TYPES`) and capped at
-`KB_GRAPH_EXPANSION_MAX_NODES=20`. Expanded chunks carry
+`GraphExpander::expand()` walks a fixed **1 hop** of `kb_edges` from the
+canonical seed docs in the primary set, restricted to the edge-type allow-list
+(`KB_GRAPH_EXPANSION_EDGE_TYPES`) and capped at `KB_GRAPH_EXPANSION_MAX_NODES=20`.
+(The `KB_GRAPH_EXPANSION_HOPS` config key exists but the expander is currently
+1-hop regardless of its value.) Expanded chunks carry
 `metadata.origin='graph_expansion'`. `RejectedApproachInjector::pick()`
 vector-correlates the query against `rejected-approach` canonical docs (summary
 chunks only) and returns up to `KB_REJECTED_INJECTION_MAX_DOCS=3` above
@@ -119,10 +120,11 @@ final class SearchResult {
 }
 ```
 
-`meta` carries `primary_count` / `expanded_count` / `rejected_count` /
-`runner_up_count`, `retrieval_ms`, the strategy flags
-(`semantic_enabled`, `fts_enabled`, `fusion_method`, `graph_expansion_enabled`,
-`rejected_injection_enabled`, `filters_applied`), and retrieval stats
+`meta` carries the top-level counts (`primary_count` / `expanded_count` /
+`rejected_count` / `runner_up_count`) and `retrieval_ms`, a nested
+**`meta.search_strategy`** object (`semantic_enabled`, `fts_enabled`,
+`fusion_method`, `graph_expansion_enabled`, `rejected_injection_enabled`,
+`filters_applied`), and a nested **`meta.retrieval_stats`** object
 (`candidates_pre_threshold`, `candidates_post_threshold`, `min_score_used`,
 `max_score_used`). The prompt is composed from these typed blocks — a
 `⚠ REJECTED APPROACHES` section, a `📎 RELATED CONTEXT` section, and the primary

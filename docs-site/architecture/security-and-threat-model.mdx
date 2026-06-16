@@ -154,7 +154,7 @@ $docs = KnowledgeDocument::query()
 ```text
 # concurrent destructive-command requests with the same token
 req A: BEGIN; SELECT … FOR UPDATE; used_at NULL → write used_at; COMMIT  ✓ runs
-req B: BEGIN; SELECT … FOR UPDATE (blocks) → used_at SET → reject       ✗ 409
+req B: BEGIN; SELECT … FOR UPDATE (blocks) → used_at SET → reject       ✗ 422
 ```
 
 ## Gotchas & operations
