@@ -266,6 +266,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Gamification (v8.15/W5) — OPT-IN
+    |--------------------------------------------------------------------------
+    | A tasteful contributor-motivation layer: badges awarded when a user's
+    | all-time engagement crosses a threshold, surfaced on the "My KB"
+    | dashboard alongside the (already-shipped) leaderboard. DEFAULT-OFF
+    | (R43 — tested both states); when off, no badges are awarded or shown.
+    | The badge catalog is config-driven so an operator can tune labels /
+    | thresholds (and per-tenant overrides can layer on top later) — each
+    | badge declares a `metric` (score | events | authored | active_days,
+    | all-time) and the `threshold` to reach it.
+    */
+    'gamification' => [
+        'enabled' => (bool) env('KB_GAMIFICATION_ENABLED', false),
+        'badges' => [
+            ['key' => 'first_contribution', 'label' => 'First contribution', 'icon' => '🌱', 'metric' => 'events', 'threshold' => 1],
+            ['key' => 'contributor', 'label' => 'Contributor', 'icon' => '✍️', 'metric' => 'score', 'threshold' => 25],
+            ['key' => 'prolific', 'label' => 'Prolific contributor', 'icon' => '🚀', 'metric' => 'score', 'threshold' => 100],
+            ['key' => 'author', 'label' => 'Author', 'icon' => '📚', 'metric' => 'authored', 'threshold' => 5],
+            ['key' => 'regular', 'label' => 'Regular', 'icon' => '🔥', 'metric' => 'active_days', 'threshold' => 5],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |

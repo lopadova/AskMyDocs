@@ -18,11 +18,32 @@ export interface MeDashboardResponse {
     dashboard: MeDashboard;
 }
 
+export interface MeBadge {
+    key: string;
+    label: string;
+    icon: string;
+    metric: string;
+    threshold: number;
+    progress: number;
+    earned: boolean;
+    awarded_at: string | null;
+}
+
+export interface MeBadgesResponse {
+    enabled: boolean;
+    badges: MeBadge[];
+}
+
 export const meDashboardApi = {
     async load(days = 30): Promise<MeDashboardResponse> {
         const { data } = await api.get<MeDashboardResponse>('/api/me/dashboard', { params: { days } });
         return data;
     },
+    async badges(): Promise<MeBadgesResponse> {
+        const { data } = await api.get<MeBadgesResponse>('/api/me/badges');
+        return data;
+    },
 };
 
 export const ME_DASHBOARD_QUERY_KEY = ['me', 'dashboard'] as const;
+export const ME_BADGES_QUERY_KEY = ['me', 'badges'] as const;
