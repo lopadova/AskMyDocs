@@ -19,6 +19,8 @@
         "padosoft/askmydocs-mcp-pack": "^1.5",
         "padosoft/laravel-ai-act-compliance": "^1.5.0",
         "padosoft/laravel-ai-act-compliance-admin": "^1.5.0",
+        "padosoft/laravel-ai-finops": "^1.2",
+        "padosoft/laravel-ai-finops-admin": "^1.2",
         "padosoft/laravel-ai-regolo": "^1.0",
         "padosoft/laravel-evidence-risk-review": "^1.1",
         "padosoft/laravel-evidence-risk-review-admin": "^1.0",
