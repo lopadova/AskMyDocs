@@ -146,7 +146,7 @@ class EngagementMetricsService
             'window_days' => $windowDays,
             'contributions' => $this->contributorStats($userId, $windowDays),
             'rank' => $this->contributorRank($userId, $windowDays),
-            'authored_docs' => count($this->authoredDocumentIds($userId)),
+            'authored_docs' => $this->authoredDocumentCount($userId),
             'questions_asked' => $this->questionsAskedBy($userId, $since),
             'active_days' => $this->activeContributionDays($userId, $since),
             'docs_needing_review' => $this->myDocsNeedingReview($userId),
@@ -197,34 +197,48 @@ class EngagementMetricsService
             return null;
         }
 
-        // Number of distinct users whose summed weight strictly exceeds mine.
-        $ahead = KbContributionEvent::query()
+        // Number of distinct users whose summed weight strictly exceeds mine —
+        // counted in SQL via a derived table (R3: never materialise the group
+        // rows just to count them).
+        $aheadQuery = KbContributionEvent::query()
             ->forTenant($tenant)
             ->where('created_at', '>=', $since)
             ->whereNotNull('user_id')
-            ->selectRaw('user_id, SUM(weight) as score')
+            ->selectRaw('user_id')
             ->groupBy('user_id')
-            ->havingRaw('SUM(weight) > ?', [$myScore])
-            ->get()
-            ->count();
+            ->havingRaw('SUM(weight) > ?', [$myScore]);
+
+        $ahead = (int) DB::query()->fromSub($aheadQuery, 'ahead')->count();
 
         return $ahead + 1;
     }
 
-    /**
-     * @return list<int>
-     */
-    private function authoredDocumentIds(int $userId): array
+    private function authoredDocumentCount(int $userId): int
     {
-        return KbContributionEvent::query()
+        return (int) KbContributionEvent::query()
             ->forTenant($this->tenants->current())
             ->where('user_id', $userId)
             ->whereIn('event', [KbContributionEvent::EVENT_CREATED, KbContributionEvent::EVENT_PROMOTED])
             ->whereNotNull('document_id')
             ->distinct()
-            ->pluck('document_id')
-            ->map(static fn ($v): int => (int) $v)
-            ->all();
+            ->count('document_id');
+    }
+
+    /**
+     * Correlated subquery of the document ids the user authored (created or
+     * promoted), kept in SQL so a prolific author never materialises a giant
+     * id list / IN-clause (R3).
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $q
+     */
+    private function authoredDocIdsSubquery($q, int $userId): void
+    {
+        $q->select('document_id')
+            ->from('kb_contribution_events')
+            ->where('tenant_id', $this->tenants->current())
+            ->where('user_id', $userId)
+            ->whereIn('event', [KbContributionEvent::EVENT_CREATED, KbContributionEvent::EVENT_PROMOTED])
+            ->whereNotNull('document_id');
     }
 
     private function questionsAskedBy(int $userId, Carbon $since): int
@@ -261,16 +275,11 @@ class EngagementMetricsService
      */
     private function myDocsNeedingReview(int $userId): array
     {
-        $docIds = $this->authoredDocumentIds($userId);
-        if ($docIds === []) {
-            return [];
-        }
-
         $threshold = (int) config('askmydocs.kb_health.threshold_event_score', 70);
 
         $snapshots = KbCanonicalHealthSnapshot::query()
             ->forTenant($this->tenants->current())
-            ->whereIn('knowledge_document_id', $docIds)
+            ->whereIn('knowledge_document_id', fn ($q) => $this->authoredDocIdsSubquery($q, $userId))
             ->where('health_score', '>=', $threshold)
             ->orderByDesc('health_score')
             ->limit(10)

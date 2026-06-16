@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -33,6 +34,7 @@ final class EngagementAnalyticsTest extends TestCase
         parent::setUp();
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        Cache::flush();
     }
 
     private function makeUser(string $role = ''): User
