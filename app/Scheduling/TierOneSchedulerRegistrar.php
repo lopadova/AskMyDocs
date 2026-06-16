@@ -60,6 +60,12 @@ final class TierOneSchedulerRegistrar
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
         // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).
         ['kb_wiki_maintain', 'kb:wiki-maintain'],
+        // v8.14 — FinOps maintenance: snapshot watched-model prices, evaluate
+        // budget alert thresholds, prune the usage ledger past its retention
+        // window (defaults to config('ai-finops.storage.retention_days')).
+        ['finops_capture_prices', 'ai-finops:capture-prices'],
+        ['finops_check_alerts', 'ai-finops:check-alerts'],
+        ['finops_prune_ledger', 'ai-finops:prune'],
     ];
 
     public function register(Schedule $schedule): void
