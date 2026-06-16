@@ -197,6 +197,10 @@ Route::middleware([
         ->name('api.me.digest-preferences.update');
     Route::get('/me/digest/latest', [\App\Http\Controllers\Api\DigestFeedController::class, 'latest'])
         ->name('api.me.digest.latest');
+
+    // v8.15/W4 — per-user "your KB" dashboard (any authenticated user).
+    Route::get('/me/dashboard', [\App\Http\Controllers\Api\UserDashboardController::class, 'show'])
+        ->name('api.me.dashboard');
 });
 
 /*
@@ -277,6 +281,9 @@ Route::middleware([
             ->name('api.admin.engagement.summary');
         Route::get('/engagement/leaderboard', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'leaderboard'])
             ->name('api.admin.engagement.leaderboard');
+        // v8.15/W4 — engagement trend series for the admin charts.
+        Route::get('/engagement/series', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'series'])
+            ->name('api.admin.engagement.series');
 
         // v8.15/W2 — digest preview (compose + render, no send). R32 matrix row
         // for `/api/admin/digest/preview`.

@@ -7,9 +7,11 @@ namespace App\Services\Engagement;
 use App\Models\ChatLog;
 use App\Models\KbCanonicalHealthSnapshot;
 use App\Models\KbContributionEvent;
+use App\Models\KbEngagementSnapshot;
 use App\Models\KbSearchFailure;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
+use App\Scopes\AccessScopeScope;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
 
@@ -126,6 +128,167 @@ class EngagementMetricsService
             'by_event' => $byEvent->mapWithKeys(static fn ($r): array => [(string) $r->event => (int) $r->events])->all(),
             'citations' => (int) $byEvent->firstWhere('event', KbContributionEvent::EVENT_CITED)?->events,
         ];
+    }
+
+    /**
+     * The "your KB" personal dashboard for one user (W4): contributions, rank,
+     * authored docs, questions asked, active days, and the user's own docs that
+     * now need review. Tenant-scoped (R30).
+     *
+     * @return array<string, mixed>
+     */
+    public function userDashboard(int $userId, int $windowDays = 30): array
+    {
+        $since = Carbon::now()->subDays(max(1, $windowDays));
+
+        return [
+            'window_days' => $windowDays,
+            'contributions' => $this->contributorStats($userId, $windowDays),
+            'rank' => $this->contributorRank($userId, $windowDays),
+            'authored_docs' => count($this->authoredDocumentIds($userId)),
+            'questions_asked' => $this->questionsAskedBy($userId, $since),
+            'active_days' => $this->activeContributionDays($userId, $since),
+            'docs_needing_review' => $this->myDocsNeedingReview($userId),
+        ];
+    }
+
+    /**
+     * Time-series of recent engagement snapshots for the admin trend charts.
+     *
+     * @return list<array{date:string, contributors:int, new_docs:int, answers:int, avg_debt_score:?float}>
+     */
+    public function trendSeries(int $points = 8): array
+    {
+        return KbEngagementSnapshot::query()
+            ->forTenant($this->tenants->current())
+            ->orderByDesc('snapshot_date')
+            ->limit(max(1, $points))
+            ->get(['snapshot_date', 'metrics'])
+            ->reverse()
+            ->map(static function ($s): array {
+                $m = $s->metrics ?? [];
+
+                return [
+                    'date' => $s->snapshot_date->toDateString(),
+                    'contributors' => (int) ($m['contributors'] ?? 0),
+                    'new_docs' => (int) ($m['new_docs'] ?? 0),
+                    'answers' => (int) ($m['answers'] ?? 0),
+                    'avg_debt_score' => isset($m['avg_debt_score']) ? (float) $m['avg_debt_score'] : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /** Leaderboard position (1-based) of the user in the window, or null if no activity. */
+    private function contributorRank(int $userId, int $windowDays): int|null
+    {
+        $since = Carbon::now()->subDays(max(1, $windowDays));
+        $tenant = $this->tenants->current();
+
+        $myScore = (int) KbContributionEvent::query()
+            ->forTenant($tenant)
+            ->where('user_id', $userId)
+            ->where('created_at', '>=', $since)
+            ->sum('weight');
+
+        if ($myScore === 0) {
+            return null;
+        }
+
+        // Number of distinct users whose summed weight strictly exceeds mine.
+        $ahead = KbContributionEvent::query()
+            ->forTenant($tenant)
+            ->where('created_at', '>=', $since)
+            ->whereNotNull('user_id')
+            ->selectRaw('user_id, SUM(weight) as score')
+            ->groupBy('user_id')
+            ->havingRaw('SUM(weight) > ?', [$myScore])
+            ->get()
+            ->count();
+
+        return $ahead + 1;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function authoredDocumentIds(int $userId): array
+    {
+        return KbContributionEvent::query()
+            ->forTenant($this->tenants->current())
+            ->where('user_id', $userId)
+            ->whereIn('event', [KbContributionEvent::EVENT_CREATED, KbContributionEvent::EVENT_PROMOTED])
+            ->whereNotNull('document_id')
+            ->distinct()
+            ->pluck('document_id')
+            ->map(static fn ($v): int => (int) $v)
+            ->all();
+    }
+
+    private function questionsAskedBy(int $userId, Carbon $since): int
+    {
+        return (int) ChatLog::query()
+            ->forTenant($this->tenants->current())
+            ->where('user_id', $userId)
+            ->where('created_at', '>=', $since)
+            ->count();
+    }
+
+    private function activeContributionDays(int $userId, Carbon $since): int
+    {
+        return KbContributionEvent::query()
+            ->forTenant($this->tenants->current())
+            ->where('user_id', $userId)
+            ->where('created_at', '>=', $since)
+            ->get(['created_at'])
+            ->map(static fn ($r): string => $r->created_at?->toDateString() ?? '')
+            ->filter()
+            ->unique()
+            ->count();
+    }
+
+    /**
+     * The user's own authored docs whose decision-debt score now crosses the
+     * review threshold (their personal "needs review" queue).
+     *
+     * @return list<array{title:string, debt_score:int, slug:?string}>
+     */
+    private function myDocsNeedingReview(int $userId): array
+    {
+        $docIds = $this->authoredDocumentIds($userId);
+        if ($docIds === []) {
+            return [];
+        }
+
+        $threshold = (int) config('askmydocs.kb_health.threshold_event_score', 70);
+
+        $snapshots = KbCanonicalHealthSnapshot::query()
+            ->forTenant($this->tenants->current())
+            ->whereIn('knowledge_document_id', $docIds)
+            ->where('health_score', '>=', $threshold)
+            ->orderByDesc('health_score')
+            ->limit(10)
+            ->get(['knowledge_document_id', 'doc_slug', 'health_score']);
+
+        if ($snapshots->isEmpty()) {
+            return [];
+        }
+
+        // Bypass AccessScopeScope: this is a SYSTEM-side title enrichment for
+        // docs the user provably authored (their own contribution events), so
+        // it must not be filtered by the caller's project-membership read scope.
+        $titles = KnowledgeDocument::query()
+            ->withoutGlobalScope(AccessScopeScope::class)
+            ->forTenant($this->tenants->current())
+            ->whereIn('id', $snapshots->pluck('knowledge_document_id')->all())
+            ->pluck('title', 'id');
+
+        return $snapshots->map(static fn ($s): array => [
+            'title' => (string) ($titles[$s->knowledge_document_id] ?? $s->doc_slug ?? 'Untitled'),
+            'slug' => $s->doc_slug,
+            'debt_score' => (int) $s->health_score,
+        ])->all();
     }
 
     private function distinctContributors(Carbon $since): int
