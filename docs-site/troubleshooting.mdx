@@ -1,0 +1,164 @@
+---
+title: "Troubleshooting"
+description: "Diagnose the common failure modes — the embedding-dimension gotcha, the health-check surface, silent delete no-ops, spurious refusals, an empty graph, and a stalled ingestion queue."
+icon: "wrench"
+---
+
+## Motivation
+
+Most production incidents in a RAG system are not crashes — they are *silent
+degradations*: answers get vaguer, a delete "succeeds" but the doc still shows
+up, the graph never populates. This page catalogues the failure modes we have
+actually hit, the signal that distinguishes each, and the fix.
+
+## Health checks
+
+Start every investigation here.
+
+- **`GET /healthz`** — a liveness probe. Returns `ok` (HTTP 200) when the app
+  boots. Wire it into your load balancer.
+- **Admin dashboard health panel** — backed by
+  `App\Services\Admin\HealthCheckService::run()`, it returns a per-subsystem
+  status map: `db_ok`, `pgvector_ok`, `queue_ok`, `kb_disk_ok`,
+  `embedding_provider_ok`, `chat_provider_ok` (each `ok | degraded | down`), a
+  `pii_redactor` block (whose `status` is `ok | degraded | down | disabled` —
+  `disabled` is intentional, not an error), and a `checked_at` timestamp. The
+  dashboard endpoint (`DashboardMetricsController::health()`) additionally
+  attaches a `pii_redactor_config` snapshot for the PII strip.
+
+A `degraded`/`down` here localises the fault before you read a single log line.
+
+## Embedding-dimension gotcha
+
+**Symptom:** after switching the embeddings provider/model, ingestion crashes on
+a vector-width mismatch, or retrieval quality collapses because old and new
+vectors coexist.
+
+**Cause:** `KB_EMBEDDINGS_DIMENSIONS` and the `vector(N)` columns on
+`knowledge_chunks` + `embedding_cache` are a **contract**. Changing the model's
+output width (OpenAI 1536 → Gemini 768 → Regolo 4096) without migrating breaks
+it.
+
+**Fix — all four steps, in order:**
+
+<Steps>
+  <Step title="Update the dimension">
+    Set `KB_EMBEDDINGS_DIMENSIONS` in `.env` to the new model's width.
+  </Step>
+  <Step title="Resize the vector columns">
+    Create a migration that resizes the `embedding vector(N)` column on
+    `knowledge_chunks` **and** `embedding_cache` to the new `N`.
+  </Step>
+  <Step title="Flush the embedding cache">
+    Stale-dimension vectors must not pollute retrieval. From `tinker`:
+    ```php
+    app(\App\Services\Kb\EmbeddingCacheService::class)->flush();
+    // or scope to the retired provider:
+    app(\App\Services\Kb\EmbeddingCacheService::class)->flush('openai');
+    ```
+    <Warning>
+    `kb:prune-embedding-cache --days=N` only evicts rows **older than N days**
+    and returns early when `N <= 0`. It is **not** a full-flush substitute.
+    </Warning>
+  </Step>
+  <Step title="Re-index every document">
+    Re-ingest the corpus so chunks are re-embedded at the new width.
+  </Step>
+</Steps>
+
+## A delete "succeeds" but the document still appears
+
+**Symptom:** `kb:delete` (or the API) reports success, yet search still returns
+the doc — or reports "not found" for a doc you can see.
+
+**Cause:** path divergence. The ingest and delete flows must produce the
+**identical** normalised `source_path`. Every path is funnelled through
+`App\Support\KbPath::normalize()` (collapses `//`, converts `\`, rejects `.`/`..`).
+A hand-built path that skips it will not match the stored row.
+
+**Fix:** delete by the same path the ingest used. For force-deleting a
+previously *soft-deleted* row, the write path must query `withTrashed()` — a
+default-scoped query hides trashed rows and the delete becomes a silent no-op.
+
+## Spurious refusals ("I don't have enough context")
+
+**Symptom:** the assistant refuses on questions you know are covered.
+
+**Cause:** the refusal gate thresholds are too strict for your corpus, or
+retrieval genuinely isn't surfacing the right chunks.
+
+**Fix:** inspect the chat-log `meta` (the refusal carries a machine-readable
+`refusal_reason`). Then tune, in `config/kb.php`:
+
+```bash
+KB_REFUSAL_MIN_SIMILARITY=0.45     # lower → more answers, more hallucination risk
+KB_REFUSAL_MIN_RERANK_SCORE=0.25
+KB_REFUSAL_MIN_CHUNKS=1
+```
+
+Lower cautiously — the gate exists to prevent fabrication. See the
+[anti-hallucination firewall](/anti-hallucination-firewall).
+
+## The graph is empty / expansion does nothing
+
+**Symptom:** `kb_nodes` / `kb_edges` are empty; graph expansion never fires.
+
+**Cause:** this is **by design** when a tenant has no canonical docs.
+`GraphExpander::expand()` and `RejectedApproachInjector::pick()` both degrade to
+no-ops — plain hybrid RAG behaviour.
+
+**Fix:** canonicalise some docs (frontmatter with `doc_id` + `slug` + type),
+then `php artisan kb:rebuild-graph`. Confirm `KB_GRAPH_EXPANSION_ENABLED=true`.
+See [canonical & promotion](/canonical-and-promotion) and the
+[architecture overview](/architecture/overview).
+
+## Ingestion never completes
+
+**Symptom:** `POST /api/kb/ingest` returns 202 but documents never become
+searchable.
+
+**Cause:** no queue worker is processing `kb-ingest`, or `QUEUE_CONNECTION=sync`
+in an environment that expects async.
+
+**Fix:**
+
+```bash
+php artisan queue:work --queue=kb-ingest,default --tries=3
+php artisan queue:failed          # inspect failures
+php artisan queue:retry all       # re-dispatch failed jobs
+```
+
+`IngestDocumentJob` runs with `$tries=3` and backoff `[10, 30, 60]` — a
+transient provider error self-heals; a persistent one lands in `failed_jobs`
+(visible in the admin log viewer's Failed Jobs tab).
+
+## "My setting did nothing"
+
+**Cause:** a cached config. Production should `config:cache`, but that means
+live `.env` edits are ignored until you clear it.
+
+**Fix:**
+
+```bash
+php artisan config:clear      # then re-cache if desired
+php artisan schedule:list     # verify scheduler overrides actually resolved
+```
+
+## Gotchas & operations
+
+- **Read the subsystem health map first** — it localises DB / pgvector / queue /
+  disk / provider faults before logs.
+- **Failures should be loud.** Endpoints map failure → correct status (404 / 500
+  / 503), never 200-with-empty-body. If you see a 200 with an empty/null body,
+  that is a bug to report, not expected behaviour.
+- **The dimension gotcha is the #1 self-host footgun.** All four steps, in
+  order, every time you change the embeddings model.
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    The thresholds and retention knobs referenced above.
+  </Card>
+  <Card title="Scheduler & maintenance" icon="clock" href="/scheduler-and-maintenance">
+    The retention sweeps that keep storage bounded.
+  </Card>
+</CardGroup>
