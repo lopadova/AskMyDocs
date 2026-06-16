@@ -75,15 +75,18 @@ return [
     | every one of those reachable with only Laravel's stock `auth` guard and
     | no tenant isolation.
     |
-    | `middleware` wraps EVERY package route (incl. the public `health`
-    | probe): the host admin stack — cookies + session (so the Sanctum
-    | STATEFUL guard sees the SPA cookie) + `auth:sanctum` + `tenant.authorize`
-    | (R30 tenant isolation). `auth_middleware` is applied ON TOP of the
-    | privileged (non-health) endpoints: `finops.authorize` is the method-aware
-    | gate — safe methods (GET/HEAD) require `viewAiFinOps` (super-admin +
-    | admin), mutating methods (POST/PUT/PATCH/DELETE) require `manageAiFinOps`
-    | (super-admin only). The package controllers do NO internal authorization,
-    | so this middleware IS the authorization boundary.
+    | `middleware` wraps EVERY package route — INCLUDING the package's
+    | `health` probe. The package defaults `health` to no auth, but here it is
+    | NOT publicly reachable: our stack puts it behind the full host admin
+    | stack — cookies + session (so the Sanctum STATEFUL guard sees the SPA
+    | cookie) + `auth:sanctum` + `tenant.authorize` (R30 tenant isolation). So
+    | `health` requires a valid authenticated tenant session like every other
+    | route; it is NOT an anonymous uptime probe. `auth_middleware` is applied
+    | ON TOP, on the privileged (non-health) endpoints only: `finops.authorize`
+    | is the method-aware gate — safe methods (GET/HEAD) require `viewAiFinOps`
+    | (super-admin + admin), mutating methods (POST/PUT/PATCH/DELETE) require
+    | `manageAiFinOps` (super-admin only). The package controllers do NO
+    | internal authorization, so this middleware IS the authorization boundary.
     |
     | Regression-locked by tests/Feature/Security/AdminAuthorizationMatrixTest
     | (R32).
