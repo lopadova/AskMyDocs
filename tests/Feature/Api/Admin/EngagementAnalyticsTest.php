@@ -90,6 +90,38 @@ final class EngagementAnalyticsTest extends TestCase
         $this->getJson('/api/me/dashboard')->assertUnauthorized();
     }
 
+    public function test_tied_top_contributors_share_rank_one(): void
+    {
+        $a = $this->makeUser();
+        $b = $this->makeUser();
+        // Equal top scores → both rank 1 (ties share a rank).
+        $this->event($a->id, 'created');   // 5
+        $this->event($b->id, 'created');   // 5
+
+        $this->assertSame(1, $this->actingAs($a)->getJson('/api/me/dashboard')->json('dashboard.rank'));
+        $this->assertSame(1, $this->actingAs($b)->getJson('/api/me/dashboard')->json('dashboard.rank'));
+    }
+
+    public function test_mcp_summary_tool_response_includes_trend(): void
+    {
+        KbEngagementSnapshot::create([
+            'tenant_id' => 'default', 'snapshot_date' => now()->toDateString(),
+            'metrics' => ['contributors' => 2, 'new_docs' => 1, 'answers' => 0, 'avg_debt_score' => 30.0],
+            'computed_at' => now(),
+        ]);
+
+        // R27/R44 — the additive `trend` key on the MCP tool is exercised at its layer.
+        $response = (new \App\Mcp\Tools\KbEngagementSummaryTool())->handle(
+            new \Laravel\Mcp\Request(['days' => 7]),
+            app(\App\Services\Engagement\EngagementMetricsService::class),
+            app(TenantContext::class),
+        );
+        $payload = json_decode((string) $response->content(), true);
+        $this->assertArrayHasKey('trend', $payload);
+        $this->assertIsArray($payload['trend']);
+        $this->assertSame(2, $payload['trend'][0]['contributors']);
+    }
+
     public function test_admin_engagement_series_returns_ordered_history(): void
     {
         // Two snapshots; the endpoint returns them oldest→newest (R16 strict order).

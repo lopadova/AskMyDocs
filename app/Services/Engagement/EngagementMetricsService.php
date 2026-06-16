@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Scopes\AccessScopeScope;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 /**
  * v8.15/W1 — engagement analytics over the existing KB signals.
@@ -237,15 +238,19 @@ class EngagementMetricsService
 
     private function activeContributionDays(int $userId, Carbon $since): int
     {
-        return KbContributionEvent::query()
+        // Count distinct contribution days in SQL (R3 — never materialise a
+        // heavy contributor's full event set). Driver-portable date bucket,
+        // mirroring AdminMetricsService.
+        $dateExpr = DB::connection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m-%d', created_at)"
+            : 'DATE(created_at)';
+
+        return (int) KbContributionEvent::query()
             ->forTenant($this->tenants->current())
             ->where('user_id', $userId)
             ->where('created_at', '>=', $since)
-            ->get(['created_at'])
-            ->map(static fn ($r): string => $r->created_at?->toDateString() ?? '')
-            ->filter()
-            ->unique()
-            ->count();
+            ->distinct()
+            ->count(DB::raw($dateExpr));
     }
 
     /**
