@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\ChatPreferencesController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
+use App\Http\Controllers\Api\KbDocumentPreviewController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
@@ -152,6 +153,15 @@ Route::middleware([
     // apply automatically (R2).
     Route::get('/kb/resolve-wikilink', KbResolveWikilinkController::class)
         ->name('api.kb.resolve-wikilink');
+
+    // Full source text of a CITED document, for the chat "open source" modal.
+    // Reachable by every authenticated reader (not only admins) and scoped to
+    // the caller's tenant + AccessScope — a citation can only open a document
+    // the reader may see. {document} is numeric so it never shadows the literal
+    // `/kb/documents/search` route above.
+    Route::get('/kb/documents/{document}/preview', KbDocumentPreviewController::class)
+        ->whereNumber('document')
+        ->name('api.kb.documents.preview');
 
     // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116
     // refactored `promote` from inline write+dispatch to the 4-step
