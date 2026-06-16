@@ -8,7 +8,7 @@ import { api } from '../../lib/api';
 const LATEST = {
     has_digest: true,
     generated_at: '2026-06-16T07:00:00Z',
-    enabled_sections: ['metrics', 'new_docs', 'top_gaps'],
+    enabled_sections: ['metrics', 'new_docs', 'top_gaps', 'leaderboard'],
     digest: {
         frequency: 'weekly',
         narrative: 'Three new docs landed and one question still needs an answer.',
@@ -16,6 +16,7 @@ const LATEST = {
         new_docs: [{ title: 'Onboarding', project_key: 'hr', change: 'created' }],
         stale_docs: [{ title: 'Old policy', debt_score: 80, age_days: 200 }],
         top_gaps: [{ question: 'how to deploy', occurrences: 9 }],
+        leaderboard: [{ name: 'Ada', score: 21 }],
     },
 };
 
@@ -36,6 +37,7 @@ describe('DigestFeedCard', () => {
         expect(screen.getByTestId('digest-feed-metrics')).toBeInTheDocument();
         expect(screen.getByTestId('digest-feed-new-docs')).toBeInTheDocument();
         expect(screen.getByTestId('digest-feed-gaps')).toBeInTheDocument();
+        expect(screen.getByTestId('digest-feed-leaderboard')).toBeInTheDocument();
         // stale_docs is NOT in enabled_sections → must be hidden.
         expect(screen.queryByTestId('digest-feed-stale')).not.toBeInTheDocument();
     });

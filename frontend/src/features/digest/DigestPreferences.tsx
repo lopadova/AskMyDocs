@@ -86,7 +86,9 @@ export function DigestPreferences(): ReactNode {
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
-                        saveMut.mutate({ frequency, sections: sections.length === 0 ? null : sections });
+                        // Send the explicit selection (empty array = "no
+                        // sections"); the BE keeps null only for never-configured.
+                        saveMut.mutate({ frequency, sections });
                     }}
                 >
                     <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>

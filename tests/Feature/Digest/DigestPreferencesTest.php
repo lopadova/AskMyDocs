@@ -76,6 +76,28 @@ final class DigestPreferencesTest extends TestCase
         $this->assertDatabaseHas('digest_preferences', ['user_id' => $user->id, 'frequency' => 'monthly']);
     }
 
+    public function test_empty_sections_persists_as_none_not_all(): void
+    {
+        $user = $this->makeUser();
+        // Unchecking every box sends [] → stored as "none", round-trips as [].
+        $this->actingAs($user)->putJson('/api/me/digest-preferences', [
+            'frequency' => 'weekly',
+            'sections' => [],
+        ])->assertOk()->assertJsonPath('sections', []);
+
+        $this->actingAs($user)->getJson('/api/me/digest-preferences')
+            ->assertOk()->assertJsonPath('sections', []);
+    }
+
+    public function test_null_sections_means_all(): void
+    {
+        $user = $this->makeUser();
+        $this->actingAs($user)->putJson('/api/me/digest-preferences', [
+            'frequency' => 'weekly',
+            'sections' => null,
+        ])->assertOk()->assertJsonPath('sections', DigestPreference::SECTIONS);
+    }
+
     public function test_update_rejects_invalid_frequency(): void
     {
         $user = $this->makeUser();

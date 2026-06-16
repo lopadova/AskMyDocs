@@ -99,6 +99,17 @@ export function DigestFeedCard(): ReactNode {
                             </ul>
                         </div>
                     )}
+
+                    {enabled('leaderboard') && (d.leaderboard?.length ?? 0) > 0 && (
+                        <div data-testid="digest-feed-leaderboard">
+                            <strong>🏆 Top contributors</strong>
+                            <ul>
+                                {d.leaderboard!.map((c, i) => (
+                                    <li key={i}>{c.name} <em>({c.score} pts)</em></li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                 </div>
             )}
         </section>
