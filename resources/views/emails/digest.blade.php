@@ -5,6 +5,8 @@
     $brand2 = '#22d3ee';
     $pct = static fn ($v) => $v === null ? '—' : round(((float) $v) * 100) . '%';
     $num = static fn ($v) => $v === null ? '—' : (is_float($v) ? round($v, 1) : $v);
+    // Coverage: append '%' only when present, so a null reads "—" not "—%".
+    $coverage = ($m['canonical_coverage_pct'] ?? null) === null ? '—' : $num($m['canonical_coverage_pct']) . '%';
 @endphp
 <!DOCTYPE html>
 <html lang="en">
@@ -50,7 +52,7 @@
             <tr>
                 @foreach([
                     ['Answer rate', $pct($m['answer_rate'] ?? null)],
-                    ['Coverage', $num($m['canonical_coverage_pct'] ?? null) . '%'],
+                    ['Coverage', $coverage],
                     ['Open gaps', (int)($m['open_gaps'] ?? 0)],
                 ] as [$label, $val])
                     <td width="33%" style="background:#fff;border:1px solid #ece9f6;border-radius:12px;padding:16px;text-align:center;">

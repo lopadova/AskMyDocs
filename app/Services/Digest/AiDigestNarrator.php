@@ -85,8 +85,11 @@ final class AiDigestNarrator
             'top_contributors' => $payload->leaderboard,
         ];
 
+        // JSON_THROW_ON_ERROR so a bad-UTF-8 payload surfaces as a JsonException
+        // (caught by narrate() → degrade to null) instead of silently embedding
+        // an empty/false facts blob into the prompt.
         return "Knowledge-base activity for this period (JSON facts):\n".
-            json_encode($facts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).
+            json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).
             "\n\nWrite the digest summary now.";
     }
 

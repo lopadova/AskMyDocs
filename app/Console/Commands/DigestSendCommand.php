@@ -15,6 +15,7 @@ use App\Services\Digest\DigestPayload;
 use App\Services\Digest\Renderers\DigestRendererRegistry;
 use App\Support\TenantContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 /**
@@ -86,15 +87,15 @@ final class DigestSendCommand extends Command
         $emailCount = 0;
         $channelsSent = [];
 
-        // Email
+        // Email — streamed in chunks (R3: never materialise the full recipient
+        // set for a large tenant). Counts in dry-run, queues otherwise.
         if ($onlyChannel === null || $onlyChannel === 'email') {
-            $recipients = $this->emailRecipients($payload->tenantId);
-            $emailCount = count($recipients);
-            if (! $dryRun) {
-                foreach ($recipients as $user) {
-                    Mail::to($user)->queue(DigestMail::fromPayload($payload));
-                }
-            }
+            $emailCount = $this->streamEmailRecipients(
+                $payload->tenantId,
+                $dryRun
+                    ? null
+                    : static fn (User $user) => Mail::to($user)->queue(DigestMail::fromPayload($payload)),
+            );
         }
 
         // Team channels
@@ -130,29 +131,40 @@ final class DigestSendCommand extends Command
             }
             $out['cards'][$channel] = $renderers->forOrFail($channel)->render($payload);
         }
-        $this->line((string) json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        $this->line(json_encode($out, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
     /**
-     * Users with at least one email-enabled notification preference in the tenant.
+     * Stream users with at least one email-enabled notification preference in
+     * the tenant, in chunkById(500) batches (R3 — no full materialisation on a
+     * large tenant). Invokes $each per user when provided (null = count only,
+     * for dry-run). Returns the recipient count.
      *
-     * @return list<User>
+     * @param  null|callable(User):void  $each
      */
-    private function emailRecipients(string $tenantId): array
+    private function streamEmailRecipients(string $tenantId, ?callable $each): int
     {
-        $userIds = NotificationPreference::query()
-            ->where('tenant_id', $tenantId)
-            ->where('channel', NotificationPreference::CHANNEL_EMAIL)
-            ->where('enabled', true)
-            ->distinct()
-            ->pluck('user_id')
-            ->all();
+        $count = 0;
 
-        if ($userIds === []) {
-            return [];
-        }
+        User::query()
+            ->whereExists(function ($query) use ($tenantId): void {
+                $query->select(DB::raw(1))
+                    ->from('notification_preferences')
+                    ->whereColumn('notification_preferences.user_id', 'users.id')
+                    ->where('notification_preferences.tenant_id', $tenantId)
+                    ->where('notification_preferences.channel', NotificationPreference::CHANNEL_EMAIL)
+                    ->where('notification_preferences.enabled', true);
+            })
+            ->chunkById(500, function ($users) use (&$count, $each): void {
+                foreach ($users as $user) {
+                    $count++;
+                    if ($each !== null) {
+                        $each($user);
+                    }
+                }
+            });
 
-        return User::query()->whereIn('id', $userIds)->get()->all();
+        return $count;
     }
 
     /**

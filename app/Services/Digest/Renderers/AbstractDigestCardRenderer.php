@@ -53,8 +53,9 @@ abstract class AbstractDigestCardRenderer implements DigestCardRendererInterface
     protected function metricsLine(DigestPayload $payload): string
     {
         $m = $payload->metrics;
+        $coverage = $m['canonical_coverage_pct'] ?? null;
         $parts = [
-            sprintf('Coverage %s%%', $this->num($m['canonical_coverage_pct'] ?? null)),
+            'Coverage '.($coverage === null ? '—' : $this->num($coverage).'%'),
             sprintf('Answer rate %s', $this->pct($m['answer_rate'] ?? null)),
             sprintf('Avg debt %s', $this->num($m['avg_debt_score'] ?? null)),
             sprintf('Stale %d', (int) ($m['stale_count'] ?? 0)),
