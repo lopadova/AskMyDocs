@@ -900,7 +900,8 @@ const meDashboardRoute = createRoute({
     component: MeDashboardRoute,
 });
 
-// v8.15/W4.2 — admin engagement analytics (RequireRole gate inside the component).
+// v8.15/W4.2 — admin engagement analytics. RequireRole wraps the panel here in
+// the route component (viewer/editor land on AdminForbidden, not a crash).
 function AdminEngagementRoute() {
     return (
         <AdminShell section="engagement">

@@ -35,8 +35,29 @@ export function EngagementPanel(): ReactNode {
             : 'ready';
 
     return (
-        <section data-testid="admin-engagement" data-state={overall} style={{ padding: 24 }}>
+        <section
+            data-testid="admin-engagement"
+            data-state={overall}
+            aria-busy={summary.isFetching || board.isFetching || series.isFetching}
+            style={{ padding: 24 }}
+        >
             <h2 style={{ marginTop: 0 }}>Engagement</h2>
+
+            {(summary.isError || series.isError) && (
+                <div data-testid="admin-engagement-error" role="alert">
+                    Some engagement data could not be loaded.{' '}
+                    <button
+                        type="button"
+                        data-testid="admin-engagement-retry"
+                        onClick={() => {
+                            void summary.refetch();
+                            void series.refetch();
+                        }}
+                    >
+                        Retry
+                    </button>
+                </div>
+            )}
 
             <div
                 data-testid="admin-engagement-kpis"
@@ -72,7 +93,7 @@ export function EngagementPanel(): ReactNode {
                     {board.data && board.data.leaderboard.length > 0 && (
                         <ol>
                             {board.data.leaderboard.map((r) => (
-                                <li key={r.user_id} data-testid="admin-engagement-leaderboard-row">
+                                <li key={r.user_id} data-testid={`admin-engagement-leaderboard-row-${r.user_id}`}>
                                     {r.name} <em>({r.score} pts, {r.events} events)</em>
                                 </li>
                             ))}

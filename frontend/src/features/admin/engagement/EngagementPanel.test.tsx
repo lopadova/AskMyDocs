@@ -33,7 +33,7 @@ describe('EngagementPanel', () => {
         await waitFor(() => expect(screen.getByTestId('admin-engagement')).toHaveAttribute('data-state', 'ready'));
         expect(screen.getByTestId('kpi-card-eng-contributors')).toHaveTextContent('3');
         expect(screen.getByTestId('kpi-card-eng-coverage')).toHaveTextContent('60%');
-        expect(screen.getByTestId('admin-engagement-leaderboard-row')).toHaveTextContent('Ada');
+        expect(screen.getByTestId('admin-engagement-leaderboard-row-9')).toHaveTextContent('Ada');
         expect(screen.getByTestId('chart-card-engagement-trend')).toHaveAttribute('data-state', 'empty');
     });
 

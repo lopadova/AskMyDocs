@@ -51,7 +51,7 @@ export function MeDashboard(): ReactNode {
                     ) : (
                         <ul>
                             {d.docs_needing_review.map((doc, i) => (
-                                <li key={i} data-testid="me-dashboard-review-item">
+                                <li key={doc.slug ?? `${doc.title}-${i}`} data-testid={`me-dashboard-review-item-${i}`}>
                                     {doc.title} <em>(debt {doc.debt_score})</em>
                                 </li>
                             ))}

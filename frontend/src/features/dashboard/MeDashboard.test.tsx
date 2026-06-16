@@ -33,7 +33,7 @@ describe('MeDashboard', () => {
         await waitFor(() => expect(screen.getByTestId('me-dashboard')).toHaveAttribute('data-state', 'ready'));
         expect(screen.getByTestId('kpi-card-me-score')).toHaveTextContent('13');
         expect(screen.getByTestId('kpi-card-me-rank')).toBeInTheDocument();
-        expect(screen.getByTestId('me-dashboard-review-item')).toHaveTextContent('Old policy');
+        expect(screen.getByTestId('me-dashboard-review-item-0')).toHaveTextContent('Old policy');
     });
 
     it('shows the empty review state when nothing needs review', async () => {
