@@ -34,7 +34,9 @@ this page is the navigable map.
 | `POST` | `/api/auth/reset-password` | public |
 | `POST` | `/api/auth/logout` | `auth:sanctum` |
 | `GET` | `/api/auth/me` | `auth:sanctum` |
-| `POST` | `/api/auth/2fa/{enable,verify,disable}` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/enable` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/verify` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/disable` | `auth:sanctum` |
 
 ## KB chat & search — `/api/kb`
 
@@ -49,11 +51,19 @@ this page is the navigable map.
 | `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
 | `DELETE` | `/api/kb/documents` | `auth:sanctum` | delete by path |
 
-**`POST /api/kb/chat`** — request: `question` (string, required), `project_keys`
-(array, optional), `filters` (object, optional), `anonymous` (bool, optional).
-Response: `{ answer, citations[], tokens:{input,output}, cost, meta, refusal_reason? }`.
-A refusal returns the same shape with a machine-readable `refusal_reason`
-sentinel — not an error. See the [anti-hallucination firewall](/anti-hallucination-firewall).
+**`POST /api/kb/chat`** — request: `question` (string, required, max 10000),
+`anonymous` (bool, optional), a legacy top-level `project_key` (string, optional),
+and a `filters` object (optional) whose dimensions include `filters.project_keys`,
+`filters.tag_slugs`, `filters.source_types`, `filters.canonical_types`,
+`filters.connector_types`, `filters.doc_ids`, `filters.collection_id`,
+`filters.folder_globs`, `filters.date_from`/`date_to`. There is **no** top-level
+`project_keys` — project scoping is `filters.project_keys` (or legacy
+`project_key`). Response:
+`{ answer, citations[], confidence, refusal_reason, meta{ provider, model,
+chunks_used, primary_count, …, latency_ms, latency_ms_breakdown, filters_selected } }`.
+A refusal returns the same shape with `confidence: 0` and a machine-readable
+`refusal_reason` sentinel — not an error. See the
+[anti-hallucination firewall](/anti-hallucination-firewall).
 
 ## Ingestion — `/api/kb/ingest`
 
@@ -74,26 +84,32 @@ sentinel — not an error. See the [anti-hallucination firewall](/anti-hallucina
 }
 ```
 
-Response (HTTP 202, one entry per document):
-`{ success, document_id, source_path, title, error? }`. One `IngestDocumentJob`
-is dispatched per document. See the [ingestion pipeline](/architecture/ingestion-pipeline).
+Response — an envelope `{ queued, failed, documents[] }` where each entry is
+`{ source_path, status: "queued" | "failed", error? }`. The status code is
+**`202`** when every document queued, or **`207` Multi-Status** when some disk
+writes failed. One `IngestDocumentJob` is dispatched per queued document. See the
+[ingestion pipeline](/architecture/ingestion-pipeline).
 
 ## Promotion pipeline — `/api/kb/promotion`
 
-Human-gated ([ADR 0003](/reference/adr-index)). `suggest` and `candidates` write
-nothing.
+Human-gated ([ADR 0003](/reference/adr-index)). Nothing reaches canonical storage
+until a human **approves** the issued token — `promote` only validates and pauses.
 
 | Method | Path | Writes? |
 |---|---|---|
 | `POST` | `/api/kb/promotion/suggest` | nothing (LLM extracts candidates from a transcript) |
 | `POST` | `/api/kb/promotion/candidates` | nothing (validates a markdown draft) |
-| `POST` | `/api/kb/promotion/promote` | KB disk + dispatch ingest (HTTP 202) |
-| `POST` | `/api/kb/promotion/{approvalId}/approve` | approve |
-| `POST` | `/api/kb/promotion/{approvalId}/reject` | reject |
+| `POST` | `/api/kb/promotion/promote` | nothing yet — pauses at the approval gate, issues a single-use token (HTTP 202) |
+| `POST` | `/api/kb/promotion/{approvalId}/approve` | **writes** KB disk + dispatches ingest |
+| `POST` | `/api/kb/promotion/{approvalId}/reject` | discards the paused run |
 
 - **suggest** — `{ transcript (≤50000), project_key?, existing_slugs? }`.
-- **candidates** — `{ markdown (≤200000) }` → `{ valid, errors?, parsed? }`.
-- **promote** — returns `{ approval_id, approval_token, approve_url, reject_url }`.
+- **candidates** — `{ markdown (≤200000) }` → **200** `{ valid: true, parsed: {…} }`
+  on success, or **422** `{ valid: false, errors: {…} }` on validation failure.
+- **promote** — validates the draft (422 on bad/absent frontmatter, 503 when
+  promotion is disabled), then returns **202** with a paused-flow envelope
+  containing a nested `approval` object (single-use `token`, `approve_url`,
+  `approve_path`, …). The actual disk write happens only on `approve`.
 
 See [canonical & promotion](/canonical-and-promotion).
 
@@ -120,7 +136,7 @@ group is pinned in the [authorization matrix](/architecture/security-and-threat-
 | KB collections / tags / synonyms / analyses | `/api/admin/kb/collections`, `/tags`, `/synonyms`, `/analyses` | `role:admin\|super-admin` |
 | KB analysis/autowiki settings, content gaps | `/api/admin/kb/analysis-settings`, `/autowiki-settings`, `/content-gaps` | `role:admin\|super-admin` |
 | Auto-Wiki ops (evidence-tier, wiki-link, synthesize, index, lint, navigate, review, maintain, pages, promote/discard) | `/api/admin/kb/{evidence-tiers,wiki-*,concepts/*}` | `role:admin\|super-admin` |
-| Logs (chat / canonical-audit / application / activity / failed-jobs) | `/api/admin/logs/*` | `role:admin\|super-admin` (detokenize: `permission:kb.pii_redactor.detokenize_permission`) |
+| Logs (chat / canonical-audit / application / activity / failed-jobs) | `/api/admin/logs/*` | `role:admin\|super-admin` (chat detokenize additionally requires the permission named by `kb.pii_redactor.detokenize_permission`, default `pii.detokenize`) |
 | Insights | `/api/admin/insights/*` | `role:admin\|super-admin` (compute: `permission:commands.destructive`) |
 | Compliance reports | `/api/admin/compliance/reports/*` | `role:admin\|super-admin` |
 | Maintenance commands | `/api/admin/commands/{catalogue,preview,run,history,scheduler-status}` | `role:admin\|super-admin` |
@@ -149,14 +165,14 @@ The `enterprise-kb` MCP server mounts at `/mcp/kb` (`auth:sanctum`). See the
 # 1. authenticate (token), then ask a grounded question
 curl -s https://your-host/api/kb/chat \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"question":"what cache did we standardise on?","project_keys":["platform"]}'
-# → { "answer": "...", "citations": [...], "tokens": {...}, "meta": {...} }
+  -d '{"question":"what cache did we standardise on?","filters":{"project_keys":["platform"]}}'
+# → { "answer": "...", "citations": [...], "confidence": 0.82, "refusal_reason": null, "meta": {...} }
 
 # 2. validate a promotion draft (writes nothing)
 curl -s https://your-host/api/kb/promotion/candidates \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"markdown":"---\ndoc_id: dec-cache-v2\nslug: dec-cache-v2\n---\n# ..."}'
-# → { "valid": true, "errors": null, "parsed": {...} }
+# → 200 { "valid": true, "parsed": {...} }   (or 422 { "valid": false, "errors": {...} })
 ```
 
 <CardGroup cols={2}>

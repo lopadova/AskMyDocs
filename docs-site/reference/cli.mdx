@@ -20,8 +20,10 @@ commands grouped by concern with their exact signatures. Run `php artisan
   mutating.
 - **Retention overrides.** Prune commands accept `--days=N`; `0` disables that
   rotation.
-- **Path arguments** are resolved through `KbPath` and (for folder walks)
-  relative to `KB_PATH_PREFIX`.
+- **Path arguments.** Commands that take a KB `source_path` (e.g. `kb:delete`,
+  the folder walk in `kb:ingest-folder`) normalise it through `KbPath` and resolve
+  it relative to `KB_PATH_PREFIX`. (`kb:ingest` builds its path more directly, so
+  match the path you ingested with when deleting.)
 
 ## Ingestion
 
@@ -84,7 +86,7 @@ See the [auto-wiki engine](/architecture/auto-wiki-engine).
 |---|---|
 | `insights:compute {--date=today} {--tenant=} {--force}` | Daily AI-insights snapshot, one row per tenant |
 | `eval:nightly {--dry-run} {--status} {--prune-only}` | Eval-harness baseline run; alert on `macro_f1` regression |
-| `notifications:digest-weekly` | Email weekly notification digests |
+| `notifications:digest-weekly {--tenant=}` | Email weekly notification digests |
 | `compliance:digest-quarterly {--tenant=} {--at=}` | Quarterly compliance reports for opted-in tenants |
 
 ## Benchmarks
