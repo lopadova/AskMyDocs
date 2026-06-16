@@ -69,7 +69,14 @@
         "group": "Architecture",
         "icon": "diagram-project",
         "pages": [
-          "architecture/overview"
+          "architecture/overview",
+          "architecture/retrieval-pipeline",
+          "architecture/canonical-graph",
+          "architecture/auto-wiki-engine",
+          "architecture/ingestion-pipeline",
+          "architecture/database-schema",
+          "architecture/security-and-threat-model",
+          "architecture/decisions"
         ]
       }
     ]
