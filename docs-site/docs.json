@@ -56,6 +56,16 @@
         ]
       },
       {
+        "group": "Configuration & Operations",
+        "icon": "gear",
+        "pages": [
+          "configuration",
+          "self-hosting",
+          "scheduler-and-maintenance",
+          "troubleshooting"
+        ]
+      },
+      {
         "group": "Architecture",
         "icon": "diagram-project",
         "pages": [
