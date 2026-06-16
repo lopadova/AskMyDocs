@@ -29,8 +29,8 @@ use Illuminate\Support\Facades\Hash;
  *
  * Idempotent: firstOrCreate on the unique (tenant_id, project_key) /
  * (tenant_id, user_id, project_key) tuples, role assignment guarded by
- * hasRole. Run explicitly — it is intentionally NOT wired into
- * DatabaseSeeder (a case-study fixture, like the dataset itself):
+ * hasRole. Run explicitly — it is intentionally NOT auto-wired into any
+ * seeder (a case-study fixture, like the dataset itself):
  *
  *   php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
  *

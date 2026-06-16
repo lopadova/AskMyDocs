@@ -151,6 +151,12 @@ final class IsolationMatrix
      * owner's value (it has its own, different policy — so it answers without
      * refusing, but never with the foreign figure).
      *
+     * The non-owning rows (D1-rotta / D2-rotta) carry only `forbidden` by
+     * design: they assert isolation (the foreign figure never leaks) WITHOUT a
+     * positive anchor, so this matrix stays an isolation test and is not
+     * coupled to grounding quality — whether rotta answers or refuses its own
+     * overlapping-topic question is out of scope here.
+     *
      * @return list<array{id: string, kind: string, project: string, question: string, expected: list<string>, forbidden: list<string>, expect_refusal: bool, note: string}>
      */
     private static function disambiguation(): array
@@ -245,6 +251,10 @@ final class IsolationMatrix
         // INVARIANT 1 — no chunk from a foreign project may appear. The hard
         // project filter makes this structurally impossible; asserting it
         // catches any future regression that relaxes the scope to a boost.
+        // The read mirrors ChatRetrievalService::appendCitations: the retrieval
+        // select carries project_key on the CHUNK (not the document relation),
+        // so the top-level read always resolves — the `document.project_key`
+        // fallback is defensive parity with that house pattern, not a live path.
         $foreignChunkProjects = $chunks
             ->map(static fn ($c): ?string => data_get($c, 'project_key') ?? data_get($c, 'document.project_key'))
             ->filter()
