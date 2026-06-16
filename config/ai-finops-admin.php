@@ -36,10 +36,19 @@ return [
 
     'route' => [
         'prefix' => env('AI_FINOPS_ADMIN_PREFIX', 'admin/ai-finops'),
-        'middleware' => array_values(array_filter(array_map('trim', explode(
-            ',',
-            (string) env('AI_FINOPS_ADMIN_MIDDLEWARE', 'web,auth,can:viewAiFinOps'),
-        )), static fn (string $name): bool => $name !== '')),
+        'middleware' => (function (): array {
+            $resolved = array_values(array_filter(array_map('trim', explode(
+                ',',
+                (string) env('AI_FINOPS_ADMIN_MIDDLEWARE', 'web,auth,can:viewAiFinOps'),
+            )), static fn (string $name): bool => $name !== ''));
+
+            // NEVER ship an empty middleware array. An operator who sets
+            // AI_FINOPS_ADMIN_MIDDLEWARE="" (or all-whitespace) thinking they
+            // disable only `auth` would otherwise expose the cockpit with NO
+            // session/auth/gate at all (R32 footgun). Fall back to the full
+            // secure default — same guard as config/flow-admin.php.
+            return $resolved !== [] ? $resolved : ['web', 'auth', 'can:viewAiFinOps'];
+        })(),
     ],
 
     // The SPA calls the core laravel-ai-finops API. The core prefix was
