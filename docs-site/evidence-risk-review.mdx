@@ -40,8 +40,10 @@ package, wired into AskMyDocs over **one** shared core service:
 
 - **PHP / MCP** — the package's Artisan command + MCP tools auto-register.
 - **HTTP API** — `/api/admin/evidence-risk-review/*` (reviews list + detail,
-  profiles, taxonomy, submit), host-secured with `auth:sanctum` +
-  `tenant.authorize` + `can:viewEvidenceRiskReview` (R32 matrix-locked).
+  profiles, taxonomy, submit), host-secured with `tenant.resolve` +
+  `auth:sanctum` + `tenant.authorize` + `can:viewEvidenceRiskReview` (R32
+  matrix-locked). `tenant.resolve` runs first so `TenantContext` is set before
+  the bound `TenantResolver` stamps + scopes the review-log rows (R30).
 - **Native FE admin** — `/app/admin/evidence-risk-review` (Reviews / Profiles /
   Taxonomy / Try), cross-mounting the core API.
 

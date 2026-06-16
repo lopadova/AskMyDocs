@@ -36,9 +36,12 @@ observers, and the Flow payload-redactor contract. EU country packs (Italy,
 Germany, Spain), six checksum-validated detectors, four strategies (mask / hash /
 tokenise / drop), dual NER drivers. **Every knob is default-OFF.**
 
-A `tokenise` strategy is reversible: the operator **detokenize endpoint**
-(`POST /api/admin/logs/chat/{id}/detokenize`) round-trips a tokenised row back to
-the original, gated by a `dpo`/`super-admin` permission, every call audited.
+A `tokenise` strategy is reversible: the operator **detokenize endpoint** in the
+Log Viewer (`POST /api/admin/logs/chat/{id}/detokenize`) round-trips a tokenised
+row back to the original. It is gated by the Spatie **permission** configured at
+`kb.pii_redactor.detokenize_permission` (default `pii.detokenize`) — 403 otherwise
+— and every call is audited. (This is distinct from the cross-mounted PII Redactor
+Admin SPA, whose own reverse-lookup uses the `detokenisePiiRedactor` Gate below.)
 
 ## EU AI Act compliance pack
 
@@ -55,11 +58,13 @@ SPA cross-mounted at `/app/admin/ai-act-compliance`:
 
 ## RBAC
 
-The `dpo` role exists specifically for these surfaces. PII admin is gated by
-`viewPiiRedactorAdmin` (admin / dpo / super-admin), detokenize by
-`detokenisePiiRedactor` (dpo / super-admin), raw samples by super-admin only; AI
-Act by `viewAiActCompliance` (admin / dpo / super-admin). All are in the R32
-authorization matrix.
+The `dpo` role exists specifically for these surfaces. The cross-mounted **PII
+Redactor Admin** SPA is gated by `viewPiiRedactorAdmin` (admin / dpo / super-admin),
+its detokenise ability by the `detokenisePiiRedactor` Gate (dpo / super-admin), and
+raw samples by super-admin only. The **Log Viewer** detokenize endpoint (above) is
+gated separately by the `pii.detokenize` Spatie permission. **AI Act** is gated by
+`viewAiActCompliance` (admin / dpo / super-admin). All are in the R32 authorization
+matrix.
 
 ## Decision rationale (ADR-style)
 

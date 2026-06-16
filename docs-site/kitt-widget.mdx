@@ -1,6 +1,6 @@
 ---
 title: "KITT — the embeddable agent"
-description: "KITT (Knowledge Interface Tour Toolkit) is a one-<script> embeddable, page-aware, agentic assistant for any website: grounded answers with citations, reads the page, and (when allowed) drives it."
+description: "KITT (Knowledge Interface Tour Toolkit) is a one-script-tag embeddable, page-aware, agentic assistant for any website: grounded answers with citations, reads the page, and (when allowed) drives it."
 icon: "robot"
 ---
 
@@ -27,15 +27,18 @@ KB, plus optional agentic actions on the page.
 ## Embedding it
 
 ```html
-<script src="https://your-host/widget/kitt.js"
-        data-kitt-key="pk_live_..."></script>
+<script src="https://your-host/widget/askmydocs-widget.js"
+        data-public-key="pk_live_..."></script>
 ```
 
-The widget authenticates with a **public widget key** (minted in the admin under
+The loader reads its config from the script tag (`data-public-key`, optional
+`data-api-base`) or from a `window.AskMyDocsWidget` global. The widget
+authenticates with that **public key** (minted in the admin under
 `/app/admin/widget`, super-admin gated) over a dedicated public channel
 (`widget.key` middleware), separate from the Sanctum admin stack. Use
-`data-kitt-skip` on any DOM region to keep sensitive content out of the page
-snapshot.
+`data-kitt-skip` on any host-page DOM region to keep sensitive content out of the
+page snapshot (the `data-kitt-*` attributes annotate the host page for the agent;
+they are distinct from the loader's `data-public-key`).
 
 ## Security model
 
