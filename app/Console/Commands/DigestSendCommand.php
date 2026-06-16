@@ -148,10 +148,13 @@ final class DigestSendCommand extends Command
 
         User::query()
             ->whereExists(function ($query) use ($tenantId): void {
+                // Unqualified `tenant_id` is unambiguous here — the subquery's
+                // only FROM table is notification_preferences (the correlated
+                // `users` row carries no tenant_id). R30 scope marker.
                 $query->select(DB::raw(1))
                     ->from('notification_preferences')
                     ->whereColumn('notification_preferences.user_id', 'users.id')
-                    ->where('notification_preferences.tenant_id', $tenantId)
+                    ->where('tenant_id', $tenantId)
                     ->where('notification_preferences.channel', NotificationPreference::CHANNEL_EMAIL)
                     ->where('notification_preferences.enabled', true);
             })
