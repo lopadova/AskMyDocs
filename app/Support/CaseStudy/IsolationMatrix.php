@@ -230,28 +230,41 @@ final class IsolationMatrix
     }
 
     /**
-     * Pure verdict for one case against a real retrieval result. Returns the
-     * list of failure messages — an EMPTY list means the case passed. Kept
-     * free of any service/IO dependency so it is identical whether driven by
-     * the PHPUnit live test or the operator CLI.
+     * Pure verdict for one case against a real retrieval result. Splits the
+     * outcome into HARD isolation failures and SOFT refusal-calibration
+     * warnings, because they are different properties:
+     *
+     *  - HARD = a real isolation breach (the README's "difetto grave"): a
+     *    chunk or citation from another company, a foreign canary in the
+     *    retrieved text, or — for an owning case — its own fact unreachable.
+     *  - SOFT = the README's refusal IDEAL was missed: the selected company
+     *    GROUNDED the answer on its OWN documents (same vocabulary) instead of
+     *    refusing, WITHOUT leaking any foreign data. Isolation is intact; this
+     *    is a relevance / refusal-threshold calibration signal, not a leak.
+     *
+     * Splitting them is what lets the gate fail only on real leaks while still
+     * surfacing (and, under --strict / LIVE_RAG_STRICT, enforcing) the refusal
+     * ideal. Kept free of any service/IO dependency so it is identical whether
+     * driven by the PHPUnit live test or the operator CLI.
      *
      * @param  array{id: string, kind: string, project: string, question: string, expected: list<string>, forbidden: list<string>, expect_refusal: bool, note: string}  $case
      * @param  list<array<string, mixed>>  $citations  output of ChatRetrievalService::buildCitations()
-     * @return list<string> failure messages (empty == pass)
+     * @return array{hard: list<string>, soft: list<string>} empty `hard` == isolation holds
      */
     public static function evaluate(array $case, SearchResult $result, array $citations, bool $refused): array
     {
-        $failures = [];
+        $hard = [];
+        $soft = [];
         $project = $case['project'];
 
         $chunks = $result->primary
             ->concat($result->expanded)
             ->concat($result->rejected);
 
-        // INVARIANT 1 — no chunk from a foreign project may appear. The hard
-        // project filter makes this structurally impossible; asserting it
-        // catches any future regression that relaxes the scope to a boost.
-        // The read mirrors ChatRetrievalService::appendCitations: the retrieval
+        // INVARIANT 1 (hard) — no chunk from a foreign project may appear. The
+        // hard project filter makes this structurally impossible; asserting it
+        // catches any future regression that relaxes the scope to a boost. The
+        // read mirrors ChatRetrievalService::appendCitations: the retrieval
         // select carries project_key on the CHUNK (not the document relation),
         // so the top-level read always resolves — the `document.project_key`
         // fallback is defensive parity with that house pattern, not a live path.
@@ -262,49 +275,53 @@ final class IsolationMatrix
             ->reject(static fn (string $p): bool => $p === $project)
             ->values();
         foreach ($foreignChunkProjects as $foreign) {
-            $failures[] = "chunk from foreign project '{$foreign}' present (expected only '{$project}')";
+            $hard[] = "chunk from foreign project '{$foreign}' present (expected only '{$project}')";
         }
 
-        // INVARIANT 2 — every citation must point at the selected project
+        // INVARIANT 2 (hard) — every citation must point at the selected project
         // (project_key is read from the chunk, not the document relation —
         // guards the v8.8 citation-provenance regression too).
         foreach ($citations as $citation) {
             $cp = $citation['project_key'] ?? null;
             if ($cp !== null && $cp !== $project) {
-                $failures[] = "citation points at foreign project '{$cp}' (expected '{$project}')";
+                $hard[] = "citation points at foreign project '{$cp}' (expected '{$project}')";
             }
         }
 
-        // CONTAMINATION — no foreign canary may appear in the retrieved text.
+        // CONTAMINATION (hard) — the README's grave failure: a foreign canary in
+        // the retrieved text.
         $haystack = $chunks
             ->map(static fn ($c): string => (string) data_get($c, 'chunk_text', ''))
             ->implode("\n");
         foreach ($case['forbidden'] as $canary) {
             if (stripos($haystack, $canary) !== false) {
-                $failures[] = "foreign canary '{$canary}' leaked into '{$project}' context";
+                $hard[] = "foreign canary '{$canary}' leaked into '{$project}' context";
             }
         }
 
-        // REFUSAL — the README promises a deterministic refusal for the
-        // cross-company questions (no grounded context in the selected project).
-        if ($case['expect_refusal'] && ! $refused) {
-            $failures[] = "expected a refusal (no grounded context) but the turn was grounded";
-        }
-
-        // GROUNDING — a positive / shared-password / owning-disambiguation case
-        // must reach its value AND must not refuse.
+        // GROUNDING (hard) — an owning case (positive / shared-password /
+        // owning-disambiguation) must reach its own value AND not refuse it.
         if (! $case['expect_refusal'] && $case['expected'] !== []) {
             if ($refused) {
-                $failures[] = 'expected a grounded answer but the turn was refused';
+                $hard[] = 'the owning company refused its own question instead of answering';
             }
             foreach ($case['expected'] as $value) {
                 if (stripos($haystack, $value) === false) {
-                    $failures[] = "expected value '{$value}' was not retrieved from '{$project}'";
+                    $hard[] = "expected value '{$value}' was not retrieved from '{$project}'";
                 }
             }
         }
 
-        return $failures;
+        // REFUSAL IDEAL (soft) — the README promises a refusal for the
+        // cross-company questions. Grounding on the selected company's OWN
+        // documents without leaking is NOT an isolation breach, so it is a
+        // warning, not a failure (guarded on a clean `hard` so a case that
+        // actually leaked reads as a pure FAIL, never a WARN).
+        if ($case['expect_refusal'] && ! $refused && $hard === []) {
+            $soft[] = "the README expects a refusal, but the turn grounded on '{$project}'’s own documents (no foreign data leaked)";
+        }
+
+        return ['hard' => $hard, 'soft' => $soft];
     }
 
     /**

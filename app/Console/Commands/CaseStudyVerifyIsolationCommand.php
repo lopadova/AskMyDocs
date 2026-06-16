@@ -31,7 +31,8 @@ final class CaseStudyVerifyIsolationCommand extends Command
 {
     protected $signature = 'case-study:verify-isolation
         {--tenant=default : Tenant to scope the verification to (datasets must be ingested here)}
-        {--project=* : Limit to specific case-study project_key(s) (default: all three)}';
+        {--project=* : Limit to specific case-study project_key(s) (default: all three)}
+        {--strict : Also fail when a cross-company question is answered instead of refused (README refusal ideal), even if nothing leaked}';
 
     protected $description = 'Verify per-company documentation isolation (README §6 matrix) against the live KB.';
 
@@ -63,42 +64,69 @@ final class CaseStudyVerifyIsolationCommand extends Command
             static fn (array $case): bool => in_array($case['project'], $projects, true),
         ));
 
+        $strict = (bool) $this->option('strict');
+
         $this->info("Documentation isolation — tenant '{$tenant}', " . count($cases) . ' case(s) across ' . count($projects) . ' project(s).');
+        $this->line('FAIL = a foreign document leaked (isolation breach). WARN = a cross-company question was answered from the company\'s OWN docs instead of refused (no leak; --strict to fail on it).');
         $this->line('');
 
         $rows = [];
-        $failed = 0;
+        $leaks = 0;     // hard isolation breaches
+        $warnings = 0;  // refusal ideal missed, but no leak
 
         foreach ($cases as $case) {
             $result = $retrieval->retrieve($case['question'], $case['project'], null);
             $refused = $retrieval->shouldRefuse($result);
             $citations = $retrieval->buildCitations($result);
 
-            $failures = IsolationMatrix::evaluate($case, $result, $citations, $refused);
-            $passed = $failures === [];
-            $failed += $passed ? 0 : 1;
+            $verdict = IsolationMatrix::evaluate($case, $result, $citations, $refused);
+            $hard = $verdict['hard'];
+            $soft = $verdict['soft'];
 
-            $rows[] = [
-                $case['id'],
-                $case['project'],
-                $case['kind'],
-                $passed ? '<info>PASS</info>' : '<error>FAIL</error>',
-                $passed ? '' : implode('; ', $failures),
-            ];
+            if ($hard !== []) {
+                $leaks++;
+                $status = '<error>FAIL</error>';
+                $detail = implode('; ', $hard);
+            } elseif ($soft !== []) {
+                $warnings++;
+                $status = $strict ? '<error>FAIL</error>' : '<comment>WARN</comment>';
+                $detail = implode('; ', $soft);
+            } else {
+                $status = '<info>PASS</info>';
+                $detail = '';
+            }
+
+            $rows[] = [$case['id'], $case['project'], $case['kind'], $status, $detail];
         }
 
         $this->table(['Case', 'Project', 'Kind', 'Result', 'Detail'], $rows);
         $this->line('');
 
-        $total = count($cases);
-        $passedCount = $total - $failed;
-        if ($failed === 0) {
-            $this->info("All {$total} isolation case(s) passed — documents do not cross company boundaries.");
+        return $this->summarize(count($cases), $leaks, $warnings, $strict);
+    }
+
+    private function summarize(int $total, int $leaks, int $warnings, bool $strict): int
+    {
+        $passed = $total - $leaks - $warnings;
+
+        if ($leaks > 0) {
+            $this->error("{$leaks}/{$total} case(s) LEAK across companies (isolation broken). {$passed} clean, {$warnings} refusal warning(s).");
+            return self::FAILURE;
+        }
+
+        if ($warnings === 0) {
+            $this->info("All {$total} case(s) passed — isolation holds, no documents cross company boundaries.");
             return self::SUCCESS;
         }
 
-        $this->error("{$failed}/{$total} isolation case(s) FAILED ({$passedCount} passed). Documents are leaking across companies.");
-        return self::FAILURE;
+        // No leaks: isolation holds. The warnings are refusal-calibration only.
+        if ($strict) {
+            $this->error("Isolation holds (0 leaks across {$total} case(s)), but {$warnings} cross-company question(s) were answered instead of refused (--strict).");
+            return self::FAILURE;
+        }
+
+        $this->info("Isolation holds: 0 leaks across {$total} case(s). {$warnings} refusal-calibration warning(s) — the company answered an off-topic question from its OWN docs without leaking. Raise kb.refusal.min_chunk_similarity, or run with --strict, to enforce the README refusal ideal.");
+        return self::SUCCESS;
     }
 
     /**

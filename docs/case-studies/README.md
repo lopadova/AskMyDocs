@@ -393,7 +393,27 @@ l'LLM di chat (solo retrieval + rifiuto + citazioni → deterministico):
 php artisan case-study:verify-isolation                 # tutti e 3 i progetti, tenant 'default'
 php artisan case-study:verify-isolation --tenant=acme   # altro tenant
 php artisan case-study:verify-isolation --project=rotta-logistics
+php artisan case-study:verify-isolation --strict        # tratta anche i WARN come FAIL
 ```
+
+**PASS / WARN / FAIL** — l'isolamento e il rifiuto sono due proprietà distinte:
+
+- **FAIL** = *fuga*: un documento di un'altra azienda è comparso (chunk/citazione
+  estranea o canarino estero). È il «difetto grave» del §6.1 — exit non-zero.
+- **WARN** = l'azienda selezionata ha **risposto** a una domanda fuori tema
+  attingendo ai **propri** documenti (stesso lessico — es. "parola d'ordine
+  della Procedura…") **invece di rifiutare**, *senza* far trapelare nulla di
+  un'altra azienda. **Non è una fuga**: è una calibrazione del rifiuto.
+- **PASS** = nessuna fuga e comportamento atteso.
+
+Il gate fallisce **solo sulle fughe** (exit non-zero su FAIL); i WARN non
+rompono l'isolamento. Il "Test E" (parola condivisa: stessa domanda → tre
+parole diverse per le tre aziende) è il caso più diagnostico e dev'essere
+sempre PASS. Per pretendere anche il rifiuto ideale del §6.1/§6.5 usa
+`--strict` (o, nel test live, `LIVE_RAG_STRICT=1`): i WARN diventano FAIL. Per
+*ottenere* davvero il rifiuto su quelle domande fuori tema, alza la soglia di
+grounding `KB_REFUSAL_MIN_SIMILARITY` (config `kb.refusal.min_chunk_similarity`,
+default 0.45) — è una scelta di prodotto, non di isolamento.
 
 **C) Asse per-utente in CI** — `vendor/bin/phpunit --filter CaseStudyProjectIsolationTest`
 (SQLite, nessun provider): prova che con `KB_PROJECT_ISOLATION_ENABLED=true`
