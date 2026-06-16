@@ -47,6 +47,15 @@
         ]
       },
       {
+        "group": "Integrations",
+        "icon": "puzzle-piece",
+        "pages": [
+          "ai-providers",
+          "mcp-server",
+          "sister-packages"
+        ]
+      },
+      {
         "group": "Architecture",
         "icon": "diagram-project",
         "pages": [
