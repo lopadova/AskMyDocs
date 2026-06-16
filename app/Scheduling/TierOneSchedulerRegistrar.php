@@ -51,6 +51,8 @@ final class TierOneSchedulerRegistrar
         ['notifications_prune', 'notifications:prune'],
         ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run'],
         ['insights_compute', 'insights:compute'],
+        // v8.15/W1 — daily engagement snapshot.
+        ['engagement_compute', 'engagement:compute'],
         ['widget_prune_sessions', 'widget:prune-sessions'],
         ['compliance_digest_quarterly', 'compliance:digest-quarterly'],
         // v8.7/W2 — stale-review sweep + weekly notification digest.
