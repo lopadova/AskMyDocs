@@ -58,7 +58,9 @@ describe('CitationDocumentModal', () => {
 
         const content = await screen.findByTestId('chat-citation-modal-content');
         expect(content).toHaveTextContent('We chose Redis for hot reads.');
-        expect(screen.getByTestId('chat-citation-modal')).toHaveAttribute('data-state', 'ready');
+        // The lifecycle state lives on the component-owned body (not the Radix
+        // DialogContent, whose own data-state="open|closed" would collide).
+        expect(screen.getByTestId('chat-citation-modal-body')).toHaveAttribute('data-state', 'ready');
         expect(mockGet).toHaveBeenCalledWith('/api/kb/documents/7/preview');
     });
 

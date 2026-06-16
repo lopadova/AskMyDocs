@@ -72,6 +72,14 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
     const project = citation.project_key ?? data?.project_key ?? undefined;
     const origin = citation.origin ?? 'primary';
 
+    // Defensive: ChatView + CitationsPopover only open a citation with a
+    // concrete document_id; render nothing rather than a blank modal if a
+    // future call site passes a null one. After the hooks, so hook order is
+    // stable.
+    if (documentId == null) {
+        return null;
+    }
+
     return (
         <Dialog
             open
@@ -83,7 +91,6 @@ export function CitationDocumentModal({ citation, onClose, onOpenInKb }: Citatio
         >
             <DialogContent
                 data-testid="chat-citation-modal"
-                data-state={state}
                 aria-busy={isFetching}
                 showCloseButton={false}
                 className="max-w-2xl"

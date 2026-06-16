@@ -32,7 +32,9 @@ test.describe('Chat — open cited document in a modal', () => {
         await chip.click();
         const modal = page.getByTestId('chat-citation-modal');
         await expect(modal).toBeVisible();
-        await expect(modal).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+        // Lifecycle state lives on the component-owned body, not the Radix
+        // DialogContent (whose own data-state would collide).
+        await expect(page.getByTestId('chat-citation-modal-body')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
         await expect(page.getByTestId('chat-citation-modal-title')).toHaveText('Cache backend decision');
 
         const body = page.getByTestId('chat-citation-modal-content');

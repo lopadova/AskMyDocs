@@ -140,6 +140,14 @@ export function ChatView(): ReactNode {
         });
     };
 
+    // Close the source modal whenever the active conversation changes — a
+    // citation belongs to one thread, so it must never stay mounted over a
+    // different conversation (covers sidebar select, branch, requireConversation
+    // and URL-driven activeId changes in one place).
+    useEffect(() => {
+        setSourceCitation(null);
+    }, [activeId]);
+
     // After a turn settles, if the conversation is still untitled, ask the BE
     // to generate a title from the transcript, then refetch the list so the
     // header + sidebar show the persisted name.

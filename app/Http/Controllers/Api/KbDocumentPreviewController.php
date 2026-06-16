@@ -33,6 +33,12 @@ use Illuminate\Routing\Controller;
  * deployment, local or S3). A document with no chunks yields an empty string
  * (the FE renders an explicit empty state) — a 200, not a fake 404, because the
  * document legitimately exists.
+ *
+ * R44 — DELIBERATE single-surface exception: this is a chat-UI read affordance
+ * over the EXISTING document-read capability (already exposed on the admin
+ * `KbDocumentController` HTTP surface and the MCP retrieval tools), not a new
+ * product capability. It therefore ships HTTP-only — no Artisan command, no MCP
+ * tool — on purpose.
  */
 final class KbDocumentPreviewController extends Controller
 {
