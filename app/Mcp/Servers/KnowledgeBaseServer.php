@@ -7,6 +7,7 @@ use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\KbApplySuggestionTool;
 use App\Mcp\Tools\KbDocumentBySlugTool;
 use App\Mcp\Tools\KbDetectDecisionDebtTool;
+use App\Mcp\Tools\KbDigestPreviewTool;
 use App\Mcp\Tools\KbEngagementSummaryTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
@@ -84,6 +85,8 @@ class KnowledgeBaseServer extends Server
         KbWikiPromoteTool::class,
         // v8.15/W1 — engagement analytics read surface.
         KbEngagementSummaryTool::class,
+        // v8.15/W2 — digest preview read surface.
+        KbDigestPreviewTool::class,
     ];
 
     protected function boot(): void
