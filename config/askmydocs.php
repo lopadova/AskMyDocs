@@ -251,6 +251,16 @@ return [
             'enabled' => (bool) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_CRON', '0 7 * * 1'),
         ],
+        // v8.15/W2 — rich engagement digest (metrics + AI narrative) to email +
+        // Discord/Slack/Teams. Weekly Mon 07:15; monthly on the 1st at 07:30.
+        'digest_weekly' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_WEEKLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_WEEKLY_CRON', '15 7 * * 1'),
+        ],
+        'digest_monthly' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_MONTHLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_MONTHLY_CRON', '30 7 1 * *'),
+        ],
         // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
         'kb_prune_archived_versions' => [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),

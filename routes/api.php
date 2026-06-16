@@ -270,6 +270,11 @@ Route::middleware([
         Route::get('/engagement/leaderboard', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'leaderboard'])
             ->name('api.admin.engagement.leaderboard');
 
+        // v8.15/W2 — digest preview (compose + render, no send). R32 matrix row
+        // for `/api/admin/digest/preview`.
+        Route::get('/digest/preview', [\App\Http\Controllers\Api\Admin\DigestController::class, 'preview'])
+            ->name('api.admin.digest.preview');
+
         // Phase G2 — KB document detail (read-only). Admin-only binding
         // shim resolves trashed rows via `withTrashed()` — the default
         // Eloquent binding would 404 on a soft-deleted doc (R2). The
