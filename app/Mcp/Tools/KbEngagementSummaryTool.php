@@ -58,6 +58,8 @@ class KbEngagementSummaryTool extends Tool
             'snapshot_date' => $snapshot?->snapshot_date?->toDateString(),
             'metrics' => $usingSnapshot ? $snapshotMetrics : $metrics->snapshotMetrics($days),
             'leaderboard' => $metrics->leaderboard($days, $limit),
+            // v8.15/W4 — engagement trend series (additive; from snapshot history).
+            'trend' => $metrics->trendSeries(8),
         ]);
     }
 }

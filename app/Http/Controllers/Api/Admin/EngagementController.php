@@ -72,6 +72,19 @@ class EngagementController extends Controller
         ]);
     }
 
+    /**
+     * Engagement trend series for the admin charts (from the snapshot history).
+     */
+    public function series(Request $request): JsonResponse
+    {
+        $points = max(1, min(60, (int) $request->integer('points', 8)));
+
+        return response()->json([
+            'points' => $points,
+            'series' => $this->metrics->trendSeries($points),
+        ]);
+    }
+
     private function resolveWindow(Request $request): int
     {
         return max(1, min(90, (int) $request->integer('days', 7)));
