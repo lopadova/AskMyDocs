@@ -528,11 +528,14 @@ a per-call usage ledger, N-scope budgets, a declarative policy DSL, chargeback,
 forecasting/anomaly detection, cost-aware routing and multi-channel alerts.
 
 The package meters automatically only for calls that flow through the
-`laravel/ai` SDK (here: Regolo). AskMyDocs reaches **full cross-provider
-coverage** by hooking `AiManager` — `App\FinOps\AiCallMeter` records every
-OpenAI / Anthropic / Gemini / OpenRouter chat + embedding into the ledger
-(non-blocking, `ChatLogManager`-style; Regolo is skipped to avoid
-double-counting). Every row is tenant-scoped via `App\Support\TenantContext`
+`laravel/ai` SDK (here: Regolo). AskMyDocs extends coverage to the
+raw-`Http::` providers by hooking `AiManager` — `App\FinOps\AiCallMeter`
+records every **synchronous** OpenAI / Anthropic / Gemini / OpenRouter chat
+(`chat` / `chatWithHistory`) + embedding into the ledger (non-blocking,
+`ChatLogManager`-style; Regolo is skipped to avoid double-counting).
+**Streaming chat (`chatStream`, the SSE endpoint) is not yet metered** — a
+documented follow-up — so a turn served over streaming is not recorded in the
+ledger. Every recorded row is tenant-scoped via `App\Support\TenantContext`
 (R30).
 
 The API mounts under `api/admin/ai-finops` behind the admin stack
