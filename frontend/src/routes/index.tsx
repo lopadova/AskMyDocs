@@ -45,6 +45,8 @@ import { ComplianceReportsView } from '../features/admin/compliance/ComplianceRe
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
+import { DigestFeedCard } from '../features/digest/DigestFeedCard';
+import { DigestPreferences } from '../features/digest/DigestPreferences';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
@@ -863,6 +865,25 @@ function AdminNotificationPreferencesRoute() {
     );
 }
 
+// v8.15/W3.2 — per-user digest page: the in-app feed + preferences. Any
+// authenticated user (no RequireRole); AdminShell keeps the sidebar consistent.
+function DigestRoute() {
+    return (
+        <AdminShell section="digest">
+            <div style={{ display: 'grid', gap: 20 }}>
+                <DigestFeedCard />
+                <DigestPreferences />
+            </div>
+        </AdminShell>
+    );
+}
+
+const digestRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'digest',
+    component: DigestRoute,
+});
+
 const adminNotificationPreferencesRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/notifications/preferences',
@@ -921,6 +942,7 @@ const routeTree = rootRoute.addChildren([
         chatRoute,
         chatAnonymousRoute,
         chatConversationRoute,
+        digestRoute,
         dashboardRoute,
         kbRoute,
         insightsRoute,

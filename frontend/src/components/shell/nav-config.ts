@@ -40,7 +40,8 @@ export type SidebarSection =
     | 'mcp-tokens'
     | 'widget'
     | 'logs'
-    | 'maintenance';
+    | 'maintenance'
+    | 'digest';
 
 export interface NavItem {
     id: SidebarSection;
@@ -60,7 +61,11 @@ export const NAV_GROUPS: NavGroup[] = [
     {
         id: 'workspace',
         label: 'Workspace',
-        items: [{ id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/chat' }],
+        items: [
+            { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/chat' },
+            // v8.15/W3.2 — per-user digest (feed + preferences); any authenticated user.
+            { id: 'digest', label: 'Digest', icon: 'Calendar', route: '/app/digest' },
+        ],
     },
     {
         id: 'administration',

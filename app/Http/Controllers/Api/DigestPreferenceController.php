@@ -47,14 +47,18 @@ final class DigestPreferenceController extends Controller
         $userId = (int) $request->user()->getKey();
         $tenantId = $this->tenants->current();
 
-        // De-dupe + canonical SECTIONS order (filter the canonical list by
-        // membership); null/empty stays null (= all sections).
-        $requested = $validated['sections'] ?? [];
-        $sections = array_values(array_filter(
-            DigestPreference::SECTIONS,
-            static fn (string $s): bool => in_array($s, $requested, true),
-        ));
-        $sections = $sections === [] ? null : $sections;
+        // Distinguish "not configured" (null = all sections) from "explicitly
+        // none" ([]): omitted/null → null (all); an array → canonical-ordered
+        // subset, and an empty array is preserved as "none" so unchecking every
+        // box in the UI honestly means "no sections" (not silently "all").
+        if (! array_key_exists('sections', $validated) || $validated['sections'] === null) {
+            $sections = null;
+        } else {
+            $sections = array_values(array_filter(
+                DigestPreference::SECTIONS,
+                static fn (string $s): bool => in_array($s, $validated['sections'], true),
+            ));
+        }
 
         $pref = DigestPreference::query()->updateOrCreate(
             ['tenant_id' => $tenantId, 'user_id' => $userId],
