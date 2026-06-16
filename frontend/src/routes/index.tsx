@@ -47,6 +47,8 @@ import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
 import { DigestFeedCard } from '../features/digest/DigestFeedCard';
 import { DigestPreferences } from '../features/digest/DigestPreferences';
+import { MeDashboard } from '../features/dashboard/MeDashboard';
+import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
@@ -884,6 +886,36 @@ const digestRoute = createRoute({
     component: DigestRoute,
 });
 
+// v8.15/W4.2 — personal "your KB" dashboard (any authenticated user).
+function MeDashboardRoute() {
+    return (
+        <AdminShell section="my-kb">
+            <MeDashboard />
+        </AdminShell>
+    );
+}
+const meDashboardRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'me',
+    component: MeDashboardRoute,
+});
+
+// v8.15/W4.2 — admin engagement analytics (RequireRole gate inside the component).
+function AdminEngagementRoute() {
+    return (
+        <AdminShell section="engagement">
+            <RequireRole roles={['admin', 'super-admin']}>
+                <EngagementPanel />
+            </RequireRole>
+        </AdminShell>
+    );
+}
+const adminEngagementRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/engagement',
+    component: AdminEngagementRoute,
+});
+
 const adminNotificationPreferencesRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/notifications/preferences',
@@ -943,6 +975,8 @@ const routeTree = rootRoute.addChildren([
         chatAnonymousRoute,
         chatConversationRoute,
         digestRoute,
+        meDashboardRoute,
+        adminEngagementRoute,
         dashboardRoute,
         kbRoute,
         insightsRoute,
