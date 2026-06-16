@@ -112,7 +112,7 @@ final class DigestSendCommand extends Command
                     channelName: $channel,
                     tenantId: $payload->tenantId,
                     url: $url,
-                    payload: $renderers->for($channel)->render($payload),
+                    payload: $renderers->forOrFail($channel)->render($payload),
                     hmacSecret: (string) config("askmydocs.notifications.channels.{$channel}.secret", '') ?: null,
                 );
             }
@@ -128,7 +128,7 @@ final class DigestSendCommand extends Command
             if ($onlyChannel !== null && $onlyChannel !== $channel) {
                 continue;
             }
-            $out['cards'][$channel] = $renderers->for($channel)->render($payload);
+            $out['cards'][$channel] = $renderers->forOrFail($channel)->render($payload);
         }
         $this->line((string) json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }

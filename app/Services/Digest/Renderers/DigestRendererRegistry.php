@@ -54,6 +54,17 @@ final class DigestRendererRegistry
     }
 
     /**
+     * Resolve-and-use variant for callers that already know the channel is
+     * registered (via {@see has()} / {@see channels()}); throws rather than
+     * returning null so a future caller that skips the guard fails loudly.
+     */
+    public function forOrFail(string $channel): DigestCardRendererInterface
+    {
+        return $this->byChannel[$channel]
+            ?? throw new InvalidArgumentException("No digest renderer registered for channel `{$channel}`.");
+    }
+
+    /**
      * @return list<string>
      */
     public function channels(): array

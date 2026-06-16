@@ -29,7 +29,10 @@ abstract class AbstractDigestCardRenderer implements DigestCardRendererInterface
         }
 
         if ($payload->isQuiet()) {
-            return 'A quiet week — no new documents, no stale reviews, and no unanswered questions. Ask your KB anything to keep it growing.';
+            return sprintf(
+                'A quiet %s — no new documents, no stale reviews, and no unanswered questions. Ask your KB anything to keep it growing.',
+                $payload->frequency === 'monthly' ? 'month' : 'week',
+            );
         }
 
         $m = $payload->metrics;

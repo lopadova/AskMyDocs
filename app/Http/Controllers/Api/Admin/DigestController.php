@@ -40,7 +40,7 @@ final class DigestController extends Controller
 
         $cards = [];
         foreach ($this->renderers->channels() as $channel) {
-            $cards[$channel] = $this->renderers->for($channel)->render($payload);
+            $cards[$channel] = $this->renderers->forOrFail($channel)->render($payload);
         }
 
         return response()->json([
