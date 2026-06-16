@@ -22,7 +22,9 @@ return new class extends Migration
             $table->date('period_start');
             $table->date('period_end');
             $table->json('payload');                   // DigestPayload::toArray()
-            $table->timestamp('created_at')->nullable();
+            // Non-null (useCurrent default) — the feed's "latest" ordering and
+            // digest:prune-feed retention both key on created_at.
+            $table->timestamp('created_at')->useCurrent();
 
             $table->index(['tenant_id', 'created_at'], 'ix_digest_feed_tenant_created');
         });

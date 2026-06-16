@@ -47,8 +47,13 @@ final class DigestPreferenceController extends Controller
         $userId = (int) $request->user()->getKey();
         $tenantId = $this->tenants->current();
 
-        // De-dupe + canonical order; null/empty stays null (= all sections).
-        $sections = array_values(array_unique($validated['sections'] ?? []));
+        // De-dupe + canonical SECTIONS order (filter the canonical list by
+        // membership); null/empty stays null (= all sections).
+        $requested = $validated['sections'] ?? [];
+        $sections = array_values(array_filter(
+            DigestPreference::SECTIONS,
+            static fn (string $s): bool => in_array($s, $requested, true),
+        ));
         $sections = $sections === [] ? null : $sections;
 
         $pref = DigestPreference::query()->updateOrCreate(
