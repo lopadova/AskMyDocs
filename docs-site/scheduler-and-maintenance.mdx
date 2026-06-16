@@ -70,8 +70,11 @@ says otherwise.
 <Note>
 `kb:prune-orphan-files` is scheduled with `--dry-run` by default — it
 *reports* orphans nightly without deleting. Run it manually without `--dry-run`
-once you have reviewed the report. `eval:nightly` additionally honours its own
-`EVAL_NIGHTLY_ENABLED` feature gate on top of the schedule slot.
+once you have reviewed the report. Two slots carry an **extra upstream gate** on
+top of their `SCHEDULE_*` toggle: `eval:nightly` honours `EVAL_NIGHTLY_ENABLED`,
+and `ai-act:regulatory-poll` is only registered at all when
+`AI_ACT_REGULATORY_FEED_ENABLED=true` (a composite gate in `bootstrap/app.php`) —
+when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
 </Note>
 
 ## What the maintenance commands do

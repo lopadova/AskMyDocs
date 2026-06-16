@@ -18,10 +18,13 @@ Start every investigation here.
 - **`GET /healthz`** — a liveness probe. Returns `ok` (HTTP 200) when the app
   boots. Wire it into your load balancer.
 - **Admin dashboard health panel** — backed by
-  `App\Services\Admin\HealthCheckService`, it returns a per-subsystem status
-  map: `db_ok`, `pgvector_ok`, `queue_ok`, `kb_disk_ok`,
-  `embedding_provider_ok`, `chat_provider_ok`, plus a `pii_redactor` block and a
-  `checked_at` timestamp. Each subsystem reports `ok | degraded | down`.
+  `App\Services\Admin\HealthCheckService::run()`, it returns a per-subsystem
+  status map: `db_ok`, `pgvector_ok`, `queue_ok`, `kb_disk_ok`,
+  `embedding_provider_ok`, `chat_provider_ok` (each `ok | degraded | down`), a
+  `pii_redactor` block (whose `status` is `ok | degraded | down | disabled` —
+  `disabled` is intentional, not an error), and a `checked_at` timestamp. The
+  dashboard endpoint (`DashboardMetricsController::health()`) additionally
+  attaches a `pii_redactor_config` snapshot for the PII strip.
 
 A `degraded`/`down` here localises the fault before you read a single log line.
 
