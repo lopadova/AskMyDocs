@@ -52,13 +52,10 @@ delivery breadth, a user-facing surface, and engagement/contributor intelligence
 5. **Release vehicle: `feature/v8.15` cycle**, weekly Wn sub-branches + RC tags
    per R37/R39 (latest GA is v8.13.0; v8.14 is in flight — see coordination).
 
-## STATUS: plan saved, AWAITING GO
-Plan persisted at `C:\Users\lopad\.claude\plans\wise-seeking-thacker.md`. Lorenzo
-to decide **start now vs later**. When we start, also drop a copy into the repo
-(`docs/v4-platform/PLAN-v8.15-engagement-suite.md`) on the `feature/v8.15` branch.
+## STATUS: in flight (W1 shipped)
 Resolved open items: badges = per-tenant configurable; digest model = free
-OpenRouter. Still to confirm at kickoff: v8.14 scope (collision surface) + the
-exact `:free` OpenRouter model id.
+OpenRouter. Still to confirm: v8.14 scope (collision surface) + the exact `:free`
+OpenRouter model id for `KB_DIGEST_AI_MODEL` (W2).
 
 ## ⚠ Coordination with v8.14 (in progress by another dev)
 `origin/feature/v8.14` exists but currently has **zero divergence from `main`**

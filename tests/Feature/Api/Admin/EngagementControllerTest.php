@@ -131,7 +131,11 @@ final class EngagementControllerTest extends TestCase
         $res->assertOk();
         $board = $res->json('leaderboard');
         $this->assertSame(9, $board[0]['user_id']);
-        $this->assertGreaterThan($board[1]['score'], $board[0]['score']);
+        // Strict-desc: the top entry's score must exceed the runner-up's.
+        $this->assertTrue(
+            $board[0]['score'] > $board[1]['score'],
+            'leaderboard must be ordered strictly descending by score',
+        );
     }
 
     public function test_compute_is_tenant_isolated(): void

@@ -251,6 +251,8 @@ class MaintenanceCommandController extends Controller
             'notifications_prune' => 'Rotate notification_events past retention (W1.5).',
             'compliance_digest_quarterly' => 'Quarterly compliance digest generation (W8.5).',
             'insights_compute' => 'Daily AI-insights snapshot (Phase I).',
+            // v8.15/W1 — daily engagement snapshot.
+            'engagement_compute' => 'Daily KB engagement snapshot (contributors / activity / coverage / leaderboard).',
             // v8.7/W2 — KB lifecycle.
             'kb_stale_review_sweep' => 'Flag documents untouched beyond the staleness window (v8.7/W2).',
             'notifications_digest_weekly' => 'Weekly per-user notification digest email (v8.7/W2).',

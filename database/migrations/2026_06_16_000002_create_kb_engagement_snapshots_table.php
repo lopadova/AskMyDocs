@@ -27,9 +27,11 @@ return new class extends Migration
             $table->bigIncrements('id');
             $table->string('tenant_id', 50)->default('default')->index();
             $table->date('snapshot_date');
-            // {contributors, new_docs, modified_docs, promoted_docs, reviewed_docs,
-            //  answers, refusals, answer_rate, coverage_pct, avg_health,
-            //  stale_count, top_contributors:[{user_id,name,score}], trend:{...}}
+            // Shape (see EngagementMetricsService::snapshotMetrics):
+            // {window_days, contributors, new_docs, modified_docs, promoted_docs,
+            //  reviewed_docs, answers, open_gaps, window_gaps, answer_rate,
+            //  canonical_coverage_pct, avg_debt_score, stale_count,
+            //  top_contributors:[{user_id,name,score,events}]}
             $table->json('metrics')->nullable();
             $table->timestamp('computed_at')->nullable();
             $table->unsignedInteger('computed_duration_ms')->nullable();
