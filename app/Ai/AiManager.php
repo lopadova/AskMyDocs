@@ -7,6 +7,7 @@ use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use App\Ai\Providers\RegoloProvider;
+use App\FinOps\AiCallMeter;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
@@ -129,7 +130,13 @@ class AiManager
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
-        return $this->provider()->chat($systemPrompt, $userMessage, $options);
+        $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
+
+        // FinOps full-coverage metering (R44). Non-blocking + Regolo-skipping;
+        // see App\FinOps\AiCallMeter. No-op when finops metering is disabled.
+        app(AiCallMeter::class)->meterChat($response, $userMessage);
+
+        return $response;
     }
 
     /**
@@ -139,7 +146,11 @@ class AiManager
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        return $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
+        $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
+
+        app(AiCallMeter::class)->meterChat($response, $messages);
+
+        return $response;
     }
 
     /**
@@ -151,12 +162,20 @@ class AiManager
      */
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
     {
+        // NOTE: streaming responses are NOT yet metered here — capturing the
+        // terminal usage of a Generator without wrapping the live SSE path is a
+        // scoped follow-up (FinOps streaming coverage). Sync chat +
+        // chatWithHistory + embeddings (the bulk of token spend) are covered.
         return $this->provider()->chatStream($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
-        return $this->embeddingsProvider()->generateEmbeddings($texts);
+        $response = $this->embeddingsProvider()->generateEmbeddings($texts);
+
+        app(AiCallMeter::class)->meterEmbeddings($response);
+
+        return $response;
     }
 
     private function resolve(string $name): AiProviderInterface
