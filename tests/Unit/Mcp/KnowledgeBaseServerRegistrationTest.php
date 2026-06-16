@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_twenty_five_tools(): void
+    public function test_server_registers_exactly_twenty_six_tools(): void
     {
-        $this->assertCount(25, $this->registeredTools());
+        $this->assertCount(26, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_engagement_summary_tool(): void
+    {
+        // v8.15/W1 — the engagement analytics MCP read surface (R44).
+        $this->assertContains(\App\Mcp\Tools\KbEngagementSummaryTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_wiki_promote_tool(): void

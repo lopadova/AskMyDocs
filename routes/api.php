@@ -263,6 +263,13 @@ Route::middleware([
         Route::get('/kb/health', [KbHealthController::class, 'index'])
             ->name('api.admin.kb.health.index');
 
+        // v8.15/W1 — KB engagement analytics (R44 HTTP surface; R32 matrix row
+        // for `/api/admin/engagement/summary`). Tenant-scoped reads.
+        Route::get('/engagement/summary', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'summary'])
+            ->name('api.admin.engagement.summary');
+        Route::get('/engagement/leaderboard', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'leaderboard'])
+            ->name('api.admin.engagement.leaderboard');
+
         // Phase G2 — KB document detail (read-only). Admin-only binding
         // shim resolves trashed rows via `withTrashed()` — the default
         // Eloquent binding would 404 on a soft-deleted doc (R2). The

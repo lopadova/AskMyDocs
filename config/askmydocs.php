@@ -227,6 +227,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_INSIGHTS_COMPUTE_ENABLED', true),
             'cron' => (string) env('SCHEDULE_INSIGHTS_COMPUTE_CRON', '0 5 * * *'),
         ],
+        // v8.15/W1 — daily engagement snapshot (after insights, 05:15).
+        'engagement_compute' => [
+            'enabled' => (bool) env('SCHEDULE_ENGAGEMENT_COMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_ENGAGEMENT_COMPUTE_CRON', '15 5 * * *'),
+        ],
         'compliance_digest_quarterly' => [
             'enabled' => (bool) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_CRON', '0 6 1 1,4,7,10 *'),
@@ -291,6 +296,22 @@ return [
             'orphan_outbound' => (float) env('KB_HEALTH_WEIGHT_ORPHAN_OUTBOUND', 0.15),
             'status_decay' => (float) env('KB_HEALTH_WEIGHT_STATUS_DECAY', 0.20),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Engagement & Intelligence Suite (v8.15)
+    |--------------------------------------------------------------------------
+    | The KB engagement layer: a contribution-event log feeds contributor
+    | analytics, "your impact" metrics, the digest, and the opt-in gamification
+    | layer. `enabled` gates the ContributionRecorder write side (best-effort
+    | telemetry; never breaks a hot path). `window_days` is the default rolling
+    | activity window for the daily snapshot.
+    */
+    'engagement' => [
+        'enabled' => (bool) env('KB_ENGAGEMENT_ENABLED', true),
+        'window_days' => (int) env('KB_ENGAGEMENT_WINDOW_DAYS', 7),
+        'snapshot_retention_days' => (int) env('KB_ENGAGEMENT_SNAPSHOT_RETENTION_DAYS', 400),
     ],
 
     'compliance' => [

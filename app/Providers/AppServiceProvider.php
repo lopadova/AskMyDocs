@@ -409,6 +409,8 @@ class AppServiceProvider extends ServiceProvider
             PruneNotificationsCommand::class,
             // PR14 / Phase I — daily AI insights snapshot.
             InsightsComputeCommand::class,
+            // v8.15/W1 — daily engagement snapshot.
+            \App\Console\Commands\EngagementComputeCommand::class,
             // v8.0/W6.1 — full tenant collection membership reevaluation.
             CollectionsReevaluateCommand::class,
             // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.
