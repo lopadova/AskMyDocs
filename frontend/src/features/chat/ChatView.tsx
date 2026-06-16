@@ -13,6 +13,7 @@ import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
+import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
 
 const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
@@ -94,11 +95,15 @@ export function ChatView(): ReactNode {
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
-    // Citation chips navigate to the KB document detail, which lives behind
-    // the admin/super-admin RBAC gate. Only wire the click for those roles so
-    // a viewer/editor chip stays hover-only instead of dead-ending on a 403.
+    // Clicking a citation opens the cited document in an in-chat modal — for
+    // EVERY reader, not only admins. The modal fetches the source through a
+    // tenant + AccessScope-scoped endpoint, so a reader can only ever open a
+    // document they may see. Admins additionally get an "Open in Knowledge
+    // Base" deep-link inside the modal (the old navigate target, which lives
+    // behind the admin RBAC gate).
     const roles = useAuthStore((s) => s.roles);
     const canViewKb = roles.includes('admin') || roles.includes('super-admin');
+    const [sourceCitation, setSourceCitation] = useState<MessageCitation | null>(null);
 
     // Conversations list (shared cache with the sidebar) — drives the header
     // title + the auto-generated/renamed name. TanStack dedupes the identical
@@ -118,6 +123,16 @@ export function ChatView(): ReactNode {
         if (citation.document_id == null) {
             return;
         }
+        setSourceCitation(citation);
+    };
+
+    // Admin-only secondary action inside the modal: jump to the full KB
+    // document page (deep-link behind the admin/super-admin RBAC gate).
+    const handleOpenInKb = (citation: MessageCitation) => {
+        if (citation.document_id == null) {
+            return;
+        }
+        setSourceCitation(null);
         navigate({
             to: '/app/$teamHash/admin/kb',
             params: { teamHash },
@@ -566,7 +581,7 @@ export function ChatView(): ReactNode {
                     onBranchAt={handleBranchAt}
                     onEditUserMessage={handleEditUserMessage}
                     showCounterfactual={showCounterfactual}
-                    onOpenSource={canViewKb ? handleOpenSource : undefined}
+                    onOpenSource={handleOpenSource}
                 />
 
                 <SuggestedFollowups
@@ -591,6 +606,14 @@ export function ChatView(): ReactNode {
                     error={chat.error ?? null}
                 />
             </div>
+
+            {sourceCitation && (
+                <CitationDocumentModal
+                    citation={sourceCitation}
+                    onClose={() => setSourceCitation(null)}
+                    onOpenInKb={canViewKb ? handleOpenInKb : undefined}
+                />
+            )}
         </div>
     );
 }

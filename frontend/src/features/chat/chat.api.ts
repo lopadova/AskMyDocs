@@ -116,6 +116,26 @@ export interface MessageCitation {
     origin?: 'primary' | 'related' | 'rejected';
 }
 
+/**
+ * Full source text of a cited document, fetched on demand when the reader
+ * opens a citation in the chat "source" modal. Mirrors
+ * `KbDocumentPreviewController` byte-for-byte (R20). `content` is the document
+ * reconstructed from its chunks in order — the exact text retrieval grounded
+ * on — and is an empty string for a document with no chunks (empty state).
+ */
+export interface CitationDocument {
+    document_id: number;
+    title: string | null;
+    source_path: string | null;
+    slug: string | null;
+    project_key: string | null;
+    source_type: string | null;
+    canonical_type: string | null;
+    canonical_status: string | null;
+    is_canonical: boolean;
+    content: string;
+}
+
 export interface MessageMetadata {
     provider?: string;
     model?: string;
@@ -238,6 +258,16 @@ export const chatApi = {
     async listCollections(): Promise<ChatCollectionOption[]> {
         const { data } = await api.get<{ data: ChatCollectionOption[] }>('/api/kb/collections');
         return data.data;
+    },
+
+    /**
+     * Full source text of a cited document for the "open source" modal. Scoped
+     * server-side to the reader's tenant + AccessScope, so a citation can only
+     * ever open a document the reader is allowed to see.
+     */
+    async fetchCitationDocument(documentId: number): Promise<CitationDocument> {
+        const { data } = await api.get<CitationDocument>(`/api/kb/documents/${documentId}/preview`);
+        return data;
     },
 
     async rateMessage(
