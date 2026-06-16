@@ -47,8 +47,8 @@ also an MCP tool.
 ## Connecting a client
 
 Expose the server and point your MCP client at it. The host ships an
-`mcp:connect` Artisan helper that prints the bootstrap snippet for a consumer
-client. Access is **token-gated** — mint a personal access token (Sanctum) or an
+`askmydocs:mcp:connect` Artisan helper that prints the bootstrap snippet for a
+consumer client. Access is **token-gated** — mint a personal access token (Sanctum) or an
 MCP token in the admin (`/app/admin/mcp/tokens`) and the per-tool authorizer
 enforces the caller's RBAC on every invocation.
 
@@ -58,9 +58,10 @@ The transport, multi-turn tool-calling orchestrator, hash-only audit, and RBAC
 hooks are factored into the standalone **`padosoft/askmydocs-mcp-pack`** package
 (framework-agnostic; AskMyDocs pins `^1.5`). The host binds three adapters
 (`McpHostBridge`, server registry, tool authorizer) so the pack drives the real
-AskMyDocs retrieval + Spatie RBAC + Eloquent audit. A companion admin SPA
-(`/app/admin/mcp-tools`) surfaces server CRUD, the tool catalogue, the audit log,
-and a circuit-breaker dashboard.
+AskMyDocs retrieval + Spatie RBAC + Eloquent audit. The host admin SPA
+(`/app/admin/mcp-tools`) surfaces server CRUD, the tool catalogue, and the audit
+log; the optional standalone `padosoft/askmydocs-mcp-pack-admin` panel (default
+`/admin/mcp-pack`) adds the circuit-breaker dashboard and the OpenAPI explorer.
 
 ## Gotchas & operations
 
