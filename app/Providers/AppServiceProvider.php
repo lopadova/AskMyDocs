@@ -465,6 +465,9 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbWikiMaintainCommand::class,
             // v8.11/P10 — Wiki Explorer promote/discard PHP surface (R44).
             \App\Console\Commands\KbWikiPromoteCommand::class,
+            // Case study — per-company documentation-isolation verifier
+            // (README §6 matrix against the live KB). Dev/ops diagnostic.
+            \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
         ]);
     }
 
