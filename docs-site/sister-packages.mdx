@@ -40,7 +40,7 @@ flowchart TD
       P8[ai-act-compliance]
     end
     HOST[AskMyDocs host] -->|composer require + IoC binding| P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8
-    HOST -.->|never the reverse| HOST
+    P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 -.->|never depend on the host| HOST
 ```
 
 Each package talks to AskMyDocs only through a host-bound **IoC contract** (e.g.
