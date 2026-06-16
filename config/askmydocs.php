@@ -261,6 +261,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_DIGEST_MONTHLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_DIGEST_MONTHLY_CRON', '30 7 1 * *'),
         ],
+        // v8.15/W3 — in-app digest feed retention (daily 04:25).
+        'digest_prune_feed' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_PRUNE_FEED_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_PRUNE_FEED_CRON', '25 4 * * *'),
+        ],
         // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
         'kb_prune_archived_versions' => [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),

@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\SendDigestWebhookJob;
 use App\Mail\DigestMail;
+use App\Models\EngagementDigestFeedEntry;
 use App\Models\KnowledgeDocument;
 use App\Models\NotificationPreference;
 use App\Models\User;
@@ -64,7 +65,20 @@ final class DigestSendCommand extends Command
                     continue;
                 }
 
-                $sent = $this->dispatchTenant($payload, $renderers, $onlyChannel, $dryRun);
+                if (! $dryRun) {
+                    // Persist the in-app feed entry (W3) so the SPA "This week
+                    // in your KB" card has the generated digest to show.
+                    EngagementDigestFeedEntry::create([
+                        'tenant_id' => $payload->tenantId,
+                        'frequency' => $payload->frequency,
+                        'period_start' => $payload->periodStart,
+                        'period_end' => $payload->periodEnd,
+                        'payload' => $payload->toArray(),
+                        'created_at' => now(),
+                    ]);
+                }
+
+                $sent = $this->dispatchTenant($payload, $renderers, $onlyChannel, $dryRun, $frequency);
                 $verb = $dryRun ? 'would send' : 'sent';
                 $this->info("[{$tenantId}] {$frequency} digest {$verb}: email={$sent['email']} channels=".implode(',', $sent['channels'] ?: ['none']));
             }
@@ -83,15 +97,18 @@ final class DigestSendCommand extends Command
         DigestRendererRegistry $renderers,
         ?string $onlyChannel,
         bool $dryRun,
+        string $frequency,
     ): array {
         $emailCount = 0;
         $channelsSent = [];
 
         // Email — streamed in chunks (R3: never materialise the full recipient
-        // set for a large tenant). Counts in dry-run, queues otherwise.
+        // set for a large tenant), filtered by each user's digest frequency
+        // preference (W3). Counts in dry-run, queues otherwise.
         if ($onlyChannel === null || $onlyChannel === 'email') {
             $emailCount = $this->streamEmailRecipients(
                 $payload->tenantId,
+                $frequency,
                 $dryRun
                     ? null
                     : static fn (User $user) => Mail::to($user)->queue(DigestMail::fromPayload($payload)),
@@ -135,18 +152,21 @@ final class DigestSendCommand extends Command
     }
 
     /**
-     * Stream users with at least one email-enabled notification preference in
-     * the tenant, in chunkById(500) batches (R3 — no full materialisation on a
-     * large tenant). Invokes $each per user when provided (null = count only,
-     * for dry-run). Returns the recipient count.
+     * Stream users eligible for the digest at $frequency, in chunkById(500)
+     * batches (R3 — no full materialisation on a large tenant). Eligible =
+     * email-enabled notification preference AND digest-frequency match:
+     *  - weekly run  → users with no digest_preferences row (default weekly)
+     *                  OR an explicit frequency='weekly'; excludes monthly/off.
+     *  - monthly run → users with an explicit frequency='monthly'.
+     * Invokes $each per user when provided (null = count only, for dry-run).
      *
      * @param  null|callable(User):void  $each
      */
-    private function streamEmailRecipients(string $tenantId, ?callable $each): int
+    private function streamEmailRecipients(string $tenantId, string $frequency, ?callable $each): int
     {
         $count = 0;
 
-        User::query()
+        $query = User::query()
             ->whereExists(function ($query) use ($tenantId): void {
                 // Unqualified `tenant_id` is unambiguous here — the subquery's
                 // only FROM table is notification_preferences (the correlated
@@ -157,17 +177,41 @@ final class DigestSendCommand extends Command
                     ->where('tenant_id', $tenantId)
                     ->where('notification_preferences.channel', NotificationPreference::CHANNEL_EMAIL)
                     ->where('notification_preferences.enabled', true);
-            })
-            ->chunkById(500, function ($users) use (&$count, $each): void {
-                foreach ($users as $user) {
-                    $count++;
-                    if ($each !== null) {
-                        $each($user);
-                    }
-                }
             });
 
+        if ($frequency === 'monthly') {
+            $query->whereExists(fn ($q) => $this->digestFrequencyExists($q, $tenantId, ['monthly']));
+        } else {
+            // Weekly: default-in (no row) OR explicit weekly; exclude any row
+            // whose frequency is NOT weekly (monthly / off opt out).
+            $query->whereNotExists(fn ($q) => $this->digestFrequencyExists($q, $tenantId, ['monthly', 'off']));
+        }
+
+        $query->chunkById(500, function ($users) use (&$count, $each): void {
+            foreach ($users as $user) {
+                $count++;
+                if ($each !== null) {
+                    $each($user);
+                }
+            }
+        });
+
         return $count;
+    }
+
+    /**
+     * Correlated digest_preferences EXISTS subquery for the given frequencies.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $q
+     * @param  list<string>  $frequencies
+     */
+    private function digestFrequencyExists($q, string $tenantId, array $frequencies): void
+    {
+        $q->select(DB::raw(1))
+            ->from('digest_preferences')
+            ->whereColumn('digest_preferences.user_id', 'users.id')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('digest_preferences.frequency', $frequencies);
     }
 
     /**

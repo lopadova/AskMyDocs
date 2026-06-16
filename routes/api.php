@@ -189,6 +189,14 @@ Route::middleware([
         ->name('api.me.chat-preferences.show');
     Route::patch('/me/chat-preferences', [ChatPreferencesController::class, 'update'])
         ->name('api.me.chat-preferences.update');
+
+    // v8.15/W3 — per-user rich-digest preferences + the in-app digest feed.
+    Route::get('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'show'])
+        ->name('api.me.digest-preferences.show');
+    Route::put('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'update'])
+        ->name('api.me.digest-preferences.update');
+    Route::get('/me/digest/latest', [\App\Http\Controllers\Api\DigestFeedController::class, 'latest'])
+        ->name('api.me.digest.latest');
 });
 
 /*

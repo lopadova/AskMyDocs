@@ -259,6 +259,9 @@ return [
         'ai_provider' => env('KB_DIGEST_AI_PROVIDER', 'openrouter') ?: null,
         'ai_model' => env('KB_DIGEST_AI_MODEL', 'meta-llama/llama-3.3-70b-instruct:free') ?: null,
         'narrative_max_tokens' => (int) env('KB_DIGEST_NARRATIVE_MAX_TOKENS', 400),
+        // In-app digest feed retention; `digest:prune-feed` drops entries older
+        // than this (0 disables the rotation).
+        'feed_retention_days' => (int) env('KB_DIGEST_FEED_RETENTION_DAYS', 120),
     ],
 
     /*
