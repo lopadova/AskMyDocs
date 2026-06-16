@@ -117,15 +117,18 @@ rebuildable from it. The KB disk is configured in `config/filesystems.php` and
 selected via env:
 
 ```bash
-KB_FILESYSTEM_DISK=kb       # the logical disk name
-KB_DISK_DRIVER=local        # local | s3
+KB_FILESYSTEM_DISK=kb       # which configured disk to use (kb | s3 | r2 | …)
+KB_DISK_DRIVER=local        # driver of the default "kb" disk (local | s3)
 KB_PATH_PREFIX=             # optional prefix every path is resolved under
 KB_RAW_DISK=kb-raw          # raw (pre-conversion) source retention
 ```
 
-For an S3-backed disk, set the standard `AWS_*` credentials and switch
-`KB_DISK_DRIVER=s3`. Every path is normalised through `App\Support\KbPath` so the
-ingest and delete flows resolve identically.
+To serve KB docs from S3, set **`KB_FILESYSTEM_DISK=s3`** (with the standard
+`AWS_*` credentials and `composer require league/flysystem-aws-s3-v3 "^3.0"`) —
+this routes ingestion through the fully-configured `s3` disk in
+`config/filesystems.php`. Do **not** set `KB_DISK_DRIVER=s3` on its own: the
+default `kb` disk entry carries no S3 credential keys. Every path is normalised
+through `App\Support\KbPath` so the ingest and delete flows resolve identically.
 
 ## Queue connection
 

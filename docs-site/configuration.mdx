@@ -71,11 +71,14 @@ AI_EMBEDDINGS_PROVIDER=openai   # embeddings: openai | gemini | openrouter | reg
 KB_EMBEDDINGS_DIMENSIONS=1536   # MUST match the embeddings model's output width
 ```
 
-Each provider has a `<NAME>_API_KEY`, `<NAME>_BASE_URL`, `<NAME>_CHAT_MODEL`,
-`<NAME>_EMBEDDINGS_MODEL`, `<NAME>_TEMPERATURE`, `<NAME>_MAX_TOKENS`, and
-`<NAME>_TIMEOUT`. The full matrix — including the dimension-safety auto-select
-order when `AI_PROVIDER=anthropic` — is documented in
-[AI providers](/ai-providers).
+Each provider has a `<NAME>_API_KEY`, `<NAME>_CHAT_MODEL`, `<NAME>_TEMPERATURE`,
+`<NAME>_MAX_TOKENS`, and `<NAME>_TIMEOUT`, but the rest of the surface is
+**provider-specific** — Anthropic adds `ANTHROPIC_API_VERSION` and has no
+`*_BASE_URL` or embeddings model; OpenAI / Gemini / OpenRouter add `*_BASE_URL`
+and `*_EMBEDDINGS_MODEL`; Regolo exposes a `REGOLO_CHAT_MODEL*` cheapest/smartest
+matrix plus `REGOLO_EMBEDDINGS_DIMENSIONS`. The full per-provider matrix —
+including the dimension-safety auto-select order when `AI_PROVIDER=anthropic` —
+is documented in [AI providers](/ai-providers).
 
 <Warning>
 `KB_EMBEDDINGS_DIMENSIONS` is part of the database contract. Changing the
