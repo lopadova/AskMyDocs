@@ -14,25 +14,35 @@ surface promotion candidates — over the same retrieval stack the chat UI uses.
 ## The `enterprise-kb` server
 
 The MCP server (`app/Mcp/Servers/KnowledgeBaseServer.php`, registered name
-`enterprise-kb`) exposes **25 tools** — read-only retrieval + graph navigation,
-plus write-nothing promotion-suggest tools that surface candidate artifacts for
-human review (no tool commits canonical storage — promotion stays human-gated,
-see [canonical & promotion](/canonical-and-promotion)).
+`enterprise-kb`) exposes **25 tools** across three categories:
+
+- **Read-only retrieval** (hybrid search, document/chunk reads, recent changes,
+  project-scoped search).
+- **Graph navigation** (neighbours, subgraph, canonical lookups by slug/type,
+  the multi-hop `KbWikiNavigateTool` — primary agentic surface, see [Auto-Wiki](/auto-wiki)).
+- **Write surfaces** for auto-wiki operations: evidence tier (`KbSetEvidenceTierTool`),
+  graph link rebuild (`KbRebuildWikiLinksTool`), concept synthesis
+  (`KbSynthesizeConceptsTool`), index build (`KbBuildWikiIndexTool`), page review
+  (`KbWikiReviewTool`), suggestion apply (`KbApplySuggestionTool`), wiki
+  maintenance (`KbWikiMaintainTool`), and auto→human-vouched tier promotion
+  (`KbWikiPromoteTool`).
+- **Write-nothing propose/suggest** tools that surface candidate artifacts for
+  human review — the **canonical promotion pipeline** (suggest → candidates →
+  promote via `CanonicalWriter`) stays human-gated
+  (see [canonical & promotion](/canonical-and-promotion)).
 
 ```mermaid
 flowchart LR
     CLIENT[Claude Desktop / Code / Cursor] -->|MCP stdio / HTTP| SRV[enterprise-kb server]
-    SRV --> RET[retrieval tools]
+    SRV --> RET[retrieval tools<br/>read-only]
     SRV --> NAV["graph navigation<br/>(KbWikiNavigateTool — primary agentic surface)"]
-    SRV --> SUG[promotion-suggest tools<br/>write NOTHING]
-    RET & NAV --> KB[(canonical KB)]
+    SRV --> WRITE["auto-wiki write tools<br/>(evidence tier, graph, synthesis…)"]
+    SRV --> SUG["canonical-promote suggest tools<br/>write NOTHING"]
+    RET & NAV & WRITE --> KB[(canonical KB)]
 ```
 
-Tool categories include hybrid search, canonical lookups, graph expansion, the
-multi-hop **`KbWikiNavigateTool`** (navigate the wiki — the primary agentic
-surface, see [Auto-Wiki](/auto-wiki)), evidence-tier set/get, and
-promotion-suggest. New capabilities land tri-surface (R44): every Auto-Wiki and
-KB capability is also an MCP tool.
+New capabilities land tri-surface (R44): every Auto-Wiki and KB capability is
+also an MCP tool.
 
 ## Connecting a client
 
@@ -54,8 +64,10 @@ and a circuit-breaker dashboard.
 
 ## Gotchas & operations
 
-- No MCP tool commits canonical storage — promotion is human-gated; the suggest
-  tools write nothing.
+- The **canonical promotion pipeline** (suggest → candidates → promote via
+  `CanonicalWriter`) is human-gated and no MCP tool triggers it. Auto-wiki write
+  tools (evidence tier, graph rebuild, concept synthesis, etc.) DO write to storage
+  — they are RBAC-authorized and audited.
 - Every tool invocation is RBAC-authorized + audited (hash-only) — bypassing the
   authorizer is a defect.
 - Adding a new MCP tool: extend `Laravel\Mcp\Server\Tool`, register it on
