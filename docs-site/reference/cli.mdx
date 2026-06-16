@@ -1,0 +1,130 @@
+---
+title: "CLI reference"
+description: "Every Artisan command — ingestion, deletion, promotion, the canonical graph, the Auto-Wiki engine, retention sweeps, insights, evaluation, and the MCP/widget helpers — with exact signatures."
+icon: "terminal"
+---
+
+## Motivation
+
+The CLI is a first-class surface ([R44](/sister-packages): every capability is
+exposed via PHP, HTTP, and MCP). Operators run ingestion, retention, graph
+rebuilds, and the Auto-Wiki phases from `php artisan`. This page lists the
+commands grouped by concern with their exact signatures. Run `php artisan
+<command> --help` for the authoritative, version-current option list.
+
+## Conventions
+
+- **Tenancy.** Most commands accept `--tenant=` (default: current
+  `TenantContext`, usually `default`).
+- **Dry runs.** Destructive sweeps accept `--dry-run` to report without
+  mutating.
+- **Retention overrides.** Prune commands accept `--days=N`; `0` disables that
+  rotation.
+- **Path arguments.** Commands that take a KB `source_path` (e.g. `kb:delete`,
+  the folder walk in `kb:ingest-folder`) normalise it through `KbPath` and resolve
+  it relative to `KB_PATH_PREFIX`. (`kb:ingest` builds its path more directly, so
+  match the path you ingested with when deleting.)
+
+## Ingestion
+
+| Signature | Purpose |
+|---|---|
+| `kb:ingest {path} {--project=} {--title=} {--disk=}` | Ingest a single document via the configured disk |
+| `kb:ingest-folder {path?} {--project=} {--tenant=} {--disk=} {--pattern=} {--recursive} {--sync} {--limit=0} {--dry-run} {--prune-orphans} {--force-delete}` | Walk a folder and dispatch one ingestion job per supported file |
+
+## Promotion & deletion
+
+| Signature | Purpose |
+|---|---|
+| `kb:promote {path} {--project=} {--dry-run} {--auto-approve}` | Promote a local canonical markdown file to the KB (PromotionFlow) |
+| `kb:delete {path} {--project=} {--force} {--soft} {--keep-file}` | Delete a document (DeleteDocumentFlow); `--force` = hard delete |
+
+## Canonical graph & health
+
+| Signature | Purpose |
+|---|---|
+| `kb:rebuild-graph {--project=} {--tenant=} {--no-truncate} {--sync}` | Rebuild `kb_nodes` + `kb_edges` from canonical docs |
+| `kb:validate-canonical {--project=} {--from-disk} {--disk=}` | Validate canonical frontmatter; report per-file schema errors |
+| `kb:health-recompute {--tenant=} {--emit-events}` | Recompute canonical KB health snapshots |
+| `kb:stale-review-sweep {--tenant=} {--months=} {--limit=500} {--dry-run}` | Notify reviewers of stale documents |
+
+## Auto-Wiki engine
+
+| Signature | Phase |
+|---|---|
+| `kb:evidence-tier {document} {--set=} {--tenant=default} {--actor=cli}` | P1b — show/set evidence tier |
+| `kb:wiki-link {document} {--tenant=default}` | P2 — rebuild auto-wiki graph for a doc |
+| `kb:synthesize-concepts {project} {--tenant=default} {--limit=}` | P3 — synthesise concept pages |
+| `kb:wiki-index {--project=} {--tenant=default}` | P4 — rebuild indices |
+| `kb:wiki-lint {--project=} {--tenant=default} {--fix}` | P5 — lint (dangling/orphan/stale) |
+| `kb:wiki-navigate {project} {--seeds=} {--depth=} {--tenant=default}` | P6 — multi-hop BFS navigation |
+| `kb:wiki-review {document} {--tenant=default}` | P7 — cross-model review |
+| `kb:apply-suggestion {analysis} {type} {target} {--tenant=default} {--actor=cli}` | P8 — apply change/delete suggestion |
+| `kb:wiki-maintain {--project=} {--tenant=default} {--fix} {--backfill=}` | P9 — scheduled maintenance |
+| `kb:wiki-promote {document} {--discard} {--tenant=default}` | P10 — promote auto→human |
+
+See the [auto-wiki engine](/architecture/auto-wiki-engine).
+
+## Retention & cleanup
+
+| Signature | Purpose |
+|---|---|
+| `kb:prune-deleted {--days=} {--tenant=} {--dry-run}` | Hard-delete soft-deleted docs past retention |
+| `kb:prune-archived-versions {--tenant=} {--keep=} {--dry-run}` | Drop old archived versions beyond the cap |
+| `kb:prune-embedding-cache {--days=} {--tenant=} {--dry-run}` | Evict cache rows past retention (not a full flush) |
+| `kb:prune-orphan-files {--disk=} {--project=} {--dry-run}` | Delete KB files with no matching row |
+| `chat-log:prune {--days=} {--tenant=} {--dry-run}` | Rotate chat logs |
+| `notifications:prune {--days=} {--tenant=}` | Rotate notification events |
+| `widget:prune-sessions {--days=} {--tenant=} {--dry-run}` | Rotate widget sessions |
+| `admin-audit:prune {--days=}` | Rotate admin command audit |
+| `admin-nonces:prune {--days=}` | Purge expired command nonces |
+| `collections:reevaluate {--tenant=} {--collection=}` | Re-evaluate collection membership |
+
+## Insights, evaluation & compliance
+
+| Signature | Purpose |
+|---|---|
+| `insights:compute {--date=today} {--tenant=} {--force}` | Daily AI-insights snapshot, one row per tenant |
+| `eval:nightly {--dry-run} {--status} {--prune-only}` | Eval-harness baseline run; alert on `macro_f1` regression |
+| `notifications:digest-weekly {--tenant=}` | Email weekly notification digests |
+| `compliance:digest-quarterly {--tenant=} {--at=}` | Quarterly compliance reports for opted-in tenants |
+
+## Benchmarks
+
+| Signature | Purpose |
+|---|---|
+| `kb:benchmark {--stub} {--with-answers} {--gate} {--project=benchmark} {--k=5} {--corpus=} {--queries=}` | Retrieval-quality benchmark (nDCG/MRR/precision/citation/refusal/graph) |
+| `kb:make-benchmark-fixtures` | Regenerate the binary (PDF + DOCX) benchmark corpus |
+
+## Auth, MCP & widget
+
+| Signature | Purpose |
+|---|---|
+| `auth:grant {email} {role} {--project=}` | Grant a Spatie role (and optional project membership) |
+| `askmydocs:mcp:connect {--server=} {--tenant=} {--token=} {--name=askmydocs}` | Print a Claude Code `.mcp.json` snippet for the MCP server |
+| `widget:emit-secret {public_key}` | Emit a new widget secret (`sk_…`) — shown once |
+
+## Worked example
+
+```bash
+# ingest a folder, then rebuild the graph synchronously
+php artisan kb:ingest-folder docs/ --project=handbook
+php artisan kb:rebuild-graph --project=handbook --sync
+
+# dry-run a retention sweep before committing to it
+php artisan kb:prune-deleted --days=30 --dry-run
+
+# run an Auto-Wiki phase end-to-end on one document
+php artisan kb:wiki-link 4213 --tenant=acme
+php artisan kb:wiki-review 4213 --tenant=acme
+php artisan kb:wiki-promote 4213 --tenant=acme
+```
+
+<CardGroup cols={2}>
+  <Card title="Scheduler & maintenance" icon="clock" href="/scheduler-and-maintenance">
+    Which of these run on a schedule, and when.
+  </Card>
+  <Card title="HTTP API reference" icon="plug" href="/reference/api">
+    The same capabilities over HTTP.
+  </Card>
+</CardGroup>

@@ -1,0 +1,185 @@
+---
+title: "HTTP API reference"
+description: "The REST/JSON API surface — authentication, KB chat & search, ingestion, the human-gated promotion pipeline, conversations, the embeddable widget, and the RBAC-gated admin endpoints."
+icon: "plug"
+---
+
+## Motivation
+
+Everything the SPA does, it does over the same HTTP API you can call yourself.
+This page is the contract reference: the routes, their auth, and the
+request/response shapes for the load-bearing endpoints. For exact validation
+rules, the `FormRequest`/`validate()` in each controller is the source of truth;
+this page is the navigable map.
+
+## Conventions
+
+- **Auth.** Most routes require `auth:sanctum` (SPA cookie or a personal access
+  token). Admin routes additionally carry a `role:` or `can:` gate. The
+  embeddable widget authenticates with a `widget.key` (public key + minted
+  session token). A guest hitting an authed route gets `401`; an authenticated
+  caller without the required role gets `403`.
+- **Tenancy.** Every request resolves a tenant; queries are scoped to it. See
+  [security & threat model](/architecture/security-and-threat-model).
+- **Failures are loud.** Endpoints map failure to the correct status (`404`
+  missing, `422` validation, `429` throttle, `5xx` downstream) — never `200`
+  with an empty body.
+
+## Authentication — `/api/auth`
+
+| Method | Path | Auth |
+|---|---|---|
+| `POST` | `/api/auth/login` | public |
+| `POST` | `/api/auth/forgot-password` | public (`throttle:forgot`) |
+| `POST` | `/api/auth/reset-password` | public |
+| `POST` | `/api/auth/logout` | `auth:sanctum` |
+| `GET` | `/api/auth/me` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/enable` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/verify` | `auth:sanctum` |
+| `POST` | `/api/auth/2fa/disable` | `auth:sanctum` |
+
+## KB chat & search — `/api/kb`
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `POST` | `/api/kb/chat` | `auth:sanctum` + `ai.disclosure` | grounded answer |
+| `GET` | `/api/kb/chat/anonymous-config` | `auth:sanctum` | anonymous-chat config |
+| `POST` | `/api/kb/feedback` | `auth:sanctum` | chunk feedback |
+| `GET` | `/api/kb/related` | `auth:sanctum` | graph neighbours |
+| `GET` | `/api/kb/documents/search` | `auth:sanctum` | document search |
+| `GET` | `/api/kb/collections` | `auth:sanctum` | collection picker |
+| `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
+| `DELETE` | `/api/kb/documents` | `auth:sanctum` | delete by path |
+
+**`POST /api/kb/chat`** — request: `question` (string, required, max 10000),
+`anonymous` (bool, optional), a legacy top-level `project_key` (string, optional),
+and a `filters` object (optional) whose dimensions include `filters.project_keys`,
+`filters.tag_slugs`, `filters.source_types`, `filters.canonical_types`,
+`filters.connector_types`, `filters.doc_ids`, `filters.collection_id`,
+`filters.folder_globs`, `filters.date_from`/`date_to`. There is **no** top-level
+`project_keys` — project scoping is `filters.project_keys` (or legacy
+`project_key`). Response:
+`{ answer, citations[], confidence, refusal_reason, meta{ provider, model,
+chunks_used, primary_count, …, latency_ms, latency_ms_breakdown, filters_selected } }`.
+A refusal returns the same shape with `confidence: 0` and a machine-readable
+`refusal_reason` sentinel — not an error. See the
+[anti-hallucination firewall](/anti-hallucination-firewall).
+
+## Ingestion — `/api/kb/ingest`
+
+**`POST /api/kb/ingest`** (`auth:sanctum`, batch ≤ 100). Request:
+
+```json
+{
+  "documents": [
+    {
+      "project_key": "handbook",          // optional, max 120; default KB_INGEST_DEFAULT_PROJECT
+      "source_path": "onboarding.md",      // required, max 500
+      "title": "Onboarding",               // optional, max 255
+      "mime_type": "text/markdown",        // optional, default text/markdown
+      "content": "# Onboarding\n…",         // required, max 7_000_000 (base64 for binary)
+      "metadata": { }                       // optional
+    }
+  ]
+}
+```
+
+Response — an envelope `{ queued, failed, documents[] }` where each entry is
+`{ source_path, status: "queued" | "failed", error? }`. The status code is
+**`202`** when every document queued, or **`207` Multi-Status** when some disk
+writes failed. One `IngestDocumentJob` is dispatched per queued document. See the
+[ingestion pipeline](/architecture/ingestion-pipeline).
+
+## Promotion pipeline — `/api/kb/promotion`
+
+Human-gated ([ADR 0003](/reference/adr-index)). Nothing reaches canonical storage
+until a human **approves** the issued token — `promote` only validates and pauses.
+
+| Method | Path | Writes? |
+|---|---|---|
+| `POST` | `/api/kb/promotion/suggest` | nothing (LLM extracts candidates from a transcript) |
+| `POST` | `/api/kb/promotion/candidates` | nothing (validates a markdown draft) |
+| `POST` | `/api/kb/promotion/promote` | nothing yet — pauses at the approval gate, issues a single-use token (HTTP 202) |
+| `POST` | `/api/kb/promotion/{approvalId}/approve` | **writes** KB disk + dispatches ingest |
+| `POST` | `/api/kb/promotion/{approvalId}/reject` | discards the paused run |
+
+- **suggest** — `{ transcript (≤50000), project_key?, existing_slugs? }`.
+- **candidates** — `{ markdown (≤200000) }` → **200** `{ valid: true, parsed: {…} }`
+  on success, or **422** `{ valid: false, errors: {…} }` on validation failure.
+- **promote** — validates the draft (422 on bad/absent frontmatter, 503 when
+  promotion is disabled), then returns **202** with a paused-flow envelope
+  containing a nested `approval` object (single-use `token`, `approve_url`,
+  `approve_path`, …). The actual disk write happens only on `approve`.
+
+See [canonical & promotion](/canonical-and-promotion).
+
+## Conversations, presets & notifications
+
+| Area | Base path | Auth |
+|---|---|---|
+| Chat-filter presets | `/api/chat-filter-presets` (CRUD) | `auth:sanctum` |
+| Chat preferences | `/api/me/chat-preferences` (GET/PATCH) | `auth:sanctum` |
+| Notifications | `/api/notifications` (+ `unread-count`, `preferences`, `mark-all-read`, `{id}/mark-read`, `{id}/dismiss`) | `auth:sanctum` |
+
+## Admin — `/api/admin`
+
+All admin endpoints are gated. Most read/CRUD surfaces use
+`role:admin|super-admin`; capability-specific surfaces use a `can:` gate. Every
+group is pinned in the [authorization matrix](/architecture/security-and-threat-model).
+
+| Area | Base path | Gate |
+|---|---|---|
+| Dashboard metrics + health | `/api/admin/metrics/*` | `role:admin\|super-admin` |
+| Users / roles / permissions | `/api/admin/users`, `/roles`, `/permissions` | `role:admin\|super-admin` |
+| Project memberships | `/api/admin/users/{user}/memberships`, `/memberships/{id}` | `role:admin\|super-admin` |
+| KB tree / health / documents | `/api/admin/kb/tree`, `/health`, `/documents/*` | `role:admin\|super-admin` |
+| KB collections / tags / synonyms / analyses | `/api/admin/kb/collections`, `/tags`, `/synonyms`, `/analyses` | `role:admin\|super-admin` |
+| KB analysis/autowiki settings, content gaps | `/api/admin/kb/analysis-settings`, `/autowiki-settings`, `/content-gaps` | `role:admin\|super-admin` |
+| Auto-Wiki ops (evidence-tier, wiki-link, synthesize, index, lint, navigate, review, maintain, pages, promote/discard) | `/api/admin/kb/{evidence-tiers,wiki-*,concepts/*}` | `role:admin\|super-admin` |
+| Logs (chat / canonical-audit / application / activity / failed-jobs) | `/api/admin/logs/*` | `role:admin\|super-admin` (chat detokenize additionally requires the permission named by `kb.pii_redactor.detokenize_permission`, default `pii.detokenize`) |
+| Insights | `/api/admin/insights/*` | `role:admin\|super-admin` (compute: `permission:commands.destructive`) |
+| Compliance reports | `/api/admin/compliance/reports/*` | `role:admin\|super-admin` |
+| Maintenance commands | `/api/admin/commands/{catalogue,preview,run,history,scheduler-status}` | `role:admin\|super-admin` |
+| Connectors | `/api/admin/connectors/*` | `can:manageConnectors` |
+| MCP servers / tokens / audit | `/api/admin/mcp-servers/*`, `/mcp/tokens`, `/mcp-tool-call-audit` | `can:manageMcpTools` / `can:viewMcpAudit` |
+| Widget keys / sessions | `/api/admin/widget-keys/*`, `/widget-sessions/*` | `can:manageWidgetKeys` / `can:viewWidgetSessions` |
+| Tabular reviews | `/api/admin/tabular-reviews/*` | `can:viewTabularReviews` |
+| Workflows | `/api/admin/workflows/*` | `can:viewWorkflows` |
+| PII strategy | `/api/admin/pii/strategy` | `can:viewPiiRedactorAdmin` |
+
+## Embeddable widget — `/api/widget`
+
+The KITT widget authenticates with a `widget.key` (`throttle:120,1`): `GET
+/api/widget/setup`, `POST /api/widget/session-token`, and the session lifecycle
+(`sessions/start`, `sessions/{id}/step`, `/exec-tool`, `/cancel`, `/replay`).
+See [KITT widget](/kitt-widget).
+
+## MCP — `/mcp/kb`
+
+The `enterprise-kb` MCP server mounts at `/mcp/kb` (`auth:sanctum`). See the
+[MCP server](/mcp-server) page.
+
+## Worked example
+
+```bash
+# 1. authenticate (token), then ask a grounded question
+curl -s https://your-host/api/kb/chat \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"question":"what cache did we standardise on?","filters":{"project_keys":["platform"]}}'
+# → { "answer": "...", "citations": [...], "confidence": 0.82, "refusal_reason": null, "meta": {...} }
+
+# 2. validate a promotion draft (writes nothing)
+curl -s https://your-host/api/kb/promotion/candidates \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"markdown":"---\ndoc_id: dec-cache-v2\nslug: dec-cache-v2\n---\n# ..."}'
+# → 200 { "valid": true, "parsed": {...} }   (or 422 { "valid": false, "errors": {...} })
+```
+
+<CardGroup cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli">
+    The Artisan command surface.
+  </Card>
+  <Card title="Security & threat model" icon="shield-halved" href="/architecture/security-and-threat-model">
+    The authorization matrix behind every gate.
+  </Card>
+</CardGroup>
