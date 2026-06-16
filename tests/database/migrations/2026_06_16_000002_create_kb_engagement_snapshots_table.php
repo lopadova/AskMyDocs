@@ -34,8 +34,9 @@ return new class extends Migration
             $table->timestamp('computed_at')->nullable();
             $table->unsignedInteger('computed_duration_ms')->nullable();
 
+            // The composite UNIQUE doubles as the (tenant_id, snapshot_date)
+            // lookup index latestSnapshot() needs — no separate index required.
             $table->unique(['tenant_id', 'snapshot_date'], 'uq_kb_engagement_snapshot');
-            $table->index(['tenant_id', 'snapshot_date'], 'ix_kb_engagement_snapshot_date');
         });
     }
 

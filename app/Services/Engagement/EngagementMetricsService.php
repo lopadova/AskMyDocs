@@ -42,8 +42,10 @@ class EngagementMetricsService
 
         $byEvent = $this->contributionCountsByEvent($since);
         $answers = $this->answeredQuestions($since);
-        $openGaps = $this->openContentGaps();
-        $total = $answers + $openGaps;
+        // Window the gaps consistently with `answers` so `answer_rate` divides
+        // recent answers by recent (answers + gaps) — not by lifetime gaps.
+        $windowGaps = $this->contentGapsInWindow($since);
+        $total = $answers + $windowGaps;
 
         return [
             'window_days' => $windowDays,
@@ -53,10 +55,13 @@ class EngagementMetricsService
             'promoted_docs' => $byEvent[KbContributionEvent::EVENT_PROMOTED] ?? 0,
             'reviewed_docs' => $byEvent[KbContributionEvent::EVENT_REVIEWED] ?? 0,
             'answers' => $answers,
-            'open_gaps' => $openGaps,
+            'open_gaps' => $this->openContentGaps(),
+            'window_gaps' => $windowGaps,
             'answer_rate' => $total > 0 ? round($answers / $total, 4) : null,
             'canonical_coverage_pct' => $this->canonicalCoveragePct(),
-            'avg_health' => $this->averageHealth(),
+            // NB: higher debt score = staler / more decision-debt (see KbHealthService),
+            // i.e. higher is WORSE, not healthier. Named to avoid dashboard confusion.
+            'avg_debt_score' => $this->averageDebtScore(),
             'stale_count' => $this->staleCount(),
             'top_contributors' => $this->leaderboard($windowDays, 10),
         ];
@@ -164,6 +169,15 @@ class EngagementMetricsService
             ->count();
     }
 
+    private function contentGapsInWindow(Carbon $since): int
+    {
+        return (int) KbSearchFailure::query()
+            ->forTenant($this->tenants->current())
+            ->whereNull('resolved_at')
+            ->where('last_seen_at', '>=', $since)
+            ->count();
+    }
+
     private function canonicalCoveragePct(): float
     {
         $tenant = $this->tenants->current();
@@ -181,7 +195,7 @@ class EngagementMetricsService
         return round(($canonical / $total) * 100, 2);
     }
 
-    private function averageHealth(): ?float
+    private function averageDebtScore(): ?float
     {
         $avg = KbCanonicalHealthSnapshot::query()
             ->forTenant($this->tenants->current())
