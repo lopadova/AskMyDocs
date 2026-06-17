@@ -101,11 +101,12 @@ Send only the Slack card for the monthly executive roll-up:
 php artisan digest:send --frequency=monthly --tenant=acme --channel=slack
 ```
 
-A user opts out of everything but the weekly review queue:
+A user opts out of everything but the stale-review queue (valid section keys:
+`metrics`, `new_docs`, `stale_docs`, `top_gaps`, `leaderboard`):
 
 ```bash
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"frequency":"weekly","sections":["stale_review"]}' \
+  -d '{"frequency":"weekly","sections":["stale_docs"]}' \
   https://kb.example.com/api/me/digest-preferences
 ```
 
@@ -118,9 +119,10 @@ to inspect exactly what each channel will receive before scheduling.
 
 - Weekly and monthly sends are scheduled after the daily engagement snapshot so
   they read fresh metrics — see [Scheduler & Maintenance](/scheduler-and-maintenance).
-- An empty per-section preference array means **none** (explicit opt-out); a
-  never-configured preference (null) means the tenant default. Don't conflate the
-  two.
+- A never-configured preference (omitted or `null` sections) resolves to **all**
+  sections (default-in); an **empty array `[]`** means **none** (explicit
+  opt-out). Don't conflate the two — an unchecked "all" box that sends `[]` honestly
+  means no sections, not silently all.
 - The in-app feed grows unbounded without `digest:prune-feed`; the daily prune
   honours `feed_retention_days`.
 
