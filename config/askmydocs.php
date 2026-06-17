@@ -282,6 +282,20 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_WIKI_MAINTAIN_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_WIKI_MAINTAIN_CRON', '40 4 * * *'),
         ],
+        // v8.14 — FinOps maintenance window (staggered inside the 04:xx slot so
+        // it never collides with the other overnight pruners).
+        'finops_capture_prices' => [
+            'enabled' => (bool) env('SCHEDULE_FINOPS_CAPTURE_PRICES_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_FINOPS_CAPTURE_PRICES_CRON', '5 4 * * *'),
+        ],
+        'finops_check_alerts' => [
+            'enabled' => (bool) env('SCHEDULE_FINOPS_CHECK_ALERTS_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_FINOPS_CHECK_ALERTS_CRON', '15 4 * * *'),
+        ],
+        'finops_prune_ledger' => [
+            'enabled' => (bool) env('SCHEDULE_FINOPS_PRUNE_LEDGER_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_FINOPS_PRUNE_LEDGER_CRON', '45 4 * * *'),
+        ],
         // `eval:nightly` is double-gated: an upstream
         // `EVAL_NIGHTLY_ENABLED` env var (legacy v4.3 knob) gates
         // scheduler REGISTRATION in `bootstrap/app.php` — when false,

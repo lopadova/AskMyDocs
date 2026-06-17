@@ -170,6 +170,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerWidgetGates();
         $this->registerEvidenceRiskReviewIntegration();
         $this->registerEvidenceRiskReviewGates();
+        $this->registerFinOpsGates();
     }
 
     /**
@@ -222,6 +223,33 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $user->hasAnyRole(['super-admin', 'dpo']);
+        });
+    }
+
+    /**
+     * v8.14 — AI FinOps surface gates. Financial/governance data, so:
+     *   - viewAiFinOps   → super-admin + admin (open the panel, read ledger/KPIs)
+     *   - manageAiFinOps → super-admin only (mutate budgets/policies/kill-switches)
+     * The split is enforced per HTTP method by App\Http\Middleware\FinOpsAuthorize
+     * (the package controllers do no internal authorization). dpo/editor/viewer
+     * are excluded — cost governance is not their remit.
+     */
+    private function registerFinOpsGates(): void
+    {
+        Gate::define('viewAiFinOps', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+
+        Gate::define('manageAiFinOps', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
         });
     }
 

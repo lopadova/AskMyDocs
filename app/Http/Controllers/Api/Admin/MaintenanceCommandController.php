@@ -265,6 +265,10 @@ class MaintenanceCommandController extends Controller
             'kb_prune_archived_versions' => 'Hard-delete archived document versions beyond the retention cap (v8.7/W5).',
             // v8.11/P9 — scheduled Auto-Wiki maintenance.
             'kb_wiki_maintain' => 'Rebuild Auto-Wiki indices, lint wiki health, and backfill un-enriched docs (v8.11/P9).',
+            // v8.14 — AI FinOps maintenance.
+            'finops_capture_prices' => 'Snapshot watched-model list prices for the FinOps price-watch (v8.14).',
+            'finops_check_alerts' => 'Evaluate FinOps budget alert thresholds and dispatch notifications (v8.14).',
+            'finops_prune_ledger' => 'Prune the ai_finops_usage_ledger past its retention window (v8.14).',
             // Composite-gated slots — only registered when the
             // upstream env flag is also on (see bootstrap/app.php).
             // Listed here so they appear in the widget when active.
