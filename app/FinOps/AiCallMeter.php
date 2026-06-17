@@ -77,6 +77,10 @@ final class AiCallMeter
         }
 
         try {
+            // `embeddings: []` is deliberate. MeteringListener::recordEmbeddings() prices the
+            // call from `tokens` + `meta` only — it never reads the vectors (a package-wide
+            // search for `->embeddings` in laravel-ai-finops yields zero hits). Copying the
+            // real 1536-dim float vectors into this throwaway DTO would only waste memory.
             $embeddingsResponse = new LaravelAiEmbeddingsResponse(
                 embeddings: [],
                 tokens: $response->totalTokens ?? 0,
