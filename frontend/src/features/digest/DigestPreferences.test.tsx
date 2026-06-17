@@ -55,6 +55,37 @@ describe('DigestPreferences', () => {
         expect(await screen.findByTestId('digest-pref-save-success')).toBeVisible();
     });
 
+    it('persists null when every section stays selected (default-in forward-compat)', async () => {
+        const user = userEvent.setup();
+        render(wrapped(<DigestPreferences />));
+        await waitFor(() => expect(screen.getByTestId('digest-pref')).toHaveAttribute('data-state', 'ready'));
+
+        // Make it dirty WITHOUT unchecking any section (all 5 stay selected).
+        await user.click(screen.getByTestId('digest-pref-frequency-monthly'));
+        await user.click(screen.getByTestId('digest-pref-save'));
+
+        await waitFor(() =>
+            expect(api.put).toHaveBeenCalledWith('/api/me/digest-preferences', { frequency: 'monthly', sections: null }),
+        );
+    });
+
+    it('persists an explicit array when a strict subset is selected', async () => {
+        const user = userEvent.setup();
+        render(wrapped(<DigestPreferences />));
+        await waitFor(() => expect(screen.getByTestId('digest-pref')).toHaveAttribute('data-state', 'ready'));
+
+        // Uncheck one section → a strict subset must be sent verbatim, not null.
+        await user.click(screen.getByTestId('digest-pref-section-metrics'));
+        await user.click(screen.getByTestId('digest-pref-save'));
+
+        await waitFor(() =>
+            expect(api.put).toHaveBeenCalledWith('/api/me/digest-preferences', {
+                frequency: 'weekly',
+                sections: ['new_docs', 'stale_docs', 'top_gaps', 'leaderboard'],
+            }),
+        );
+    });
+
     it('surfaces a save error when PUT fails (R14)', async () => {
         const user = userEvent.setup();
         vi.spyOn(api, 'put').mockRejectedValueOnce(new Error('500'));

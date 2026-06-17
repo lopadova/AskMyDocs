@@ -86,11 +86,14 @@ export function DigestPreferences(): ReactNode {
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
-                        // Always send an explicit array: an empty array is stored
-                        // verbatim as "no sections" (honest opt-out). The BE's
-                        // null/omitted case — which this form never sends — instead
-                        // resolves to "all sections" on read.
-                        saveMut.mutate({ frequency, sections });
+                        // Persist null when EVERY available section is selected, so
+                        // the choice stays "all" (default-in) and any section added
+                        // to the catalog later auto-includes for this user. A strict
+                        // subset persists verbatim; none persists [] (honest
+                        // opt-out). The BE resolves null → all on read.
+                        const all = query.data.available_sections;
+                        const allSelected = all.length > 0 && all.every((s) => sections.includes(s));
+                        saveMut.mutate({ frequency, sections: allSelected ? null : sections });
                     }}
                 >
                     <fieldset style={{ border: 0, padding: 0, margin: '0 0 16px' }}>
