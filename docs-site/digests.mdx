@@ -68,7 +68,7 @@ existing notification channel adapters (`DiscordChannel` / `SlackChannel` /
 **Surfaces (tri-surface, R44):**
 
 - **Command:** `digest:send {--frequency=weekly|monthly} {--tenant=} {--channel=email|discord|slack|teams} {--dry-run} {--preview}` and `digest:prune-feed`.
-- **HTTP:** `GET /api/admin/digest/preview` (admin, RBAC-gated); `GET /api/me/digest/latest` and `GET` / `PUT /api/me/digest-preferences` (per-user).
+- **HTTP:** `GET /api/admin/digest/preview` (admin, RBAC-gated); `GET /api/me/digest/latest` and `GET /api/me/digest-preferences` / `PUT /api/me/digest-preferences` (per-user).
 - **MCP:** `KbDigestPreviewTool` (read).
 
 ## Decision rationale (ADR-style)

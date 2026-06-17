@@ -119,7 +119,7 @@ it, `BelongsToTenant`; R30/R31).
 |---|---|---|---|
 | Engagement metrics | `engagement:compute` | `GET /api/admin/engagement/{summary,leaderboard,series}` | `KbEngagementSummaryTool` |
 | Digest | `digest:send`, `digest:prune-feed` | `GET /api/admin/digest/preview`, `GET /api/me/digest/latest` | `KbDigestPreviewTool` |
-| Digest preferences | — | `GET` / `PUT /api/me/digest-preferences` | — |
+| Digest preferences | — | `GET /api/me/digest-preferences` + `PUT /api/me/digest-preferences` | — |
 | User dashboard | — | `GET /api/me/dashboard` | — |
 | Gamification badges | `gamification:recompute` | `GET /api/me/badges` | `KbUserBadgesTool` |
 
