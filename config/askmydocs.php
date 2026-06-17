@@ -266,6 +266,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_DIGEST_PRUNE_FEED_ENABLED', true),
             'cron' => (string) env('SCHEDULE_DIGEST_PRUNE_FEED_CRON', '25 4 * * *'),
         ],
+        // v8.15/W5 — gamification badge awarding (daily 05:20; no-op when disabled).
+        'gamification_recompute' => [
+            'enabled' => (bool) env('SCHEDULE_GAMIFICATION_RECOMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_GAMIFICATION_RECOMPUTE_CRON', '20 5 * * *'),
+        ],
         // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
         'kb_prune_archived_versions' => [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),

@@ -9,6 +9,7 @@ use App\Mcp\Tools\KbDocumentBySlugTool;
 use App\Mcp\Tools\KbDetectDecisionDebtTool;
 use App\Mcp\Tools\KbDigestPreviewTool;
 use App\Mcp\Tools\KbEngagementSummaryTool;
+use App\Mcp\Tools\KbUserBadgesTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
 use App\Mcp\Tools\KbGraphSubgraphTool;
@@ -87,6 +88,8 @@ class KnowledgeBaseServer extends Server
         KbEngagementSummaryTool::class,
         // v8.15/W2 — digest preview read surface.
         KbDigestPreviewTool::class,
+        // v8.15/W5 — per-contributor gamification badges read surface.
+        KbUserBadgesTool::class,
     ];
 
     protected function boot(): void

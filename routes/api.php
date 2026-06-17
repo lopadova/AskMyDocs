@@ -201,6 +201,9 @@ Route::middleware([
     // v8.15/W4 — per-user "your KB" dashboard (any authenticated user).
     Route::get('/me/dashboard', [\App\Http\Controllers\Api\UserDashboardController::class, 'show'])
         ->name('api.me.dashboard');
+    // v8.15/W5 — per-user gamification badges (opt-in; empty when disabled).
+    Route::get('/me/badges', [\App\Http\Controllers\Api\UserBadgesController::class, 'index'])
+        ->name('api.me.badges');
 });
 
 /*
