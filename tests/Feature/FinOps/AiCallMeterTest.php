@@ -52,7 +52,10 @@ final class AiCallMeterTest extends TestCase
             totalTokens: 165,
         ));
 
-        $row = DB::table('ai_finops_usage_ledger')->latest('id')->first();
+        $row = DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->latest('id')
+            ->first();
 
         $this->assertNotNull($row, 'expected a usage-ledger row for the openrouter call');
         $this->assertSame('openrouter', $row->provider);
@@ -88,7 +91,10 @@ final class AiCallMeterTest extends TestCase
             ],
         );
 
-        $row = DB::table('ai_finops_usage_ledger')->latest('id')->first();
+        $row = DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->latest('id')
+            ->first();
 
         $this->assertNotNull($row, 'expected a usage-ledger row for the array-prompt (chatWithHistory) call');
         $this->assertSame('anthropic', $row->provider);
@@ -112,7 +118,9 @@ final class AiCallMeterTest extends TestCase
 
         $this->assertSame(
             0,
-            DB::table('ai_finops_usage_ledger')->count(),
+            DB::table('ai_finops_usage_ledger')
+                ->where('tenant_id', app(TenantContext::class)->current())
+                ->count(),
             'Regolo flows through the laravel/ai SDK and is metered there; the host bridge must skip it.',
         );
     }
@@ -130,7 +138,9 @@ final class AiCallMeterTest extends TestCase
             totalTokens: 15,
         ));
 
-        $this->assertSame(0, DB::table('ai_finops_usage_ledger')->count());
+        $this->assertSame(0, DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->count());
     }
 
     public function test_meters_an_embeddings_call(): void
@@ -144,7 +154,10 @@ final class AiCallMeterTest extends TestCase
             totalTokens: 512,
         ));
 
-        $row = DB::table('ai_finops_usage_ledger')->latest('id')->first();
+        $row = DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->latest('id')
+            ->first();
 
         $this->assertNotNull($row, 'expected a usage-ledger row for the embeddings call');
         $this->assertSame('openai', $row->provider);
