@@ -1650,9 +1650,12 @@ the admin stack + a **method-aware** gate (reads → `viewAiFinOps`
 super-admin+admin; writes → `manageAiFinOps` super-admin), locked by the R32
 authorization matrix; the SPA mounts at `/admin/ai-finops` (default OFF → clean
 404, R43). Tier-1 crons: `ai-finops:capture-prices` / `:check-alerts` / `:prune`.
-This cycle moves **every** AI provider onto the `laravel/ai` SDK so FinOps meters
-chat, streaming and embeddings through native lifecycle events, and replaces the
-static client-side cost table with authoritative server-side per-model cost.
+Across this cycle every AI provider **will move** onto the `laravel/ai` SDK so
+FinOps can meter chat, streaming and embeddings through native lifecycle events
+(W2), and the static client-side cost table **will be replaced** with
+authoritative server-side per-model cost (W3). W1 lands the integration
+foundation: the `App\FinOps\AiCallMeter` bridge meters synchronous chat +
+embeddings for all providers (streaming not yet metered).
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor

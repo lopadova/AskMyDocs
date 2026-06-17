@@ -282,7 +282,7 @@ return [
             'enabled' => (bool) env('SCHEDULE_KB_WIKI_MAINTAIN_ENABLED', true),
             'cron' => (string) env('SCHEDULE_KB_WIKI_MAINTAIN_CRON', '40 4 * * *'),
         ],
-        // v8.14 — FinOps maintenance window (staggered inside the 04:xx slot so
+        // v8.16 — FinOps maintenance window (staggered inside the 04:xx slot so
         // it never collides with the other overnight pruners).
         'finops_capture_prices' => [
             'enabled' => (bool) env('SCHEDULE_FINOPS_CAPTURE_PRICES_ENABLED', true),

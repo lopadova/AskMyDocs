@@ -227,7 +227,7 @@ class AppServiceProvider extends ServiceProvider
     }
 
     /**
-     * v8.14 — AI FinOps surface gates. Financial/governance data, so:
+     * v8.16 — AI FinOps surface gates. Financial/governance data, so:
      *   - viewAiFinOps   → super-admin + admin (open the panel, read ledger/KPIs)
      *   - manageAiFinOps → super-admin only (mutate budgets/policies/kill-switches)
      * The split is enforced per HTTP method by App\Http\Middleware\FinOpsAuthorize
