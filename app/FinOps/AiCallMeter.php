@@ -44,12 +44,18 @@ final class AiCallMeter
         }
 
         try {
+            [$promptTokens, $completionTokens] = $this->resolveTokenSplit(
+                $response->promptTokens,
+                $response->completionTokens,
+                $response->totalTokens,
+            );
+
             $agentResponse = new AgentResponse(
                 invocationId: (string) Str::uuid(),
                 text: $response->content,
                 usage: new Usage(
-                    promptTokens: $response->promptTokens ?? 0,
-                    completionTokens: $response->completionTokens ?? 0,
+                    promptTokens: $promptTokens,
+                    completionTokens: $completionTokens,
                 ),
                 meta: new Meta(provider: $response->provider, model: $response->model),
             );
@@ -94,6 +100,40 @@ final class AiCallMeter
      * dispatches the metering events — re-recording it here would double-count.
      * The class guard keeps the host healthy if the finops package is removed.
      */
+    /**
+     * Resolve the (prompt, completion) token split recorded on the ledger.
+     *
+     * Some providers report only a `totalTokens` (prompt/completion null). A bare
+     * `?? 0` would then record 0/0 → the price cascade resolves cost to 0 and the
+     * call is silently UNDER-metered. Derive the missing side from the total so the
+     * ledger at least captures the token VOLUME (and, via the input tariff, a cost
+     * floor):
+     *  - exactly one side missing → fill it from `total − other` (clamped ≥ 0);
+     *  - BOTH sides missing but total present → attribute the whole total to input
+     *    (prompt) as a conservative floor (real cost ≥ total × input-rate, since
+     *    output-rate ≥ input-rate for every provider we price);
+     *  - no total either → 0/0 (nothing to attribute; the listener's text-based
+     *    estimator may still kick in upstream).
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function resolveTokenSplit(?int $prompt, ?int $completion, ?int $total): array
+    {
+        if ($total !== null) {
+            if ($prompt === null && $completion === null) {
+                return [$total, 0];
+            }
+            if ($prompt === null) {
+                return [max(0, $total - $completion), $completion];
+            }
+            if ($completion === null) {
+                return [$prompt, max(0, $total - $prompt)];
+            }
+        }
+
+        return [$prompt ?? 0, $completion ?? 0];
+    }
+
     private function shouldMeter(string $provider): bool
     {
         if ($provider === 'regolo') {

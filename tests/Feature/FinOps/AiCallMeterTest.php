@@ -105,6 +105,31 @@ final class AiCallMeterTest extends TestCase
         $this->assertSame('text', $row->modality);
     }
 
+    public function test_derives_the_token_split_from_total_when_a_provider_omits_it(): void
+    {
+        // Some providers report only a total (prompt/completion null). The bridge
+        // must derive the split from the total so the ledger captures the token
+        // VOLUME (and a cost floor) instead of recording 0/0 — silent under-metering.
+        app(TenantContext::class)->set('acme');
+
+        app(AiCallMeter::class)->meterChat(new AiResponse(
+            content: 'total-only answer',
+            provider: 'openrouter',
+            model: 'openai/gpt-4o-mini',
+            totalTokens: 300, // prompt + completion both null
+        ));
+
+        $row = DB::table('ai_finops_usage_ledger')
+            ->where('tenant_id', app(TenantContext::class)->current())
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($row, 'expected a ledger row even when only totalTokens is present');
+        // Whole total attributed to input as the documented floor — NOT 0/0.
+        $this->assertSame(300, (int) $row->tokens_input);
+        $this->assertSame(0, (int) $row->tokens_output);
+    }
+
     public function test_does_not_double_count_regolo_which_the_sdk_already_meters(): void
     {
         app(AiCallMeter::class)->meterChat(new AiResponse(
