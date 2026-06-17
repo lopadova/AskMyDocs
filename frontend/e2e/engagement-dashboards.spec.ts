@@ -35,4 +35,26 @@ test.describe('Engagement dashboards', () => {
         await expect(page.getByTestId('me-dashboard')).toHaveAttribute('data-state', 'error', { timeout: 15_000 });
         await expect(page.getByTestId('me-dashboard-error')).toBeVisible();
     });
+
+    test('badges section stays hidden when gamification is off (real-data OFF state, R43)', async ({ page }) => {
+        // CI runs with KB_GAMIFICATION_ENABLED off: /api/me/badges returns
+        // enabled:false, so the badges section must not render at all. Real data,
+        // no stub — this is the OFF half of the R43 both-states contract.
+        await page.goto('/app/me');
+        await expect(page.getByTestId('me-dashboard')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+        await expect(page.getByTestId('me-badges')).toHaveCount(0);
+    });
+
+    test('badges section surfaces an error when its API fails (R13: failure injection)', async ({ page }) => {
+        // R13: failure injection against an internal route — the OFF-state test
+        // above already covers the real-data flow; the enabled grid is covered by
+        // the MeBadges Vitest unit.
+        await page.route('**/api/me/badges*', (route) =>
+            route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"boom"}' }),
+        );
+
+        await page.goto('/app/me');
+        await expect(page.getByTestId('me-badges')).toHaveAttribute('data-state', 'error', { timeout: 15_000 });
+        await expect(page.getByTestId('me-badges-retry')).toBeVisible();
+    });
 });

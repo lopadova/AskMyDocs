@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Engagement;
 
 use App\Models\KbContributionEvent;
-use App\Models\KbUserBadge;
 use App\Models\User;
 use App\Services\Engagement\GamificationService;
 use App\Support\TenantContext;

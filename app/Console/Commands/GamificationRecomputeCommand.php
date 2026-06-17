@@ -36,23 +36,24 @@ final class GamificationRecomputeCommand extends Command
             foreach ($this->resolveTenantIds() as $tenantId) {
                 $tenants->set($tenantId);
 
-                // R3: stream distinct contributors in chunks rather than
-                // plucking every id into memory — a busy tenant can have many.
+                // R3: stream distinct contributors lazily via a single
+                // server-side cursor — no id list held in memory and no
+                // OFFSET/LIMIT pagination that degrades on large tables.
                 $contributors = 0;
                 $awarded = 0;
 
-                KbContributionEvent::query()
+                $rows = KbContributionEvent::query()
                     ->forTenant($tenantId)
                     ->whereNotNull('user_id')
                     ->select('user_id')
                     ->distinct()
                     ->orderBy('user_id')
-                    ->chunk(500, function ($rows) use (&$contributors, &$awarded, $gamification): void {
-                        foreach ($rows as $row) {
-                            $contributors++;
-                            $awarded += count($gamification->evaluate((int) $row->user_id));
-                        }
-                    });
+                    ->cursor();
+
+                foreach ($rows as $row) {
+                    $contributors++;
+                    $awarded += count($gamification->evaluate((int) $row->user_id));
+                }
 
                 $this->info("[{$tenantId}] contributors={$contributors} badges_awarded={$awarded}");
             }
