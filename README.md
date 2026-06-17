@@ -161,9 +161,10 @@ tells buyers to demand:
   agentically navigates multi-hop, cross-model-reviews auto pages, applies change/delete
   suggestions, and self-maintains on a daily schedule — all behind the human > auto > raw
   firewall. See the dedicated section below.
-- **Engagement & Intelligence Suite** (v8.15) — a proactive, multi-channel **digest** (new /
-  modified / promoted docs · stale review queue · top unanswered questions · KB-health trend ·
-  "your attention needed") delivered to **email + Discord + Slack + Teams + an in-app feed** with
+- **Engagement & Intelligence Suite** (v8.15) — a proactive, multi-channel **digest** (newly
+  created / promoted docs · stale review queue · top unanswered questions · KB-health trend ·
+  "your attention needed"; modified-doc activity shows in the headline metrics) delivered to
+  **email + Discord + Slack + Teams + an in-app feed** with
   an opt-in AI narrative on a dedicated free model; an admin engagement dashboard (contributor
   leaderboard / coverage / answer-rate / decision-debt trend) and a personal **My KB** dashboard
   (your score / rank / impact / review queue); and **opt-in gamification** (config-driven badges
@@ -1606,18 +1607,20 @@ coverage %, answer rate and trends; a daily `engagement:compute` snapshot
 (`kb_engagement_snapshots`) makes dashboards and digests read O(1).
 
 The **digest** is a composition, not a query: `DigestComposer` assembles typed
-sections (new/modified/promoted · stale review queue · top unanswered · health
-trend · "your attention needed") and a `DigestRendererRegistry` (R23 boot-validated
-mutex) renders one card per channel — a magazine-grade HTML email plus Discord
-embed / Slack Block Kit / Teams Adaptive Card, reusing the existing notification
-channel adapters for transport, plus an in-app feed (`engagement_digest_feed`). An
-opt-in `AiDigestNarrator` adds a "what changed & why it matters" summary on a
-**dedicated free OpenRouter model** (`KB_DIGEST_AI_MODEL`, default
-`meta-llama/llama-3.3-70b-instruct:free`) so it never competes with the primary
-chat model and costs ≈$0, degrading to deterministic copy when off or unreachable
-(R14/R43). `digest:send {--frequency=weekly|monthly} {--channel=} {--dry-run}
-{--preview}` drives it; per-user `digest_preferences` (frequency + per-section
-toggles) and a monthly executive roll-up complete the delivery matrix.
+sections (newly created/promoted docs · stale review queue · top unanswered ·
+health trend · "your attention needed"; modified-doc activity shows in the
+headline metrics rather than as a per-doc list) and a `DigestRendererRegistry`
+(R23 boot-validated mutex) renders one card per channel — a magazine-grade HTML
+email plus Discord embed / Slack Block Kit / Teams Adaptive Card, reusing the
+existing notification channel adapters for transport, plus an in-app feed
+(`engagement_digest_feed`). An opt-in `AiDigestNarrator` adds a "what changed &
+why it matters" summary on a **dedicated free OpenRouter model**
+(`KB_DIGEST_AI_MODEL`, default `meta-llama/llama-3.3-70b-instruct:free`) so it
+never competes with the primary chat model and costs ≈$0, degrading to
+deterministic copy when off or unreachable (R14/R43). `digest:send
+{--frequency=weekly|monthly} {--tenant=} {--channel=} {--dry-run} {--preview}`
+drives it; per-user `digest_preferences` (frequency + per-section toggles) and a
+monthly executive roll-up complete the delivery matrix.
 
 Two dashboards read the same metrics so the numbers always agree: a personal
 **My KB** dashboard at `/app/me` (your score, rank, authored docs, citation impact,

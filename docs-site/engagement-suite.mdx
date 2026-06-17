@@ -40,9 +40,10 @@ two derived layers built on top of it.
   nothing new — it is a *view* over engagement, gated off by default.
 
 Everything composes into a **digest**: a tenant- and user-scoped bundle of typed
-sections (new/modified/promoted docs · stale/obsolete review queue · top
+sections (newly created/promoted docs · stale/obsolete review queue · top
 unanswered questions · KB-health trend · "your attention needed") rendered per
-channel and optionally narrated by an LLM.
+channel and optionally narrated by an LLM. Modified-doc activity is reflected in
+the headline metrics rather than as a separate per-doc list.
 
 ## Design
 
@@ -92,8 +93,12 @@ flowchart LR
   existing notification channel adapters for transport.
 - **`GamificationService`** derives badges from the same metrics; default-off.
 
-Every capability is **tri-surface** (R44): an Artisan command, an HTTP endpoint,
-and an MCP tool, all delegating to the same core service.
+The core capabilities — engagement metrics, the digest, and gamification badges —
+are **tri-surface** (R44): an Artisan command, an HTTP endpoint, and an MCP tool,
+all delegating to the same core service. Two surfaces are intentionally
+single-surface (R44's documented exception): **digest preferences** and the
+**user dashboard** are me-context UI reads with no command/agent caller, so they
+ship HTTP + FE only.
 
 ## Data model / contract
 
@@ -114,7 +119,7 @@ it, `BelongsToTenant`; R30/R31).
 |---|---|---|---|
 | Engagement metrics | `engagement:compute` | `GET /api/admin/engagement/{summary,leaderboard,series}` | `KbEngagementSummaryTool` |
 | Digest | `digest:send`, `digest:prune-feed` | `GET /api/admin/digest/preview`, `GET /api/me/digest/latest` | `KbDigestPreviewTool` |
-| Digest preferences | — | `GET\|PUT /api/me/digest-preferences` | — |
+| Digest preferences | — | `GET` / `PUT /api/me/digest-preferences` | — |
 | User dashboard | — | `GET /api/me/dashboard` | — |
 | Gamification badges | `gamification:recompute` | `GET /api/me/badges` | `KbUserBadgesTool` |
 
