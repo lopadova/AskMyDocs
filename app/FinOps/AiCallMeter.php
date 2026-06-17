@@ -94,13 +94,6 @@ final class AiCallMeter
     }
 
     /**
-     * Whether a call from this provider should be metered HERE.
-     *
-     * Regolo is excluded: it flows through the laravel/ai SDK, which already
-     * dispatches the metering events — re-recording it here would double-count.
-     * The class guard keeps the host healthy if the finops package is removed.
-     */
-    /**
      * Resolve the (prompt, completion) token split recorded on the ledger.
      *
      * Some providers report only a `totalTokens` (prompt/completion null). A bare
@@ -134,6 +127,13 @@ final class AiCallMeter
         return [$prompt ?? 0, $completion ?? 0];
     }
 
+    /**
+     * Whether a call from this provider should be metered HERE.
+     *
+     * Regolo is excluded: it flows through the laravel/ai SDK, which already
+     * dispatches the metering events — re-recording it here would double-count.
+     * The class guard keeps the host healthy if the finops package is removed.
+     */
     private function shouldMeter(string $provider): bool
     {
         if ($provider === 'regolo') {
