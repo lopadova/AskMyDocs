@@ -184,11 +184,25 @@ use the SSE endpoint heavily, spend is undercounted until streaming metering shi
 - **Enforcement is off by default.** Seed budgets/policies first, then flip
   `AI_FINOPS_ENFORCEMENT=true` — turning it on with no budgets does nothing; with a
   mis-scoped hard budget it can 402 live traffic.
-- **MCP surface is not shipped.** The package exposes PHP (Artisan) + HTTP + the
-  React admin, but no MCP tool yet — so FinOps spend is not queryable by agents
-  (a tri-surface R44 follow-up).
+- **No MCP tool yet — a deliberate, documented R44 exception (see the note below).**
+  FinOps spend is queryable today via the HTTP API + the admin cockpit, not via an
+  MCP tool.
 - **Regolo manual pricing.** Regolo is feed-less; enter its rates via
   `pricing/overrides` or it prices at zero.
+
+<Note>
+**R44 tri-surface exception — deliberate and documented.** AskMyDocs's R44 expects
+every capability to be reachable on PHP **and** HTTP **and** MCP over one shared
+core. FinOps ships **PHP** (the `ai-finops:*` Artisan commands), **HTTP**
+(`api/admin/ai-finops/*`) and the **React admin** — but **no MCP tool**, for two
+reasons: (1) the upstream `padosoft/laravel-ai-finops` package exposes no MCP
+server, so a tool would be net-new host code beyond *installing* the package; and
+(2) the spend surface is already fully queryable by operators over HTTP + the
+cockpit. Per R44's "absence of a surface is a deliberate, documented choice, never
+an omission" clause, the MCP read surface (KPIs / usage / budgets) is **deferred to
+a tracked follow-up**, not silently dropped. When it lands it will wrap the same
+core service and register on `KnowledgeBaseServer::$tools`.
+</Note>
 
 <CardGroup cols={2}>
   <Card title="AI providers" icon="plug" href="/ai-providers">
