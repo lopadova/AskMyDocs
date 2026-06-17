@@ -100,6 +100,21 @@ final class KbUploadControllerTest extends TestCase
         ])->assertStatus(422)->assertJsonValidationErrors('sub_path');
     }
 
+    public function test_stage_rejects_duplicate_filenames_in_one_batch(): void
+    {
+        // Two files with the same basename would collapse to one destination_path
+        // and silently lose the first file's bytes on commit — reject up front.
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)->post('/api/admin/kb/uploads', [
+            'project_key' => 'engineering',
+            'files' => [
+                UploadedFile::fake()->createWithContent('guide.md', '# First'),
+                UploadedFile::fake()->createWithContent('guide.md', '# Second'),
+            ],
+        ])->assertStatus(422)->assertJsonValidationErrors('files.1');
+    }
+
     public function test_stage_flags_canonical_frontmatter_with_warning(): void
     {
         $admin = $this->makeAdmin();

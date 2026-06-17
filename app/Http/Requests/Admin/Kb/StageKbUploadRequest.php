@@ -55,6 +55,7 @@ class StageKbUploadRequest extends FormRequest
         $validator->after(function (Validator $validator): void {
             $this->validateSubPath($validator);
             $this->validateFileTypes($validator);
+            $this->validateNoDuplicateNames($validator);
         });
     }
 
@@ -95,6 +96,45 @@ class StageKbUploadRequest extends FormRequest
                     'Unsupported file type. Allowed: md, markdown, txt, pdf, docx.',
                 );
             }
+        }
+    }
+
+    /**
+     * Two files sharing the same basename collapse to one destination_path
+     * (the batch sub_path is common to all files), so on commit the second
+     * overwrites the first on disk and the path-keyed ingest idempotency
+     * merges them into a single document — the first file's bytes are lost
+     * while its item still reports success. Reject the batch up front so the
+     * operator renames/removes the duplicate in the modal (R14: surface the
+     * conflict, never silently drop data). The dedup key mirrors
+     * KbUploadStagingService::destinationPath()'s basename derivation exactly,
+     * so it flags precisely the colliding pairs and nothing else.
+     */
+    private function validateNoDuplicateNames(Validator $validator): void
+    {
+        $files = $this->file('files');
+        if (! is_array($files)) {
+            return;
+        }
+
+        /** @var array<string, int> $seen */
+        $seen = [];
+        foreach ($files as $i => $file) {
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            $basename = basename(str_replace('\\', '/', $file->getClientOriginalName()));
+            if (isset($seen[$basename])) {
+                $validator->errors()->add(
+                    "files.{$i}",
+                    "Duplicate filename '{$basename}' in this batch. Rename or remove one copy before staging.",
+                );
+
+                continue;
+            }
+
+            $seen[$basename] = $i;
         }
     }
 }
