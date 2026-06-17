@@ -22,8 +22,8 @@ class KbUserBadge extends Model
 
     protected $table = 'kb_user_badges';
 
-    public const UPDATED_AT = null;
-    public const CREATED_AT = null;
+    /** Only `awarded_at` is tracked; no created_at/updated_at columns. */
+    public $timestamps = false;
 
     protected $fillable = [
         'tenant_id',

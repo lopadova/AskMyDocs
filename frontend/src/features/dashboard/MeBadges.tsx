@@ -17,13 +17,23 @@ export function MeBadges(): ReactNode {
         staleTime: 60_000,
     });
 
-    // Gamification off (or not loaded yet) → render nothing (no empty box).
+    // Surface a real backend/API failure instead of swallowing it (R14).
+    if (query.isError) {
+        return (
+            <section data-testid="me-badges" data-state="error" role="alert" style={{ marginTop: 20 }}>
+                Could not load your badges.{' '}
+                <button type="button" data-testid="me-badges-retry" onClick={() => void query.refetch()}>Retry</button>
+            </section>
+        );
+    }
+
+    // Still loading, or gamification off (enabled:false) → render nothing (no empty box).
     if (!query.data?.enabled) {
         return null;
     }
 
     return (
-        <section data-testid="me-badges" data-state="ready" style={{ marginTop: 20 }}>
+        <section data-testid="me-badges" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
             <h3>Your badges</h3>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 {query.data.badges.map((b) => (

@@ -36,18 +36,25 @@ final class GamificationRecomputeCommand extends Command
             foreach ($this->resolveTenantIds() as $tenantId) {
                 $tenants->set($tenantId);
 
-                $userIds = KbContributionEvent::query()
+                // R3: stream distinct contributors in chunks rather than
+                // plucking every id into memory — a busy tenant can have many.
+                $contributors = 0;
+                $awarded = 0;
+
+                KbContributionEvent::query()
                     ->forTenant($tenantId)
                     ->whereNotNull('user_id')
+                    ->select('user_id')
                     ->distinct()
-                    ->pluck('user_id');
+                    ->orderBy('user_id')
+                    ->chunk(500, function ($rows) use (&$contributors, &$awarded, $gamification): void {
+                        foreach ($rows as $row) {
+                            $contributors++;
+                            $awarded += count($gamification->evaluate((int) $row->user_id));
+                        }
+                    });
 
-                $awarded = 0;
-                foreach ($userIds as $userId) {
-                    $awarded += count($gamification->evaluate((int) $userId));
-                }
-
-                $this->info("[{$tenantId}] contributors={$userIds->count()} badges_awarded={$awarded}");
+                $this->info("[{$tenantId}] contributors={$contributors} badges_awarded={$awarded}");
             }
         } finally {
             $tenants->set($previousTenant);
@@ -66,7 +73,12 @@ final class GamificationRecomputeCommand extends Command
             return [$explicit];
         }
 
+        // Intentionally cross-tenant: discover every tenant that has any
+        // contribution activity so the scheduled run sweeps them all. Selects
+        // only tenant_id (the per-tenant scoping happens inside the loop above
+        // via forTenant()).
         return KbContributionEvent::query()
+            ->select('tenant_id')
             ->distinct()
             ->pluck('tenant_id')
             ->filter(static fn ($v): bool => is_string($v) && $v !== '')

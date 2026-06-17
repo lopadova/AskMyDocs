@@ -14,12 +14,18 @@ function wrapped(node: ReactNode): ReactNode {
 
 describe('MeBadges', () => {
     it('renders nothing when gamification is disabled', async () => {
-        vi.spyOn(api, 'get').mockResolvedValue({ data: { enabled: false, badges: [] } } as never);
-        const { container } = render(wrapped(<MeBadges />));
-        // Give the query a tick; the section must never appear.
-        await new Promise((r) => setTimeout(r, 20));
+        const getSpy = vi.spyOn(api, 'get').mockResolvedValue({ data: { enabled: false, badges: [] } } as never);
+        render(wrapped(<MeBadges />));
+        // Wait on an observable condition (the query firing) instead of a timer.
+        await waitFor(() => expect(getSpy).toHaveBeenCalled());
         expect(screen.queryByTestId('me-badges')).not.toBeInTheDocument();
-        expect(container).toBeTruthy();
+    });
+
+    it('surfaces a backend failure instead of swallowing it', async () => {
+        vi.spyOn(api, 'get').mockRejectedValue(new Error('boom'));
+        render(wrapped(<MeBadges />));
+        await waitFor(() => expect(screen.getByTestId('me-badges')).toHaveAttribute('data-state', 'error'));
+        expect(screen.getByTestId('me-badges-retry')).toBeInTheDocument();
     });
 
     it('renders earned + locked badges when enabled', async () => {
