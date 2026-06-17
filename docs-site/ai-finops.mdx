@@ -151,7 +151,7 @@ A normal chat turn (default `openrouter`) writes one tenant-scoped ledger row â€
 extra wiring:
 
 ```sql
-SELECT provider, model, prompt_tokens, completion_tokens, cost, tenant_id, cost_method
+SELECT provider, model, tokens_input, tokens_output, cost, tenant_id, cost_method
 FROM ai_finops_usage_ledger
 ORDER BY id DESC LIMIT 1;
 -- openrouter | openai/gpt-4o-mini | 812 | 143 | 0.000241 | acme | computed
