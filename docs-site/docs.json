@@ -32,6 +32,10 @@
           "connectors",
           "kitt-widget",
           "admin-panel",
+          "engagement-suite",
+          "digests",
+          "dashboards",
+          "gamification",
           "evidence-risk-review",
           "pii-and-compliance"
         ]
