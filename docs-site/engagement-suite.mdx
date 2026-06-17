@@ -177,9 +177,11 @@ If you add a **new** write path to the KB, hook it into the contribution recorde
 or its activity will be invisible to engagement, digests and gamification.
 </Warning>
 
-- The daily snapshot runs at **05:15** (`engagement_compute`); the weekly/monthly
-  digests and the gamification recompute (**05:20**) run shortly after, so they
-  read a fresh snapshot. See [Scheduler & Maintenance](/scheduler-and-maintenance).
+- The daily snapshot runs at **05:15** (`engagement_compute`) and the gamification
+  recompute at **05:20**, so both read fresh metrics; the rich digests are sent
+  later in the morning — `digest_weekly` **Mon 07:15** and `digest_monthly` the
+  **1st at 07:30** — well after the snapshot. Every slot's cron + kill-switch is
+  env-tunable. See [Scheduler & Maintenance](/scheduler-and-maintenance).
 - Every new knob is documented in [Configuration](/configuration) and defaults to
   a safe value (narrative on with a free model; gamification off; feed retention
   120 days).
