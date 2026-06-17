@@ -83,7 +83,11 @@ final class KbUploadBatchItemProgress
             return null;
         }
 
-        return KbIngestBatchItem::query()->whereKey($itemId)->first();
+        // R30: scope to the job's captured tenant, matching the sibling
+        // KnowledgeDocumentUploadObserver's defence-in-depth. The id comes from
+        // the job's own metadata (not user input), but the worker carries the
+        // tenant so the two progress touch-points stay consistent.
+        return KbIngestBatchItem::query()->forTenant($job->tenantId)->whereKey($itemId)->first();
     }
 
     private function resolveIngestJob(JobProcessing|JobProcessed|JobFailed $event): ?IngestDocumentJob
