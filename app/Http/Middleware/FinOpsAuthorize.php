@@ -17,8 +17,9 @@ use Symfony\Component\HttpFoundation\Response;
  * credits, approvals) is gated solely by the route middleware. A single view
  * gate would let `admin` mutate financial-governance state, which is wrong.
  *
- * So we split by HTTP method:
- *   - safe methods (GET/HEAD/OPTIONS) → `viewAiFinOps`   (super-admin + admin)
+ * So we split by HTTP method, using `Request::isMethodSafe()` as the predicate:
+ *   - safe methods (GET/HEAD/OPTIONS/TRACE, per RFC 7231 / Symfony semantics)
+ *     → `viewAiFinOps`   (super-admin + admin)
  *   - mutating methods (POST/PUT/PATCH/DELETE) → `manageAiFinOps` (super-admin)
  *
  * Mounted as `finops.authorize` inside `config('ai-finops.routes.auth_middleware')`,
