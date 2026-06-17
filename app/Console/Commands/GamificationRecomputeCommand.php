@@ -50,6 +50,12 @@ final class GamificationRecomputeCommand extends Command
                     ->orderBy('user_id')
                     ->cursor();
 
+                // evaluate() runs a few cheap indexed aggregates per contributor.
+                // This is a deliberate trade-off: the command is a once-nightly,
+                // per-tenant, opt-in batch (default-off), so per-user evaluation
+                // keeps the awarding logic single-sourced with the live
+                // /api/me/badges path rather than forking a bulk variant that
+                // could drift. Contributor count (not event count) bounds it.
                 foreach ($rows as $row) {
                     $contributors++;
                     $awarded += count($gamification->evaluate((int) $row->user_id));

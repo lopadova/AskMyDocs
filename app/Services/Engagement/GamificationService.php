@@ -99,7 +99,7 @@ final class GamificationService
             $isEarned = $earned->has($badge['key']) || $value >= $badge['threshold'];
             $badges[] = [
                 'key' => $badge['key'],
-                'label' => $badge['label'],
+                'label' => $badge['label'] ?? $badge['key'],
                 'icon' => $badge['icon'] ?? '🏅',
                 'metric' => $badge['metric'],
                 'threshold' => $badge['threshold'],
@@ -142,12 +142,29 @@ final class GamificationService
     }
 
     /**
-     * @return list<array{key:string, label:string, icon?:string, metric:string, threshold:int}>
+     * The operator-tunable badge catalog, defensively filtered: a malformed
+     * entry (missing/non-scalar key/metric/threshold) is dropped rather than
+     * crashing the awarding loop or the dashboard. `label` defaults to the key.
+     *
+     * @return list<array{key:string, label?:string, icon?:string, metric:string, threshold:int}>
      */
     private function catalog(): array
     {
         $catalog = config('kb.gamification.badges', []);
+        if (! is_array($catalog)) {
+            return [];
+        }
 
-        return is_array($catalog) ? array_values($catalog) : [];
+        $valid = array_filter($catalog, static fn ($b): bool => is_array($b)
+            && isset($b['key'], $b['metric'], $b['threshold'])
+            && is_string($b['key']) && $b['key'] !== ''
+            && is_string($b['metric'])
+            && is_numeric($b['threshold']));
+
+        return array_values(array_map(static function (array $b): array {
+            $b['threshold'] = (int) $b['threshold'];
+
+            return $b;
+        }, $valid));
     }
 }
