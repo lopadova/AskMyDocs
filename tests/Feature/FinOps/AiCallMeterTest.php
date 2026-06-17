@@ -63,6 +63,42 @@ final class AiCallMeterTest extends TestCase
         $this->assertSame('text', $row->modality);
     }
 
+    public function test_meters_a_chat_with_history_array_prompt(): void
+    {
+        // AiManager::chatWithHistory() passes the full message ARRAY as $prompt to
+        // meterChat(string|array|null). Assert that shape reaches the ledger — i.e.
+        // MeteringListener::recordAgentResponse() accepts an array prompt and does
+        // NOT throw and get swallowed by the bridge's try/catch (silent
+        // under-metering). The first chat test only exercises the null-prompt path.
+        app(TenantContext::class)->set('acme');
+
+        app(AiCallMeter::class)->meterChat(
+            new AiResponse(
+                content: 'grounded answer',
+                provider: 'anthropic',
+                model: 'claude-sonnet-4-20250514',
+                promptTokens: 200,
+                completionTokens: 60,
+                totalTokens: 260,
+            ),
+            [
+                ['role' => 'user', 'content' => 'first turn'],
+                ['role' => 'assistant', 'content' => 'reply'],
+                ['role' => 'user', 'content' => 'follow-up question'],
+            ],
+        );
+
+        $row = DB::table('ai_finops_usage_ledger')->latest('id')->first();
+
+        $this->assertNotNull($row, 'expected a usage-ledger row for the array-prompt (chatWithHistory) call');
+        $this->assertSame('anthropic', $row->provider);
+        $this->assertSame('claude-sonnet-4-20250514', $row->model);
+        $this->assertSame('acme', $row->tenant_id);
+        $this->assertSame(200, (int) $row->tokens_input);
+        $this->assertSame(60, (int) $row->tokens_output);
+        $this->assertSame('text', $row->modality);
+    }
+
     public function test_does_not_double_count_regolo_which_the_sdk_already_meters(): void
     {
         app(AiCallMeter::class)->meterChat(new AiResponse(
