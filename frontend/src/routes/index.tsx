@@ -45,6 +45,10 @@ import { ComplianceReportsView } from '../features/admin/compliance/ComplianceRe
 import { WorkflowsList } from '../features/admin/workflows/WorkflowsList';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import { NotificationPreferencesGrid } from '../features/notifications/NotificationPreferencesGrid';
+import { DigestFeedCard } from '../features/digest/DigestFeedCard';
+import { DigestPreferences } from '../features/digest/DigestPreferences';
+import { MeDashboard } from '../features/dashboard/MeDashboard';
+import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
@@ -863,6 +867,56 @@ function AdminNotificationPreferencesRoute() {
     );
 }
 
+// v8.15/W3.2 — per-user digest page: the in-app feed + preferences. Any
+// authenticated user (no RequireRole); AdminShell keeps the sidebar consistent.
+function DigestRoute() {
+    return (
+        <AdminShell section="digest">
+            <div style={{ display: 'grid', gap: 20 }}>
+                <DigestFeedCard />
+                <DigestPreferences />
+            </div>
+        </AdminShell>
+    );
+}
+
+const digestRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'digest',
+    component: DigestRoute,
+});
+
+// v8.15/W4.2 — personal "your KB" dashboard (any authenticated user).
+function MeDashboardRoute() {
+    return (
+        <AdminShell section="my-kb">
+            <MeDashboard />
+        </AdminShell>
+    );
+}
+const meDashboardRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'me',
+    component: MeDashboardRoute,
+});
+
+// v8.15/W4.2 — admin engagement analytics. RequireRole wraps the panel here in
+// the route component (viewer/editor land on AdminForbidden, not a crash).
+function AdminEngagementRoute() {
+    return (
+        <AdminShell section="engagement">
+            <RequireRole roles={['admin', 'super-admin']}>
+                <EngagementPanel />
+            </RequireRole>
+        </AdminShell>
+    );
+}
+const adminEngagementRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/engagement',
+    component: AdminEngagementRoute,
+});
+
 const adminNotificationPreferencesRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/notifications/preferences',
@@ -921,6 +975,9 @@ const routeTree = rootRoute.addChildren([
         chatRoute,
         chatAnonymousRoute,
         chatConversationRoute,
+        digestRoute,
+        meDashboardRoute,
+        adminEngagementRoute,
         dashboardRoute,
         kbRoute,
         insightsRoute,

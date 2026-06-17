@@ -251,9 +251,16 @@ class MaintenanceCommandController extends Controller
             'notifications_prune' => 'Rotate notification_events past retention (W1.5).',
             'compliance_digest_quarterly' => 'Quarterly compliance digest generation (W8.5).',
             'insights_compute' => 'Daily AI-insights snapshot (Phase I).',
+            // v8.15/W1 — daily engagement snapshot.
+            'engagement_compute' => 'Daily KB engagement snapshot (contributors / activity / coverage / leaderboard).',
             // v8.7/W2 — KB lifecycle.
             'kb_stale_review_sweep' => 'Flag documents untouched beyond the staleness window (v8.7/W2).',
             'notifications_digest_weekly' => 'Weekly per-user notification digest email (v8.7/W2).',
+            // v8.15/W2 — rich engagement digest (metrics + AI narrative) to email + Discord/Slack/Teams.
+            'digest_weekly' => 'Weekly KB engagement digest (metrics + AI narrative) to email + team channels.',
+            'digest_monthly' => 'Monthly KB engagement executive digest to email + team channels.',
+            'digest_prune_feed' => 'In-app digest feed retention sweep (kb.digest.feed_retention_days).',
+            'gamification_recompute' => 'Award gamification badges for all contributors (opt-in; no-op when disabled).',
             // v8.7/W5 — Cloud Time Machine retention.
             'kb_prune_archived_versions' => 'Hard-delete archived document versions beyond the retention cap (v8.7/W5).',
             // v8.11/P9 — scheduled Auto-Wiki maintenance.

@@ -161,6 +161,16 @@ tells buyers to demand:
   agentically navigates multi-hop, cross-model-reviews auto pages, applies change/delete
   suggestions, and self-maintains on a daily schedule — all behind the human > auto > raw
   firewall. See the dedicated section below.
+- **Engagement & Intelligence Suite** (v8.15) — a proactive, multi-channel **digest** (newly
+  created / promoted docs · stale review queue · top unanswered questions · KB-health trend ·
+  "your attention needed"; modified-doc activity shows in the headline metrics) delivered to
+  **email + Discord + Slack + Teams + an in-app feed** with
+  an opt-in AI narrative on a dedicated free model; an admin engagement dashboard (contributor
+  leaderboard / coverage / answer-rate / decision-debt trend) and a personal **My KB** dashboard
+  (your score / rank / impact / review queue); and **opt-in gamification** (config-driven badges
+  over real contribution metrics, default-OFF). Built to surpass Stack Overflow for Teams /
+  Zendesk / Notion on packaging + delivery breadth; every capability tri-surface (PHP + API +
+  MCP). See the [doc-site](https://padosoft.mintlify.app/engagement-suite).
 
 ---
 
@@ -370,9 +380,11 @@ Shipped incrementally across **v8.11.0 → v8.11.10** (each its own tagged relea
 `kb:synthesize-concepts`, `kb:wiki-index`, `kb:wiki-lint`, `kb:wiki-navigate`,
 `kb:wiki-review`, `kb:apply-suggestion`, `kb:wiki-maintain`, `kb:wiki-promote`),
 **HTTP API** (RBAC-gated admin endpoints under `/api/admin/kb/*`), and **MCP**
-(the `enterprise-kb` server grew from 14 → **25 tools**, incl.
-`KbWikiNavigateTool` as the primary agentic surface and `KbWikiPromoteTool` for
-promote/discard) — all thin layers over one shared core service per capability.
+(the `enterprise-kb` server grew from 14 → **28 tools**, incl.
+`KbWikiNavigateTool` as the primary agentic surface, `KbWikiPromoteTool` for
+promote/discard, and the v8.15 engagement trio `KbEngagementSummaryTool` /
+`KbDigestPreviewTool` / `KbUserBadgesTool`) — all thin layers over one shared
+core service per capability.
 
 **Admin Wiki UI (v8.12.0):** a full web surface on the whole engine — **Wiki
 Health** (lint + safe auto-fix), **Wiki Indices** (hub + per-project roll-ups +
@@ -788,7 +800,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | `PdfPageChunker` page-aware PDF chunking | Slices on the `## Page N` boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` for page-precise citations; intra-page split on `\n\n` when over `KB_CHUNK_HARD_CAP_TOKENS` | v3.0 |
 | Embedding cache (cross-tenant by design) | DB-backed LRU cache keyed on SHA-256(`text`) UNIQUE; eliminates redundant API calls on re-ingestion and repeated queries; `EmbeddingCacheService::flush($provider)` on provider/model change. Conditional approval gate via `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD` (default 5000) on v4.2+ | v1.0 |
 | Soft delete + retention sweep | `SoftDeletes` on `KnowledgeDocument`; hidden from every read path by default; `kb:prune-deleted` (03:30 daily) hard-deletes after `KB_SOFT_DELETE_RETENTION_DAYS` (default 30); cascades `kb_nodes` + `kb_edges` on final hard delete; immutable `kb_canonical_audit` row survives | v3.0 |
-| MCP server `enterprise-kb` (25 tools) | 5 retrieval + 5 canonical/promotion tools (v3.0), 4 propose-only canonical tools (v7), and **11 Auto-Wiki tools** (v8.11–v8.12: set-evidence-tier / rebuild-wiki-links / synthesize-concepts / build-wiki-index / wiki-hub / wiki-lint / **wiki-navigate** / wiki-review / apply-suggestion / wiki-maintain / **wiki-promote**) exposed for Claude Desktop / Claude Code / any MCP-compatible agent. Every host capability is reachable via MCP (R44 tri-surface) | v3.0 · v8.11 · v8.12 |
+| MCP server `enterprise-kb` (28 tools) | 5 retrieval + 5 canonical/promotion tools (v3.0), 4 propose-only canonical tools (v7), **11 Auto-Wiki tools** (v8.11–v8.12: set-evidence-tier / rebuild-wiki-links / synthesize-concepts / build-wiki-index / wiki-hub / wiki-lint / **wiki-navigate** / wiki-review / apply-suggestion / wiki-maintain / **wiki-promote**), and **3 Engagement tools** (v8.15: engagement-summary / digest-preview / user-badges) exposed for Claude Desktop / Claude Code / any MCP-compatible agent. Every host capability is reachable via MCP (R44 tri-surface) | v3.0 · v8.11 · v8.12 · v8.15 |
 | Enterprise chat filters (10 dimensions) | `RetrievalFilters` DTO with `project_keys` / `tag_slugs` / `source_types` / `canonical_types` / `connector_types` / `doc_ids` / `folder_globs` / `date_from` / `date_to` / `languages`. Per-user saved presets with 404-not-403 cross-user isolation; `@mention` doc pinning via cursor-context detection | v3.0 |
 | Reranker canonical boost + status penalty | Reranker applies `priority × 0.003` canonical boost and `superseded −0.4` / `deprecated −0.4` / `archived −0.6` status penalties on top of the vector/keyword/heading fusion; non-canonical chunks get zero adjustment (legacy behaviour preserved) | v3.0 |
 | Source-aware chunkers + rich frontmatter capture | `PipelineRegistry::resolveChunker($sourceType)` dispatches per source (R23 FQCN-validated + `supports()` mutex-checked at boot) to: `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` / `MarkdownChunker`. Document-level metadata carries `connector` + `external_id` + `external_url` + native timestamps; chunk-level metadata carries `source_type` + `search_tags` (top-level) + `recency_bucket` + ACL hint + status + preamble-path | v4.5 |
@@ -1435,6 +1447,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.11.10** | ✅ shipped 2026-06-14 | **Scheduled wiki maintenance** (Karpathy lint cadence / AutoSci scheduled discovery — "knowledge improves over time"). The new `WikiMaintainer` is a periodic sweep that orchestrates the earlier phases over each (tenant, project): **rebuild the indices** (P4), **lint** wiki health (P5, optionally fix), and **backfill** enrichment — dispatch `AutoWikiCompilerJob` for un-enriched docs (no `_autowiki` block yet), bounded per run (`KB_AUTOWIKI_MAINTENANCE_BACKFILL_LIMIT`, default 25) — so the corpus converges toward full enrichment over time. Pure orchestration (every effect flows through the already-reviewed P1/P4/P5 services + their firewalls/audits). Registered as the daily **`kb_wiki_maintain`** Tier-1 scheduler slot (config-driven cron + kill-switch, default 04:40). Exposed **tri-surface (R44)** over one `WikiMaintainer` core: `kb:wiki-maintain {--project=} {--fix} {--backfill=}` (PHP + the cron entry), `POST /api/admin/kb/wiki-maintain` (HTTP, RBAC-gated), `KbWikiMaintainTool` (MCP, roster 23→24). Tenant-scoped (R30). +9 PHPUnit. |
 | **v8.12.0** | ✅ shipped 2026-06-15 | **Auto-Wiki admin UI (P10 — epic close)** — the full web surface on the P1–P9 engine, shipped as 7 real-data-tested sub-PRs (#282..#288). **Wiki Health** (`/app/admin/kb/wiki-health` — lint findings + safe auto-fix), **Wiki Indices** (hub + per-project roll-ups + operation log + one-click rebuild), **Wiki Explorer** (browse typed pages by provenance tier, **promote** auto→human, **discard** auto — a new tri-surface `WikiExplorerService` capability: `kb:wiki-promote` + `GET /api/admin/kb/wiki-pages` + `POST …/documents/{id}/wiki-{promote,discard}` + `KbWikiPromoteTool`, MCP roster 24→25), **Doc Insights → Apply** (turn cross-reference / impacted suggestions into audited reversible mutations over the P8 engine, with a 200-refusal surfaced distinctly from a transport error per R14), **Auto-Wiki Settings** (`/app/admin/kb/autowiki-settings` — per-(tenant,project) auto-build gate over `AutoWikiGate`, tri-state Inherit/On/Off, R43 both-states), and **tier-badged chat citations** (every citation carries `generation_source`; auto pages get an `auto` badge, R27 additive). Every screen has Vitest + real-data Playwright (R13) + an `AdminAuthorizationMatrix` row for each new endpoint (R32). |
 | **v8.13.0** | ✅ shipped 2026-06-15 | **Evidence & Risk Review integration (P11)** — the general risk-sweep / review-log engine deferred OUT of core at v8.11.2 lands as the standalone `padosoft/laravel-evidence-risk-review` (core, v1.1) + `-admin` (v1.0) sister packages, wired **tri-surface (R44)** into AskMyDocs over **one** shared core service: the package's Artisan command + MCP tools auto-register (PHP + MCP), the HTTP API mounts at `/api/admin/evidence-risk-review/*` (secured: `tenant.resolve` + `auth:sanctum` + `tenant.authorize` + `can:viewEvidenceRiskReview`, R32 matrix-locked), and a **native FE admin** at `/app/admin/evidence-risk-review` (Reviews log + detail / Profiles / Taxonomy / Try) cross-mounts against that API — the same convention as every sister admin (the `-admin` React bundle is composer-required but `dont-discover`ed). **R30:** a host `TenantResolver` binds the review log to the active tenant — a review is stamped on write and the read paths are forced to that tenant (a client `tenant` filter cannot widen it). **R43 both-states:** the whole admin surface is opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` (default-OFF — routes unregistered → clean 404 + a clean FE "unavailable" landing, never a 500); the optional LLM semantic pass over `AiManager` is a second default-OFF flag (`EVIDENCE_RISK_REVIEW_LLM_ENABLED`). +7 integration PHPUnit (tenant isolation E2E + LLM adapter + R43 on/off) + 3 Vitest + real-data Playwright (R13). |
+| **v8.15.0** | ✅ shipped 2026-06-17 | **Engagement & Intelligence Suite** (W1–W5) — the layer that turns the KB into a living system, surpassing Stack Overflow for Teams / Zendesk / Notion on packaging + delivery breadth. **W1** an append-only contribution log (`kb_contribution_events`, written from the existing ingest/promote/citation paths — never a new write path) + `EngagementMetricsService` (SQL-aggregated, R3) + daily `engagement:compute` snapshot (`kb_engagement_snapshots`). **W2** multi-channel rich digest — `DigestComposer` → `DigestRendererRegistry` (R23 mutex) → email (magazine HTML) / Discord embed / Slack Block Kit / Teams Adaptive Card, with an opt-in `AiDigestNarrator` on a **dedicated free OpenRouter model** (`KB_DIGEST_AI_MODEL=meta-llama/llama-3.3-70b-instruct:free`, default-ON, degrades to deterministic copy R14/R43); `digest:send {--frequency=weekly|monthly} {--dry-run} {--preview}`. **W3** per-user `digest_preferences` (frequency + per-section toggles) + in-app digest feed (`engagement_digest_feed` + `digest:prune-feed`) + monthly executive roll-up. **W4** a new personal **My KB** dashboard (`/app/me`) + admin engagement analytics (leaderboard / coverage / answer-rate / decision-debt trend), reusing `KpiCard`/`ChartCard`/recharts. **W5** opt-in **gamification** — config-driven badge catalog awarded over all-time engagement metrics (`kb_user_badges`, `gamification:recompute`, default-OFF `KB_GAMIFICATION_ENABLED`, R43 both-states). Every capability is **tri-surface** (R44): command + HTTP + MCP (`KbEngagementSummaryTool` / `KbDigestPreviewTool` / `KbUserBadgesTool`, roster 25→28) over one shared core; 5 tenant-aware tables (R30/R31). Deep doc-site pages: [Engagement Suite](https://padosoft.mintlify.app/engagement-suite) · [Digests](https://padosoft.mintlify.app/digests) · [Dashboards](https://padosoft.mintlify.app/dashboards) · [Gamification](https://padosoft.mintlify.app/gamification). |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1581,6 +1594,48 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
+base from a passive store into a living system — proactive digests, contributor
+analytics, dashboards and opt-in gamification — designed to surpass Stack Overflow
+for Teams / Zendesk / Notion on packaging and delivery breadth. It rests on one
+append-only primitive: the **contribution event** (`kb_contribution_events`),
+written from the *existing* ingest / promotion / citation paths (never a new write
+path, so the log stays a rebuildable projection). `EngagementMetricsService`
+aggregates those events **in SQL** (R3) into contributor stats, leaderboards,
+coverage %, answer rate and trends; a daily `engagement:compute` snapshot
+(`kb_engagement_snapshots`) makes dashboards and digests read O(1).
+
+The **digest** is a composition, not a query: `DigestComposer` assembles typed
+sections (newly created/promoted docs · stale review queue · top unanswered ·
+health trend · "your attention needed"; modified-doc activity shows in the
+headline metrics rather than as a per-doc list) and a `DigestRendererRegistry`
+(R23 boot-validated mutex) renders one card per channel — a magazine-grade HTML
+email plus Discord embed / Slack Block Kit / Teams Adaptive Card, reusing the
+existing notification channel adapters for transport, plus an in-app feed
+(`engagement_digest_feed`). An opt-in `AiDigestNarrator` adds a "what changed &
+why it matters" summary on a **dedicated free OpenRouter model**
+(`KB_DIGEST_AI_MODEL`, default `meta-llama/llama-3.3-70b-instruct:free`) so it
+never competes with the primary chat model and costs ≈$0, degrading to
+deterministic copy when off or unreachable (R14/R43). `digest:send
+{--frequency=weekly|monthly} {--tenant=} {--channel=} {--dry-run} {--preview}`
+drives it; per-user `digest_preferences` (frequency + per-section toggles) and a
+monthly executive roll-up complete the delivery matrix.
+
+Two dashboards read the same metrics so the numbers always agree: a personal
+**My KB** dashboard at `/app/me` (your score, rank, authored docs, citation impact,
+review queue) and an admin engagement panel (leaderboard / coverage / answer-rate /
+decision-debt trend), both on the existing `KpiCard`/`ChartCard`/recharts
+primitives. Finally, opt-in **gamification** awards a config-driven badge catalog
+over all-time engagement metrics (`kb_user_badges`, `gamification:recompute`) —
+`KB_GAMIFICATION_ENABLED` default-OFF, tested in both states (R43); when off the
+badges section is absent, not an empty box.
+
+Every capability is **tri-surface** (R44) over one shared core: Artisan command +
+HTTP endpoint + MCP tool (`KbEngagementSummaryTool` / `KbDigestPreviewTool` /
+`KbUserBadgesTool`; MCP roster 25→28). Five new tenant-aware tables join both
+completeness lists (R30/R31). Deep doc-site pages ship for the suite, digests,
+dashboards and gamification (R45).
 
 **v8.13.0 — Evidence & Risk Review integration (P11).** The general
 risk-sweep / review-log engine that v8.11.2 deliberately kept OUT of core lands

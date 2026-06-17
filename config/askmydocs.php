@@ -227,6 +227,11 @@ return [
             'enabled' => (bool) env('SCHEDULE_INSIGHTS_COMPUTE_ENABLED', true),
             'cron' => (string) env('SCHEDULE_INSIGHTS_COMPUTE_CRON', '0 5 * * *'),
         ],
+        // v8.15/W1 — daily engagement snapshot (after insights, 05:15).
+        'engagement_compute' => [
+            'enabled' => (bool) env('SCHEDULE_ENGAGEMENT_COMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_ENGAGEMENT_COMPUTE_CRON', '15 5 * * *'),
+        ],
         'compliance_digest_quarterly' => [
             'enabled' => (bool) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_COMPLIANCE_DIGEST_QUARTERLY_CRON', '0 6 1 1,4,7,10 *'),
@@ -245,6 +250,26 @@ return [
         'notifications_digest_weekly' => [
             'enabled' => (bool) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_ENABLED', true),
             'cron' => (string) env('SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_CRON', '0 7 * * 1'),
+        ],
+        // v8.15/W2 — rich engagement digest (metrics + AI narrative) to email +
+        // Discord/Slack/Teams. Weekly Mon 07:15; monthly on the 1st at 07:30.
+        'digest_weekly' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_WEEKLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_WEEKLY_CRON', '15 7 * * 1'),
+        ],
+        'digest_monthly' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_MONTHLY_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_MONTHLY_CRON', '30 7 1 * *'),
+        ],
+        // v8.15/W3 — in-app digest feed retention (daily 04:25).
+        'digest_prune_feed' => [
+            'enabled' => (bool) env('SCHEDULE_DIGEST_PRUNE_FEED_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_DIGEST_PRUNE_FEED_CRON', '25 4 * * *'),
+        ],
+        // v8.15/W5 — gamification badge awarding (daily 05:20; no-op when disabled).
+        'gamification_recompute' => [
+            'enabled' => (bool) env('SCHEDULE_GAMIFICATION_RECOMPUTE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_GAMIFICATION_RECOMPUTE_CRON', '20 5 * * *'),
         ],
         // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
         'kb_prune_archived_versions' => [
@@ -291,6 +316,22 @@ return [
             'orphan_outbound' => (float) env('KB_HEALTH_WEIGHT_ORPHAN_OUTBOUND', 0.15),
             'status_decay' => (float) env('KB_HEALTH_WEIGHT_STATUS_DECAY', 0.20),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Engagement & Intelligence Suite (v8.15)
+    |--------------------------------------------------------------------------
+    | The KB engagement layer: a contribution-event log feeds contributor
+    | analytics, "your impact" metrics, the digest, and the opt-in gamification
+    | layer. `enabled` gates the ContributionRecorder write side (best-effort
+    | telemetry; never breaks a hot path). `window_days` is the default rolling
+    | activity window for the daily snapshot.
+    */
+    'engagement' => [
+        'enabled' => (bool) env('KB_ENGAGEMENT_ENABLED', true),
+        'window_days' => (int) env('KB_ENGAGEMENT_WINDOW_DAYS', 7),
+        'snapshot_retention_days' => (int) env('KB_ENGAGEMENT_SNAPSHOT_RETENTION_DAYS', 400),
     ],
 
     'compliance' => [

@@ -32,10 +32,10 @@ final class TenantReadScopeTest extends TestCase
      */
     private const TENANT_AWARE_MODELS = [
         'AdminCommandAudit', 'AdminCommandNonce', 'AdminInsightsSnapshot',
-        'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport',
+        'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
-        'KbCollectionMember', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbWikiIndex', 'KnowledgeChunk',
+        'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbEngagementSnapshot', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
@@ -72,6 +72,7 @@ final class TenantReadScopeTest extends TestCase
         'app/Console/Commands/PruneChatLogsCommand.php' => 'Tenant enumeration → per-tenant prune flow (scoped downstream).',
         'app/Console/Commands/PruneDeletedDocumentsCommand.php' => 'Tenant enumeration → per-tenant DocumentDeleter (scoped downstream).',
         'app/Console/Commands/PruneOrphanFilesCommand.php' => 'Orphan-file maintenance sweep; reconciles disk vs DB by design.',
+        'app/Console/Commands/DigestPruneFeedCommand.php' => 'Global digest-feed retention prune; intentionally instance-wide (same posture as the other prune sweeps).',
 
         // User→tenant DISCOVERY for DSAR/compliance: its whole job is to find
         // EVERY tenant a user touched (memberships, conversations, chat logs,

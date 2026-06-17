@@ -76,6 +76,14 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\AdminCommandAudit::class,
         \App\Models\AdminCommandNonce::class,
         \App\Models\AdminInsightsSnapshot::class,
+        // v8.15/W1 — engagement & intelligence suite.
+        \App\Models\KbContributionEvent::class,
+        \App\Models\KbEngagementSnapshot::class,
+        // v8.15/W3 — per-user digest preferences + in-app digest feed.
+        \App\Models\DigestPreference::class,
+        \App\Models\EngagementDigestFeedEntry::class,
+        // v8.15/W5 — gamification badges.
+        \App\Models\KbUserBadge::class,
         \App\Models\ChatFilterPreset::class,
         \App\Models\ChatLogProvenance::class,
         // v4.7/W1 — tabular review backend tables.

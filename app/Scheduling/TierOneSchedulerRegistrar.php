@@ -51,11 +51,19 @@ final class TierOneSchedulerRegistrar
         ['notifications_prune', 'notifications:prune'],
         ['kb_prune_orphan_files', 'kb:prune-orphan-files --dry-run'],
         ['insights_compute', 'insights:compute'],
+        // v8.15/W1 — daily engagement snapshot.
+        ['engagement_compute', 'engagement:compute'],
         ['widget_prune_sessions', 'widget:prune-sessions'],
         ['compliance_digest_quarterly', 'compliance:digest-quarterly'],
         // v8.7/W2 — stale-review sweep + weekly notification digest.
         ['kb_stale_review_sweep', 'kb:stale-review-sweep'],
         ['notifications_digest_weekly', 'notifications:digest-weekly'],
+        // v8.15/W2 — rich engagement digest (email + Discord/Slack/Teams).
+        ['digest_weekly', 'digest:send --frequency=weekly'],
+        ['digest_monthly', 'digest:send --frequency=monthly'],
+        ['digest_prune_feed', 'digest:prune-feed'],
+        // v8.15/W5 — gamification badge awarding (opt-in; no-op when disabled).
+        ['gamification_recompute', 'gamification:recompute'],
         // v8.7/W5 — Cloud Time Machine archived-version retention.
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
         // v8.11/P9 — scheduled Auto-Wiki maintenance (index rebuild + lint + backfill).

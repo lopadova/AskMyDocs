@@ -189,6 +189,21 @@ Route::middleware([
         ->name('api.me.chat-preferences.show');
     Route::patch('/me/chat-preferences', [ChatPreferencesController::class, 'update'])
         ->name('api.me.chat-preferences.update');
+
+    // v8.15/W3 — per-user rich-digest preferences + the in-app digest feed.
+    Route::get('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'show'])
+        ->name('api.me.digest-preferences.show');
+    Route::put('/me/digest-preferences', [\App\Http\Controllers\Api\DigestPreferenceController::class, 'update'])
+        ->name('api.me.digest-preferences.update');
+    Route::get('/me/digest/latest', [\App\Http\Controllers\Api\DigestFeedController::class, 'latest'])
+        ->name('api.me.digest.latest');
+
+    // v8.15/W4 — per-user "your KB" dashboard (any authenticated user).
+    Route::get('/me/dashboard', [\App\Http\Controllers\Api\UserDashboardController::class, 'show'])
+        ->name('api.me.dashboard');
+    // v8.15/W5 — per-user gamification badges (opt-in; empty when disabled).
+    Route::get('/me/badges', [\App\Http\Controllers\Api\UserBadgesController::class, 'index'])
+        ->name('api.me.badges');
 });
 
 /*
@@ -262,6 +277,21 @@ Route::middleware([
             ->name('api.admin.kb.projects');
         Route::get('/kb/health', [KbHealthController::class, 'index'])
             ->name('api.admin.kb.health.index');
+
+        // v8.15/W1 — KB engagement analytics (R44 HTTP surface; R32 matrix row
+        // for `/api/admin/engagement/summary`). Tenant-scoped reads.
+        Route::get('/engagement/summary', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'summary'])
+            ->name('api.admin.engagement.summary');
+        Route::get('/engagement/leaderboard', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'leaderboard'])
+            ->name('api.admin.engagement.leaderboard');
+        // v8.15/W4 — engagement trend series for the admin charts.
+        Route::get('/engagement/series', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'series'])
+            ->name('api.admin.engagement.series');
+
+        // v8.15/W2 — digest preview (compose + render, no send). R32 matrix row
+        // for `/api/admin/digest/preview`.
+        Route::get('/digest/preview', [\App\Http\Controllers\Api\Admin\DigestController::class, 'preview'])
+            ->name('api.admin.digest.preview');
 
         // Phase G2 — KB document detail (read-only). Admin-only binding
         // shim resolves trashed rows via `withTrashed()` — the default

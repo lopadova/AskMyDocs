@@ -40,7 +40,10 @@ export type SidebarSection =
     | 'mcp-tokens'
     | 'widget'
     | 'logs'
-    | 'maintenance';
+    | 'maintenance'
+    | 'digest'
+    | 'my-kb'
+    | 'engagement';
 
 export interface NavItem {
     id: SidebarSection;
@@ -60,13 +63,20 @@ export const NAV_GROUPS: NavGroup[] = [
     {
         id: 'workspace',
         label: 'Workspace',
-        items: [{ id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/chat' }],
+        items: [
+            { id: 'chat', label: 'Chat', icon: 'Chat', route: '/app/chat' },
+            // v8.15/W4.2 — personal "your KB" dashboard; any authenticated user.
+            { id: 'my-kb', label: 'My KB', icon: 'Sparkles', route: '/app/me' },
+            // v8.15/W3.2 — per-user digest (feed + preferences); any authenticated user.
+            { id: 'digest', label: 'Digest', icon: 'Calendar', route: '/app/digest' },
+        ],
     },
     {
         id: 'administration',
         label: 'Administration',
         items: [
             { id: 'dashboard', label: 'Dashboard', icon: 'Grid', route: '/app/admin' },
+            { id: 'engagement', label: 'Engagement', icon: 'Activity', route: '/app/admin/engagement' },
             { id: 'insights', label: 'AI Insights', icon: 'Sparkles', route: '/app/admin/insights' },
             { id: 'users', label: 'Users', icon: 'Users', route: '/app/admin/users' },
             { id: 'roles', label: 'Roles', icon: 'Shield', route: '/app/admin/roles' },

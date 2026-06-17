@@ -73,6 +73,16 @@ class AppServiceProvider extends ServiceProvider
             return new PipelineRegistry($app, (array) config('kb-pipeline', []));
         });
 
+        // v8.15/W2 — digest card renderers (Discord/Slack/Teams). The registry
+        // validates the interface + non-overlapping channel keys at boot (R23).
+        $this->app->singleton(\App\Services\Digest\Renderers\DigestRendererRegistry::class, function () {
+            return new \App\Services\Digest\Renderers\DigestRendererRegistry([
+                new \App\Services\Digest\Renderers\DiscordDigestRenderer(),
+                new \App\Services\Digest\Renderers\SlackDigestRenderer(),
+                new \App\Services\Digest\Renderers\TeamsDigestRenderer(),
+            ]);
+        });
+
         // v4.0/W1.D — TenantContext is request-scoped. Singleton so every
         // service / controller / model trait sees the same instance within
         // one request. Set by ResolveTenant middleware on incoming HTTP;
@@ -409,6 +419,14 @@ class AppServiceProvider extends ServiceProvider
             PruneNotificationsCommand::class,
             // PR14 / Phase I — daily AI insights snapshot.
             InsightsComputeCommand::class,
+            // v8.15/W1 — daily engagement snapshot.
+            \App\Console\Commands\EngagementComputeCommand::class,
+            // v8.15/W2 — rich multi-channel engagement digest.
+            \App\Console\Commands\DigestSendCommand::class,
+            // v8.15/W3 — in-app digest feed retention sweep.
+            \App\Console\Commands\DigestPruneFeedCommand::class,
+            // v8.15/W5 — gamification badge awarding (opt-in).
+            \App\Console\Commands\GamificationRecomputeCommand::class,
             // v8.0/W6.1 — full tenant collection membership reevaluation.
             CollectionsReevaluateCommand::class,
             // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.

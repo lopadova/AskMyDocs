@@ -180,6 +180,20 @@ final class NotificationServiceProvider extends ServiceProvider
                         ->where('id', '!=', $document->id)
                         ->exists();
 
+                    // v8.15/W1 — record the engagement contribution (independent
+                    // of notification recipients). Best-effort actor attribution
+                    // via the authenticated user; null for CLI / connector / queue.
+                    $actorId = auth()->id();
+                    app(\App\Services\Engagement\ContributionRecorder::class)->record(
+                        event: $isModified
+                            ? \App\Models\KbContributionEvent::EVENT_MODIFIED
+                            : \App\Models\KbContributionEvent::EVENT_CREATED,
+                        userId: $actorId !== null ? (int) $actorId : null,
+                        documentId: (int) $document->id,
+                        projectKey: $projectKey,
+                        tenantId: $tenantId,
+                    );
+
                     app(NotificationPublisher::class)->publishKbDocumentChanged(
                         $document,
                         $isModified,
@@ -218,12 +232,50 @@ final class NotificationServiceProvider extends ServiceProvider
                     if ($tenantId === '' || $projectKey === '') {
                         return;
                     }
+                    $actor = $audit->actor === null ? null : (string) $audit->actor;
+
+                    // Resolve the numeric knowledge_documents.id from the audit's
+                    // canonical doc_id (fallback slug) so the promotion event
+                    // carries a real document_id — the `authored` metric + the
+                    // digest's per-doc title resolution both depend on it. System
+                    // attribution: bypass the read AccessScopeScope, stay
+                    // tenant + project scoped (R30).
+                    $auditDocId = $audit->doc_id === null ? null : (string) $audit->doc_id;
+                    $auditSlug = $audit->slug === null ? null : (string) $audit->slug;
+                    $documentId = null;
+                    if ($auditDocId !== null || $auditSlug !== null) {
+                        $documentId = \App\Models\KnowledgeDocument::query()
+                            ->withoutGlobalScope(\App\Scopes\AccessScopeScope::class)
+                            ->where('tenant_id', $tenantId)
+                            ->where('project_key', $projectKey)
+                            ->when($auditDocId !== null, fn ($q) => $q->where('doc_id', $auditDocId))
+                            ->when($auditDocId === null && $auditSlug !== null, fn ($q) => $q->where('slug', $auditSlug))
+                            ->value('id');
+                        $documentId = $documentId === null ? null : (int) $documentId;
+                    }
+
+                    // v8.15/W1 — record the promotion contribution. The audit
+                    // `actor` is a user id / command name / 'system'; attribute
+                    // to a user only when it is a numeric id.
+                    app(\App\Services\Engagement\ContributionRecorder::class)->record(
+                        event: \App\Models\KbContributionEvent::EVENT_PROMOTED,
+                        userId: ($actor !== null && ctype_digit($actor)) ? (int) $actor : null,
+                        documentId: $documentId,
+                        projectKey: $projectKey,
+                        metadata: [
+                            'doc_id' => $audit->doc_id === null ? null : (string) $audit->doc_id,
+                            'slug' => $audit->slug === null ? null : (string) $audit->slug,
+                            'actor' => $actor,
+                        ],
+                        tenantId: $tenantId,
+                    );
+
                     app(NotificationPublisher::class)->publishKbCanonicalPromoted(
                         tenantId: $tenantId,
                         projectKey: $projectKey,
                         docId: $audit->doc_id === null ? null : (string) $audit->doc_id,
                         slug: $audit->slug === null ? null : (string) $audit->slug,
-                        actor: $audit->actor === null ? null : (string) $audit->actor,
+                        actor: $actor,
                     );
                 } catch (\Illuminate\Database\QueryException $e) {
                     // See KbDocumentChanged hook above — non-integrity

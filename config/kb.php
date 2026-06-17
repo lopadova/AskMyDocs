@@ -242,6 +242,54 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Engagement digest (v8.15/W2)
+    |--------------------------------------------------------------------------
+    | The rich weekly/monthly KB digest sent to email + Discord/Slack/Teams.
+    | The AI narrative ("what changed in your KB and why it matters") is
+    | default-ON but config-gated (R43 — tested OFF and ON) and uses a
+    | DEDICATED model so digests never compete for the primary chat model.
+    | Default = a free OpenRouter model (digests are summary prose, not
+    | latency/quality-critical → ~$0 cost). Confirm the exact `:free` id at
+    | deploy time — OpenRouter's free roster shifts. When the narrative LLM
+    | is disabled or unreachable, the digest degrades to deterministic copy
+    | (R14) — it never fails the send.
+    */
+    'digest' => [
+        'ai_narrative_enabled' => (bool) env('KB_DIGEST_AI_NARRATIVE_ENABLED', true),
+        'ai_provider' => env('KB_DIGEST_AI_PROVIDER', 'openrouter') ?: null,
+        'ai_model' => env('KB_DIGEST_AI_MODEL', 'meta-llama/llama-3.3-70b-instruct:free') ?: null,
+        'narrative_max_tokens' => (int) env('KB_DIGEST_NARRATIVE_MAX_TOKENS', 400),
+        // In-app digest feed retention; `digest:prune-feed` drops entries older
+        // than this (0 disables the rotation).
+        'feed_retention_days' => (int) env('KB_DIGEST_FEED_RETENTION_DAYS', 120),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Gamification (v8.15/W5) — OPT-IN
+    |--------------------------------------------------------------------------
+    | A tasteful contributor-motivation layer: badges awarded when a user's
+    | all-time engagement crosses a threshold, surfaced on the "My KB"
+    | dashboard alongside the (already-shipped) leaderboard. DEFAULT-OFF
+    | (R43 — tested both states); when off, no badges are awarded or shown.
+    | The badge catalog is config-driven so an operator can tune labels /
+    | thresholds (and per-tenant overrides can layer on top later) — each
+    | badge declares a `metric` (score | events | authored | active_days,
+    | all-time) and the `threshold` to reach it.
+    */
+    'gamification' => [
+        'enabled' => (bool) env('KB_GAMIFICATION_ENABLED', false),
+        'badges' => [
+            ['key' => 'first_contribution', 'label' => 'First contribution', 'icon' => '🌱', 'metric' => 'events', 'threshold' => 1],
+            ['key' => 'contributor', 'label' => 'Contributor', 'icon' => '✍️', 'metric' => 'score', 'threshold' => 25],
+            ['key' => 'prolific', 'label' => 'Prolific contributor', 'icon' => '🚀', 'metric' => 'score', 'threshold' => 100],
+            ['key' => 'author', 'label' => 'Author', 'icon' => '📚', 'metric' => 'authored', 'threshold' => 5],
+            ['key' => 'regular', 'label' => 'Regular', 'icon' => '🔥', 'metric' => 'active_days', 'threshold' => 5],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Source retention policy (v8.11) — SCHEMA/CONFIG FOUNDATION
     |--------------------------------------------------------------------------
     |
