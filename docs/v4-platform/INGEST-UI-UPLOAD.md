@@ -83,7 +83,13 @@ R30 (tenant-scoped queries + binds) · R31 (new models BelongsToTenant +
 TenantIdMandatoryTest) · R32 (route in AdminAuthorizationMatrixTest) · R11/R29
 (testid hierarchy) · R15 (a11y) · R14/R17/R25 (surface failures, effect sync,
 optimistic dedupe) · R12/R13 (E2E real data, only external provider stubbed) ·
-R41 (teardown rollback before Mockery::close).
+R41 (teardown rollback before Mockery::close) · R44 (DELIBERATE single-surface
+exception — the interactive stage→review→commit UX ships HTTP-only; the
+underlying ingest is already tri-surface via the shared IngestDocumentJob
+reached by CLI `kb:ingest-folder`, HTTP `/api/kb/ingest`, and the MCP ingest
+path, plus the PHP `KbUploadStagingService` + `kb:prune-staging-batches`
+command — so no agent caller needs the browser upload session; see the
+`KbUploadController` class docblock).
 
 ## Task checklist
 

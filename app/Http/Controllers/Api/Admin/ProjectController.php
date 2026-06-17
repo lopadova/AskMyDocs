@@ -34,6 +34,16 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * (route group). R30 — every read/write is tenant-scoped via
  * `forTenant($this->tenant->current())`; cross-tenant access is
  * structurally impossible and two teams may share the same key (R28).
+ *
+ * R44 — DELIBERATE single-surface exception: the registry CRUD is an admin
+ * SPA governance affordance, not an agent-facing capability. A `project_key`
+ * is already usable across ALL surfaces (CLI `kb:ingest-folder`, HTTP ingest,
+ * MCP retrieval/`KbSearchByProjectTool`) WITHOUT a registry row — the row only
+ * adds a human name/description + delete-guard for the admin UI. There is no
+ * agent workflow that needs to create/rename/delete a registry entry, so this
+ * ships HTTP-only (no Artisan command, no MCP tool) on purpose. Should
+ * agent-driven project governance ever be needed, add a tool over the same
+ * model rather than a parallel implementation.
  */
 final class ProjectController extends Controller
 {

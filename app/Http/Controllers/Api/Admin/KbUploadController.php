@@ -24,6 +24,15 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * Auth: `auth:sanctum` + `tenant.authorize` + `role:admin|super-admin`
  * (route group). Every batch/item is resolved through a tenant-scoped route
  * binding (R30 — no cross-tenant IDOR).
+ *
+ * R44 — DELIBERATE single-surface exception: the interactive multipart
+ * stage→review→commit flow is an admin-SPA affordance, not a new ingestion
+ * capability. The underlying ingest IS already tri-surface — CLI
+ * `kb:ingest-folder`, HTTP `POST /api/kb/ingest`, and the MCP ingest path all
+ * reach the SAME {@see \App\Jobs\IngestDocumentJob} this commit dispatches; an
+ * agent ingests through those, never through a browser upload session. The PHP
+ * surface also exists ({@see KbUploadStagingService} + the `kb:prune-staging-batches`
+ * command). So the staging UX ships HTTP-only (no MCP tool) on purpose.
  */
 final class KbUploadController extends Controller
 {
