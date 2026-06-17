@@ -40,7 +40,14 @@ final class FinOpsAdminMountingTest extends TestCase
 
         $middleware = $home->gatherMiddleware();
 
-        $this->assertContains('auth', $middleware, 'The SPA must require authentication.');
+        // `gatherMiddleware()` may yield the alias (`auth`) or the resolved FQCN
+        // (`Illuminate\Auth\Middleware\Authenticate`) depending on how the stack
+        // resolves under Testbench — accept BOTH (mirrors AiActComplianceMountingTest).
+        $this->assertTrue(
+            in_array('auth', $middleware, true)
+                || in_array(\Illuminate\Auth\Middleware\Authenticate::class, $middleware, true),
+            'The SPA must require authentication (auth alias or Authenticate FQCN).',
+        );
         $this->assertContains(
             'can:viewAiFinOps',
             $middleware,
