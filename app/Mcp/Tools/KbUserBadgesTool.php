@@ -23,7 +23,7 @@ use Laravel\Mcp\Server\Tools\Annotations\IsReadOnly;
  * returns `enabled:false` with an empty roster. Tenant-scoped via
  * EnforceMcpScope (R30).
  */
-#[Description('List a contributor gamification badges within the current tenant: each badge with its earned flag and progress toward the threshold. Returns enabled:false when gamification is turned off.')]
+#[Description("List a contributor's gamification badges within the current tenant: each badge with its earned flag and progress toward the threshold. Returns enabled:false when gamification is turned off.")]
 #[IsReadOnly]
 #[IsIdempotent]
 class KbUserBadgesTool extends Tool

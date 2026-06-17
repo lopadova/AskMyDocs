@@ -99,8 +99,8 @@ final class GamificationService
             $isEarned = $earned->has($badge['key']) || $value >= $badge['threshold'];
             $badges[] = [
                 'key' => $badge['key'],
-                'label' => $badge['label'] ?? $badge['key'],
-                'icon' => $badge['icon'] ?? '🏅',
+                'label' => is_string($badge['label'] ?? null) ? $badge['label'] : $badge['key'],
+                'icon' => is_string($badge['icon'] ?? null) ? $badge['icon'] : '🏅',
                 'metric' => $badge['metric'],
                 'threshold' => $badge['threshold'],
                 'progress' => min($value, $badge['threshold']),

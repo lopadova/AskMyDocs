@@ -16,10 +16,12 @@ use Illuminate\Routing\Controller;
  * for the caller — all three delegate to {@see GamificationService}.
  *
  * `/api/me/badges` — the badge catalog with earned/progress for the caller.
- * Read-only (awarding is the gamification:recompute command's job; the earned
- * flag also reflects current thresholds live). When gamification is disabled
- * returns `enabled:false` + an empty list so the FE hides the section. R30 via
- * the service; auth:sanctum.
+ * Read-only: persistent awarding is the gamification:recompute command's job,
+ * but a badge also reads as earned the moment the caller's live metric meets the
+ * threshold (earned = has an award row OR currently above threshold), so the
+ * dashboard never lags a nightly run. When gamification is disabled returns
+ * `enabled:false` + an empty list so the FE hides the section. R30 via the
+ * service; auth:sanctum.
  */
 final class UserBadgesController extends Controller
 {
