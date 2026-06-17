@@ -520,7 +520,7 @@ If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini
 
 ### AI FinOps — spend governance (v8.14)
 
-Cost governance over **every** AI call is provided by
+Cost governance over AI spend is provided by
 [`padosoft/laravel-ai-finops`](https://github.com/padosoft/laravel-ai-finops)
 (+ the companion React admin panel
 [`padosoft/laravel-ai-finops-admin`](https://github.com/padosoft/laravel-ai-finops-admin)):
