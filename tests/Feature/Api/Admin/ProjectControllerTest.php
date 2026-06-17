@@ -127,6 +127,17 @@ final class ProjectControllerTest extends TestCase
             ->assertJsonPath('data.description', 'Hello');
     }
 
+    public function test_update_rejects_blank_name(): void
+    {
+        // store() requires a non-empty name; update() must not let a PATCH blank it.
+        $admin = $this->makeAdmin();
+        $p = Project::create(['project_key' => 'surface-kb', 'name' => 'Surface']);
+
+        $this->actingAs($admin)->patchJson("/api/admin/projects/{$p->id}", [
+            'name' => '',
+        ])->assertStatus(422)->assertJsonValidationErrors('name');
+    }
+
     public function test_update_rejects_key_change(): void
     {
         $admin = $this->makeAdmin();

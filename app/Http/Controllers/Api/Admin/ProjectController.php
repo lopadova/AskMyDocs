@@ -126,7 +126,10 @@ final class ProjectController extends Controller
         }
 
         $validated = $request->validate([
-            'name' => ['sometimes', 'string', 'max:200'],
+            // `required` under `sometimes` fires only when the key is present and
+            // forbids an empty/null value — mirrors store()'s non-empty contract
+            // so a PATCH can't blank a name that creation would have rejected.
+            'name' => ['sometimes', 'required', 'string', 'max:200'],
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
