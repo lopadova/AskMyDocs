@@ -11,9 +11,11 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 
 ## Waves
 - **W1 Foundation (rebase #304 + bridge)** — 🟡
-  - [ ] W1 branch created
-  - [ ] Merge origin/feature/v8.14, resolve 8 conflict files
-  - [ ] Renumber v8.14 → v8.16 across docs
+  - [x] W1 branch created (`feature/v8.16/W1-foundation` from origin/feature/v8.16)
+  - [x] Merge origin/feature/v8.14 — only README.md conflicted (changelog); resolved newest-first. Committed 21410abc.
+  - [x] Renumber v8.14 → v8.16 (README header+changelog, .env.example, CLAUDE.md §3, bootstrap/app.php comment)
+  - [x] Verified all FinOps additions survived merge (scheduler slots, matrix rows, gates, alias, docs.json nav)
+  - [ ] composer install finops packages locally (in progress)
   - [ ] Local tests green (phpunit finops + matrix + vitest)
   - [ ] R40 local critic loop clean
   - [ ] PR opened → feature/v8.16, R36 loop, auto-merge
