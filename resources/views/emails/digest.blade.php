@@ -30,8 +30,9 @@
                 {{ $d['narrative'] }}
             </div>
         @elseif(!empty($d['quiet']))
+            @php($periodLabel = ['weekly' => 'week', 'monthly' => 'month'][$d['frequency'] ?? ''] ?? 'period')
             <div style="background:#fff;border-radius:14px;padding:20px 22px;margin-top:16px;font-size:15px;line-height:1.55;color:#52525b;border:1px solid #ece9f6;">
-                A quiet {{ $d['frequency'] ?? 'week' }} — no new documents, no stale reviews, and no unanswered questions. Ask your KB anything to keep it growing.
+                A quiet {{ $periodLabel }} — no new documents, no stale reviews, and no unanswered questions. Ask your KB anything to keep it growing.
             </div>
         @endif
 

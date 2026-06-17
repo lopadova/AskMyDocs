@@ -41,7 +41,7 @@ final class DigestPruneFeedCommand extends Command
         $query = EngagementDigestFeedEntry::query()->where('created_at', '<', $cutoff);
 
         if ($this->option('dry-run')) {
-            $this->info("Would prune {$query->count()} digest feed entr(ies) older than {$days} day(s).");
+            $this->info("Would prune {$query->count()} digest feed entries older than {$days} day(s).");
 
             return self::SUCCESS;
         }
@@ -56,7 +56,7 @@ final class DigestPruneFeedCommand extends Command
             $deleted += EngagementDigestFeedEntry::query()->whereIn('id', $ids)->delete();
         } while (count($ids) === 1000);
 
-        $this->info("Pruned {$deleted} digest feed entr(ies) older than {$days} day(s).");
+        $this->info("Pruned {$deleted} digest feed entries older than {$days} day(s).");
 
         return self::SUCCESS;
     }
