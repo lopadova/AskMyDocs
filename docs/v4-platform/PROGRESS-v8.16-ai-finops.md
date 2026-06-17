@@ -22,7 +22,7 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 
 ## Waves
 - **W1 Foundation (rebase #304 + bridge)** — 🟡
-  - [x] W1 branch created (`feature/v8.16/W1-foundation` from origin/feature/v8.16)
+  - [x] W1 branch created (`feature/v8.16-W1-foundation` — hyphen form per the Branches note above — from origin/feature/v8.16)
   - [x] Merge origin/feature/v8.14 — only README.md conflicted (changelog); resolved newest-first. Committed 21410abc.
   - [x] Renumber v8.14 → v8.16 (README header+changelog, .env.example, CLAUDE.md §3, bootstrap/app.php comment)
   - [x] Verified all FinOps additions survived merge (scheduler slots, matrix rows, gates, alias, docs.json nav)
@@ -30,14 +30,18 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
   - [x] Local tests green: tests/Feature/FinOps + AdminAuthorizationMatrixTest = 15 tests, 276 assert
   - [x] R40 local critic (code-reviewer subagent; copilot-cli was 402/out-of-budget per #304) — fixed 1 must-fix (incomplete v8.14→v8.16 sweep in MaintenanceCommandController + 5 files) + changelog tense
   - [x] PR #314 opened → feature/v8.16, reviewer copilot-pull-request-reviewer
-  - [ ] 🔵 **CI on #314 RED — INVESTIGATE FIRST (R22, artefact-first).** PHPUnit 8.3/8.4/8.5 + Vitest
-        FAIL on the FULL suite (local targeted finops+matrix passed, so it's something the full
-        suite/CI surfaces — possibly the laravel/framework 13.8→13.16 resolve, ai_finops_* migration
-        interaction on the full SQLite run, or a pre-existing main failure). Pull `gh run view
-        --job <id> --log-failed`, the playwright-report artefact, and the inline Laravel log dump
-        BEFORE editing. Run IDs at hand-off: failing 27719790194; a re-run 27719854163 was pending.
-        Also confirm whether main itself is green (rule out inherited failure) by checking the last
-        main CI run.
+  - [x] ✅ **CI investigation RESOLVED (R22, artefact-first) — there was NO real failure.** The
+        red `gh pr checks` rows were a **cancelled duplicate run**, not a test failure. tests.yml
+        fires on BOTH `push` and `pull_request`; a `concurrency` group keyed on the head SHA cancels
+        one of the two (documented in the workflow's own comment block). The `pull_request` run
+        (`27720074143`, then `27724334032`) ran the FULL suite green (PHPUnit 8.3/8.4/8.5 + Playwright
+        + Vitest + RAG, 8–18 min each). The `push` run (`27720068198`, conclusion=**cancelled**)
+        fast-failed in 3–8 s because it was cancelled at startup — never ran a test. Verified both
+        runs share head SHA f32b6c0a. `mergeStateStatus=UNSTABLE` is purely the cancelled run
+        attached as a non-success check; merge is not blocked. Lesson: read `conclusion`
+        (cancelled≠failure), not the `gh pr checks` fail label.
+  - [x] Copilot R3 review: 1 nit (FinOpsAuthorize docblock — `isMethodSafe()` also treats TRACE as
+        safe per RFC 7231/Symfony). Fixed in b0e97cda, re-requested review.
   - [ ] R36 cloud loop until 0 must-fix + CI green → auto-merge (R: auto-merge when ready)
   - [ ] tag v8.16.0-rc1 at the W1 closure SHA on feature/v8.16 (R39)
 - **W2 Full SDK migration** — ⬜
