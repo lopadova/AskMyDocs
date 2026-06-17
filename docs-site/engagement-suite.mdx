@@ -1,0 +1,188 @@
+---
+title: "Engagement & Intelligence Suite"
+description: "Proactive KB digests, contributor analytics, admin + user dashboards, and opt-in gamification — the layer that turns a knowledge base into a living system."
+icon: "activity"
+---
+
+## Motivation / problem
+
+A knowledge base does not fail loudly. It rots quietly: a decision is superseded
+but the old doc still ranks; a runbook hasn't been touched in nine months; the
+same three questions get asked every week and never get a canonical answer; the
+two people who write everything burn out while everyone else only reads. None of
+this shows up in a 200 OK.
+
+Stack Overflow for Teams, Zendesk and Notion each surface a *slice* of this — a
+thin "low activity this week" email, a ticket backlog, an edit history. AskMyDocs
+already computes far richer raw signals (canonical health scores, decision-debt,
+search-failure gaps, citation impact, promotion events). The **Engagement &
+Intelligence Suite** is the packaging, delivery and feedback layer that makes
+those signals *act on people*: it tells the right person what changed, what is
+decaying, what is unanswered — across email, Discord, Slack, Teams and an in-app
+feed — and reflects each contributor's impact back to them on a dashboard.
+
+## Theory & background
+
+The suite rests on one append-only primitive — the **contribution event** — and
+two derived layers built on top of it.
+
+- **Contribution events** (`kb_contribution_events`) are an immutable per-user
+  log: *who* did *what* (`created | modified | promoted | reviewed | answered |
+  cited`) to *which* document, with a `weight`. They are written from the
+  existing ingest / promotion / citation paths — never a new write path — so the
+  log is a faithful projection of real activity (the canonical markdown remains
+  the source of truth; this table is rebuildable).
+- **Engagement metrics** aggregate those events in SQL (R3 — never in PHP) into
+  contributor stats, citation impact, coverage %, answer rate and trends. A daily
+  snapshot (`kb_engagement_snapshots`) freezes the rollup so dashboards and
+  digests read O(1) instead of re-scanning the log.
+- **Gamification** (opt-in) derives badges from the same metrics. It computes
+  nothing new — it is a *view* over engagement, gated off by default.
+
+Everything composes into a **digest**: a tenant- and user-scoped bundle of typed
+sections (new/modified/promoted docs · stale/obsolete review queue · top
+unanswered questions · KB-health trend · "your attention needed") rendered per
+channel and optionally narrated by an LLM.
+
+## Design
+
+Three service clusters sit over the existing signal sources and converge on the
+digest pipeline and the dashboards.
+
+```mermaid
+flowchart LR
+  subgraph Signals
+    CE[kb_contribution_events]
+    HS[KbHealthService]
+    AI[AiInsightsService]
+    GAP[search-failure gaps]
+  end
+  CE --> EMS[EngagementMetricsService]
+  HS --> EMS
+  EMS --> SNAP[(kb_engagement_snapshots)]
+  EMS --> GS[GamificationService]
+  GS --> BADGE[(kb_user_badges)]
+
+  EMS --> DC[DigestComposer]
+  HS --> DC
+  AI --> DC
+  GAP --> DC
+  GS --> DC
+  DC --> NAR[AiDigestNarrator<br/>opt-in, dedicated model]
+  NAR --> REG[DigestRendererRegistry]
+  DC --> REG
+  REG -->|email| CH[ChannelRegistry]
+  REG -->|Discord/Slack/Teams| CH
+  REG -->|in-app| FEED[(engagement_digest_feed)]
+
+  EMS --> ADMIN[Admin dashboard]
+  EMS --> USER[/app/me dashboard]
+  GS --> USER
+```
+
+- **`EngagementMetricsService`** — DB-aggregated contributor stats, leaderboard,
+  coverage, answer rate, trend series. Tenant-scoped (R30).
+- **`DigestComposer`** assembles a typed `DigestPayload` from the existing
+  services — no signal is recomputed.
+- **`AiDigestNarrator`** adds an optional "what changed & why it matters" summary
+  via a **dedicated** digest model, and degrades to deterministic copy when
+  disabled or unreachable (R14/R43).
+- **`DigestRendererRegistry`** is an R23 strategy registry — FQCN validated at
+  boot, non-overlapping `supports()` — with one renderer per channel reusing the
+  existing notification channel adapters for transport.
+- **`GamificationService`** derives badges from the same metrics; default-off.
+
+Every capability is **tri-surface** (R44): an Artisan command, an HTTP endpoint,
+and an MCP tool, all delegating to the same core service.
+
+## Data model / contract
+
+All five tables are tenant-aware (`tenant_id` + composite uniques starting with
+it, `BelongsToTenant`; R30/R31).
+
+| Table | Purpose |
+|---|---|
+| `kb_contribution_events` | Append-only per-user activity log (event, document_id, user_id, weight, created_at). |
+| `kb_engagement_snapshots` | Daily per-tenant rollup (contributors, activity, coverage, answer rate, leaderboard, health). |
+| `digest_preferences` | Per-user `frequency` (weekly/monthly/off) + per-section toggles. |
+| `engagement_digest_feed` | In-app digest entries (retention-pruned). |
+| `kb_user_badges` | Awarded gamification badges (opt-in). |
+
+### Tri-surface map
+
+| Capability | Command | HTTP | MCP |
+|---|---|---|---|
+| Engagement metrics | `engagement:compute` | `GET /api/admin/engagement/{summary,leaderboard,series}` | `KbEngagementSummaryTool` |
+| Digest | `digest:send`, `digest:prune-feed` | `GET /api/admin/digest/preview`, `GET /api/me/digest/latest` | `KbDigestPreviewTool` |
+| Digest preferences | — | `GET\|PUT /api/me/digest-preferences` | — |
+| User dashboard | — | `GET /api/me/dashboard` | — |
+| Gamification badges | `gamification:recompute` | `GET /api/me/badges` | `KbUserBadgesTool` |
+
+## Decision rationale (ADR-style)
+
+- **An append-only event log, not mutable counters.** Counters drift and can't be
+  re-derived; an immutable log is rebuildable from the canonical markdown + git
+  and supports any future metric without a migration. Aligns with the
+  "DB is a projection" principle (see [Architecture → Decisions](/architecture/decisions)).
+- **Daily snapshot over live aggregation.** Dashboards and digests must be fast
+  and cheap; a nightly snapshot trades freshness (≤24h) for O(1) reads. The live
+  path remains available as a fallback when no snapshot exists yet (fresh
+  install) or a snapshot's metrics are null (partial-compute).
+- **Reuse the notification channel adapters, add only renderers.** The transport
+  (Discord webhook, Slack Block Kit, Teams Adaptive Card, email) already exists
+  and is hardened; the suite adds *presentation* (a renderer per channel) behind
+  an R23 registry, not new transport.
+- **A dedicated, free digest model.** Digests are summary prose, not
+  latency/quality-critical, so the narrator defaults to a free OpenRouter model —
+  it never competes with the primary chat model and costs ≈$0. See
+  [Digests](/digests).
+- **Gamification is off by default and computes nothing new.** It is a view over
+  engagement metrics, gated by `KB_GAMIFICATION_ENABLED` and tested in both
+  states (R43). Teams that want quiet analytics get them; teams that want badges
+  opt in. See [Gamification](/gamification).
+
+## Worked example
+
+Compute today's snapshot for one tenant, preview the weekly digest without
+sending, then award badges:
+
+```bash
+# 1. Freeze today's engagement metrics for a tenant (7-day activity window).
+php artisan engagement:compute --tenant=acme --days=7
+
+# 2. Compose + render the weekly digest for every channel — print, don't send.
+php artisan digest:send --frequency=weekly --tenant=acme --preview
+
+# 3. (opt-in) Award gamification badges across contributors.
+KB_GAMIFICATION_ENABLED=true php artisan gamification:recompute --tenant=acme
+```
+
+Read the same metrics over HTTP (admin) or MCP (agent):
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://kb.example.com/api/admin/engagement/summary?days=7"
+```
+
+## Gotchas & operations
+
+<Warning>
+The contribution log is written from the existing ingest/promote/citation paths.
+If you add a **new** write path to the KB, hook it into the contribution recorder
+or its activity will be invisible to engagement, digests and gamification.
+</Warning>
+
+- The daily snapshot runs at **05:15** (`engagement_compute`); the weekly/monthly
+  digests and the gamification recompute (**05:20**) run shortly after, so they
+  read a fresh snapshot. See [Scheduler & Maintenance](/scheduler-and-maintenance).
+- Every new knob is documented in [Configuration](/configuration) and defaults to
+  a safe value (narrative on with a free model; gamification off; feed retention
+  120 days).
+- All reads are tenant-scoped; two tenants sharing a `project_key` never see each
+  other's contributors. See [Multi-tenant isolation](/multi-tenant-isolation).
+
+<CardGroup cols={3}>
+  <Card title="Digests" icon="mail" href="/digests">Multi-channel rich digests + AI narrative.</Card>
+  <Card title="Dashboards" icon="chart-line" href="/dashboards">Admin + user metrics, the "wow" catalog.</Card>
+  <Card title="Gamification" icon="award" href="/gamification">Opt-in badges over engagement metrics.</Card>
+</CardGroup>

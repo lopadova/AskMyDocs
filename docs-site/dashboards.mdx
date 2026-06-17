@@ -1,0 +1,107 @@
+---
+title: "Engagement Dashboards"
+description: "An admin analytics dashboard and a personal 'My KB' dashboard — useful and aesthetic metrics over the contribution log and canonical health."
+icon: "chart-line"
+---
+
+## Motivation / problem
+
+Metrics that live only in a digest are seen once a week and forgotten. Two
+audiences need them on demand: an **operator** asking "is our knowledge base
+healthy, and who is keeping it alive?", and a **contributor** asking "what's my
+impact, and what should I fix next?". The suite ships a dashboard for each, both
+reading the same engagement metrics — so the numbers always agree.
+
+## Theory & background
+
+Both dashboards read the daily snapshot (`kb_engagement_snapshots`) with a live
+fallback, and present it through the existing chart primitives (`KpiCard`,
+`ChartCard`, lazy-loaded recharts). The admin view is tenant-wide; the personal
+view (`/app/me`) is scoped to the authenticated user. Every panel exposes an
+explicit `data-state` (`loading | ready | error | empty`) and stable testids
+(R11) so the surfaces are observable and testable (R12/R16).
+
+## Design
+
+```mermaid
+flowchart LR
+  SNAP[(kb_engagement_snapshots)] --> EMS[EngagementMetricsService]
+  CE[kb_contribution_events] -.live fallback.-> EMS
+  EMS --> ADMINAPI[/api/admin/engagement/*]
+  EMS --> MEAPI[/api/me/dashboard]
+  GS[GamificationService] --> BADGES[/api/me/badges]
+  ADMINAPI --> ADMIN[Admin Engagement panel]
+  MEAPI --> ME[My KB dashboard]
+  BADGES --> ME
+```
+
+## Data model / contract
+
+**Admin** (`GET /api/admin/engagement/*`, RBAC-gated, R32):
+
+| Endpoint | Returns |
+|---|---|
+| `summary` | KPI tiles + current snapshot metrics (contributors, new/modified/promoted, answer rate, coverage, avg decision-debt). |
+| `leaderboard?days=&limit=` | Top contributors by weighted score. |
+| `series?weeks=` | Trend series for the charts. |
+
+**User** (`GET /api/me/*`, `auth:sanctum`):
+
+| Endpoint | Returns |
+|---|---|
+| `dashboard?days=` | Your score, rank, authored docs, questions asked, active days, citation impact, and your docs needing review. |
+| `badges` | The badge catalog with earned/progress (empty + `enabled:false` when gamification is off). |
+
+### Metrics catalog (the "wow")
+
+- **Admin:** contributor leaderboard · knowledge-coverage % · question→answer
+  rate · decision-debt (staleness) trend · KB-health trend · new/modified/
+  promoted counts.
+- **User:** your contribution score & rank · docs authored · questions asked ·
+  active days · your impact (times your docs were cited) · your docs needing
+  review · your badges (when gamification is on).
+
+## Decision rationale (ADR-style)
+
+- **One metrics service, two views.** The admin and user dashboards both call
+  `EngagementMetricsService`, so a contributor's "score" on their dashboard is the
+  exact number that ranks them on the admin leaderboard — no parallel math.
+- **Snapshot-first with a live fallback.** Reads are O(1) off the daily snapshot;
+  a fresh install (no snapshot yet) or a partial-compute (null metrics) falls back
+  to live aggregation rather than rendering zeros.
+- **Reuse the chart primitives.** `KpiCard` / `ChartCard` / lazy recharts are the
+  same components the existing admin dashboard uses, so the new panels inherit the
+  loading/empty/error conventions and a11y for free (R15).
+- **Personal data bypasses only the access scope it must.** The "your docs"
+  panel reads the caller's own document titles by lifting the access-scope global
+  scope while keeping the tenant scope — never cross-tenant.
+
+## Worked example
+
+```bash
+# Admin: this week's leaderboard, top 5.
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" \
+  "https://kb.example.com/api/admin/engagement/leaderboard?days=7&limit=5"
+
+# User: my last-30-days dashboard.
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://kb.example.com/api/me/dashboard?days=30"
+```
+
+In the SPA, the personal dashboard lives at `/app/me`; the admin Engagement panel
+at `/app/admin/engagement`.
+
+## Gotchas & operations
+
+<Note>
+The badges section on `/app/me` renders **nothing** when gamification is disabled
+(the default) — it is not an empty box, it is absent. See [Gamification](/gamification).
+</Note>
+
+- A real backend failure surfaces as `data-state="error"` with a retry, never a
+  silent empty panel (R14).
+- The dashboards read the snapshot produced at 05:15; before the first nightly run
+  they use the live fallback, so day-zero numbers are correct, just uncached.
+
+See the [Engagement Suite overview](/engagement-suite) and the
+[Admin panel guide](/admin-panel).

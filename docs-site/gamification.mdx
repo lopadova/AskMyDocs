@@ -1,0 +1,131 @@
+---
+title: "Gamification (opt-in)"
+description: "A tasteful, default-off contributor-motivation layer: badges awarded when all-time engagement crosses a configurable threshold — a view over engagement metrics, computing nothing new."
+icon: "award"
+---
+
+## Motivation / problem
+
+Most knowledge bases are written by a handful of people while everyone else only
+reads. Recognition is the cheapest lever to widen that base — but heavy-handed
+gamification (points spam, public shaming leaderboards) does more harm than good
+in a professional tool. AskMyDocs ships a *tasteful*, **opt-in** layer: a small
+set of badges that reflect real contribution, off by default, fully tunable.
+
+## Theory & background
+
+Gamification computes **nothing new**. A badge is a threshold over an all-time
+engagement metric already derived from the contribution log:
+
+| Metric | Definition (all-time, SQL-aggregated) |
+|---|---|
+| `score` | Sum of contribution-event `weight`. |
+| `events` | Count of contribution events. |
+| `authored` | Distinct documents created or promoted. |
+| `active_days` | Distinct calendar days with activity. |
+
+A badge is **earned** when the user has an award row *or* their live metric
+currently meets the threshold — so the dashboard never lags a nightly run.
+Awarding is idempotent (a unique `(tenant, user, badge)` constraint +
+`insertOrIgnore`).
+
+## Design
+
+```mermaid
+flowchart LR
+  CE[kb_contribution_events] --> GS[GamificationService]
+  CFG[config kb.gamification.badges] --> GS
+  GS -->|evaluate, idempotent| BADGE[(kb_user_badges)]
+  GS -->|badgesFor| HTTP[/api/me/badges]
+  GS -->|badgesFor| MCP[KbUserBadgesTool]
+  CMD[gamification:recompute] --> GS
+  HTTP --> UI[My KB dashboard · MeBadges]
+```
+
+When `KB_GAMIFICATION_ENABLED=false` (the default) `evaluate()` awards nothing and
+`badgesFor()` returns `enabled:false` with an empty roster, so the dashboard
+section is absent. Both states are tested (R43).
+
+## Data model / contract
+
+The default catalog (`config/kb.php` → `gamification.badges`) — fully operator-tunable:
+
+| Badge | Icon | Metric | Threshold |
+|---|---|---|---|
+| `first_contribution` | 🌱 | `events` | 1 |
+| `contributor` | ✍️ | `score` | 25 |
+| `prolific` | 🚀 | `score` | 100 |
+| `author` | 📚 | `authored` | 5 |
+| `regular` | 🔥 | `active_days` | 5 |
+
+| Knob | Env | Default |
+|---|---|---|
+| `enabled` | `KB_GAMIFICATION_ENABLED` | `false` |
+| `badges` | — (config catalog) | the five above |
+
+**Surfaces (tri-surface, R44):**
+
+- **Command:** `gamification:recompute {--tenant=}` — per-tenant, no-op when
+  disabled; scheduled nightly at 05:20.
+- **HTTP:** `GET /api/me/badges` — the caller's catalog with earned/progress.
+- **MCP:** `KbUserBadgesTool` — badges for any `user_id` in the tenant.
+
+All three delegate to the single `GamificationService`.
+
+## Decision rationale (ADR-style)
+
+- **Default-off, both states tested (R43).** Gamification is a cultural choice, not
+  a default. A fresh deploy ships with it off and the OFF path is covered by a test
+  so flipping the knob holds no surprises.
+- **A view, not a new signal.** Badges read the same metrics the dashboards and
+  digests use; there is no separate scoring system to keep in sync.
+- **Config-driven catalog.** Labels, icons, metrics and thresholds live in config
+  so an operator can retune (and per-tenant overrides can layer on later) without
+  a code change. Malformed entries are defensively dropped, never crash.
+- **Single-sourced awarding.** The nightly command and the live `/api/me/badges`
+  read both call the same evaluation, so a badge can't appear in one surface and
+  not the other.
+
+## Worked example
+
+Enable gamification and award badges for one tenant:
+
+```bash
+# .env
+KB_GAMIFICATION_ENABLED=true
+
+php artisan gamification:recompute --tenant=acme
+# [acme] contributors=18 badges_awarded=23
+```
+
+Read the caller's badges (progress shown for locked ones):
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" https://kb.example.com/api/me/badges
+# {"enabled":true,"badges":[{"key":"contributor","earned":true,"progress":25,"threshold":25}, ...]}
+```
+
+Retune the catalog — e.g. a stricter "author" badge:
+
+```php
+// config/kb.php → gamification.badges
+['key' => 'author', 'label' => 'Author', 'icon' => '📚', 'metric' => 'authored', 'threshold' => 10],
+```
+
+## Gotchas & operations
+
+<Warning>
+The catalog is operator input. Entries missing `key` / `metric` / `threshold`
+(or with non-scalar values) are silently dropped rather than crashing the awarding
+loop or the dashboard — but a typo means a badge simply won't appear. Validate
+your catalog after editing.
+</Warning>
+
+- With gamification off, the `/app/me` badges section does not render at all (not
+  an empty box) and `gamification:recompute` is a clean no-op.
+- The nightly recompute evaluates one contributor at a time (bounded by contributor
+  count) — a deliberate trade-off that keeps the awarding logic single-sourced with
+  the live read path. See [Scheduler & Maintenance](/scheduler-and-maintenance).
+
+See the [Engagement Suite overview](/engagement-suite) and
+[Dashboards](/dashboards) for where badges surface.
