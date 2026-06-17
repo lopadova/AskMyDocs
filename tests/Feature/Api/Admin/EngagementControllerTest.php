@@ -199,6 +199,46 @@ final class EngagementControllerTest extends TestCase
         ]);
     }
 
+    public function test_promotion_event_resolves_document_id_from_audit(): void
+    {
+        config()->set('askmydocs.engagement.enabled', true);
+
+        $doc = \App\Models\KnowledgeDocument::create([
+            'project_key' => 'eng',
+            'source_path' => 'docs/dec-x.md',
+            'source_type' => 'markdown',
+            'title' => 'Decision X',
+            'mime_type' => 'text/markdown',
+            'language' => 'en',
+            'access_scope' => 'internal',
+            'status' => 'active',
+            'document_hash' => hash('sha256', 'dec-x'),
+            'version_hash' => hash('sha256', 'dec-x'),
+            'metadata' => [],
+            'doc_id' => 'dec-x',
+            'slug' => 'dec-x',
+            'indexed_at' => now(),
+        ]);
+
+        // A 'promoted' audit row carries doc_id/slug, not the numeric id; the
+        // hook must resolve it so `authored` counts the promotion (R16).
+        \App\Models\KbCanonicalAudit::create([
+            'tenant_id' => 'default',
+            'project_key' => 'eng',
+            'doc_id' => 'dec-x',
+            'slug' => 'dec-x',
+            'event_type' => 'promoted',
+            'actor' => '7',
+            'created_at' => now(),
+        ]);
+
+        $this->assertDatabaseHas('kb_contribution_events', [
+            'event' => 'promoted',
+            'document_id' => $doc->id,
+            'user_id' => 7,
+        ]);
+    }
+
     public function test_guest_gets_401(): void
     {
         $this->getJson('/api/admin/engagement/summary')->assertUnauthorized();
