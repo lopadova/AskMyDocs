@@ -116,20 +116,48 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
     }
 
     function handleRemove(itemId: string) {
-        if (!batchId) return;
+        if (!batchId || !staged) return;
+        const removedIndex = staged.items.findIndex((i) => i.id === itemId);
+        if (removedIndex === -1) return;
+        const removed = staged.items[removedIndex];
+        if (!removed) return;
+
+        setActionError(null);
         // Optimistic: drop the row now; dedupe by id so it appears at most once.
         setStaged((prev) =>
             prev ? { ...prev, items: prev.items.filter((i) => i.id !== itemId) } : prev,
         );
-        removeMut.mutate({ batchId, itemId });
+        removeMut.mutate(
+            { batchId, itemId },
+            {
+                // R14: a failed DELETE must NOT read as success. The file is still
+                // staged server-side and would be ingested on commit, so restore
+                // the row at its original position and surface the error.
+                onError: (err) => {
+                    setStaged((prev) => {
+                        if (!prev || prev.items.some((i) => i.id === itemId)) return prev;
+                        const items = [...prev.items];
+                        items.splice(Math.min(removedIndex, items.length), 0, removed);
+                        return { ...prev, items };
+                    });
+                    setActionError(errMessage(err));
+                },
+            },
+        );
     }
 
     function handleCommit() {
         if (!batchId) return;
         setActionError(null);
         setPhase('committing');
+        // Send the currently-visible staged ids so the BE optimistic-concurrency
+        // guard can 409 if the set drifted (e.g. an in-flight or silently-failed
+        // remove) instead of ingesting a stale set the operator no longer sees.
+        const expectedItemIds = (staged?.items ?? [])
+            .filter((i) => i.status === 'staged')
+            .map((i) => i.id);
         commitMut.mutate(
-            { batchId },
+            { batchId, expectedItemIds },
             {
                 onSuccess: (resp) => {
                     setStaged(resp);
@@ -375,7 +403,7 @@ export function UploadModal({ seed, defaultProject, projectOptions, onClose, onC
                         </>
                     )}
                     {(phase === 'committing' || phase === 'progress') && (
-                        <button type="button" data-testid="kb-upload-close" aria-label="Close (keeps ingesting)" onClick={onClose} style={secondaryBtn}>
+                        <button type="button" data-testid="kb-upload-close-keep-ingesting" aria-label="Close (keeps ingesting)" onClick={onClose} style={secondaryBtn}>
                             Close (keeps ingesting)
                         </button>
                     )}
