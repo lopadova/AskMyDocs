@@ -814,7 +814,7 @@ function AdminEvidenceRiskReviewRoute() {
 }
 
 const adminEvidenceRiskReviewRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/evidence-risk-review',
     component: AdminEvidenceRiskReviewRoute,
 });
@@ -1061,7 +1061,7 @@ function AdminEngagementRoute() {
     );
 }
 const adminEngagementRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/engagement',
     component: AdminEngagementRoute,
 });
@@ -1164,6 +1164,8 @@ const teamChildren = [
     adminNotificationsRoute,
     adminNotificationPreferencesRoute,
     adminNotificationDefaultsRoute,
+    adminEngagementRoute,
+    adminEvidenceRiskReviewRoute,
 ];
 
 const routeTree = rootRoute.addChildren([
@@ -1174,7 +1176,8 @@ const routeTree = rootRoute.addChildren([
     appRoute.addChildren([
         appIndexRoute,
         teamRoute.addChildren(teamChildren),
-        adminEvidenceRiskReviewRoute,
+        digestRoute,
+        meDashboardRoute,
     ]),
 ]);
 
