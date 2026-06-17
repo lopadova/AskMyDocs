@@ -119,6 +119,25 @@ final class EngagementControllerTest extends TestCase
         $snap->assertOk()->assertJsonPath('source', 'snapshot');
     }
 
+    public function test_summary_falls_back_to_live_when_snapshot_metrics_null(): void
+    {
+        $admin = $this->makeAdmin();
+        $this->recordEvent('created', 7);
+
+        // A partial-compute snapshot with null metrics must NOT be served as
+        // source=snapshot with an empty body — it falls back to live (R14).
+        KbEngagementSnapshot::create([
+            'tenant_id' => 'default',
+            'snapshot_date' => now()->toDateString(),
+            'metrics' => null,
+            'computed_at' => now(),
+        ]);
+
+        $res = $this->actingAs($admin)->getJson('/api/admin/engagement/summary');
+        $res->assertOk()->assertJsonPath('source', 'live');
+        $this->assertSame(1, $res->json('metrics.new_docs'));
+    }
+
     public function test_leaderboard_ranked_desc_by_score(): void
     {
         $admin = $this->makeAdmin();

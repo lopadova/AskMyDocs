@@ -28,8 +28,10 @@ class EngagementController extends Controller
 
     /**
      * Latest engagement snapshot (the daily-computed row). Falls back to a live
-     * compute when no snapshot exists yet (fresh install), so the dashboard is
-     * never blank — but surfaces `source` so the caller knows which it got.
+     * compute when no snapshot exists yet (fresh install) OR when the snapshot's
+     * metrics column is null/empty (partial-compute), so the dashboard is never
+     * blank — and surfaces `source` so the caller knows which it got. Mirrors
+     * {@see \App\Mcp\Tools\KbEngagementSummaryTool}.
      */
     public function summary(Request $request): JsonResponse
     {
@@ -38,12 +40,15 @@ class EngagementController extends Controller
             ->latestSnapshot()
             ->first();
 
-        if ($snapshot !== null) {
+        $snapshotMetrics = $snapshot?->metrics;
+        $usingSnapshot = $snapshotMetrics !== null && $snapshotMetrics !== [];
+
+        if ($usingSnapshot) {
             return response()->json([
                 'source' => 'snapshot',
                 'snapshot_date' => $snapshot->snapshot_date->toDateString(),
                 'computed_at' => $snapshot->computed_at?->toIso8601String(),
-                'metrics' => $snapshot->metrics ?? [],
+                'metrics' => $snapshotMetrics,
             ]);
         }
 

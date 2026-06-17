@@ -86,8 +86,10 @@ export function DigestPreferences(): ReactNode {
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();
-                        // Send the explicit selection (empty array = "no
-                        // sections"); the BE keeps null only for never-configured.
+                        // Always send an explicit array: an empty array is stored
+                        // verbatim as "no sections" (honest opt-out). The BE's
+                        // null/omitted case — which this form never sends — instead
+                        // resolves to "all sections" on read.
                         saveMut.mutate({ frequency, sections });
                     }}
                 >

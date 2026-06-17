@@ -65,6 +65,8 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/kb/health' => ['admin', 'super-admin'],
             // v8.15/W1 — engagement analytics.
             '/api/admin/engagement/summary' => ['admin', 'super-admin'],
+            // v8.15/W4 — engagement leaderboard.
+            '/api/admin/engagement/leaderboard' => ['admin', 'super-admin'],
             // v8.15/W4 — engagement trend series.
             '/api/admin/engagement/series' => ['admin', 'super-admin'],
             // v8.15/W2 — digest preview.
