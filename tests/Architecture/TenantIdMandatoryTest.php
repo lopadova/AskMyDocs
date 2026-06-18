@@ -150,6 +150,7 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\Reward::class,
         \App\Models\WaitlistEntry::class,
         \App\Models\AbuseSignal::class,
+        \App\Models\InviteAnalyticsEvent::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
