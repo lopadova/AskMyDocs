@@ -121,8 +121,9 @@ to inspect exactly what each channel will receive before scheduling.
   they read fresh metrics — see [Scheduler & Maintenance](/scheduler-and-maintenance).
 - A never-configured preference (omitted or `null` sections) resolves to **all**
   sections (default-in); an **empty array `[]`** means **none** (explicit
-  opt-out). Don't conflate the two — an unchecked "all" box that sends `[]` honestly
-  means no sections, not silently all.
+  opt-out). Don't conflate the two — the UI sends `null` when every section is
+  selected (so the choice stays "all" and any future catalog addition is
+  auto-included), and `[]` only when the user explicitly unchecks every box.
 - The in-app feed grows unbounded without `digest:prune-feed`; the daily prune
   honours `feed_retention_days`.
 
