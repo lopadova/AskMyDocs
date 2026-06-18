@@ -8,6 +8,7 @@ use App\Models\AbuseSignal;
 use App\Models\InviteCampaign;
 use App\Models\Referral;
 use App\Models\Reward;
+use App\Services\Invite\Support\AssessmentContext;
 use App\Support\TenantContext;
 use Illuminate\Database\QueryException;
 
@@ -22,8 +23,10 @@ use Illuminate\Database\QueryException;
  */
 final class RewardEngine
 {
-    public function __construct(private readonly TenantContext $tenant)
-    {
+    public function __construct(
+        private readonly TenantContext $tenant,
+        private readonly FraudDetector $fraud,
+    ) {
     }
 
     /**
@@ -54,6 +57,19 @@ final class RewardEngine
         if ($party === Reward::PARTY_REFERRER && $this->capReached($referral)) {
             $this->emitCapSignal($referral);
 
+            return null;
+        }
+
+        // Advisory anti-abuse gate on the grant (Phase 4 DoD — reward grant is
+        // gated on assess too). Fail-open: a blocked beneficiary just doesn't
+        // get the grant; the redemption itself already committed.
+        $decision = $this->fraud->assess(new AssessmentContext(
+            tenantId: $this->tenant->current(),
+            action: 'reward_grant',
+            accountId: $beneficiaryId,
+            campaign: $referral->campaign,
+        ));
+        if ($decision->blocked()) {
             return null;
         }
 
