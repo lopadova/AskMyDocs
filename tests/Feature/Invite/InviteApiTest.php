@@ -106,6 +106,34 @@ final class InviteApiTest extends TestCase
             ->assertJson(['data' => ['key' => 'spring-beta', 'status' => 'draft']]);
     }
 
+    public function test_admin_reads_metrics(): void
+    {
+        $this->actingAs($this->adminUser());
+
+        $this->getJson('/api/admin/invite/metrics')
+            ->assertOk()
+            ->assertJsonStructure(['data' => ['codes_issued', 'redemptions', 'k_factor', 'conversion_rate']]);
+    }
+
+    public function test_admin_sends_invitation_idempotently(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        $this->actingAs($this->adminUser());
+
+        $this->postJson('/api/admin/invite/invitations', ['recipient' => 'invitee@example.com'])
+            ->assertStatus(201)
+            ->assertJson(['data' => ['recipient' => 'invitee@example.com', 'status' => 'pending']]);
+    }
+
+    public function test_user_reads_pending_invitation_count(): void
+    {
+        $this->actingAs($this->user('me@example.com'));
+
+        $this->getJson('/api/invite/pending-count')
+            ->assertOk()
+            ->assertJson(['pending' => 0]);
+    }
+
     private function user(string $email): User
     {
         return User::create([

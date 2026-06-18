@@ -29,9 +29,10 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_two_tools(): void
+    public function test_server_registers_exactly_thirty_tools(): void
     {
-        $this->assertCount(32, $this->registeredTools());
+        // 28 KB tools + 2 invite tools (validate + generate), R44 third surface.
+        $this->assertCount(30, $this->registeredTools());
     }
 
     public function test_server_registers_the_gamification_insights_tool(): void
@@ -62,6 +63,7 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         // Invite system (R44 third surface) — validate (read) + generate (write).
         $this->assertContains(\App\Mcp\Tools\InviteValidateCodeTool::class, $this->registeredTools());
         $this->assertContains(\App\Mcp\Tools\InviteGenerateCodesTool::class, $this->registeredTools());
+        $this->assertContains(\App\Mcp\Tools\InviteMetricsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_engagement_summary_tool(): void
