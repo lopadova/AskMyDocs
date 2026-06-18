@@ -32,6 +32,10 @@ use Throwable;
 class ChatTurnCostResolver
 {
     /**
+     * @param  string|null  $traceId  The request-scoped finops trace id, threaded
+     *         into the envelope so the cascade's actual-billed step can correlate
+     *         to the metered call (the computed/estimated fallback is unaffected
+     *         when no billed cost is available at log time).
      * @return ChatTurnCost|null  Null when finops is absent/disabled or pricing fails.
      */
     public function resolve(
@@ -41,6 +45,7 @@ class ChatTurnCostResolver
         ?int $completionTokens,
         ?string $promptText = null,
         ?string $completionText = null,
+        ?string $traceId = null,
     ): ?ChatTurnCost {
         if (! $this->enabled()) {
             return null;
@@ -52,8 +57,14 @@ class ChatTurnCostResolver
                 output: max(0, $completionTokens ?? 0),
             );
 
-            // Draft envelope so the cascade can route pricing by provider/model.
-            $draft = new AiCallEnvelope(traceId: '', provider: $provider, model: $model, tokens: $usage);
+            // Draft envelope so the cascade can route pricing by provider/model
+            // (+ correlate to the metered call by trace id when present).
+            $draft = new AiCallEnvelope(
+                traceId: (string) ($traceId ?? ''),
+                provider: $provider,
+                model: $model,
+                tokens: $usage,
+            );
 
             $resolution = app(CostResolutionService::class)->resolve(
                 $draft,
@@ -63,7 +74,8 @@ class ChatTurnCostResolver
             );
 
             return new ChatTurnCost(
-                cost: $resolution->cost->total,
+                // Fixed-precision decimal string (8 dp) — never a float for money.
+                cost: number_format($resolution->cost->total, 8, '.', ''),
                 currency: $resolution->cost->currency,
                 method: $resolution->method->value,
             );

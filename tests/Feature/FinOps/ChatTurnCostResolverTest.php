@@ -36,8 +36,11 @@ final class ChatTurnCostResolverTest extends TestCase
         $cost = app(ChatTurnCostResolver::class)->resolve('openai', 'gpt-4o', 1000, 250, 'hello', 'world');
 
         $this->assertInstanceOf(ChatTurnCost::class, $cost);
-        $this->assertIsFloat($cost->cost);
-        $this->assertSame('USD', $cost->currency);
+        // Cost is a fixed-precision decimal STRING (8 dp), not a float (money).
+        $this->assertIsString($cost->cost);
+        $this->assertMatchesRegularExpression('/^\d+\.\d{8}$/', $cost->cost);
+        // Currency follows the configurable base, not a hard-coded literal.
+        $this->assertSame((string) config('ai-finops.currency.base', 'USD'), $cost->currency);
         // method is one of the finops CostMethod values.
         $this->assertContains($cost->method, ['actual', 'computed', 'estimated', 'covered']);
     }
@@ -55,7 +58,9 @@ final class ChatTurnCostResolverTest extends TestCase
     {
         config()->set('ai-finops.enabled', true);
 
-        $cost = app(ChatTurnCostResolver::class)->resolve('anthropic', 'claude-sonnet-4-20250514', null, null);
+        // Same known provider/model as the enabled test — vary ONLY the tokens so
+        // the assertion can't depend on whether the registry prices a given model.
+        $cost = app(ChatTurnCostResolver::class)->resolve('openai', 'gpt-4o', null, null);
 
         // Null tokens clamp to 0 → a valid (zero) resolution, never an exception.
         $this->assertInstanceOf(ChatTurnCost::class, $cost);

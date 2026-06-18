@@ -127,7 +127,8 @@ class ChatLogManagerTest extends TestCase
 
         $row = ChatLog::first();
         $this->assertNotNull($row->cost, 'cost must be resolved + persisted (0 with feeds off, never null)');
-        $this->assertSame('USD', $row->cost_currency);
+        // Currency follows the configurable base, not a hard-coded literal.
+        $this->assertSame((string) config('ai-finops.currency.base', 'USD'), $row->cost_currency);
         $this->assertSame('trace-abc-123', $row->trace_id);
     }
 

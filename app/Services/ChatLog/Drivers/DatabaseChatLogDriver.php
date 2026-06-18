@@ -60,6 +60,7 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             completionTokens: $entry->completionTokens,
             promptText: $promptText !== '' ? $promptText : null,
             completionText: $completionText !== '' ? $completionText : null,
+            traceId: $entry->traceId,
         );
     }
 

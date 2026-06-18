@@ -17,7 +17,7 @@ return new class extends Migration
     {
         Schema::table('chat_logs', function (Blueprint $table) {
             $table->decimal('cost', 18, 8)->nullable()->after('total_tokens');
-            $table->string('cost_currency', 3)->nullable()->after('cost');
+            $table->char('cost_currency', 3)->nullable()->after('cost');
             $table->string('trace_id', 64)->nullable()->index()->after('cost_currency');
         });
     }
