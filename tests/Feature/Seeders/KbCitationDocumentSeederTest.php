@@ -13,6 +13,7 @@ use Database\Seeders\KbCitationDocumentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Route;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 /**
@@ -25,13 +26,16 @@ final class KbCitationDocumentSeederTest extends TestCase
 {
     use RefreshDatabase;
 
+    private User $admin;
+
     protected function setUp(): void
     {
         parent::setUp();
         app(TenantContext::class)->set('default');
-        User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
+        $this->admin = User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
 
         Route::get('/api/kb/documents/{document}/preview', KbDocumentPreviewController::class)
+            ->middleware('auth:sanctum')
             ->whereNumber('document');
         config()->set('rbac.enforced', false);
     }
@@ -51,7 +55,9 @@ final class KbCitationDocumentSeederTest extends TestCase
         $this->assertSame(2, $doc->chunks()->count());
 
         // The preview endpoint reconstructs the body from the seeded chunks, so
-        // the modal has REAL content to render (R13).
+        // the modal has REAL content to render (R13). Authenticate so the
+        // auth:sanctum contract is exercised (not bypassed by RBAC=false).
+        Sanctum::actingAs($this->admin);
         $this->getJson("/api/kb/documents/{$doc->id}/preview")
             ->assertOk()
             ->assertJsonPath('document_id', $doc->id)
@@ -69,5 +75,16 @@ final class KbCitationDocumentSeederTest extends TestCase
         $this->assertSame(2, $doc->chunks()->count());
         $conversation = Conversation::query()->forTenant('default')->where('title', 'Source modal demo')->sole();
         $this->assertSame(2, $conversation->messages()->count());
+    }
+
+    public function test_preview_endpoint_rejects_unauthenticated_request(): void
+    {
+        // R16: the failure path actually fires. Without auth the preview must
+        // 401, never leak the cited document body to an anonymous caller.
+        (new KbCitationDocumentSeeder())->run();
+        $doc = KnowledgeDocument::query()->forTenant('default')->where('slug', 'dec-source-modal')->sole();
+
+        $this->getJson("/api/kb/documents/{$doc->id}/preview")
+            ->assertUnauthorized();
     }
 }
