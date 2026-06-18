@@ -74,7 +74,11 @@ class ChatTurnCostResolver
             );
 
             return new ChatTurnCost(
-                // Fixed-precision decimal string (8 dp) — never a float for money.
+                // The finops CostBreakdown::$total is a native PHP float (the package's
+                // type), so number_format is the canonical lossless serialization to an
+                // 8-dp decimal string — exactly matching the chat_logs.cost
+                // decimal(18,8) column + the ledger's cost_total precision. (We can't
+                // start from a decimal string here; float is the package's source type.)
                 cost: number_format($resolution->cost->total, 8, '.', ''),
                 currency: $resolution->cost->currency,
                 method: $resolution->method->value,
