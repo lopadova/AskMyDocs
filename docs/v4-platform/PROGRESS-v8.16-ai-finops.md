@@ -129,12 +129,31 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         cross-cancels Playwright on the same SHA; re-run the surviving run's failed jobs uncontested to
         get a SUCCESS conclusion (R38-adjacent CI-config quirk, not a code failure).
   - [x] tag v8.16.0-rc2 at the W2 closure SHA (fbc2d594) on feature/v8.16 (R39)
-- **W3 Streaming + server-side cost authority** — ⬜
-  - [ ] Stream metering verified
-  - [ ] chat_logs cost column (additive) + CostResolutionService at log time
-  - [ ] ledger↔turn trace_id linkage
-  - [ ] retire static cost_rates + FE computeMessageCost; FE reads server cost
-  - [ ] tag v8.16.0-rc3
+- **W3 Streaming + server-side cost authority** — 🟡 IN PROGRESS (branch `feature/v8.16-W3-cost-authority`)
+  - **Blueprint (Explore agent):** `ChatLogManager::log(ChatLogEntry)` → `DatabaseChatLogDriver::store()`.
+    FinOps cost = `Padosoft\LaravelAiFinOps\Pricing\Cost\CostResolutionService::resolve(AiCallEnvelope,
+    TokenUsage, $promptText, $completionText): Resolution` → `$resolution->cost->{total,currency}` +
+    `->method->value`. Ledger correlation column = `ai_finops_usage_ledger.trace_id`; set the ambient
+    trace via `Padosoft\LaravelAiFinOps\Support\TraceContext::within(['traceId'=>$id], fn)` BEFORE the
+    `AiManager::chat()` so the SDK-hook / AiCallMeter bridge ledger row uses it. config cost_rates read
+    by `ChatExtrasController:69` (`GET /api/chat/cost-rates`). FE `MessageMetadata`
+    (`frontend/src/features/chat/chat.api.ts:119`) has NO cost field yet.
+  - [x] **W3.1 backend cost persistence** (this branch): migration
+        `2026_06_18_000001_add_cost_to_chat_logs_table` (+ test mirror `0001_01_01_000040`) adds
+        `cost` decimal(18,8) + `cost_currency` char(3) + `trace_id` string(64, indexed), all nullable
+        additive. `App\FinOps\ChatTurnCostResolver` (+ `ChatTurnCost` DTO) — guarded + try/catch +
+        config-gated, mirrors MeteringListener's cascade. `DatabaseChatLogDriver` resolves + persists
+        cost (both normal + anonymous paths; anonymous prices from tokens only, no text). ChatLog model
+        fillable + `cost`=decimal:8 cast. `ChatLogEntry` += `traceId`. Tests: ChatLogManagerTest cost +
+        finops-off + trace_id; ChatTurnCostResolverTest (R43 both states). 25-test slice GREEN.
+  - [ ] **W3.2 meta + trace + FE** (next): surface `cost`/`cost_currency` in chat response `meta`
+        (R27 additive) in KbChatController (3 paths: success ~237 / refusal ~344 / error ~500) +
+        MessageController (~192) + MessageStreamController; wrap the `AiManager` call in
+        `TraceContext::within` + pass `traceId` into `ChatLogEntry`; FE `MessageMetadata` += `cost?` +
+        render via a `TokenCostMeter`; deprecate static `config/ai.php cost_rates` + the
+        `/api/chat/cost-rates` client compute (keep as fallback). Confirm streaming metering
+        (`AgentStreamed`; the fallback path already routes through the SDK hook via the sync chat).
+  - [ ] tag v8.16.0-rc3 (after W3 closes)
 - **W4 MCP + SPA E2E + docs/GA** — ⬜
   - [ ] MCP read tools + registration-count test
   - [ ] Playwright E2E finops admin SPA
