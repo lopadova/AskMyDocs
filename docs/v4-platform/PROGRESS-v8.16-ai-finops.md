@@ -139,7 +139,7 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
     by `ChatExtrasController:69` (`GET /api/chat/cost-rates`). FE `MessageMetadata`
     (`frontend/src/features/chat/chat.api.ts:119`) has NO cost field yet.
   - [x] **W3.1 backend cost persistence** (this branch): migration
-        `2026_06_18_000001_add_cost_to_chat_logs_table` (+ test mirror `0001_01_01_000040`) adds
+        `2026_06_18_000001_add_cost_to_chat_logs_table` (+ test mirror `0001_01_01_000052`) adds
         `cost` decimal(18,8) + `cost_currency` char(3) + `trace_id` string(64, indexed), all nullable
         additive. `App\FinOps\ChatTurnCostResolver` (+ `ChatTurnCost` DTO) — guarded + try/catch +
         config-gated, mirrors MeteringListener's cascade. `DatabaseChatLogDriver` resolves + persists
