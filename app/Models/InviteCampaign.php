@@ -60,6 +60,7 @@ class InviteCampaign extends Model
         'starts_at',
         'ends_at',
         'reward_policy',
+        'grant',
         'created_by',
     ];
 
@@ -69,6 +70,7 @@ class InviteCampaign extends Model
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'reward_policy' => 'array',
+        'grant' => 'array',
     ];
 
     public function codes(): HasMany

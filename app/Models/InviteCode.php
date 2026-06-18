@@ -58,6 +58,7 @@ class InviteCode extends Model
         'payload',
         'signature',
         'metadata',
+        'grant',
     ];
 
     protected $casts = [
@@ -66,6 +67,7 @@ class InviteCode extends Model
         'expires_at' => 'datetime',
         'payload' => 'array',
         'metadata' => 'array',
+        'grant' => 'array',
     ];
 
     public function campaign(): BelongsTo

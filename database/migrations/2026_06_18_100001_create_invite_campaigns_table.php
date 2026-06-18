@@ -46,6 +46,15 @@ return new class extends Migration
             // Declarative reward rules consumed by the reward engine (Phase 3).
             $table->json('reward_policy')->nullable();
 
+            // Provisioning grant applied to the redeemer's account on a fresh
+            // claim: the role the redeemer is granted and the tenant projects
+            // they gain access to. Shape (all optional):
+            //   { "role": "editor", "projects": ["docs","wiki"],
+            //     "project_role": "member", "scope_allowlist": {...} }
+            // null = the campaign provisions nothing (account creation only).
+            // Codes inherit this default; a per-code `grant` overrides it.
+            $table->json('grant')->nullable();
+
             // Account FK — admin who created it. Cross-tenant identity.
             $table->unsignedBigInteger('created_by');
 

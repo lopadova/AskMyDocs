@@ -44,6 +44,10 @@ return new class extends Migration
             $table->string('signature')->nullable(); // signed-code HMAC
             $table->json('metadata')->nullable();
 
+            // Per-code provisioning override (same shape as invite_campaigns.grant).
+            // null = inherit the campaign's grant; non-null = this code's grant wins.
+            $table->json('grant')->nullable();
+
             $table->timestamps();
 
             $table->unique(['tenant_id', 'code'], 'uq_invite_codes_tenant_code');
