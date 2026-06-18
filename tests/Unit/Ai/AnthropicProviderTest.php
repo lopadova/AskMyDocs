@@ -131,6 +131,43 @@ class AnthropicProviderTest extends TestCase
         ]);
     }
 
+    public function test_chat_with_history_allows_empty_assistant_content(): void
+    {
+        // A provider can return an empty assistant turn (the empty-content edge
+        // case); AskMyDocs persists it and replays it in a later turn's history.
+        // The SDK history mapping must accept an empty ASSISTANT message (only the
+        // final user prompt must be non-empty), not throw. Copilot R3 regression.
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'recovered']],
+                'usage' => ['input_tokens' => 6, 'output_tokens' => 3],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'first'],
+            ['role' => 'assistant', 'content' => ''], // empty assistant turn — must not throw
+            ['role' => 'user', 'content' => 'follow up'],
+        ]);
+
+        $this->assertSame('recovered', $res->content);
+    }
+
+    public function test_chat_with_history_rejects_empty_user_content_in_history(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('role="user" requires a non-empty string "content"');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => ''], // empty USER in history — still a bug
+            ['role' => 'user', 'content' => 'real question'],
+        ]);
+    }
+
     public function test_chat_with_history_rejects_unsupported_role(): void
     {
         $this->setupConfig();

@@ -130,6 +130,38 @@ class OpenRouterProviderTest extends TestCase
         });
     }
 
+    public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void
+    {
+        // The MCP loop's final answer turn (no `tools`, but tool-role history)
+        // must route to raw Http:: /chat/completions, not the SDK path. Both
+        // OpenRouter branches hit /chat/completions, so assert via the body:
+        // tool history present, no `tools` key offered.
+        $this->setupConfig();
+        Http::fake([
+            'openrouter.ai/*' => Http::response([
+                'model' => 'anthropic/claude-sonnet-4-20250514',
+                'choices' => [['message' => ['role' => 'assistant', 'content' => 'final answer'], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 40, 'completion_tokens' => 5, 'total_tokens' => 45],
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'find x'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [['id' => 'c1', 'type' => 'function', 'function' => ['name' => 'kb', 'arguments' => '{}']]]],
+            ['role' => 'tool', 'tool_call_id' => 'c1', 'name' => 'kb', 'content' => '{"r":1}'],
+        ], []);
+
+        $this->assertSame('final answer', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            return str_contains($req->url(), '/chat/completions')
+                && ! array_key_exists('tools', $body)
+                && $body['messages'][2]['role'] === 'assistant'
+                && $body['messages'][3]['role'] === 'tool';
+        });
+    }
+
     public function test_generate_embeddings_via_sdk_returns_vectors(): void
     {
         $this->setupConfig(['models' => [

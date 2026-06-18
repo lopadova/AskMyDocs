@@ -157,6 +157,21 @@ The SDK CANNOT cleanly host AskMyDocs's external-MCP tool loop:
 tool-calling turn (openai/openrouter) is retained on raw `Http::` pending a dedicated SDK-tool-adapter
 ADR." Not a blanket "all Http removed."
 
+**Routing gotcha — the MCP loop's FINAL answer turn (Copilot must-fix, PR #316):**
+`McpToolCallingService::chatWithTools()` runs the tool loop. The mid-loop turns pass `tools` in
+`$turnOptions` (→ raw Http, fine), but the FINAL answer turn (line ~141) is invoked with the ORIGINAL
+`$options` (NO `tools`) while `$chatHistory` already carries the assistant `tool_calls` + `role:'tool'`
+result messages. Routing on `array_key_exists('tools',$options)` ALONE sends that turn to the SDK path,
+which throws (SdkChat rejects tool roles) → the loop breaks. Fix: route to raw Http when `tools` is
+present **OR** the history contains a tool turn (`App\Ai\Support\ToolTurnDetector::historyHasToolTurn`),
+and mirror the exact same predicate in `AiManager::bridgeShouldMeterChat` so the final raw-Http turn is
+bridge-metered (no under-counting). `chatViaHttpWithTools` only attaches `tools`/`tool_choice` when
+present. Also: `SdkChat::mapHistoryToSdkMessages` now allows EMPTY assistant content in history (a
+provider can return an empty assistant turn that is persisted + replayed), keeping the non-empty guard
+for user messages only. Not caught earlier because `MessageControllerTest` uses anthropic (not
+tool-capable → never runs the loop); the gap is now closed by provider-level routing unit tests +
+`ToolTurnDetectorTest`.
+
 ## Streaming + cost authority = W3 (not W2)
 SDK-native `stream()` mapping into AskMyDocs StreamChunk + AgentStreamed metering + server-side
 CostResolutionService at ChatLogManager time + additive chat_logs.cost column.

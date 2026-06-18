@@ -7,6 +7,7 @@ use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use App\Ai\Providers\RegoloProvider;
+use App\Ai\Support\ToolTurnDetector;
 use App\FinOps\AiCallMeter;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -149,16 +150,21 @@ class AiManager
      * Whether the AiCallMeter bridge should meter this chat call.
      *
      * Hybrid providers (SDK_HYBRID_TOOL_PROVIDERS) meter their no-tools chat via
-     * the SDK lifecycle hook, so the bridge fires ONLY on their raw-Http
-     * with-tools turn. Every other provider is bridged unconditionally and
-     * AiCallMeter::shouldMeter() filters out the fully-SDK providers.
+     * the SDK lifecycle hook, so the bridge fires ONLY on a raw-Http turn — which
+     * the provider routes when `tools` is present OR the history carries a tool
+     * turn (the MCP loop's final answer turn has tool history but no `tools`).
+     * The gate MUST mirror that routing or the final turn is under-metered. Every
+     * other provider is bridged unconditionally and AiCallMeter::shouldMeter()
+     * filters out the fully-SDK providers.
      *
+     * @param  array<int, mixed>  $messages
      * @param  array<string, mixed>  $options
      */
-    private function bridgeShouldMeterChat(string $provider, array $options): bool
+    private function bridgeShouldMeterChat(string $provider, array $messages, array $options): bool
     {
         if (in_array($provider, self::SDK_HYBRID_TOOL_PROVIDERS, true)) {
-            return array_key_exists('tools', $options);
+            return array_key_exists('tools', $options)
+                || ToolTurnDetector::historyHasToolTurn($messages);
         }
 
         return true;
@@ -172,7 +178,9 @@ class AiManager
         // App\FinOps\AiCallMeter. No-op when finops metering is disabled. The
         // bridge is invoked ONLY when this call did NOT go through the SDK path
         // (the SDK lifecycle hook meters that) — double-count guard.
-        if ($this->bridgeShouldMeterChat($response->provider, $options)) {
+        // chat() has no prior history, so only `tools` in options can make this a
+        // raw-Http turn.
+        if ($this->bridgeShouldMeterChat($response->provider, [], $options)) {
             app(AiCallMeter::class)->meterChat($response, $userMessage);
         }
 
@@ -188,7 +196,7 @@ class AiManager
     {
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
-        if ($this->bridgeShouldMeterChat($response->provider, $options)) {
+        if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
             app(AiCallMeter::class)->meterChat($response, $messages);
         }
 

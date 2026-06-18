@@ -89,20 +89,36 @@ trait SdkChat
                 }
                 $role = $msg['role'] ?? null;
                 $content = $msg['content'] ?? null;
-                if (! is_string($content) || $content === '') {
+                if (! is_string($content)) {
                     throw new \InvalidArgumentException(
-                        'History entry requires a non-empty string "content".'
+                        'History entry requires a string "content".'
                     );
                 }
 
-                return match ($role) {
-                    'user' => new UserMessage($content),
-                    'assistant' => new AssistantMessage($content),
-                    default => throw new \InvalidArgumentException(sprintf(
-                        'Unsupported message role [%s].',
-                        is_string($role) ? $role : '(missing)'
-                    )),
-                };
+                // Empty ASSISTANT content is legitimate — a provider can return an
+                // empty assistant turn (the Anthropic empty-content edge case;
+                // a tool-call-only turn), AskMyDocs persists it as-is, and a later
+                // user turn then replays it in history. Rejecting it would make the
+                // next turn throw. USER content must still be non-empty (an empty
+                // user message is a real caller bug).
+                if ($role === 'assistant') {
+                    return new AssistantMessage($content);
+                }
+
+                if ($role === 'user') {
+                    if ($content === '') {
+                        throw new \InvalidArgumentException(
+                            'History entry with role="user" requires a non-empty string "content".'
+                        );
+                    }
+
+                    return new UserMessage($content);
+                }
+
+                throw new \InvalidArgumentException(sprintf(
+                    'Unsupported message role [%s].',
+                    is_string($role) ? $role : '(missing)'
+                ));
             },
             $history,
         );

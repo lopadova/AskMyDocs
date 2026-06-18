@@ -164,6 +164,38 @@ class OpenAiProviderTest extends TestCase
         });
     }
 
+    public function test_mcp_final_turn_with_tool_history_and_no_tools_routes_to_http(): void
+    {
+        // The MCP loop's FINAL answer turn (McpToolCallingService) is invoked
+        // WITHOUT `tools` but with assistant `tool_calls` + `role:'tool'` history
+        // the SDK can't represent. It must route to raw Http:: /chat/completions,
+        // NOT the SDK /responses path (which would throw on the tool roles).
+        $this->setupConfig();
+        Http::fake([
+            'api.openai.com/*' => Http::response([
+                'model' => 'gpt-4o',
+                'choices' => [['message' => ['role' => 'assistant', 'content' => 'final answer'], 'finish_reason' => 'stop']],
+                'usage' => ['prompt_tokens' => 40, 'completion_tokens' => 5, 'total_tokens' => 45],
+            ], 200),
+        ]);
+
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'find x'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [['id' => 'c1', 'type' => 'function', 'function' => ['name' => 'kb', 'arguments' => '{}']]]],
+            ['role' => 'tool', 'tool_call_id' => 'c1', 'name' => 'kb', 'content' => '{"r":1}'],
+        ], []); // no `tools` in options — the loop's final turn
+
+        $this->assertSame('final answer', $res->content);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            return $req->url() === 'https://api.openai.com/v1/chat/completions'
+                && ! array_key_exists('tools', $body) // no tools offered on the final turn
+                && $body['messages'][2]['role'] === 'assistant'
+                && $body['messages'][3]['role'] === 'tool';
+        });
+    }
+
     public function test_generate_embeddings_via_sdk_returns_vectors(): void
     {
         $this->setupConfig();

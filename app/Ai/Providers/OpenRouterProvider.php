@@ -7,6 +7,7 @@ use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\Concerns\FallbackStreaming;
 use App\Ai\Providers\Concerns\SdkChat;
+use App\Ai\Support\ToolTurnDetector;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -49,9 +50,11 @@ final class OpenRouterProvider implements AiProviderInterface
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        // With-tools turn → keep the raw Http:: /chat/completions branch (the SDK
-        // cannot host AskMyDocs's external MCP tool loop). No-tools turn → SDK.
-        if (array_key_exists('tools', $options)) {
+        // Raw Http:: /chat/completions branch for ANY tool turn — the explicit
+        // with-tools call (`tools` in options) AND the MCP loop's final answer
+        // turn (no `tools`, but the history carries assistant `tool_calls` /
+        // `role:'tool'` messages the SDK can't represent). Everything else → SDK.
+        if (array_key_exists('tools', $options) || ToolTurnDetector::historyHasToolTurn($messages)) {
             return $this->chatViaHttpWithTools($systemPrompt, $messages, $options);
         }
 
@@ -144,7 +147,11 @@ final class OpenRouterProvider implements AiProviderInterface
             'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
         ];
 
-        $payload['tools'] = $options['tools'];
+        // `tools` is absent on the MCP final answer turn (tool history, no tools);
+        // only attach when the caller actually offers tools this turn.
+        if (array_key_exists('tools', $options)) {
+            $payload['tools'] = $options['tools'];
+        }
         if (array_key_exists('tool_choice', $options)) {
             $payload['tool_choice'] = $options['tool_choice'];
         }

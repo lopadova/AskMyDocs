@@ -273,6 +273,29 @@ class AiManagerTest extends TestCase
         (new AiManager())->chat('s', 'u', ['tools' => [['type' => 'function', 'function' => ['name' => 'x']]]]);
     }
 
+    public function test_bridge_meters_openai_mcp_final_turn_with_tool_history(): void
+    {
+        // MCP loop final turn: no `tools` in options, but the history carries
+        // assistant tool_calls + role:'tool' messages → routes to raw Http, so the
+        // SDK hook does NOT fire and the bridge MUST meter it (no under-counting).
+        config()->set('ai.default', 'openai');
+        Http::fake(['api.openai.com/*' => Http::response([
+            'model' => 'gpt-4o',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => 'done'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 40, 'completion_tokens' => 5, 'total_tokens' => 45],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldReceive('meterChat')->once();
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'find x'],
+            ['role' => 'assistant', 'content' => '', 'tool_calls' => [['id' => 'c1', 'type' => 'function', 'function' => ['name' => 'kb', 'arguments' => '{}']]]],
+            ['role' => 'tool', 'tool_call_id' => 'c1', 'name' => 'kb', 'content' => '{"r":1}'],
+        ], []);
+    }
+
     public function test_bridge_skips_metering_for_openai_sdk_embeddings(): void
     {
         config()->set('ai.default', 'openai');
