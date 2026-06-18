@@ -23,9 +23,11 @@ use Illuminate\Support\Facades\Http;
  *
  * OpenRouter cost capture: the SDK call sets `usage: { include: true }` (via
  * {@see sdkProviderOptions()}) so OpenRouter returns the real billed `usage.cost`
- * the finops actual-cost capture reads. The HTTP-Referer / X-Title attribution
- * headers are sent by the SDK gateway (`http_referer` / `x_title` config) on the
- * SDK path and re-applied on the raw Http with-tools branch.
+ * the finops actual-cost capture reads. Attribution headers come from the same
+ * `http_referer` / `x_title` config on both branches, but the header NAME differs:
+ * the SDK gateway sends `HTTP-Referer` + `X-OpenRouter-Title`, while the raw Http
+ * with-tools branch sends `HTTP-Referer` + the legacy `X-Title` (both are valid
+ * OpenRouter attribution headers).
  *
  * Config is read from `config('ai.providers.openrouter')` in the SDK shape
  * (driver / key / url / http_referer / x_title / models); the Http branch reads
