@@ -9,6 +9,19 @@ import { api } from '../../../lib/api';
 export type CampaignType = 'single_use' | 'multi_use' | 'capacity' | 'referral' | 'waitlist_skip';
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'ended';
 export type CodeState = 'active' | 'redeemed' | 'exhausted' | 'expired' | 'revoked';
+export type ProjectRole = 'member' | 'admin' | 'owner';
+
+/**
+ * Provisioning grant an invite key carries — the role the redeemer is granted
+ * and the tenant projects they gain access to on a fresh redemption. Mirrors
+ * the server-side `grant` JSON on campaigns + codes.
+ */
+export interface InviteGrant {
+    role: string | null;
+    projects: string[];
+    project_role: ProjectRole;
+    scope_allowlist?: Record<string, unknown> | null;
+}
 
 export interface InviteCampaign {
     id: number;
@@ -22,6 +35,7 @@ export interface InviteCampaign {
     starts_at: string | null;
     ends_at: string | null;
     reward_policy: Record<string, unknown> | null;
+    grant: InviteGrant | null;
     created_by: number;
     created_at?: string;
     updated_at?: string;
@@ -37,6 +51,7 @@ export interface InviteCode {
     current_uses: number;
     issuer_id: number | null;
     expires_at: string | null;
+    grant: InviteGrant | null;
     created_at?: string;
 }
 
@@ -62,6 +77,7 @@ export interface CreateCampaignPayload {
     status?: CampaignStatus;
     max_redemptions_total?: number | null;
     per_user_limit?: number;
+    grant?: InviteGrant | null;
 }
 
 export interface UpdateCampaignPayload {
@@ -70,6 +86,7 @@ export interface UpdateCampaignPayload {
     status?: CampaignStatus;
     max_redemptions_total?: number | null;
     per_user_limit?: number;
+    grant?: InviteGrant | null;
 }
 
 export interface GenerateCodesPayload {
@@ -115,6 +132,18 @@ export const adminInviteApi = {
     async revokeCode(id: number): Promise<InviteCode> {
         const { data } = await api.post<{ data: InviteCode }>(`/api/admin/invite/codes/${id}/revoke`);
         return data.data;
+    },
+
+    // ─── Grant option sources (R18 — derive from the DB, not literals) ───
+    async listRoles(): Promise<string[]> {
+        const { data } = await api.get<{ data: Array<{ name: string }> }>('/api/admin/roles?per_page=200');
+        // super-admin is never grantable via a code — drop it from the picker.
+        return data.data.map((r) => r.name).filter((n) => n !== 'super-admin');
+    },
+
+    async listProjects(): Promise<string[]> {
+        const { data } = await api.get<{ projects: string[] }>('/api/admin/kb/projects');
+        return data.projects;
     },
 
     // ─── Metrics ─────────────────────────────────────────────────

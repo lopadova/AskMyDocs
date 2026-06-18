@@ -3,7 +3,9 @@ import type {
     CampaignStatus,
     CampaignType,
     CreateCampaignPayload,
+    InviteGrant,
     InviteCampaign,
+    ProjectRole,
     UpdateCampaignPayload,
 } from './admin-invite.api';
 
@@ -13,10 +15,24 @@ export interface InviteCampaignFormProps {
     onClose: () => void;
     submitError?: string | null;
     isSubmitting?: boolean;
+    /** Grantable role names (super-admin already filtered out by the API). */
+    roleOptions?: string[];
+    /** Known tenant project keys for the access grant (R18 — from the DB). */
+    projectOptions?: string[];
 }
 
 const TYPES: CampaignType[] = ['single_use', 'multi_use', 'capacity', 'referral', 'waitlist_skip'];
 const STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
+const PROJECT_ROLES: ProjectRole[] = ['member', 'admin', 'owner'];
+
+/**
+ * Fold the grant form state into the API shape, or null when nothing is
+ * granted (no role and no projects) — a null grant provisions nothing.
+ */
+function buildGrant(role: string, projects: string[], projectRole: ProjectRole): InviteGrant | null {
+    if (role === '' && projects.length === 0) return null;
+    return { role: role === '' ? null : role, projects, project_role: projectRole };
+}
 
 const fieldStyle = {
     width: '100%',
@@ -33,7 +49,7 @@ const fieldStyle = {
  * On edit, `key` and `type` are read-only — both are stable identifiers that a
  * later phase keys codes off, so they must not move under existing codes.
  */
-export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, isSubmitting }: InviteCampaignFormProps): ReactNode {
+export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, isSubmitting, roleOptions = [], projectOptions = [] }: InviteCampaignFormProps): ReactNode {
     const isEdit = campaign !== null;
     const [key, setKey] = useState(campaign?.key ?? '');
     const [name, setName] = useState(campaign?.name ?? '');
@@ -41,6 +57,17 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
     const [type, setType] = useState<CampaignType>(campaign?.type ?? 'multi_use');
     const [status, setStatus] = useState<CampaignStatus>(campaign?.status ?? 'draft');
     const [perUserLimit, setPerUserLimit] = useState(String(campaign?.per_user_limit ?? 1));
+
+    // Provisioning grant: what the redeemer's account becomes.
+    const [grantRole, setGrantRole] = useState(campaign?.grant?.role ?? '');
+    const [grantProjects, setGrantProjects] = useState<string[]>(campaign?.grant?.projects ?? []);
+    const [grantProjectRole, setGrantProjectRole] = useState<ProjectRole>(campaign?.grant?.project_role ?? 'member');
+
+    const toggleProject = (projectKey: string) => {
+        setGrantProjects((prev) =>
+            prev.includes(projectKey) ? prev.filter((p) => p !== projectKey) : [...prev, projectKey],
+        );
+    };
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -54,6 +81,8 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
         e.preventDefault();
         const limit = Number.parseInt(perUserLimit, 10);
 
+        const grant = buildGrant(grantRole, grantProjects, grantProjectRole);
+
         if (isEdit) {
             const payload: UpdateCampaignPayload = {};
             if (name !== campaign.name) payload.name = name;
@@ -61,6 +90,9 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
             if (normalizedDesc !== campaign.description) payload.description = normalizedDesc;
             if (status !== campaign.status) payload.status = status;
             if (Number.isFinite(limit) && limit !== campaign.per_user_limit) payload.per_user_limit = limit;
+            // Only send grant when it actually changed — a JSON compare against
+            // the original avoids clobbering it on an unrelated edit.
+            if (JSON.stringify(grant) !== JSON.stringify(campaign.grant ?? null)) payload.grant = grant;
             onSubmit(payload);
             return;
         }
@@ -72,6 +104,7 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
             type,
             status,
             per_user_limit: Number.isFinite(limit) ? limit : 1,
+            grant,
         };
         onSubmit(payload);
     };
@@ -148,6 +181,76 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
                         <input id="admin-invite-form-per-user" data-testid="admin-invite-form-per-user" type="number" min={1} value={perUserLimit} onChange={(e) => setPerUserLimit(e.target.value)} style={fieldStyle} />
                     </label>
                 </div>
+
+                <fieldset
+                    data-testid="admin-invite-form-grant"
+                    style={{ border: '1px solid var(--panel-border)', borderRadius: 8, padding: '10px 12px', margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}
+                >
+                    <legend style={{ fontSize: 12, color: 'var(--fg-2)', padding: '0 6px' }}>Grant on redemption</legend>
+
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <label htmlFor="admin-invite-form-grant-role" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
+                            <span>Role granted to the user</span>
+                            <select
+                                id="admin-invite-form-grant-role"
+                                data-testid="admin-invite-form-grant-role"
+                                value={grantRole}
+                                onChange={(e) => setGrantRole(e.target.value)}
+                                style={fieldStyle}
+                            >
+                                <option value="">— no role —</option>
+                                {roleOptions.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label htmlFor="admin-invite-form-grant-project-role" style={{ width: 140, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
+                            <span>Project role</span>
+                            <select
+                                id="admin-invite-form-grant-project-role"
+                                data-testid="admin-invite-form-grant-project-role"
+                                value={grantProjectRole}
+                                onChange={(e) => setGrantProjectRole(e.target.value as ProjectRole)}
+                                style={fieldStyle}
+                            >
+                                {PROJECT_ROLES.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span id="admin-invite-form-grant-projects-label" style={{ fontSize: 12, color: 'var(--fg-2)' }}>
+                            Projects enabled in this tenant
+                        </span>
+                        {projectOptions.length === 0 ? (
+                            <p data-testid="admin-invite-form-grant-projects-empty" style={{ fontSize: 12, color: 'var(--fg-3)', margin: 0 }}>
+                                No projects yet — codes will grant the role only.
+                            </p>
+                        ) : (
+                            <div
+                                role="group"
+                                aria-labelledby="admin-invite-form-grant-projects-label"
+                                data-testid="admin-invite-form-grant-projects"
+                                style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 120, overflowY: 'auto' }}
+                            >
+                                {projectOptions.map((p) => (
+                                    <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--fg-1)' }}>
+                                        <input
+                                            type="checkbox"
+                                            data-testid={`admin-invite-form-grant-project-${p}`}
+                                            checked={grantProjects.includes(p)}
+                                            onChange={() => toggleProject(p)}
+                                        />
+                                        <span>{p}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </fieldset>
 
                 {submitError && (
                     <p data-testid="admin-invite-form-error" role="alert" style={{ color: 'var(--err)', fontSize: 12, margin: 0 }}>
