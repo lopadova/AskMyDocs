@@ -22,6 +22,7 @@ class InviteAnalyticsEvent extends Model
     public const TYPE_INVITE_SENT = 'invite_sent';
     public const TYPE_INVITE_OPENED = 'invite_opened';
     public const TYPE_CODE_REDEEMED = 'code_redeemed';
+    public const TYPE_ACCOUNT_PROVISIONED = 'account_provisioned';
     public const TYPE_ACCOUNT_ACTIVATED = 'account_activated';
     public const TYPE_REWARD_GRANTED = 'reward_granted';
     public const TYPE_REFERRAL_QUALIFIED = 'referral_qualified';
