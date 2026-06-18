@@ -248,7 +248,7 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('ai-finops.enabled', true);
         // v8.16 — host override of the finops-admin SPA config. Default
         // enabled=false so the SPA route is NOT registered and every request to
-        // /admin/ai-finops is a clean 404 (R43 OFF-state). FinOpsAdminFlagTest
+        // /admin/ai-finops is a clean 404 (R43 OFF-state). FinOpsAdminMountingTest
         // flips this ON in its own getEnvironmentSetUp to prove the wired state.
         $app['config']->set('ai-finops-admin', array_merge(
             (array) $app['config']->get('ai-finops-admin', []),
