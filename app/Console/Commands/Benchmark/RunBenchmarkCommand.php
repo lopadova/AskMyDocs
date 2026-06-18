@@ -54,8 +54,9 @@ final class RunBenchmarkCommand extends Command
         // ends up null and the operator can't tell why.
         if ($this->option('with-answers')) {
             $provider = (string) config('ai.default');
-            $hasKey = (bool) (config("ai.providers.{$provider}.api_key")
-                ?: config("ai.providers.{$provider}.key"));
+            // Every real provider uses the SDK config shape (`key`) since
+            // v8.16/W2 (ADR 0015); the legacy `api_key` key no longer exists.
+            $hasKey = (bool) config("ai.providers.{$provider}.key");
             if (! $hasKey) {
                 $this->warn("--with-answers makes LIVE chat + embeddings calls, but no API key is configured for the chat provider [{$provider}] — answer-faithfulness will be skipped (null).");
             }

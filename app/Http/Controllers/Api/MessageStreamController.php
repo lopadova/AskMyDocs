@@ -782,22 +782,22 @@ class MessageStreamController extends Controller
     private function resolveStreamingModel(\App\Ai\AiProviderInterface $provider): string
     {
         $providerName = $provider->name();
-        // OpenAI / Anthropic / Gemini / OpenRouter all use the flat
-        // `chat_model` config key.
-        $configured = config("ai.providers.{$providerName}.chat_model");
-        if (is_string($configured) && $configured !== '') {
-            return $configured;
-        }
-        // Regolo nests its chat model under `models.text.default`
-        // (NOT `models.chat.default`) — see config/ai.php where
-        // `models.text.{default,cheapest,smartest}` host the
-        // chat-completion model variants and `models.embeddings`
-        // hosts the embeddings model. Reading the wrong key
-        // silently fell back to "unknown" in chat-log rows for
-        // every Regolo-backed streaming turn.
+        // Since v8.16/W2 (ADR 0015) every real provider — openai / anthropic /
+        // gemini / openrouter / regolo — uses the SDK config shape and nests its
+        // chat model under `models.text.default` (NOT `models.chat.default`); see
+        // config/ai.php where `models.text.{default,cheapest,smartest}` host the
+        // chat-completion model variants and `models.embeddings` hosts the
+        // embeddings model. Reading the wrong key silently fell back to "unknown"
+        // in chat-log rows for every streaming turn.
         $nested = config("ai.providers.{$providerName}.models.text.default");
         if (is_string($nested) && $nested !== '') {
             return $nested;
+        }
+        // The deterministic offline `fake` provider keeps the flat `chat_model`
+        // key (it is not an SDK driver) — see config/ai.php.
+        $flat = config("ai.providers.{$providerName}.chat_model");
+        if (is_string($flat) && $flat !== '') {
+            return $flat;
         }
         return 'unknown';
     }

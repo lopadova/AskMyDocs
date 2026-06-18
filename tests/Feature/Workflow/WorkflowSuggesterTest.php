@@ -31,11 +31,10 @@ final class WorkflowSuggesterTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        // openai SDK config shape since v8.16/W2 (no-tools chat → SDK /responses).
         config()->set('ai.default', 'openai');
-        config()->set('ai.providers.openai.api_key', 'test-key');
-        // Copilot iter 6: real config key is `chat_model` (underscore),
-        // not `chat.model` (dot) — see config/ai.php.
-        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
+        config()->set('ai.providers.openai.key', 'test-key');
+        config()->set('ai.providers.openai.models.text.default', 'gpt-4o-mini');
         // Reset suggester cache between tests so cache_hit assertions
         // are deterministic.
         Cache::flush();
@@ -201,13 +200,7 @@ final class WorkflowSuggesterTest extends TestCase
      */
     private function llmEnvelope(array $proposals): array
     {
-        return [
-            'choices' => [[
-                'message' => ['content' => json_encode($proposals)],
-                'finish_reason' => 'stop',
-            ]],
-            'model' => 'gpt-4o-mini',
-            'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-        ];
+        // openai no-tools chat → laravel/ai SDK `/responses` shape (v8.16/W2).
+        return self::openAiSdkResponsesBody(json_encode($proposals));
     }
 }

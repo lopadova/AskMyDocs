@@ -122,6 +122,56 @@ event hook (`AgentPrompted` / `AgentStreamed` / `EmbeddingsGenerated`) and the i
   this before bumping. The "consistent Usage capture across OpenAI-shaped providers" win is in 0.7.0,
   so a 0.7 jump is desirable but gated on regolo 0.7 support.
 
+## TOOL-CALLING VERDICT (investigated 2026-06-18) — (C) HYBRID
+The SDK CANNOT cleanly host AskMyDocs's external-MCP tool loop:
+- SDK tools must be PHP `Tool` classes whose `schema()` returns typed `Illuminate\JsonSchema\Types\Type`
+  objects; there is NO raw-JSON-schema passthrough (`Gateway/OpenAi/Concerns/MapsTools.php` drops
+  non-`Tool` array tools). MCP tools are dynamic JSON schemas.
+- SDK uses the `/responses` endpoint with `previous_response_id` continuation and OWNS the tool loop
+  (auto-executes via `ParsesTextResponses::processResponse`), foreign to AskMyDocs's
+  `role:'tool'`+`tool_call_id` replay in `McpToolCallingService`.
+- (Single-turn-no-execute IS reachable via `maxSteps=1` + a `Tool` adapter, and raw calls DO surface
+  on `AgentResponse->toolCalls`/`steps`, but it's adapter-heavy — a separate ADR, not this wave.)
+
+**Decision — per-provider:**
+- **Anthropic** → FULLY SDK (no tool path; no embeddings, keep `supportsEmbeddings()=false`).
+- **Gemini** → FULLY SDK (no tool path; embeddings via SDK).
+- **OpenAI / OpenRouter** → HYBRID: SDK for no-tools chat + embeddings; **keep the existing raw-`Http::`
+  branch for the with-tools turn** (`array_key_exists('tools',$options)`), preserving
+  `normalizeToolCalls()` + `tool_choice` + the assistant/`tool` replay. `TOOL_CAPABLE_PROVIDERS`
+  (`McpToolCallingService.php:19` = `['openai','openrouter']`) stays as-is; consumers
+  (MessageController/MessageStreamController/WidgetOrchestrator/HostBridge) unchanged.
+
+**Metering reconciliation (the crux — avoid double-counting):**
+- SDK path (no-tools chat + embeddings, all 4) → metered by the finops SDK hook
+  (`LaravelAiFinOpsServiceProvider::bootMeteringHook` on AgentPrompted/EmbeddingsGenerated).
+- Http path (with-tools chat, openai/openrouter only) → finops hook does NOT fire → keep metering via
+  `AiCallMeter`. So AiCallMeter shrinks to: meter ONLY when the Http branch ran.
+- Implementation: AiManager already has `$options`; meter via AiCallMeter **only when**
+  `array_key_exists('tools',$options)` on a tool-capable provider (the Http branch). Drop the generic
+  post-call AiCallMeter for everything else (the SDK hook covers it). Verify bootMeteringHook is ON.
+- This realises the owner's "retire AiCallMeter to fallback": it survives as the bridge for the
+  residual Http tool turns + any provider still on Http.
+
+**§6 ADR nuance:** "providers use the laravel/ai SDK for chat + embeddings; the opt-in MCP
+tool-calling turn (openai/openrouter) is retained on raw `Http::` pending a dedicated SDK-tool-adapter
+ADR." Not a blanket "all Http removed."
+
+**Routing gotcha — the MCP loop's FINAL answer turn (Copilot must-fix, PR #316):**
+`McpToolCallingService::chatWithTools()` runs the tool loop. The mid-loop turns pass `tools` in
+`$turnOptions` (→ raw Http, fine), but the FINAL answer turn (line ~141) is invoked with the ORIGINAL
+`$options` (NO `tools`) while `$chatHistory` already carries the assistant `tool_calls` + `role:'tool'`
+result messages. Routing on `array_key_exists('tools',$options)` ALONE sends that turn to the SDK path,
+which throws (SdkChat rejects tool roles) → the loop breaks. Fix: route to raw Http when `tools` is
+present **OR** the history contains a tool turn (`App\Ai\Support\ToolTurnDetector::historyHasToolTurn`),
+and mirror the exact same predicate in `AiManager::bridgeShouldMeterChat` so the final raw-Http turn is
+bridge-metered (no under-counting). `chatViaHttpWithTools` only attaches `tools`/`tool_choice` when
+present. Also: `SdkChat::mapHistoryToSdkMessages` now allows EMPTY assistant content in history (a
+provider can return an empty assistant turn that is persisted + replayed), keeping the non-empty guard
+for user messages only. Not caught earlier because `MessageControllerTest` uses anthropic (not
+tool-capable → never runs the loop); the gap is now closed by provider-level routing unit tests +
+`ToolTurnDetectorTest`.
+
 ## Streaming + cost authority = W3 (not W2)
 SDK-native `stream()` mapping into AskMyDocs StreamChunk + AgentStreamed metering + server-side
 CostResolutionService at ChatLogManager time + additive chat_logs.cost column.

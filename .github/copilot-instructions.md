@@ -29,12 +29,13 @@ commands).
 - `laravel/mcp ^0.7` as a suggest (required only when exposing the
   `enterprise-kb` MCP server).
 - PostgreSQL ≥ 15 + `pgvector`. FTS GIN index migration ships pgsql-only.
-- No AI SDK for OpenAI / Anthropic / Gemini / OpenRouter — every such
-  provider is reached via `Illuminate\Support\Facades\Http` (keeps
-  auth/retries/timeouts under our control and makes `Http::fake()`
-  trivial). Regolo is the exception: it is wired through the
-  `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai` for both
-  chat and embeddings.
+- All providers run on the `laravel/ai` SDK (since v8.16/W2, ADR 0015 —
+  reverses the earlier "No AI SDK" rule, so FinOps meters every provider
+  natively). Anthropic + Gemini fully SDK; OpenAI + OpenRouter HYBRID —
+  no-tools chat + embeddings via the SDK, the MCP with-tools turn on raw
+  `Illuminate\Support\Facades\Http` `/chat/completions` (the SDK can't host
+  AskMyDocs's external-MCP tool loop). Regolo via the
+  `padosoft/laravel-ai-regolo` SDK adapter. `laravel/ai` pinned `^0.6.8`.
 - Tests: PHPUnit 12 + Orchestra Testbench 11 (SQLite) + Vitest for JS.
 
 ---
@@ -188,9 +189,13 @@ when no canonical docs exist.
 
 ## 5. Non-obvious decisions — do not unwind without asking
 
-- **No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter** — raw
-  `Http::` only. Regolo is the documented exception: wired through the
-  `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`.
+- **All providers on the `laravel/ai` SDK** (v8.16/W2, ADR 0015). Anthropic +
+  Gemini fully SDK; OpenAI + OpenRouter HYBRID (SDK for no-tools chat +
+  embeddings, raw `Http::` `/chat/completions` for the MCP with-tools turn —
+  the SDK can't host AskMyDocs's external-MCP loop). Regolo via the
+  `padosoft/laravel-ai-regolo` SDK adapter. The `AiCallMeter` bridge now meters
+  only the residual with-tools turn. Don't move that turn onto the SDK without
+  a dedicated `Tool`-adapter ADR.
 - **Chat and embeddings providers are independent** (`AI_PROVIDER` vs
   `AI_EMBEDDINGS_PROVIDER`). Anthropic has no embeddings endpoint.
   OpenRouter exposes one (OpenAI-compatible `/v1/embeddings`); default

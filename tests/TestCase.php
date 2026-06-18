@@ -441,4 +441,34 @@ abstract class TestCase extends OrchestraTestCase
             $this->app->make(\App\Support\TenantContext::class)->reset();
         }
     }
+
+    /**
+     * Build a fake OpenAI-SDK `/responses` body for `Http::fake()`.
+     *
+     * Since v8.16/W2 the no-tools OpenAI chat turn flows through the laravel/ai
+     * SDK, which calls the `/responses` endpoint (NOT `/chat/completions`) and
+     * parses the `output[].content[].text` shape. Tests that previously faked the
+     * `choices[].message.content` chat-completions shape must use this instead.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function openAiSdkResponsesBody(
+        string $text,
+        string $model = 'gpt-4o-mini',
+        int $inputTokens = 1,
+        int $outputTokens = 1,
+    ): array
+    {
+        return [
+            'id' => 'resp_test',
+            'model' => $model,
+            'status' => 'completed',
+            'output' => [[
+                'type' => 'message',
+                'status' => 'completed',
+                'content' => [['type' => 'output_text', 'text' => $text]],
+            ]],
+            'usage' => ['input_tokens' => $inputTokens, 'output_tokens' => $outputTokens],
+        ];
+    }
 }

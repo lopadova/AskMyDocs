@@ -7,6 +7,7 @@ use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use App\Ai\Providers\RegoloProvider;
+use App\Ai\Support\ToolTurnDetector;
 use App\FinOps\AiCallMeter;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -36,6 +37,22 @@ class AiManager
      * auto-selection.
      */
     private const EMBEDDINGS_FALLBACK_ORDER = ['openai', 'openrouter', 'regolo', 'gemini'];
+
+    /**
+     * Hybrid (tool-capable) providers MIGRATED to the laravel/ai SDK in v8.16/W2:
+     * their no-tools chat + embeddings flow through the SDK (metered by the finops
+     * AgentPrompted / EmbeddingsGenerated hooks), while their MCP with-tools chat
+     * turn stays on raw `Http::` (metered by the {@see AiCallMeter} bridge).
+     *
+     * The bridge therefore meters these providers ONLY on the with-tools call
+     * (`array_key_exists('tools', $options)`); a no-tools call or an embeddings
+     * call is already SDK-metered and bridging it would DOUBLE-COUNT. Mirrors
+     * `McpToolCallingService::TOOL_CAPABLE_PROVIDERS` — both openai + openrouter
+     * are now migrated. Any provider NOT listed here is bridged unconditionally
+     * and filtered by `AiCallMeter::shouldMeter()` (which skips the fully-SDK
+     * providers).
+     */
+    private const SDK_HYBRID_TOOL_PROVIDERS = ['openai', 'openrouter'];
 
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];
@@ -118,23 +135,54 @@ class AiManager
     private function hasApiKey(string $provider): bool
     {
         $key = match ($provider) {
-            'openai' => config('ai.providers.openai.api_key'),
-            'gemini' => config('ai.providers.gemini.api_key'),
+            // openai + gemini + regolo are on the SDK config shape (key, not api_key).
+            'openai' => config('ai.providers.openai.key'),
+            'gemini' => config('ai.providers.gemini.key'),
             'regolo' => config('ai.providers.regolo.key'),
-            'openrouter' => config('ai.providers.openrouter.api_key'),
+            'openrouter' => config('ai.providers.openrouter.key'),
             default => null,
         };
 
         return is_string($key) && $key !== '';
     }
 
+    /**
+     * Whether the AiCallMeter bridge should meter this chat call.
+     *
+     * Hybrid providers (SDK_HYBRID_TOOL_PROVIDERS) meter their no-tools chat via
+     * the SDK lifecycle hook, so the bridge fires ONLY on a raw-Http turn — which
+     * the provider routes when `tools` is present OR the history carries a tool
+     * turn (the MCP loop's final answer turn has tool history but no `tools`).
+     * The gate MUST mirror that routing or the final turn is under-metered. Every
+     * other provider is bridged unconditionally and AiCallMeter::shouldMeter()
+     * filters out the fully-SDK providers.
+     *
+     * @param  array<int, mixed>  $messages
+     * @param  array<string, mixed>  $options
+     */
+    private function bridgeShouldMeterChat(string $provider, array $messages, array $options): bool
+    {
+        if (in_array($provider, self::SDK_HYBRID_TOOL_PROVIDERS, true)) {
+            return array_key_exists('tools', $options)
+                || ToolTurnDetector::historyHasToolTurn($messages);
+        }
+
+        return true;
+    }
+
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
         $response = $this->provider()->chat($systemPrompt, $userMessage, $options);
 
-        // FinOps full-coverage metering (R44). Non-blocking + Regolo-skipping;
-        // see App\FinOps\AiCallMeter. No-op when finops metering is disabled.
-        app(AiCallMeter::class)->meterChat($response, $userMessage);
+        // FinOps full-coverage metering (R44). Non-blocking + SDK-skipping; see
+        // App\FinOps\AiCallMeter. No-op when finops metering is disabled. The
+        // bridge is invoked ONLY when this call did NOT go through the SDK path
+        // (the SDK lifecycle hook meters that) — double-count guard.
+        // chat() has no prior history, so only `tools` in options can make this a
+        // raw-Http turn.
+        if ($this->bridgeShouldMeterChat($response->provider, [], $options)) {
+            app(AiCallMeter::class)->meterChat($response, $userMessage);
+        }
 
         return $response;
     }
@@ -142,13 +190,26 @@ class AiManager
     /**
      * Multi-turn chat with conversation history.
      *
-     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * History may also carry the MCP tool-loop shape (a `role:'tool'` result
+     * message, or an assistant message with `tool_calls`) — see
+     * {@see AiProviderInterface::chatWithHistory()} and McpToolCallingService.
+     *
+     * @param  list<array{
+     *   role: 'user'|'assistant'|'tool',
+     *   content: string,
+     *   tool_calls?: mixed,
+     *   tool_call_id?: mixed,
+     *   name?: mixed,
+     *   id?: mixed,
+     * }>  $messages
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
         $response = $this->provider()->chatWithHistory($systemPrompt, $messages, $options);
 
-        app(AiCallMeter::class)->meterChat($response, $messages);
+        if ($this->bridgeShouldMeterChat($response->provider, $messages, $options)) {
+            app(AiCallMeter::class)->meterChat($response, $messages);
+        }
 
         return $response;
     }
@@ -173,7 +234,12 @@ class AiManager
     {
         $response = $this->embeddingsProvider()->generateEmbeddings($texts);
 
-        app(AiCallMeter::class)->meterEmbeddings($response);
+        // Hybrid providers embed via the SDK (metered by the EmbeddingsGenerated
+        // hook); bridging them would double-count. Everything else is bridged and
+        // filtered by AiCallMeter::shouldMeter() (which skips fully-SDK providers).
+        if (! in_array($response->provider, self::SDK_HYBRID_TOOL_PROVIDERS, true)) {
+            app(AiCallMeter::class)->meterEmbeddings($response);
+        }
 
         return $response;
     }

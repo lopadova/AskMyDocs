@@ -39,9 +39,10 @@ final class TabularReviewExtractorTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // openai SDK config shape since v8.16/W2 (no-tools chat → SDK /responses).
         config()->set('ai.default', 'openai');
-        config()->set('ai.providers.openai.api_key', 'test-key');
-        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
+        config()->set('ai.providers.openai.key', 'test-key');
+        config()->set('ai.providers.openai.models.text.default', 'gpt-4o-mini');
 
         // Seed a user up-front so review.user_id FK is satisfied.
         $this->userId = User::create([
@@ -240,18 +241,11 @@ final class TabularReviewExtractorTest extends TestCase
         Http::fake([
             '*' => function () use (&$callCount) {
                 $callCount++;
-                return Http::response([
-                    'choices' => [[
-                        'message' => [
-                            'content' => "{\"column_index\":0,\"summary\":\"a\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}\n"
-                                ."{\"column_index\":1,\"summary\":\"b\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}\n"
-                                ."{\"column_index\":2,\"summary\":\"c\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}",
-                        ],
-                        'finish_reason' => 'stop',
-                    ]],
-                    'model' => 'gpt-4o-mini',
-                    'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-                ], 200);
+                return Http::response(self::openAiSdkResponsesBody(
+                    "{\"column_index\":0,\"summary\":\"a\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}\n"
+                    ."{\"column_index\":1,\"summary\":\"b\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}\n"
+                    ."{\"column_index\":2,\"summary\":\"c\",\"flag\":\"green\",\"reasoning\":\"\",\"citations\":[]}"
+                ), 200);
             },
         ]);
 
@@ -356,14 +350,8 @@ final class TabularReviewExtractorTest extends TestCase
      */
     private function aiPayload(string $content): array
     {
-        return [
-            'choices' => [[
-                'message' => ['content' => $content],
-                'finish_reason' => 'stop',
-            ]],
-            'model' => 'gpt-4o-mini',
-            'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-        ];
+        // openai no-tools chat → laravel/ai SDK `/responses` shape (v8.16/W2).
+        return self::openAiSdkResponsesBody($content);
     }
 
     /**

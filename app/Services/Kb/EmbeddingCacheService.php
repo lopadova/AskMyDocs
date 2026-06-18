@@ -241,10 +241,13 @@ class EmbeddingCacheService
         // model) would make every lookup miss while inserts still
         // succeed, polluting the cache with unreachable rows.
         return match ($providerName) {
-            'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
-            'gemini' => config('ai.providers.gemini.embeddings_model', 'text-embedding-004'),
+            // openai is on the SDK config shape (models.embeddings.default) since v8.16/W2.
+            'openai' => config('ai.providers.openai.models.embeddings.default', 'text-embedding-3-small'),
+            // gemini is on the SDK config shape (models.embeddings.default) since v8.16/W2.
+            'gemini' => config('ai.providers.gemini.models.embeddings.default', 'text-embedding-004'),
             'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),
-            'openrouter' => config('ai.providers.openrouter.embeddings_model', 'openai/text-embedding-3-small'),
+            // openrouter is on the SDK config shape (models.embeddings.default) since v8.16/W2.
+            'openrouter' => config('ai.providers.openrouter.models.embeddings.default', 'openai/text-embedding-3-small'),
             // Deterministic offline E2E/demo provider — match the model
             // string FakeProvider::generateEmbeddings() stamps on the
             // EmbeddingsResponse so cache reads hit instead of always

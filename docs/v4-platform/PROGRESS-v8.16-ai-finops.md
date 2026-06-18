@@ -22,7 +22,10 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 - #304 CLOSED (superseded by #314).
 
 ## Waves
-- **W1 Foundation (rebase #304 + bridge)** — 🟡
+- **W1 Foundation (rebase #304 + bridge)** — ✅ DONE. PR #314 merged into feature/v8.16 @
+  **fbd46476** (2026-06-18). Tagged **v8.16.0-rc1** (prerelease) at that SHA. Closed after 6 Copilot
+  rounds; the substantive catch was the laravel/ai pin conflict (see the MUST-FIX line below).
+  W2 branch `feature/v8.16-W2-sdk-migration` created from fbd46476.
   - [x] W1 branch created (`feature/v8.16-W1-foundation` — hyphen form per the Branches note above — from origin/feature/v8.16)
   - [x] Merge origin/feature/v8.14 — only README.md conflicted (changelog); resolved newest-first. Committed 21410abc.
   - [x] Renumber v8.14 → v8.16 (README header+changelog, .env.example, CLAUDE.md §3, bootstrap/app.php comment)
@@ -60,14 +63,67 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         45304/45305, fix in 8.0.12+) noted for a separate hardening pass — unrelated to this PR.
   - [ ] R36 cloud loop until 0 must-fix + CI green → auto-merge (R: auto-merge when ready)
   - [ ] tag v8.16.0-rc1 at the W1 closure SHA on feature/v8.16 (R39)
-- **W2 Full SDK migration** — ⬜
-  - [ ] INVESTIGATE laravel/ai OpenRouter native driver + FinOps HTTP cost capture (owner note)
-  - [ ] Verify laravel/ai 0.6.8/0.7 breaking changes; bump pin
-  - [ ] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK
-  - [ ] Reshape config/ai.php; rewrite provider unit tests
-  - [ ] auto_register on; retire AiCallMeter to fallback
-  - [ ] ADR reversing §6 + R9 doc sweep
-  - [ ] tag v8.16.0-rc2
+- **W2 Full SDK migration** — 🟡 IN PROGRESS (branch `feature/v8.16-W2-sdk-migration`)
+  - **SCOPE DECISION:** stay on `laravel/ai ^0.6.8` for W2 (do NOT widen to `||^0.7`). regolo 1.0.1
+    is `^0.6`-only; 0.6.8's native gateways suffice for the migration. The 0.7 jump stays gated on a
+    regolo-0.7 release (separate follow-up). Pin bump already done in W1.
+  - **OPEN CRITICAL QUESTION (investigating):** tool-calling. `app/Mcp/Client/McpToolCallingService.php`
+    runs AskMyDocs's OWN tool loop — passes dynamic JSON-schema tools via `$options['tools']` into
+    `chatWithHistory`, reads back `AiResponse->toolCalls`, executes via MCP, re-calls. Consumers:
+    MessageController, MessageStreamController, WidgetOrchestratorService, HostBridge. The SDK normally
+    OWNS the tool loop (executes PHP Tool classes), which conflicts. RegoloProvider template sidesteps
+    this (tools:[]). A subagent is investigating whether the SDK can return RAW single-turn tool calls
+    over dynamic JSON tools without auto-executing (verdict A mechanical / B hard-mismatch / C hybrid:
+    no-tools+embeddings→SDK, with-tools→keep Http::). This determines the OpenAI/OpenRouter port shape.
+  - [x] INVESTIGATE laravel/ai OpenRouter native driver + FinOps HTTP cost capture — DONE (see
+        `W2-sdk-migration-findings.md`): all 4 providers have native drivers; FinOps captures real
+        `usage.cost` via a global Http RESPONSE middleware (survives migration); 2 gates: actual_cost
+        default-OFF + OpenRouter needs `usage:{include:true}` via agent providerOptions.
+  - [x] Verify laravel/ai 0.6.8/0.7 breaking changes; bump pin — pin at ^0.6.8 (W1). 0.7 deferred.
+  - [x] TOOL-CALLING VERDICT = (C) HYBRID (see W2-findings). Anthropic/Gemini full-SDK; OpenAI/
+        OpenRouter SDK no-tools + Http tools. Metering hook ON by default (regolo proves it).
+  - Per-provider migration commits (on branch, not pushed; one PR when complete):
+    - [x] **Commit 1 — Anthropic** (50e6a81e): full SDK, no tools/embeddings. Shared `Concerns\SdkChat`
+          trait + `Internal\SdkAnonymousAgent`. config SDK shape. AiCallMeter SDK_METERED_PROVIDERS
+          += anthropic (data-provider test). 10 provider tests + 128 AI/FinOps slice green.
+    - [x] **Commit 2 — Gemini**: full SDK chat + embeddings via SDK (`Embeddings::for()->generate()`
+          in `SdkChat::embeddingsViaSdk`). Reshaped config to SDK shape (driver/key/url/models) +
+          AiManager hasApiKey (gemini api_key→key) + EmbeddingCacheService model path
+          (embeddings_model→models.embeddings.default) + AiManagerTest fallback keys. Added gemini to
+          SDK_METERED_PROVIDERS (+ data-provider test). GeminiProviderTest rewritten as SDK-adapter
+          contract. AI + FinOps slice = 129 tests green.
+    - [x] **Commit 3 — OpenAI** (HYBRID): SDK no-tools chat (`/responses`) + SDK embeddings;
+          KEEP raw-Http:: `/chat/completions` with-tools branch (`chatViaHttpWithTools`). config →
+          SDK shape (driver/key/url/models). AiManager metering gate (`SDK_HYBRID_TOOL_PROVIDERS`,
+          `bridgeShouldMeterChat`): bridge fires only on the with-tools turn; no-tools chat +
+          embeddings are SDK-hook-metered (double-count guard). AiCallMeter un-`final` (R26 Mockery).
+          Migration tax fixed: hasApiKey openai→.key, EmbeddingCacheService openai model path, +
+          6 feature-test fakes reshaped to the SDK `/responses` body (new `TestCase::openAiSdkResponsesBody`
+          helper) + Message*/HealthCheck/AiInsights/TabularReview/Workflow config shapes. **FULL
+          SUITE GREEN: 2803 tests, 10419 assertions** on laravel/ai 0.6.8.
+    - [x] **Commit 4 — OpenRouter** (HYBRID): SDK no-tools chat + SDK embeddings (both OpenAI-compatible
+          `/chat/completions` + `/embeddings`); KEEP raw-Http:: with-tools branch. config → SDK shape
+          (driver/key/url/http_referer/x_title/models). Cost capture: `SdkAnonymousAgent` now implements
+          `HasProviderOptions`; `SdkChat::sdkProviderOptions()` hook (default []) overridden by
+          OpenRouterProvider → `usage:{include:true}` so OpenRouter returns real billed `usage.cost`.
+          AiManager: openrouter added to `SDK_HYBRID_TOOL_PROVIDERS` + hasApiKey openrouter→.key.
+          EmbeddingCacheService openrouter model path. SDK sends `HTTP-Referer`+`X-OpenRouter-Title`;
+          raw with-tools branch keeps legacy `X-Title`. Tests: OpenRouterProviderTest rewritten (both
+          branches + usage.include assertion); AiManager openrouter gate tests; cache round-trip +
+          fallback config shapes. **FULL SUITE GREEN: 2804 tests, 10425 assertions.**
+    - [x] **Commit 5 — cleanup/docs**: AiManager metering gate finalised (C3/C4). actual_cost: the
+          package already env-gates `AI_FINOPS_ACTUAL_COST` (default OFF, R43); OpenRouter SDK call
+          sends `usage:{include:true}` so flipping it captures real cost — no host config override
+          (shallow-merge would clobber the package `pricing` block). auto_register already default-ON
+          (the SDK hook meters every SDK-path call). **ADR 0015** records the §6 reversal. R9 doc sweep:
+          CLAUDE.md §1/§5/§6/§9 + §3 AiCallMeter line, .github/copilot-instructions.md §1/§5, README
+          (4 provider-transport claims), .env.example AI_FINOPS_ACTUAL_COST note.
+  - [x] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK (commits 1–4)
+  - [x] Reshape config/ai.php; rewrite provider unit tests
+  - [x] auto_register on (default); AiCallMeter retired to the residual with-tools turn only
+  - [x] ADR reversing §6 (ADR 0015) + R9 doc sweep
+  - [~] PR **#316** → feature/v8.16 (opened 2026-06-18, reviewer copilot-pull-request-reviewer).
+        R36 loop in progress; auto-merge when 0 must-fix + CI green; then tag v8.16.0-rc2.
 - **W3 Streaming + server-side cost authority** — ⬜
   - [ ] Stream metering verified
   - [ ] chat_logs cost column (additive) + CostResolutionService at log time
