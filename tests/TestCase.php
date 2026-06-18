@@ -457,7 +457,8 @@ abstract class TestCase extends OrchestraTestCase
         string $model = 'gpt-4o-mini',
         int $inputTokens = 1,
         int $outputTokens = 1,
-    ): array {
+    ): array
+    {
         return [
             'id' => 'resp_test',
             'model' => $model,

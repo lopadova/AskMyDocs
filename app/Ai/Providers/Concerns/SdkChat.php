@@ -32,9 +32,12 @@ trait SdkChat
      * Run a single no-tools chat turn through the laravel/ai SDK.
      *
      * @param  array<int, array{role: string, content: string}>  $messages  Full
-     *         history; must be non-empty, end with role `user`, every entry a
-     *         non-empty string `content`, roles limited to user/assistant
-     *         (system arrives via $systemPrompt).
+     *         history; must be non-empty and end with a non-empty role `user`
+     *         message. Roles are limited to user/assistant (system arrives via
+     *         $systemPrompt). Every `content` must be a string; USER content must
+     *         be non-empty, but an ASSISTANT history entry MAY be empty (a
+     *         provider can return an empty assistant turn that gets persisted +
+     *         replayed) — see mapHistoryToSdkMessages().
      * @param  array<string, mixed>  $options
      *
      * @throws \InvalidArgumentException When a precondition is violated — catch
