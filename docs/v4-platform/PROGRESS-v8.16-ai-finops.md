@@ -7,9 +7,10 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 
 ## Branches (IMPORTANT naming gotcha)
 - `feature/v8.16` (integration) — created from main @ 39f90876, pushed to origin.
-- Sub-branches MUST use a **hyphen**, not a slash: `feature/v8.16-W1-foundation` (NOT
-  `feature/v8.16/W1-foundation`). Git/GitHub refuse a nested ref when the parent
-  `feature/v8.16` already exists as a branch (ref file vs dir conflict). Use
+- Sub-branches MUST use a **hyphen**, never a nested slash. The hyphen form
+  `feature/v8.16-W1-foundation` is the ONLY correct shape; a nested
+  `feature/v8.16-slash-Wn` ref (slash after the integration name) is refused by Git/GitHub
+  when the parent `feature/v8.16` already exists as a branch (ref file vs dir conflict). Use
   `feature/v8.16-Wn-...` for every wave. PR target is still `feature/v8.16` (R37).
 - W1 branch: `feature/v8.16-W1-foundation` @ a2912d5b. PR **#314** → feature/v8.16.
 
@@ -42,6 +43,21 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         (cancelled≠failure), not the `gh pr checks` fail label.
   - [x] Copilot R3 review: 1 nit (FinOpsAuthorize docblock — `isMethodSafe()` also treats TRACE as
         safe per RFC 7231/Symfony). Fixed in b0e97cda, re-requested review.
+  - [x] ✅ **MUST-FIX (Copilot R4): composer `laravel/ai` pin conflict.** App pinned
+        `laravel/ai >=0.6,<0.6.8` while finops 1.2.1 requires `^0.6.8 || ^0.7` — with no committed
+        lock (gitignored), CI silently resolved finops **1.2.0** (loose) + laravel/ai 0.6.7, NOT the
+        intended 1.2.1. Bumped pin to `^0.6.8` (minimal; defers `||^0.7` to W2). **This surfaced a
+        SECOND break:** laravel/ai 0.6.8 added `array $providerOptions = []` to the
+        `EmbeddingGateway::generateEmbeddings()` interface (changelog "provider options in
+        embeddings"); `padosoft/laravel-ai-regolo` **1.0.0**'s gateway lacked it → signature-
+        incompatibility fatal in RegoloProviderTest. **regolo v1.0.1** (published after 0.6.8) adds
+        the param — bumped regolo pin `^1.0` → `^1.0.1`. Local slice (tests/Unit/Ai +
+        tests/Feature/FinOps + AdminAuthorizationMatrixTest) = **127 tests / 516 assert GREEN** on
+        laravel/ai 0.6.8 + regolo 1.0.1 + finops 1.2.1. NB regolo 1.0.1 constraint is `^0.6` (allows
+        0.6.8, NOT 0.7) — W2's `||^0.7` widening will need a 0.7-compatible regolo release.
+  - [x] Copilot R4 nit: AiCallMeter::meterEmbeddings now passes real `$response->embeddings` through
+        (COW-cheap, faithful envelope). Pre-existing low-sev `symfony/yaml` advisories (CVE-2026-45133/
+        45304/45305, fix in 8.0.12+) noted for a separate hardening pass — unrelated to this PR.
   - [ ] R36 cloud loop until 0 must-fix + CI green → auto-merge (R: auto-merge when ready)
   - [ ] tag v8.16.0-rc1 at the W1 closure SHA on feature/v8.16 (R39)
 - **W2 Full SDK migration** — ⬜

@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "laravel/ai": ">=0.6,<0.6.8",
+        "laravel/ai": "^0.6.8",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
         "padosoft/askmydocs-connector-base": "^1.1",
@@ -21,7 +21,7 @@
         "padosoft/laravel-ai-act-compliance-admin": "^1.5.0",
         "padosoft/laravel-ai-finops": "^1.2",
         "padosoft/laravel-ai-finops-admin": "^1.2",
-        "padosoft/laravel-ai-regolo": "^1.0",
+        "padosoft/laravel-ai-regolo": "^1.0.1",
         "padosoft/laravel-evidence-risk-review": "^1.1",
         "padosoft/laravel-evidence-risk-review-admin": "^1.0",
         "padosoft/laravel-flow": "^1.0",

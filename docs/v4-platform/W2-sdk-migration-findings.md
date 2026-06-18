@@ -110,6 +110,14 @@ event hook (`AgentPrompted` / `AgentStreamed` / `EmbeddingsGenerated`) and the i
 - **0.7.2** (28 May): Anthropic `claude-opus-4-8` smartest default; reverted failover model-attr.
 - **Pin decision:** `^0.6.8 || ^0.7` (matches finops backbone req; keep flexible). `composer update
   laravel/ai` then run the full suite. The strict-mode change is the only thing to verify.
+- **W1 already moved the floor to `^0.6.8`** (forced by adding finops 1.2.1). Doing so surfaced that
+  laravel/ai 0.6.8 added `array $providerOptions = []` to `EmbeddingGateway::generateEmbeddings()`,
+  breaking `padosoft/laravel-ai-regolo` 1.0.0 — fixed by bumping regolo to **^1.0.1**. **W2 caveat:**
+  regolo 1.0.1's own laravel/ai constraint is `^0.6` (NO 0.7). Widening the host to `^0.6.8 || ^0.7`
+  in W2 will let composer pick 0.7.x, which regolo 1.0.1 forbids → either a new regolo release
+  supporting `^0.6 || ^0.7` is required first, OR W2 keeps laravel/ai at `^0.6.8` (no 0.7). Decide
+  this before bumping. The "consistent Usage capture across OpenAI-shaped providers" win is in 0.7.0,
+  so a 0.7 jump is desirable but gated on regolo 0.7 support.
 
 ## Streaming + cost authority = W3 (not W2)
 SDK-native `stream()` mapping into AskMyDocs StreamChunk + AgentStreamed metering + server-side
