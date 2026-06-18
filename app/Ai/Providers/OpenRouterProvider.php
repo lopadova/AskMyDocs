@@ -6,18 +6,37 @@ use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\Concerns\FallbackStreaming;
+use App\Ai\Providers\Concerns\SdkChat;
 use Illuminate\Support\Facades\Http;
 
+/**
+ * OpenRouter provider — HYBRID adapter (v8.16/W2).
+ *
+ * Like OpenAI, the no-tools chat turn + embeddings flow through the official
+ * `laravel/ai` SDK (native `openrouter` driver — both use the OpenAI-compatible
+ * `/chat/completions` + `/embeddings` endpoints), so the `laravel-ai-finops`
+ * metering hook records them via the SDK lifecycle events. The MCP **with-tools**
+ * turn stays on the raw `Http::` `/chat/completions` branch (the SDK cannot host
+ * AskMyDocs's external-MCP tool loop — see W2-sdk-migration-findings.md, verdict
+ * = HYBRID). That residual Http turn is metered by the {@see \App\FinOps\AiCallMeter}
+ * bridge, which `AiManager` invokes ONLY for the with-tools path.
+ *
+ * OpenRouter cost capture: the SDK call sets `usage: { include: true }` (via
+ * {@see sdkProviderOptions()}) so OpenRouter returns the real billed `usage.cost`
+ * the finops actual-cost capture reads. The HTTP-Referer / X-Title attribution
+ * headers are sent by the SDK gateway (`http_referer` / `x_title` config) on the
+ * SDK path and re-applied on the raw Http with-tools branch.
+ *
+ * Config is read from `config('ai.providers.openrouter')` in the SDK shape
+ * (driver / key / url / http_referer / x_title / models); the Http branch reads
+ * the same keys.
+ */
 final class OpenRouterProvider implements AiProviderInterface
 {
     use FallbackStreaming;
+    use SdkChat;
 
-    private string $baseUrl;
-
-    public function __construct(private readonly array $config)
-    {
-        $this->baseUrl = rtrim($config['base_url'] ?? 'https://openrouter.ai/api/v1', '/');
-    }
+    public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
@@ -27,6 +46,63 @@ final class OpenRouterProvider implements AiProviderInterface
     }
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
+    {
+        // With-tools turn → keep the raw Http:: /chat/completions branch (the SDK
+        // cannot host AskMyDocs's external MCP tool loop). No-tools turn → SDK.
+        if (array_key_exists('tools', $options)) {
+            return $this->chatViaHttpWithTools($systemPrompt, $messages, $options);
+        }
+
+        return $this->chatViaSdk($systemPrompt, $messages, $options);
+    }
+
+    public function generateEmbeddings(array $texts): EmbeddingsResponse
+    {
+        return $this->embeddingsViaSdk($texts);
+    }
+
+    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
+    {
+        // OpenRouter relays `stream: true` over SSE for upstream models that
+        // support it; the fallback is wired for now and a W3 enhancement
+        // overrides this body without changing the public contract.
+        return $this->streamFromChat($systemPrompt, $messages, $options);
+    }
+
+    public function name(): string
+    {
+        return 'openrouter';
+    }
+
+    public function supportsEmbeddings(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Ask OpenRouter to return the real billed cost on the SDK path so the
+     * finops actual-cost capture can read `usage.cost`. Harmless when actual-cost
+     * is off (it only adds an accounting field to the response).
+     *
+     * @return array<string, mixed>
+     */
+    protected function sdkProviderOptions(): array
+    {
+        return ['usage' => ['include' => true]];
+    }
+
+    /**
+     * The MCP with-tools chat turn over raw `Http::` `/chat/completions`.
+     *
+     * Preserves the dynamic-JSON-tools passthrough + `tool_choice` + the
+     * assistant/`tool` replay that the SDK cannot express, plus the OpenRouter
+     * attribution headers. Reads the SDK-shaped config keys (key / url /
+     * http_referer / x_title / models.text.default) — single source of truth.
+     *
+     * @param  array<int, mixed>  $messages
+     * @param  array<string, mixed>  $options
+     */
+    private function chatViaHttpWithTools(string $systemPrompt, array $messages, array $options): AiResponse
     {
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
         foreach ($messages as $msg) {
@@ -57,27 +133,29 @@ final class OpenRouterProvider implements AiProviderInterface
             $apiMessages[] = $apiMessage;
         }
 
+        $defaultModel = $this->config['models']['text']['default'] ?? 'anthropic/claude-sonnet-4-20250514';
+
         $payload = [
-            'model' => $options['model'] ?? $this->config['chat_model'] ?? 'anthropic/claude-sonnet-4-20250514',
+            'model' => $options['model'] ?? $defaultModel,
             'messages' => $apiMessages,
             'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
             'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
         ];
 
-        if (array_key_exists('tools', $options)) {
-            $payload['tools'] = $options['tools'];
-        }
+        $payload['tools'] = $options['tools'];
         if (array_key_exists('tool_choice', $options)) {
             $payload['tool_choice'] = $options['tool_choice'];
         }
 
-        $response = Http::withToken($this->config['api_key'])
+        $baseUrl = rtrim($this->config['url'] ?? 'https://openrouter.ai/api/v1', '/');
+
+        $response = Http::withToken($this->config['key'])
             ->withHeaders([
-                'HTTP-Referer' => $this->config['site_url'] ?? config('app.url', ''),
-                'X-Title' => $this->config['app_name'] ?? config('app.name', 'Enterprise KB'),
+                'HTTP-Referer' => $this->config['http_referer'] ?? config('app.url', ''),
+                'X-Title' => $this->config['x_title'] ?? config('app.name', 'Enterprise KB'),
             ])
             ->timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/chat/completions", $payload);
+            ->post("{$baseUrl}/chat/completions", $payload);
 
         $response->throw();
         $data = $response->json();
@@ -86,62 +164,13 @@ final class OpenRouterProvider implements AiProviderInterface
         return new AiResponse(
             content: is_string($message['content'] ?? null) ? $message['content'] : '',
             provider: $this->name(),
-            model: $data['model'] ?? $this->config['chat_model'],
+            model: $data['model'] ?? $defaultModel,
             promptTokens: $data['usage']['prompt_tokens'] ?? null,
             completionTokens: $data['usage']['completion_tokens'] ?? null,
             totalTokens: $data['usage']['total_tokens'] ?? null,
             finishReason: $data['choices'][0]['finish_reason'] ?? null,
             toolCalls: $this->normalizeToolCalls($message['tool_calls'] ?? null),
         );
-    }
-
-    public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
-    {
-        // OpenRouter relays streaming for any upstream model that
-        // supports it (`stream: true` over SSE). Fallback shipped in
-        // W3.1; native streaming variant lands later without breaking
-        // the public contract.
-        return $this->streamFromChat($systemPrompt, $messages, $options);
-    }
-
-    public function generateEmbeddings(array $texts): EmbeddingsResponse
-    {
-        $response = Http::withToken($this->config['api_key'])
-            ->withHeaders([
-                'HTTP-Referer' => $this->config['site_url'] ?? config('app.url', ''),
-                'X-Title' => $this->config['app_name'] ?? config('app.name', 'Enterprise KB'),
-            ])
-            ->timeout($this->config['timeout'] ?? 120)
-            ->post("{$this->baseUrl}/embeddings", [
-                'model' => $this->config['embeddings_model'] ?? 'openai/text-embedding-3-small',
-                'input' => $texts,
-            ]);
-
-        $response->throw();
-        $data = $response->json();
-
-        $embeddings = collect($data['data'] ?? [])
-            ->sortBy('index')
-            ->pluck('embedding')
-            ->values()
-            ->all();
-
-        return new EmbeddingsResponse(
-            embeddings: $embeddings,
-            provider: $this->name(),
-            model: $data['model'] ?? ($this->config['embeddings_model'] ?? 'openai/text-embedding-3-small'),
-            totalTokens: $data['usage']['total_tokens'] ?? null,
-        );
-    }
-
-    public function name(): string
-    {
-        return 'openrouter';
-    }
-
-    public function supportsEmbeddings(): bool
-    {
-        return true;
     }
 
     private function normalizeToolCalls(mixed $rawToolCalls): array
@@ -187,4 +216,3 @@ final class OpenRouterProvider implements AiProviderInterface
         return $json;
     }
 }
-

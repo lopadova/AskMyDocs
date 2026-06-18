@@ -127,7 +127,21 @@ trait SdkChat
             tools: [],
             maxTokens: $this->resolveMaxTokens($options),
             temperature: $this->resolveTemperature($options),
+            providerOptions: $this->sdkProviderOptions(),
         );
+    }
+
+    /**
+     * Provider-specific request-body options merged into the SDK call.
+     *
+     * Default none; OpenRouter overrides this to set `usage: { include: true }`
+     * so the response carries the real billed `usage.cost` (v8.16/W2).
+     *
+     * @return array<string, mixed>
+     */
+    protected function sdkProviderOptions(): array
+    {
+        return [];
     }
 
     protected function resolveMaxTokens(array $options): ?int

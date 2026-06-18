@@ -101,7 +101,16 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
           6 feature-test fakes reshaped to the SDK `/responses` body (new `TestCase::openAiSdkResponsesBody`
           helper) + Message*/HealthCheck/AiInsights/TabularReview/Workflow config shapes. **FULL
           SUITE GREEN: 2803 tests, 10419 assertions** on laravel/ai 0.6.8.
-    - [ ] **Commit 4 — OpenRouter**: same hybrid + agent providerOptions usage.include (cost capture).
+    - [x] **Commit 4 — OpenRouter** (HYBRID): SDK no-tools chat + SDK embeddings (both OpenAI-compatible
+          `/chat/completions` + `/embeddings`); KEEP raw-Http:: with-tools branch. config → SDK shape
+          (driver/key/url/http_referer/x_title/models). Cost capture: `SdkAnonymousAgent` now implements
+          `HasProviderOptions`; `SdkChat::sdkProviderOptions()` hook (default []) overridden by
+          OpenRouterProvider → `usage:{include:true}` so OpenRouter returns real billed `usage.cost`.
+          AiManager: openrouter added to `SDK_HYBRID_TOOL_PROVIDERS` + hasApiKey openrouter→.key.
+          EmbeddingCacheService openrouter model path. SDK sends `HTTP-Referer`+`X-OpenRouter-Title`;
+          raw with-tools branch keeps legacy `X-Title`. Tests: OpenRouterProviderTest rewritten (both
+          branches + usage.include assertion); AiManager openrouter gate tests; cache round-trip +
+          fallback config shapes. **FULL SUITE GREEN: 2804 tests, 10425 assertions.**
     - [ ] **Commit 5 — cleanup**: AiManager final metering gate, enable actual_cost, ADR reversing §6,
           R9 doc sweep of "raw Http::", .env.example, README/CLAUDE bridge wording.
   - [ ] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK

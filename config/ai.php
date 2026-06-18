@@ -160,22 +160,34 @@ return [
             ],
         ],
 
+        // OpenRouter — HYBRID (v8.16/W2), same posture as OpenAI. No-tools chat +
+        // embeddings flow through the laravel/ai SDK (native `openrouter` driver:
+        // OpenAI-compatible /chat/completions + /embeddings), metered by the
+        // finops hooks. The MCP with-tools turn stays on raw Http:: — metered by
+        // the AiCallMeter bridge. The SDK reads `http_referer` / `x_title` for the
+        // OpenRouter attribution headers; the SDK call sets usage.include=true for
+        // real-cost capture (see OpenRouterProvider::sdkProviderOptions). Config is
+        // the SDK shape (driver/key/url/models); the Http branch reads the same keys.
         'openrouter' => [
-            'api_key' => env('OPENROUTER_API_KEY'),
-            'base_url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
-            'chat_model' => env('OPENROUTER_CHAT_MODEL', 'openai/gpt-4o-mini'),
-            'embeddings_model' => env('OPENROUTER_EMBEDDINGS_MODEL', 'openai/text-embedding-3-small'),
-            'app_name' => env('OPENROUTER_APP_NAME', 'AskMyDocs'),
-            'site_url' => env('OPENROUTER_SITE_URL'),
+            'driver' => 'openrouter',
+            'name' => 'openrouter',
+            'key' => env('OPENROUTER_API_KEY'),
+            'url' => env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
+            'http_referer' => env('OPENROUTER_SITE_URL'),
+            'x_title' => env('OPENROUTER_APP_NAME', 'AskMyDocs'),
+            'timeout' => is_numeric($v = env('OPENROUTER_TIMEOUT')) ? (int) $v : 120,
             'temperature' => is_numeric($v = env('OPENROUTER_TEMPERATURE')) ? (float) $v : 0.2,
             'max_tokens' => is_numeric($v = env('OPENROUTER_MAX_TOKENS')) ? (int) $v : 4096,
-            'timeout' => is_numeric($v = env('OPENROUTER_TIMEOUT')) ? (int) $v : 120,
+            'models' => [
+                'text' => ['default' => env('OPENROUTER_CHAT_MODEL', 'openai/gpt-4o-mini')],
+                'embeddings' => ['default' => env('OPENROUTER_EMBEDDINGS_MODEL', 'openai/text-embedding-3-small')],
+            ],
         ],
 
-        // Regolo + Anthropic + Gemini use the laravel/ai SDK shape
-        // (driver/key/url/models) because their providers delegate to the SDK.
-        // OpenAI / OpenRouter above still carry the AskMyDocs legacy shape
-        // (api_key/base_url/chat_model) pending their own W2 SDK migration commits.
+        // Regolo + Anthropic + Gemini + OpenAI + OpenRouter all use the laravel/ai
+        // SDK shape (driver/key/url/models) because their providers delegate to the
+        // SDK (OpenAI / OpenRouter are HYBRID: no-tools chat + embeddings via SDK,
+        // the MCP with-tools turn stays on raw Http::).
         'regolo' => [
             'driver' => 'regolo',
             'name' => 'regolo',

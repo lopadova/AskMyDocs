@@ -136,7 +136,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
-        config()->set('ai.providers.openrouter.api_key', null);
+        config()->set('ai.providers.openrouter.key', null);
 
         $manager = new AiManager();
 
@@ -153,7 +153,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
-        config()->set('ai.providers.openrouter.api_key', 'or-test');
+        config()->set('ai.providers.openrouter.key', 'or-test');
 
         $manager = new AiManager();
 
@@ -169,7 +169,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.providers.openai.key', null);
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
-        config()->set('ai.providers.openrouter.api_key', 'or-test');
+        config()->set('ai.providers.openrouter.key', 'or-test');
 
         $manager = new AiManager();
 
@@ -184,7 +184,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.key', null);
-        config()->set('ai.providers.openrouter.api_key', null);
+        config()->set('ai.providers.openrouter.key', null);
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
 
@@ -200,7 +200,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.providers.openai.key', null);
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
-        config()->set('ai.providers.openrouter.api_key', null);
+        config()->set('ai.providers.openrouter.key', null);
 
         $manager = new AiManager();
 
@@ -214,7 +214,7 @@ class AiManagerTest extends TestCase
     {
         config()->set('ai.default', 'openrouter');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openrouter.api_key', 'or-test');
+        config()->set('ai.providers.openrouter.key', 'or-test');
 
         $manager = new AiManager();
 
@@ -296,10 +296,10 @@ class AiManagerTest extends TestCase
         (new AiManager())->generateEmbeddings(['x']);
     }
 
-    public function test_bridge_still_meters_openrouter_chat_pending_its_sdk_migration(): void
+    public function test_bridge_skips_metering_for_openrouter_no_tools_sdk_chat(): void
     {
-        // openrouter has NOT yet moved to the hybrid SDK shape (W2 commit 4), so
-        // its no-tools chat still transits raw Http:: and MUST be bridged.
+        // openrouter is HYBRID since W2 commit 4: no-tools chat → SDK
+        // /chat/completions (metered by the finops hook), so the bridge must skip.
         config()->set('ai.default', 'openrouter');
         Http::fake(['openrouter.ai/*' => Http::response([
             'model' => 'openai/gpt-4o-mini',
@@ -308,9 +308,25 @@ class AiManagerTest extends TestCase
         ])]);
 
         $meter = Mockery::mock(AiCallMeter::class);
-        $meter->shouldReceive('meterChat')->once();
+        $meter->shouldNotReceive('meterChat');
         $this->app->instance(AiCallMeter::class, $meter);
 
         (new AiManager())->chat('s', 'u');
+    }
+
+    public function test_bridge_meters_openrouter_with_tools_http_chat(): void
+    {
+        config()->set('ai.default', 'openrouter');
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => 'x'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 5, 'completion_tokens' => 2, 'total_tokens' => 7],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldReceive('meterChat')->once();
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chat('s', 'u', ['tools' => [['type' => 'function', 'function' => ['name' => 'x']]]]);
     }
 }

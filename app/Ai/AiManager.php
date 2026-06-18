@@ -46,12 +46,12 @@ class AiManager
      * The bridge therefore meters these providers ONLY on the with-tools call
      * (`array_key_exists('tools', $options)`); a no-tools call or an embeddings
      * call is already SDK-metered and bridging it would DOUBLE-COUNT. Mirrors
-     * `McpToolCallingService::TOOL_CAPABLE_PROVIDERS` but lists only the providers
-     * whose SDK migration has actually landed (openrouter joins in W2 commit 4).
-     * Any provider NOT listed here is bridged unconditionally and filtered by
-     * `AiCallMeter::shouldMeter()` (which skips the fully-SDK providers).
+     * `McpToolCallingService::TOOL_CAPABLE_PROVIDERS` — both openai + openrouter
+     * are now migrated. Any provider NOT listed here is bridged unconditionally
+     * and filtered by `AiCallMeter::shouldMeter()` (which skips the fully-SDK
+     * providers).
      */
-    private const SDK_HYBRID_TOOL_PROVIDERS = ['openai'];
+    private const SDK_HYBRID_TOOL_PROVIDERS = ['openai', 'openrouter'];
 
     /** @var array<string, AiProviderInterface> */
     private array $resolved = [];
@@ -138,7 +138,7 @@ class AiManager
             'openai' => config('ai.providers.openai.key'),
             'gemini' => config('ai.providers.gemini.key'),
             'regolo' => config('ai.providers.regolo.key'),
-            'openrouter' => config('ai.providers.openrouter.api_key'),
+            'openrouter' => config('ai.providers.openrouter.key'),
             default => null,
         };
 

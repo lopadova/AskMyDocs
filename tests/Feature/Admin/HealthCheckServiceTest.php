@@ -145,7 +145,7 @@ class HealthCheckServiceTest extends TestCase
             'ai.providers' => [
                 'anthropic' => ['key' => 'sk-ant'],
                 'openai' => ['key' => null],
-                'openrouter' => ['api_key' => null],
+                'openrouter' => ['key' => null],
                 'regolo' => ['key' => null],
                 'gemini' => ['key' => null],
             ],

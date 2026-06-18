@@ -2,64 +2,140 @@
 
 namespace Tests\Unit\Ai;
 
+use App\Ai\AiResponse;
 use App\Ai\Providers\OpenRouterProvider;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+/**
+ * AskMyDocs OpenRouterProvider — HYBRID adapter (v8.16/W2).
+ *
+ * No-tools chat + embeddings flow through the laravel/ai SDK (native
+ * `openrouter` driver — OpenAI-compatible /chat/completions + /embeddings),
+ * metered by the finops hook. The MCP with-tools turn stays on the raw `Http::`
+ * /chat/completions branch (the SDK cannot host AskMyDocs's external MCP tool
+ * loop). The SDK call sets `usage: { include: true }` for real-cost capture and
+ * sends the OpenRouter attribution headers. Both branches hit /chat/completions,
+ * so these tests pin the request BODY (usage.include + tools) and headers.
+ */
 class OpenRouterProviderTest extends TestCase
 {
-    private function config(array $overrides = []): array
+    private function setupConfig(array $overrides = []): void
     {
-        return array_merge([
-            'api_key' => 'sk-or-test',
-            'base_url' => 'https://openrouter.ai/api/v1',
-            'chat_model' => 'anthropic/claude-sonnet-4-20250514',
-            'app_name' => 'Enterprise KB',
-            'site_url' => 'https://kb.example.com',
+        config()->set('ai.providers.openrouter', array_merge([
+            'driver' => 'openrouter',
+            'name' => 'openrouter',
+            'key' => 'sk-or-test',
+            'url' => 'https://openrouter.ai/api/v1',
+            'http_referer' => 'https://kb.example.com',
+            'x_title' => 'Enterprise KB',
+            'timeout' => 30,
             'temperature' => 0.2,
             'max_tokens' => 1024,
-            'timeout' => 30,
-        ], $overrides);
+            'models' => [
+                'text' => ['default' => 'anthropic/claude-sonnet-4-20250514'],
+                'embeddings' => ['default' => 'openai/text-embedding-3-small'],
+            ],
+        ], $overrides));
+    }
+
+    private function provider(): OpenRouterProvider
+    {
+        return new OpenRouterProvider(config('ai.providers.openrouter'));
     }
 
     public function test_name_and_embedding_support(): void
     {
-        $p = new OpenRouterProvider($this->config());
+        $this->setupConfig();
+        $p = $this->provider();
+
         $this->assertSame('openrouter', $p->name());
         $this->assertTrue($p->supportsEmbeddings());
     }
 
-    public function test_chat_sends_referer_and_title_headers(): void
+    public function test_no_tools_chat_via_sdk_sets_usage_include_and_attribution_headers(): void
     {
+        $this->setupConfig();
         Http::fake([
             'openrouter.ai/*' => Http::response([
                 'model' => 'anthropic/claude-sonnet-4-20250514',
                 'choices' => [[
-                    'message' => ['content' => 'Hi there'],
+                    'message' => ['role' => 'assistant', 'content' => 'Hi there'],
                     'finish_reason' => 'stop',
                 ]],
-                'usage' => ['prompt_tokens' => 3, 'completion_tokens' => 2, 'total_tokens' => 5],
+                'usage' => ['prompt_tokens' => 3, 'completion_tokens' => 2, 'total_tokens' => 5, 'cost' => 0.00012],
             ], 200),
         ]);
 
-        $p = new OpenRouterProvider($this->config());
-        $res = $p->chat('sys', 'user');
+        $res = $this->provider()->chat('sys', 'user');
 
+        $this->assertInstanceOf(AiResponse::class, $res);
         $this->assertSame('Hi there', $res->content);
         $this->assertSame('openrouter', $res->provider);
-        $this->assertSame(5, $res->totalTokens);
+        $this->assertSame(3, $res->promptTokens);
+        $this->assertSame(2, $res->completionTokens);
 
         Http::assertSent(function (Request $req) {
-            return $req->url() === 'https://openrouter.ai/api/v1/chat/completions'
+            $body = $req->data();
+            return str_contains($req->url(), '/chat/completions')
                 && $req->hasHeader('Authorization', 'Bearer sk-or-test')
                 && $req->hasHeader('HTTP-Referer', 'https://kb.example.com')
-                && $req->hasHeader('X-Title', 'Enterprise KB');
+                && $req->hasHeader('X-OpenRouter-Title', 'Enterprise KB')
+                // usage.include=true → OpenRouter returns the real billed cost.
+                && ($body['usage']['include'] ?? null) === true;
         });
     }
 
-    public function test_generate_embeddings_calls_openai_compatible_endpoint(): void
+    public function test_with_tools_chat_uses_raw_http_with_legacy_title_header(): void
     {
+        $this->setupConfig();
+        Http::fake([
+            'openrouter.ai/*' => Http::response([
+                'model' => 'anthropic/claude-sonnet-4-20250514',
+                'choices' => [[
+                    'message' => [
+                        'role' => 'assistant',
+                        'content' => null,
+                        'tool_calls' => [[
+                            'id' => 'call_7',
+                            'type' => 'function',
+                            'function' => ['name' => 'kb_search', 'arguments' => '{"q":"y"}'],
+                        ]],
+                    ],
+                    'finish_reason' => 'tool_calls',
+                ]],
+                'usage' => ['prompt_tokens' => 9, 'completion_tokens' => 4, 'total_tokens' => 13],
+            ], 200),
+        ]);
+
+        $tools = [['type' => 'function', 'function' => ['name' => 'kb_search', 'parameters' => []]]];
+        $res = $this->provider()->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'find y'],
+        ], ['tools' => $tools, 'tool_choice' => 'auto']);
+
+        $this->assertSame('tool_calls', $res->finishReason);
+        $this->assertCount(1, $res->toolCalls);
+        $this->assertSame('kb_search', $res->toolCalls[0]['name']);
+        $this->assertSame('{"q":"y"}', $res->toolCalls[0]['arguments']);
+
+        Http::assertSent(function (Request $req) {
+            $body = $req->data();
+            return $req->url() === 'https://openrouter.ai/api/v1/chat/completions'
+                && $req->hasHeader('Authorization', 'Bearer sk-or-test')
+                && $req->hasHeader('HTTP-Referer', 'https://kb.example.com')
+                && $req->hasHeader('X-Title', 'Enterprise KB')
+                && isset($body['tools'])
+                && $body['tool_choice'] === 'auto';
+        });
+    }
+
+    public function test_generate_embeddings_via_sdk_returns_vectors(): void
+    {
+        $this->setupConfig(['models' => [
+            'text' => ['default' => 'anthropic/claude-sonnet-4-20250514'],
+            'embeddings' => ['default' => 'qwen/qwen3-embedding-4b'],
+        ]]);
         Http::fake([
             'openrouter.ai/*' => Http::response([
                 'model' => 'qwen/qwen3-embedding-4b',
@@ -67,68 +143,33 @@ class OpenRouterProviderTest extends TestCase
                     ['index' => 0, 'embedding' => [0.1, 0.2, 0.3]],
                     ['index' => 1, 'embedding' => [0.4, 0.5, 0.6]],
                 ],
-                'usage' => ['total_tokens' => 12],
+                'usage' => ['prompt_tokens' => 12],
             ], 200),
         ]);
 
-        $p = new OpenRouterProvider($this->config([
-            'embeddings_model' => 'qwen/qwen3-embedding-4b',
-        ]));
-
-        $res = $p->generateEmbeddings(['hello', 'world']);
+        $res = $this->provider()->generateEmbeddings(['hello', 'world']);
 
         $this->assertSame('openrouter', $res->provider);
         $this->assertSame('qwen/qwen3-embedding-4b', $res->model);
-        $this->assertSame(12, $res->totalTokens);
-        $this->assertCount(2, $res->embeddings);
-        $this->assertSame([0.1, 0.2, 0.3], $res->embeddings[0]);
+        $this->assertSame([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], $res->embeddings);
 
         Http::assertSent(function (Request $req) {
-            return $req->url() === 'https://openrouter.ai/api/v1/embeddings'
-                && $req->hasHeader('Authorization', 'Bearer sk-or-test')
+            return str_contains($req->url(), '/embeddings')
                 && $req->hasHeader('HTTP-Referer', 'https://kb.example.com')
-                && $req->hasHeader('X-Title', 'Enterprise KB')
                 && $req['model'] === 'qwen/qwen3-embedding-4b'
                 && $req['input'] === ['hello', 'world'];
         });
     }
 
-    public function test_generate_embeddings_uses_default_model_when_unset(): void
+    public function test_no_tools_chat_with_history_rejects_non_user_last_message(): void
     {
-        Http::fake([
-            'openrouter.ai/*' => Http::response([
-                'model' => 'openai/text-embedding-3-small',
-                'data' => [['index' => 0, 'embedding' => [0.5]]],
-                'usage' => ['total_tokens' => 1],
-            ], 200),
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant".');
+
+        $this->provider()->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'Hi.'],
+            ['role' => 'assistant', 'content' => 'Hello.'],
         ]);
-
-        $cfg = $this->config();
-        unset($cfg['embeddings_model']);
-        $p = new OpenRouterProvider($cfg);
-
-        $p->generateEmbeddings(['x']);
-
-        Http::assertSent(fn (Request $req) => $req['model'] === 'openai/text-embedding-3-small');
-    }
-
-    public function test_generate_embeddings_preserves_input_order_via_index(): void
-    {
-        Http::fake([
-            'openrouter.ai/*' => Http::response([
-                'model' => 'qwen/qwen3-embedding-4b',
-                'data' => [
-                    ['index' => 2, 'embedding' => [0.3]],
-                    ['index' => 0, 'embedding' => [0.1]],
-                    ['index' => 1, 'embedding' => [0.2]],
-                ],
-                'usage' => ['total_tokens' => 3],
-            ], 200),
-        ]);
-
-        $p = new OpenRouterProvider($this->config());
-        $res = $p->generateEmbeddings(['a', 'b', 'c']);
-
-        $this->assertSame([[0.1], [0.2], [0.3]], $res->embeddings);
     }
 }
