@@ -19,6 +19,7 @@ import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
+import { InviteView } from '../features/admin/invite/InviteView';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
@@ -389,6 +390,24 @@ const adminSynonymsRoute = createRoute({
     getParentRoute: () => appRoute,
     path: 'admin/kb/synonyms',
     component: AdminSynonymsRoute,
+});
+
+// Invite system — campaigns / codes / metrics / invitations. Same
+// flat-RBAC + AdminShell pattern as Synonyms.
+function AdminInviteRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="invite">
+                <InviteView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminInviteRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: 'admin/invite',
+    component: AdminInviteRoute,
 });
 
 // v8.7/W3–W4 — Doc Insights (AI document-change analyses).
@@ -991,6 +1010,7 @@ const routeTree = rootRoute.addChildren([
         adminKbHealthRoute,
         adminTagsRoute,
         adminSynonymsRoute,
+        adminInviteRoute,
         adminKbInsightsRoute,
         adminAnalysisSettingsRoute,
         adminContentGapsRoute,

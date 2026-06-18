@@ -35,6 +35,7 @@ export type SidebarSection =
     | 'pii-redactor'
     | 'connectors'
     | 'flows'
+    | 'invite'
     | 'eval-harness'
     | 'mcp-tools'
     | 'mcp-tokens'
@@ -116,6 +117,7 @@ export const NAV_GROUPS: NavGroup[] = [
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/admin/connectors' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/admin/flows' },
+            { id: 'invite', label: 'Invites', icon: 'Send', route: '/app/admin/invite' },
             { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', route: '/app/admin/eval-harness' },
             { id: 'mcp-tools', label: 'MCP Tools', icon: 'Terminal', route: '/app/admin/mcp-tools' },
             { id: 'mcp-tokens', label: 'MCP Tokens', icon: 'Command', route: '/app/admin/mcp/tokens' },
