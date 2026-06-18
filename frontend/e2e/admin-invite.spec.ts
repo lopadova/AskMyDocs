@@ -97,6 +97,33 @@ test.describe('Admin Invite', () => {
         await expect(page.getByTestId('admin-invite-codes-table')).toHaveAttribute('data-state', 'ready', { timeout: 10_000 });
     });
 
+    test('campaign grant: create with a role grant, persisted on the server', async ({ page }) => {
+        await page.goto('/app/admin/invite');
+
+        await page.getByTestId('admin-invite-create').click();
+        await page.getByTestId('admin-invite-form-key').fill('e2e-grant');
+        await page.getByTestId('admin-invite-form-name').fill('E2E Grant');
+
+        // The grant fieldset is present; the role select is DB-derived and
+        // never offers super-admin.
+        await expect(page.getByTestId('admin-invite-form-grant')).toBeVisible();
+        const roleSelect = page.getByTestId('admin-invite-form-grant-role');
+        await expect(roleSelect).not.toContainText('super-admin');
+        await roleSelect.selectOption('viewer');
+
+        const createPost = page.waitForResponse(
+            (r) => r.url().endsWith('/api/admin/invite/campaigns') && r.request().method() === 'POST',
+            { timeout: 15_000 },
+        );
+        await page.getByTestId('admin-invite-form-submit').click();
+        const resp = await createPost;
+        if (!resp.ok()) {
+            throw new Error(`POST campaigns (grant) failed: ${resp.status()} ${await resp.text()}`);
+        }
+        // The server echoes the resolved grant back.
+        expect((await resp.json()).data.grant).toMatchObject({ role: 'viewer' });
+    });
+
     // R13: failure injection against an INTERNAL route is permitted because the
     // happy-path variants above already cover the real-data flow. This one
     // provokes a REAL 422 (duplicate campaign key) — no stub.
