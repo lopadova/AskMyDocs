@@ -8,6 +8,7 @@ use App\Models\InviteCode;
 use App\Models\Redemption;
 use App\Models\User;
 use App\Services\Invite\Support\AssessmentContext;
+use App\Services\Invite\Support\InviteGrant;
 use App\Services\Invite\Support\RedemptionError;
 use App\Services\Invite\Support\RedemptionResult;
 use App\Support\TenantContext;
@@ -44,6 +45,7 @@ final class RedemptionService
         private readonly ReferralService $referrals,
         private readonly FraudDetector $fraud,
         private readonly AnalyticsTracker $analytics,
+        private readonly AccountProvisioningService $provisioning,
     ) {
     }
 
@@ -135,6 +137,16 @@ final class RedemptionService
             \App\Models\InviteAnalyticsEvent::TYPE_CODE_REDEEMED,
             "redeemed:{$redemption->id}",
             ['account_id' => $redeemer->id, 'code_id' => $code->id, 'campaign_id' => $code->campaign_id],
+        );
+
+        // Provision the redeemer's account from the invite key's grant (role +
+        // tenant projects). The code's grant overrides its campaign default;
+        // both may be absent (account-creation-only codes). Best-effort: the
+        // service swallows + logs its own faults so this never fails the claim.
+        $this->provisioning->provision(
+            $redeemer,
+            InviteGrant::resolve($code->grant, $code->campaign?->grant),
+            $tenantId,
         );
 
         // Attribute the referral edge for this fresh claim (Phase 3). The
