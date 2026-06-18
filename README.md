@@ -1707,6 +1707,27 @@ including commercial use.
 
 ## Changelog
 
+**Invite system (feature/invite-system) — invite-by-code + referral.** An
+enterprise invite/referral subsystem implemented from the portable
+`Spec4LLM/InviteSystem` handoff (discovery → gap analysis → phased build). Eight
+canonical tenant-aware tables (Campaign, InviteCode, Invitation, Redemption,
+Referral, Reward, Waitlist, AbuseSignal) plus an append-only analytics event
+log. The heart is an **atomic, idempotent, concurrency-safe redemption**: a
+single conditional `UPDATE … WHERE current_uses < max_uses` that flips state in
+the same statement, backed by `UNIQUE(code_id, redeemer_id)` — `current_uses`
+can never exceed `max_uses`, and a replay returns the original claim. Codes are
+**Crockford Base32** (random / vanity / signed) through one normalization
+chokepoint. On top: a greenfield **referral graph + double-sided reward engine**
+(DB `idempotency_key` double-grant guard, per-referrer cap, reversal), a
+**weighted fail-open fraud detector** (velocity / disposable-email / honeypot /
+blacklist → generic `rate_limited`, never a probing oracle), a **funnel +
+K-factor metrics** read model reconciled against the canonical rows, an
+**Invitation send/accept lifecycle** over the host queued mailer (idempotent),
+and **GDPR retention + erasure that preserves aggregates** (PII columns
+anonymized in place; `current_uses` and funnel counts untouched). Every
+capability is exposed across all three surfaces — **PHP + HTTP API + MCP** (R44)
+— behind the RBAC authorization matrix (R32) and tenant isolation (R30/R31).
+
 **v8.18.0 — Retrieval-quality, money-precision & AI coaching (GA, shipped 2026-06-21).**
 Five waves. **W1.1** ships a real-data Playwright E2E proving the chat meter shows the
 **server-resolved** per-turn cost. **W1.2** adds a deferral guard pinning `laravel/ai`
@@ -1801,7 +1822,6 @@ Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reach
 shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
 prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
 (ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
-
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor
 analytics, dashboards and opt-in gamification — designed to surpass Stack Overflow
