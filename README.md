@@ -1724,7 +1724,14 @@ blacklist → generic `rate_limited`, never a probing oracle), a **funnel +
 K-factor metrics** read model reconciled against the canonical rows, an
 **Invitation send/accept lifecycle** over the host queued mailer (idempotent),
 and **GDPR retention + erasure that preserves aggregates** (PII columns
-anonymized in place; `current_uses` and funnel counts untouched). Every
+anonymized in place; `current_uses` and funnel counts untouched). An invite key
+also **provisions the account it redeems**: a campaign (or per-code override)
+carries a `grant` — the role the redeemer is granted and the tenant projects
+they gain access to — applied on the fresh claim through the single core
+redemption path, so every surface provisions identically. The grant is
+GRANT-never-REVOKE (additive role, `firstOrCreate` membership — an invite can
+only raise access, never downgrade it) and best-effort (it never fails the
+already-committed claim); `super-admin` is never grantable through a code. Every
 capability is exposed across all three surfaces — **PHP + HTTP API + MCP** (R44)
 — behind the RBAC authorization matrix (R32) and tenant isolation (R30/R31).
 
