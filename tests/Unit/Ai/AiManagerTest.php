@@ -225,7 +225,8 @@ class AiManagerTest extends TestCase
     {
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.anthropic.api_key', 'ak-test');
+        // anthropic is on the SDK config shape (key, not api_key) since v8.16/W2.
+        config()->set('ai.providers.anthropic.key', 'ak-test');
         config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
