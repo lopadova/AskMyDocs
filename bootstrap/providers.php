@@ -67,6 +67,11 @@ $providers = [
     // provider ships only the registry + NullChannel fallback so
     // the dispatch path is end-to-end testable in W1.2.
     App\Providers\NotificationServiceProvider::class,
+    // Invite system (feature/invite-system) — wires the deferred-redemption
+    // listener to the Login + Registered auth events so a guest's parked code
+    // completes on the first authentication. The invite services are plain
+    // auto-wired classes; this provider registers only the event listeners.
+    App\Providers\InviteServiceProvider::class,
     // M4 — KITT Widget services. Registers WidgetAiToolRegistry as a
     // singleton with built-in AiTool FQCNs (R23: FQCN validation +
     // supports() mutex on registration). Must boot AFTER
