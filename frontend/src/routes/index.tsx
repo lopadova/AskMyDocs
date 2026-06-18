@@ -555,7 +555,7 @@ function AdminInviteRoute() {
 }
 
 const adminInviteRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/invite',
     component: AdminInviteRoute,
 });
@@ -1187,6 +1187,7 @@ const teamChildren = [
     adminNotificationDefaultsRoute,
     adminEngagementRoute,
     adminEvidenceRiskReviewRoute,
+    adminInviteRoute,
 ];
 
 const routeTree = rootRoute.addChildren([
