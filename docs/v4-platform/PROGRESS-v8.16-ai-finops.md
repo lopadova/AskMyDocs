@@ -22,7 +22,10 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 - #304 CLOSED (superseded by #314).
 
 ## Waves
-- **W1 Foundation (rebase #304 + bridge)** — 🟡
+- **W1 Foundation (rebase #304 + bridge)** — ✅ DONE. PR #314 merged into feature/v8.16 @
+  **fbd46476** (2026-06-18). Tagged **v8.16.0-rc1** (prerelease) at that SHA. Closed after 6 Copilot
+  rounds; the substantive catch was the laravel/ai pin conflict (see the MUST-FIX line below).
+  W2 branch `feature/v8.16-W2-sdk-migration` created from fbd46476.
   - [x] W1 branch created (`feature/v8.16-W1-foundation` — hyphen form per the Branches note above — from origin/feature/v8.16)
   - [x] Merge origin/feature/v8.14 — only README.md conflicted (changelog); resolved newest-first. Committed 21410abc.
   - [x] Renumber v8.14 → v8.16 (README header+changelog, .env.example, CLAUDE.md §3, bootstrap/app.php comment)
@@ -60,9 +63,23 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         45304/45305, fix in 8.0.12+) noted for a separate hardening pass — unrelated to this PR.
   - [ ] R36 cloud loop until 0 must-fix + CI green → auto-merge (R: auto-merge when ready)
   - [ ] tag v8.16.0-rc1 at the W1 closure SHA on feature/v8.16 (R39)
-- **W2 Full SDK migration** — ⬜
-  - [ ] INVESTIGATE laravel/ai OpenRouter native driver + FinOps HTTP cost capture (owner note)
-  - [ ] Verify laravel/ai 0.6.8/0.7 breaking changes; bump pin
+- **W2 Full SDK migration** — 🟡 IN PROGRESS (branch `feature/v8.16-W2-sdk-migration`)
+  - **SCOPE DECISION:** stay on `laravel/ai ^0.6.8` for W2 (do NOT widen to `||^0.7`). regolo 1.0.1
+    is `^0.6`-only; 0.6.8's native gateways suffice for the migration. The 0.7 jump stays gated on a
+    regolo-0.7 release (separate follow-up). Pin bump already done in W1.
+  - **OPEN CRITICAL QUESTION (investigating):** tool-calling. `app/Mcp/Client/McpToolCallingService.php`
+    runs AskMyDocs's OWN tool loop — passes dynamic JSON-schema tools via `$options['tools']` into
+    `chatWithHistory`, reads back `AiResponse->toolCalls`, executes via MCP, re-calls. Consumers:
+    MessageController, MessageStreamController, WidgetOrchestratorService, HostBridge. The SDK normally
+    OWNS the tool loop (executes PHP Tool classes), which conflicts. RegoloProvider template sidesteps
+    this (tools:[]). A subagent is investigating whether the SDK can return RAW single-turn tool calls
+    over dynamic JSON tools without auto-executing (verdict A mechanical / B hard-mismatch / C hybrid:
+    no-tools+embeddings→SDK, with-tools→keep Http::). This determines the OpenAI/OpenRouter port shape.
+  - [x] INVESTIGATE laravel/ai OpenRouter native driver + FinOps HTTP cost capture — DONE (see
+        `W2-sdk-migration-findings.md`): all 4 providers have native drivers; FinOps captures real
+        `usage.cost` via a global Http RESPONSE middleware (survives migration); 2 gates: actual_cost
+        default-OFF + OpenRouter needs `usage:{include:true}` via agent providerOptions.
+  - [x] Verify laravel/ai 0.6.8/0.7 breaking changes; bump pin — pin at ^0.6.8 (W1). 0.7 deferred.
   - [ ] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK
   - [ ] Reshape config/ai.php; rewrite provider unit tests
   - [ ] auto_register on; retire AiCallMeter to fallback
