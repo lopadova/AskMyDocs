@@ -102,7 +102,16 @@ class GeminiProviderTest extends TestCase
         $p->chat('sys', 'q');
         $p->generateEmbeddings(['one']);
 
-        Http::assertSent(fn (Request $req) => $req->hasHeader('x-goog-api-key', 'AIzaTest')
+        // Assert PER-ENDPOINT (Copilot R6): a single assertSent matches ANY one
+        // request, so it would pass even if exactly one of the two leaked the key
+        // into the URL. Pin BOTH the generateContent (chat) and batchEmbedContents
+        // (embeddings) calls individually — a leak in either fails its own check.
+        Http::assertSent(fn (Request $req) => str_contains($req->url(), ':generateContent')
+            && $req->hasHeader('x-goog-api-key', 'AIzaTest')
+            && ! str_contains($req->url(), 'AIzaTest')
+            && ! str_contains($req->url(), 'key='));
+        Http::assertSent(fn (Request $req) => str_contains($req->url(), ':batchEmbedContents')
+            && $req->hasHeader('x-goog-api-key', 'AIzaTest')
             && ! str_contains($req->url(), 'AIzaTest')
             && ! str_contains($req->url(), 'key='));
     }

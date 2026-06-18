@@ -148,12 +148,14 @@ final class OpenRouterProvider implements AiProviderInterface
         ];
 
         // `tools` is absent on the MCP final answer turn (tool history, no tools);
-        // only attach when the caller actually offers tools this turn.
+        // only attach when the caller actually offers tools this turn. `tool_choice`
+        // is meaningless without `tools` and would make the API 400, so it is gated
+        // under the same check.
         if (array_key_exists('tools', $options)) {
             $payload['tools'] = $options['tools'];
-        }
-        if (array_key_exists('tool_choice', $options)) {
-            $payload['tool_choice'] = $options['tool_choice'];
+            if (array_key_exists('tool_choice', $options)) {
+                $payload['tool_choice'] = $options['tool_choice'];
+            }
         }
 
         $baseUrl = rtrim($this->config['url'] ?? 'https://openrouter.ai/api/v1', '/');
