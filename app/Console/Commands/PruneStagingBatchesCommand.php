@@ -34,8 +34,8 @@ class PruneStagingBatchesCommand extends Command
     {
         $hours = (int) ($this->option('hours') ?? config('kb.staging.retention_hours', 24));
 
-        if ($hours < 0) {
-            $this->warn('Retention is negative — skipping rotation.');
+        if ($hours <= 0) {
+            $this->warn('Retention is 0 or negative — skipping rotation.');
 
             return self::SUCCESS;
         }
