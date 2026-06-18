@@ -40,6 +40,7 @@ final class RedemptionService
     public function __construct(
         private readonly CodeValidator $validator,
         private readonly TenantContext $tenant,
+        private readonly ReferralService $referrals,
     ) {
     }
 
@@ -107,7 +108,12 @@ final class RedemptionService
                 : RedemptionResult::failure(RedemptionError::Exhausted);
         }
 
-        return RedemptionResult::success($redemption, already: false);
+        // Attribute the referral edge for this fresh claim (Phase 3). The
+        // attributor returns null for un-attributable / first-wins / self
+        // cases; attribution failure must never fail the redemption itself.
+        $referral = $this->referrals->attribute($redemption, $code);
+
+        return RedemptionResult::success($redemption, already: false, referral: $referral);
     }
 
     private function findRedemption(string $tenantId, int $codeId, int $redeemerId): ?Redemption
