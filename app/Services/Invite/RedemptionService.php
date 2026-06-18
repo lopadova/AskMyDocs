@@ -43,6 +43,7 @@ final class RedemptionService
         private readonly TenantContext $tenant,
         private readonly ReferralService $referrals,
         private readonly FraudDetector $fraud,
+        private readonly AnalyticsTracker $analytics,
     ) {
     }
 
@@ -128,6 +129,13 @@ final class RedemptionService
                 ? RedemptionResult::success($winner, already: true)
                 : RedemptionResult::failure(RedemptionError::Exhausted);
         }
+
+        // Funnel event (Phase 5) — idempotent on the redemption id, best-effort.
+        $this->analytics->record(
+            \App\Models\InviteAnalyticsEvent::TYPE_CODE_REDEEMED,
+            "redeemed:{$redemption->id}",
+            ['account_id' => $redeemer->id, 'code_id' => $code->id, 'campaign_id' => $code->campaign_id],
+        );
 
         // Attribute the referral edge for this fresh claim (Phase 3). The
         // attributor returns null for un-attributable / first-wins / self

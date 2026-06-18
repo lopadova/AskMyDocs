@@ -29,6 +29,7 @@ final class ReferralService
     public function __construct(
         private readonly RewardEngine $rewards,
         private readonly TenantContext $tenant,
+        private readonly AnalyticsTracker $analytics,
     ) {
     }
 
@@ -90,6 +91,18 @@ final class ReferralService
                 'qualified_at' => now(),
             ]);
             $referral->refresh();
+
+            // Funnel events (Phase 5) — idempotent on the referral id.
+            $this->analytics->record(
+                \App\Models\InviteAnalyticsEvent::TYPE_REFERRAL_QUALIFIED,
+                "qualified:{$referral->id}",
+                ['account_id' => $referral->referrer_id, 'referral_id' => $referral->id, 'campaign_id' => $referral->campaign_id],
+            );
+            $this->analytics->record(
+                \App\Models\InviteAnalyticsEvent::TYPE_ACCOUNT_ACTIVATED,
+                "activated:{$referral->id}",
+                ['account_id' => $referral->referee_id, 'referral_id' => $referral->id, 'campaign_id' => $referral->campaign_id],
+            );
         }
 
         $rewards = [];

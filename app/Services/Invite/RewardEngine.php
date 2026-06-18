@@ -26,6 +26,7 @@ final class RewardEngine
     public function __construct(
         private readonly TenantContext $tenant,
         private readonly FraudDetector $fraud,
+        private readonly AnalyticsTracker $analytics,
     ) {
     }
 
@@ -74,7 +75,7 @@ final class RewardEngine
         }
 
         try {
-            return Reward::create([
+            $reward = Reward::create([
                 'tenant_id' => $this->tenant->current(),
                 'referral_id' => $referral->id,
                 'redemption_id' => $referral->redemption_id,
@@ -88,6 +89,15 @@ final class RewardEngine
                 'idempotency_key' => $key,
                 'granted_at' => now(),
             ]);
+
+            // Funnel event (Phase 5) — idempotent on the reward id.
+            $this->analytics->record(
+                \App\Models\InviteAnalyticsEvent::TYPE_REWARD_GRANTED,
+                "reward:{$reward->id}",
+                ['account_id' => $beneficiaryId, 'referral_id' => $referral->id, 'campaign_id' => $referral->campaign_id],
+            );
+
+            return $reward;
         } catch (QueryException $e) {
             // A concurrent grant beat us on the UNIQUE(idempotency_key) — load
             // and return it as the idempotent result.
