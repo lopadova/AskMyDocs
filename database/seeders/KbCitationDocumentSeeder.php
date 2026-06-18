@@ -44,12 +44,19 @@ final class KbCitationDocumentSeeder extends Seeder
         // return would let the E2E proceed against empty data and time out.
         $admin = User::where('email', 'admin@demo.local')->firstOrFail();
 
+        // Include version_hash in the search key so a stale soft-deleted version
+        // with a different version_hash is never accidentally updated in place.
         $doc = KnowledgeDocument::withTrashed()->updateOrCreate(
-            ['tenant_id' => 'default', 'project_key' => self::PROJECT, 'source_path' => 'decisions/' . self::SLUG . '.md'],
+            [
+                'tenant_id' => 'default',
+                'project_key' => self::PROJECT,
+                'source_path' => 'decisions/' . self::SLUG . '.md',
+                'version_hash' => hash('sha256', self::SLUG . 'v'),
+            ],
             [
                 'source_type' => 'markdown', 'title' => 'Cache backend decision', 'language' => 'en',
                 'access_scope' => 'internal', 'status' => 'active',
-                'document_hash' => hash('sha256', self::SLUG), 'version_hash' => hash('sha256', self::SLUG . 'v'),
+                'document_hash' => hash('sha256', self::SLUG),
                 'doc_id' => strtoupper(str_replace('-', '_', self::SLUG)), 'slug' => self::SLUG,
                 'canonical_type' => 'decision', 'canonical_status' => 'accepted',
                 'is_canonical' => true, 'retrieval_priority' => 70,
