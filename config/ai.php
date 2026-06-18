@@ -102,14 +102,26 @@ return [
 
     'providers' => [
 
+        // OpenAI — HYBRID (v8.16/W2). No-tools chat + embeddings flow through the
+        // laravel/ai SDK (native `openai` driver: /responses + /embeddings),
+        // metered by the finops AgentPrompted / EmbeddingsGenerated hooks. The MCP
+        // with-tools turn stays on raw Http:: /chat/completions — the SDK cannot
+        // host AskMyDocs's external tool loop (see W2-sdk-migration-findings.md) —
+        // and that residual path is metered by the AiCallMeter bridge. Config is
+        // the SDK shape (driver/key/url/models); the Http branch reads the same
+        // keys, so there is a single source of truth.
         'openai' => [
-            'api_key' => env('OPENAI_API_KEY'),
-            'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
-            'chat_model' => env('OPENAI_CHAT_MODEL', 'gpt-4o'),
-            'embeddings_model' => env('OPENAI_EMBEDDINGS_MODEL', 'text-embedding-3-small'),
+            'driver' => 'openai',
+            'name' => 'openai',
+            'key' => env('OPENAI_API_KEY'),
+            'url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+            'timeout' => is_numeric($v = env('OPENAI_TIMEOUT')) ? (int) $v : 120,
             'temperature' => is_numeric($v = env('OPENAI_TEMPERATURE')) ? (float) $v : 0.2,
             'max_tokens' => is_numeric($v = env('OPENAI_MAX_TOKENS')) ? (int) $v : 4096,
-            'timeout' => is_numeric($v = env('OPENAI_TIMEOUT')) ? (int) $v : 120,
+            'models' => [
+                'text' => ['default' => env('OPENAI_CHAT_MODEL', 'gpt-4o')],
+                'embeddings' => ['default' => env('OPENAI_EMBEDDINGS_MODEL', 'text-embedding-3-small')],
+            ],
         ],
 
         // Anthropic — laravel/ai SDK shape (v8.16/W2). The native `anthropic`

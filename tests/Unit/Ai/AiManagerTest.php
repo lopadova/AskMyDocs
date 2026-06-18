@@ -9,7 +9,10 @@ use App\Ai\Providers\GeminiProvider;
 use App\Ai\Providers\OpenAiProvider;
 use App\Ai\Providers\OpenRouterProvider;
 use App\Ai\Providers\RegoloProvider;
+use App\FinOps\AiCallMeter;
+use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
+use Mockery;
 use Tests\TestCase;
 
 class AiManagerTest extends TestCase
@@ -130,7 +133,7 @@ class AiManagerTest extends TestCase
     {
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
         config()->set('ai.providers.openrouter.api_key', null);
@@ -147,7 +150,7 @@ class AiManagerTest extends TestCase
         // doesn't silently corrupt under auto-selection).
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
         config()->set('ai.providers.openrouter.api_key', 'or-test');
@@ -163,7 +166,7 @@ class AiManagerTest extends TestCase
         // (openai/text-embedding-3-small).
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.openai.key', null);
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
         config()->set('ai.providers.openrouter.api_key', 'or-test');
@@ -180,7 +183,7 @@ class AiManagerTest extends TestCase
         // a richer model catalogue than `text-embedding-004`).
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.openai.key', null);
         config()->set('ai.providers.openrouter.api_key', null);
         config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
@@ -194,7 +197,7 @@ class AiManagerTest extends TestCase
     {
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
-        config()->set('ai.providers.openai.api_key', null);
+        config()->set('ai.providers.openai.key', null);
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
         config()->set('ai.providers.openrouter.api_key', null);
@@ -223,12 +226,91 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.anthropic.api_key', 'ak-test');
-        config()->set('ai.providers.openai.api_key', 'sk-test');
+        config()->set('ai.providers.openai.key', 'sk-test');
         config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
 
         $manager = new AiManager();
 
         $this->assertSame('openai', $manager->embeddingsProvider()->name());
+    }
+
+    // ---------------------------------------------------------------------
+    // FinOps metering gate (v8.16/W2) — the AiCallMeter bridge must NOT fire
+    // on a call that already went through the laravel/ai SDK (double-count
+    // guard), and MUST fire on the residual raw-Http with-tools turn (R26).
+    // ---------------------------------------------------------------------
+
+    public function test_bridge_skips_metering_for_openai_no_tools_sdk_chat(): void
+    {
+        config()->set('ai.default', 'openai');
+        // SDK no-tools chat → /responses; metered by the finops lifecycle hook.
+        Http::fake(['api.openai.com/*' => Http::response([
+            'id' => 'r', 'model' => 'gpt-4o', 'status' => 'completed',
+            'output' => [[
+                'type' => 'message', 'status' => 'completed',
+                'content' => [['type' => 'output_text', 'text' => 'hi']],
+            ]],
+            'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldNotReceive('meterChat');
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chat('s', 'u');
+    }
+
+    public function test_bridge_meters_openai_with_tools_http_chat(): void
+    {
+        config()->set('ai.default', 'openai');
+        // With-tools chat → raw Http:: /chat/completions; the SDK hook does NOT
+        // fire, so the bridge must record it.
+        Http::fake(['api.openai.com/*' => Http::response([
+            'model' => 'gpt-4o',
+            'choices' => [['message' => ['role' => 'assistant', 'content' => 'x'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 5, 'completion_tokens' => 2, 'total_tokens' => 7],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldReceive('meterChat')->once();
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chat('s', 'u', ['tools' => [['type' => 'function', 'function' => ['name' => 'x']]]]);
+    }
+
+    public function test_bridge_skips_metering_for_openai_sdk_embeddings(): void
+    {
+        config()->set('ai.default', 'openai');
+        config()->set('ai.embeddings_provider', 'openai');
+        Http::fake(['api.openai.com/*' => Http::response([
+            'model' => 'text-embedding-3-small',
+            'data' => [['index' => 0, 'embedding' => [0.1]]],
+            'usage' => ['prompt_tokens' => 3],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldNotReceive('meterEmbeddings');
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->generateEmbeddings(['x']);
+    }
+
+    public function test_bridge_still_meters_openrouter_chat_pending_its_sdk_migration(): void
+    {
+        // openrouter has NOT yet moved to the hybrid SDK shape (W2 commit 4), so
+        // its no-tools chat still transits raw Http:: and MUST be bridged.
+        config()->set('ai.default', 'openrouter');
+        Http::fake(['openrouter.ai/*' => Http::response([
+            'model' => 'openai/gpt-4o-mini',
+            'choices' => [['message' => ['content' => 'x'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 5, 'completion_tokens' => 2, 'total_tokens' => 7],
+        ])]);
+
+        $meter = Mockery::mock(AiCallMeter::class);
+        $meter->shouldReceive('meterChat')->once();
+        $this->app->instance(AiCallMeter::class, $meter);
+
+        (new AiManager())->chat('s', 'u');
     }
 }

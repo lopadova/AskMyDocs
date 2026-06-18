@@ -92,8 +92,15 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
           (embeddings_model→models.embeddings.default) + AiManagerTest fallback keys. Added gemini to
           SDK_METERED_PROVIDERS (+ data-provider test). GeminiProviderTest rewritten as SDK-adapter
           contract. AI + FinOps slice = 129 tests green.
-    - [ ] **Commit 3 — OpenAI**: SDK no-tools chat + SDK embeddings; KEEP raw-Http:: with-tools
-          branch. AiManager: gate AiCallMeter to the tools path only (array_key_exists('tools')).
+    - [x] **Commit 3 — OpenAI** (HYBRID): SDK no-tools chat (`/responses`) + SDK embeddings;
+          KEEP raw-Http:: `/chat/completions` with-tools branch (`chatViaHttpWithTools`). config →
+          SDK shape (driver/key/url/models). AiManager metering gate (`SDK_HYBRID_TOOL_PROVIDERS`,
+          `bridgeShouldMeterChat`): bridge fires only on the with-tools turn; no-tools chat +
+          embeddings are SDK-hook-metered (double-count guard). AiCallMeter un-`final` (R26 Mockery).
+          Migration tax fixed: hasApiKey openai→.key, EmbeddingCacheService openai model path, +
+          6 feature-test fakes reshaped to the SDK `/responses` body (new `TestCase::openAiSdkResponsesBody`
+          helper) + Message*/HealthCheck/AiInsights/TabularReview/Workflow config shapes. **FULL
+          SUITE GREEN: 2803 tests, 10419 assertions** on laravel/ai 0.6.8.
     - [ ] **Commit 4 — OpenRouter**: same hybrid + agent providerOptions usage.include (cost capture).
     - [ ] **Commit 5 — cleanup**: AiManager final metering gate, enable actual_cost, ADR reversing §6,
           R9 doc sweep of "raw Http::", .env.example, README/CLAUDE bridge wording.

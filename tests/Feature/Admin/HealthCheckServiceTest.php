@@ -127,8 +127,9 @@ class HealthCheckServiceTest extends TestCase
             'ai.default' => 'anthropic',
             'ai.embeddings_provider' => null,
             'ai.providers' => [
-                'anthropic' => ['api_key' => 'sk-ant'],
-                'openai' => ['api_key' => 'sk-test'],
+                'anthropic' => ['key' => 'sk-ant'],
+                // openai is on the SDK config shape (key, not api_key) since v8.16/W2.
+                'openai' => ['key' => 'sk-test'],
             ],
         ]);
 
@@ -142,11 +143,11 @@ class HealthCheckServiceTest extends TestCase
             'ai.default' => 'anthropic',
             'ai.embeddings_provider' => null,
             'ai.providers' => [
-                'anthropic' => ['api_key' => 'sk-ant'],
-                'openai' => ['api_key' => null],
+                'anthropic' => ['key' => 'sk-ant'],
+                'openai' => ['key' => null],
                 'openrouter' => ['api_key' => null],
                 'regolo' => ['key' => null],
-                'gemini' => ['api_key' => null],
+                'gemini' => ['key' => null],
             ],
         ]);
 

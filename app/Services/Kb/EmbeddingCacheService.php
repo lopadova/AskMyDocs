@@ -241,7 +241,8 @@ class EmbeddingCacheService
         // model) would make every lookup miss while inserts still
         // succeed, polluting the cache with unreachable rows.
         return match ($providerName) {
-            'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
+            // openai is on the SDK config shape (models.embeddings.default) since v8.16/W2.
+            'openai' => config('ai.providers.openai.models.embeddings.default', 'text-embedding-3-small'),
             // gemini is on the SDK config shape (models.embeddings.default) since v8.16/W2.
             'gemini' => config('ai.providers.gemini.models.embeddings.default', 'text-embedding-004'),
             'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),

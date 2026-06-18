@@ -85,13 +85,18 @@ final class MessageStreamControllerTest extends TestCase
         // the contract once via Anthropic and trusts the FallbackStreaming
         // trait + StreamChunkTest unit tests to cover the rest.
         config()->set('ai.default', 'anthropic');
+        // SDK config shape (driver/key/url/models) — anthropic moved to the
+        // laravel/ai SDK in v8.16/W2; the SDK reads `driver` + `key` + `url`.
         config()->set('ai.providers.anthropic', [
-            'api_key' => 'sk-ant-test',
+            'driver' => 'anthropic',
+            'name' => 'anthropic',
+            'key' => 'sk-ant-test',
+            'url' => 'https://api.anthropic.com/v1',
             'api_version' => '2023-06-01',
-            'chat_model' => 'claude-sonnet-4-20250514',
             'temperature' => 0.2,
             'max_tokens' => 2048,
             'timeout' => 30,
+            'models' => ['text' => ['default' => 'claude-sonnet-4-20250514']],
         ]);
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_chunks_required', 1);

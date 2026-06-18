@@ -76,20 +76,25 @@ final class BenchmarkCommandTest extends TestCase
         // faithfulness embeddings are faked to an identical vector for the
         // answer and the grounding text, so cosine = 1.0 and faithfulness is
         // provably > 0.
+        // openai is on the SDK config shape (v8.16/W2): no-tools chat goes through
+        // the laravel/ai SDK `/responses` endpoint, embeddings through `/embeddings`.
         config([
             'ai.default' => 'openai',
             'ai.embeddings_provider' => 'openai',
-            'ai.providers.openai.api_key' => 'sk-test',
-            'ai.providers.openai.chat_model' => 'gpt-4o-mini',
+            'ai.providers.openai.key' => 'sk-test',
+            'ai.providers.openai.models.text.default' => 'gpt-4o-mini',
         ]);
         Http::fake([
-            'api.openai.com/v1/chat/completions' => Http::response([
+            'api.openai.com/v1/responses' => Http::response([
+                'id' => 'resp_1',
                 'model' => 'gpt-4o-mini',
-                'choices' => [[
-                    'message' => ['content' => 'Cache invalidation uses a TTL and an event-based purge of Redis keys, per the runbook.'],
-                    'finish_reason' => 'stop',
+                'status' => 'completed',
+                'output' => [[
+                    'type' => 'message',
+                    'status' => 'completed',
+                    'content' => [['type' => 'output_text', 'text' => 'Cache invalidation uses a TTL and an event-based purge of Redis keys, per the runbook.']],
                 ]],
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
+                'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
             ], 200),
             'api.openai.com/v1/embeddings' => Http::response([
                 'model' => 'text-embedding-3-small',
@@ -131,7 +136,7 @@ final class BenchmarkCommandTest extends TestCase
         // just "at least once". A regression that called the LLM a single time
         // (or hoisted it out of the per-query loop) would still produce a
         // non-empty $scored, so pin the call count to the scored-row count.
-        $chatCalls = Http::recorded(fn ($req) => str_contains($req->url(), '/chat/completions'))->count();
+        $chatCalls = Http::recorded(fn ($req) => str_contains($req->url(), '/responses'))->count();
         $this->assertSame(count($scored), $chatCalls, 'one real chat call per scored query');
 
         // The faked answer shares cache vocabulary (TTL, purge, Redis, cache)

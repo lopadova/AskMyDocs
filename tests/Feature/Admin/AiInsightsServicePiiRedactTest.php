@@ -160,24 +160,13 @@ final class AiInsightsServicePiiRedactTest extends TestCase
      */
     private function fakeLlm(): void
     {
+        // The clustering only requires a valid JSON shape — the echoed
+        // `sample_questions` here is irrelevant; the assertions inspect the
+        // OUTGOING request body and the snapshot shape (built from the
+        // SERVICE's pre-LLM mask, not the LLM response). SDK `/responses`
+        // shape since v8.16/W2.
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => [
-                        // The clustering only requires a valid JSON
-                        // shape — the actual `sample_questions` echoed
-                        // back here is irrelevant; the assertions
-                        // inspect the OUTGOING request body (what the
-                        // service sent the provider) and the snapshot
-                        // shape (which is built from the SERVICE's
-                        // pre-LLM mask, not the LLM response).
-                        'content' => '[{"topic":"Contact","sample_questions":[]}]',
-                    ],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('[{"topic":"Contact","sample_questions":[]}]'), 200),
         ]);
     }
 
@@ -197,23 +186,19 @@ final class AiInsightsServicePiiRedactTest extends TestCase
             '*' => function ($request) {
                 $body = (string) $request->body();
                 $decoded = json_decode($body, true);
+                // SDK `/responses` body (v8.16/W2): input[0]=system, input[1]=user;
+                // user content is an array of {type:input_text, text} parts.
                 $userBlock = is_array($decoded)
-                    ? ($decoded['messages'][1]['content'] ?? '')
+                    ? ($decoded['input'][1]['content'][0]['text'] ?? '')
                     : '';
                 preg_match_all('/^\d+\.\s*(.+)$/m', (string) $userBlock, $matches);
                 $samples = array_slice($matches[1] ?? [], 0, 5);
                 $jsonSamples = json_encode(array_values($samples), JSON_UNESCAPED_SLASHES);
 
-                return Http::response([
-                    'choices' => [[
-                        'message' => [
-                            'content' => '[{"topic":"Contact","sample_questions":'.$jsonSamples.'}]',
-                        ],
-                        'finish_reason' => 'stop',
-                    ]],
-                    'model' => 'gpt-4o-mini',
-                    'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-                ], 200);
+                return Http::response(
+                    self::openAiSdkResponsesBody('[{"topic":"Contact","sample_questions":'.$jsonSamples.'}]'),
+                    200,
+                );
             },
         ]);
     }

@@ -34,8 +34,13 @@ use Throwable;
  * Discipline mirrors {@see \App\Services\ChatLog\ChatLogManager::log()}:
  * config-gated, class-guarded and fully try/catch'd, so a metering failure NEVER
  * breaks a chat turn or an ingestion run.
+ *
+ * Intentionally NOT `final` (mirrors {@see \App\Ai\AiManager}): the AiManager
+ * metering gate is proven by Mockery `shouldNotReceive('meterChat')` /
+ * `shouldReceive(...)->once()` (R26 short-circuit proof), which cannot mock a
+ * final class.
  */
-final class AiCallMeter
+class AiCallMeter
 {
     public function meterChat(AiResponse $response, string|array|null $prompt = null): void
     {

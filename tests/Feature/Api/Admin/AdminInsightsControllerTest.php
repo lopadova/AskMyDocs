@@ -186,14 +186,7 @@ class AdminInsightsControllerTest extends TestCase
 
         // Fake the LLM response with valid JSON array of tags.
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => '["redis","eviction-policy","hot-keys"]'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('["redis","eviction-policy","hot-keys"]', 'gpt-4o-mini', 10, 5), 200),
         ]);
 
         // Seed a chunk so the service has text to feed the LLM.
@@ -279,14 +272,7 @@ class AdminInsightsControllerTest extends TestCase
         ]);
 
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => '["redis","eviction-policy"]'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('["redis","eviction-policy"]', 'gpt-4o-mini', 10, 5), 200),
         ]);
 
         $this->actAsTenant('acme');
