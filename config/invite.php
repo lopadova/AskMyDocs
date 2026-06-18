@@ -60,4 +60,48 @@ return [
 
     // Session key the deferred-redemption flow parks a guest's code under.
     'pending_session_key' => 'invite.pending_redemption',
+
+    // Anti-abuse (docs/10-anti-abuse.md). Advisory gate — fail-open by design:
+    // a detector error NEVER blocks; seat safety comes from the atomic claim.
+    'anti_abuse' => [
+        'enabled' => (bool) env('INVITE_ANTI_ABUSE_ENABLED', true),
+
+        // Scoring → action thresholds (subject rolling totals). Hard-block
+        // signals (blacklist, honeypot) short-circuit to block regardless.
+        'thresholds' => [
+            'flag' => 25,      // 25–49  → flag (proceed, record warn)
+            'throttle' => 50,  // 50–79  → throttle (generic rate_limited + retry_after)
+            'block' => 80,     // ≥80    → block (generic rate_limited)
+        ],
+        'retry_after' => (int) env('INVITE_ABUSE_RETRY_AFTER', 900),
+
+        // Per-subject velocity: max prior redemptions allowed inside the window.
+        'velocity' => [
+            'account' => ['max' => 5, 'window' => 86400, 'score' => 30],
+            'ip' => ['max' => 10, 'window' => 3600, 'score' => 25],
+            'fingerprint' => ['max' => 8, 'window' => 3600, 'score' => 30],
+        ],
+
+        // Disposable-email domains (domain-only check). score 40; escalates to
+        // block on reward/referral campaigns, flag otherwise.
+        'disposable_domains' => ['mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com'],
+        'disposable_score' => 40,
+
+        // Manual blocklist (hard-block, score 100). ips are matched on the
+        // salted hash; emails/domains on the canonical value; accounts on id.
+        'blocklist' => [
+            'ip_hashes' => [],
+            'emails' => [],
+            'domains' => [],
+            'accounts' => [],
+        ],
+
+        // False-positive allowlist — skips scoring entirely (corporate proxy /
+        // shared-IP escape hatch). Audited on change.
+        'allowlist' => [
+            'ips' => [],
+            'domains' => [],
+            'accounts' => [],
+        ],
+    ],
 ];

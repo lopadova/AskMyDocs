@@ -7,6 +7,7 @@ namespace App\Services\Invite;
 use App\Models\InviteCode;
 use App\Models\Redemption;
 use App\Models\User;
+use App\Services\Invite\Support\AssessmentContext;
 use App\Services\Invite\Support\RedemptionError;
 use App\Services\Invite\Support\RedemptionResult;
 use App\Support\TenantContext;
@@ -41,6 +42,7 @@ final class RedemptionService
         private readonly CodeValidator $validator,
         private readonly TenantContext $tenant,
         private readonly ReferralService $referrals,
+        private readonly FraudDetector $fraud,
     ) {
     }
 
@@ -58,10 +60,29 @@ final class RedemptionService
 
         $code = $validation->code;
 
-        // (2) Idempotency pre-check — same account, same code → replay.
+        // (2) Idempotency pre-check — same account, same code → replay. Run
+        // BEFORE the abuse gate so a legitimate replay is never rate-limited.
         $existing = $this->findRedemption($tenantId, $code->id, $redeemer->id);
         if ($existing !== null) {
             return RedemptionResult::success($existing, already: true);
+        }
+
+        // (2b) Advisory anti-abuse gate (Phase 4). Fail-open: a detector fault
+        // returns `none` and never blocks. A throttle/block surfaces a GENERIC
+        // rate_limited — the tripped signal_type is never echoed.
+        $decision = $this->fraud->assess(new AssessmentContext(
+            tenantId: $tenantId,
+            action: 'redeem',
+            accountId: $redeemer->id,
+            ip: $context['ip'] ?? null,
+            fingerprint: $context['fingerprint'] ?? null,
+            email: $redeemer->email,
+            campaign: $code->campaign,
+            honeypot: (bool) ($context['honeypot'] ?? false),
+            codeId: $code->id,
+        ));
+        if ($decision->blocked()) {
+            return RedemptionResult::failure(RedemptionError::RateLimited);
         }
 
         // (3) Atomic claim: increment + state transition in one statement.
