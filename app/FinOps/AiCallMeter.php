@@ -132,15 +132,25 @@ final class AiCallMeter
     }
 
     /**
+     * Providers fully migrated to the laravel/ai SDK — the finops metering hook
+     * already records them via the AgentPrompted / EmbeddingsGenerated lifecycle
+     * events, so re-recording here would DOUBLE-COUNT. As each provider moves off
+     * raw `Http::` (v8.16/W2) it joins this set. openai / openrouter are NOT here:
+     * their no-tools path is SDK-metered but their MCP with-tools turn stays on
+     * raw `Http::` and IS metered here — AiManager only invokes the bridge for
+     * that residual path (see docs/v4-platform/W2-sdk-migration-findings.md).
+     */
+    private const SDK_METERED_PROVIDERS = ['regolo', 'anthropic'];
+
+    /**
      * Whether a call from this provider should be metered HERE.
      *
-     * Regolo is excluded: it flows through the laravel/ai SDK, which already
-     * dispatches the metering events — re-recording it here would double-count.
+     * SDK-native providers are excluded (the lifecycle hook records them).
      * The class guard keeps the host healthy if the finops package is removed.
      */
     private function shouldMeter(string $provider): bool
     {
-        if ($provider === 'regolo') {
+        if (in_array($provider, self::SDK_METERED_PROVIDERS, true)) {
             return false;
         }
 

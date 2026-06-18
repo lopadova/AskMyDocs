@@ -10,6 +10,7 @@ use App\FinOps\AiCallMeter;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Padosoft\LaravelAiFinOps\Metering\MeteringListener;
 use RuntimeException;
 use Tests\TestCase;
@@ -75,11 +76,14 @@ final class AiCallMeterTest extends TestCase
         // under-metering). The first chat test only exercises the null-prompt path.
         app(TenantContext::class)->set('acme');
 
+        // Use a provider the bridge STILL meters (openrouter keeps a raw-Http::
+        // with-tools turn in v8.16/W2). anthropic/regolo are now SDK-metered and
+        // skipped here — see test_skips_providers_the_sdk_already_meters.
         app(AiCallMeter::class)->meterChat(
             new AiResponse(
                 content: 'grounded answer',
-                provider: 'anthropic',
-                model: 'claude-sonnet-4-20250514',
+                provider: 'openrouter',
+                model: 'openai/gpt-4o-mini',
                 promptTokens: 200,
                 completionTokens: 60,
                 totalTokens: 260,
@@ -97,8 +101,8 @@ final class AiCallMeterTest extends TestCase
             ->first();
 
         $this->assertNotNull($row, 'expected a usage-ledger row for the array-prompt (chatWithHistory) call');
-        $this->assertSame('anthropic', $row->provider);
-        $this->assertSame('claude-sonnet-4-20250514', $row->model);
+        $this->assertSame('openrouter', $row->provider);
+        $this->assertSame('openai/gpt-4o-mini', $row->model);
         $this->assertSame('acme', $row->tenant_id);
         $this->assertSame(200, (int) $row->tokens_input);
         $this->assertSame(60, (int) $row->tokens_output);
@@ -130,12 +134,20 @@ final class AiCallMeterTest extends TestCase
         $this->assertSame(0, (int) $row->tokens_output);
     }
 
-    public function test_does_not_double_count_regolo_which_the_sdk_already_meters(): void
+    /**
+     * Providers fully migrated to the laravel/ai SDK are metered by the finops
+     * lifecycle hook (AgentPrompted / EmbeddingsGenerated), so the host bridge
+     * MUST skip them to avoid double-counting. As of v8.16/W2 the set is
+     * regolo + anthropic (gemini/openai/openrouter follow in later commits;
+     * openai/openrouter keep a metered raw-Http:: tool turn).
+     */
+    #[DataProvider('sdkMeteredProviders')]
+    public function test_skips_providers_the_sdk_already_meters(string $provider, string $model): void
     {
         app(AiCallMeter::class)->meterChat(new AiResponse(
             content: 'hi',
-            provider: 'regolo',
-            model: 'Llama-3.3-70B-Instruct',
+            provider: $provider,
+            model: $model,
             promptTokens: 10,
             completionTokens: 5,
             totalTokens: 15,
@@ -146,8 +158,19 @@ final class AiCallMeterTest extends TestCase
             DB::table('ai_finops_usage_ledger')
                 ->where('tenant_id', app(TenantContext::class)->current())
                 ->count(),
-            'Regolo flows through the laravel/ai SDK and is metered there; the host bridge must skip it.',
+            "[{$provider}] flows through the laravel/ai SDK and is metered there; the host bridge must skip it.",
         );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function sdkMeteredProviders(): array
+    {
+        return [
+            'regolo' => ['regolo', 'Llama-3.3-70B-Instruct'],
+            'anthropic' => ['anthropic', 'claude-sonnet-4-20250514'],
+        ];
     }
 
     public function test_records_nothing_when_metering_is_disabled(): void

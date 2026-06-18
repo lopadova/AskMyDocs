@@ -112,13 +112,22 @@ return [
             'timeout' => is_numeric($v = env('OPENAI_TIMEOUT')) ? (int) $v : 120,
         ],
 
+        // Anthropic — laravel/ai SDK shape (v8.16/W2). The native `anthropic`
+        // driver reads driver/key/url; model + sampling flow via the per-call
+        // agent (SdkAnonymousAgent). No embeddings, no tool path → fully on the
+        // SDK, metered by the finops AgentPrompted hook (no AiCallMeter bridge).
         'anthropic' => [
-            'api_key' => env('ANTHROPIC_API_KEY'),
+            'driver' => 'anthropic',
+            'name' => 'anthropic',
+            'key' => env('ANTHROPIC_API_KEY'),
+            'url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com/v1'),
             'api_version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
-            'chat_model' => env('ANTHROPIC_CHAT_MODEL', 'claude-sonnet-4-20250514'),
+            'timeout' => is_numeric($v = env('ANTHROPIC_TIMEOUT')) ? (int) $v : 120,
             'temperature' => is_numeric($v = env('ANTHROPIC_TEMPERATURE')) ? (float) $v : 0.2,
             'max_tokens' => is_numeric($v = env('ANTHROPIC_MAX_TOKENS')) ? (int) $v : 4096,
-            'timeout' => is_numeric($v = env('ANTHROPIC_TIMEOUT')) ? (int) $v : 120,
+            'models' => [
+                'text' => ['default' => env('ANTHROPIC_CHAT_MODEL', 'claude-sonnet-4-20250514')],
+            ],
         ],
 
         'gemini' => [
@@ -143,10 +152,10 @@ return [
             'timeout' => is_numeric($v = env('OPENROUTER_TIMEOUT')) ? (int) $v : 120,
         ],
 
-        // Regolo entry uses the laravel/ai SDK shape because AskMyDocs's
-        // RegoloProvider delegates to the SDK + padosoft/laravel-ai-regolo
-        // package. The other four providers above stay on the AskMyDocs
-        // legacy shape until their SDK migration lands (W2.B.full follow-up).
+        // Regolo + Anthropic use the laravel/ai SDK shape (driver/key/url/models)
+        // because their providers delegate to the SDK. OpenAI / Gemini / OpenRouter
+        // above still carry the AskMyDocs legacy shape (api_key/base_url/chat_model)
+        // pending their own W2 SDK migration commits.
         'regolo' => [
             'driver' => 'regolo',
             'name' => 'regolo',
