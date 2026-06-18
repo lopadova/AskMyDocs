@@ -111,13 +111,18 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
           raw with-tools branch keeps legacy `X-Title`. Tests: OpenRouterProviderTest rewritten (both
           branches + usage.include assertion); AiManager openrouter gate tests; cache round-trip +
           fallback config shapes. **FULL SUITE GREEN: 2804 tests, 10425 assertions.**
-    - [ ] **Commit 5 — cleanup**: AiManager final metering gate, enable actual_cost, ADR reversing §6,
-          R9 doc sweep of "raw Http::", .env.example, README/CLAUDE bridge wording.
-  - [ ] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK
-  - [ ] Reshape config/ai.php; rewrite provider unit tests
-  - [ ] auto_register on; retire AiCallMeter to fallback
-  - [ ] ADR reversing §6 + R9 doc sweep
-  - [ ] tag v8.16.0-rc2
+    - [x] **Commit 5 — cleanup/docs**: AiManager metering gate finalised (C3/C4). actual_cost: the
+          package already env-gates `AI_FINOPS_ACTUAL_COST` (default OFF, R43); OpenRouter SDK call
+          sends `usage:{include:true}` so flipping it captures real cost — no host config override
+          (shallow-merge would clobber the package `pricing` block). auto_register already default-ON
+          (the SDK hook meters every SDK-path call). **ADR 0015** records the §6 reversal. R9 doc sweep:
+          CLAUDE.md §1/§5/§6/§9 + §3 AiCallMeter line, .github/copilot-instructions.md §1/§5, README
+          (4 provider-transport claims), .env.example AI_FINOPS_ACTUAL_COST note.
+  - [x] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK (commits 1–4)
+  - [x] Reshape config/ai.php; rewrite provider unit tests
+  - [x] auto_register on (default); AiCallMeter retired to the residual with-tools turn only
+  - [x] ADR reversing §6 (ADR 0015) + R9 doc sweep
+  - [ ] PR → feature/v8.16, R36 loop, auto-merge, tag v8.16.0-rc2
 - **W3 Streaming + server-side cost authority** — ⬜
   - [ ] Stream metering verified
   - [ ] chat_logs cost column (additive) + CostResolutionService at log time
