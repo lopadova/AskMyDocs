@@ -140,7 +140,7 @@ final class AiCallMeter
      * raw `Http::` and IS metered here — AiManager only invokes the bridge for
      * that residual path (see docs/v4-platform/W2-sdk-migration-findings.md).
      */
-    private const SDK_METERED_PROVIDERS = ['regolo', 'anthropic'];
+    private const SDK_METERED_PROVIDERS = ['regolo', 'anthropic', 'gemini'];
 
     /**
      * Whether a call from this provider should be metered HERE.

@@ -80,6 +80,23 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         `usage.cost` via a global Http RESPONSE middleware (survives migration); 2 gates: actual_cost
         default-OFF + OpenRouter needs `usage:{include:true}` via agent providerOptions.
   - [x] Verify laravel/ai 0.6.8/0.7 breaking changes; bump pin — pin at ^0.6.8 (W1). 0.7 deferred.
+  - [x] TOOL-CALLING VERDICT = (C) HYBRID (see W2-findings). Anthropic/Gemini full-SDK; OpenAI/
+        OpenRouter SDK no-tools + Http tools. Metering hook ON by default (regolo proves it).
+  - Per-provider migration commits (on branch, not pushed; one PR when complete):
+    - [x] **Commit 1 — Anthropic** (50e6a81e): full SDK, no tools/embeddings. Shared `Concerns\SdkChat`
+          trait + `Internal\SdkAnonymousAgent`. config SDK shape. AiCallMeter SDK_METERED_PROVIDERS
+          += anthropic (data-provider test). 10 provider tests + 128 AI/FinOps slice green.
+    - [x] **Commit 2 — Gemini**: full SDK chat + embeddings via SDK (`Embeddings::for()->generate()`
+          in `SdkChat::embeddingsViaSdk`). Reshaped config to SDK shape (driver/key/url/models) +
+          AiManager hasApiKey (gemini api_key→key) + EmbeddingCacheService model path
+          (embeddings_model→models.embeddings.default) + AiManagerTest fallback keys. Added gemini to
+          SDK_METERED_PROVIDERS (+ data-provider test). GeminiProviderTest rewritten as SDK-adapter
+          contract. AI + FinOps slice = 129 tests green.
+    - [ ] **Commit 3 — OpenAI**: SDK no-tools chat + SDK embeddings; KEEP raw-Http:: with-tools
+          branch. AiManager: gate AiCallMeter to the tools path only (array_key_exists('tools')).
+    - [ ] **Commit 4 — OpenRouter**: same hybrid + agent providerOptions usage.include (cost capture).
+    - [ ] **Commit 5 — cleanup**: AiManager final metering gate, enable actual_cost, ADR reversing §6,
+          R9 doc sweep of "raw Http::", .env.example, README/CLAUDE bridge wording.
   - [ ] Migrate OpenAI/Anthropic/Gemini/OpenRouter to SDK
   - [ ] Reshape config/ai.php; rewrite provider unit tests
   - [ ] auto_register on; retire AiCallMeter to fallback

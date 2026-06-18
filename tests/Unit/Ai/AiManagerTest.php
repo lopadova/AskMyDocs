@@ -131,7 +131,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', 'sk-test');
-        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
         config()->set('ai.providers.openrouter.api_key', null);
 
@@ -148,7 +148,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', 'sk-test');
-        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
         config()->set('ai.providers.openrouter.api_key', 'or-test');
 
@@ -164,7 +164,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', null);
-        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
         config()->set('ai.providers.openrouter.api_key', 'or-test');
 
@@ -182,7 +182,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', null);
         config()->set('ai.providers.openrouter.api_key', null);
-        config()->set('ai.providers.gemini.api_key', 'gem-test');
+        config()->set('ai.providers.gemini.key', 'gem-test');
         config()->set('ai.providers.regolo.key', 'rgl-test');
 
         $manager = new AiManager();
@@ -195,7 +195,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.default', 'anthropic');
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.openai.api_key', null);
-        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
         config()->set('ai.providers.openrouter.api_key', null);
 
@@ -224,7 +224,7 @@ class AiManagerTest extends TestCase
         config()->set('ai.embeddings_provider', null);
         config()->set('ai.providers.anthropic.api_key', 'ak-test');
         config()->set('ai.providers.openai.api_key', 'sk-test');
-        config()->set('ai.providers.gemini.api_key', null);
+        config()->set('ai.providers.gemini.key', null);
         config()->set('ai.providers.regolo.key', null);
 
         $manager = new AiManager();

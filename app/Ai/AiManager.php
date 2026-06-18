@@ -119,7 +119,8 @@ class AiManager
     {
         $key = match ($provider) {
             'openai' => config('ai.providers.openai.api_key'),
-            'gemini' => config('ai.providers.gemini.api_key'),
+            // gemini + regolo are on the SDK config shape (key, not api_key).
+            'gemini' => config('ai.providers.gemini.key'),
             'regolo' => config('ai.providers.regolo.key'),
             'openrouter' => config('ai.providers.openrouter.api_key'),
             default => null,

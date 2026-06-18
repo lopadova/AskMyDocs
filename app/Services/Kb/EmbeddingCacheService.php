@@ -242,7 +242,8 @@ class EmbeddingCacheService
         // succeed, polluting the cache with unreachable rows.
         return match ($providerName) {
             'openai' => config('ai.providers.openai.embeddings_model', 'text-embedding-3-small'),
-            'gemini' => config('ai.providers.gemini.embeddings_model', 'text-embedding-004'),
+            // gemini is on the SDK config shape (models.embeddings.default) since v8.16/W2.
+            'gemini' => config('ai.providers.gemini.models.embeddings.default', 'text-embedding-004'),
             'regolo' => config('ai.providers.regolo.models.embeddings.default', 'Qwen3-Embedding-8B'),
             'openrouter' => config('ai.providers.openrouter.embeddings_model', 'openai/text-embedding-3-small'),
             // Deterministic offline E2E/demo provider — match the model

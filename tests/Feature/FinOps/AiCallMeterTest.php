@@ -170,6 +170,7 @@ final class AiCallMeterTest extends TestCase
         return [
             'regolo' => ['regolo', 'Llama-3.3-70B-Instruct'],
             'anthropic' => ['anthropic', 'claude-sonnet-4-20250514'],
+            'gemini' => ['gemini', 'gemini-2.0-flash'],
         ];
     }
 

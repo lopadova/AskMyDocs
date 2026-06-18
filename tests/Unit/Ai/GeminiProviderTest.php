@@ -2,39 +2,59 @@
 
 namespace Tests\Unit\Ai;
 
+use App\Ai\AiResponse;
 use App\Ai\Providers\GeminiProvider;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+/**
+ * AskMyDocs GeminiProvider — thin adapter over the laravel/ai SDK
+ * (native `gemini` driver), migrated off raw Http:: in v8.16/W2.
+ *
+ * Wire-level Gemini behaviour (the assistant→model role remap, the
+ * x-goog-api-key header auth, generateContent / batchEmbedContents) is owned by
+ * the SDK's Gemini gateway. These tests pin the AskMyDocs adapter contract: the
+ * caller-facing `AiProviderInterface` keeps its shape, the SDK responses map
+ * onto the AskMyDocs DTOs, and the R-logging-security invariant (key in HEADER,
+ * never the URL) survives the migration. `Http::fake()` intercepts the SDK's
+ * wire call, which uses the same Google API endpoints as the legacy provider.
+ */
 class GeminiProviderTest extends TestCase
 {
-    private function config(array $overrides = []): array
+    private function setupConfig(array $overrides = []): void
     {
-        return array_merge([
-            'api_key' => 'AIzaTest',
-            'base_url' => 'https://generativelanguage.googleapis.com/v1beta',
-            'chat_model' => 'gemini-2.0-flash',
-            'embeddings_model' => 'text-embedding-004',
+        config()->set('ai.providers.gemini', array_merge([
+            'driver' => 'gemini',
+            'name' => 'gemini',
+            'key' => 'AIzaTest',
+            'url' => 'https://generativelanguage.googleapis.com/v1beta/',
+            'timeout' => 30,
             'temperature' => 0.3,
             'max_tokens' => 512,
-            'timeout' => 30,
-        ], $overrides);
+            'models' => [
+                'text' => ['default' => 'gemini-2.0-flash'],
+                'embeddings' => ['default' => 'text-embedding-004'],
+            ],
+        ], $overrides));
     }
 
     public function test_name_and_embedding_support(): void
     {
-        $p = new GeminiProvider($this->config());
+        $this->setupConfig();
+        $p = new GeminiProvider(config('ai.providers.gemini'));
+
         $this->assertSame('gemini', $p->name());
         $this->assertTrue($p->supportsEmbeddings());
     }
 
-    public function test_chat_translates_assistant_role_to_model(): void
+    public function test_chat_returns_ai_response_with_text_and_metadata(): void
     {
+        $this->setupConfig();
         Http::fake([
             'generativelanguage.googleapis.com/*' => Http::response([
                 'candidates' => [[
-                    'content' => ['parts' => [['text' => 'Ciao!']]],
+                    'content' => ['parts' => [['text' => 'Ciao!']], 'role' => 'model'],
                     'finishReason' => 'STOP',
                 ]],
                 'usageMetadata' => [
@@ -42,49 +62,43 @@ class GeminiProviderTest extends TestCase
                     'candidatesTokenCount' => 3,
                     'totalTokenCount' => 14,
                 ],
+                'modelVersion' => 'gemini-2.0-flash',
             ], 200),
         ]);
 
-        $p = new GeminiProvider($this->config());
+        $p = new GeminiProvider(config('ai.providers.gemini'));
         $res = $p->chatWithHistory('sys', [
             ['role' => 'user', 'content' => 'q1'],
             ['role' => 'assistant', 'content' => 'a1'],
             ['role' => 'user', 'content' => 'q2'],
         ]);
 
+        $this->assertInstanceOf(AiResponse::class, $res);
         $this->assertSame('Ciao!', $res->content);
+        $this->assertSame('gemini', $res->provider);
         $this->assertSame(11, $res->promptTokens);
         $this->assertSame(3, $res->completionTokens);
         $this->assertSame(14, $res->totalTokens);
-        $this->assertSame('STOP', $res->finishReason);
-        $this->assertSame('gemini-2.0-flash', $res->model);
 
-        Http::assertSent(function (Request $req) {
-            $body = $req->data();
-            // system instruction present + roles translated
-            return $body['system_instruction']['parts'][0]['text'] === 'sys'
-                && $body['contents'][0]['role'] === 'user'
-                && $body['contents'][1]['role'] === 'model'
-                && $body['contents'][2]['role'] === 'user'
-                && str_contains($req->url(), 'models/gemini-2.0-flash:generateContent')
-                // H6 — the API key now travels in the header, NOT the URL.
-                && $req->hasHeader('x-goog-api-key', 'AIzaTest')
-                && ! str_contains($req->url(), 'key=');
-        });
+        Http::assertSent(fn (Request $req) => str_contains($req->url(), 'models/gemini-2.0-flash:generateContent'));
     }
 
     public function test_api_key_is_sent_as_header_not_url_query_string(): void
     {
-        // H6 regression guard — query-string secrets leak into access /
-        // proxy logs + APM traces. Assert on BOTH chat and embeddings.
+        // R-logging-security regression guard — query-string secrets leak into
+        // access / proxy logs + APM traces. The SDK gemini gateway authenticates
+        // via the x-goog-api-key HEADER (CreatesGeminiClient); pin that here so a
+        // future SDK bump can't silently reintroduce the URL-key leak.
+        $this->setupConfig();
         Http::fake([
             '*' => Http::response([
                 'candidates' => [['content' => ['parts' => [['text' => 'x']]], 'finishReason' => 'STOP']],
+                'usageMetadata' => ['promptTokenCount' => 1, 'candidatesTokenCount' => 1, 'totalTokenCount' => 2],
                 'embeddings' => [['values' => [0.1]]],
             ], 200),
         ]);
 
-        $p = new GeminiProvider($this->config());
+        $p = new GeminiProvider(config('ai.providers.gemini'));
         $p->chat('sys', 'q');
         $p->generateEmbeddings(['one']);
 
@@ -93,8 +107,9 @@ class GeminiProviderTest extends TestCase
             && ! str_contains($req->url(), 'key='));
     }
 
-    public function test_generate_embeddings_batches_into_requests(): void
+    public function test_generate_embeddings_returns_vectors(): void
     {
+        $this->setupConfig();
         Http::fake([
             '*' => Http::response([
                 'embeddings' => [
@@ -104,27 +119,24 @@ class GeminiProviderTest extends TestCase
             ], 200),
         ]);
 
-        $p = new GeminiProvider($this->config());
+        $p = new GeminiProvider(config('ai.providers.gemini'));
         $res = $p->generateEmbeddings(['one', 'two']);
 
         $this->assertSame([[0.1, 0.2], [0.3, 0.4]], $res->embeddings);
-        $this->assertSame('text-embedding-004', $res->model);
+        $this->assertSame('gemini', $res->provider);
 
-        Http::assertSent(function (Request $req) {
-            $body = $req->data();
-            return str_contains($req->url(), ':batchEmbedContents')
-                && count($body['requests']) === 2
-                && $body['requests'][0]['content']['parts'][0]['text'] === 'one';
-        });
+        Http::assertSent(fn (Request $req) => str_contains($req->url(), ':batchEmbedContents'));
     }
 
-    public function test_returns_empty_content_if_response_malformed(): void
+    public function test_chat_with_history_rejects_non_user_last_message(): void
     {
-        Http::fake(['*' => Http::response(['candidates' => []], 200)]);
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant".');
 
-        $p = new GeminiProvider($this->config());
-        $res = $p->chat('sys', 'user');
-
-        $this->assertSame('', $res->content);
+        (new GeminiProvider(config('ai.providers.gemini')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'Hi.'],
+            ['role' => 'assistant', 'content' => 'Hello.'],
+        ]);
     }
 }

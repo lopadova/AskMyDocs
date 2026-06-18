@@ -130,14 +130,22 @@ return [
             ],
         ],
 
+        // Gemini — laravel/ai SDK shape (v8.16/W2). Native `gemini` driver; the
+        // assistant→model role remap, x-goog-api-key header auth, and the
+        // batchEmbedContents (768-dim) embeddings call are handled by the SDK
+        // gateway. Fully on the SDK (no tool path), metered by the finops hooks.
         'gemini' => [
-            'api_key' => env('GEMINI_API_KEY'),
-            'base_url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
-            'chat_model' => env('GEMINI_CHAT_MODEL', 'gemini-2.0-flash'),
-            'embeddings_model' => env('GEMINI_EMBEDDINGS_MODEL', 'text-embedding-004'),
+            'driver' => 'gemini',
+            'name' => 'gemini',
+            'key' => env('GEMINI_API_KEY'),
+            'url' => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/'),
+            'timeout' => is_numeric($v = env('GEMINI_TIMEOUT')) ? (int) $v : 120,
             'temperature' => is_numeric($v = env('GEMINI_TEMPERATURE')) ? (float) $v : 0.2,
             'max_tokens' => is_numeric($v = env('GEMINI_MAX_TOKENS')) ? (int) $v : 4096,
-            'timeout' => is_numeric($v = env('GEMINI_TIMEOUT')) ? (int) $v : 120,
+            'models' => [
+                'text' => ['default' => env('GEMINI_CHAT_MODEL', 'gemini-2.0-flash')],
+                'embeddings' => ['default' => env('GEMINI_EMBEDDINGS_MODEL', 'text-embedding-004')],
+            ],
         ],
 
         'openrouter' => [
@@ -152,10 +160,10 @@ return [
             'timeout' => is_numeric($v = env('OPENROUTER_TIMEOUT')) ? (int) $v : 120,
         ],
 
-        // Regolo + Anthropic use the laravel/ai SDK shape (driver/key/url/models)
-        // because their providers delegate to the SDK. OpenAI / Gemini / OpenRouter
-        // above still carry the AskMyDocs legacy shape (api_key/base_url/chat_model)
-        // pending their own W2 SDK migration commits.
+        // Regolo + Anthropic + Gemini use the laravel/ai SDK shape
+        // (driver/key/url/models) because their providers delegate to the SDK.
+        // OpenAI / OpenRouter above still carry the AskMyDocs legacy shape
+        // (api_key/base_url/chat_model) pending their own W2 SDK migration commits.
         'regolo' => [
             'driver' => 'regolo',
             'name' => 'regolo',

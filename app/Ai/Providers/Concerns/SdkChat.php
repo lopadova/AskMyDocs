@@ -3,7 +3,9 @@
 namespace App\Ai\Providers\Concerns;
 
 use App\Ai\AiResponse;
+use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\Internal\SdkAnonymousAgent;
+use Laravel\Ai\Embeddings;
 use Laravel\Ai\Messages\AssistantMessage;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Responses\AgentResponse;
@@ -160,6 +162,26 @@ trait SdkChat
         }
 
         return (float) $value;
+    }
+
+    /**
+     * Generate embeddings through the laravel/ai SDK (native driver).
+     *
+     * @param  list<string>  $texts
+     */
+    protected function embeddingsViaSdk(array $texts): EmbeddingsResponse
+    {
+        $sdkResponse = Embeddings::for($texts)->generate(
+            $this->name(),
+            $this->config['models']['embeddings']['default'] ?? null,
+        );
+
+        return new EmbeddingsResponse(
+            embeddings: $sdkResponse->embeddings,
+            provider: $this->name(),
+            model: $sdkResponse->meta->model,
+            totalTokens: $sdkResponse->tokens,
+        );
     }
 
     protected function toAiResponse(AgentResponse $sdkResponse): AiResponse
