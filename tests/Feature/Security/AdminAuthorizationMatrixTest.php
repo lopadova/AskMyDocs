@@ -91,6 +91,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // Invite system — campaign management + code issuance.
             '/api/admin/invite/campaigns' => ['admin', 'super-admin'],
             '/api/admin/invite/codes' => ['admin', 'super-admin'],
+            '/api/admin/invite/metrics' => ['admin', 'super-admin'],
+            // (POST-only /api/admin/invite/invitations shares this same
+            // role:admin|super-admin group; its authz is covered by the GET
+            // rows above — a GET probe on a POST-only URI returns 405, not 403.)
 
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
             '/api/admin/connectors' => ['super-admin'],                 // manageConnectors
