@@ -70,6 +70,14 @@ final class InviteCampaignController extends Controller
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
             'reward_policy' => ['nullable', 'array'],
+            'grant' => ['nullable', 'array'],
+            'grant.role' => ['nullable', 'string', 'exists:roles,name', 'not_in:super-admin'],
+            'grant.projects' => ['nullable', 'array'],
+            'grant.projects.*' => ['string', 'max:120'],
+            'grant.project_role' => ['nullable', 'in:member,admin,owner'],
+            'grant.scope_allowlist' => ['nullable', 'array'],
+        ], [
+            'grant.role.not_in' => 'super-admin cannot be granted through an invite code.',
         ]);
 
         return response()->json([

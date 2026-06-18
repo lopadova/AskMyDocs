@@ -27,6 +27,7 @@ class InviteCampaignResource extends JsonResource
             'starts_at' => optional($this->resource->starts_at)->toIso8601String(),
             'ends_at' => optional($this->resource->ends_at)->toIso8601String(),
             'reward_policy' => $this->resource->reward_policy,
+            'grant' => $this->resource->grant,
             'created_by' => $this->resource->created_by,
             'created_at' => optional($this->resource->created_at)->toIso8601String(),
             'updated_at' => optional($this->resource->updated_at)->toIso8601String(),

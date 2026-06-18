@@ -35,6 +35,29 @@ class InviteCampaignStoreRequest extends FormRequest
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
             'reward_policy' => ['nullable', 'array'],
+
+            // Provisioning grant applied to the redeemer on a fresh claim.
+            // `role` must be a real Spatie role and never super-admin (no
+            // self-served super-admin via a code). Projects are free-form keys
+            // (the tenant's project space is open-ended — KB ingest can create
+            // new keys), validated only as non-empty strings.
+            'grant' => ['nullable', 'array'],
+            'grant.role' => ['nullable', 'string', 'exists:roles,name', 'not_in:super-admin'],
+            'grant.projects' => ['nullable', 'array'],
+            'grant.projects.*' => ['string', 'max:120'],
+            'grant.project_role' => ['nullable', Rule::in(['member', 'admin', 'owner'])],
+            'grant.scope_allowlist' => ['nullable', 'array'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'grant.role.not_in' => 'super-admin cannot be granted through an invite code.',
+            'grant.role.exists' => 'The selected grant role does not exist.',
         ];
     }
 }

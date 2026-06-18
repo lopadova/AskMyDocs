@@ -90,6 +90,13 @@ final class CampaignService
             'expires_at' => $overrides['expires_at'] ?? null,
         ];
 
+        // Per-code grant override. Left absent (NOT set to null) when not
+        // supplied, so the code inherits its campaign's grant at redemption
+        // time rather than pinning a null that would shadow the campaign.
+        if (array_key_exists('grant', $overrides)) {
+            $attrs['grant'] = $overrides['grant'];
+        }
+
         return $this->scoped($attrs);
     }
 

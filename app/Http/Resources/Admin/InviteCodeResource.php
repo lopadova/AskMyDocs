@@ -28,6 +28,7 @@ class InviteCodeResource extends JsonResource
             'current_uses' => $this->resource->current_uses,
             'issuer_id' => $this->resource->issuer_id,
             'expires_at' => optional($this->resource->expires_at)->toIso8601String(),
+            'grant' => $this->resource->grant,
             'created_at' => optional($this->resource->created_at)->toIso8601String(),
         ];
     }
