@@ -40,6 +40,11 @@
              doc; the dedicated AnalyzeDocumentChangeJob / KbChangeAnalyzer
              tests enable it explicitly via config()->set. -->
         <env name="KB_CHANGE_ANALYSIS_ENABLED" value="false"/>
+        <!-- v8.16 — FinOps metering OFF across the suite: the pricing path
+             lazily HTTPs on a cache miss (LiteLLM / OpenRouter feeds), which must
+             never fire in unit/feature tests. Production defaults metering ON;
+             the dedicated AiCallMeterTest re-enables it with the feeds disabled. -->
+        <env name="AI_FINOPS_METERING" value="false"/>
         <env name="AI_PROVIDER" value="openai"/>
         <env name="OPENAI_API_KEY" value="sk-test-key"/>
         <env name="OPENAI_CHAT_MODEL" value="gpt-4o"/>

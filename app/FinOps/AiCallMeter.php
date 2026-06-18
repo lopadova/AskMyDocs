@@ -1,0 +1,163 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\FinOps;
+
+use App\Ai\AiResponse;
+use App\Ai\EmbeddingsResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Laravel\Ai\Responses\AgentResponse;
+use Laravel\Ai\Responses\Data\Meta;
+use Laravel\Ai\Responses\Data\Usage;
+use Laravel\Ai\Responses\EmbeddingsResponse as LaravelAiEmbeddingsResponse;
+use Padosoft\LaravelAiFinOps\Metering\MeteringListener;
+use Throwable;
+
+/**
+ * Bridges AskMyDocs' raw-`Http::` AI providers into the laravel-ai-finops usage
+ * ledger so EVERY provider is metered, not just Regolo.
+ *
+ * The package meters automatically ONLY for calls that flow through the
+ * laravel/ai SDK lifecycle events. In AskMyDocs that is Regolo alone — OpenAI /
+ * Anthropic / Gemini / OpenRouter all transit raw `Http::` inside their
+ * providers — so without this bridge the ledger would stay empty for the default
+ * (openrouter) chat traffic and for every ingestion embedding.
+ *
+ * We reuse the package's {@see MeteringListener} public `record*` methods
+ * directly: they run the FULL pricing cascade + tenant attribution +
+ * subscription-coverage check, identical to the SDK path. (We don't re-dispatch
+ * the laravel/ai events because their constructors require AgentPrompt / Provider
+ * objects we don't have here.)
+ *
+ * Discipline mirrors {@see \App\Services\ChatLog\ChatLogManager::log()}:
+ * config-gated, class-guarded and fully try/catch'd, so a metering failure NEVER
+ * breaks a chat turn or an ingestion run.
+ */
+final class AiCallMeter
+{
+    public function meterChat(AiResponse $response, string|array|null $prompt = null): void
+    {
+        if (! $this->shouldMeter($response->provider)) {
+            return;
+        }
+
+        try {
+            [$promptTokens, $completionTokens] = $this->resolveTokenSplit(
+                $response->promptTokens,
+                $response->completionTokens,
+                $response->totalTokens,
+            );
+
+            $agentResponse = new AgentResponse(
+                invocationId: (string) Str::uuid(),
+                text: $response->content,
+                usage: new Usage(
+                    promptTokens: $promptTokens,
+                    completionTokens: $completionTokens,
+                ),
+                meta: new Meta(provider: $response->provider, model: $response->model),
+            );
+
+            app(MeteringListener::class)->recordAgentResponse(
+                $agentResponse->invocationId,
+                $agentResponse,
+                $prompt,
+            );
+        } catch (Throwable $e) {
+            $this->logFailure('chat', $response->provider, $response->model, $e);
+        }
+    }
+
+    public function meterEmbeddings(EmbeddingsResponse $response): void
+    {
+        if (! $this->shouldMeter($response->provider)) {
+            return;
+        }
+
+        try {
+            // Pass the real vectors through. MeteringListener::recordEmbeddings() prices the
+            // call from tokens + meta only, but forwarding the actual embeddings (cheap under
+            // PHP copy-on-write for this short-lived, never-mutated DTO) keeps the envelope
+            // faithful for any future pricing/footprint logic that reads count/dimension.
+            $embeddingsResponse = new LaravelAiEmbeddingsResponse(
+                embeddings: $response->embeddings,
+                tokens: $response->totalTokens ?? 0,
+                meta: new Meta(provider: $response->provider, model: $response->model),
+            );
+
+            app(MeteringListener::class)->recordEmbeddings(
+                (string) Str::uuid(),
+                $embeddingsResponse,
+                $response->model,
+            );
+        } catch (Throwable $e) {
+            $this->logFailure('embeddings', $response->provider, $response->model, $e);
+        }
+    }
+
+    /**
+     * Resolve the (prompt, completion) token split recorded on the ledger.
+     *
+     * Some providers report only a `totalTokens` (prompt/completion null). A bare
+     * `?? 0` would then record 0/0 → the price cascade resolves cost to 0 and the
+     * call is silently UNDER-metered. Derive the missing side from the total so the
+     * ledger at least captures the token VOLUME (and, via the input tariff, a cost
+     * floor):
+     *  - exactly one side missing → fill it from `total − other` (clamped ≥ 0);
+     *  - BOTH sides missing but total present → attribute the whole total to input
+     *    (prompt) as a conservative floor (real cost ≥ total × input-rate, since
+     *    output-rate ≥ input-rate for every provider we price);
+     *  - no total either → 0/0 (nothing to attribute; the listener's text-based
+     *    estimator may still kick in upstream).
+     *
+     * @return array{0: int, 1: int}
+     */
+    private function resolveTokenSplit(?int $prompt, ?int $completion, ?int $total): array
+    {
+        if ($total !== null) {
+            if ($prompt === null && $completion === null) {
+                return [$total, 0];
+            }
+            if ($prompt === null) {
+                return [max(0, $total - $completion), $completion];
+            }
+            if ($completion === null) {
+                return [$prompt, max(0, $total - $prompt)];
+            }
+        }
+
+        return [$prompt ?? 0, $completion ?? 0];
+    }
+
+    /**
+     * Whether a call from this provider should be metered HERE.
+     *
+     * Regolo is excluded: it flows through the laravel/ai SDK, which already
+     * dispatches the metering events — re-recording it here would double-count.
+     * The class guard keeps the host healthy if the finops package is removed.
+     */
+    private function shouldMeter(string $provider): bool
+    {
+        if ($provider === 'regolo') {
+            return false;
+        }
+
+        if (! class_exists(MeteringListener::class)) {
+            return false;
+        }
+
+        return (bool) config('ai-finops.enabled', true)
+            && (bool) config('ai-finops.metering', true);
+    }
+
+    private function logFailure(string $kind, string $provider, string $model, Throwable $e): void
+    {
+        Log::warning("FinOps meter ({$kind}) failed; ledger row skipped.", [
+            'provider' => $provider,
+            'model' => $model,
+            'error' => $e->getMessage(),
+        ]);
+    }
+}

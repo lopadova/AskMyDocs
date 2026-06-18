@@ -121,6 +121,17 @@ abstract class TestCase extends OrchestraTestCase
         // package is dont-discovered (AskMyDocs renders the admin natively).
         $app->register(\Padosoft\EvidenceRiskReview\EvidenceRiskReviewServiceProvider::class);
 
+        // v8.16 — padosoft/laravel-ai-finops core + companion admin SPA.
+        // Manual registration parallels every other vendor package above
+        // because Testbench skips Laravel's package-discovery cache. The core
+        // SP loadMigrationsFrom()s the ai_finops_* tables, binds UsageRecorder /
+        // PricingRegistry, and (config-gated) registers the metering hook on the
+        // laravel/ai lifecycle + the secured route group. The admin SP only
+        // registers its SPA route when `ai-finops-admin.enabled=true` (default
+        // false — bare boot is a safe no-op for tests that don't opt in).
+        $app->register(\Padosoft\LaravelAiFinOps\LaravelAiFinOpsServiceProvider::class);
+        $app->register(\Padosoft\LaravelAiFinOpsAdmin\LaravelAiFinOpsAdminServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -216,6 +227,33 @@ abstract class TestCase extends OrchestraTestCase
         // overrides this back to false in its own getEnvironmentSetUp to prove
         // the clean 404 degrade.
         $app['config']->set('evidence-risk-review.api.enabled', true);
+        // v8.16 / R32 — host override of the laravel-ai-finops package config.
+        // CRITICAL: the package default `routes.middleware` is `['api']` +
+        // `auth_middleware` is `['auth']` (no Sanctum, no tenant scope, no RBAC),
+        // which would leave the spend ledger / budgets / policies / kill-switches
+        // reachable with only the stock web auth guard. Loading the host config
+        // here (the same file production loads) applies the
+        // auth:sanctum + tenant.authorize + finops.authorize stack so
+        // AdminAuthorizationMatrixTest verifies the SECURE configuration, not the
+        // insecure package default. array_merge keeps the package's other
+        // top-level keys (pricing, features, audit, …) while the host's routes /
+        // tenancy / currency / master-switch blocks win.
+        $app['config']->set('ai-finops', array_merge(
+            (array) $app['config']->get('ai-finops', []),
+            require __DIR__.'/../config/ai-finops.php',
+        ));
+        // The host config defaults `enabled` to env('AI_FINOPS_ENABLED', true);
+        // force it ON explicitly so the matrix + meter suites exercise the
+        // SECURED-AND-ENABLED surface regardless of a stray env in CI.
+        $app['config']->set('ai-finops.enabled', true);
+        // v8.16 — host override of the finops-admin SPA config. Default
+        // enabled=false so the SPA route is NOT registered and every request to
+        // /admin/ai-finops is a clean 404 (R43 OFF-state). FinOpsAdminMountingTest
+        // flips this ON in its own getEnvironmentSetUp to prove the wired state.
+        $app['config']->set('ai-finops-admin', array_merge(
+            (array) $app['config']->get('ai-finops-admin', []),
+            require __DIR__.'/../config/ai-finops-admin.php',
+        ));
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on
@@ -342,6 +380,12 @@ abstract class TestCase extends OrchestraTestCase
         // `ai.*` shortcut the host routes use.
         $router->aliasMiddleware('ai.disclosure', \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class);
         $router->aliasMiddleware('ai.consent', \Padosoft\AiActCompliance\Consent\RequireConsentMiddleware::class);
+        // v8.16 — method-aware finops authorization alias. Mirrors
+        // bootstrap/app.php (not executed under Testbench). The finops route
+        // group's `auth_middleware` references `finops.authorize`; without this
+        // alias every finops feature test throws "Target class [finops.authorize]
+        // does not exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('finops.authorize', \App\Http\Middleware\FinOpsAuthorize::class);
     }
 
     /**

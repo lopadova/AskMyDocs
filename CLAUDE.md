@@ -97,6 +97,7 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | Admin log viewer (H1) | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
 | Admin command runner (H2) | `app/Services/Admin/CommandRunnerService.php`, `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php`, `app/Models/AdminCommandAudit.php`, `AdminCommandNonce.php`, `config/admin.php` (`allowed_commands`) |
 | AI insights (Phase I) | `app/Services/Admin/AiInsightsService.php`, `app/Http/Controllers/Api/Admin/AdminInsightsController.php`, `app/Console/Commands/InsightsComputeCommand.php`, `app/Models/AdminInsightsSnapshot.php` |
+| AI FinOps (v8.16, `padosoft/laravel-ai-finops` + `-admin`) | `app/FinOps/AiCallMeter.php` (interim metering bridge on AiManager; retired to fallback once providers move to the laravel/ai SDK), `app/FinOps/HostTenantResolver.php`, `app/Http/Middleware/FinOpsAuthorize.php` (method-aware gate), `config/ai-finops.php` + `config/ai-finops-admin.php` (secure host overrides, R32), gates `viewAiFinOps`/`manageAiFinOps` in `AppServiceProvider` |
 | SPA entrypoint | `app/Http/Controllers/SpaController.php`, `resources/views/app.blade.php`, `frontend/src/main.tsx`, `frontend/src/routes/index.tsx` |
 | Scheduler | `bootstrap/app.php` |
 | GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |

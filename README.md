@@ -530,6 +530,52 @@ If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini
 3. Flush the cache so stale-dimension vectors don't pollute retrieval — call `app(\App\Services\Kb\EmbeddingCacheService::class)->flush()` (or scope by retired provider with `->flush('openai')`) from a tinker session. `kb:prune-embedding-cache --days=N` only evicts rows older than N days and returns early when `N <= 0`, so it is **not** a full-flush substitute.
 4. Re-index all documents
 
+### AI FinOps — spend governance (v8.16)
+
+Cost governance over AI spend is provided by
+[`padosoft/laravel-ai-finops`](https://github.com/padosoft/laravel-ai-finops)
+(+ the companion React admin panel
+[`padosoft/laravel-ai-finops-admin`](https://github.com/padosoft/laravel-ai-finops-admin)):
+a per-call usage ledger, N-scope budgets, a declarative policy DSL, chargeback,
+forecasting/anomaly detection, cost-aware routing and multi-channel alerts.
+
+The package meters automatically only for calls that flow through the
+`laravel/ai` SDK (here: Regolo). AskMyDocs extends coverage to the
+raw-`Http::` providers by hooking `AiManager` — `App\FinOps\AiCallMeter`
+records every **synchronous** OpenAI / Anthropic / Gemini / OpenRouter chat
+(`chat` / `chatWithHistory`) + embedding into the ledger (non-blocking,
+`ChatLogManager`-style; Regolo is skipped to avoid double-counting).
+**Streaming chat (`chatStream`, the SSE endpoint) is not yet metered** — a
+documented follow-up — so a turn served over streaming is not recorded in the
+ledger. Every recorded row is tenant-scoped via `App\Support\TenantContext`
+(R30).
+
+The API mounts under `api/admin/ai-finops` behind the admin stack
+(`auth:sanctum` + `tenant.authorize` + a **method-aware** gate: reads →
+`viewAiFinOps` = super-admin + admin; writes → `manageAiFinOps` =
+super-admin). The admin SPA mounts under `/admin/ai-finops` (default OFF).
+
+```bash
+# After composer install, create the ai_finops_* tables:
+php artisan migrate
+
+# Turn the admin panel on (AI_FINOPS_ADMIN_ENABLED=true) and publish its assets:
+php artisan vendor:publish --tag=ai-finops-admin-assets --force
+```
+
+```env
+AI_FINOPS_ENABLED=true          # master switch (routes + metering hook)
+AI_FINOPS_METERING=true         # record usage into the ledger
+AI_FINOPS_ENFORCEMENT=false     # hard budget/policy HTTP-402 blocks (opt-in)
+AI_FINOPS_CURRENCY=USD          # base = provider list-price currency
+AI_FINOPS_DISPLAY_CURRENCY=EUR
+AI_FINOPS_RETENTION_DAYS=730
+AI_FINOPS_ADMIN_ENABLED=false   # React cockpit at /admin/ai-finops (opt-in)
+```
+
+Maintenance crons (Tier-1 slots, staggered in the 04:xx window):
+`ai-finops:capture-prices`, `ai-finops:check-alerts`, `ai-finops:prune`.
+
 ### Storage (Laravel disks)
 
 KB markdown files are read through a Laravel filesystem disk, so the ingestion pipeline is **storage-agnostic**: local for dev, S3 for production, MinIO for on-prem — no code change needed.
@@ -1594,6 +1640,22 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.16 — AI FinOps spend-governance integration (in progress).** Installs
+`padosoft/laravel-ai-finops` (core) + `padosoft/laravel-ai-finops-admin` (React
+cockpit): cross-provider usage ledger, N-scope budgets, declarative policies,
+chargeback, forecasting/anomaly detection, cost-aware routing and alerts,
+attributed per tenant (R30) and host-secured under `api/admin/ai-finops` behind
+the admin stack + a **method-aware** gate (reads → `viewAiFinOps`
+super-admin+admin; writes → `manageAiFinOps` super-admin), locked by the R32
+authorization matrix; the SPA mounts at `/admin/ai-finops` (default OFF → clean
+404, R43). Tier-1 crons: `ai-finops:capture-prices` / `:check-alerts` / `:prune`.
+Across this cycle every AI provider **will move** onto the `laravel/ai` SDK so
+FinOps can meter chat, streaming and embeddings through native lifecycle events
+(W2), and the static client-side cost table **will be replaced** with
+authoritative server-side per-model cost (W3). W1 lands the integration
+foundation: the `App\FinOps\AiCallMeter` bridge meters synchronous chat +
+embeddings for all providers (streaming not yet metered).
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor
