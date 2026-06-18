@@ -247,6 +247,21 @@ final class KbUploadControllerTest extends TestCase
         $this->assertFalse(Storage::disk('kb-staging')->exists($item->staging_path));
     }
 
+    public function test_remove_rejects_item_from_a_different_batch(): void
+    {
+        // IDOR-in-tenant guard: an item uuid must be paired with ITS OWN batch.
+        $admin = $this->makeAdmin();
+        $batchA = $this->stageOne($admin, 'a.md', '# A');
+        $batchB = $this->stageOne($admin, 'b.md', '# B');
+        $itemB = KbIngestBatchItem::query()->where('batch_id', $batchB)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/admin/kb/uploads/{$batchA}/items/{$itemB->id}")
+            ->assertStatus(404);
+
+        $this->assertDatabaseHas('kb_ingest_batch_items', ['id' => $itemB->id]);
+    }
+
     public function test_cancel_staged_batch(): void
     {
         $admin = $this->makeAdmin();

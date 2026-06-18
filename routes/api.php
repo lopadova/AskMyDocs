@@ -344,10 +344,22 @@ Route::middleware([
                 ->forTenant(app(\App\Support\TenantContext::class)->current())
                 ->findOrFail($id);
         });
-        Route::bind('uploadItem', function ($id) {
-            return \App\Models\KbIngestBatchItem::query()
-                ->forTenant(app(\App\Support\TenantContext::class)->current())
-                ->findOrFail($id);
+        Route::bind('uploadItem', function ($id, $route) {
+            $query = \App\Models\KbIngestBatchItem::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current());
+
+            // When the route also carries {uploadBatch} (DELETE
+            // …/{uploadBatch}/items/{uploadItem}), constrain the item to THAT
+            // batch — otherwise a caller could pair an arbitrary same-tenant
+            // item uuid with any batch id (an IDOR-in-tenant footgun). The
+            // uploadBatch param precedes uploadItem in the URI, so it is
+            // already the bound model here.
+            $batch = $route->parameter('uploadBatch');
+            if ($batch instanceof \App\Models\KbIngestBatch) {
+                $query->where('batch_id', $batch->id);
+            }
+
+            return $query->findOrFail($id);
         });
 
         Route::apiResource('kb/documents', KbDocumentController::class)
