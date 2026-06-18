@@ -137,9 +137,11 @@ final class AiCallMeterTest extends TestCase
     /**
      * Providers fully migrated to the laravel/ai SDK are metered by the finops
      * lifecycle hook (AgentPrompted / EmbeddingsGenerated), so the host bridge
-     * MUST skip them to avoid double-counting. As of v8.16/W2 the set is
-     * regolo + anthropic (gemini/openai/openrouter follow in later commits;
-     * openai/openrouter keep a metered raw-Http:: tool turn).
+     * MUST skip them to avoid double-counting. As of v8.16/W2 the bridge-skipped
+     * (fully-SDK) set is regolo + anthropic + gemini. openai + openrouter are
+     * HYBRID — their no-tools chat + embeddings are SDK-metered, but their MCP
+     * with-tools turn stays on raw Http:: and IS bridge-metered, so they are NOT
+     * listed here (the bridge meters them when AiManager invokes it on that turn).
      */
     #[DataProvider('sdkMeteredProviders')]
     public function test_skips_providers_the_sdk_already_meters(string $provider, string $model): void

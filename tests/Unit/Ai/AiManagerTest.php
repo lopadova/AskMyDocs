@@ -246,14 +246,7 @@ class AiManagerTest extends TestCase
     {
         config()->set('ai.default', 'openai');
         // SDK no-tools chat → /responses; metered by the finops lifecycle hook.
-        Http::fake(['api.openai.com/*' => Http::response([
-            'id' => 'r', 'model' => 'gpt-4o', 'status' => 'completed',
-            'output' => [[
-                'type' => 'message', 'status' => 'completed',
-                'content' => [['type' => 'output_text', 'text' => 'hi']],
-            ]],
-            'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
-        ])]);
+        Http::fake(['api.openai.com/*' => Http::response(self::openAiSdkResponsesBody('hi', 'gpt-4o'))]);
 
         $meter = Mockery::mock(AiCallMeter::class);
         $meter->shouldNotReceive('meterChat');

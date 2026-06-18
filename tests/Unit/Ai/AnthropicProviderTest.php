@@ -202,4 +202,31 @@ class AnthropicProviderTest extends TestCase
         $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
         $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
     }
+
+    public function test_chat_stream_with_empty_content_emits_only_finish_chunk(): void
+    {
+        // Edge case (regression guard re-added after the SDK migration, Copilot R2):
+        // FallbackStreaming::streamFromChat() skips the whole text envelope when the
+        // provider returns empty content (`if ($response->content !== '')`), so an
+        // empty Anthropic response must yield ONLY a single `finish` chunk — never an
+        // empty `text-start`/`text-delta`/`text-end` that renders as a blank bubble.
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [], // no text blocks → SDK text === ''
+                'usage' => ['input_tokens' => 4, 'output_tokens' => 0],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
+        $chunks = iterator_to_array($p->chatStream('SYS', [
+            ['role' => 'user', 'content' => 'Hi'],
+        ]), preserve_keys: false);
+
+        $this->assertCount(1, $chunks, 'empty content yields only the finish chunk (no text envelope)');
+        $this->assertSame('finish', $chunks[0]->type);
+        $this->assertSame('stop', $chunks[0]->payload['finishReason']);
+    }
 }
