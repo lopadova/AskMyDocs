@@ -94,6 +94,12 @@ class KnowledgeBaseServer extends Server
         KbDigestPreviewTool::class,
         // v8.15/W5 — per-contributor gamification badges read surface.
         KbUserBadgesTool::class,
+        // Invite system (feature/invite-system) — R44 third surface. Read:
+        // validate a code; write: mint a batch of codes. Both delegate to the
+        // same CodeValidator / CampaignService the HTTP + PHP layers use.
+        \App\Mcp\Tools\InviteValidateCodeTool::class,
+        \App\Mcp\Tools\InviteGenerateCodesTool::class,
+        \App\Mcp\Tools\InviteMetricsTool::class,
         // v8.18/W4 — AI gamification insights read surface (user/project/tenant).
         KbGamificationInsightsTool::class,
         // v8.16/W4 — AI FinOps read surfaces (R44 third surface over the usage
