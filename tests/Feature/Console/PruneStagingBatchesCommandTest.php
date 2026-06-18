@@ -51,6 +51,22 @@ final class PruneStagingBatchesCommandTest extends TestCase
         $this->assertDatabaseMissing('kb_ingest_batches', ['id' => $batch->id]);
     }
 
+    public function test_hours_zero_disables_prune_keeps_stale_batch(): void
+    {
+        // R16: exercises the "0 => disabled" contract the other prune commands
+        // follow. --hours=0 (or KB_STAGING_RETENTION_HOURS=0) must NOT purge
+        // even a very stale batch; otherwise a 0 env misconfig mass-deletes.
+        $batch = $this->makeBatch('stale.md', staleHours: 48);
+
+        $this->artisan('kb:prune-staging-batches', ['--hours' => 0])
+            ->expectsOutputToContain('Retention is 0 or negative')
+            ->assertSuccessful();
+
+        // Stale batch survives.
+        $this->assertDatabaseHas('kb_ingest_batches', ['id' => $batch->id]);
+        $this->assertTrue(Storage::disk('kb-staging')->exists("default/{$batch->id}"));
+    }
+
     private function makeBatch(string $filename, int $staleHours): KbIngestBatch
     {
         $batch = KbIngestBatch::create([
