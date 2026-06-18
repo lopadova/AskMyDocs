@@ -105,7 +105,12 @@ final class KbUploadBatchItemProgress
         }
 
         try {
-            $resolved = unserialize($command);
+            // Restrict deserialization to IngestDocumentJob (its props are all
+            // scalars/arrays — no nested objects), so a tampered or replayed
+            // queue payload can't trigger PHP object injection. A disallowed
+            // class unserializes to __PHP_Incomplete_Class and fails the
+            // instanceof check below.
+            $resolved = unserialize($command, ['allowed_classes' => [IngestDocumentJob::class]]);
         } catch (\Throwable) {
             return null;
         }
