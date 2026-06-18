@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
@@ -66,6 +67,13 @@ Route::middleware('web')->prefix('auth')->group(function () {
     // double-counting and spurious 429s — hence intentionally omitted.
     Route::post('/login', [AuthController::class, 'login'])
         ->name('api.auth.login');
+
+    // Public self-registration, invite-gated (RegisterController enforces the
+    // invitation_required gate). Per-IP throttle to blunt automated signup
+    // abuse; the heavy invite anti-abuse gate runs inside the redemption.
+    Route::post('/register', [RegisterController::class, 'register'])
+        ->middleware('throttle:10,1')
+        ->name('api.auth.register');
 
     Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
         ->middleware('throttle:forgot')
