@@ -190,7 +190,18 @@ class AiManager
     /**
      * Multi-turn chat with conversation history.
      *
-     * @param  list<array{role: 'user'|'assistant', content: string}>  $messages
+     * History may also carry the MCP tool-loop shape (a `role:'tool'` result
+     * message, or an assistant message with `tool_calls`) — see
+     * {@see AiProviderInterface::chatWithHistory()} and McpToolCallingService.
+     *
+     * @param  list<array{
+     *   role: 'user'|'assistant'|'tool',
+     *   content: string,
+     *   tool_calls?: mixed,
+     *   tool_call_id?: mixed,
+     *   name?: mixed,
+     *   id?: mixed,
+     * }>  $messages
      */
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
