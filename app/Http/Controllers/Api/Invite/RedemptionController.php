@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api\Invite;
 use App\Http\Requests\Invite\RedeemRequest;
 use App\Http\Resources\Invite\RedemptionResource;
 use App\Services\Invite\CodeValidator;
+use App\Services\Invite\InvitationService;
 use App\Services\Invite\RedemptionService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ final class RedemptionController extends Controller
         private readonly RedemptionService $redemption,
         private readonly CodeValidator $validator,
         private readonly TenantContext $tenant,
+        private readonly InvitationService $invitations,
     ) {
     }
 
@@ -77,5 +79,16 @@ final class RedemptionController extends Controller
             'valid' => true,
             'code_kind' => $result->code->code_kind,
         ], 200);
+    }
+
+    /**
+     * In-app pending-invitations badge for the authenticated account. Counts
+     * pending invitations addressed to the user's own email.
+     */
+    public function pendingCount(Request $request): JsonResponse
+    {
+        return response()->json([
+            'pending' => $this->invitations->pendingCountFor((string) $request->user()->email),
+        ]);
     }
 }

@@ -95,6 +95,7 @@ class KnowledgeBaseServer extends Server
         // same CodeValidator / CampaignService the HTTP + PHP layers use.
         \App\Mcp\Tools\InviteValidateCodeTool::class,
         \App\Mcp\Tools\InviteGenerateCodesTool::class,
+        \App\Mcp\Tools\InviteMetricsTool::class,
     ];
 
     protected function boot(): void

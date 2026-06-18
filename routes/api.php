@@ -154,6 +154,8 @@ Route::middleware([
         ->name('api.invite.redeem');
     Route::post('/invite/validate', [\App\Http\Controllers\Api\Invite\RedemptionController::class, 'validateCode'])
         ->name('api.invite.validate');
+    Route::get('/invite/pending-count', [\App\Http\Controllers\Api\Invite\RedemptionController::class, 'pendingCount'])
+        ->name('api.invite.pending-count');
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
     // default-scoped KnowledgeDocument so soft-deletes + RBAC filter
@@ -420,6 +422,10 @@ Route::middleware([
             ->name('api.admin.invite.codes.store');
         Route::post('invite/codes/{id}/revoke', [\App\Http\Controllers\Api\Admin\InviteCodeController::class, 'revoke'])
             ->whereNumber('id')->name('api.admin.invite.codes.revoke');
+        Route::get('invite/metrics', [\App\Http\Controllers\Api\Admin\InviteMetricsController::class, 'index'])
+            ->name('api.admin.invite.metrics');
+        Route::post('invite/invitations', [\App\Http\Controllers\Api\Admin\InviteInvitationController::class, 'store'])
+            ->name('api.admin.invite.invitations.store');
 
         // v8.7/W3–W4 — read-only AI document-change analyses (Doc Insights).
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/analyses`).
