@@ -1650,12 +1650,18 @@ the admin stack + a **method-aware** gate (reads → `viewAiFinOps`
 super-admin+admin; writes → `manageAiFinOps` super-admin), locked by the R32
 authorization matrix; the SPA mounts at `/admin/ai-finops` (default OFF → clean
 404, R43). Tier-1 crons: `ai-finops:capture-prices` / `:check-alerts` / `:prune`.
-Across this cycle every AI provider **will move** onto the `laravel/ai` SDK so
-FinOps can meter chat, streaming and embeddings through native lifecycle events
-(W2), and the static client-side cost table **will be replaced** with
-authoritative server-side per-model cost (W3). W1 lands the integration
-foundation: the `App\FinOps\AiCallMeter` bridge meters synchronous chat +
-embeddings for all providers (streaming not yet metered).
+Across this cycle every AI provider moves onto the `laravel/ai` SDK so FinOps can
+meter chat, streaming and embeddings through native lifecycle events, and the
+static client-side cost table **will be replaced** with authoritative server-side
+per-model cost (W3). **W1** (`v8.16.0-rc1`) lands the integration foundation: the
+`App\FinOps\AiCallMeter` bridge meters synchronous chat + embeddings for all
+providers (streaming not yet metered). **W2** (`v8.16.0-rc2`, ADR 0015) migrates
+all four `Http::`-based providers onto the native `laravel/ai` SDK drivers —
+Anthropic + Gemini fully SDK; OpenAI + OpenRouter hybrid (SDK no-tools chat +
+embeddings, raw `Http::` retained only for the MCP tool-calling turn the SDK
+can't host) — so the finops lifecycle hook meters every provider natively. The
+`AiCallMeter` bridge shrinks to the residual with-tools turn, and OpenRouter's
+real billed `usage.cost` becomes capturable (`AI_FINOPS_ACTUAL_COST`, default OFF).
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor

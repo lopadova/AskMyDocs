@@ -122,8 +122,13 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
   - [x] Reshape config/ai.php; rewrite provider unit tests
   - [x] auto_register on (default); AiCallMeter retired to the residual with-tools turn only
   - [x] ADR reversing §6 (ADR 0015) + R9 doc sweep
-  - [~] PR **#316** → feature/v8.16 (opened 2026-06-18, reviewer copilot-pull-request-reviewer).
-        R36 loop in progress; auto-merge when 0 must-fix + CI green; then tag v8.16.0-rc2.
+  - [x] PR **#316** → feature/v8.16 — MERGED @ **fbc2d594** (2026-06-18). R36 loop: 6 Copilot rounds
+        (1 real must-fix = the MCP final-turn tool-history routing bug Copilot caught that the local
+        critic missed; rest should-fix/nit), final review clean (0 comments). Full CI green
+        (PHPUnit 8.3/8.4/8.5 + Vitest + RAG + Playwright). CI note: the push+pull_request double-trigger
+        cross-cancels Playwright on the same SHA; re-run the surviving run's failed jobs uncontested to
+        get a SUCCESS conclusion (R38-adjacent CI-config quirk, not a code failure).
+  - [x] tag v8.16.0-rc2 at the W2 closure SHA (fbc2d594) on feature/v8.16 (R39)
 - **W3 Streaming + server-side cost authority** — ⬜
   - [ ] Stream metering verified
   - [ ] chat_logs cost column (additive) + CostResolutionService at log time
