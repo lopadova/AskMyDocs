@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import type { AxiosRequestConfig } from 'axios';
 import { api } from './api';
 import { useTeamStore, type Team } from './team-store';
@@ -15,6 +15,8 @@ const TEAMS: Team[] = [
 let captured: AxiosRequestConfig[] = [];
 let respondWith: { status: number; data: unknown } = { status: 200, data: {} };
 const originalAdapter = api.defaults.adapter;
+// Saved descriptor so `window.location` can be fully restored in afterEach.
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location');
 
 beforeEach(() => {
     captured = [];
@@ -63,17 +65,40 @@ describe('api X-Tenant-Id request interceptor', () => {
 });
 
 describe('api tenant_forbidden response interceptor', () => {
-    it('snaps back to the first team and still rejects (R14: caller sees the error)', async () => {
+    let assignSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+        // Stub window.location so the interceptor's navigate call is
+        // interceptable and doesn't trigger a real JSDOM navigation.
+        assignSpy = vi.fn();
+        Object.defineProperty(window, 'location', {
+            value: { assign: assignSpy },
+            writable: true,
+            configurable: true,
+        });
+    });
+
+    afterEach(() => {
+        // Fully restore the original descriptor so sibling test files
+        // see the real window.location (R16: no leaked global state).
+        if (originalLocationDescriptor) {
+            Object.defineProperty(window, 'location', originalLocationDescriptor);
+        }
+    });
+
+    it('snaps back to the first team, navigates to /app, and still rejects (R14: caller sees the error)', async () => {
         respondWith = { status: 403, data: { error: 'tenant_forbidden' } };
 
         await expect(api.get('/api/admin/kb/tags')).rejects.toThrow();
         expect(useTeamStore.getState().currentTeam).toBe('default');
+        expect(assignSpy).toHaveBeenCalledWith('/app');
     });
 
-    it('leaves the team untouched on a plain RBAC 403', async () => {
+    it('leaves the team untouched and does NOT navigate on a plain RBAC 403', async () => {
         respondWith = { status: 403, data: { message: 'Forbidden.' } };
 
         await expect(api.get('/api/admin/users')).rejects.toThrow();
         expect(useTeamStore.getState().currentTeam).toBe('acme');
+        expect(assignSpy).not.toHaveBeenCalled();
     });
 });

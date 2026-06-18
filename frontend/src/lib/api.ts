@@ -58,7 +58,9 @@ api.interceptors.response.use(
             (error.response.data as { error?: string } | undefined)?.error === 'tenant_forbidden'
         ) {
             useTeamStore.getState().resetToFirstTeam();
-            window.location.assign('/app');
+            if (typeof window !== 'undefined' && typeof window.location?.assign === 'function') {
+                window.location.assign('/app');
+            }
         }
         return Promise.reject(error);
     },
