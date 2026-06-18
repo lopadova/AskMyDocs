@@ -88,6 +88,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/commands/catalogue' => ['admin', 'super-admin'],
             '/api/admin/compliance/reports' => ['admin', 'super-admin'],
             '/api/admin/notifications/defaults' => ['admin', 'super-admin'],
+            // Invite system — campaign management + code issuance.
+            '/api/admin/invite/campaigns' => ['admin', 'super-admin'],
+            '/api/admin/invite/codes' => ['admin', 'super-admin'],
 
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
             '/api/admin/connectors' => ['super-admin'],                 // manageConnectors
