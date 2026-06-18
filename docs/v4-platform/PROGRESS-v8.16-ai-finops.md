@@ -122,7 +122,8 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
   - [x] Reshape config/ai.php; rewrite provider unit tests
   - [x] auto_register on (default); AiCallMeter retired to the residual with-tools turn only
   - [x] ADR reversing §6 (ADR 0015) + R9 doc sweep
-  - [ ] PR → feature/v8.16, R36 loop, auto-merge, tag v8.16.0-rc2
+  - [~] PR **#316** → feature/v8.16 (opened 2026-06-18, reviewer copilot-pull-request-reviewer).
+        R36 loop in progress; auto-merge when 0 must-fix + CI green; then tag v8.16.0-rc2.
 - **W3 Streaming + server-side cost authority** — ⬜
   - [ ] Stream metering verified
   - [ ] chat_logs cost column (additive) + CostResolutionService at log time
