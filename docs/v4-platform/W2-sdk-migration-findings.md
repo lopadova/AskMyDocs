@@ -10,8 +10,11 @@ event hook (`AgentPrompted` / `AgentStreamed` / `EmbeddingsGenerated`) and the i
 `AiCallMeter` bridge retires to a fallback.
 
 ## What the SDK already gives us
-- Installed: `laravel/ai v0.6.7`. Host pin: `">=0.6,<0.6.8"` (composer.json) — the cap is the
-  deliberate hold point. FinOps wants `^0.6.8 || ^0.7`. **Lift the cap in W2.**
+- Installed after W1: `laravel/ai v0.6.8` — W1 bumped the host pin `>=0.6,<0.6.8` → `^0.6.8`
+  (forced by finops 1.2.1, which requires `^0.6.8 || ^0.7`). The old `<0.6.8` cap was the original
+  hold point; it is now lifted to the minimal floor. **Remaining W2 decision: whether to WIDEN to
+  `^0.6.8 || ^0.7`** — gated on a regolo release that supports 0.7 (regolo 1.0.1 is `^0.6` only; see
+  the W2-caveat bullet under the changelog below).
 - **All 4 providers have NATIVE drivers** under `vendor/laravel/ai/src/Providers/` +
   gateways `src/Gateway/<Name>/`: `openai`, `openrouter`, `anthropic`, `gemini`. Regolo is the
   only non-native one (added by `padosoft/laravel-ai-regolo`) — exactly the extension pattern.

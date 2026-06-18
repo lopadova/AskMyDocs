@@ -7,11 +7,11 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
 
 ## Branches (IMPORTANT naming gotcha)
 - `feature/v8.16` (integration) — created from main @ 39f90876, pushed to origin.
-- Sub-branches MUST use a **hyphen**, never a nested slash. The hyphen form
-  `feature/v8.16-W1-foundation` is the ONLY correct shape; a nested
-  `feature/v8.16-slash-Wn` ref (slash after the integration name) is refused by Git/GitHub
-  when the parent `feature/v8.16` already exists as a branch (ref file vs dir conflict). Use
-  `feature/v8.16-Wn-...` for every wave. PR target is still `feature/v8.16` (R37).
+- Sub-branches MUST use a **hyphen**: `feature/v8.16-W1-foundation`, `feature/v8.16-W2-...`, etc.
+  A nested ref (integration name, then a path separator, then the wave) is refused by Git/GitHub once
+  `feature/v8.16` already exists as a branch — the parent occupies the ref-file slot that the nested
+  form would need as a directory. So every wave uses the flat hyphenated form. PR target stays
+  `feature/v8.16` (R37).
 - W1 branch: `feature/v8.16-W1-foundation` @ a2912d5b. PR **#314** → feature/v8.16.
 
 ## Local env
