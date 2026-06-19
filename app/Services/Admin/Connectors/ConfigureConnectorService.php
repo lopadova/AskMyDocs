@@ -225,28 +225,26 @@ final class ConfigureConnectorService
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $state = isset($query['state']) ? (string) $query['state'] : '';
 
-        if ($state === '') {
-            // The connector must embed a single-use state in its credential-form
-            // URL; an empty one means a contract break — fail fast rather than
-            // replaying an empty state into handleOAuthCallback().
-            throw new ConnectorAuthException(
-                "Connector '{$installation->connector_name}' returned no credential state to replay.",
-            );
-        }
-
-        // Include the secret ONLY when one was actually submitted — fabricating an
-        // empty string for a null secret is observably different from "missing" and
-        // could persist an empty credential. When absent, the connector's own
-        // missing-secret handling fires (a loud ConnectorAuthException → 422).
-        $data = ['state' => $state];
-        if ($secret !== null) {
-            $data[$secretField] = $secret;
-        }
-
-        $synthetic = Request::create('/', 'POST', $data);
-
         try {
-            $connector->handleOAuthCallback($installation->id, $synthetic);
+            if ($state === '') {
+                // The connector must embed a single-use state in its credential-form
+                // URL; an empty one means a contract break. Throw inside the try so
+                // it records error_json like every other auth failure below.
+                throw new ConnectorAuthException(
+                    "Connector '{$installation->connector_name}' returned no credential state to replay.",
+                );
+            }
+
+            // Include the secret ONLY when one was actually submitted — fabricating
+            // an empty string for a null secret is observably different from
+            // "missing" and could persist an empty credential. When absent, the
+            // connector's own missing-secret handling fires (loud → 422).
+            $data = ['state' => $state];
+            if ($secret !== null) {
+                $data[$secretField] = $secret;
+            }
+
+            $connector->handleOAuthCallback($installation->id, Request::create('/', 'POST', $data));
         } catch (ConnectorAuthException $e) {
             $installation->forceFill([
                 'status' => ConnectorInstallation::STATUS_PENDING,
