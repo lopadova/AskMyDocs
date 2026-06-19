@@ -16,14 +16,18 @@ use Padosoft\LaravelAiFinOps\Metering\MeteringListener;
 use Throwable;
 
 /**
- * Bridges AskMyDocs' raw-`Http::` AI providers into the laravel-ai-finops usage
- * ledger so EVERY provider is metered, not just Regolo.
+ * Bridges AskMyDocs' residual raw-`Http::` AI calls into the laravel-ai-finops
+ * usage ledger so EVERY call is metered, not just the SDK-native path.
  *
- * The package meters automatically ONLY for calls that flow through the
- * laravel/ai SDK lifecycle events. In AskMyDocs that is Regolo alone — OpenAI /
- * Anthropic / Gemini / OpenRouter all transit raw `Http::` inside their
- * providers — so without this bridge the ledger would stay empty for the default
- * (openrouter) chat traffic and for every ingestion embedding.
+ * The package meters automatically for calls that flow through the laravel/ai SDK
+ * lifecycle events. Since v8.16/W2 (ADR 0015) that covers almost everything:
+ * Anthropic + Gemini + Regolo run fully through the SDK, and OpenAI + OpenRouter
+ * run through it for no-tools chat + embeddings — all metered natively. The ONE
+ * path the SDK can't host is the OpenAI / OpenRouter **MCP with-tools turn**,
+ * still issued over raw `Http::`. This bridge meters exactly that residual turn
+ * (gated by {@see \App\Ai\AiManager::bridgeShouldMeterChat()}); the SDK-metered
+ * providers are skipped here ({@see self::SDK_METERED_PROVIDERS}) so nothing is
+ * double-counted.
  *
  * We reuse the package's {@see MeteringListener} public `record*` methods
  * directly: they run the FULL pricing cascade + tenant attribution +
