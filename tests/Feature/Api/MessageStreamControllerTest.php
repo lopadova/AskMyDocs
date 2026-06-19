@@ -245,7 +245,11 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertNotNull($assistant);
         // Cost populated (0.00000000 with feeds off — non-null), currency set.
         $this->assertNotNull($assistant->metadata['cost'] ?? null, 'server cost populated on the streamed message');
-        $this->assertSame('USD', $assistant->metadata['cost_currency'] ?? null);
+        // Currency follows the configurable base, not a hard-coded literal.
+        $this->assertSame(
+            (string) config('ai-finops.currency.base', 'USD'),
+            $assistant->metadata['cost_currency'] ?? null,
+        );
 
         $chatLog = \App\Models\ChatLog::query()->latest('id')->first();
         $this->assertNotNull($chatLog?->trace_id, 'chat_logs.trace_id stamped when metering on');
