@@ -6,7 +6,6 @@ namespace App\Services\Admin\Connectors;
 
 use App\Support\TenantContext;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
@@ -58,6 +57,10 @@ final class ConfigureConnectorService
     public function configure(string $name, array $validated, int $createdBy): ConfigureConnectorResult
     {
         $connector = $this->registry->get($name);
+
+        if ($connector === null) {
+            throw new NotFoundHttpException("Connector '{$name}' is not registered.");
+        }
 
         if (! $connector instanceof SupportsCredentialForm) {
             throw new NotFoundHttpException("Connector '{$name}' does not support credential configuration.");
@@ -198,8 +201,17 @@ final class ConfigureConnectorService
         // The secret is posted under its SCHEMA field name (the connector reads
         // it by that name) — keeping the flow generic for any credential connector.
         $url = $connector->initiateOAuth($installation->id);
-        parse_str(Str::after($url, '?'), $query);
+        parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
         $state = isset($query['state']) ? (string) $query['state'] : '';
+
+        if ($state === '') {
+            // The connector must embed a single-use state in its credential-form
+            // URL; an empty one means a contract break — fail fast rather than
+            // replaying an empty state into handleOAuthCallback().
+            throw new ConnectorAuthException(
+                "Connector '{$installation->connector_name}' returned no credential state to replay.",
+            );
+        }
 
         $synthetic = Request::create('/', 'POST', [
             'state' => $state,

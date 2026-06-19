@@ -54,7 +54,11 @@ final class ConfigureConnectorRequest extends FormRequest
         foreach ($connector->credentialFormSchema() as $field) {
             $name = (string) $field['name'];
 
-            if (($field['secret'] ?? false) === true) {
+            // A secret is identified by target='secret' (the same marker
+            // ConfigureConnectorService::splitPayload routes to the vault) — keyed
+            // on target, not the secret flag, so the masking can never drift from
+            // the actual routing. The secret flag is honoured too, defensively.
+            if (($field['target'] ?? null) === 'secret' || ($field['secret'] ?? false) === true) {
                 $secretFields[] = $name;
             }
 

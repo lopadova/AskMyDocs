@@ -9,9 +9,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 
 /**
- * v8.17 — the public shape of a connector installation row. Identical across the
- * `index` listing and the `configure` response so the FE reads one contract
- * (R: route-contracts-match-fe-shape).
+ * v8.17 — the public shape of a connector installation row. The installation
+ * fields ({id, status, last_sync_at, error}) are identical across the `index`
+ * listing and the `configure` response so the FE reads one contract
+ * (R: route-contracts-match-fe-shape); the `configure` response merges one extra
+ * sibling key, `redirect_to` (xoauth2 only), onto these fields.
  *
  * Security: NEVER exposes credentials. `config_json` is deliberately omitted — it
  * can carry connection metadata (host/username) but is not part of the admin
