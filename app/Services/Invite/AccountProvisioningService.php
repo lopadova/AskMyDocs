@@ -8,6 +8,7 @@ use App\Models\InviteAnalyticsEvent;
 use App\Models\ProjectMembership;
 use App\Models\User;
 use App\Services\Invite\Support\InviteGrant;
+use App\Services\Invite\Support\TenantGrant;
 use Illuminate\Support\Facades\Log;
 use Spatie\Permission\Models\Role;
 
@@ -39,23 +40,36 @@ final class AccountProvisioningService
     ) {
     }
 
+    /**
+     * @param  string  $tenantId  the redemption tenant — used only when the grant
+     *                            carries no explicit `tenants` list (legacy form).
+     */
     public function provision(User $user, InviteGrant $grant, string $tenantId): void
     {
-        if ($grant->isEmpty()) {
+        $tenantGrants = $grant->effectiveTenantGrants($tenantId);
+        if ($tenantGrants === []) {
             return;
         }
 
         try {
-            $this->grantRole($user, $grant->role);
-            $this->grantProjects($user, $grant, $tenantId);
+            // One or MORE tenants: a single code can seed memberships across
+            // several tenants ("teams"). Roles are global (Spatie), so each
+            // tenant grant's role is assigned additively to the same account.
+            foreach ($tenantGrants as $tenantGrant) {
+                $this->grantRole($user, $tenantGrant->role);
+                $this->grantProjects($user, $tenantGrant);
+            }
 
             $this->analytics->record(
                 InviteAnalyticsEvent::TYPE_ACCOUNT_PROVISIONED,
                 "provisioned:{$tenantId}:{$user->id}",
                 [
                     'account_id' => $user->id,
-                    'role' => $grant->role,
-                    'project_count' => count($grant->projects),
+                    'tenant_count' => count($tenantGrants),
+                    'project_count' => array_sum(array_map(
+                        static fn (TenantGrant $g): int => count($g->projects),
+                        $tenantGrants,
+                    )),
                 ],
             );
         } catch (\Throwable $e) {
@@ -94,16 +108,18 @@ final class AccountProvisioningService
         $user->assignRole($role);
     }
 
-    private function grantProjects(User $user, InviteGrant $grant, string $tenantId): void
+    private function grantProjects(User $user, TenantGrant $grant): void
     {
         foreach ($grant->projects as $projectKey) {
             // firstOrCreate, keyed on the tenant-scoped uniqueness tuple, so an
             // existing membership is never downgraded or its allowlist clobbered
             // by a later invite. Only a brand-new membership takes the grant's
-            // project_role / scope_allowlist.
+            // project_role / scope_allowlist. The tenant_id is the grant's own
+            // tenant (explicit), so BelongsToTenant does NOT overwrite it with
+            // the active redemption tenant.
             ProjectMembership::firstOrCreate(
                 [
-                    'tenant_id' => $tenantId,
+                    'tenant_id' => $grant->tenantId,
                     'user_id' => $user->id,
                     'project_key' => $projectKey,
                 ],

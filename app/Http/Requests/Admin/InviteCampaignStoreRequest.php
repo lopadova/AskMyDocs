@@ -47,6 +47,17 @@ class InviteCampaignStoreRequest extends FormRequest
             'grant.projects.*' => ['string', 'max:120'],
             'grant.project_role' => ['nullable', Rule::in(['member', 'admin', 'owner'])],
             'grant.scope_allowlist' => ['nullable', 'array'],
+
+            // Multi-tenant form: one OR MORE per-tenant grants, so a single code
+            // provisions the redeemer across several tenants ("teams") at once.
+            // super-admin is rejected in every tenant grant too (no priv-esc).
+            'grant.tenants' => ['nullable', 'array'],
+            'grant.tenants.*.tenant_id' => ['required', 'string', 'max:50'],
+            'grant.tenants.*.role' => ['nullable', 'string', 'exists:roles,name', 'not_in:super-admin'],
+            'grant.tenants.*.projects' => ['nullable', 'array'],
+            'grant.tenants.*.projects.*' => ['string', 'max:120'],
+            'grant.tenants.*.project_role' => ['nullable', Rule::in(['member', 'admin', 'owner'])],
+            'grant.tenants.*.scope_allowlist' => ['nullable', 'array'],
         ];
     }
 
@@ -58,6 +69,9 @@ class InviteCampaignStoreRequest extends FormRequest
         return [
             'grant.role.not_in' => 'super-admin cannot be granted through an invite code.',
             'grant.role.exists' => 'The selected grant role does not exist.',
+            'grant.tenants.*.role.not_in' => 'super-admin cannot be granted through an invite code.',
+            'grant.tenants.*.role.exists' => 'The selected grant role does not exist.',
+            'grant.tenants.*.tenant_id.required' => 'Each tenant grant needs a tenant_id.',
         ];
     }
 }

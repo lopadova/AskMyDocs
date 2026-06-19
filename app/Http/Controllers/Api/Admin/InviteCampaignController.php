@@ -76,8 +76,18 @@ final class InviteCampaignController extends Controller
             'grant.projects.*' => ['string', 'max:120'],
             'grant.project_role' => ['nullable', 'in:member,admin,owner'],
             'grant.scope_allowlist' => ['nullable', 'array'],
+
+            // Multi-tenant grant (one OR MORE tenants) — mirrors the store path.
+            'grant.tenants' => ['nullable', 'array'],
+            'grant.tenants.*.tenant_id' => ['required', 'string', 'max:50'],
+            'grant.tenants.*.role' => ['nullable', 'string', 'exists:roles,name', 'not_in:super-admin'],
+            'grant.tenants.*.projects' => ['nullable', 'array'],
+            'grant.tenants.*.projects.*' => ['string', 'max:120'],
+            'grant.tenants.*.project_role' => ['nullable', 'in:member,admin,owner'],
+            'grant.tenants.*.scope_allowlist' => ['nullable', 'array'],
         ], [
             'grant.role.not_in' => 'super-admin cannot be granted through an invite code.',
+            'grant.tenants.*.role.not_in' => 'super-admin cannot be granted through an invite code.',
         ]);
 
         return response()->json([

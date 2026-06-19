@@ -167,6 +167,74 @@ final class InviteGrantProvisioningTest extends TestCase
             ->assertJsonValidationErrors('grant.role');
     }
 
+    public function test_multi_tenant_grant_provisions_memberships_across_tenants(): void
+    {
+        Role::findOrCreate('editor', 'web');
+        Role::findOrCreate('viewer', 'web');
+
+        // One code, two tenants ("teams"): the redeemer is provisioned in BOTH.
+        $campaign = $this->campaign(['tenants' => [
+            ['tenant_id' => 'default', 'role' => 'editor', 'projects' => ['docs']],
+            ['tenant_id' => 'acme', 'role' => 'viewer', 'projects' => ['eng', 'ops'], 'project_role' => 'admin'],
+        ]]);
+        $code = $this->code('GRANT006', $campaign);
+        $user = $this->user('multi@example.com');
+
+        $result = $this->redeem($code->code, $user);
+
+        $this->assertTrue($result->ok);
+
+        $fresh = $user->fresh();
+        // Roles are global (Spatie) — additive across tenant grants.
+        $this->assertTrue($fresh->hasRole('editor'));
+        $this->assertTrue($fresh->hasRole('viewer'));
+
+        // Membership in the FIRST tenant.
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'default',
+            'user_id' => $user->id,
+            'project_key' => 'docs',
+            'role' => 'member',
+        ]);
+
+        // Membership in the SECOND tenant — written even though the redemption
+        // ran under 'default' (the grant's explicit tenant_id wins).
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'eng',
+            'role' => 'admin',
+        ]);
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'ops',
+            'role' => 'admin',
+        ]);
+
+        $this->assertSame(3, ProjectMembership::where('user_id', $user->id)->count());
+    }
+
+    public function test_campaign_create_rejects_super_admin_in_a_tenant_grant(): void
+    {
+        Role::findOrCreate('super-admin', 'web');
+        Role::findOrCreate('admin', 'web');
+        $admin = $this->user('boss2@example.com');
+        $admin->assignRole('admin');
+        $this->actingAs($admin);
+
+        $this->postJson('/api/admin/invite/campaigns', [
+            'key' => 'priv-esc-tenant',
+            'name' => 'Priv Esc Tenant',
+            'type' => InviteCampaign::TYPE_MULTI_USE,
+            'grant' => ['tenants' => [
+                ['tenant_id' => 'acme', 'role' => 'super-admin', 'projects' => ['eng']],
+            ]],
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('grant.tenants.0.role');
+    }
+
     /**
      * @param  array<string, mixed>|null  $grant
      */

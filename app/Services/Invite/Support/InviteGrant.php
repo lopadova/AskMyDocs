@@ -18,21 +18,29 @@ namespace App\Services\Invite\Support;
  *   - `projects`       tenant project_keys the redeemer gains membership on.
  *   - `projectRole`    the membership role written per project (member/admin/owner).
  *   - `scopeAllowlist` optional per-project scope restriction (folder_globs/tags).
+ *   - `tenants`        OPTIONAL multi-tenant form: a list of per-tenant grants
+ *                      (each its own tenant_id + role + projects). When present
+ *                      it is authoritative and the redeemer is provisioned across
+ *                      ALL listed tenants — so one code can seed memberships in
+ *                      several tenants ("teams") at once. When absent, the legacy
+ *                      single-tenant fields above apply to the redemption tenant.
  *
- * An empty grant (no role and no projects) provisions nothing — the redemption
- * still succeeds, it just creates/links no access.
+ * An empty grant (no role, no projects, no tenant grants) provisions nothing —
+ * the redemption still succeeds, it just creates/links no access.
  */
 final class InviteGrant
 {
     /**
      * @param  list<string>  $projects
      * @param  array<string, mixed>|null  $scopeAllowlist
+     * @param  list<TenantGrant>  $tenants
      */
     public function __construct(
         public readonly ?string $role = null,
         public readonly array $projects = [],
         public readonly string $projectRole = 'member',
         public readonly ?array $scopeAllowlist = null,
+        public readonly array $tenants = [],
     ) {
     }
 
@@ -72,7 +80,18 @@ final class InviteGrant
             ? $data['scope_allowlist']
             : null;
 
-        return new self($role, $projects, $projectRole, $scopeAllowlist);
+        $tenants = [];
+        if (isset($data['tenants']) && is_array($data['tenants'])) {
+            foreach ($data['tenants'] as $entry) {
+                if (is_array($entry)) {
+                    $tenants[] = TenantGrant::fromArray($entry);
+                }
+            }
+        }
+        /** @var list<TenantGrant> $tenants */
+        $tenants = array_values($tenants);
+
+        return new self($role, $projects, $projectRole, $scopeAllowlist, $tenants);
     }
 
     /**
@@ -92,7 +111,47 @@ final class InviteGrant
 
     public function isEmpty(): bool
     {
-        return $this->role === null && $this->projects === [];
+        if ($this->role !== null || $this->projects !== []) {
+            return false;
+        }
+
+        foreach ($this->tenants as $tenant) {
+            if (! $tenant->isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * The per-tenant grants to actually provision. When the multi-tenant
+     * `tenants` list is present it is authoritative (empty entries dropped);
+     * otherwise the legacy single-tenant fields are projected onto the
+     * redemption tenant, so existing callers keep their exact behaviour.
+     *
+     * @return list<TenantGrant>
+     */
+    public function effectiveTenantGrants(string $redemptionTenantId): array
+    {
+        if ($this->tenants !== []) {
+            return array_values(array_filter(
+                $this->tenants,
+                static fn (TenantGrant $tenant): bool => ! $tenant->isEmpty(),
+            ));
+        }
+
+        if ($this->role === null && $this->projects === []) {
+            return [];
+        }
+
+        return [new TenantGrant(
+            $redemptionTenantId,
+            $this->role,
+            $this->projects,
+            $this->projectRole,
+            $this->scopeAllowlist,
+        )];
     }
 
     /**
@@ -105,6 +164,10 @@ final class InviteGrant
             'projects' => $this->projects,
             'project_role' => $this->projectRole,
             'scope_allowlist' => $this->scopeAllowlist,
+            'tenants' => array_map(
+                static fn (TenantGrant $tenant): array => $tenant->toArray(),
+                $this->tenants,
+            ),
         ];
     }
 }
