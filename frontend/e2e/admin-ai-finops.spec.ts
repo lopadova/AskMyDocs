@@ -1,6 +1,6 @@
 import { test as baseTest, expect, type Page } from '@playwright/test';
 import { test as seededTest } from './fixtures';
-import { resetAndSeed } from './setup-helpers';
+import { resetDb, seedDb } from './setup-helpers';
 
 const PASSWORD = 'password';
 
@@ -62,11 +62,15 @@ seededTest.describe('Admin AI FinOps — admin (package-served SPA shell)', () =
 });
 
 baseTest.describe('Admin AI FinOps — RBAC (viewer denied)', () => {
-    // Seed fresh + log in as the seeded viewer so the gate (not a stale session)
-    // is what we observe. This file runs in the `chromium` (admin) project, so we
-    // cannot rely on viewer.json — the inline login makes the role deterministic.
+    // Seed fresh + log in as the seeded viewer so the gate (not a stale session
+    // or leftover cross-test data) is what we observe. resetDb()+seedDb() ALWAYS
+    // wipe via /testing/reset even under CI's E2E_SKIP_HTTP_RESET=1 (unlike the
+    // setup-time resetAndSeed(), which honours the skip) — so the baseline is
+    // clean and the 403 is evaluated deterministically (R16). This file runs in
+    // the `chromium` (admin) project, so the inline login makes the role explicit.
     baseTest.beforeEach(async ({ page }) => {
-        await resetAndSeed(page);
+        await resetDb(page);
+        await seedDb(page);
         await loginAs(page, 'viewer@demo.local');
     });
 
