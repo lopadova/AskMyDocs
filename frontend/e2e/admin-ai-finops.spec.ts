@@ -1,5 +1,27 @@
-import { test as baseTest, expect } from '@playwright/test';
+import { test as baseTest, expect, type Page } from '@playwright/test';
 import { test as seededTest } from './fixtures';
+import { resetAndSeed } from './setup-helpers';
+
+const PASSWORD = 'password';
+
+// Inline login (CSRF + /api/auth/login), mirroring role-access.spec.ts. Used by
+// the viewer-denied test so it establishes a FRESH, valid viewer session and the
+// gated GET deterministically hits the `can:viewAiFinOps` 403 — never a stale
+// "logged-out" 302 that would green-pass for the wrong reason (R16).
+async function loginAs(page: Page, email: string): Promise<void> {
+    await page.request.get('/sanctum/csrf-cookie');
+    const xsrf = (await page.context().cookies()).find((c) => c.name === 'XSRF-TOKEN');
+    if (!xsrf) {
+        throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
+    }
+    const res = await page.request.post('/api/auth/login', {
+        data: { email, password: PASSWORD },
+        headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
+    });
+    if (!res.ok()) {
+        throw new Error(`Login failed for ${email}: ${res.status()} ${await res.text()}`);
+    }
+}
 
 /*
  * v8.16/W4 — AI FinOps admin SPA.
@@ -40,23 +62,24 @@ seededTest.describe('Admin AI FinOps — admin (package-served SPA shell)', () =
 });
 
 baseTest.describe('Admin AI FinOps — RBAC (viewer denied)', () => {
-    baseTest.use({ storageState: 'playwright/.auth/viewer.json' });
+    // Seed fresh + log in as the seeded viewer so the gate (not a stale session)
+    // is what we observe. This file runs in the `chromium` (admin) project, so we
+    // cannot rely on viewer.json — the inline login makes the role deterministic.
+    baseTest.beforeEach(async ({ page }) => {
+        await resetAndSeed(page);
+        await loginAs(page, 'viewer@demo.local');
+    });
 
     /*
-     * R13: failure injection on the package mount URL. The BE Gate is the
-     * load-bearing defence. With the route registered (env=true) a viewer is
-     * denied by `can:viewAiFinOps` with a 403; an expired viewer session
-     * redirects to /login (302). Either proves the panel is NOT served to a
-     * viewer — never a 200 serving the shell. maxRedirects:0 keeps the 302
-     * observable instead of following it to a 200 login page.
+     * R13: real-backend failure path. The BE Gate is the load-bearing defence.
+     * With the route registered (env=true) and a VALID viewer session, the only
+     * thing standing between the viewer and the panel is `can:viewAiFinOps` —
+     * so the response is a hard 403. maxRedirects:0 keeps any redirect observable
+     * rather than following it to a 200 login page that would mask the result.
      */
-    baseTest('viewer GET /admin/ai-finops is not served (403 gate / 302 login)', async ({ request }) => {
-        const response = await request.get('/admin/ai-finops', { maxRedirects: 0 });
+    baseTest('viewer GET /admin/ai-finops is denied by the viewAiFinOps gate (403)', async ({ page }) => {
+        const response = await page.request.get('/admin/ai-finops', { maxRedirects: 0 });
 
-        expect([403, 302]).toContain(response.status());
-        if (response.status() === 200) {
-            // Defensive: if a 200 ever slips through, prove it is not the panel.
-            expect(await response.text()).not.toContain('aifinops-admin');
-        }
+        expect(response.status()).toBe(403);
     });
 });

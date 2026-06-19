@@ -309,7 +309,15 @@ jobs:
       - name: Publish AI FinOps admin assets (CLI)
         env:
           APP_ENV: testing
-        run: php artisan vendor:publish --tag=ai-finops-admin-assets --force
+        # `vendor:publish` exits 0 even when a tag resolves to nothing ("No
+        # publishable resources for tag") — so assert the assets actually landed,
+        # otherwise a tag/discovery drift would ship a green build with an empty
+        # public/vendor/ai-finops-admin and the SPA would silently serve its
+        # "assets not built" fallback (R4/R14: no silent publish failure).
+        run: |
+          php artisan vendor:publish --tag=ai-finops-admin-assets --force
+          test -n "$(ls -A public/vendor/ai-finops-admin 2>/dev/null)" \
+            || { echo '::error::ai-finops-admin assets were not published'; exit 1; }
 
       # Start Laravel explicitly in the workflow instead of relying on
       # playwright.config.ts `webServer`. The webServer block boots
