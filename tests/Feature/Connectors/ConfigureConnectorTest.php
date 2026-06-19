@@ -118,6 +118,38 @@ final class ConfigureConnectorTest extends TestCase
             ->assertJsonValidationErrors(['host', 'username', 'password']);
     }
 
+    public function test_omitting_auth_mode_defaults_to_basic_and_still_requires_basic_fields(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+        $admin = $this->superAdmin();
+
+        // auth_mode omitted (relies on the schema default 'basic'). The default
+        // is merged before validation, so the basic-only required fields are
+        // genuinely enforced — omitting host must 422, not silently pass.
+        $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', [
+                'username' => 'alice@example.com',
+                'password' => 's3cr3t-app-pw',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['host']);
+
+        // With the basic fields present (still no explicit auth_mode) it succeeds
+        // and the row records auth_mode=basic from the merged default.
+        $response = $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', [
+                'host' => 'imap.example.com',
+                'username' => 'alice@example.com',
+                'password' => 's3cr3t-app-pw',
+            ])
+            ->assertOk();
+
+        $this->assertSame('active', $response->json('data.status'));
+        $installation = ConnectorInstallation::query()
+            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+        $this->assertSame('basic', $installation->config_json['auth_mode']);
+    }
+
     public function test_xoauth2_configure_returns_provider_redirect_and_stays_pending(): void
     {
         config([

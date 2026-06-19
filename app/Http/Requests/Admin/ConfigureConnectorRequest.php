@@ -32,6 +32,45 @@ final class ConfigureConnectorRequest extends FormRequest
     }
 
     /**
+     * Before validation: (1) merge each schema field's default for any field the
+     * client omitted, so `showIf`-derived `required_if` rules see their controlling
+     * field present (e.g. an omitted `auth_mode` would otherwise default to `basic`
+     * in the service while `required_if:auth_mode,basic` saw it MISSING and skipped
+     * requiring host/password); (2) mask EVERY `target=secret` field in `$dontFlash`,
+     * not just the literal `password`, so a future credential connector's secret is
+     * never flashed either.
+     */
+    protected function prepareForValidation(): void
+    {
+        $connector = app(ConnectorRegistry::class)->get((string) $this->route('name'));
+
+        if (! $connector instanceof SupportsCredentialForm) {
+            return;
+        }
+
+        $defaults = [];
+        $secretFields = [];
+
+        foreach ($connector->credentialFormSchema() as $field) {
+            $name = (string) $field['name'];
+
+            if (($field['secret'] ?? false) === true) {
+                $secretFields[] = $name;
+            }
+
+            if (! $this->has($name) && ($field['default'] ?? null) !== null) {
+                $defaults[$name] = $field['default'];
+            }
+        }
+
+        $this->dontFlash = array_values(array_unique([...$this->dontFlash, ...$secretFields]));
+
+        if ($defaults !== []) {
+            $this->merge($defaults);
+        }
+    }
+
+    /**
      * @return array<string, list<mixed>>
      */
     public function rules(): array
