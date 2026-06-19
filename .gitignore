@@ -55,3 +55,10 @@ public/_serve_router.php
 # macOS Finder metadata (must never be committed) — #40
 .DS_Store
 **/.DS_Store
+
+# Tauri desktop demo (desktop/) — Rust build cache, bundles, and JS deps.
+# Cargo.lock IS committed (it's an application, not a library).
+/desktop/node_modules/
+/desktop/dist/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
