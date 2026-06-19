@@ -1,6 +1,6 @@
 ---
 title: "AI FinOps — spend governance"
-description: "Cross-provider AI spend governance: a per-call usage ledger, N-scope budgets, a policy DSL, chargeback, forecasting and alerts — metered at the AiManager chokepoint and attributed per tenant. Integrated from padosoft/laravel-ai-finops (+ admin)."
+description: "Cross-provider AI spend governance: a per-call usage ledger, N-scope budgets, a policy DSL, chargeback, forecasting and alerts — metered natively on the laravel/ai SDK, attributed per tenant, with real server-side per-turn cost on every chat log and an MCP read surface. Integrated from padosoft/laravel-ai-finops (+ admin)."
 icon: "wallet"
 ---
 
@@ -11,14 +11,17 @@ ingestion embedding, across five providers with different price sheets. Without 
 governance layer you get the classic FinOps failure mode: the bill is only legible
 *after* it arrives, there is no per-tenant attribution for chargeback, and nothing
 stops a runaway agent loop or a mispriced model from burning the monthly budget in
-an afternoon.
+an afternoon. Worse, AskMyDocs historically *guessed* per-turn cost from a static
+`config/ai.php` price sheet resolved **client-side** — a number that drifted from
+the real bill the moment a provider changed its rates.
 
 AskMyDocs answers this with [`padosoft/laravel-ai-finops`](https://github.com/padosoft/laravel-ai-finops)
 (+ the companion React cockpit
 [`padosoft/laravel-ai-finops-admin`](https://github.com/padosoft/laravel-ai-finops-admin)):
 an immutable usage **ledger**, hierarchical **budgets**, a declarative **policy
 DSL**, **chargeback**/cost-centers, **forecasting** + anomaly detection,
-cost-aware routing, price-watch and multi-channel **alerts** — all tenant-scoped.
+cost-aware routing, price-watch and multi-channel **alerts** — all tenant-scoped,
+all priced by the package's own multi-source cost cascade.
 
 ## Theory & background
 
@@ -29,46 +32,71 @@ implements all three; AskMyDocs ships **inform** on by default and leaves
 **govern**'s hard blocks opt-in (observe-first).
 
 The package meters at a **single point**: it listens on the `laravel/ai` SDK
-lifecycle events (`PromptingAgent` / `AgentPrompted` / `EmbeddingsGenerated`). Any
+lifecycle events (`AgentPrompted` / `AgentStreamed` / `EmbeddingsGenerated`). Any
 call that flows through the SDK is metered and priced automatically — for free.
 
-AskMyDocs has one wrinkle that shapes the whole integration: only **Regolo** is
-wired through the `laravel/ai` SDK. OpenAI / Anthropic / Gemini / OpenRouter are
-called over raw `Illuminate\Support\Facades\Http` (a deliberate transport choice —
-see the [architecture decisions](/architecture/decisions)). So the SDK's automatic
-metering, left alone, would see *only* Regolo and leave the default `openrouter`
-traffic invisible. The bridge below closes that gap for synchronous calls.
+The shape of the integration changed in **v8.16/W2**. AskMyDocs used to call four
+of its five providers (OpenAI / Anthropic / Gemini / OpenRouter) over raw
+`Illuminate\Support\Facades\Http`, leaving the SDK's automatic metering blind to
+everything but Regolo. W2 **migrated provider transport onto the `laravel/ai`
+SDK** ([ADR 0015](/architecture/decisions)): Anthropic, Gemini and Regolo now run
+fully through the SDK, and OpenAI / OpenRouter run through it for ordinary chat +
+embeddings. The SDK's native metering therefore covers almost all traffic. A thin
+**residual bridge** closes the one remaining gap (below).
 
 ## Design
 
-`AiManager` is the one chokepoint every chat + embedding call already passes
-through. After a provider returns, `App\FinOps\AiCallMeter` feeds the result into
-the package's own pricing + recording pipeline by calling the metering listener's
-public `record*` methods directly — so the raw-`Http::` providers land in the
-ledger with the **same** pricing cascade, tenant attribution and subscription
-coverage as the SDK path. Regolo is skipped (it already meters itself through the
-SDK), so it is never double-counted. The bridge is non-blocking and fully
+Native SDK metering does the heavy lifting: every Anthropic / Gemini / Regolo call
+and every no-tools OpenAI / OpenRouter chat + embedding fires a lifecycle event the
+package's `MeteringListener` records and prices automatically.
+
+The one path the SDK cannot see is the **MCP tool-calling turn** for the two hybrid
+providers (OpenAI / OpenRouter): a with-tools turn is still issued over raw
+`Http::` because the SDK's tool-call surface does not yet match the host's MCP loop.
+`App\FinOps\AiCallMeter` is the **residual bridge** for exactly that turn — it feeds
+the raw-`Http::` result into the *same* `MeteringListener` pricing pipeline so the
+tool turn lands in the ledger with identical pricing, tenant attribution and
+subscription coverage. `App\Ai\AiManager::bridgeShouldMeterChat()` gates it: the
+bridge fires **only** when a hybrid provider issues a with-tools turn
+(`array_key_exists('tools', …)` or the history contains a tool turn), so an
+SDK-metered call is never double-counted. The bridge is non-blocking and fully
 `try/catch`'d (the [`ChatLogManager`](/chat-and-retrieval) discipline): a metering
 failure never breaks a chat turn or an ingestion run.
 
 ```mermaid
 flowchart LR
     subgraph host[AskMyDocs · AiManager chokepoint]
-      CHAT["chat / chatWithHistory"] --> METER["App\\FinOps\\AiCallMeter<br/>(non-blocking, Regolo-skip)"]
-      EMB["generateEmbeddings"] --> METER
-      STREAM["chatStream (SSE)"] -. not yet metered .-> METER
+      CHAT["chat / chatWithHistory<br/>anthropic · gemini · openai · openrouter"] --> SDK1["laravel/ai SDK"]
+      EMB["generateEmbeddings"] --> SDK1
+      STREAM["chatStream (SSE)"] --> SDK1
+      TOOLS["OpenAI/OpenRouter<br/>MCP with-tools turn (raw Http::)"] --> BRIDGE["App\\FinOps\\AiCallMeter<br/>(residual bridge, non-blocking)"]
     end
-    REGOLO["Regolo via laravel/ai SDK"] --> EVENTS["SDK lifecycle events"]
-    METER --> LISTENER["MeteringListener<br/>pricing cascade + tenant attribution"]
-    EVENTS --> LISTENER
+    REGOLO["Regolo via laravel/ai SDK"] --> SDK1
+    SDK1 --> EVENTS["SDK lifecycle events<br/>(AgentPrompted · AgentStreamed · EmbeddingsGenerated)"]
+    EVENTS --> LISTENER["MeteringListener<br/>pricing cascade + tenant attribution"]
+    BRIDGE --> LISTENER
     LISTENER --> LEDGER[("ai_finops_usage_ledger<br/>(tenant-scoped)")]
     LEDGER --> ENGINE["budgets · policies · chargeback ·<br/>forecast · alerts · routing"]
+    LEDGER -. "same trace_id" .-> CHATLOGS[("chat_logs.cost / trace_id")]
 ```
 
 Tenant attribution is wired through `App\FinOps\HostTenantResolver` (a
 config-cacheable class-string, not a closure), which returns the request-scoped
 tenant id from [`App\Support\TenantContext`](/multi-tenant-isolation) — so every
 ledger row, budget and rollup belongs to the active tenant (R30).
+
+### Real per-turn cost on every chat log (W3)
+
+The old "guess from a static sheet, client-side" cost model is gone. At
+`ChatLogManager` time, `App\FinOps\ChatTurnCostResolver` resolves the **real**
+cost of the turn through the package's `CostResolutionService` cascade (actual
+billed → tokens × tariff → estimated) and persists it onto the `chat_logs` row
+(`cost`, `cost_currency`), plus a `trace_id` that joins the row to its
+`ai_finops_usage_ledger` row(s). The chat API echoes the resolved cost in
+`meta.cost` / `meta.cost_currency` (additive — R27), and the chat UI's cost meter
+reads the **server** value instead of recomputing. Streaming turns stamp the same
+cost + `trace_id`. The whole path is gated on `AI_FINOPS_METERING` so a deployment
+with FinOps off pays no price-feed cost and writes no dangling trace id.
 
 ## Data model / contract
 
@@ -77,7 +105,7 @@ migrate` after install). The load-bearing ones:
 
 | Table | Holds |
 | --- | --- |
-| `ai_finops_usage_ledger` | One immutable row per metered call: provider, model, tokens, cost, `cost_method`, `tenant_id`, trace tags. |
+| `ai_finops_usage_ledger` | One immutable row per metered call: provider, model, tokens, `cost_total`, `cost_method`, `tenant_id`, trace tags. |
 | `ai_finops_budgets` | N-scope budgets (global → tenant → user → cost-center → provider → model → agent → purpose), soft/hard, daily→yearly + rolling. |
 | `ai_finops_policies` / `ai_finops_approvals` | Declarative policy DSL (block / require-approval / downgrade / throttle / queue) + the approval workflow. |
 | `ai_finops_kill_switches` | Global + scoped kill switches. |
@@ -87,13 +115,30 @@ migrate` after install). The load-bearing ones:
 | `ai_finops_price_watch_*` / `ai_finops_alerts_*` / `ai_finops_anomaly_acks` | Provider price-change watch, alert channels/rules/log, anomaly acks. |
 | `ai_finops_audit_log` | Immutable governance-mutation trail (budgets, policies, kill-switches, …). |
 
-The HTTP surface mounts under `api/admin/ai-finops` (read `dashboard/kpis`,
-`usage`, `budgets`, `pricing/models`, `forecast`, `audit`, `settings`, … ; write
-`budgets`, `policies`, `cost-centers`, `settings/kill-switch`, …). Key env knobs:
+The host adds an **additive** cost surface to its own `chat_logs` table (v8.16/W3):
+`cost` `decimal(18,8)`, `cost_currency` `char(3)`, and an indexed `trace_id`
+`string(64)` — the join key back to the ledger. The precision mirrors the ledger's
+`cost_total` so the two never round apart.
+
+The capability is reachable on all three R44 surfaces over one shared core:
+
+- **PHP** — the `ai-finops:*` Artisan commands (`report`, `capture-prices`,
+  `check-alerts`, `prune`) + the package services.
+- **HTTP** — `api/admin/ai-finops/*` (read `dashboard/kpis`, `usage`, `budgets`,
+  `footprint/summary`, `forecast`, `audit`, … ; write `budgets`, `policies`,
+  `cost-centers`, `settings/kill-switch`, …).
+- **MCP** — three read tools on the `enterprise-kb` server (v8.16/W4),
+  tenant-scoped (R30) and OFF-path safe (R43):
+  `FinOpsSpendSummaryTool` (total cost + tokens + per-(provider, model) breakdown
+  over a window), `FinOpsTopModelsTool` (costliest models with cost-share), and
+  `FinOpsBudgetStatusTool` (each tenant-scoped budget's limit / spend / state,
+  delegating to `Budget::status()`).
+
+Key env knobs:
 
 ```env
 AI_FINOPS_ENABLED=true          # master switch (routes + metering hook)
-AI_FINOPS_METERING=true         # record usage into the ledger
+AI_FINOPS_METERING=true         # record usage into the ledger + resolve chat cost
 AI_FINOPS_ENFORCEMENT=false     # hard budget/policy HTTP-402 blocks (opt-in)
 AI_FINOPS_CURRENCY=USD          # base = provider list-price currency
 AI_FINOPS_DISPLAY_CURRENCY=EUR
@@ -119,42 +164,59 @@ Tier-1 maintenance crons (staggered in the 04:xx window):
   tenant.authorize` (+ `finops.authorize`). The package's `health` probe is
   wrapped too, so it is **authenticated**, not an anonymous uptime endpoint.
 - **Tenant isolation (R30).** `HostTenantResolver` binds every ledger row to the
-  active tenant; cross-tenant cost leakage is not possible through the API.
+  active tenant; the MCP read tools filter every ledger / budget query by the
+  active tenant and deliberately exclude global/cross-scope budgets (whose spend
+  aggregates across tenants) — cross-tenant cost leakage is not possible through
+  the API or MCP.
 - **Default-OFF surfaces (R43).** Both master `AI_FINOPS_ENABLED` and the admin
   SPA `AI_FINOPS_ADMIN_ENABLED` degrade cleanly when off (routes unregistered →
-  404, never a 500). Hard enforcement (`AI_FINOPS_ENFORCEMENT`) is also default-OFF
-  — observe first, then turn on blocking once budgets/policies are seeded.
+  404, never a 500); the MCP tools return an empty, well-formed payload when the
+  ledger/budgets tables are absent. Hard enforcement (`AI_FINOPS_ENFORCEMENT`) is
+  also default-OFF — observe first, then turn on blocking once budgets/policies
+  are seeded.
 
 ## Decision rationale (ADR-style)
 
-- **Package over a hand-rolled cost table.** AskMyDocs already kept static
+- **Package over a hand-rolled cost table.** AskMyDocs used to keep static
   `cost_rates` in `config/ai.php`, but that is a price sheet, not governance — no
   ledger, no budgets, no per-tenant rollup, no enforcement. Adopting the
   maintained package buys the entire FinOps loop (and multi-source live pricing)
   instead of reinventing it. See [architecture decisions](/architecture/decisions).
-- **A metering bridge, not an SDK migration.** Routing the four raw-`Http::`
-  providers through the `laravel/ai` SDK would fire the events natively, but it
-  reverses a deliberate transport decision (full control over auth/retries/parsing
-  + `Http::fake()` testability — CLAUDE.md §6) and rewrites the provider + test
-  surface. The bridge reuses the *same* `MeteringListener` pricing pipeline the SDK
-  uses, so the ledger is correct without touching transport.
-- **Known limitation — streaming is not metered.** `AiManager::chatStream()` (the
-  SSE endpoint) bypasses the bridge: a turn served over streaming is **not**
-  recorded in the ledger. This is a documented follow-up, not full coverage today.
-- **Pre-flight enforcement is bounded to the SDK path.** Because the bridge records
-  *after* the call, hard budget/policy blocks (HTTP 402) fire only for SDK-routed
-  (Regolo) calls; the raw-`Http::` providers are metered but not pre-flight blocked.
+- **Provider transport migrated to the SDK (ADR 0015).** v8.16/W2 reversed the
+  long-standing raw-`Http::` decision for the metered providers: routing chat +
+  embeddings through `laravel/ai` makes metering, pricing and tenant attribution
+  fire **natively** on the SDK's own lifecycle events, instead of being bolted on
+  by a bridge. Anthropic / Gemini / Regolo are fully SDK; OpenAI / OpenRouter are
+  SDK for chat + embeddings.
+- **A bounded residual bridge, not a half-migration.** The single path still on
+  raw `Http::` is the OpenAI / OpenRouter **MCP with-tools turn**, whose tool-call
+  shape the SDK does not yet match the host's loop on. `AiCallMeter` bridges only
+  that turn into the same pricing pipeline, gated by `bridgeShouldMeterChat()` so
+  nothing is double-counted. It retires entirely once the SDK's tool surface lands.
+- **Server-side cost authority (W3).** Per-turn cost is resolved once,
+  server-side, at `ChatLogManager` time and persisted on `chat_logs` with a
+  `trace_id` join to the ledger. The client no longer guesses cost from a static
+  sheet — it renders the authoritative server number. The whole resolver is gated
+  on `AI_FINOPS_METERING` so an off deployment pays nothing and stamps no dangling
+  trace id.
 
 ## Worked example
 
-A normal chat turn (default `openrouter`) writes one tenant-scoped ledger row — no
-extra wiring:
+A normal chat turn (default `openrouter`, no tools) is metered natively by the SDK
+and writes one tenant-scoped ledger row — no host bridge involved:
 
 ```sql
-SELECT provider, model, tokens_input, tokens_output, cost, tenant_id, cost_method
+SELECT provider, model, tokens_input, tokens_output, cost_total, tenant_id, cost_method
 FROM ai_finops_usage_ledger
 ORDER BY id DESC LIMIT 1;
--- openrouter | openai/gpt-4o-mini | 812 | 143 | 0.000241 | acme | computed
+-- openrouter | openai/gpt-4o-mini | 812 | 143 | 0.00024100 | acme | computed
+```
+
+The same turn's `chat_logs` row carries the resolved cost and the join key:
+
+```sql
+SELECT ai_provider, cost, cost_currency, trace_id FROM chat_logs ORDER BY id DESC LIMIT 1;
+-- openrouter | 0.00024100 | USD | 9f1c…  (== the ledger row's trace_id)
 ```
 
 Read the dashboard KPIs over the API (super-admin or admin session):
@@ -167,16 +229,14 @@ curl https://host/api/admin/ai-finops/dashboard/kpis \
 ```
 
 The same call as a `viewer` returns **403** (gate denied); unauthenticated returns
-**401**. Turn the cockpit on with `AI_FINOPS_ADMIN_ENABLED=true` and
+**401**. Or ask the same question through the **MCP** surface — an agent on the
+`enterprise-kb` server calls `FinOpsSpendSummaryTool` and gets the active tenant's
+30-day spend + per-model breakdown, scoped to its own tenant only. Turn the cockpit
+on with `AI_FINOPS_ADMIN_ENABLED=true` and
 `php artisan vendor:publish --tag=ai-finops-admin-assets --force`, then open
 `/admin/ai-finops`.
 
 ## Gotchas & operations
-
-<Warning>
-Streaming chat is **not** in the ledger yet (see the rationale above). If clients
-use the SSE endpoint heavily, spend is undercounted until streaming metering ships.
-</Warning>
 
 - **Currency.** Budgets compare against spend in the **base** currency (`USD`,
   matching provider list prices); `EUR` is display-only. Set an FX provider to
@@ -184,29 +244,19 @@ use the SSE endpoint heavily, spend is undercounted until streaming metering shi
 - **Enforcement is off by default.** Seed budgets/policies first, then flip
   `AI_FINOPS_ENFORCEMENT=true` — turning it on with no budgets does nothing; with a
   mis-scoped hard budget it can 402 live traffic.
-- **No MCP tool yet — a deliberate, documented R44 exception (see the note below).**
-  FinOps spend is queryable today via the HTTP API + the admin cockpit, not via an
-  MCP tool.
+- **Pre-flight enforcement is bounded to the SDK path.** Hard budget/policy blocks
+  (HTTP 402) fire on the SDK-metered calls; the residual raw-`Http::` MCP tool turn
+  is metered *after* the call, so it is recorded but not pre-flight blocked. It
+  closes when the bridge retires.
+- **Cost resolution follows `AI_FINOPS_METERING`.** With metering off, `chat_logs`
+  rows carry `null` cost + no `trace_id`, and the resolver never touches the price
+  feed — by design, so the off path is free and side-effect-less.
 - **Regolo manual pricing.** Regolo is feed-less; enter its rates via
   `pricing/overrides` or it prices at zero.
 
-<Note>
-**R44 tri-surface exception — deliberate and documented.** AskMyDocs's R44 expects
-every capability to be reachable on PHP **and** HTTP **and** MCP over one shared
-core. FinOps ships **PHP** (the `ai-finops:*` Artisan commands), **HTTP**
-(`api/admin/ai-finops/*`) and the **React admin** — but **no MCP tool**, for two
-reasons: (1) the upstream `padosoft/laravel-ai-finops` package exposes no MCP
-server, so a tool would be net-new host code beyond *installing* the package; and
-(2) the spend surface is already fully queryable by operators over HTTP + the
-cockpit. Per R44's "absence of a surface is a deliberate, documented choice, never
-an omission" clause, the MCP read surface (KPIs / usage / budgets) is **deferred to
-a tracked follow-up**, not silently dropped. When it lands it will wrap the same
-core service and register on `KnowledgeBaseServer::$tools`.
-</Note>
-
 <CardGroup cols={2}>
   <Card title="AI providers" icon="plug" href="/ai-providers">
-    The five-provider federation FinOps meters — and why four use raw `Http::`.
+    The five-provider federation FinOps meters — now on the `laravel/ai` SDK.
   </Card>
   <Card title="Multi-tenant isolation" icon="building-lock" href="/multi-tenant-isolation">
     The `TenantContext` every ledger row, budget and rollup is scoped to.
@@ -215,6 +265,6 @@ core service and register on `KnowledgeBaseServer::$tools`.
     Where the `ai-finops:*` Tier-1 crons run.
   </Card>
   <Card title="Architecture decisions" icon="diagram-project" href="/architecture/decisions">
-    The raw-`Http::` transport decision the metering bridge works around.
+    ADR 0015 — the provider-transport SDK migration this page builds on.
   </Card>
 </CardGroup>

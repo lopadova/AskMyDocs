@@ -189,12 +189,52 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
   - [ ] **W3.3.C — Playwright E2E + rc3**: E2E asserting the meter shows a SERVER cost (stub a message
         with `metadata.cost`). Static `config/ai.php cost_rates` + `/api/chat/cost-rates` stay as the FE
         fallback (already deprecated-in-practice since the FE prefers server cost). Then tag `v8.16.0-rc3`.
-- **W4 MCP + SPA E2E + docs/GA** — ⬜
-  - [ ] MCP read tools + registration-count test
-  - [ ] Playwright E2E finops admin SPA
-  - [ ] SPA asset build/publish in CI
-  - [ ] docs-site + README roadmap flip + CLAUDE.md
-  - [ ] merge feature/v8.16 → main; tag v8.16.0; Release
+- **W4 MCP + SPA E2E + docs/GA** — 🟡 (in progress on `feature/v8.16-W4-mcp-ga`)
+  **Progress 2026-06-19:**
+  - [x] **MCP read tools (R44 third surface)** — 3 tools shipped: `FinOpsSpendSummaryTool`,
+        `FinOpsTopModelsTool`, `FinOpsBudgetStatusTool` (commit 7ef662c0). Tenant-scoped (R30),
+        OFF-path safe (R43), ledger via package `UsageRecord` model + budget via `Budget::status()`
+        core (R44 thin-layer). Registration count 28→31 + per-tool test + feature test (10 cases
+        incl. both OFF paths). Local critic (code-reviewer): 0 must-fix, 3 nit (addressed table-absent).
+  - [x] **docs-site/ai-finops.mdx** rewritten for R45 parity (W2 SDK migration / W3 cost authority /
+        W4 MCP surface; fixed `cost`→`cost_total` R9). Already registered in `docs.json`.
+  - [x] **Playwright E2E** `admin-ai-finops.spec.ts` (commit 4dab9584): admin reaches the served
+        SPA shell; viewer denied with a deterministic **403** (fresh inline viewer login via
+        resetDb+seedDb, so the `can:viewAiFinOps` gate — not a stale-session 302 — is what's
+        asserted). CI publishes assets + `AI_FINOPS_ADMIN_ENABLED=true`.
+        OFF state via `FinOpsDisabledTest`, gating via `FinOpsAdminMountingTest` (R43 both states).
+  - [x] **CLAUDE.md §3** synced (MCP count 31 + FinOps W3/W4 rows); `.env.example` already complete.
+  - [ ] push `feature/v8.16-W4-mcp-ga` → PR into `feature/v8.16`; R36 loop → merge.
+  - [ ] tag **v8.16.0-rc4** at the W4 closure SHA on `feature/v8.16` (R39).
+  - [ ] **GA**: README roadmap flip ⏳→✅ + changelog; merge `feature/v8.16` → `main` (R37 `--merge`);
+        tag **v8.16.0** GA + GitHub Release.
+
+  **Original anchors (verified 2026-06-19):**
+  - [ ] **MCP read tools (R44 third surface)** — DONE, see above. — the FinOps capability already has PHP (package
+        services + `Console/ReportCommand`) + HTTP (package routes: `dashboard/spend-trend`,
+        `footprint/summary`, budgets, etc. under `api/admin/ai-finops`); add the MCP surface as host tools
+        on `app/Mcp/Servers/KnowledgeBaseServer.php::$tools`. Pattern = `app/Mcp/Tools/KbEngagementSummaryTool.php`
+        (extends `Laravel\Mcp\Server\Tool`; `#[Description]` + `#[IsReadOnly]` + `#[IsIdempotent]`;
+        `schema(JsonSchema)`; `handle(Request, <service>, TenantContext)`; tenant-scope via the server's
+        EnforceMcpScope + `forTenant($tenants->current())` R30). Proposed 3 read tools over the
+        `ai_finops_usage_ledger` (model under `vendor/.../src/Ledger` or query `DB::table('ai_finops_usage_ledger')`):
+        `FinOpsSpendSummaryTool` (total cost/tokens by window, base currency), `FinOpsTopModelsTool`
+        (top provider/model by cost), `FinOpsBudgetStatusTool` (budget vs spend). All `forTenant`-scoped.
+  - [ ] **Bump MCP registration-count test**: `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php:34`
+        currently `assertCount(28, $this->registeredTools())` → 28 + N (and add a per-tool registers-the-X test).
+  - [ ] **R32**: MCP tools aren't HTTP routes so the R32 *route* matrix may not apply, but confirm the
+        tools are behind EnforceMcpScope (auth + tenant). If any new HTTP route is added, add a matrix row.
+  - [ ] Playwright E2E finops admin SPA (R12/R13; real data, happy + failure). SPA cross-mounted under
+        `/admin/ai-finops` (default OFF → clean 404, R43) — test BOTH states (R43).
+  - [ ] SPA asset build/publish in CI (`vendor:publish --tag=ai-finops-admin-assets`; assets gitignored).
+  - [ ] `docs-site/ai-finops.mdx` deep page (R45) + register in `docs.json`; flip the README roadmap row
+        ⏳→✅ (R "status flip on GA"); update CLAUDE.md §3 FinOps row (AiCallMeter now = residual with-tools
+        turn + W3 cost authority) + .env.example.
+  - [ ] **W3.3.C** (optional, fold into W4 or skip): Playwright E2E asserting the cost meter shows a
+        SERVER cost (stub a message with `metadata.cost`); + investigate whether the fallback stream path
+        is ledger-metered (it wasn't in the harness — see #321) so the streaming trace_id isn't dangling.
+  - [ ] merge `feature/v8.16` → `main` (R37 once-per-major, `--merge` to preserve history); tag **v8.16.0**
+        GA at the merge SHA; GitHub Release. (rc1/rc2/rc3 prereleases already on the remote.)
 
 ## Owner notes (do not lose)
 - 2026-06-17: ALWAYS via laravel/ai SDK, forward standard. Reverse §6.
