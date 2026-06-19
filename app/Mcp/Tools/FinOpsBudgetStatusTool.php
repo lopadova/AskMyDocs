@@ -43,7 +43,11 @@ class FinOpsBudgetStatusTool extends Tool
     {
         $tenantId = $tenants->current();
 
-        if (! $this->budgetsExist()) {
+        // OFF path: master switch off, OR finops not installed / table absent →
+        // empty result. Honouring `ai-finops.enabled` mirrors the OFF-state
+        // contract (FinOpsDisabledTest) so a disabled deployment can't enumerate
+        // tenant budgets over MCP (R43).
+        if (! (bool) config('ai-finops.enabled', true) || ! $this->budgetsExist()) {
             return Response::json($this->emptyPayload($tenantId));
         }
 

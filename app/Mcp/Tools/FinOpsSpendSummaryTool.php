@@ -53,8 +53,11 @@ class FinOpsSpendSummaryTool extends Tool
         $limit = max(1, min(100, (int) ($request->get('limit') ?? 10)));
         $tenantId = $tenants->current();
 
-        // OFF path: finops not installed / table absent → empty, well-formed result.
-        if (! $this->ledgerExists()) {
+        // OFF path: master switch off, OR finops not installed / table absent →
+        // empty, well-formed result. Honouring `ai-finops.enabled` mirrors the
+        // OFF-state contract the rest of the integration enforces (FinOpsDisabledTest)
+        // so a disabled deployment can't read historical spend over MCP (R43).
+        if (! (bool) config('ai-finops.enabled', true) || ! $this->ledgerExists()) {
             return Response::json($this->emptyPayload($days, $tenantId));
         }
 

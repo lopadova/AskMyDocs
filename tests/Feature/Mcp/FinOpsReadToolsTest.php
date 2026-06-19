@@ -217,6 +217,24 @@ final class FinOpsReadToolsTest extends TestCase
         $this->assertSame([], $budgets['budgets']);
     }
 
+    public function test_tools_honour_the_finops_master_switch_off(): void
+    {
+        // R43: even with the tables present and rows seeded, AI_FINOPS_ENABLED=false
+        // must make the read surface return empty — a disabled deployment can't read
+        // historical spend/budgets over MCP (mirrors FinOpsDisabledTest's contract).
+        config()->set('ai-finops.enabled', false);
+
+        $this->seedRow('tenant-a', 'openai', 'gpt-5', costTotal: 5.00);
+        $this->seedBudget('tenant-a', 'Monthly cap', limit: 10.0);
+
+        $this->tenants->set('tenant-a');
+
+        $this->assertSame([], $this->invoke(['days' => 30])['breakdown']);
+        $this->assertSame('0.00000000', $this->invoke(['days' => 30])['total_cost']);
+        $this->assertSame([], $this->invokeTopModels(['days' => 30])['models']);
+        $this->assertSame([], $this->invokeBudgetStatus()['budgets']);
+    }
+
     /**
      * @param  array<string, int>  $args
      * @return array<string, mixed>

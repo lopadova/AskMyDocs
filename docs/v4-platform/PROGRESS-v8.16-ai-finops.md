@@ -199,7 +199,9 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
   - [x] **docs-site/ai-finops.mdx** rewritten for R45 parity (W2 SDK migration / W3 cost authority /
         W4 MCP surface; fixed `cost`→`cost_total` R9). Already registered in `docs.json`.
   - [x] **Playwright E2E** `admin-ai-finops.spec.ts` (commit 4dab9584): admin reaches the served
-        SPA shell; viewer denied (403/302). CI publishes assets + `AI_FINOPS_ADMIN_ENABLED=true`.
+        SPA shell; viewer denied with a deterministic **403** (fresh inline viewer login via
+        resetDb+seedDb, so the `can:viewAiFinOps` gate — not a stale-session 302 — is what's
+        asserted). CI publishes assets + `AI_FINOPS_ADMIN_ENABLED=true`.
         OFF state via `FinOpsDisabledTest`, gating via `FinOpsAdminMountingTest` (R43 both states).
   - [x] **CLAUDE.md §3** synced (MCP count 31 + FinOps W3/W4 rows); `.env.example` already complete.
   - [ ] push `feature/v8.16-W4-mcp-ga` → PR into `feature/v8.16`; R36 loop → merge.

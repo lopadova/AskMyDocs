@@ -52,7 +52,11 @@ class FinOpsTopModelsTool extends Tool
         $tenantId = $tenants->current();
         $base = (string) config('ai-finops.currency.base', 'USD');
 
-        if (! $this->ledgerExists()) {
+        // OFF path: master switch off, OR finops not installed / table absent →
+        // empty result. Honouring `ai-finops.enabled` mirrors the OFF-state
+        // contract (FinOpsDisabledTest) so a disabled deployment can't read spend
+        // over MCP (R43).
+        if (! (bool) config('ai-finops.enabled', true) || ! $this->ledgerExists()) {
             return Response::json($this->emptyPayload($days, $tenantId, $base));
         }
 
