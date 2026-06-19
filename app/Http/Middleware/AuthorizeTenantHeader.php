@@ -81,11 +81,6 @@ final class AuthorizeTenantHeader
         // request; logged at debug — this is the COMMON path for every
         // request the SPA sends while operating in a non-default team.
         if ($this->hasMembershipInTenant($user, $header)) {
-            Log::debug('Tenant access granted via project membership.', [
-                'user_id' => $user->getAuthIdentifier(),
-                'requested_tenant' => $header,
-            ]);
-
             return $next($request);
         }
 
