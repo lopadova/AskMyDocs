@@ -18,20 +18,20 @@ export interface TokenCostMeterProps {
 }
 
 /**
- * v4.5/W7 Tier 1 #5 — small inline pill rendering the per-turn token
- * total + the USD cost. Reads cost rates from `GET /api/chat/cost-rates`
- * (session-scoped cache, stale-time 1h to mirror the BE Cache-Control
- * header).
+ * v4.5/W7 Tier 1 #5 — small inline pill rendering the per-turn token total + the
+ * cost. v8.16/W3: when the message metadata carries an authoritative
+ * SERVER-resolved cost (`serverCost`/`serverCostCurrency`, from the finops pricing
+ * cascade) the meter renders it directly and skips the `/api/chat/cost-rates`
+ * fetch entirely; otherwise it falls back to computing the cost client-side from
+ * the rate table (`GET /api/chat/cost-rates`, session-scoped cache, stale-time 1h).
  *
- * Renders nothing when the message has no token telemetry (user turns,
- * legacy rows that pre-date the v3.0 grounding tier). Renders
- * `1,254 tok · $0.012` when cost is computable, otherwise just
- * `1,254 tok` (when the provider has no rate entry — e.g. a custom
- * OpenRouter model we haven't priced yet).
+ * The cost is shown in its currency: USD as `$0.012`, any other ISO currency as
+ * `0.012 EUR` (the finops base currency is configurable). Renders nothing when the
+ * message has no token telemetry (user turns, legacy pre-grounding rows); renders
+ * just `1,254 tok` when no cost is available (no server cost AND no rate entry).
  *
- * R11: `data-testid="chat-token-cost"` so Playwright can assert the
- * meter renders on the happy path AND the absence of a `$` symbol
- * when cost is null.
+ * R11: `data-testid="chat-token-cost"` (the pill) + `chat-token-cost-amount` (the
+ * cost, present only when a cost is available).
  */
 export function TokenCostMeter({
     provider,
@@ -88,7 +88,7 @@ export function TokenCostMeter({
         >
             <span>{formatTokenCount(tokensTotal)} tok</span>
             {cost !== null && (
-                <span data-testid="chat-token-cost-usd">{formatCost(cost, currency)}</span>
+                <span data-testid="chat-token-cost-amount">{formatCost(cost, currency)}</span>
             )}
         </span>
     );

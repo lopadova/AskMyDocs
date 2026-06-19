@@ -123,7 +123,7 @@ describe('TokenCostMeter', () => {
         expect(meter).toHaveTextContent('800 tok');
         // No `$` should appear.
         expect(meter.textContent ?? '').not.toContain('$');
-        expect(screen.queryByTestId('chat-token-cost-usd')).toBeNull();
+        expect(screen.queryByTestId('chat-token-cost-amount')).toBeNull();
     });
 
     it('renders token count AND cost when provider+model match', async () => {
@@ -141,7 +141,7 @@ describe('TokenCostMeter', () => {
             expect(meter).toHaveAttribute('data-cost-available', 'true');
         });
         // 1M input @ $2.5/M = $2.50
-        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$2.50');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$2.50');
         expect(meter).toHaveTextContent('1,000,000 tok');
     });
 
@@ -162,7 +162,7 @@ describe('TokenCostMeter', () => {
         ));
         const meter = await screen.findByTestId('chat-token-cost');
         expect(meter).toHaveAttribute('data-cost-available', 'true');
-        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$0.012');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$0.012');
         expect(meter).toHaveTextContent('1,500 tok');
     });
 
@@ -180,7 +180,7 @@ describe('TokenCostMeter', () => {
         ));
         const meter = await screen.findByTestId('chat-token-cost');
         expect(meter).toHaveAttribute('data-cost-available', 'true');
-        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$0');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$0');
     });
 
     it('formats the title attribute with the input/output breakdown', async () => {
