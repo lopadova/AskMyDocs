@@ -22,7 +22,10 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 # HTTP requests issued from the Rust side so they bypass the webview's CORS
 # enforcement — the backend needs no tauri:// origin in its CORS allow-list.
-tauri-plugin-http = "2"
+# `dangerous-settings` lets the JS side opt into accepting the local-CA TLS
+# cert that Valet/Herd serve `.test` hosts with (rustls — the default backend —
+# only trusts public webpki roots). api.ts gates this to local dev hosts only.
+tauri-plugin-http = { version = "2", features = ["dangerous-settings"] }
 # Local persistence for the Bearer token and the offline conversation threads.
 tauri-plugin-store = "2"
 serde = { version = "1", features = ["derive"] }

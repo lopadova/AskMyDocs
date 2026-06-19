@@ -15,6 +15,26 @@ import type {
 // Local backend served by Valet/Herd (matches the repo's APP_URL).
 export const API_BASE = "https://askmydocs.test";
 
+// rustls (the Tauri HTTP plugin's default TLS backend) only trusts the public
+// webpki root store, so it REJECTS the local-CA certificate that Valet/Herd
+// serve `.test` hosts with — the symptom is a "Network error" before any HTTP
+// status. Relax cert verification for LOCAL DEV hosts only; any real (non-local)
+// API_BASE keeps full TLS verification. Requires the `dangerous-settings`
+// feature on tauri-plugin-http (see src-tauri/Cargo.toml).
+const LOCAL_DEV =
+  /(\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE) ||
+  /\.test(:|\/|$)/.test(API_BASE);
+
+function http(url: string, init: RequestInit = {}): Promise<Response> {
+  if (!LOCAL_DEV) {
+    return fetch(url, init);
+  }
+  return fetch(url, {
+    ...init,
+    danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
+  });
+}
+
 /** Surfaces a backend failure with its status + parsed body (R14 mindset:
  *  the caller must be able to tell a refusal/validation error from success). */
 export class ApiError extends Error {
@@ -72,7 +92,7 @@ export async function requestToken(
   email: string,
   password: string,
 ): Promise<TokenResponse> {
-  const res = await fetch(`${API_BASE}/api/auth/token`, {
+  const res = await http(`${API_BASE}/api/auth/token`, {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({ email, password, device_name: "AskMyDocs Desktop" }),
@@ -85,7 +105,7 @@ export async function requestToken(
 }
 
 export async function fetchMe(token: string): Promise<AuthUser> {
-  const res = await fetch(`${API_BASE}/api/auth/me`, {
+  const res = await http(`${API_BASE}/api/auth/me`, {
     headers: authHeaders(token),
   });
   const body = await parseBody(res);
@@ -96,7 +116,7 @@ export async function fetchMe(token: string): Promise<AuthUser> {
 }
 
 export async function chat(token: string, question: string): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/api/kb/chat`, {
+  const res = await http(`${API_BASE}/api/kb/chat`, {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify({ question }),
@@ -113,7 +133,7 @@ export async function searchDocs(
   query: string,
 ): Promise<DocSearchResult[]> {
   const url = `${API_BASE}/api/kb/documents/search?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { headers: authHeaders(token) });
+  const res = await http(url, { headers: authHeaders(token) });
   const body = await parseBody(res);
   if (!res.ok) {
     throw new ApiError(res.status, errorMessage(body, "Search failed"), body);
@@ -127,7 +147,7 @@ export async function searchDocs(
  *  the login screen. */
 export async function logout(token: string): Promise<void> {
   try {
-    await fetch(`${API_BASE}/api/auth/token/revoke`, {
+    await http(`${API_BASE}/api/auth/token/revoke`, {
       method: "POST",
       headers: authHeaders(token),
     });
