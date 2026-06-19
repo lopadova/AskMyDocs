@@ -1663,13 +1663,15 @@ can't host) — so the finops lifecycle hook meters every provider natively. The
 `AiCallMeter` bridge shrinks to the residual with-tools turn, and OpenRouter's
 real billed `usage.cost` becomes capturable (`AI_FINOPS_ACTUAL_COST`, default OFF).
 **W3** (`v8.16.0-rc3`) replaces "token cost set arbitrarily" with a real
-**server-side per-turn cost**: resolved at `ChatLogManager` time from the finops
-pricing cascade, persisted on `chat_logs.cost` (decimal 18,8) + correlated to the
-usage-ledger row via a shared `trace_id`, surfaced additively in the chat response
-`meta` (R27), and rendered by the FE `TokenCostMeter` (any ISO currency) instead of
-the old client-side compute from static rates — across the stateless, conversation
-and streaming chat endpoints. The resolver is metering-gated so it never adds a
-price-feed HTTP fetch to the response path.
+**server-side per-turn cost**: resolved server-side from the finops pricing cascade
+(`ChatTurnCostResolver`, called by the controllers for the response `meta` and by
+the chat-log driver when persisting), persisted on `chat_logs.cost` (decimal 18,8)
++ `cost_currency` (ISO-4217), and correlated to the turn's usage-ledger row(s)
+(a tool loop spans several) via a shared `trace_id`. Surfaced additively in the
+chat response `meta` (R27) and rendered by the FE `TokenCostMeter` in the configured
+base currency — replacing the old client-side compute from static rates — across the
+stateless, conversation and streaming chat endpoints. The resolver is metering-gated
+so it never adds a price-feed HTTP fetch to the response path.
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor
