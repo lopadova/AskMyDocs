@@ -10,24 +10,28 @@ use App\Mcp\Tools\FinOpsTopModelsTool;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Laravel\Mcp\Request;
+use Padosoft\LaravelAiFinOps\Models\Budget;
+use Padosoft\LaravelAiFinOps\Models\UsageRecord;
 use Tests\TestCase;
 
 /**
- * v8.16/W4 — proves the AI FinOps spend MCP read surface (R44 third surface
- * over the usage ledger):
- *   - strictly tenant-scoped (R30): tenant-a never sees tenant-b's spend;
- *   - aggregates cost + tokens + call count, breakdown ordered by cost desc;
- *   - degrades to an empty, well-formed payload when the active tenant has no
- *     rows (the in-window OFF path) — never throws (R43).
+ * v8.16/W4 — proves the three AI FinOps MCP read surfaces (R44 third surface):
+ *   - {@see FinOpsSpendSummaryTool} — tenant-scoped spend + per-model breakdown;
+ *   - {@see FinOpsTopModelsTool}    — costliest models with cost-share;
+ *   - {@see FinOpsBudgetStatusTool} — per tenant-scoped budget limit/spend/state.
+ *
+ * Invariants covered across all three: strict tenant scoping (R30) — tenant-a
+ * never sees tenant-b's spend/budgets; aggregation + ordering; and both R43 OFF
+ * paths (empty in-window result + finops tables absent) — never throws.
+ *
+ * The seed/drop helpers resolve the table + connection through the package's own
+ * {@see UsageRecord} / {@see Budget} models so the test exercises exactly the
+ * storage the tools read (prefix/connection-safe).
  */
-final class FinOpsSpendSummaryToolTest extends TestCase
+final class FinOpsReadToolsTest extends TestCase
 {
     use RefreshDatabase;
-
-    private const TABLE = 'ai_finops_usage_ledger';
 
     private TenantContext $tenants;
 
@@ -192,9 +196,12 @@ final class FinOpsSpendSummaryToolTest extends TestCase
     public function test_tools_degrade_cleanly_when_finops_tables_are_absent(): void
     {
         // R43 OFF path: finops not installed → ledger/budgets tables gone. The
-        // tools must return well-formed empty payloads, never throw.
-        Schema::dropIfExists('ai_finops_usage_ledger');
-        Schema::dropIfExists('ai_finops_budgets');
+        // tools must return well-formed empty payloads, never throw. Drop the
+        // tables the package models actually resolve (prefix/connection-safe).
+        $ledger = new UsageRecord();
+        $ledger->getConnection()->getSchemaBuilder()->dropIfExists($ledger->getTable());
+        $budget = new Budget();
+        $budget->getConnection()->getSchemaBuilder()->dropIfExists($budget->getTable());
 
         $this->tenants->set('tenant-a');
 
@@ -249,7 +256,9 @@ final class FinOpsSpendSummaryToolTest extends TestCase
         ?int $softLimitPct = null,
         string $scopeType = 'tenant',
     ): void {
-        DB::table('ai_finops_budgets')->insert([
+        // Insert via the package Budget model so the connection + resolved table
+        // name match exactly what FinOpsBudgetStatusTool queries.
+        Budget::query()->insert([
             'name' => $name,
             'scope_type' => $scopeType,
             'scope_id' => $tenantId,
@@ -274,7 +283,10 @@ final class FinOpsSpendSummaryToolTest extends TestCase
         int $tokensOut = 0,
         ?Carbon $createdAt = null,
     ): void {
-        DB::table(self::TABLE)->insert([
+        // Insert via the package UsageRecord model (resolves connection + table);
+        // ->insert() bypasses Eloquent timestamps so the explicit created_at the
+        // windowing tests rely on is preserved verbatim.
+        UsageRecord::query()->insert([
             'trace_id' => 'trace-'.bin2hex(random_bytes(6)),
             'provider' => $provider,
             'model' => $model,

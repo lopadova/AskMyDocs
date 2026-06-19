@@ -22,9 +22,10 @@ use Padosoft\LaravelAiFinOps\Models\UsageRecord;
  * The third surface over the same capability: PHP (the `padosoft/laravel-ai-finops`
  * services + `ReportCommand`) and HTTP (the package admin routes under
  * `api/admin/ai-finops`) already exist; this tool exposes the same usage-ledger
- * data to an MCP client. It reads the `ai_finops_usage_ledger` table directly
- * (the package records via `DatabaseUsageRecorder`, no Eloquent model) and is
- * STRICTLY tenant-scoped (R30) — a tenant can only ever see its own spend.
+ * data to an MCP client. It reads the ledger through the package's own
+ * `Padosoft\LaravelAiFinOps\Models\UsageRecord` model (which resolves the
+ * configured table prefix + connection) and is STRICTLY tenant-scoped (R30) —
+ * a tenant can only ever see its own spend.
  *
  * Degrades cleanly when finops is absent: if the ledger table doesn't exist the
  * tool returns an empty, well-formed summary rather than throwing (R43 OFF path).
