@@ -106,6 +106,23 @@ Route::middleware('web')->prefix('auth')->group(function () {
     });
 });
 
+// Stateless auth for non-browser clients (the Tauri desktop demo): Bearer
+// tokens, NO web session / CSRF. The cookie-based SPA keeps using the
+// `web`-middleware group above. These routes deliberately sit OUTSIDE `web`
+// so a token client without an XSRF cookie isn't rejected with 419 — the
+// whole point of the Bearer flow is to avoid the cookie+CSRF handshake.
+Route::prefix('auth')->group(function () {
+    // Throttling lives in AuthController@token (failure-only counter), same
+    // rationale as /login above.
+    Route::post('/token', [AuthController::class, 'token'])
+        ->name('api.auth.token');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/token/revoke', [AuthController::class, 'revokeToken'])
+            ->name('api.auth.token.revoke');
+    });
+});
+
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,

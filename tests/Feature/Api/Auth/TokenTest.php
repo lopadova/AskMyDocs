@@ -120,7 +120,7 @@ class TokenTest extends TestCase
         ])->assertStatus(429);
     }
 
-    public function test_logout_revokes_the_bearer_token(): void
+    public function test_revoke_invalidates_the_bearer_token(): void
     {
         $user = $this->makeUser();
 
@@ -132,8 +132,8 @@ class TokenTest extends TestCase
         // The token works...
         $this->withToken($token)->getJson('/api/auth/me')->assertOk();
 
-        // ...logout revokes it...
-        $this->withToken($token)->postJson('/api/auth/logout')->assertNoContent();
+        // ...revoke deletes it...
+        $this->withToken($token)->postJson('/api/auth/token/revoke')->assertNoContent();
         $this->assertDatabaseCount('personal_access_tokens', 0);
 
         // Drop the in-memory guard cache so the next request truly re-resolves
@@ -143,5 +143,10 @@ class TokenTest extends TestCase
 
         // ...and the same token is now rejected.
         $this->withToken($token)->getJson('/api/auth/me')->assertStatus(401);
+    }
+
+    public function test_revoke_requires_authentication(): void
+    {
+        $this->postJson('/api/auth/token/revoke')->assertStatus(401);
     }
 }
