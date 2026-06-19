@@ -215,6 +215,38 @@ final class InviteGrantProvisioningTest extends TestCase
         $this->assertSame(3, ProjectMembership::where('user_id', $user->id)->count());
     }
 
+    public function test_primary_grant_and_extra_tenants_union(): void
+    {
+        Role::findOrCreate('editor', 'web');
+        Role::findOrCreate('viewer', 'web');
+
+        // Legacy primary grant (redemption tenant) PLUS an explicit extra tenant
+        // — the admin form sends both in one payload; provisioning unions them.
+        $campaign = $this->campaign([
+            'role' => 'editor',
+            'projects' => ['docs'],
+            'tenants' => [
+                ['tenant_id' => 'acme', 'role' => 'viewer', 'projects' => ['eng']],
+            ],
+        ]);
+        $code = $this->code('GRANT007', $campaign);
+        $user = $this->user('union@example.com');
+
+        $this->assertTrue($this->redeem($code->code, $user)->ok);
+
+        $fresh = $user->fresh();
+        $this->assertTrue($fresh->hasRole('editor'));
+        $this->assertTrue($fresh->hasRole('viewer'));
+        // Primary grant landed on the redemption tenant ('default')...
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'default', 'user_id' => $user->id, 'project_key' => 'docs',
+        ]);
+        // ...the extra tenant grant landed on 'acme'.
+        $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme', 'user_id' => $user->id, 'project_key' => 'eng',
+        ]);
+    }
+
     public function test_campaign_create_rejects_super_admin_in_a_tenant_grant(): void
     {
         Role::findOrCreate('super-admin', 'web');

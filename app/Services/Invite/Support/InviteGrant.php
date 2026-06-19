@@ -125,33 +125,40 @@ final class InviteGrant
     }
 
     /**
-     * The per-tenant grants to actually provision. When the multi-tenant
-     * `tenants` list is present it is authoritative (empty entries dropped);
-     * otherwise the legacy single-tenant fields are projected onto the
-     * redemption tenant, so existing callers keep their exact behaviour.
+     * The per-tenant grants to actually provision — the UNION of:
+     *   1. the legacy single-tenant fields (role/projects), applied to the
+     *      redemption tenant (so an invite can always say "grant X wherever you
+     *      redeem"); and
+     *   2. the explicit `tenants` entries (each with its own fixed tenant_id).
+     *
+     * Empty entries are dropped. A legacy-only grant yields exactly one entry on
+     * the redemption tenant (unchanged behaviour); a tenants-only grant yields
+     * just the explicit entries; both together union — so the admin form can
+     * send a primary grant plus extra tenants in one payload.
      *
      * @return list<TenantGrant>
      */
     public function effectiveTenantGrants(string $redemptionTenantId): array
     {
-        if ($this->tenants !== []) {
-            return array_values(array_filter(
-                $this->tenants,
-                static fn (TenantGrant $tenant): bool => ! $tenant->isEmpty(),
-            ));
+        $grants = [];
+
+        if ($this->role !== null || $this->projects !== []) {
+            $grants[] = new TenantGrant(
+                $redemptionTenantId,
+                $this->role,
+                $this->projects,
+                $this->projectRole,
+                $this->scopeAllowlist,
+            );
         }
 
-        if ($this->role === null && $this->projects === []) {
-            return [];
+        foreach ($this->tenants as $tenant) {
+            if (! $tenant->isEmpty()) {
+                $grants[] = $tenant;
+            }
         }
 
-        return [new TenantGrant(
-            $redemptionTenantId,
-            $this->role,
-            $this->projects,
-            $this->projectRole,
-            $this->scopeAllowlist,
-        )];
+        return $grants;
     }
 
     /**
