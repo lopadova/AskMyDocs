@@ -111,9 +111,10 @@ final class ConfigureConnectorRequest extends FormRequest
         $rules = [];
 
         $showIf = $field['showIf'] ?? null;
+        $hasShowIf = is_array($showIf) && isset($showIf['field'], $showIf['equals']);
 
         if (($field['required'] ?? false) === true) {
-            $rules[] = is_array($showIf)
+            $rules[] = $hasShowIf
                 ? 'required_if:'.$showIf['field'].','.$showIf['equals']
                 : 'required';
         } else {

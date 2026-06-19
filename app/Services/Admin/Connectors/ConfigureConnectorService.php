@@ -119,11 +119,18 @@ final class ConfigureConnectorService
         $secretField = null;
 
         foreach ($schema as $field) {
-            $fieldName = (string) $field['name'];
-            $target = (string) $field['target'];
+            // Guard every schema key — a malformed connector schema must degrade,
+            // not 500 with an undefined-index.
+            $fieldName = (string) ($field['name'] ?? '');
+            if ($fieldName === '') {
+                continue;
+            }
+            $target = (string) ($field['target'] ?? '');
 
             $showIf = $field['showIf'] ?? null;
-            if (is_array($showIf) && ($effective[$showIf['field']] ?? null) !== $showIf['equals']) {
+            if (is_array($showIf) && isset($showIf['field'], $showIf['equals'])
+                && ($effective[$showIf['field']] ?? null) !== $showIf['equals']
+            ) {
                 // Field is hidden for the submitted auth mode — do not persist it.
                 continue;
             }
@@ -140,6 +147,13 @@ final class ConfigureConnectorService
             // $dontFlash) means a schema that sets secret=true but forgets
             // target=secret still never lands the credential in config_json.
             if ($target === 'secret' || ($field['secret'] ?? false) === true) {
+                if ($secretField !== null) {
+                    // Single-secret contract: a second secret field would silently
+                    // drop the first. Fail fast so the limitation is explicit.
+                    throw new \RuntimeException(
+                        'Credential connector schema declares more than one secret field; only one is supported.',
+                    );
+                }
                 $secret = $value === null ? null : (string) $value;
                 $secretField = $fieldName;
 
