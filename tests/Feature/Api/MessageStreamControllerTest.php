@@ -211,7 +211,9 @@ final class MessageStreamControllerTest extends TestCase
         // (R27 additive; null since finops metering is off in tests).
         $this->assertArrayHasKey('cost', $assistant->metadata);
         $this->assertArrayHasKey('cost_currency', $assistant->metadata);
+        // Both null on the metering-off default — never a partially-populated payload.
         $this->assertNull($assistant->metadata['cost']);
+        $this->assertNull($assistant->metadata['cost_currency']);
     }
 
     public function test_server_cost_and_trace_id_populated_on_streamed_turn_when_metering_on(): void
