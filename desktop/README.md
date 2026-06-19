@@ -24,13 +24,14 @@ change**.
 1. **Rust toolchain** + Tauri v2 system deps — see
    <https://tauri.app/start/prerequisites/>.
 2. **Node ≥ 20**.
-3. A **running AskMyDocs backend** on `http://localhost:8000` with the
+3. The **AskMyDocs backend** reachable at **`https://askmydocs.test`** (the
+   repo's `APP_URL`, served by Valet/Herd). It must run a branch that includes
+   the desktop auth endpoints (`feature/desktop-demo` or merged) and have the
    `personal_access_tokens` table migrated:
 
    ```bash
-   # from the repo root
+   # from the repo root, on the branch with this demo
    php artisan migrate          # creates personal_access_tokens (added for this client)
-   php artisan serve            # serves http://localhost:8000
    ```
 
    You also need a user to log in with (any seeded user, or create one via
@@ -42,6 +43,7 @@ If your backend runs elsewhere, change **all three** in lockstep:
 - `API_BASE` in [`src/lib/api.ts`](src/lib/api.ts)
 - the HTTP scope in
   [`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json)
+  (it currently allows `https://askmydocs.test` plus `localhost:8000`)
 - this README
 
 ---
