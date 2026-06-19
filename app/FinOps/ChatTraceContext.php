@@ -22,20 +22,43 @@ use Padosoft\LaravelAiFinOps\Support\TraceContext;
  */
 final class ChatTraceContext
 {
-    public static function newTraceId(): string
+    /**
+     * Tracing is active only when finops metering is ON — i.e. only when a usage
+     * ledger row is actually written for this turn. Mirrors
+     * {@see ChatTurnCostResolver::enabled()} so `chat_logs.trace_id` is populated
+     * EXACTLY when there is a ledger row to join — never a dangling join key.
+     */
+    public static function enabled(): bool
     {
-        return (string) Str::uuid();
+        if (! class_exists(TraceContext::class)) {
+            return false;
+        }
+
+        return (bool) config('ai-finops.enabled', true)
+            && (bool) config('ai-finops.metering', true);
     }
 
     /**
+     * A fresh trace id when tracing is active, else NULL — a null trace id keeps
+     * the chat_logs row honest (no ledger row exists to correlate to).
+     */
+    public static function newTraceId(): ?string
+    {
+        return self::enabled() ? (string) Str::uuid() : null;
+    }
+
+    /**
+     * Run $callback inside the finops trace context for $traceId. A null trace id
+     * (or tracing disabled) is a transparent passthrough.
+     *
      * @template T
      *
      * @param  callable():T  $callback
      * @return T
      */
-    public static function within(string $traceId, callable $callback): mixed
+    public static function within(?string $traceId, callable $callback): mixed
     {
-        if (! class_exists(TraceContext::class)) {
+        if ($traceId === null || ! self::enabled()) {
             return $callback();
         }
 

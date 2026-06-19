@@ -159,7 +159,9 @@ final class MessageControllerTest extends TestCase
         // metadata (R27 additive); null here since finops metering is off in tests.
         $this->assertArrayHasKey('cost', $resp->json('metadata'));
         $this->assertArrayHasKey('cost_currency', $resp->json('metadata'));
+        // Both keys null when metering is off (the suite default) — neither alone.
         $this->assertNull($resp->json('metadata.cost'));
+        $this->assertNull($resp->json('metadata.cost_currency'));
 
         $origins = collect($resp->json('metadata.citations'))->pluck('origin')->all();
         $this->assertContains('primary', $origins);

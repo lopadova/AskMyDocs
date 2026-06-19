@@ -184,6 +184,12 @@ final class KbChatResponseShapeTest extends TestCase
                 ],
             ],
         ]);
+
+        // v8.16/W3 — null-sentinel contract: both cost keys are present and null
+        // in the suite default (AI_FINOPS_METERING=false). Regression-locks that
+        // the keys ship together and stay null when metering is off.
+        $resp->assertJsonPath('meta.cost', null)
+            ->assertJsonPath('meta.cost_currency', null);
     }
 
     public function test_confidence_is_int_between_0_and_100_on_happy_path(): void
