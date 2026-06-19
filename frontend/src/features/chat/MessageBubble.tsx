@@ -341,6 +341,8 @@ export function MessageBubble({
                             promptTokens={meta.prompt_tokens}
                             completionTokens={meta.completion_tokens}
                             totalTokens={meta.total_tokens}
+                            serverCost={meta.cost}
+                            serverCostCurrency={meta.cost_currency}
                         />
                         {/* timestamp moved into provider/model meta block above */}
 

@@ -8,6 +8,13 @@ export interface TokenCostMeterProps {
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    // v8.16/W3 — authoritative SERVER-resolved cost (finops pricing cascade) as a
+    // decimal string + ISO currency. When present it is rendered DIRECTLY and the
+    // client-side rate compute (+ its /api/chat/cost-rates fetch) is skipped
+    // entirely. The legacy client compute is the fallback for legacy rows / when
+    // finops metering is off (server cost null).
+    serverCost?: string | null;
+    serverCostCurrency?: string | null;
 }
 
 /**
@@ -32,18 +39,26 @@ export function TokenCostMeter({
     promptTokens,
     completionTokens,
     totalTokens,
+    serverCost,
+    serverCostCurrency,
 }: TokenCostMeterProps): ReactNode {
     const tokensTotal = totalTokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0));
+
+    // Server cost wins. A finite parsed value (incl. 0) means "authoritative cost
+    // present" — skip the client-side rate fetch + compute entirely.
+    const parsedServerCost =
+        serverCost != null && serverCost !== '' ? Number(serverCost) : null;
+    const hasServerCost = parsedServerCost !== null && Number.isFinite(parsedServerCost);
+
     const ratesQuery = useQuery<CostRateTable>({
         queryKey: ['chat-cost-rates'],
         queryFn: () => chatCostApi.fetchRates(),
         staleTime: 60 * 60 * 1000,
         gcTime: 60 * 60 * 1000,
-        // Skip the network request entirely when the meter won't render
-        // (no token telemetry, or provider/model absent). The early return
-        // below short-circuits the render, but without this guard the
-        // query fires for every assistant bubble that has no token data.
-        enabled: tokensTotal > 0 && !!provider && !!model,
+        // Skip the network request when the meter won't render (no token
+        // telemetry, or provider/model absent) OR when the server already gave us
+        // an authoritative cost (the whole point of W3 — no client-side compute).
+        enabled: tokensTotal > 0 && !!provider && !!model && !hasServerCost,
     });
 
     if (tokensTotal <= 0) {
@@ -51,7 +66,10 @@ export function TokenCostMeter({
     }
 
     const rates = ratesQuery.data ?? {};
-    const cost = computeMessageCost(rates, provider, model, promptTokens, completionTokens);
+    const cost = hasServerCost
+        ? parsedServerCost
+        : computeMessageCost(rates, provider, model, promptTokens, completionTokens);
+    const currency = hasServerCost ? (serverCostCurrency ?? 'USD') : 'USD';
 
     return (
         <span
@@ -70,7 +88,7 @@ export function TokenCostMeter({
         >
             <span>{formatTokenCount(tokensTotal)} tok</span>
             {cost !== null && (
-                <span data-testid="chat-token-cost-usd">{formatCost(cost)}</span>
+                <span data-testid="chat-token-cost-usd">{formatCost(cost, currency)}</span>
             )}
         </span>
     );
@@ -83,21 +101,24 @@ function formatTokenCount(n: number): string {
 }
 
 /**
- * Format the cost in USD. Costs below 1 cent are shown to 4 decimals
- * so a user can still see a non-zero number for a cheap turn
- * ("$0.0024"). Costs above $1 are shown to 2 decimals ("$1.23").
- * Always shows the leading "$" so the test asserting "cost present"
- * has a stable signal.
+ * Format a cost amount. Costs below 1 cent are shown to 4 decimals so a user can
+ * still see a non-zero number for a cheap turn ("$0.0024"); sub-dollar to 3
+ * decimals; above 1 to 2 decimals. USD (the default + the legacy client-compute
+ * currency) renders with a leading "$"; any other ISO currency (v8.16/W3
+ * server-resolved cost when `ai-finops.currency.base` differs) renders with a
+ * trailing code ("0.0024 EUR") — the test asserting "cost present" keeps its
+ * stable "$" signal on the USD path.
  */
-export function formatCost(usd: number): string {
-    if (usd === 0) {
-        return '$0';
+export function formatCost(amount: number, currency = 'USD'): string {
+    const isUsd = currency === 'USD';
+    const prefix = isUsd ? '$' : '';
+    const suffix = isUsd ? '' : ` ${currency}`;
+
+    if (amount === 0) {
+        return `${prefix}0${suffix}`;
     }
-    if (Math.abs(usd) < 0.01) {
-        return `$${usd.toFixed(4)}`;
-    }
-    if (Math.abs(usd) < 1) {
-        return `$${usd.toFixed(3)}`;
-    }
-    return `$${usd.toFixed(2)}`;
+    const abs = Math.abs(amount);
+    const digits = abs < 0.01 ? 4 : abs < 1 ? 3 : 2;
+
+    return `${prefix}${amount.toFixed(digits)}${suffix}`;
 }

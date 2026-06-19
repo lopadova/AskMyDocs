@@ -82,6 +82,12 @@ describe('formatCost', () => {
         expect(formatCost(1.234)).toBe('$1.23');
         expect(formatCost(12)).toBe('$12.00');
     });
+
+    it('renders a non-USD currency with a trailing ISO code (v8.16/W3)', () => {
+        expect(formatCost(0, 'EUR')).toBe('0 EUR');
+        expect(formatCost(0.0024, 'EUR')).toBe('0.0024 EUR');
+        expect(formatCost(1.234, 'GBP')).toBe('1.23 GBP');
+    });
 });
 
 describe('TokenCostMeter', () => {
@@ -137,6 +143,44 @@ describe('TokenCostMeter', () => {
         // 1M input @ $2.5/M = $2.50
         expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$2.50');
         expect(meter).toHaveTextContent('1,000,000 tok');
+    });
+
+    it('renders the SERVER-resolved cost directly, ignoring client rates (v8.16/W3)', async () => {
+        // serverCost present → the meter must render it verbatim (decimal string
+        // parsed) WITHOUT computing from the rate table. Rates here would give a
+        // different number, so a match proves the server cost won.
+        render(wrap(
+            <TokenCostMeter
+                provider="openai"
+                model="gpt-4o"
+                promptTokens={1000}
+                completionTokens={500}
+                totalTokens={1500}
+                serverCost="0.01230000"
+                serverCostCurrency="USD"
+            />,
+        ));
+        const meter = await screen.findByTestId('chat-token-cost');
+        expect(meter).toHaveAttribute('data-cost-available', 'true');
+        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$0.012');
+        expect(meter).toHaveTextContent('1,500 tok');
+    });
+
+    it('renders a server cost of exactly 0 (metered, zero-priced) as a present cost', async () => {
+        render(wrap(
+            <TokenCostMeter
+                provider="regolo"
+                model="Llama-3.3-70B-Instruct"
+                promptTokens={800}
+                completionTokens={200}
+                totalTokens={1000}
+                serverCost="0.00000000"
+                serverCostCurrency="USD"
+            />,
+        ));
+        const meter = await screen.findByTestId('chat-token-cost');
+        expect(meter).toHaveAttribute('data-cost-available', 'true');
+        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$0');
     });
 
     it('formats the title attribute with the input/output breakdown', async () => {
