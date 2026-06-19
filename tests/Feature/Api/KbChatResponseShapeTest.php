@@ -154,6 +154,10 @@ final class KbChatResponseShapeTest extends TestCase
             'meta' => [
                 'provider',
                 'model',
+                // v8.16/W3 — server-resolved cost keys are ALWAYS present (R27
+                // additive); null when finops metering is off, as in this test.
+                'cost',
+                'cost_currency',
                 'chunks_used',
                 'primary_count',
                 'expanded_count',
