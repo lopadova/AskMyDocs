@@ -145,8 +145,18 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         config-gated, mirrors MeteringListener's cascade. `DatabaseChatLogDriver` resolves + persists
         cost (both normal + anonymous paths; anonymous prices from tokens only, no text). ChatLog model
         fillable + `cost`=decimal:8 cast. `ChatLogEntry` += `traceId`. Tests: ChatLogManagerTest cost +
-        finops-off + trace_id; ChatTurnCostResolverTest (R43 both states). 25-test slice GREEN.
-  - [ ] **W3.2 meta + trace + FE** (next): surface `cost`/`cost_currency` in chat response `meta`
+        finops-off + trace_id; ChatTurnCostResolverTest (R43 both states). **PR #318 MERGED into
+        feature/v8.16 @ 429fd546** (2026-06-19) — Copilot APPROVED after 5 review rounds. Real catches
+        beyond the critic: (a) **metering gate** — resolver requires `ai-finops.metering` so the
+        price cache is warm from the hook → NEVER a cold-cache price-feed HTTP fetch on the response
+        path (surfaced by WidgetHostToolsTest whose broad Http::fake captured the stray fetch);
+        (b) **synthetic-turn guard** — `isSyntheticTurn()` skips refusal/error logs (provider/model
+        `none`) which never warmed the cache; (c) money as decimal STRING (8dp) not float; (d) char(3);
+        (e) trace_id threaded into the envelope + anonymous-path test with a resolver spy proving no
+        PII text is priced. CI-ops note: self-healing monitor `gh run rerun <run> --failed` on the
+        cross-cancelled Playwright until SUCCESS.
+  - [ ] **W3.2 meta + trace + FE** (branch `feature/v8.16-W3.2-cost-meta-fe`): surface
+        `cost`/`cost_currency` in chat response `meta`
         (R27 additive) in KbChatController (3 paths: success ~237 / refusal ~344 / error ~500) +
         MessageController (~192) + MessageStreamController; wrap the `AiManager` call in
         `TraceContext::within` + pass `traceId` into `ChatLogEntry`; FE `MessageMetadata` += `cost?` +
