@@ -52,7 +52,10 @@ final class ConfigureConnectorRequest extends FormRequest
         $secretFields = [];
 
         foreach ($connector->credentialFormSchema() as $field) {
-            $name = (string) $field['name'];
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
 
             // A secret is identified by target='secret' (the same marker
             // ConfigureConnectorService::splitPayload routes to the vault) — keyed
@@ -96,7 +99,11 @@ final class ConfigureConnectorRequest extends FormRequest
         ];
 
         foreach ($connector->credentialFormSchema() as $field) {
-            $rules[(string) $field['name']] = $this->rulesForField($field);
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+            $rules[$name] = $this->rulesForField($field);
         }
 
         return $rules;
@@ -122,7 +129,7 @@ final class ConfigureConnectorRequest extends FormRequest
             $rules[] = 'nullable';
         }
 
-        match ((string) $field['type']) {
+        match ((string) ($field['type'] ?? 'text')) {
             'number' => array_push($rules, 'integer', 'min:1'),
             'checkbox' => $rules[] = 'boolean',
             'select' => $rules[] = Rule::in(array_keys((array) ($field['options'] ?? []))),

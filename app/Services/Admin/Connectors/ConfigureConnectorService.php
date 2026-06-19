@@ -108,7 +108,10 @@ final class ConfigureConnectorService
         // value (e.g. auth_mode, which carries a 'basic' default).
         $effective = [];
         foreach ($schema as $field) {
-            $name = (string) $field['name'];
+            $name = (string) ($field['name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
             $effective[$name] = array_key_exists($name, $validated)
                 ? $validated[$name]
                 : ($field['default'] ?? null);
