@@ -204,10 +204,10 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         asserted). CI publishes assets + `AI_FINOPS_ADMIN_ENABLED=true`.
         OFF state via `FinOpsDisabledTest`, gating via `FinOpsAdminMountingTest` (R43 both states).
   - [x] **CLAUDE.md §3** synced (MCP count 31 + FinOps W3/W4 rows); `.env.example` already complete.
-  - [ ] push `feature/v8.16-W4-mcp-ga` → PR into `feature/v8.16`; R36 loop → merge.
-  - [ ] tag **v8.16.0-rc4** at the W4 closure SHA on `feature/v8.16` (R39).
-  - [ ] **GA**: README roadmap flip ⏳→✅ + changelog; merge `feature/v8.16` → `main` (R37 `--merge`);
-        tag **v8.16.0** GA + GitHub Release.
+  - [x] PR **#323** → `feature/v8.16` merged @ **6b459388** (R36: 4 Copilot passes, final clean; CI green).
+  - [x] tag **v8.16.0-rc4** at the W4 closure SHA `6b459388` (R39) — prerelease published.
+  - [~] **GA**: README roadmap row + changelog flip on `feature/v8.16-W4-ga-docs` → PR into `feature/v8.16`;
+        then merge `feature/v8.16` → `main` (R37 `--merge`); tag **v8.16.0** GA + GitHub Release.
 
   **Original anchors (verified 2026-06-19):**
   - [ ] **MCP read tools (R44 third surface)** — DONE, see above. — the FinOps capability already has PHP (package
