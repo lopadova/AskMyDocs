@@ -213,10 +213,16 @@ final class ConfigureConnectorService
             );
         }
 
-        $synthetic = Request::create('/', 'POST', [
-            'state' => $state,
-            $secretField => (string) $secret,
-        ]);
+        // Include the secret ONLY when one was actually submitted — fabricating an
+        // empty string for a null secret is observably different from "missing" and
+        // could persist an empty credential. When absent, the connector's own
+        // missing-secret handling fires (a loud ConnectorAuthException → 422).
+        $data = ['state' => $state];
+        if ($secret !== null) {
+            $data[$secretField] = $secret;
+        }
+
+        $synthetic = Request::create('/', 'POST', $data);
 
         try {
             $connector->handleOAuthCallback($installation->id, $synthetic);
