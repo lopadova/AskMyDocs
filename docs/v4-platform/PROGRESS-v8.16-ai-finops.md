@@ -165,7 +165,19 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         message metadata. Tests: KbChatResponseShapeTest + MessageControllerTest assert the additive cost
         keys. **FULL SUITE GREEN: 2823 tests, 10472 assertions.** Commits 18887746 (progress) / 2cd23cc2
         (KbChat) / cca93004 (Message).
-  - [ ] **W3.3 streaming + FE + retire static rates** (next): MessageStreamController streaming cost +
+  - [x] **W3.3.A — FE reads server cost** (branch `feature/v8.16-W3.3-streaming-fe`, commit 909c4832):
+        `MessageMetadata` += `cost?`/`cost_currency?`. `TokenCostMeter` now prefers the server-resolved
+        cost (renders it verbatim, skips the `/api/chat/cost-rates` fetch + client compute entirely);
+        legacy rate compute is the fallback for legacy rows / metering-off. `formatCost` currency-aware
+        (USD→`$`, else `1.23 EUR`), backward-compatible. MessageBubble passes `meta.cost`/`cost_currency`.
+        Vitest: server-cost-wins + zero-cost + non-USD (17 in file; 244 chat FE tests green). Existing
+        cost-meter E2E (`chat-w7-sdk-ui.spec.ts:77`) still passes (backward-compatible).
+  - [ ] **W3.3.B — streaming + E2E** (next): MessageStreamController — wrap the AI calls in
+        `ChatTraceContext` + thread `traceId` + surface cost in the persisted streaming message metadata
+        (NB the streaming chat_logs.cost ALREADY resolves via the W3.1 driver; the lazy-generator
+        metering makes TraceContext-wrapping the `chatStream` foreach the fiddly part — do the
+        `chatWithTools` tool path first). Playwright E2E asserting the meter shows a SERVER cost (stub a
+        message with `metadata.cost`). MessageStreamController streaming cost +
         confirm `AgentStreamed` metering (the fallback stream path already routes through the sync chat →
         SDK hook); FE `MessageMetadata` (`frontend/src/features/chat/chat.api.ts:119`) += `cost?` +
         `cost_currency?` rendered via a `TokenCostMeter`; deprecate static `config/ai.php cost_rates` +
