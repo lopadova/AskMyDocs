@@ -12,7 +12,8 @@ import type {
   TokenResponse,
 } from "./types";
 
-export const API_BASE = "http://localhost:8000";
+// Local backend served by Valet/Herd (matches the repo's APP_URL).
+export const API_BASE = "https://askmydocs.test";
 
 /** Surfaces a backend failure with its status + parsed body (R14 mindset:
  *  the caller must be able to tell a refusal/validation error from success). */
