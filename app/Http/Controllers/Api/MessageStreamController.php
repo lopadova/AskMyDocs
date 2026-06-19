@@ -584,10 +584,13 @@ class MessageStreamController extends Controller
                 ? $this->localizedRefusalMessage('llm_self_refusal')
                 : $assistantContent;
 
-            // v8.16/W3 — resolve the real per-turn cost on the grounded path
-            // (cache-warm from the metering hook that ran inside the trace context
-            // above). Null on a refusal turn — meta keeps the cost keys (R27),
-            // and the chat-log driver still persists the real cost for the row.
+            // v8.16/W3 — resolve the real per-turn cost on the grounded path. This
+            // runs OUTSIDE the trace context (it doesn't need the ambient trace —
+            // it only passes $traceId for envelope correlation), but it relies on
+            // the price cache that the metering hook WARMED inside the chatStream /
+            // chatWithTools call above, so it's a cache hit (no response-path HTTP).
+            // Null on a refusal turn — meta keeps the cost keys (R27), and the
+            // chat-log driver still persists the real cost for the row.
             $cost = $isSelfRefusal ? null : app(ChatTurnCostResolver::class)->resolve(
                 provider: $providerName,
                 model: $modelName,

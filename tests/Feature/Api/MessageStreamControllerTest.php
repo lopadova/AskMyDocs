@@ -214,6 +214,41 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertNull($assistant->metadata['cost']);
     }
 
+    public function test_server_cost_and_trace_id_populated_on_streamed_turn_when_metering_on(): void
+    {
+        // R16/R43 ON branch for the W3.3.B streaming wiring: with finops metering ON
+        // (price feeds OFF → cost resolves to 0 in the base currency, non-null), the
+        // streamed turn's message metadata carries a server cost AND the same per-turn
+        // trace id is stamped on the chat_logs row (the cost-resolution + trace-thread
+        // code ran on the grounded path). The usage-LEDGER side of the correlation
+        // depends on streaming-metering, which is the W3.3.C "confirm AgentStreamed
+        // metering" item — verified separately, not asserted here.
+        config([
+            'ai-finops.enabled' => true,
+            'ai-finops.metering' => true,
+            'ai-finops.pricing.litellm.enabled' => false,
+            'ai-finops.pricing.openrouter.enabled' => false,
+            'chat-log.enabled' => true,
+            'chat-log.driver' => 'database',
+        ]);
+
+        $this->mockSearchWithGroundedChunks();
+        $this->mockAnthropicResponse(content: 'A streamed grounded answer.');
+
+        $this->postStream('/conversations/' . $this->conversation->id . '/messages/stream', [
+            'content' => 'What is the stream cost?',
+        ]);
+
+        $assistant = $this->conversation->messages()->where('role', 'assistant')->first();
+        $this->assertNotNull($assistant);
+        // Cost populated (0.00000000 with feeds off — non-null), currency set.
+        $this->assertNotNull($assistant->metadata['cost'] ?? null, 'server cost populated on the streamed message');
+        $this->assertSame('USD', $assistant->metadata['cost_currency'] ?? null);
+
+        $chatLog = \App\Models\ChatLog::query()->latest('id')->first();
+        $this->assertNotNull($chatLog?->trace_id, 'chat_logs.trace_id stamped when metering on');
+    }
+
     public function test_2_refusal_emits_data_refusal_instead_of_text_envelope(): void
     {
         // No grounded chunks (all below threshold) → refusal short-circuit.
