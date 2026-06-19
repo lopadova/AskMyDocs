@@ -212,6 +212,26 @@ describe('CredentialConnectorForm', () => {
         );
     });
 
+    it('never pre-fills a secret even if the schema ships a default, and exposes data-state', () => {
+        const schemaWithPwDefault: CredentialFieldSchema[] = SCHEMA.map((f) =>
+            f.name === 'password' ? { ...f, default: 'should-not-render' } : f,
+        );
+        const entry = { ...makeEntry(), credential_form_schema: schemaWithPwDefault };
+
+        const { rerender } = render(
+            <CredentialConnectorForm entry={entry} {...NOOP} isSubmitting={false} />,
+        );
+
+        const pw = screen.getByTestId('connector-imap-form-password') as HTMLInputElement;
+        expect(pw.value).toBe('');
+        expect(screen.getByTestId('connector-imap-form')).toHaveAttribute('data-state', 'idle');
+
+        // The submitting state is observable for E2E waits + screen readers.
+        rerender(<CredentialConnectorForm entry={entry} {...NOOP} isSubmitting />);
+        expect(screen.getByTestId('connector-imap-form')).toHaveAttribute('data-state', 'loading');
+        expect(screen.getByTestId('connector-imap-form')).toHaveAttribute('aria-busy', 'true');
+    });
+
     it('closes on Cancel', () => {
         const onClose = vi.fn();
         render(<CredentialConnectorForm entry={makeEntry()} onSubmit={vi.fn()} onClose={onClose} />);

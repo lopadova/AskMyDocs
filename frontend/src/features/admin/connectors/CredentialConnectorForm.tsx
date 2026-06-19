@@ -37,6 +37,12 @@ export interface CredentialConnectorFormProps {
 type FieldValue = string | number | boolean;
 
 function initialValue(field: CredentialFieldSchema): FieldValue {
+    // Secrets are NEVER pre-filled — even if a schema mistakenly ships a default
+    // for a password, the input must render empty (the BE never returns a saved
+    // secret either).
+    if (field.secret || field.type === 'password') {
+        return '';
+    }
     if (field.type === 'checkbox') {
         return field.default === true;
     }
@@ -140,7 +146,9 @@ export function CredentialConnectorForm({
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
+                aria-busy={isSubmitting}
                 data-testid={`connector-${entry.key}-form`}
+                data-state={isSubmitting ? 'loading' : 'idle'}
                 onSubmit={handleSubmit}
                 style={{
                     background: 'var(--panel-solid, #1a1a22)',
