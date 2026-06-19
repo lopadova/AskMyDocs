@@ -108,19 +108,26 @@ class AuthController extends Controller
 
     public function logout(Request $request): JsonResponse
     {
-        // Revoke the personal access token when the caller authenticated with
-        // a Bearer token (desktop client). currentAccessToken() returns a
-        // TransientToken for session-based callers — only real persisted
-        // tokens carry a delete().
-        $accessToken = $request->user()?->currentAccessToken();
-        if ($accessToken instanceof PersonalAccessToken) {
-            $accessToken->delete();
-        }
-
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        return response()->json(null, 204);
+    }
+
+    /**
+     * Revoke the personal access token the caller authenticated with — the
+     * Bearer-flow counterpart of logout(). Stateless (no web session/CSRF), so
+     * the desktop client can sign out without an XSRF cookie. Session-based
+     * callers carry a TransientToken (no delete()), so they no-op safely.
+     */
+    public function revokeToken(Request $request): JsonResponse
+    {
+        $token = $request->user()?->currentAccessToken();
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
+        }
 
         return response()->json(null, 204);
     }

@@ -121,11 +121,12 @@ export async function searchDocs(
   return Array.isArray(data) ? data : [];
 }
 
-/** Best-effort token revocation; a network failure here must not block the UI
- *  from clearing local state and returning to the login screen. */
+/** Best-effort token revocation (stateless Bearer endpoint, no CSRF); a network
+ *  failure here must not block the UI from clearing local state and returning to
+ *  the login screen. */
 export async function logout(token: string): Promise<void> {
   try {
-    await fetch(`${API_BASE}/api/auth/logout`, {
+    await fetch(`${API_BASE}/api/auth/token/revoke`, {
       method: "POST",
       headers: authHeaders(token),
     });
