@@ -46,9 +46,11 @@ export function TokenCostMeter({
     const tokensTotal = totalTokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0));
 
     // Server cost wins. A finite parsed value (incl. 0) means "authoritative cost
-    // present" — skip the client-side rate fetch + compute entirely.
+    // present" — skip the client-side rate fetch + compute entirely. Trim first so
+    // a whitespace-only string (Number('   ') === 0!) counts as ABSENT, not a $0.
+    const trimmedServerCost = serverCost?.trim();
     const parsedServerCost =
-        serverCost != null && serverCost !== '' ? Number(serverCost) : null;
+        trimmedServerCost != null && trimmedServerCost !== '' ? Number(trimmedServerCost) : null;
     const hasServerCost = parsedServerCost !== null && Number.isFinite(parsedServerCost);
 
     const ratesQuery = useQuery<CostRateTable>({
@@ -70,7 +72,10 @@ export function TokenCostMeter({
     const cost = hasServerCost
         ? parsedServerCost
         : computeMessageCost(rates, provider, model, promptTokens, completionTokens);
-    const currency = hasServerCost ? (serverCostCurrency ?? 'USD') : 'USD';
+    // Normalise the currency (trim + uppercase ISO code), default USD when blank.
+    const currency = hasServerCost
+        ? (serverCostCurrency?.trim().toUpperCase() || 'USD')
+        : 'USD';
 
     return (
         <span
