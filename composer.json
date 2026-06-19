@@ -8,11 +8,12 @@
         "laravel/ai": "^0.6.8",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
-        "padosoft/askmydocs-connector-base": "^1.1",
+        "padosoft/askmydocs-connector-base": "^1.2",
         "padosoft/askmydocs-connector-confluence": "^1.0",
         "padosoft/askmydocs-connector-evernote": "^1.0",
         "padosoft/askmydocs-connector-fabric": "^1.0",
         "padosoft/askmydocs-connector-google-drive": "^1.0",
+        "padosoft/askmydocs-connector-imap": "^1.2",
         "padosoft/askmydocs-connector-jira": "^1.0",
         "padosoft/askmydocs-connector-notion": "^1.0",
         "padosoft/askmydocs-connector-onedrive": "^1.0",
@@ -125,6 +126,11 @@
             "type": "vcs",
             "url": "https://github.com/padosoft/askmydocs-connector-jira",
             "comment": "v4.6 connector package extraction — pending Packagist submission, resolved via Git tags v1.x."
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/padosoft/askmydocs-connector-imap",
+            "comment": "v8.17 — first credential-based connector (IMAP). Implements SupportsCredentialForm (connector-base ^1.2) for the native admin credential form. Resolved via Git tags v1.x."
         }
     ]
 }
