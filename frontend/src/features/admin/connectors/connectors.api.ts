@@ -107,8 +107,13 @@ export interface ConfigureResponse {
     };
 }
 
-/** Submitted credential-form values keyed by field `name` (+ optional project_key). */
-export type ConfigureConnectorPayload = Record<string, string | number | boolean | null>;
+/**
+ * Submitted credential-form values keyed by field `name` (+ optional project_key).
+ * Deliberately excludes `null`: the form OMITS an emptied optional field rather
+ * than sending null, so the BE applies the schema default — sending `{ field: null }`
+ * would be a contract violation.
+ */
+export type ConfigureConnectorPayload = Record<string, string | number | boolean>;
 
 export const adminConnectorsApi = {
     async list(): Promise<ConnectorEntry[]> {
