@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Ai\AiManager;
 use App\Ai\StreamChunk;
 use App\Ai\AiResponse;
+use App\FinOps\ChatTraceContext;
+use App\FinOps\ChatTurnCostResolver;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\ChatLog;
 use App\Models\Conversation;
@@ -196,9 +198,14 @@ class MessageStreamController extends Controller
         ))->render();
 
         $citations = $retrieval->buildCitations($result);
+
+        // v8.16/W3 — one trace id per streamed turn covering BOTH the (optional)
+        // MCP tool loop here AND the chatStream() call in streamHappyPath, so every
+        // metered call + this turn's chat_logs row share it.
+        $traceId = ChatTraceContext::newTraceId();
         $toolResponse = null;
         if ($toolCallingService->canHandleToolCalling($request->user())) {
-            $toolResponse = $toolCallingService->chatWithTools(
+            $toolResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $toolCallingService->chatWithTools(
                 systemPrompt: $systemPrompt,
                 messages: $history,
                 options: [],
@@ -207,10 +214,11 @@ class MessageStreamController extends Controller
                     'conversation_id' => $conversation->id,
                     'message_id' => $userMessage->id,
                 ],
-            );
+            ));
         }
 
         return $this->streamHappyPath(
+            traceId: $traceId,
             request: $request,
             ai: $ai,
             confidence: $confidence,
@@ -293,6 +301,10 @@ class MessageStreamController extends Controller
                 'metadata' => [
                     'provider' => 'none',
                     'model' => 'none',
+                    // v8.16/W3 — R27 shape uniformity (null: a pre-LLM refusal makes
+                    // no priced call).
+                    'cost' => null,
+                    'cost_currency' => null,
                     'chunks_count' => 0,
                     'latency_ms' => $latencyMs,
                     'citations' => [],
@@ -394,11 +406,12 @@ class MessageStreamController extends Controller
         ?string $clientIp,
         ?string $userAgent,
         ?AiResponse $aiResponse = null,
+        ?string $traceId = null,
     ): StreamedResponse {
         return $this->streamingResponse($request, function () use (
             $ai, $confidence, $conversation, $chatLog, $systemPrompt, $history,
             $chunks, $citations, $question, $projectKey, $userId, $startTime,
-            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse
+            $fewShotCount, $sessionId, $clientIp, $userAgent, $aiResponse, $traceId
         ): void {
             // SDK v6 envelope opener — every UIMessage stream MUST
             // begin with a `start` chunk before any text/data parts.
@@ -448,19 +461,24 @@ class MessageStreamController extends Controller
                 // buffer for post-stream persistence. The `finish` chunk
                 // is captured (not forwarded) — we emit our own terminal
                 // `finish` after persistence + `data-confidence`.
-                foreach ($ai->chatStream($systemPrompt, $history) as $chunk) {
-                    if ($chunk->type === StreamChunk::TYPE_TEXT_DELTA) {
-                        $assistantContent .= (string) ($chunk->payload['delta'] ?? '');
+                // Iterate INSIDE the finops trace context so the metering hook
+                // (which fires when the underlying chat runs during the first
+                // iteration) stamps this turn's trace_id on the ledger row.
+                ChatTraceContext::within($traceId, function () use ($ai, $systemPrompt, $history, &$assistantContent, &$finishChunk): void {
+                    foreach ($ai->chatStream($systemPrompt, $history) as $chunk) {
+                        if ($chunk->type === StreamChunk::TYPE_TEXT_DELTA) {
+                            $assistantContent .= (string) ($chunk->payload['delta'] ?? '');
+                        }
+                        if ($chunk->type === StreamChunk::TYPE_FINISH) {
+                            // Capture the finish chunk but DON'T re-emit it yet
+                            // — we still need to emit the data-confidence chunk
+                            // first (computed once we have the full content).
+                            $finishChunk = $chunk;
+                            continue;
+                        }
+                        $this->emit($chunk);
                     }
-                    if ($chunk->type === StreamChunk::TYPE_FINISH) {
-                        // Capture the finish chunk but DON'T re-emit it yet
-                        // — we still need to emit the data-confidence chunk
-                        // first (computed once we have the full content).
-                        $finishChunk = $chunk;
-                        continue;
-                    }
-                    $this->emit($chunk);
-                }
+                });
             } else {
                 $assistantContent = (string) $aiResponse->content;
 
@@ -566,6 +584,23 @@ class MessageStreamController extends Controller
                 ? $this->localizedRefusalMessage('llm_self_refusal')
                 : $assistantContent;
 
+            // v8.16/W3 — resolve the real per-turn cost on the grounded path. This
+            // runs OUTSIDE the trace context (it doesn't need the ambient trace —
+            // it only passes $traceId for envelope correlation), but it relies on
+            // the price cache that the metering hook WARMED inside the chatStream /
+            // chatWithTools call above, so it's a cache hit (no response-path HTTP).
+            // Null on a refusal turn — meta keeps the cost keys (R27), and the
+            // chat-log driver still persists the real cost for the row.
+            $cost = $isSelfRefusal ? null : app(ChatTurnCostResolver::class)->resolve(
+                provider: $providerName,
+                model: $modelName,
+                promptTokens: $promptTokens,
+                completionTokens: $completionTokens,
+                promptText: $question,
+                completionText: $assistantContent !== '' ? $assistantContent : null,
+                traceId: $traceId,
+            );
+
             $assistantMessage = $conversation->messages()->create([
                 'role' => 'assistant',
                 'content' => $persistedContent,
@@ -577,6 +612,10 @@ class MessageStreamController extends Controller
                     'prompt_tokens' => $promptTokens,
                     'completion_tokens' => $completionTokens,
                     'total_tokens' => $totalTokens,
+                    // v8.16/W3 — server-resolved cost (R27 additive; null on refusal
+                    // / when finops metering off). The FE TokenCostMeter reads these.
+                    'cost' => $cost?->cost,
+                    'cost_currency' => $cost?->currency,
                     'chunks_count' => $chunks->count(),
                     'latency_ms' => $latencyMs,
                     'citations' => $isSelfRefusal ? [] : $citations,
@@ -650,6 +689,7 @@ class MessageStreamController extends Controller
                     'confidence' => $confidenceScore,
                     'streamed' => true,
                 ],
+                traceId: $traceId,
             ));
 
             // Terminal event AFTER persistence — guarantees that any

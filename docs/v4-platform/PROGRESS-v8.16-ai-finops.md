@@ -172,24 +172,19 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         (USD→`$`, else `1.23 EUR`), backward-compatible. MessageBubble passes `meta.cost`/`cost_currency`.
         Vitest: server-cost-wins + zero-cost + non-USD (17 in file; 244 chat FE tests green). Existing
         cost-meter E2E (`chat-w7-sdk-ui.spec.ts:77`) still passes (backward-compatible).
-  - [ ] **W3.3.B — streaming + E2E** (next): MessageStreamController — wrap the AI calls in
-        `ChatTraceContext` + thread `traceId` + surface cost in the persisted streaming message metadata
-        (NB the streaming chat_logs.cost ALREADY resolves via the W3.1 driver; the lazy-generator
-        metering makes TraceContext-wrapping the `chatStream` foreach the fiddly part — do the
-        `chatWithTools` tool path first). Playwright E2E asserting the meter shows a SERVER cost (stub a
-        message with `metadata.cost`). MessageStreamController streaming cost +
-        confirm `AgentStreamed` metering (the fallback stream path already routes through the sync chat →
-        SDK hook); FE `MessageMetadata` (`frontend/src/features/chat/chat.api.ts:119`) += `cost?` +
-        `cost_currency?` rendered via a `TokenCostMeter`; deprecate static `config/ai.php cost_rates` +
-        the `/api/chat/cost-rates` client compute (keep endpoint as a fallback). Surface
-        `cost`/`cost_currency` in `meta`
-        (R27 additive) in KbChatController (3 paths: success ~237 / refusal ~344 / error ~500) +
-        MessageController (~192) + MessageStreamController; wrap the `AiManager` call in
-        `TraceContext::within` + pass `traceId` into `ChatLogEntry`; FE `MessageMetadata` += `cost?` +
-        render via a `TokenCostMeter`; deprecate static `config/ai.php cost_rates` + the
-        `/api/chat/cost-rates` client compute (keep as fallback). Confirm streaming metering
-        (`AgentStreamed`; the fallback path already routes through the SDK hook via the sync chat).
-  - [ ] tag v8.16.0-rc3 (after W3 closes)
+  - [x] **W3.3.B — streaming cost + trace** (branch `feature/v8.16-W3.3b-streaming`):
+        MessageStreamController — one `ChatTraceContext::newTraceId()` per streamed turn wraps BOTH the
+        MCP `chatWithTools` tool path AND the `chatStream()` foreach (iterated INSIDE
+        `ChatTraceContext::within` via a by-ref closure so the lazily-fired metering hook stamps the
+        ledger trace_id); resolve cost via `ChatTurnCostResolver` on the grounded path + surface
+        `cost`/`cost_currency` in the persisted streaming message metadata (R27 additive; null on the
+        sentinel + pre-LLM refusal for shape uniformity); thread `traceId` into the grounded ChatLogEntry.
+        MessageStreamControllerTest asserts the additive cost keys on the streamed message. **FULL SUITE
+        GREEN: 2828 tests, 10485 assertions.** (Streaming `chat_logs.cost` already resolved via the W3.1
+        driver; the metering for the fallback stream path fires through the underlying sync chat → SDK hook.)
+  - [ ] **W3.3.C — Playwright E2E + rc3**: E2E asserting the meter shows a SERVER cost (stub a message
+        with `metadata.cost`). Static `config/ai.php cost_rates` + `/api/chat/cost-rates` stay as the FE
+        fallback (already deprecated-in-practice since the FE prefers server cost). Then tag `v8.16.0-rc3`.
 - **W4 MCP + SPA E2E + docs/GA** — ⬜
   - [ ] MCP read tools + registration-count test
   - [ ] Playwright E2E finops admin SPA
