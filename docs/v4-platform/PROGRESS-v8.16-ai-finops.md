@@ -155,8 +155,22 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         (e) trace_id threaded into the envelope + anonymous-path test with a resolver spy proving no
         PII text is priced. CI-ops note: self-healing monitor `gh run rerun <run> --failed` on the
         cross-cancelled Playwright until SUCCESS.
-  - [ ] **W3.2 meta + trace + FE** (branch `feature/v8.16-W3.2-cost-meta-fe`): surface
-        `cost`/`cost_currency` in chat response `meta`
+  - [x] **W3.2 backend — cost in meta + trace correlation** (branch `feature/v8.16-W3.2-cost-meta-fe`):
+        new `App\FinOps\ChatTraceContext` (finops-guarded `TraceContext::within` wrapper, key `trace_id`,
+        + `newTraceId()`). KbChatController: per-turn trace id, wrap `AiManager::chat()` in the trace
+        context, resolve cost via ChatTurnCostResolver, surface `cost`/`cost_currency` in `meta` (R27
+        additive — present on success + both refusal paths, null sentinel); thread `traceId` into the
+        success + sentinel ChatLogEntry. MessageController: same, wrapping the whole MCP tool loop
+        (`chatWithTools`) so every metered call + chat_logs row share one trace_id; cost in the assistant
+        message metadata. Tests: KbChatResponseShapeTest + MessageControllerTest assert the additive cost
+        keys. **FULL SUITE GREEN: 2823 tests, 10472 assertions.** Commits 18887746 (progress) / 2cd23cc2
+        (KbChat) / cca93004 (Message).
+  - [ ] **W3.3 streaming + FE + retire static rates** (next): MessageStreamController streaming cost +
+        confirm `AgentStreamed` metering (the fallback stream path already routes through the sync chat →
+        SDK hook); FE `MessageMetadata` (`frontend/src/features/chat/chat.api.ts:119`) += `cost?` +
+        `cost_currency?` rendered via a `TokenCostMeter`; deprecate static `config/ai.php cost_rates` +
+        the `/api/chat/cost-rates` client compute (keep endpoint as a fallback). Surface
+        `cost`/`cost_currency` in `meta`
         (R27 additive) in KbChatController (3 paths: success ~237 / refusal ~344 / error ~500) +
         MessageController (~192) + MessageStreamController; wrap the `AiManager` call in
         `TraceContext::within` + pass `traceId` into `ChatLogEntry`; FE `MessageMetadata` += `cost?` +
