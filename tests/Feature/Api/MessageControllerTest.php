@@ -155,6 +155,12 @@ final class MessageControllerTest extends TestCase
             ->assertJsonPath('refusal_reason', null)
             ->assertJsonPath('content', 'A grounded answer.');
 
+        // v8.16/W3 — server-side cost keys are always present in the message
+        // metadata (R27 additive); null here since finops metering is off in tests.
+        $this->assertArrayHasKey('cost', $resp->json('metadata'));
+        $this->assertArrayHasKey('cost_currency', $resp->json('metadata'));
+        $this->assertNull($resp->json('metadata.cost'));
+
         $origins = collect($resp->json('metadata.citations'))->pluck('origin')->all();
         $this->assertContains('primary', $origins);
         $this->assertContains('related', $origins);
