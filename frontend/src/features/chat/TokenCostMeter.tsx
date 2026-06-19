@@ -21,9 +21,10 @@ export interface TokenCostMeterProps {
  * v4.5/W7 Tier 1 #5 — small inline pill rendering the per-turn token total + the
  * cost. v8.16/W3: when the message metadata carries an authoritative
  * SERVER-resolved cost (`serverCost`/`serverCostCurrency`, from the finops pricing
- * cascade) the meter renders it directly and skips the `/api/chat/cost-rates`
- * fetch entirely; otherwise it falls back to computing the cost client-side from
- * the rate table (`GET /api/chat/cost-rates`, session-scoped cache, stale-time 1h).
+ * cascade) the meter uses THAT as the cost (display-formatted by `formatCost`) and
+ * skips the `/api/chat/cost-rates` fetch + client-side rate compute entirely;
+ * otherwise it falls back to computing the cost client-side from the rate table
+ * (`GET /api/chat/cost-rates`, session-scoped cache, stale-time 1h).
  *
  * The cost is shown in its currency: USD as `$0.012`, any other ISO currency as
  * `0.012 EUR` (the finops base currency is configurable). Renders nothing when the

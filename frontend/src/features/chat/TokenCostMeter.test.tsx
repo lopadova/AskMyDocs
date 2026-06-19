@@ -146,9 +146,9 @@ describe('TokenCostMeter', () => {
     });
 
     it('renders the SERVER-resolved cost directly, ignoring client rates (v8.16/W3)', async () => {
-        // serverCost present → the meter must render it verbatim (decimal string
-        // parsed) WITHOUT computing from the rate table. Rates here would give a
-        // different number, so a match proves the server cost won.
+        // serverCost present → the meter uses it as the authoritative cost (parsed
+        // + display-formatted) WITHOUT computing from the rate table. Rates here
+        // would give a different number, so a match proves the server cost won.
         render(wrap(
             <TokenCostMeter
                 provider="openai"

@@ -167,7 +167,7 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         (KbChat) / cca93004 (Message).
   - [x] **W3.3.A — FE reads server cost** (branch `feature/v8.16-W3.3-streaming-fe`, commit 909c4832):
         `MessageMetadata` += `cost?`/`cost_currency?`. `TokenCostMeter` now prefers the server-resolved
-        cost (renders it verbatim, skips the `/api/chat/cost-rates` fetch + client compute entirely);
+        cost (uses it as the authoritative cost, display-formatted; skips the `/api/chat/cost-rates` fetch + client compute entirely);
         legacy rate compute is the fallback for legacy rows / metering-off. `formatCost` currency-aware
         (USD→`$`, else `1.23 EUR`), backward-compatible. MessageBubble passes `meta.cost`/`cost_currency`.
         Vitest: server-cost-wins + zero-cost + non-USD (17 in file; 244 chat FE tests green). Existing
