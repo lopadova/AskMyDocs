@@ -85,13 +85,18 @@ final class MessageStreamControllerTest extends TestCase
         // the contract once via Anthropic and trusts the FallbackStreaming
         // trait + StreamChunkTest unit tests to cover the rest.
         config()->set('ai.default', 'anthropic');
+        // SDK config shape (driver/key/url/models) — anthropic moved to the
+        // laravel/ai SDK in v8.16/W2; the SDK reads `driver` + `key` + `url`.
         config()->set('ai.providers.anthropic', [
-            'api_key' => 'sk-ant-test',
+            'driver' => 'anthropic',
+            'name' => 'anthropic',
+            'key' => 'sk-ant-test',
+            'url' => 'https://api.anthropic.com/v1',
             'api_version' => '2023-06-01',
-            'chat_model' => 'claude-sonnet-4-20250514',
             'temperature' => 0.2,
             'max_tokens' => 2048,
             'timeout' => 30,
+            'models' => ['text' => ['default' => 'claude-sonnet-4-20250514']],
         ]);
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_chunks_required', 1);
@@ -202,6 +207,52 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertSame('The remote work stipend applies after 90 days.', $assistant->content);
         $this->assertNull($assistant->refusal_reason);
         $this->assertTrue((bool) ($assistant->metadata['streamed'] ?? false));
+        // v8.16/W3 — server-cost keys present on the streamed message metadata too
+        // (R27 additive; null since finops metering is off in tests).
+        $this->assertArrayHasKey('cost', $assistant->metadata);
+        $this->assertArrayHasKey('cost_currency', $assistant->metadata);
+        // Both null on the metering-off default — never a partially-populated payload.
+        $this->assertNull($assistant->metadata['cost']);
+        $this->assertNull($assistant->metadata['cost_currency']);
+    }
+
+    public function test_server_cost_and_trace_id_populated_on_streamed_turn_when_metering_on(): void
+    {
+        // R16/R43 ON branch for the W3.3.B streaming wiring: with finops metering ON
+        // (price feeds OFF → cost resolves to 0 in the base currency, non-null), the
+        // streamed turn's message metadata carries a server cost AND the same per-turn
+        // trace id is stamped on the chat_logs row (the cost-resolution + trace-thread
+        // code ran on the grounded path). The usage-LEDGER side of the correlation
+        // depends on streaming-metering, which is the W3.3.C "confirm AgentStreamed
+        // metering" item — verified separately, not asserted here.
+        config([
+            'ai-finops.enabled' => true,
+            'ai-finops.metering' => true,
+            'ai-finops.pricing.litellm.enabled' => false,
+            'ai-finops.pricing.openrouter.enabled' => false,
+            'chat-log.enabled' => true,
+            'chat-log.driver' => 'database',
+        ]);
+
+        $this->mockSearchWithGroundedChunks();
+        $this->mockAnthropicResponse(content: 'A streamed grounded answer.');
+
+        $this->postStream('/conversations/' . $this->conversation->id . '/messages/stream', [
+            'content' => 'What is the stream cost?',
+        ]);
+
+        $assistant = $this->conversation->messages()->where('role', 'assistant')->first();
+        $this->assertNotNull($assistant);
+        // Cost populated (0.00000000 with feeds off — non-null), currency set.
+        $this->assertNotNull($assistant->metadata['cost'] ?? null, 'server cost populated on the streamed message');
+        // Currency follows the configurable base, not a hard-coded literal.
+        $this->assertSame(
+            (string) config('ai-finops.currency.base', 'USD'),
+            $assistant->metadata['cost_currency'] ?? null,
+        );
+
+        $chatLog = \App\Models\ChatLog::query()->latest('id')->first();
+        $this->assertNotNull($chatLog?->trace_id, 'chat_logs.trace_id stamped when metering on');
     }
 
     public function test_2_refusal_emits_data_refusal_instead_of_text_envelope(): void

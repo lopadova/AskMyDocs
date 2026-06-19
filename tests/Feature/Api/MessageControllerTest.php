@@ -55,13 +55,18 @@ final class MessageControllerTest extends TestCase
         )->middleware(SubstituteBindings::class);
 
         config()->set('ai.default', 'anthropic');
+        // SDK config shape (driver/key/url/models) — anthropic moved to the
+        // laravel/ai SDK in v8.16/W2; the SDK reads `driver` + `key` + `url`.
         config()->set('ai.providers.anthropic', [
-            'api_key' => 'sk-ant-test',
+            'driver' => 'anthropic',
+            'name' => 'anthropic',
+            'key' => 'sk-ant-test',
+            'url' => 'https://api.anthropic.com/v1',
             'api_version' => '2023-06-01',
-            'chat_model' => 'claude-sonnet-4-20250514',
             'temperature' => 0.2,
             'max_tokens' => 2048,
             'timeout' => 30,
+            'models' => ['text' => ['default' => 'claude-sonnet-4-20250514']],
         ]);
         config()->set('kb.refusal.min_chunk_similarity', 0.45);
         config()->set('kb.refusal.min_rerank_score', 0.25);
@@ -149,6 +154,14 @@ final class MessageControllerTest extends TestCase
         $resp->assertOk()
             ->assertJsonPath('refusal_reason', null)
             ->assertJsonPath('content', 'A grounded answer.');
+
+        // v8.16/W3 — server-side cost keys are always present in the message
+        // metadata (R27 additive); null here since finops metering is off in tests.
+        $this->assertArrayHasKey('cost', $resp->json('metadata'));
+        $this->assertArrayHasKey('cost_currency', $resp->json('metadata'));
+        // Both keys null when metering is off (the suite default) — neither alone.
+        $this->assertNull($resp->json('metadata.cost'));
+        $this->assertNull($resp->json('metadata.cost_currency'));
 
         $origins = collect($resp->json('metadata.citations'))->pluck('origin')->all();
         $this->assertContains('primary', $origins);

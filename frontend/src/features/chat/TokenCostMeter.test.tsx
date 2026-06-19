@@ -82,6 +82,12 @@ describe('formatCost', () => {
         expect(formatCost(1.234)).toBe('$1.23');
         expect(formatCost(12)).toBe('$12.00');
     });
+
+    it('renders a non-USD currency with a trailing ISO code (v8.16/W3)', () => {
+        expect(formatCost(0, 'EUR')).toBe('0 EUR');
+        expect(formatCost(0.0024, 'EUR')).toBe('0.0024 EUR');
+        expect(formatCost(1.234, 'GBP')).toBe('1.23 GBP');
+    });
 });
 
 describe('TokenCostMeter', () => {
@@ -117,7 +123,7 @@ describe('TokenCostMeter', () => {
         expect(meter).toHaveTextContent('800 tok');
         // No `$` should appear.
         expect(meter.textContent ?? '').not.toContain('$');
-        expect(screen.queryByTestId('chat-token-cost-usd')).toBeNull();
+        expect(screen.queryByTestId('chat-token-cost-amount')).toBeNull();
     });
 
     it('renders token count AND cost when provider+model match', async () => {
@@ -135,8 +141,82 @@ describe('TokenCostMeter', () => {
             expect(meter).toHaveAttribute('data-cost-available', 'true');
         });
         // 1M input @ $2.5/M = $2.50
-        expect(screen.getByTestId('chat-token-cost-usd')).toHaveTextContent('$2.50');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$2.50');
         expect(meter).toHaveTextContent('1,000,000 tok');
+    });
+
+    it('renders the SERVER-resolved cost directly, ignoring client rates (v8.16/W3)', async () => {
+        // serverCost present → the meter uses it as the authoritative cost (parsed
+        // + display-formatted) WITHOUT computing from the rate table. Rates here
+        // would give a different number, so a match proves the server cost won.
+        render(wrap(
+            <TokenCostMeter
+                provider="openai"
+                model="gpt-4o"
+                promptTokens={1000}
+                completionTokens={500}
+                totalTokens={1500}
+                serverCost="0.01230000"
+                serverCostCurrency="USD"
+            />,
+        ));
+        const meter = await screen.findByTestId('chat-token-cost');
+        expect(meter).toHaveAttribute('data-cost-available', 'true');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$0.012');
+        expect(meter).toHaveTextContent('1,500 tok');
+    });
+
+    it('renders a server cost of exactly 0 (metered, zero-priced) as a present cost', async () => {
+        render(wrap(
+            <TokenCostMeter
+                provider="regolo"
+                model="Llama-3.3-70B-Instruct"
+                promptTokens={800}
+                completionTokens={200}
+                totalTokens={1000}
+                serverCost="0.00000000"
+                serverCostCurrency="USD"
+            />,
+        ));
+        const meter = await screen.findByTestId('chat-token-cost');
+        expect(meter).toHaveAttribute('data-cost-available', 'true');
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$0');
+    });
+
+    it('treats a whitespace-only serverCost as absent and falls back to client rates', async () => {
+        // Number('   ') === 0 would wrongly show $0; the trim guard ignores it so
+        // the meter computes $2.50 from the rate table instead.
+        render(wrap(
+            <TokenCostMeter
+                provider="openai"
+                model="gpt-4o"
+                promptTokens={1_000_000}
+                completionTokens={0}
+                totalTokens={1_000_000}
+                serverCost="   "
+                serverCostCurrency="USD"
+            />,
+        ));
+        const meter = await screen.findByTestId('chat-token-cost');
+        await waitFor(() => {
+            expect(meter).toHaveAttribute('data-cost-available', 'true');
+        });
+        expect(screen.getByTestId('chat-token-cost-amount')).toHaveTextContent('$2.50');
+    });
+
+    it('normalises a lowercase / whitespace server currency to an uppercase ISO code', async () => {
+        render(wrap(
+            <TokenCostMeter
+                provider="openai"
+                model="gpt-4o"
+                promptTokens={1000}
+                completionTokens={500}
+                totalTokens={1500}
+                serverCost="0.01230000"
+                serverCostCurrency=" eur "
+            />,
+        ));
+        expect(await screen.findByTestId('chat-token-cost-amount')).toHaveTextContent('0.012 EUR');
     });
 
     it('formats the title attribute with the input/output breakdown', async () => {

@@ -328,12 +328,14 @@ export function MessageBubble({
                             </span>
                         )}
                         {/*
-                          * v4.5/W7 Tier 1 #5 — per-turn token + USD cost
-                          * meter. Reads cost rates via TanStack Query;
-                          * renders nothing on user turns / legacy rows
-                          * with no token telemetry. The TokenCostMeter
-                          * also fetches the cost-rate table on first
-                          * mount so subsequent bubbles share the cache.
+                          * v4.5/W7 Tier 1 #5 — per-turn token + cost meter.
+                          * v8.16/W3: prefers the authoritative server-resolved
+                          * cost (meta.cost / cost_currency, any ISO currency) and
+                          * skips the rate fetch when present; falls back to the
+                          * client-side rate compute (TanStack Query on
+                          * /api/chat/cost-rates) for legacy rows / metering-off.
+                          * Renders nothing on user turns / rows with no token
+                          * telemetry.
                           */}
                         <TokenCostMeter
                             provider={meta.provider}
@@ -341,6 +343,8 @@ export function MessageBubble({
                             promptTokens={meta.prompt_tokens}
                             completionTokens={meta.completion_tokens}
                             totalTokens={meta.total_tokens}
+                            serverCost={meta.cost}
+                            serverCostCurrency={meta.cost_currency}
                         />
                         {/* timestamp moved into provider/model meta block above */}
 

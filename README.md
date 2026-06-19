@@ -228,7 +228,7 @@ top of the v4.0 Vercel AI SDK v6 `UIMessageChunk` streaming foundation.
 - **Suggested follow-up pills** — `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply; renders as clickable pill chips under the message; submits via the streaming endpoint when clicked.
 - **Full Vercel AI SDK v6 message-parts integration** — `MessageStreamController` emits canonical `start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish` frames over SSE; `useChatStream()` exposes `data-state="idle|loading|ready|empty|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both map to `loading` via `mapStatusToDataState()` — see `frontend/src/features/chat/map-status-to-data-state.test.ts`).
 - **Canvas-ready architecture (artifact panel deferred to v5.x)** — Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) is deliberately deferred to a v5.x milestone so it can be designed alongside the MCP **client** tool-result surface and share one storage contract. See ADR 0008 D4.
-- **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::` (no SDK); Regolo is wired through the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`. `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
+- **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — every provider runs on the `laravel/ai` SDK (since v8.16, ADR 0015), so AI FinOps meters them natively. Anthropic + Gemini are fully SDK; OpenAI + OpenRouter are hybrid (SDK for no-tools chat + embeddings, raw `Http::` `/chat/completions` for the MCP tool-calling turn the SDK can't host); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter. `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
 
 **Try it.** Open `/app/chat` in the React SPA. Start a long answer
 and hit Stop; click Regenerate; hover the assistant message and pick
@@ -406,7 +406,7 @@ DB_PASSWORD=secret
 
 ### AI Provider
 
-The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::`, which keeps auth, retries, timeouts, and response parsing under our control. Regolo is the exception: it is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
+The system supports **five providers**, all on the `laravel/ai` SDK since v8.16 (ADR 0015) so AI FinOps meters every provider through the SDK lifecycle events. Anthropic + Gemini are fully on the SDK; OpenAI + OpenRouter are hybrid — the SDK serves no-tools chat + embeddings, while the MCP tool-calling turn stays on raw `Http::` `/chat/completions` because the SDK owns its own tool loop and can't host AskMyDocs's external-MCP loop. Regolo runs through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`).
 
 Config file: `config/ai.php`
 
@@ -529,6 +529,52 @@ If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini
 2. Create a new migration that resizes the `embedding` `vector(N)` column on `knowledge_chunks` and `embedding_cache`
 3. Flush the cache so stale-dimension vectors don't pollute retrieval — call `app(\App\Services\Kb\EmbeddingCacheService::class)->flush()` (or scope by retired provider with `->flush('openai')`) from a tinker session. `kb:prune-embedding-cache --days=N` only evicts rows older than N days and returns early when `N <= 0`, so it is **not** a full-flush substitute.
 4. Re-index all documents
+
+### AI FinOps — spend governance (v8.16)
+
+Cost governance over AI spend is provided by
+[`padosoft/laravel-ai-finops`](https://github.com/padosoft/laravel-ai-finops)
+(+ the companion React admin panel
+[`padosoft/laravel-ai-finops-admin`](https://github.com/padosoft/laravel-ai-finops-admin)):
+a per-call usage ledger, N-scope budgets, a declarative policy DSL, chargeback,
+forecasting/anomaly detection, cost-aware routing and multi-channel alerts.
+
+The package meters automatically only for calls that flow through the
+`laravel/ai` SDK (here: Regolo). AskMyDocs extends coverage to the
+raw-`Http::` providers by hooking `AiManager` — `App\FinOps\AiCallMeter`
+records every **synchronous** OpenAI / Anthropic / Gemini / OpenRouter chat
+(`chat` / `chatWithHistory`) + embedding into the ledger (non-blocking,
+`ChatLogManager`-style; Regolo is skipped to avoid double-counting).
+**Streaming chat (`chatStream`, the SSE endpoint) is not yet metered** — a
+documented follow-up — so a turn served over streaming is not recorded in the
+ledger. Every recorded row is tenant-scoped via `App\Support\TenantContext`
+(R30).
+
+The API mounts under `api/admin/ai-finops` behind the admin stack
+(`auth:sanctum` + `tenant.authorize` + a **method-aware** gate: reads →
+`viewAiFinOps` = super-admin + admin; writes → `manageAiFinOps` =
+super-admin). The admin SPA mounts under `/admin/ai-finops` (default OFF).
+
+```bash
+# After composer install, create the ai_finops_* tables:
+php artisan migrate
+
+# Turn the admin panel on (AI_FINOPS_ADMIN_ENABLED=true) and publish its assets:
+php artisan vendor:publish --tag=ai-finops-admin-assets --force
+```
+
+```env
+AI_FINOPS_ENABLED=true          # master switch (routes + metering hook)
+AI_FINOPS_METERING=true         # record usage into the ledger
+AI_FINOPS_ENFORCEMENT=false     # hard budget/policy HTTP-402 blocks (opt-in)
+AI_FINOPS_CURRENCY=USD          # base = provider list-price currency
+AI_FINOPS_DISPLAY_CURRENCY=EUR
+AI_FINOPS_RETENTION_DAYS=730
+AI_FINOPS_ADMIN_ENABLED=false   # React cockpit at /admin/ai-finops (opt-in)
+```
+
+Maintenance crons (Tier-1 slots, staggered in the 04:xx window):
+`ai-finops:capture-prices`, `ai-finops:check-alerts`, `ai-finops:prune`.
 
 ### Storage (Laravel disks)
 
@@ -832,7 +878,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Speech-to-text (Web Speech API) | Browser-native mic input via `webkitSpeechRecognition`; zero external service, zero cost; defaults to `it-IT` (configurable). Chrome / Edge / Safari supported | v1.0 |
 | Few-shot learning loop | Thumbs up/down rating on every assistant message; `FewShotService` retrieves last 3 positively-rated Q&As per user/project and injects as "Examples of Well-Rated Answers" in the system prompt | v1.0 |
 | Smart visual artifacts | `~~~chart` JSON blocks render as Chart.js bar/line/pie/doughnut; `~~~actions` JSON renders as copy/download buttons; every code block ships a "Copy" button | v1.0 |
-| Multi-provider AI federation | OpenAI / Anthropic / Gemini / OpenRouter via raw `Http::` calls (no SDK); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`; `AiManager::chat()` + `chatStream()` + `embeddings()`; per-provider streaming where supported (all 5 native or via `FallbackStreaming` trait); chat and embeddings providers configured separately | v1.0 |
+| Multi-provider AI federation | OpenAI / Anthropic / Gemini / OpenRouter / Regolo all on the `laravel/ai` SDK (ADR 0015); OpenAI + OpenRouter hybrid (SDK no-tools chat + embeddings, raw `Http::` for the MCP tool-calling turn); `AiManager::chat()` + `chatStream()` + `embeddings()`; per-provider streaming where supported (all 5 native or via `FallbackStreaming` trait); chat and embeddings providers configured separately | v1.0 |
 | Stateless JSON chat API | `POST /api/kb/chat` synchronous endpoint kept as backward-compat fallback alongside the v4 SSE streaming path; same hybrid retrieval pipeline + refusal short-circuit + confidence score serve both | v1.0 |
 | Stop / regenerate / branch / inline-edit affordances | Vercel AI SDK UI Tier 1 closure: stop-streaming via `AbortController`; regenerate-last-assistant; branch-from-message endpoint (forks the conversation tree); inline-edit user message; copy-code-block. All wired on `MessageStreamController` + the `useChatStream()` hook | v4.5 |
 | Per-message provider/model/cost metadata | Enhanced badge below every assistant message shows `provider`, `model`, `started_at`, prompt + completion tokens, and derived USD cost when `config('ai.cost_rates')` is populated (keyed by `provider → model → {input, output}`); cost is omitted (not zero) when rates are missing. Public lookup at `GET /api/chat/cost-rates` with 1-hour CDN cache | v4.5 |
@@ -883,7 +929,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | MCP server (inward, 10 tools) | `enterprise-kb` server at `/mcp/kb` exposes the KB to Claude Desktop / Claude Code / any MCP-compatible agent (5 retrieval + 5 canonical/promote tools); `auth:sanctum` + `throttle:api` | v3.0 |
 | GitHub composite action `ingest-to-askmydocs` (v2) | Reusable action with diff-mode (every push: `git diff --diff-filter=AMR` ingest + `D`+`R` delete batches via `DELETE /api/kb/documents`) and full-sync mode; canonical-folder aware; max 100 docs / batch; `--rawfile` for ARG_MAX safety (R5) | v3.0 |
 | 9 registered Flow definitions (saga / compensation) | `kb.ingest` (5-step) / `kb.canonical-index` (3-step) / `kb.promote` (4-step approval-gated, first use of `approval-gate` primitive) / `kb.delete` (4-step) / `kb.prune-deleted` / `kb.prune-embedding-cache` (conditional approval gate) / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder` (3-step fan-out). Reverse-order compensation chains; persisted to `flow_runs` + `flow_steps` + `flow_audit` + `flow_approvals` + `flow_webhook_outbox` | v4.2 |
-| Multi-AI-provider abstraction | OpenAI / Anthropic / Gemini / OpenRouter via raw `Http::` (no SDK); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`; `FallbackStreaming` trait synthesises single-chunk SSE for providers without native streaming | v1.0 |
+| Multi-AI-provider abstraction | OpenAI / Anthropic / Gemini / OpenRouter / Regolo all on the `laravel/ai` SDK (ADR 0015); OpenAI + OpenRouter hybrid (raw `Http::` retained only for the MCP tool-calling turn); `FallbackStreaming` trait synthesises single-chunk SSE for providers without native streaming | v1.0 |
 | Pluggable ingestion pipeline | 3 contracts (`ConverterInterface` / `ChunkerInterface` / `EnricherInterface`); `PipelineRegistry` with FQCN-validated-at-boot + `supports()` mutex (R23); add a new format = implement 3 interfaces + register in `config/kb-pipeline.php` | v3.0 |
 | Pluggable chat-log driver | `ChatLogDriverInterface`; `database` driver shipped; BigQuery / CloudWatch are extension points via `ChatLogManager::resolveDriver()` | v1.0 |
 | Sister `padosoft/*` package stack | `laravel-ai-regolo` v1.0 (Regolo provider for `laravel/ai`) + `laravel-pii-redactor` v1.2 (PII detection with EU country packs: Italy + Germany + Spain) + `laravel-pii-redactor-admin` v1.0.2 + `laravel-flow` v1.0 (saga engine + approval gates + webhook outbox + replay) + `laravel-flow-admin` v1.0.0 + `eval-harness` v1.2 (golden datasets + 7 metrics + cohorts + adversarial + LLM-as-judge) + `eval-harness-ui` v1.0.0 — every package MIT, every architecture test enforces standalone-agnostic invariants (zero refs to `KnowledgeDocument` / `kb_*` tables / `lopadova/askmydocs` in `src/`) | v4.2 |
@@ -1448,6 +1494,7 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.12.0** | ✅ shipped 2026-06-15 | **Auto-Wiki admin UI (P10 — epic close)** — the full web surface on the P1–P9 engine, shipped as 7 real-data-tested sub-PRs (#282..#288). **Wiki Health** (`/app/admin/kb/wiki-health` — lint findings + safe auto-fix), **Wiki Indices** (hub + per-project roll-ups + operation log + one-click rebuild), **Wiki Explorer** (browse typed pages by provenance tier, **promote** auto→human, **discard** auto — a new tri-surface `WikiExplorerService` capability: `kb:wiki-promote` + `GET /api/admin/kb/wiki-pages` + `POST …/documents/{id}/wiki-{promote,discard}` + `KbWikiPromoteTool`, MCP roster 24→25), **Doc Insights → Apply** (turn cross-reference / impacted suggestions into audited reversible mutations over the P8 engine, with a 200-refusal surfaced distinctly from a transport error per R14), **Auto-Wiki Settings** (`/app/admin/kb/autowiki-settings` — per-(tenant,project) auto-build gate over `AutoWikiGate`, tri-state Inherit/On/Off, R43 both-states), and **tier-badged chat citations** (every citation carries `generation_source`; auto pages get an `auto` badge, R27 additive). Every screen has Vitest + real-data Playwright (R13) + an `AdminAuthorizationMatrix` row for each new endpoint (R32). |
 | **v8.13.0** | ✅ shipped 2026-06-15 | **Evidence & Risk Review integration (P11)** — the general risk-sweep / review-log engine deferred OUT of core at v8.11.2 lands as the standalone `padosoft/laravel-evidence-risk-review` (core, v1.1) + `-admin` (v1.0) sister packages, wired **tri-surface (R44)** into AskMyDocs over **one** shared core service: the package's Artisan command + MCP tools auto-register (PHP + MCP), the HTTP API mounts at `/api/admin/evidence-risk-review/*` (secured: `tenant.resolve` + `auth:sanctum` + `tenant.authorize` + `can:viewEvidenceRiskReview`, R32 matrix-locked), and a **native FE admin** at `/app/admin/evidence-risk-review` (Reviews log + detail / Profiles / Taxonomy / Try) cross-mounts against that API — the same convention as every sister admin (the `-admin` React bundle is composer-required but `dont-discover`ed). **R30:** a host `TenantResolver` binds the review log to the active tenant — a review is stamped on write and the read paths are forced to that tenant (a client `tenant` filter cannot widen it). **R43 both-states:** the whole admin surface is opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` (default-OFF — routes unregistered → clean 404 + a clean FE "unavailable" landing, never a 500); the optional LLM semantic pass over `AiManager` is a second default-OFF flag (`EVIDENCE_RISK_REVIEW_LLM_ENABLED`). +7 integration PHPUnit (tenant isolation E2E + LLM adapter + R43 on/off) + 3 Vitest + real-data Playwright (R13). |
 | **v8.15.0** | ✅ shipped 2026-06-17 | **Engagement & Intelligence Suite** (W1–W5) — the layer that turns the KB into a living system, surpassing Stack Overflow for Teams / Zendesk / Notion on packaging + delivery breadth. **W1** an append-only contribution log (`kb_contribution_events`, written from the existing ingest/promote/citation paths — never a new write path) + `EngagementMetricsService` (SQL-aggregated, R3) + daily `engagement:compute` snapshot (`kb_engagement_snapshots`). **W2** multi-channel rich digest — `DigestComposer` → `DigestRendererRegistry` (R23 mutex) → email (magazine HTML) / Discord embed / Slack Block Kit / Teams Adaptive Card, with an opt-in `AiDigestNarrator` on a **dedicated free OpenRouter model** (`KB_DIGEST_AI_MODEL=meta-llama/llama-3.3-70b-instruct:free`, default-ON, degrades to deterministic copy R14/R43); `digest:send {--frequency=weekly|monthly} {--dry-run} {--preview}`. **W3** per-user `digest_preferences` (frequency + per-section toggles) + in-app digest feed (`engagement_digest_feed` + `digest:prune-feed`) + monthly executive roll-up. **W4** a new personal **My KB** dashboard (`/app/me`) + admin engagement analytics (leaderboard / coverage / answer-rate / decision-debt trend), reusing `KpiCard`/`ChartCard`/recharts. **W5** opt-in **gamification** — config-driven badge catalog awarded over all-time engagement metrics (`kb_user_badges`, `gamification:recompute`, default-OFF `KB_GAMIFICATION_ENABLED`, R43 both-states). Every capability is **tri-surface** (R44): command + HTTP + MCP (`KbEngagementSummaryTool` / `KbDigestPreviewTool` / `KbUserBadgesTool`, roster 25→28) over one shared core; 5 tenant-aware tables (R30/R31). Deep doc-site pages: [Engagement Suite](https://padosoft.mintlify.app/engagement-suite) · [Digests](https://padosoft.mintlify.app/digests) · [Dashboards](https://padosoft.mintlify.app/dashboards) · [Gamification](https://padosoft.mintlify.app/gamification). |
+| **v8.16.0** | ✅ shipped 2026-06-19 | **AI FinOps spend governance** (`padosoft/laravel-ai-finops` + `-admin`). A cross-provider AI-spend governance layer — immutable per-call usage **ledger**, N-scope **budgets**, declarative **policy DSL**, **chargeback**/cost-centers, **forecasting** + anomaly detection, cost-aware routing, price-watch and multi-channel **alerts** — attributed per tenant (R30) and host-secured under `api/admin/ai-finops` behind a **method-aware** gate (reads → `viewAiFinOps` super-admin+admin; writes → `manageAiFinOps` super-admin), R32-matrix-locked; package-served React cockpit at `/admin/ai-finops` (default-OFF → clean 404, R43). **W1** the `AiCallMeter` metering bridge. **W2** ([ADR 0015](docs/adr/0015-v816-provider-sdk-migration.md)) migrates provider transport onto the `laravel/ai` SDK so the finops lifecycle hook meters every provider natively (Anthropic + Gemini fully SDK; OpenAI + OpenRouter hybrid — raw `Http::` retained only for the MCP tool-calling turn the bridge still meters); OpenRouter's real billed `usage.cost` becomes capturable. **W3** real **server-side per-turn cost**: `ChatTurnCostResolver` resolves the finops pricing cascade at `ChatLogManager` time onto additive `chat_logs.{cost,cost_currency,trace_id}` (ledger join), replacing the old static client-side guess; surfaced additively in chat `meta` (R27) across stateless / conversation / streaming. **W4** the **R44 third surface**: three tenant-scoped, master-switch + table-aware (R43) MCP read tools (`FinOps{SpendSummary,TopModels,BudgetStatus}Tool`, roster 28→31) + a real-data Playwright E2E over the admin SPA + doc-site parity. RC sequence `v8.16.0-rc1`..`rc4`, then GA. |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1594,6 +1641,49 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.16.0 — AI FinOps spend-governance integration (GA, shipped 2026-06-19).** Installs
+`padosoft/laravel-ai-finops` (core) + `padosoft/laravel-ai-finops-admin` (React
+cockpit): cross-provider usage ledger, N-scope budgets, declarative policies,
+chargeback, forecasting/anomaly detection, cost-aware routing and alerts,
+attributed per tenant (R30) and host-secured under `api/admin/ai-finops` behind
+the admin stack + a **method-aware** gate (reads → `viewAiFinOps`
+super-admin+admin; writes → `manageAiFinOps` super-admin), locked by the R32
+authorization matrix; the SPA mounts at `/admin/ai-finops` (default OFF → clean
+404, R43). Tier-1 crons: `ai-finops:capture-prices` / `:check-alerts` / `:prune`.
+Across this cycle every AI provider moves onto the `laravel/ai` SDK so FinOps can
+meter chat, streaming and embeddings through native lifecycle events, and the
+static client-side cost table is replaced with authoritative server-side per-model
+cost (W3). **W1** (`v8.16.0-rc1`) lands the integration foundation: the
+`App\FinOps\AiCallMeter` bridge meters synchronous chat + embeddings for all
+providers (streaming not yet metered). **W2** (`v8.16.0-rc2`, ADR 0015) migrates
+all four `Http::`-based providers onto the native `laravel/ai` SDK drivers —
+Anthropic + Gemini fully SDK; OpenAI + OpenRouter hybrid (SDK no-tools chat +
+embeddings, raw `Http::` retained only for the MCP tool-calling turn the SDK
+can't host) — so the finops lifecycle hook meters every provider natively. The
+`AiCallMeter` bridge shrinks to the residual with-tools turn, and OpenRouter's
+real billed `usage.cost` becomes capturable (`AI_FINOPS_ACTUAL_COST`, default OFF).
+**W3** (`v8.16.0-rc3`) replaces "token cost set arbitrarily" with a real
+**server-side per-turn cost**: resolved server-side from the finops pricing cascade
+(`ChatTurnCostResolver`, called by the controllers for the response `meta` and by
+the chat-log driver when persisting), persisted on `chat_logs.cost` (decimal 18,8)
++ `cost_currency` (ISO-4217), and correlated to the turn's usage-ledger row(s)
+(a tool loop spans several) via a shared `trace_id`. Surfaced additively in the
+chat response `meta` (R27) and rendered by the FE `TokenCostMeter` in the configured
+base currency — replacing the old client-side compute from static rates — across the
+stateless, conversation and streaming chat endpoints. The resolver is metering-gated
+so it never adds a price-feed HTTP fetch to the response path.
+**W4** (`v8.16.0-rc4`) completes the third **R44** surface and ships the cycle to GA:
+three tenant-scoped (R30), OFF-path-safe (R43) MCP read tools on the `enterprise-kb`
+server — `FinOpsSpendSummaryTool` (window spend + per-(provider, model) breakdown),
+`FinOpsTopModelsTool` (costliest models with cost-share) and `FinOpsBudgetStatusTool`
+(per tenant-scoped budget limit/spend/state, delegating to the package `Budget::status()`
+core) — MCP roster **28→31**, each honouring both the `ai-finops.enabled` master switch
+and table presence so a disabled deployment reads nothing over MCP. Plus a real-data
+Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reaches the
+shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
+prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
+(ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor

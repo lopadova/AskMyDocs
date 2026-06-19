@@ -4,6 +4,9 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
+use App\Mcp\Tools\FinOpsBudgetStatusTool;
+use App\Mcp\Tools\FinOpsSpendSummaryTool;
+use App\Mcp\Tools\FinOpsTopModelsTool;
 use App\Mcp\Tools\KbApplySuggestionTool;
 use App\Mcp\Tools\KbDocumentBySlugTool;
 use App\Mcp\Tools\KbDetectDecisionDebtTool;
@@ -90,6 +93,11 @@ class KnowledgeBaseServer extends Server
         KbDigestPreviewTool::class,
         // v8.15/W5 — per-contributor gamification badges read surface.
         KbUserBadgesTool::class,
+        // v8.16/W4 — AI FinOps read surfaces (R44 third surface over the usage
+        // ledger + budgets; tenant-scoped R30).
+        FinOpsSpendSummaryTool::class,
+        FinOpsTopModelsTool::class,
+        FinOpsBudgetStatusTool::class,
     ];
 
     protected function boot(): void

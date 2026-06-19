@@ -30,5 +30,9 @@ final readonly class ChatLogEntry
         // sources / user_id / client_ip / user_agent and keeps only the
         // by-norm operational fields. Default false = full logging as before.
         public bool $anonymous = false,
+        // v8.16/W3 — the request-scoped finops trace id (set by the controller
+        // via TraceContext) so this chat-log row joins its usage-ledger row(s).
+        // Null when finops trace context is not active.
+        public ?string $traceId = null,
     ) {}
 }

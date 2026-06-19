@@ -6,73 +6,46 @@ use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\Concerns\FallbackStreaming;
-use Illuminate\Support\Facades\Http;
+use App\Ai\Providers\Concerns\SdkChat;
 
+/**
+ * Anthropic provider — adapts AskMyDocs's `AiProviderInterface` over the
+ * official `laravel/ai` SDK (native `anthropic` driver).
+ *
+ * v8.16/W2 migrated this off raw `Http::` onto the SDK so the
+ * `laravel-ai-finops` metering hook records every Anthropic chat turn via the
+ * `AgentPrompted` lifecycle event (no more `AiCallMeter` bridge for this
+ * provider). Anthropic exposes no tool path in AskMyDocs (`TOOL_CAPABLE_PROVIDERS`
+ * = openai/openrouter only) and no embeddings API, so the whole surface is the
+ * clean SDK chat path. Transport / retry / error-mapping now live in the SDK's
+ * Anthropic gateway; this class only maps the SDK `AgentResponse` onto the
+ * AskMyDocs `AiResponse` DTO. Config is read from `config('ai.providers.anthropic')`
+ * in the SDK shape (driver / key / url / models.text.default) — see config/ai.php.
+ */
 final class AnthropicProvider implements AiProviderInterface
 {
     use FallbackStreaming;
+    use SdkChat;
 
     public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
-        return $this->chatWithHistory($systemPrompt, [
+        return $this->chatViaSdk($systemPrompt, [
             ['role' => 'user', 'content' => $userMessage],
         ], $options);
     }
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        $apiMessages = [];
-
-        foreach ($messages as $msg) {
-            $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
-        }
-
-        $response = Http::withHeaders([
-                'x-api-key' => $this->config['api_key'],
-                'anthropic-version' => $this->config['api_version'] ?? '2023-06-01',
-                'Content-Type' => 'application/json',
-            ])
-            ->timeout($this->config['timeout'] ?? 120)
-            ->post('https://api.anthropic.com/v1/messages', [
-                'model' => $options['model'] ?? $this->config['chat_model'] ?? 'claude-sonnet-4-20250514',
-                'max_tokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
-                'system' => $systemPrompt,
-                'messages' => $apiMessages,
-                'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
-            ]);
-
-        $response->throw();
-        $data = $response->json();
-
-        $content = collect($data['content'] ?? [])
-            ->where('type', 'text')
-            ->pluck('text')
-            ->implode('');
-
-        $inputTokens = $data['usage']['input_tokens'] ?? 0;
-        $outputTokens = $data['usage']['output_tokens'] ?? 0;
-
-        return new AiResponse(
-            content: $content,
-            provider: $this->name(),
-            model: $data['model'] ?? $this->config['chat_model'],
-            promptTokens: $inputTokens ?: null,
-            completionTokens: $outputTokens ?: null,
-            totalTokens: ($inputTokens + $outputTokens) ?: null,
-            finishReason: $data['stop_reason'] ?? null,
-        );
+        return $this->chatViaSdk($systemPrompt, $messages, $options);
     }
 
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
     {
-        // Anthropic supports SSE streaming natively (`stream: true`),
-        // but we wire the fallback for now — token-by-token rendering
-        // is a follow-up enhancement. The fallback emits the full
-        // assistant response as a single text-delta + finish, which
-        // the Vercel SDK on the FE renders identically to a complete
-        // synchronous response.
+        // Anthropic supports SSE streaming natively, but we wire the fallback
+        // for now — native token-by-token streaming is a W3 enhancement that
+        // overrides this body without changing the public contract.
         return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 

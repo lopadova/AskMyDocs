@@ -20,22 +20,17 @@ final class ColumnPromptSuggesterTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // openai is on the SDK config shape since v8.16/W2 (no-tools chat → SDK
+        // `/responses`). Tests fake that shape via TestCase::openAiSdkResponsesBody.
         config()->set('ai.default', 'openai');
-        config()->set('ai.providers.openai.api_key', 'test-key');
-        config()->set('ai.providers.openai.chat_model', 'gpt-4o-mini');
+        config()->set('ai.providers.openai.key', 'test-key');
+        config()->set('ai.providers.openai.models.text.default', 'gpt-4o-mini');
     }
 
     public function test_suggest_returns_llm_prompt(): void
     {
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => 'Find the document title at the top of the page.'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('Find the document title at the top of the page.'), 200),
         ]);
 
         $suggester = app(ColumnPromptSuggester::class);
@@ -47,14 +42,7 @@ final class ColumnPromptSuggesterTest extends TestCase
     public function test_suggest_strips_wrapping_quotes(): void
     {
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => "\"Find the title.\""],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody("\"Find the title.\""), 200),
         ]);
 
         $out = app(ColumnPromptSuggester::class)->suggest('Title', FormatType::TEXT);
@@ -71,14 +59,7 @@ final class ColumnPromptSuggesterTest extends TestCase
     public function test_suggest_throws_when_llm_returns_empty(): void
     {
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => '   '],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('   '), 200),
         ]);
 
         $this->expectException(\RuntimeException::class);

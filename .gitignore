@@ -6,6 +6,7 @@
 /public/build/
 /public/widget/
 /public/hot
+/public/vendor/
 /tailwind.config.d.ts
 /vite.config.d.ts
 /vitest.config.d.ts

@@ -2,36 +2,58 @@
 
 namespace Tests\Unit\Ai;
 
+use App\Ai\AiResponse;
 use App\Ai\Providers\AnthropicProvider;
-use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
+/**
+ * AskMyDocs AnthropicProvider — thin adapter over the laravel/ai SDK
+ * (native `anthropic` driver), migrated off raw Http:: in v8.16/W2.
+ *
+ * Wire-level Anthropic behaviour (request shape, retry, error mapping) is
+ * owned by the SDK's Anthropic gateway. These tests pin the AskMyDocs adapter
+ * contract: the caller-facing `AiProviderInterface` keeps its shape and the SDK
+ * response maps onto `AiResponse` without dropping a field. The SDK calls the
+ * Anthropic API through Illuminate's HTTP client, so `Http::fake()` intercepts
+ * it exactly as for the legacy provider.
+ */
 class AnthropicProviderTest extends TestCase
 {
-    private function config(array $overrides = []): array
+    private function setupConfig(array $overrides = []): void
     {
-        return array_merge([
-            'api_key' => 'sk-ant-test',
+        config()->set('ai.providers.anthropic', array_merge([
+            'driver' => 'anthropic',
+            'name' => 'anthropic',
+            'key' => 'sk-ant-test',
+            'url' => 'https://api.anthropic.com/v1',
             'api_version' => '2023-06-01',
-            'chat_model' => 'claude-sonnet-4-20250514',
+            'timeout' => 30,
             'temperature' => 0.2,
             'max_tokens' => 2048,
-            'timeout' => 30,
-        ], $overrides);
+            'models' => [
+                'text' => ['default' => 'claude-sonnet-4-20250514'],
+            ],
+        ], $overrides));
     }
 
     public function test_name_and_no_embedding_support(): void
     {
-        $p = new AnthropicProvider($this->config());
+        $this->setupConfig();
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
+
         $this->assertSame('anthropic', $p->name());
         $this->assertFalse($p->supportsEmbeddings());
     }
 
-    public function test_chat_sends_messages_without_system_in_messages_array(): void
+    public function test_chat_returns_ai_response_with_text_and_metadata(): void
     {
+        $this->setupConfig();
         Http::fake([
             'api.anthropic.com/*' => Http::response([
+                'id' => 'msg_1',
+                'type' => 'message',
+                'role' => 'assistant',
                 'model' => 'claude-sonnet-4-20250514',
                 'content' => [
                     ['type' => 'text', 'text' => 'Hello'],
@@ -42,31 +64,22 @@ class AnthropicProviderTest extends TestCase
             ], 200),
         ]);
 
-        $p = new AnthropicProvider($this->config());
-        $res = $p->chat('SYS', 'Hi');
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
+        $res = $p->chat('You are helpful.', 'Hi');
 
+        $this->assertInstanceOf(AiResponse::class, $res);
         $this->assertSame('Hello world.', $res->content);
         $this->assertSame('anthropic', $res->provider);
         $this->assertSame('claude-sonnet-4-20250514', $res->model);
         $this->assertSame(20, $res->promptTokens);
         $this->assertSame(8, $res->completionTokens);
         $this->assertSame(28, $res->totalTokens);
-        $this->assertSame('end_turn', $res->finishReason);
-
-        Http::assertSent(function (Request $req) {
-            $body = $req->data();
-            return $req->url() === 'https://api.anthropic.com/v1/messages'
-                && $req->hasHeader('x-api-key', 'sk-ant-test')
-                && $req->hasHeader('anthropic-version', '2023-06-01')
-                && $body['system'] === 'SYS'
-                && count($body['messages']) === 1
-                && $body['messages'][0]['role'] === 'user';
-        });
     }
 
     public function test_generate_embeddings_throws(): void
     {
-        $p = new AnthropicProvider($this->config());
+        $this->setupConfig();
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessageMatches('/does not provide an embeddings API/i');
@@ -74,44 +87,134 @@ class AnthropicProviderTest extends TestCase
         $p->generateEmbeddings(['any']);
     }
 
-    public function test_ignores_non_text_content_blocks(): void
+    public function test_chat_with_history_maps_multi_turn_response(): void
     {
+        $this->setupConfig();
         Http::fake([
-            '*' => Http::response([
+            'api.anthropic.com/*' => Http::response([
                 'model' => 'claude-sonnet-4-20250514',
-                'content' => [
-                    ['type' => 'tool_use', 'id' => 'x'],
-                    ['type' => 'text', 'text' => 'only this'],
-                ],
-                'usage' => ['input_tokens' => 1, 'output_tokens' => 1],
+                'content' => [['type' => 'text', 'text' => 'ok']],
+                'usage' => ['input_tokens' => 5, 'output_tokens' => 2],
+                'stop_reason' => 'end_turn',
             ], 200),
         ]);
 
-        $p = new AnthropicProvider($this->config());
-        $res = $p->chat('s', 'u');
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
+        $res = $p->chatWithHistory('sys', [
+            ['role' => 'user', 'content' => 'q1'],
+            ['role' => 'assistant', 'content' => 'a1'],
+            ['role' => 'user', 'content' => 'q2'],
+        ]);
 
-        $this->assertSame('only this', $res->content);
+        $this->assertSame('ok', $res->content);
+        $this->assertSame(5, $res->promptTokens);
+        $this->assertSame(2, $res->completionTokens);
+    }
+
+    public function test_chat_with_history_rejects_empty_message_list(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', []);
+    }
+
+    public function test_chat_with_history_rejects_non_user_last_message(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('chatWithHistory requires the last message to have role="user"; got role="assistant".');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'Hi.'],
+            ['role' => 'assistant', 'content' => 'Hello.'],
+        ]);
+    }
+
+    public function test_chat_with_history_allows_empty_assistant_content(): void
+    {
+        // A provider can return an empty assistant turn (the empty-content edge
+        // case); AskMyDocs persists it and replays it in a later turn's history.
+        // The SDK history mapping must accept an empty ASSISTANT message (only the
+        // final user prompt must be non-empty), not throw. Copilot R3 regression.
+        $this->setupConfig();
+        Http::fake([
+            'api.anthropic.com/*' => Http::response([
+                'model' => 'claude-sonnet-4-20250514',
+                'content' => [['type' => 'text', 'text' => 'recovered']],
+                'usage' => ['input_tokens' => 6, 'output_tokens' => 3],
+                'stop_reason' => 'end_turn',
+            ], 200),
+        ]);
+
+        $res = (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => 'first'],
+            ['role' => 'assistant', 'content' => ''], // empty assistant turn — must not throw
+            ['role' => 'user', 'content' => 'follow up'],
+        ]);
+
+        $this->assertSame('recovered', $res->content);
+    }
+
+    public function test_chat_with_history_rejects_empty_user_content_in_history(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('role="user" requires a non-empty string "content"');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'user', 'content' => ''], // empty USER in history — still a bug
+            ['role' => 'user', 'content' => 'real question'],
+        ]);
+    }
+
+    public function test_chat_with_history_rejects_unsupported_role(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Unsupported message role');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chatWithHistory('s', [
+            ['role' => 'system', 'content' => 'nope'],
+            ['role' => 'user', 'content' => 'Hi'],
+        ]);
+    }
+
+    public function test_chat_rejects_non_numeric_max_tokens(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_tokens must be numeric');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chat('s', 'u', ['max_tokens' => 'abc']);
+    }
+
+    public function test_chat_rejects_non_numeric_temperature(): void
+    {
+        $this->setupConfig();
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('temperature must be numeric');
+
+        (new AnthropicProvider(config('ai.providers.anthropic')))->chat('s', 'u', ['temperature' => 'hot']);
     }
 
     public function test_chat_stream_via_fallback_emits_text_envelope_then_finish(): void
     {
-        // The fallback streaming path delegates to chatWithHistory and
-        // re-emits the response as one SDK v6 text envelope (text-start,
-        // text-delta, text-end) followed by one finish chunk. Native
-        // HTTP-SSE streaming is a follow-up enhancement that overrides
-        // chatStream() per-provider without breaking this contract.
+        // chatStream() delegates to FallbackStreaming::streamFromChat() → the new
+        // SDK chatViaSdk() path → re-emits the response as one SDK v6 text
+        // envelope (text-start, text-delta, text-end) + one finish chunk. This
+        // pins that the SDK migration did NOT break the streaming envelope shape.
+        $this->setupConfig();
         Http::fake([
             'api.anthropic.com/*' => Http::response([
                 'model' => 'claude-sonnet-4-20250514',
-                'content' => [
-                    ['type' => 'text', 'text' => 'Streamed reply'],
-                ],
+                'content' => [['type' => 'text', 'text' => 'Streamed reply']],
                 'usage' => ['input_tokens' => 12, 'output_tokens' => 7],
                 'stop_reason' => 'end_turn',
             ], 200),
         ]);
 
-        $p = new AnthropicProvider($this->config());
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
         $chunks = iterator_to_array($p->chatStream('SYS', [
             ['role' => 'user', 'content' => 'Hi'],
         ]), preserve_keys: false);
@@ -122,8 +225,8 @@ class AnthropicProviderTest extends TestCase
         $this->assertSame('text-end', $chunks[2]->type);
         $this->assertSame('finish', $chunks[3]->type);
 
-        // Text envelope MUST share one id end-to-end so SDK v6 can
-        // stitch the deltas back into a single rendered text part.
+        // Text envelope MUST share one id end-to-end so SDK v6 stitches the
+        // deltas into one rendered text part.
         $textId = $chunks[0]->payload['id'];
         $this->assertSame($textId, $chunks[1]->payload['id']);
         $this->assertSame($textId, $chunks[2]->payload['id']);
@@ -131,38 +234,36 @@ class AnthropicProviderTest extends TestCase
         // SDK v6 shape: text-delta carries `delta` (NOT `textDelta`).
         $this->assertSame('Streamed reply', $chunks[1]->payload['delta']);
 
-        // Anthropic's `end_turn` normalizes to SDK union `'stop'` —
-        // see StreamChunk::normalizeFinishReason().
+        // Anthropic `end_turn` normalizes to the SDK union `'stop'`.
         $this->assertSame('stop', $chunks[3]->payload['finishReason']);
-        // v8.4 — `usage` stays on the chunk PAYLOAD (the controller reads it
-        // for token telemetry); StreamChunk::toSseFrame() strips it from the
-        // WIRE so the SDK accepts the finish chunk. See StreamChunk::finish().
         $this->assertSame(12, $chunks[3]->payload['usage']['promptTokens']);
         $this->assertSame(7, $chunks[3]->payload['usage']['completionTokens']);
     }
 
-    public function test_chat_stream_skips_text_envelope_on_empty_response(): void
+    public function test_chat_stream_with_empty_content_emits_only_finish_chunk(): void
     {
-        // Edge case: provider returns empty content (rare but possible
-        // with strict tool-only responses). The fallback skips the
-        // entire text envelope (text-start / text-delta / text-end) in
-        // that case so the FE doesn't render an empty assistant
-        // bubble; only the finish event fires.
+        // Edge case (regression guard re-added after the SDK migration, Copilot R2):
+        // FallbackStreaming::streamFromChat() skips the whole text envelope when the
+        // provider returns empty content (`if ($response->content !== '')`), so an
+        // empty Anthropic response must yield ONLY a single `finish` chunk — never an
+        // empty `text-start`/`text-delta`/`text-end` that renders as a blank bubble.
+        $this->setupConfig();
         Http::fake([
             'api.anthropic.com/*' => Http::response([
                 'model' => 'claude-sonnet-4-20250514',
-                'content' => [],
-                'usage' => ['input_tokens' => 1, 'output_tokens' => 0],
+                'content' => [], // no text blocks → SDK text === ''
+                'usage' => ['input_tokens' => 4, 'output_tokens' => 0],
                 'stop_reason' => 'end_turn',
             ], 200),
         ]);
 
-        $p = new AnthropicProvider($this->config());
+        $p = new AnthropicProvider(config('ai.providers.anthropic'));
         $chunks = iterator_to_array($p->chatStream('SYS', [
             ['role' => 'user', 'content' => 'Hi'],
         ]), preserve_keys: false);
 
-        $this->assertCount(1, $chunks, 'no text envelope when response content is empty');
+        $this->assertCount(1, $chunks, 'empty content yields only the finish chunk (no text envelope)');
         $this->assertSame('finish', $chunks[0]->type);
+        $this->assertSame('stop', $chunks[0]->payload['finishReason']);
     }
 }

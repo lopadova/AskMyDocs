@@ -6,100 +6,51 @@ use App\Ai\AiProviderInterface;
 use App\Ai\AiResponse;
 use App\Ai\EmbeddingsResponse;
 use App\Ai\Providers\Concerns\FallbackStreaming;
-use Illuminate\Support\Facades\Http;
+use App\Ai\Providers\Concerns\SdkChat;
 
+/**
+ * Gemini provider — adapts AskMyDocs's `AiProviderInterface` over the official
+ * `laravel/ai` SDK (native `gemini` driver).
+ *
+ * v8.16/W2 migrated this off raw `Http::` onto the SDK. The Gemini-specific
+ * wire details — the `assistant`→`model` role remap, the `x-goog-api-key`
+ * HEADER auth (R-logging-security: never a URL query string), the
+ * `system_instruction` / `generationConfig.maxOutputTokens` shape, and the
+ * `batchEmbedContents` (768-dim text-embedding-004) embeddings call — now live
+ * in the SDK's Gemini gateway. This class only maps the SDK responses onto the
+ * AskMyDocs DTOs. Gemini has no tool path in AskMyDocs, so the whole surface is
+ * the clean SDK path, metered by the finops AgentPrompted / EmbeddingsGenerated
+ * hooks (no `AiCallMeter` bridge). Config is read from
+ * `config('ai.providers.gemini')` in the SDK shape — see config/ai.php.
+ */
 final class GeminiProvider implements AiProviderInterface
 {
     use FallbackStreaming;
+    use SdkChat;
 
-    private string $baseUrl;
-
-    public function __construct(private readonly array $config)
-    {
-        $this->baseUrl = rtrim($config['base_url'] ?? 'https://generativelanguage.googleapis.com/v1beta', '/');
-    }
+    public function __construct(private readonly array $config) {}
 
     public function chat(string $systemPrompt, string $userMessage, array $options = []): AiResponse
     {
-        return $this->chatWithHistory($systemPrompt, [
+        return $this->chatViaSdk($systemPrompt, [
             ['role' => 'user', 'content' => $userMessage],
         ], $options);
     }
 
     public function chatWithHistory(string $systemPrompt, array $messages, array $options = []): AiResponse
     {
-        $model = $options['model'] ?? $this->config['chat_model'] ?? 'gemini-2.0-flash';
-
-        // Gemini uses "model" instead of "assistant" for the role
-        $contents = [];
-        foreach ($messages as $msg) {
-            $contents[] = [
-                'role' => $msg['role'] === 'assistant' ? 'model' : 'user',
-                'parts' => [['text' => $msg['content']]],
-            ];
-        }
-
-        // R-logging-security — the API key travels in the x-goog-api-key
-        // header, NOT the URL query string. Query-string secrets leak into
-        // access logs, proxy logs, Referer headers and APM traces.
-        $response = Http::timeout($this->config['timeout'] ?? 120)
-            ->withHeaders(['x-goog-api-key' => $this->config['api_key']])
-            ->post("{$this->baseUrl}/models/{$model}:generateContent", [
-                'system_instruction' => [
-                    'parts' => [['text' => $systemPrompt]],
-                ],
-                'contents' => $contents,
-                'generationConfig' => [
-                    'temperature' => $options['temperature'] ?? $this->config['temperature'] ?? 0.2,
-                    'maxOutputTokens' => $options['max_tokens'] ?? $this->config['max_tokens'] ?? 4096,
-                ],
-            ]);
-
-        $response->throw();
-        $data = $response->json();
-
-        return new AiResponse(
-            content: data_get($data, 'candidates.0.content.parts.0.text', ''),
-            provider: $this->name(),
-            model: $model,
-            promptTokens: data_get($data, 'usageMetadata.promptTokenCount'),
-            completionTokens: data_get($data, 'usageMetadata.candidatesTokenCount'),
-            totalTokens: data_get($data, 'usageMetadata.totalTokenCount'),
-            finishReason: data_get($data, 'candidates.0.finishReason'),
-        );
+        return $this->chatViaSdk($systemPrompt, $messages, $options);
     }
 
     public function generateEmbeddings(array $texts): EmbeddingsResponse
     {
-        $model = $this->config['embeddings_model'] ?? 'text-embedding-004';
-
-        $requests = array_map(fn (string $text) => [
-            'model' => "models/{$model}",
-            'content' => ['parts' => [['text' => $text]]],
-        ], $texts);
-
-        $response = Http::timeout($this->config['timeout'] ?? 120)
-            ->withHeaders(['x-goog-api-key' => $this->config['api_key']])
-            ->post("{$this->baseUrl}/models/{$model}:batchEmbedContents", [
-                'requests' => $requests,
-            ]);
-
-        $response->throw();
-        $data = $response->json();
-
-        return new EmbeddingsResponse(
-            embeddings: collect($data['embeddings'] ?? [])->pluck('values')->all(),
-            provider: $this->name(),
-            model: $model,
-        );
+        return $this->embeddingsViaSdk($texts);
     }
 
     public function chatStream(string $systemPrompt, array $messages, array $options = []): \Generator
     {
-        // Gemini supports streaming via the `streamGenerateContent`
-        // endpoint with SSE. Wired to the fallback for now — W3.1
-        // ships the foundation; provider-native streaming overrides
-        // can land per-provider without changing the public contract.
+        // Gemini supports SSE streaming natively; the fallback is wired for now
+        // and a W3 enhancement overrides this body without changing the contract.
         return $this->streamFromChat($systemPrompt, $messages, $options);
     }
 

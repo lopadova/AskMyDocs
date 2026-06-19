@@ -122,6 +122,12 @@ export interface MessageMetadata {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    // v8.16/W3 — authoritative SERVER-resolved cost of the turn (finops pricing
+    // cascade), as a fixed-precision decimal string + ISO currency. Null when
+    // finops metering is off. The FE renders these directly instead of computing
+    // a cost client-side from static rates.
+    cost?: string | null;
+    cost_currency?: string | null;
     chunks_count?: number;
     latency_ms?: number;
     citations?: MessageCitation[];
