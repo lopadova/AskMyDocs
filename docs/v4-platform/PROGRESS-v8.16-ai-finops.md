@@ -129,7 +129,11 @@ Authoritative plan: `PLAN-v8.16-ai-finops.md`. This file = current state for res
         cross-cancels Playwright on the same SHA; re-run the surviving run's failed jobs uncontested to
         get a SUCCESS conclusion (R38-adjacent CI-config quirk, not a code failure).
   - [x] tag v8.16.0-rc2 at the W2 closure SHA (fbc2d594) on feature/v8.16 (R39)
-- **W3 Streaming + server-side cost authority** — 🟡 IN PROGRESS (branch `feature/v8.16-W3-cost-authority`)
+- **W3 Streaming + server-side cost authority** — ✅ FUNCTIONALLY CLOSED (W3.1 #318 + W3.2 #319 +
+  W3.3.A #320 + W3.3.B #321 all merged into feature/v8.16 @ **33d253a8**). Tag **v8.16.0-rc3** at that
+  SHA. W3.3.C (a Playwright E2E asserting a SERVER cost in the meter) is an optional follow-up — the
+  server-cost FE logic is fully Vitest-covered + the existing meter E2E passes; deferred so rc3 ships
+  the complete cost-authority milestone.
   - **Blueprint (Explore agent):** `ChatLogManager::log(ChatLogEntry)` → `DatabaseChatLogDriver::store()`.
     FinOps cost = `Padosoft\LaravelAiFinOps\Pricing\Cost\CostResolutionService::resolve(AiCallEnvelope,
     TokenUsage, $promptText, $completionText): Resolution` → `$resolution->cost->{total,currency}` +
