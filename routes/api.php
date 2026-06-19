@@ -67,6 +67,12 @@ Route::middleware('web')->prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])
         ->name('api.auth.login');
 
+    // Bearer-token issuance for non-browser clients (Tauri desktop demo).
+    // Guest-accessible like /login; throttling lives in AuthController@token
+    // for the same failure-only-counter reason documented above.
+    Route::post('/token', [AuthController::class, 'token'])
+        ->name('api.auth.token');
+
     Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
         ->middleware('throttle:forgot')
         ->name('api.auth.forgot');
