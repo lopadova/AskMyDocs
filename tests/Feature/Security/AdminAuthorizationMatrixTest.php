@@ -207,6 +207,48 @@ final class AdminAuthorizationMatrixTest extends TestCase
         // method's job is the admin-vs-super-admin WRITE boundary specifically.)
     }
 
+    /**
+     * v8.17 — the credential-connector `configure` endpoint is POST-only (a GET
+     * would 405, so it can't ride the GET matrix above). It sits in the same
+     * `admin/connectors` group gated by `can:manageConnectors` (super-admin only),
+     * so assert the write boundary explicitly: admin denied, super-admin passes.
+     * (Guest → 401 is already covered for the whole `admin/connectors` group by
+     * test_guests_are_rejected_with_401 on the GET `/api/admin/connectors` entry,
+     * which shares this route's identical middleware stack.)
+     */
+    public function test_configure_connector_requires_the_manage_connectors_gate(): void
+    {
+        $writeUri = '/api/admin/connectors/imap/configure';
+
+        // admin is NOT in the manageConnectors allow-set → 403.
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
+        );
+
+        // super-admin passes the gate; the controller/FormRequest may 422 on the
+        // empty body — not an authz failure — but it must NOT be 403.
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $superStatus,
+            "Role [super-admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
+        );
+        // Also guard route wiring: a 404 would make "not 403" pass even if the
+        // endpoint were unmounted. An empty body for a super-admin yields 422.
+        $this->assertNotSame(
+            404,
+            $superStatus,
+            "[{$writeUri}] must be MOUNTED (super-admin got 404 — route missing?).",
+        );
+    }
+
     private function userWithRole(string $role): User
     {
         $user = User::create([
