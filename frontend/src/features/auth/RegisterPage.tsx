@@ -45,6 +45,13 @@ function extractAxiosErrors(err: unknown): { fieldErrors?: FieldErrors; message?
     return { message: data?.message ?? 'Registration failed. Please try again.' };
 }
 
+// Prefill the invite code from an invite link (e.g. /register?code=SPRING24)
+// so the recipient doesn't retype it; falls back to empty for manual entry.
+function initialInviteCode(): string {
+    if (typeof window === 'undefined') return '';
+    return new URLSearchParams(window.location.search).get('code') ?? '';
+}
+
 export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps = {}) {
     const setMe = useAuthStore((s) => s.setMe);
     const [fieldErrors, setFieldErrors] = useState<FieldErrors | undefined>();
@@ -57,7 +64,7 @@ export function RegisterPage({ onSuccess, onNavigateLogin }: RegisterPageProps =
         formState: { errors },
     } = useForm<FormValues>({
         resolver: zodResolver(schema),
-        defaultValues: { name: '', email: '', password: '', password_confirmation: '', code: '' },
+        defaultValues: { name: '', email: '', password: '', password_confirmation: '', code: initialInviteCode() },
     });
 
     const onSubmit = handleSubmit(async (values) => {
