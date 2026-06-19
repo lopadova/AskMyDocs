@@ -118,7 +118,7 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
 
         // 3.5) R15 — the citation popover is keyboard-reachable, not hover-only.
         //    Focusing the chip opens it; Escape dismisses it. Exercised before
-        //    the navigating click below so it doesn't interfere with step 4.
+        //    the modal-opening click below so it doesn't interfere with step 4.
         await page.getByTestId('chat-citation-0').focus();
         const citationPopover = page.getByTestId('chat-citations-popover');
         await expect(citationPopover).toBeVisible({ timeout: 5_000 });
@@ -126,10 +126,21 @@ test.describe('Chat live actions — feedback, auto-title, rename, citation nav'
         await page.keyboard.press('Escape');
         await expect(citationPopover).toBeHidden();
 
-        // 4) Citation click → navigate to the KB document detail. (admin role
-        //    is authorized for /app/admin/kb.)
+        // 4) Citation click → opens the cited document in a modal (the new
+        //    behaviour: clicking a chip no longer navigates away — see
+        //    ChatView.handleOpenSource). As admin, the modal exposes the
+        //    "Open in Knowledge Base" affordance, which deep-links to the KB
+        //    document page under the active team. Driving that secondary action
+        //    keeps the original "a citation reaches the KB" coverage while
+        //    matching the modal-first flow — and does not depend on the preview
+        //    fetch, which is exercised end-to-end in chat-citation-modal.spec.ts.
         await expect(page.getByTestId('chat-citation-0')).toHaveAttribute('data-openable', 'true');
         await page.getByTestId('chat-citation-0').click();
+        const sourceModal = page.getByTestId('chat-citation-modal');
+        await expect(sourceModal).toBeVisible();
+        const openInKb = page.getByTestId('chat-citation-modal-open-kb');
+        await expect(openInKb).toBeVisible();
+        await openInKb.click();
         await expect(page).toHaveURL(/\/admin\/kb\?.*doc=\d+/, { timeout: 15_000 });
         await expect(page.getByTestId('kb-detail')).toBeVisible({ timeout: 15_000 });
     });
