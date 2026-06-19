@@ -55,6 +55,7 @@ class MessageController extends Controller
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
+        ChatTurnCostResolver $costResolver,
     ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
@@ -152,7 +153,7 @@ class MessageController extends Controller
 
         // Real per-turn cost server-side (cache-warm from the metering hook that
         // ran inside the trace context). Null when finops metering is off (R27).
-        $cost = app(ChatTurnCostResolver::class)->resolve(
+        $cost = $costResolver->resolve(
             provider: $aiResponse->provider,
             model: $aiResponse->model,
             promptTokens: $aiResponse->promptTokens,

@@ -42,6 +42,7 @@ class KbChatController extends Controller
         CounterfactualService $counterfactual,
         TenantContext $tenants,
         RedactorEngine $redactor,
+        ChatTurnCostResolver $costResolver,
     ): JsonResponse {
         $question = (string) $request->input('question');
 
@@ -175,7 +176,7 @@ class KbChatController extends Controller
         // v8.16/W3 — resolve the real per-turn cost server-side (cache-warm via the
         // metering hook that just ran inside the trace context above). Null when
         // finops metering is off — the meta keys still ship as null (R27).
-        $cost = app(ChatTurnCostResolver::class)->resolve(
+        $cost = $costResolver->resolve(
             provider: $aiResponse->provider,
             model: $aiResponse->model,
             promptTokens: $aiResponse->promptTokens,
