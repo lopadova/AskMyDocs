@@ -319,7 +319,11 @@ abstract class TestCase extends OrchestraTestCase
         // that merge here so tests see the same provider config production does.
         $imapConfigPath = __DIR__.'/../vendor/padosoft/askmydocs-connector-imap/config/imap.php';
         if (is_file($imapConfigPath)) {
-            $connectorConfig['providers']['imap'] = array_replace_recursive(
+            // Mirror Laravel's mergeConfigFrom semantics exactly: a SHALLOW
+            // array_merge(package, host) where the host's top-level keys win. The
+            // host ships no providers.imap block, so this resolves to the package
+            // config — same as production.
+            $connectorConfig['providers']['imap'] = array_merge(
                 (array) require $imapConfigPath,
                 (array) ($connectorConfig['providers']['imap'] ?? []),
             );
