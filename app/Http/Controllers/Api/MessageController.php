@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\FinOps\ChatTraceContext;
+use App\FinOps\ChatTurnCostResolver;
 use App\Mcp\Client\McpToolCallingService;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -53,6 +55,7 @@ class MessageController extends Controller
         ChatLogManager $chatLog,
         FewShotService $fewShot,
         ConfidenceCalculator $confidence,
+        ChatTurnCostResolver $costResolver,
     ): JsonResponse {
         if ($conversation->user_id !== $request->user()->id) {
             abort(403);
@@ -131,7 +134,10 @@ class MessageController extends Controller
         ))->render();
 
         // 6. Send full history to AI provider
-        $aiResponse = $toolCallingService->chatWithTools(
+        // v8.16/W3 — one trace id per turn covering the whole MCP tool loop, so
+        // every metered call in the loop + this turn's chat_logs row share it.
+        $traceId = ChatTraceContext::newTraceId();
+        $aiResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $toolCallingService->chatWithTools(
             systemPrompt: $systemPrompt,
             messages: $history,
             options: [],
@@ -140,7 +146,7 @@ class MessageController extends Controller
                 'conversation_id' => $conversation->id,
                 'message_id' => $userMessage->id,
             ],
-        );
+        ));
         $toolCalls = $this->summarizeToolCallsForMetadata($aiResponse->toolCalls);
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -162,8 +168,23 @@ class MessageController extends Controller
                 chunks: $chunks,
                 aiResponse: $aiResponse,
                 latencyMs: $latencyMs,
+                traceId: $traceId,
             );
         }
+
+        // Real per-turn cost server-side, resolved only on the grounded path (after
+        // the sentinel early-return, mirroring KbChatController — sentinel refusals
+        // keep meta.cost null and let the chat-log driver persist the real cost).
+        // Cache-warm from the metering hook that ran inside the trace context above.
+        $cost = $costResolver->resolve(
+            provider: $aiResponse->provider,
+            model: $aiResponse->model,
+            promptTokens: $aiResponse->promptTokens,
+            completionTokens: $aiResponse->completionTokens,
+            promptText: $question,
+            completionText: $aiResponse->content,
+            traceId: $traceId,
+        );
 
         // 7. Build citations (shared origin-aware builder).
         $citations = $retrieval->buildCitations($result);
@@ -195,6 +216,10 @@ class MessageController extends Controller
                 'prompt_tokens' => $aiResponse->promptTokens,
                 'completion_tokens' => $aiResponse->completionTokens,
                 'total_tokens' => $aiResponse->totalTokens,
+                // v8.16/W3 — server-resolved per-turn cost (R27 additive; null when
+                // finops metering is off). FE reads these instead of computing.
+                'cost' => $cost?->cost,
+                'cost_currency' => $cost?->currency,
                 'chunks_count' => $chunks->count(),
                 'latency_ms' => $latencyMs,
                 'citations' => $citations,
@@ -234,6 +259,7 @@ class MessageController extends Controller
                 'tool_calls_count' => count($toolCalls),
                 'tool_calls' => $toolCalls,
             ],
+            traceId: $traceId,
         ));
 
         return response()->json([
@@ -282,6 +308,10 @@ class MessageController extends Controller
             'metadata' => [
                 'provider' => 'none',
                 'model' => 'none',
+                // v8.16/W3 — R27 shape uniformity (null: a pre-LLM refusal makes no
+                // priced call).
+                'cost' => null,
+                'cost_currency' => null,
                 'chunks_count' => 0,
                 'latency_ms' => $latencyMs,
                 'citations' => [],
@@ -391,6 +421,7 @@ class MessageController extends Controller
         Collection $chunks,
         AiResponse $aiResponse,
         int $latencyMs,
+        ?string $traceId = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
         $answer = $this->localizedRefusalMessage($reason);
@@ -406,6 +437,10 @@ class MessageController extends Controller
                 'prompt_tokens' => $aiResponse->promptTokens,
                 'completion_tokens' => $aiResponse->completionTokens,
                 'total_tokens' => $aiResponse->totalTokens,
+                // v8.16/W3 — R27 shape uniformity (null on refusal; the turn's real
+                // cost is persisted on the chat_logs row by the driver).
+                'cost' => null,
+                'cost_currency' => null,
                 'chunks_count' => $chunks->count(),
                 'latency_ms' => $latencyMs,
                 'citations' => [],
@@ -440,6 +475,7 @@ class MessageController extends Controller
                 'tool_calls' => [],
                 'confidence' => 0,
             ],
+            traceId: $traceId,
         ));
 
         // v8.8/W4 — record the content gap (LLM self-refusal). Side-channel.
