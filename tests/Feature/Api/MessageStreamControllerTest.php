@@ -207,6 +207,11 @@ final class MessageStreamControllerTest extends TestCase
         $this->assertSame('The remote work stipend applies after 90 days.', $assistant->content);
         $this->assertNull($assistant->refusal_reason);
         $this->assertTrue((bool) ($assistant->metadata['streamed'] ?? false));
+        // v8.16/W3 — server-cost keys present on the streamed message metadata too
+        // (R27 additive; null since finops metering is off in tests).
+        $this->assertArrayHasKey('cost', $assistant->metadata);
+        $this->assertArrayHasKey('cost_currency', $assistant->metadata);
+        $this->assertNull($assistant->metadata['cost']);
     }
 
     public function test_2_refusal_emits_data_refusal_instead_of_text_envelope(): void
