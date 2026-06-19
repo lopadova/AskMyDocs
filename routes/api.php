@@ -68,6 +68,12 @@ Route::middleware('web')->prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])
         ->name('api.auth.login');
 
+    // Bearer-token issuance for non-browser clients (Tauri desktop demo).
+    // Guest-accessible like /login; throttling lives in AuthController@token
+    // for the same failure-only-counter reason documented above.
+    Route::post('/token', [AuthController::class, 'token'])
+        ->name('api.auth.token');
+
     // Public self-registration, invite-gated (RegisterController enforces the
     // invitation_required gate). Per-IP throttle to blunt automated signup
     // abuse; the heavy invite anti-abuse gate runs inside the redemption.

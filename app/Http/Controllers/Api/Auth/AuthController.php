@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\TokenRequest;
+use App\Models\User;
 use App\Services\Auth\UserTeamsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * JSON-native login / logout / me endpoints for the React SPA. Paired with
@@ -56,8 +60,63 @@ class AuthController extends Controller
         ], 200);
     }
 
+    /**
+     * Issue a Sanctum personal access token for a non-browser client (the
+     * Tauri desktop demo). Verifies the credentials WITHOUT opening a session,
+     * then returns the plaintext token. The client stores it and authenticates
+     * every subsequent call with `Authorization: Bearer <token>`.
+     *
+     * Mirrors login's failure-only throttle (hit on bad credentials, clear on
+     * success) on a separate bucket so the two flows don't interfere.
+     */
+    public function token(TokenRequest $request): JsonResponse
+    {
+        $key = $request->throttleKey();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $seconds = RateLimiter::availableIn($key);
+
+            throw ValidationException::withMessages([
+                'email' => [__('auth.throttle', ['seconds' => $seconds])],
+            ])->status(429);
+        }
+
+        $user = User::where('email', (string) $request->validated('email'))->first();
+
+        if ($user === null || ! Hash::check((string) $request->validated('password'), $user->password)) {
+            RateLimiter::hit($key);
+
+            throw ValidationException::withMessages([
+                'email' => [__('auth.failed')],
+            ]);
+        }
+
+        RateLimiter::clear($key);
+
+        $token = $user->createToken($request->deviceName())->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ], 201);
+    }
+
     public function logout(Request $request): JsonResponse
     {
+        // Revoke the personal access token when the caller authenticated with
+        // a Bearer token (desktop client). currentAccessToken() returns a
+        // TransientToken for session-based callers — only real persisted
+        // tokens carry a delete().
+        $accessToken = $request->user()?->currentAccessToken();
+        if ($accessToken instanceof PersonalAccessToken) {
+            $accessToken->delete();
+        }
+
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
