@@ -151,18 +151,6 @@ class MessageController extends Controller
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
-        // Real per-turn cost server-side (cache-warm from the metering hook that
-        // ran inside the trace context). Null when finops metering is off (R27).
-        $cost = $costResolver->resolve(
-            provider: $aiResponse->provider,
-            model: $aiResponse->model,
-            promptTokens: $aiResponse->promptTokens,
-            completionTokens: $aiResponse->completionTokens,
-            promptText: $question,
-            completionText: $aiResponse->content,
-            traceId: $traceId,
-        );
-
         // 6b. T3.4 — sentinel detection. Mirrors KbChatController behaviour.
         // The LLM emits `__NO_GROUNDED_ANSWER__` when it can't ground the
         // answer in the provided context (prompt instruction in
@@ -183,6 +171,20 @@ class MessageController extends Controller
                 traceId: $traceId,
             );
         }
+
+        // Real per-turn cost server-side, resolved only on the grounded path (after
+        // the sentinel early-return, mirroring KbChatController — sentinel refusals
+        // keep meta.cost null and let the chat-log driver persist the real cost).
+        // Cache-warm from the metering hook that ran inside the trace context above.
+        $cost = $costResolver->resolve(
+            provider: $aiResponse->provider,
+            model: $aiResponse->model,
+            promptTokens: $aiResponse->promptTokens,
+            completionTokens: $aiResponse->completionTokens,
+            promptText: $question,
+            completionText: $aiResponse->content,
+            traceId: $traceId,
+        );
 
         // 7. Build citations (shared origin-aware builder).
         $citations = $retrieval->buildCitations($result);
