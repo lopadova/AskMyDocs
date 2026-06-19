@@ -150,6 +150,22 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertSame('basic', $installation->config_json['auth_mode']);
     }
 
+    public function test_explicit_null_auth_mode_is_treated_as_omitted_and_still_requires_basic_fields(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+
+        // A JSON client sends auth_mode: null explicitly. It must be treated like
+        // "omitted" → the 'basic' default is merged → host/password are required.
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/configure', [
+                'auth_mode' => null,
+                'username' => 'alice@example.com',
+                'password' => 's3cr3t-app-pw',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['host']);
+    }
+
     public function test_xoauth2_configure_returns_provider_redirect_and_stays_pending(): void
     {
         config([

@@ -135,7 +135,11 @@ final class ConfigureConnectorService
 
             $value = $hasValue ? $validated[$fieldName] : $field['default'];
 
-            if ($target === 'secret') {
+            // Route to the vault on EITHER marker — target='secret' OR secret=true.
+            // Keying on both (the same set ConfigureConnectorRequest masks in
+            // $dontFlash) means a schema that sets secret=true but forgets
+            // target=secret still never lands the credential in config_json.
+            if ($target === 'secret' || ($field['secret'] ?? false) === true) {
                 $secret = $value === null ? null : (string) $value;
                 $secretField = $fieldName;
 

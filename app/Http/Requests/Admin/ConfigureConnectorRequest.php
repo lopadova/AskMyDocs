@@ -62,7 +62,11 @@ final class ConfigureConnectorRequest extends FormRequest
                 $secretFields[] = $name;
             }
 
-            if (! $this->has($name) && ($field['default'] ?? null) !== null) {
+            // Treat an explicit null the same as omitted (a JSON client may send
+            // `auth_mode: null`): `input()` returns null for both, so the default
+            // is merged in either case and required_if stays aligned with the
+            // service's own default fallback.
+            if ($this->input($name) === null && ($field['default'] ?? null) !== null) {
                 $defaults[$name] = $field['default'];
             }
         }
