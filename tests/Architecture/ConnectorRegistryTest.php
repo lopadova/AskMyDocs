@@ -10,6 +10,7 @@ use Padosoft\AskMyDocsConnectorConfluence\ConfluenceConnector;
 use Padosoft\AskMyDocsConnectorEvernote\EvernoteConnector;
 use Padosoft\AskMyDocsConnectorFabric\FabricConnector;
 use Padosoft\AskMyDocsConnectorGoogleDrive\GoogleDriveConnector;
+use Padosoft\AskMyDocsConnectorImap\ImapConnector;
 use Padosoft\AskMyDocsConnectorJira\JiraConnector;
 use Padosoft\AskMyDocsConnectorNotion\NotionConnector;
 use Padosoft\AskMyDocsConnectorOneDrive\OneDriveConnector;
@@ -52,6 +53,8 @@ final class ConnectorRegistryTest extends TestCase
         OneDriveConnector::class,
         ConfluenceConnector::class,
         JiraConnector::class,
+        // v8.17 — first credential-based connector (IMAP).
+        ImapConnector::class,
     ];
 
     public function test_every_shipped_connector_implements_connector_interface(): void
@@ -92,6 +95,7 @@ final class ConnectorRegistryTest extends TestCase
                 'onedrive',
                 'confluence',
                 'jira',
+                'imap',
             ] as $expectedKey
         ) {
             $this->assertTrue(

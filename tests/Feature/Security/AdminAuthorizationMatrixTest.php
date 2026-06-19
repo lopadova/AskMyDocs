@@ -240,6 +240,13 @@ final class AdminAuthorizationMatrixTest extends TestCase
             $superStatus,
             "Role [super-admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
         );
+        // Also guard route wiring: a 404 would make "not 403" pass even if the
+        // endpoint were unmounted. An empty body for a super-admin yields 422.
+        $this->assertNotSame(
+            404,
+            $superStatus,
+            "[{$writeUri}] must be MOUNTED (super-admin got 404 — route missing?).",
+        );
     }
 
     private function userWithRole(string $role): User
