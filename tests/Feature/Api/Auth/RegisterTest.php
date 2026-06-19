@@ -76,6 +76,49 @@ final class RegisterTest extends TestCase
         ]);
     }
 
+    public function test_multi_tenant_code_lands_the_user_with_teams_visible_in_me(): void
+    {
+        // Capstone: register via an invite whose grant spans TWO tenants, then
+        // confirm /api/auth/me surfaces both as teams (with their projects +
+        // the granted roles) — exactly what the desktop client renders.
+        config()->set('invite.invitation_required', true);
+        Role::findOrCreate('editor', 'web');
+        Role::findOrCreate('viewer', 'web');
+
+        $campaign = $this->campaign(['tenants' => [
+            ['tenant_id' => 'default', 'role' => 'editor', 'projects' => ['docs']],
+            ['tenant_id' => 'acme', 'role' => 'viewer', 'projects' => ['eng'], 'project_role' => 'admin'],
+        ]]);
+        $this->code('GETSEAT6', $campaign, maxUses: 5);
+
+        $this->postJson('/api/auth/register', [
+            'name' => 'Multi Tenant',
+            'email' => 'multi-reg@example.com',
+            'password' => 'Sup3r-secret!',
+            'password_confirmation' => 'Sup3r-secret!',
+            'code' => 'GETSEAT6',
+        ])->assertStatus(201);
+
+        // The register flow signed the user in (web session) → me() resolves it.
+        $me = $this->getJson('/api/auth/me')->assertOk()->json();
+
+        $this->assertContains('editor', $me['roles']);
+        $this->assertContains('viewer', $me['roles']);
+
+        $teams = collect($me['teams'])->keyBy('tenant_id');
+        $this->assertTrue($teams->has('default'));
+        $this->assertTrue($teams->has('acme'));
+
+        $defaultProjects = collect($teams['default']['projects'])->pluck('project_key')->all();
+        $acmeProjects = collect($teams['acme']['projects'])->pluck('project_key')->all();
+        $this->assertContains('docs', $defaultProjects);
+        $this->assertContains('eng', $acmeProjects);
+        $this->assertSame(
+            'admin',
+            collect($teams['acme']['projects'])->firstWhere('project_key', 'eng')['role'],
+        );
+    }
+
     public function test_invalid_code_returns_422_and_creates_no_user(): void
     {
         config()->set('invite.invitation_required', true);
