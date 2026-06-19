@@ -7,6 +7,7 @@ import type {
     InviteCampaign,
     ProjectRole,
     TenantGrant,
+    TenantOption,
     UpdateCampaignPayload,
 } from './admin-invite.api';
 
@@ -29,11 +30,21 @@ export interface InviteCampaignFormProps {
     roleOptions?: string[];
     /** Known tenant project keys for the access grant (R18 — from the DB). */
     projectOptions?: string[];
+    /** Tenants the admin may grant into, for the multi-tenant picker (R18). */
+    tenantOptions?: TenantOption[];
 }
 
 const TYPES: CampaignType[] = ['single_use', 'multi_use', 'capacity', 'referral', 'waitlist_skip'];
 const STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
 const PROJECT_ROLES: ProjectRole[] = ['member', 'admin', 'owner'];
+
+// "2026-06-19T15:00:00Z" / "2026-06-19 15:00:00" → "2026-06-19T15:00" for a
+// <input type="datetime-local">; empty string when absent.
+function toDateInput(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const m = iso.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+    return m ? `${m[1]}T${m[2]}` : '';
+}
 
 function splitProjects(csv: string): string[] {
     return csv
@@ -90,7 +101,7 @@ const fieldStyle = {
  * On edit, `key` and `type` are read-only — both are stable identifiers that a
  * later phase keys codes off, so they must not move under existing codes.
  */
-export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, isSubmitting, roleOptions = [], projectOptions = [] }: InviteCampaignFormProps): ReactNode {
+export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, isSubmitting, roleOptions = [], projectOptions = [], tenantOptions = [] }: InviteCampaignFormProps): ReactNode {
     const isEdit = campaign !== null;
     const [key, setKey] = useState(campaign?.key ?? '');
     const [name, setName] = useState(campaign?.name ?? '');
@@ -98,6 +109,11 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
     const [type, setType] = useState<CampaignType>(campaign?.type ?? 'multi_use');
     const [status, setStatus] = useState<CampaignStatus>(campaign?.status ?? 'draft');
     const [perUserLimit, setPerUserLimit] = useState(String(campaign?.per_user_limit ?? 1));
+
+    // Scheduling + total cap (the backend already validates these).
+    const [maxTotal, setMaxTotal] = useState(campaign?.max_redemptions_total != null ? String(campaign.max_redemptions_total) : '');
+    const [startsAt, setStartsAt] = useState(toDateInput(campaign?.starts_at));
+    const [endsAt, setEndsAt] = useState(toDateInput(campaign?.ends_at));
 
     // Provisioning grant: what the redeemer's account becomes.
     const [grantRole, setGrantRole] = useState(campaign?.grant?.role ?? '');
@@ -139,6 +155,10 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
         const limit = Number.parseInt(perUserLimit, 10);
+        const parsedMax = maxTotal === '' ? null : Number.parseInt(maxTotal, 10);
+        const maxNorm = parsedMax !== null && Number.isFinite(parsedMax) ? parsedMax : null;
+        const startsNorm = startsAt === '' ? null : startsAt;
+        const endsNorm = endsAt === '' ? null : endsAt;
 
         const grant = buildGrant(grantRole, grantProjects, grantProjectRole, extraTenants);
 
@@ -149,6 +169,11 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
             if (normalizedDesc !== campaign.description) payload.description = normalizedDesc;
             if (status !== campaign.status) payload.status = status;
             if (Number.isFinite(limit) && limit !== campaign.per_user_limit) payload.per_user_limit = limit;
+            if (maxNorm !== (campaign.max_redemptions_total ?? null)) payload.max_redemptions_total = maxNorm;
+            // Compare against the truncated form of the stored value so an
+            // unrelated edit doesn't re-send the schedule.
+            if (startsAt !== toDateInput(campaign.starts_at)) payload.starts_at = startsNorm;
+            if (endsAt !== toDateInput(campaign.ends_at)) payload.ends_at = endsNorm;
             // Only send grant when it actually changed — a JSON compare against
             // the original avoids clobbering it on an unrelated edit.
             if (JSON.stringify(grant) !== JSON.stringify(campaign.grant ?? null)) payload.grant = grant;
@@ -163,6 +188,9 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
             type,
             status,
             per_user_limit: Number.isFinite(limit) ? limit : 1,
+            max_redemptions_total: maxNorm,
+            starts_at: startsNorm,
+            ends_at: endsNorm,
             grant,
         };
         onSubmit(payload);
@@ -238,6 +266,21 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
                     <label htmlFor="admin-invite-form-per-user" style={{ width: 120, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
                         <span>Per-user limit</span>
                         <input id="admin-invite-form-per-user" data-testid="admin-invite-form-per-user" type="number" min={1} value={perUserLimit} onChange={(e) => setPerUserLimit(e.target.value)} style={fieldStyle} />
+                    </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: 12 }}>
+                    <label htmlFor="admin-invite-form-max-total" style={{ width: 140, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
+                        <span>Max redemptions</span>
+                        <input id="admin-invite-form-max-total" data-testid="admin-invite-form-max-total" type="number" min={1} value={maxTotal} onChange={(e) => setMaxTotal(e.target.value)} placeholder="unlimited" style={fieldStyle} />
+                    </label>
+                    <label htmlFor="admin-invite-form-starts-at" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
+                        <span>Starts at</span>
+                        <input id="admin-invite-form-starts-at" data-testid="admin-invite-form-starts-at" type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} style={fieldStyle} />
+                    </label>
+                    <label htmlFor="admin-invite-form-ends-at" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--fg-2)' }}>
+                        <span>Ends at</span>
+                        <input id="admin-invite-form-ends-at" data-testid="admin-invite-form-ends-at" type="datetime-local" value={endsAt} min={startsAt || undefined} onChange={(e) => setEndsAt(e.target.value)} style={fieldStyle} />
                     </label>
                 </div>
 
@@ -320,6 +363,12 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
                         Provision the redeemer in one or more other tenants too. Each becomes a “team” after sign-up.
                     </p>
 
+                    <datalist id="admin-invite-form-tenant-options">
+                        {tenantOptions.map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                    </datalist>
+
                     {extraTenants.map((row, index) => (
                         <div
                             key={index}
@@ -332,6 +381,7 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
                                     <input
                                         type="text"
                                         required
+                                        list="admin-invite-form-tenant-options"
                                         data-testid={`admin-invite-form-tenant-${index}-id`}
                                         aria-label={`Tenant id for extra grant ${index + 1}`}
                                         value={row.tenant_id}

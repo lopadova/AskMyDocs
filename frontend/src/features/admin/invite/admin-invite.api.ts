@@ -81,6 +81,12 @@ export interface InviteMetrics {
     ttr_p90_seconds: number | null;
 }
 
+/** A tenant the admin may grant into (for the grant editor's tenant picker). */
+export interface TenantOption {
+    id: string;
+    name: string;
+}
+
 export interface CreateCampaignPayload {
     key: string;
     name: string;
@@ -89,6 +95,8 @@ export interface CreateCampaignPayload {
     status?: CampaignStatus;
     max_redemptions_total?: number | null;
     per_user_limit?: number;
+    starts_at?: string | null;
+    ends_at?: string | null;
     grant?: InviteGrant | null;
 }
 
@@ -98,6 +106,8 @@ export interface UpdateCampaignPayload {
     status?: CampaignStatus;
     max_redemptions_total?: number | null;
     per_user_limit?: number;
+    starts_at?: string | null;
+    ends_at?: string | null;
     grant?: InviteGrant | null;
 }
 
@@ -156,6 +166,11 @@ export const adminInviteApi = {
     async listProjects(): Promise<string[]> {
         const { data } = await api.get<{ projects: string[] }>('/api/admin/kb/projects');
         return data.projects;
+    },
+
+    async listTenants(): Promise<TenantOption[]> {
+        const { data } = await api.get<{ data: TenantOption[] }>('/api/admin/invite/tenants');
+        return data.data;
     },
 
     // ─── Metrics ─────────────────────────────────────────────────

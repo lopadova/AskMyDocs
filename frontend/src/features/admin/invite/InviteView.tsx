@@ -102,6 +102,7 @@ function CampaignsPanel(): ReactNode {
     // degrade to empty pickers; the form still works (role-only / no grant).
     const rolesQuery = useQuery({ queryKey: ['admin-invite-roles'], queryFn: () => adminInviteApi.listRoles(), staleTime: 5 * 60_000 });
     const projectsQuery = useQuery({ queryKey: ['admin-invite-projects'], queryFn: () => adminInviteApi.listProjects(), staleTime: 5 * 60_000 });
+    const tenantsQuery = useQuery({ queryKey: ['admin-invite-tenants'], queryFn: () => adminInviteApi.listTenants(), staleTime: 5 * 60_000 });
 
     const createMutation = useMutation({
         mutationFn: (payload: CreateCampaignPayload) => adminInviteApi.createCampaign(payload),
@@ -173,10 +174,10 @@ function CampaignsPanel(): ReactNode {
             )}
 
             {createOpen && (
-                <InviteCampaignForm campaign={null} onClose={() => setCreateOpen(false)} onSubmit={(p) => createMutation.mutate(p as CreateCampaignPayload)} submitError={submitError} isSubmitting={createMutation.isPending} roleOptions={rolesQuery.data ?? []} projectOptions={projectsQuery.data ?? []} />
+                <InviteCampaignForm campaign={null} onClose={() => setCreateOpen(false)} onSubmit={(p) => createMutation.mutate(p as CreateCampaignPayload)} submitError={submitError} isSubmitting={createMutation.isPending} roleOptions={rolesQuery.data ?? []} projectOptions={projectsQuery.data ?? []} tenantOptions={tenantsQuery.data ?? []} />
             )}
             {editing !== null && (
-                <InviteCampaignForm campaign={editing} onClose={() => setEditing(null)} onSubmit={(p) => updateMutation.mutate({ id: editing.id, payload: p as UpdateCampaignPayload })} submitError={submitError} isSubmitting={updateMutation.isPending} roleOptions={rolesQuery.data ?? []} projectOptions={projectsQuery.data ?? []} />
+                <InviteCampaignForm campaign={editing} onClose={() => setEditing(null)} onSubmit={(p) => updateMutation.mutate({ id: editing.id, payload: p as UpdateCampaignPayload })} submitError={submitError} isSubmitting={updateMutation.isPending} roleOptions={rolesQuery.data ?? []} projectOptions={projectsQuery.data ?? []} tenantOptions={tenantsQuery.data ?? []} />
             )}
         </section>
     );
