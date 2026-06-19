@@ -1,13 +1,32 @@
+import { useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import { ConnectorCard } from './ConnectorCard';
+import { CredentialConnectorForm } from './CredentialConnectorForm';
+import type { ConfigureConnectorPayload, ConnectorEntry } from './connectors.api';
 import {
+    useConfigureConnector,
     useConnectors,
     useDestroyConnector,
     useStartInstall,
     useSyncNow,
 } from './connectors-hooks';
+
+/** Extracts a top-level message + per-field errors from an axios 422 (validation or `{error}`). */
+function parseConfigureError(e: unknown): { message: string; fieldErrors: Record<string, string> } {
+    const resp = (e as { response?: { data?: unknown } })?.response?.data as
+        | { message?: string; error?: string; errors?: Record<string, string[]> }
+        | undefined;
+    const fieldErrors: Record<string, string> = {};
+    if (resp?.errors) {
+        for (const [field, msgs] of Object.entries(resp.errors)) {
+            if (Array.isArray(msgs) && msgs.length > 0) fieldErrors[field] = msgs[0];
+        }
+    }
+    const message = resp?.error ?? resp?.message ?? toAdminError(e).message;
+    return { message, fieldErrors };
+}
 
 /*
  * v4.5/W3 — Connector admin landing page.
@@ -35,6 +54,13 @@ export function ConnectorsView() {
     const startInstall = useStartInstall();
     const syncNow = useSyncNow();
     const destroyConnector = useDestroyConnector();
+    const configureConnector = useConfigureConnector();
+
+    // v8.17 — the credential connector being configured (modal open) + its
+    // inline error state. Null = no modal.
+    const [modalEntry, setModalEntry] = useState<ConnectorEntry | null>(null);
+    const [configureError, setConfigureError] = useState<string | null>(null);
+    const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string>>({});
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -47,6 +73,16 @@ export function ConnectorsView() {
     const entries = connectorsQuery.data ?? [];
 
     async function handleConnect(key: string) {
+        const entry = entries.find((c) => c.key === key);
+        // v8.17 — credential connectors (IMAP) open a schema-driven form modal
+        // instead of an OAuth redirect. OAuth connectors keep the existing flow.
+        if (entry && entry.auth_kind === 'credential') {
+            setConfigureError(null);
+            setConfigureFieldErrors({});
+            setModalEntry(entry);
+            return;
+        }
+
         try {
             const result = await startInstall.mutateAsync(key);
             // Navigate the browser to the provider's OAuth URL. The
@@ -58,6 +94,29 @@ export function ConnectorsView() {
         } catch (e) {
             const err = toAdminError(e);
             toast.error(err.message, 'toast-connector-error');
+        }
+    }
+
+    async function handleConfigureSubmit(payload: ConfigureConnectorPayload) {
+        if (!modalEntry) return;
+        setConfigureError(null);
+        setConfigureFieldErrors({});
+        try {
+            const result = await configureConnector.mutateAsync({ key: modalEntry.key, payload });
+            // xoauth2 → the BE persisted a pending row and handed us the provider
+            // authorize URL; finish via the existing oauth/callback route.
+            if (result.redirect_to) {
+                window.location.assign(result.redirect_to);
+                return;
+            }
+            // basic-auth succeeded (ping ok, credential vaulted) → the row is
+            // ACTIVE; close the modal. The mutation already invalidated the list.
+            setModalEntry(null);
+            toast.success(`${modalEntry.display_name} connected.`, 'toast-connector-configured');
+        } catch (e) {
+            const { message, fieldErrors } = parseConfigureError(e);
+            setConfigureError(message);
+            setConfigureFieldErrors(fieldErrors);
         }
     }
 
@@ -208,6 +267,17 @@ export function ConnectorsView() {
                     </div>
                 )}
             </div>
+
+            {modalEntry && (
+                <CredentialConnectorForm
+                    entry={modalEntry}
+                    onSubmit={handleConfigureSubmit}
+                    onClose={() => setModalEntry(null)}
+                    submitError={configureError}
+                    fieldErrors={configureFieldErrors}
+                    isSubmitting={configureConnector.isPending}
+                />
+            )}
         </AdminShell>
     );
 }
