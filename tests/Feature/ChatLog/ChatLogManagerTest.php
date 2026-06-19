@@ -172,11 +172,13 @@ class ChatLogManagerTest extends TestCase
                 ?string $completionText = null,
                 ?string $traceId = null,
             ): bool {
-                // NO text reaches the resolver on the anonymous path.
+                // NO text reaches the resolver on the anonymous path, and the
+                // trace id IS forwarded (it's the ledger join key).
                 return $promptText === null
                     && $completionText === null
                     && $promptTokens === 800
-                    && $completionTokens === 200;
+                    && $completionTokens === 200
+                    && $traceId === 'anon-trace-1';
             })
             ->andReturn(new ChatTurnCost('0.00012300', 'USD', 'computed'));
         $this->app->instance(ChatTurnCostResolver::class, $resolver);

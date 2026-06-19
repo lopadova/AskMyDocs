@@ -16,9 +16,11 @@ final readonly class ChatTurnCost
     public function __construct(
         /**
          * The total cost as a fixed-precision DECIMAL STRING (8 dp), not a float —
-         * a money value is never carried as a float. Mirrors the `chat_logs.cost`
-         * decimal(18,8) cast + the ledger's cost_total precision, so the value is
-         * lossless end-to-end (resolver → DB → JSON meta).
+         * a money value is never carried as a float. The upstream finops package
+         * exposes the total as a PHP float, so this is a STABLE 8-dp serialization
+         * matching the `chat_logs.cost` decimal(18,8) column + the ledger's
+         * cost_total precision (no further drift once serialized: resolver → DB →
+         * JSON meta).
          */
         public string $cost,
         public string $currency,

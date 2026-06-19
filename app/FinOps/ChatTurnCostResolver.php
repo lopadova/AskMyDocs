@@ -51,6 +51,15 @@ class ChatTurnCostResolver
             return null;
         }
 
+        // Synthetic / non-AI turns (refusal + error logs record provider/model as
+        // `none`, or empty) never made a metered LLM call, so there is nothing to
+        // price AND their (provider, model) was never warmed in the price cache —
+        // resolving them would risk the very cold-cache price-feed HTTP fetch on the
+        // response path we otherwise avoid. Skip → leave cost null.
+        if ($this->isSyntheticTurn($provider, $model)) {
+            return null;
+        }
+
         try {
             $usage = new TokenUsage(
                 input: max(0, $promptTokens ?? 0),
@@ -75,10 +84,11 @@ class ChatTurnCostResolver
 
             return new ChatTurnCost(
                 // The finops CostBreakdown::$total is a native PHP float (the package's
-                // type), so number_format is the canonical lossless serialization to an
-                // 8-dp decimal string — exactly matching the chat_logs.cost
-                // decimal(18,8) column + the ledger's cost_total precision. (We can't
-                // start from a decimal string here; float is the package's source type.)
+                // type), so number_format rounds it to a stable 8-dp decimal string —
+                // matching the chat_logs.cost decimal(18,8) column + the ledger's
+                // cost_total precision. (We can't start from a decimal string here;
+                // float is the package's source type, so 8-dp rounding is the most
+                // faithful serialization available.)
                 cost: number_format($resolution->cost->total, 8, '.', ''),
                 currency: $resolution->cost->currency,
                 method: $resolution->method->value,
@@ -92,6 +102,19 @@ class ChatTurnCostResolver
 
             return null;
         }
+    }
+
+    /**
+     * A synthetic / non-AI turn — refusal and error chat-log rows record
+     * `ai_provider` / `ai_model` as `none` (or empty) because no LLM was called.
+     * There is nothing to price, and the pair was never warmed in the price cache.
+     */
+    private function isSyntheticTurn(string $provider, string $model): bool
+    {
+        $p = strtolower(trim($provider));
+        $m = strtolower(trim($model));
+
+        return $p === '' || $p === 'none' || $m === '' || $m === 'none';
     }
 
     /**

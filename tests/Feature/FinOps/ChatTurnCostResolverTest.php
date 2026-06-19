@@ -54,6 +54,19 @@ final class ChatTurnCostResolverTest extends TestCase
         $this->assertNull($cost);
     }
 
+    public function test_skips_synthetic_turns_with_none_or_empty_provider_or_model(): void
+    {
+        config()->set('ai-finops.enabled', true);
+
+        // Refusal / error logs record provider/model as `none` (no LLM call) — there
+        // is nothing to price, and the pair was never warmed in the price cache, so
+        // resolving would risk a cold-cache feed fetch on the response path. Skip.
+        $this->assertNull(app(ChatTurnCostResolver::class)->resolve('none', 'none', 100, 50));
+        $this->assertNull(app(ChatTurnCostResolver::class)->resolve('', '', 100, 50));
+        $this->assertNull(app(ChatTurnCostResolver::class)->resolve('openai', 'none', 100, 50));
+        $this->assertNull(app(ChatTurnCostResolver::class)->resolve('NONE', 'gpt-4o', 100, 50));
+    }
+
     public function test_handles_null_token_counts_without_throwing(): void
     {
         config()->set('ai-finops.enabled', true);
