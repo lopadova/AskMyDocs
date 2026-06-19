@@ -6,8 +6,18 @@ import type {
     InviteGrant,
     InviteCampaign,
     ProjectRole,
+    TenantGrant,
     UpdateCampaignPayload,
 } from './admin-invite.api';
+
+/** Editor row for one extra tenant grant — projects kept as a comma string for
+ *  free-text entry (other tenants' project keys aren't in projectOptions). */
+interface ExtraTenantRow {
+    tenant_id: string;
+    role: string;
+    project_role: ProjectRole;
+    projects: string;
+}
 
 export interface InviteCampaignFormProps {
     campaign: InviteCampaign | null; // null = create, object = edit
@@ -25,13 +35,44 @@ const TYPES: CampaignType[] = ['single_use', 'multi_use', 'capacity', 'referral'
 const STATUSES: CampaignStatus[] = ['draft', 'active', 'paused', 'ended'];
 const PROJECT_ROLES: ProjectRole[] = ['member', 'admin', 'owner'];
 
+function splitProjects(csv: string): string[] {
+    return csv
+        .split(',')
+        .map((p) => p.trim())
+        .filter((p) => p !== '');
+}
+
+function buildTenants(rows: ExtraTenantRow[]): TenantGrant[] {
+    return rows
+        .filter((r) => r.tenant_id.trim() !== '')
+        .map((r) => ({
+            tenant_id: r.tenant_id.trim(),
+            role: r.role === '' ? null : r.role,
+            projects: splitProjects(r.projects),
+            project_role: r.project_role,
+        }));
+}
+
 /**
- * Fold the grant form state into the API shape, or null when nothing is
- * granted (no role and no projects) — a null grant provisions nothing.
+ * Fold the grant form state into the API shape, or null when nothing is granted
+ * (no primary role/projects AND no extra tenants) — a null grant provisions
+ * nothing. Extra tenants are added under `tenants`; the backend unions them with
+ * the primary (redemption-tenant) grant.
  */
-function buildGrant(role: string, projects: string[], projectRole: ProjectRole): InviteGrant | null {
-    if (role === '' && projects.length === 0) return null;
-    return { role: role === '' ? null : role, projects, project_role: projectRole };
+function buildGrant(
+    role: string,
+    projects: string[],
+    projectRole: ProjectRole,
+    extraTenants: ExtraTenantRow[],
+): InviteGrant | null {
+    const tenants = buildTenants(extraTenants);
+    if (role === '' && projects.length === 0 && tenants.length === 0) return null;
+    return {
+        role: role === '' ? null : role,
+        projects,
+        project_role: projectRole,
+        ...(tenants.length > 0 ? { tenants } : {}),
+    };
 }
 
 const fieldStyle = {
@@ -63,11 +104,29 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
     const [grantProjects, setGrantProjects] = useState<string[]>(campaign?.grant?.projects ?? []);
     const [grantProjectRole, setGrantProjectRole] = useState<ProjectRole>(campaign?.grant?.project_role ?? 'member');
 
+    // Optional extra tenants ("one or more tenants") — each provisions the
+    // redeemer in that tenant on top of the primary grant above.
+    const [extraTenants, setExtraTenants] = useState<ExtraTenantRow[]>(
+        (campaign?.grant?.tenants ?? []).map((t) => ({
+            tenant_id: t.tenant_id,
+            role: t.role ?? '',
+            project_role: t.project_role,
+            projects: t.projects.join(', '),
+        })),
+    );
+
     const toggleProject = (projectKey: string) => {
         setGrantProjects((prev) =>
             prev.includes(projectKey) ? prev.filter((p) => p !== projectKey) : [...prev, projectKey],
         );
     };
+
+    const addTenant = () =>
+        setExtraTenants((prev) => [...prev, { tenant_id: '', role: '', project_role: 'member', projects: '' }]);
+    const removeTenant = (index: number) =>
+        setExtraTenants((prev) => prev.filter((_, i) => i !== index));
+    const updateTenant = (index: number, patch: Partial<ExtraTenantRow>) =>
+        setExtraTenants((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
@@ -81,7 +140,7 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
         e.preventDefault();
         const limit = Number.parseInt(perUserLimit, 10);
 
-        const grant = buildGrant(grantRole, grantProjects, grantProjectRole);
+        const grant = buildGrant(grantRole, grantProjects, grantProjectRole, extraTenants);
 
         if (isEdit) {
             const payload: UpdateCampaignPayload = {};
@@ -250,6 +309,98 @@ export function InviteCampaignForm({ campaign, onSubmit, onClose, submitError, i
                             </div>
                         )}
                     </div>
+                </fieldset>
+
+                <fieldset
+                    data-testid="admin-invite-form-tenants"
+                    style={{ border: '1px solid var(--panel-border)', borderRadius: 8, padding: '10px 12px', margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}
+                >
+                    <legend style={{ fontSize: 12, color: 'var(--fg-2)', padding: '0 6px' }}>Additional tenants (optional)</legend>
+                    <p style={{ fontSize: 11, color: 'var(--fg-3)', margin: 0 }}>
+                        Provision the redeemer in one or more other tenants too. Each becomes a “team” after sign-up.
+                    </p>
+
+                    {extraTenants.map((row, index) => (
+                        <div
+                            key={index}
+                            data-testid={`admin-invite-form-tenant-row-${index}`}
+                            style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, border: '1px solid var(--panel-border)', borderRadius: 6 }}
+                        >
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-2)' }}>
+                                    <span>Tenant id</span>
+                                    <input
+                                        type="text"
+                                        required
+                                        data-testid={`admin-invite-form-tenant-${index}-id`}
+                                        aria-label={`Tenant id for extra grant ${index + 1}`}
+                                        value={row.tenant_id}
+                                        onChange={(e) => updateTenant(index, { tenant_id: e.target.value })}
+                                        placeholder="acme"
+                                        style={fieldStyle}
+                                    />
+                                </label>
+                                <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-2)' }}>
+                                    <span>Role</span>
+                                    <select
+                                        data-testid={`admin-invite-form-tenant-${index}-role`}
+                                        aria-label={`Role for extra grant ${index + 1}`}
+                                        value={row.role}
+                                        onChange={(e) => updateTenant(index, { role: e.target.value })}
+                                        style={fieldStyle}
+                                    >
+                                        <option value="">— no role —</option>
+                                        {roleOptions.map((r) => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label style={{ width: 120, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-2)' }}>
+                                    <span>Project role</span>
+                                    <select
+                                        data-testid={`admin-invite-form-tenant-${index}-project-role`}
+                                        aria-label={`Project role for extra grant ${index + 1}`}
+                                        value={row.project_role}
+                                        onChange={(e) => updateTenant(index, { project_role: e.target.value as ProjectRole })}
+                                        style={fieldStyle}
+                                    >
+                                        {PROJECT_ROLES.map((r) => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-2)' }}>
+                                <span>Projects (comma-separated)</span>
+                                <input
+                                    type="text"
+                                    data-testid={`admin-invite-form-tenant-${index}-projects`}
+                                    aria-label={`Projects for extra grant ${index + 1}`}
+                                    value={row.projects}
+                                    onChange={(e) => updateTenant(index, { projects: e.target.value })}
+                                    placeholder="eng, ops"
+                                    style={fieldStyle}
+                                />
+                            </label>
+                            <button
+                                type="button"
+                                data-testid={`admin-invite-form-tenant-${index}-remove`}
+                                onClick={() => removeTenant(index)}
+                                style={{ alignSelf: 'flex-end', padding: '4px 10px', borderRadius: 6, border: '1px solid var(--panel-border)', background: 'transparent', color: 'var(--err)', cursor: 'pointer', fontSize: 12 }}
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ))}
+
+                    <button
+                        type="button"
+                        data-testid="admin-invite-form-tenant-add"
+                        onClick={addTenant}
+                        style={{ alignSelf: 'flex-start', padding: '6px 12px', borderRadius: 6, border: '1px dashed var(--panel-border)', background: 'transparent', color: 'var(--fg-1)', cursor: 'pointer', fontSize: 12 }}
+                    >
+                        + Add tenant
+                    </button>
                 </fieldset>
 
                 {submitError && (

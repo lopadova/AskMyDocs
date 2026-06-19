@@ -16,11 +16,23 @@ export type ProjectRole = 'member' | 'admin' | 'owner';
  * and the tenant projects they gain access to on a fresh redemption. Mirrors
  * the server-side `grant` JSON on campaigns + codes.
  */
+/** One tenant's slice of a multi-tenant grant (its own tenant_id + access). */
+export interface TenantGrant {
+    tenant_id: string;
+    role: string | null;
+    projects: string[];
+    project_role: ProjectRole;
+    scope_allowlist?: Record<string, unknown> | null;
+}
+
 export interface InviteGrant {
     role: string | null;
     projects: string[];
     project_role: ProjectRole;
     scope_allowlist?: Record<string, unknown> | null;
+    /** Optional extra tenants — the redeemer is provisioned across each, in
+     *  addition to the primary (redemption-tenant) grant above. */
+    tenants?: TenantGrant[];
 }
 
 export interface InviteCampaign {
