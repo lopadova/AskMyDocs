@@ -110,6 +110,13 @@ export default defineConfig({
                   // "unavailable" landing (flag off) is covered by the
                   // EvidenceRiskReviewView Vitest (R43 both states).
                   EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true',
+                  // v8.16/W4 — light up the AI FinOps admin SPA so its
+                  // happy-path spec (admin-ai-finops.spec.ts) reaches the real
+                  // package-served Blade SPA shell under /admin/ai-finops and
+                  // proves the viewAiFinOps gate (admin allowed, viewer 403).
+                  // The default-OFF clean-404 landing (flag off) is covered by
+                  // FinOpsDisabledTest (phpunit), per R43 (both states tested).
+                  AI_FINOPS_ADMIN_ENABLED: 'true',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var

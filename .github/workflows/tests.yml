@@ -299,6 +299,18 @@ jobs:
           # the HTTP path entirely.
           php artisan migrate:fresh --force
 
+      # v8.16/W4 — the AI FinOps admin SPA is a self-contained, package-served
+      # Blade SPA (laravel-ai-finops-admin) whose prebuilt Vite assets ship in
+      # the vendor dir and are copied to public/vendor/ai-finops-admin by this
+      # publish (the host gitignores published assets). admin-ai-finops.spec.ts
+      # then loads the real served shell at /admin/ai-finops. Runs AFTER
+      # key:generate so the app boots cleanly; --force overwrites any stale copy.
+      # No Vite build needed — the package ships the prebuilt bundle.
+      - name: Publish AI FinOps admin assets (CLI)
+        env:
+          APP_ENV: testing
+        run: php artisan vendor:publish --tag=ai-finops-admin-assets --force
+
       # Start Laravel explicitly in the workflow instead of relying on
       # playwright.config.ts `webServer`. The webServer block boots
       # artisan-serve under Playwright's own process supervisor and pipes
@@ -357,6 +369,15 @@ jobs:
           # package routes register. The default-OFF "unavailable" landing is
           # covered by the EvidenceRiskReviewView Vitest (R43 both states).
           EVIDENCE_RISK_REVIEW_ADMIN_ENABLED: 'true'
+          # v8.16/W4 — light up the AI FinOps admin SPA so admin-ai-finops.spec.ts
+          # reaches the real package-served Blade SPA at /admin/ai-finops (its
+          # prebuilt assets are published by the "Publish AI FinOps admin assets"
+          # step above). Same CI-skips-webServer rationale as the flags above: the
+          # flag must live on THIS step's env. Read at runtime (no config:cache) so
+          # config('ai-finops-admin.enabled') resolves true and the route registers.
+          # The default-OFF clean-404 is covered by FinOpsDisabledTest (phpunit),
+          # per R43 (both states tested).
+          AI_FINOPS_ADMIN_ENABLED: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.
