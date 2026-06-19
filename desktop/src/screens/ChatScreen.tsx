@@ -5,6 +5,7 @@ import type { Citation, LocalMessage, Thread } from "../lib/types";
 
 interface Props {
   token: string;
+  tenantId?: string;
 }
 
 function newId(): string {
@@ -30,7 +31,7 @@ function citationLabel(citation: Citation): string {
   );
 }
 
-export function ChatScreen({ token }: Props) {
+export function ChatScreen({ token, tenantId }: Props) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -123,7 +124,7 @@ export function ChatScreen({ token }: Props) {
     setSending(true);
 
     try {
-      const res = await chat(token, question);
+      const res = await chat(token, question, tenantId);
       const assistant: LocalMessage = {
         role: "assistant",
         content: res.answer,

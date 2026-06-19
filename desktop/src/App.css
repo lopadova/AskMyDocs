@@ -424,3 +424,84 @@ body {
 .result-path {
   word-break: break-all;
 }
+
+/* ---------- team / tenant / role ---------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.team-switch {
+  display: inline-flex;
+  align-items: center;
+}
+.team-select {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  max-width: 200px;
+}
+.team-select:disabled {
+  opacity: 0.85;
+  cursor: default;
+}
+.team-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.badge.role {
+  text-transform: capitalize;
+}
+.teambar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 13px;
+}
+.teambar-label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.teambar-tenant {
+  font-weight: 600;
+}
+.teambar-sep {
+  color: var(--border);
+}
+.teambar-projects {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 4px 2px 10px;
+  font-size: 12px;
+}
+.chip-role {
+  background: rgba(91, 140, 255, 0.16);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 11px;
+}

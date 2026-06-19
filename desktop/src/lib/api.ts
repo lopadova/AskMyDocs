@@ -6,9 +6,9 @@
 // src-tauri/capabilities/default.json (the HTTP scope) AND the README.
 import { fetch } from "@tauri-apps/plugin-http";
 import type {
-  AuthUser,
   ChatResponse,
   DocSearchResult,
+  MePayload,
   TokenResponse,
 } from "./types";
 
@@ -48,13 +48,18 @@ export class ApiError extends Error {
   }
 }
 
-function authHeaders(token?: string): Record<string, string> {
+function authHeaders(token?: string, tenantId?: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
   };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
+  }
+  // Tenant scoping: the backend authorizes the header against the user's
+  // memberships, then scopes retrieval to this tenant (R30).
+  if (tenantId) {
+    headers["X-Tenant-Id"] = tenantId;
   }
   return headers;
 }
@@ -104,7 +109,9 @@ export async function requestToken(
   return body as TokenResponse;
 }
 
-export async function fetchMe(token: string): Promise<AuthUser> {
+/** Identity + access: roles, projects, and the teams (tenants) the user can act
+ *  in. No X-Tenant-Id — the backend returns ALL teams regardless of context. */
+export async function fetchMe(token: string): Promise<MePayload> {
   const res = await http(`${API_BASE}/api/auth/me`, {
     headers: authHeaders(token),
   });
@@ -112,13 +119,17 @@ export async function fetchMe(token: string): Promise<AuthUser> {
   if (!res.ok) {
     throw new ApiError(res.status, errorMessage(body, "Session expired"), body);
   }
-  return (body as { user: AuthUser }).user;
+  return body as MePayload;
 }
 
-export async function chat(token: string, question: string): Promise<ChatResponse> {
+export async function chat(
+  token: string,
+  question: string,
+  tenantId?: string,
+): Promise<ChatResponse> {
   const res = await http(`${API_BASE}/api/kb/chat`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: authHeaders(token, tenantId),
     body: JSON.stringify({ question }),
   });
   const body = await parseBody(res);
@@ -131,9 +142,10 @@ export async function chat(token: string, question: string): Promise<ChatRespons
 export async function searchDocs(
   token: string,
   query: string,
+  tenantId?: string,
 ): Promise<DocSearchResult[]> {
   const url = `${API_BASE}/api/kb/documents/search?q=${encodeURIComponent(query)}`;
-  const res = await http(url, { headers: authHeaders(token) });
+  const res = await http(url, { headers: authHeaders(token, tenantId) });
   const body = await parseBody(res);
   if (!res.ok) {
     throw new ApiError(res.status, errorMessage(body, "Search failed"), body);
