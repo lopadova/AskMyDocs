@@ -106,6 +106,27 @@ final class InviteApiTest extends TestCase
             ->assertJson(['data' => ['key' => 'spring-beta', 'status' => 'draft']]);
     }
 
+    public function test_admin_lists_grantable_tenants(): void
+    {
+        $admin = $this->adminUser();
+        \App\Models\ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $admin->id,
+            'project_key' => 'eng',
+            'role' => 'member',
+        ]);
+        $this->actingAs($admin);
+
+        $response = $this->getJson('/api/admin/invite/tenants')
+            ->assertOk()
+            ->assertJsonStructure(['data' => [['id', 'name']]]);
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        // 'default' baseline + the admin's own membership tenant.
+        $this->assertContains('default', $ids);
+        $this->assertContains('acme', $ids);
+    }
+
     public function test_admin_reads_metrics(): void
     {
         $this->actingAs($this->adminUser());

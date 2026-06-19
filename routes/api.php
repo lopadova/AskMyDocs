@@ -525,6 +525,10 @@ Route::middleware([
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/invite/campaigns`).
         Route::get('invite/campaigns', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'index'])
             ->name('api.admin.invite.campaigns.index');
+        // Grantable tenants for the multi-tenant grant editor (same admin group
+        // → same role:admin|super-admin gate, covered by the matrix above).
+        Route::get('invite/tenants', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'tenants'])
+            ->name('api.admin.invite.tenants');
         Route::post('invite/campaigns', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'store'])
             ->name('api.admin.invite.campaigns.store');
         Route::get('invite/campaigns/{id}', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'show'])

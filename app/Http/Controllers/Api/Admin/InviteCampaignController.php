@@ -7,11 +7,15 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Requests\Admin\InviteCampaignStoreRequest;
 use App\Http\Resources\Admin\InviteCampaignResource;
 use App\Models\InviteCampaign;
+use App\Models\ProjectMembership;
 use App\Services\Invite\CampaignService;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -37,6 +41,52 @@ final class InviteCampaignController extends Controller
         return response()->json([
             'data' => InviteCampaignResource::collection($campaigns),
         ]);
+    }
+
+    /**
+     * Grantable tenants for the campaign form's multi-tenant grant editor —
+     * derived from the DB (R18), scoped to what THIS admin may act in (R30):
+     * their own membership tenants + 'default', plus every tenant only when
+     * they hold `tenant.cross-access`. Names come from the tenants table when
+     * present, else a humanized slug.
+     */
+    public function tenants(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $ids = collect(['default'])
+            ->merge($user?->projectMemberships()->pluck('tenant_id') ?? []);
+
+        if ($user !== null && $user->can('tenant.cross-access')) {
+            $ids = $ids->merge(ProjectMembership::query()->distinct()->pluck('tenant_id'));
+            if (Schema::hasTable('tenants')) {
+                $ids = $ids->merge(DB::table('tenants')->pluck('slug'));
+            }
+        }
+
+        $names = [];
+        if (Schema::hasTable('tenants')) {
+            foreach (DB::table('tenants')->get(['slug', 'name']) as $row) {
+                if (is_string($row->slug) && $row->slug !== '') {
+                    $names[$row->slug] = is_string($row->name) && $row->name !== ''
+                        ? $row->name
+                        : Str::headline($row->slug);
+                }
+            }
+        }
+
+        $tenants = $ids
+            ->filter(fn ($id): bool => is_string($id) && $id !== '')
+            ->unique()
+            ->map(fn (string $id): array => [
+                'id' => $id,
+                'name' => $names[$id] ?? Str::headline($id),
+            ])
+            ->sortBy(fn (array $tenant): string => $tenant['id'] === 'default' ? '' : mb_strtolower($tenant['id']))
+            ->values()
+            ->all();
+
+        return response()->json(['data' => $tenants]);
     }
 
     public function store(InviteCampaignStoreRequest $request): JsonResponse
