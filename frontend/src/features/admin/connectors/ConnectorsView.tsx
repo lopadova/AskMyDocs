@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
@@ -61,6 +61,12 @@ export function ConnectorsView() {
     const [modalEntry, setModalEntry] = useState<ConnectorEntry | null>(null);
     const [configureError, setConfigureError] = useState<string | null>(null);
     const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string>>({});
+    // Mirror the open modal so an in-flight configure can tell, on resolve,
+    // whether the user has since switched/closed the modal (R17).
+    const modalEntryRef = useRef<ConnectorEntry | null>(null);
+    useEffect(() => {
+        modalEntryRef.current = modalEntry;
+    }, [modalEntry]);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -98,11 +104,15 @@ export function ConnectorsView() {
     }
 
     async function handleConfigureSubmit(payload: ConfigureConnectorPayload) {
-        if (!modalEntry) return;
+        // Capture the connector this submission is for — the user may close the
+        // modal or switch to another connector while the request is in flight, so
+        // we must not act on whatever `modalEntry` happens to be when it resolves.
+        const target = modalEntry;
+        if (!target) return;
         setConfigureError(null);
         setConfigureFieldErrors({});
         try {
-            const result = await configureConnector.mutateAsync({ key: modalEntry.key, payload });
+            const result = await configureConnector.mutateAsync({ key: target.key, payload });
             // xoauth2 → the BE persisted a pending row and handed us the provider
             // authorize URL; finish via the existing oauth/callback route.
             if (result.redirect_to) {
@@ -110,10 +120,15 @@ export function ConnectorsView() {
                 return;
             }
             // basic-auth succeeded (ping ok, credential vaulted) → the row is
-            // ACTIVE; close the modal. The mutation already invalidated the list.
-            setModalEntry(null);
-            toast.success(`${modalEntry.display_name} connected.`, 'toast-connector-configured');
+            // ACTIVE. A success toast for `target` is always correct; only close
+            // the modal if it is STILL showing this connector (guard against the
+            // user having switched modals mid-request).
+            setModalEntry((cur) => (cur?.key === target.key ? null : cur));
+            toast.success(`${target.display_name} connected.`, 'toast-connector-configured');
         } catch (e) {
+            // Only surface the error if the modal is STILL showing this connector
+            // — otherwise we'd paint target's error onto a different form.
+            if (modalEntryRef.current?.key !== target.key) return;
             const { message, fieldErrors } = parseConfigureError(e);
             setConfigureError(message);
             setConfigureFieldErrors(fieldErrors);
@@ -275,7 +290,12 @@ export function ConnectorsView() {
                     onClose={() => setModalEntry(null)}
                     submitError={configureError}
                     fieldErrors={configureFieldErrors}
-                    isSubmitting={configureConnector.isPending}
+                    // Scope the pending state to THIS connector — a configure in
+                    // flight for another connector must not disable this form.
+                    isSubmitting={
+                        configureConnector.isPending &&
+                        configureConnector.variables?.key === modalEntry.key
+                    }
                 />
             )}
         </AdminShell>
