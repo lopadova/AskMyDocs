@@ -26,7 +26,7 @@ return new class extends Migration
             $table->string('tenant_id', 50)->default('default')->index();
 
             $table->string('event_id', 191);
-            $table->string('event_type', 32); // invite_created | invite_sent | invite_opened | code_redeemed | account_activated | reward_granted | referral_qualified
+            $table->string('event_type', 32); // invite_created | invite_sent | invite_opened | code_redeemed | account_provisioned | account_activated | reward_granted | referral_qualified
             $table->string('actor_hash', 128)->nullable(); // pseudonymous HMAC
 
             $table->unsignedBigInteger('campaign_id')->nullable();
@@ -44,7 +44,7 @@ return new class extends Migration
         if (DB::getDriverName() === 'pgsql') {
             DB::statement(
                 "ALTER TABLE invite_analytics_events ADD CONSTRAINT chk_invite_analytics_event_type "
-                . "CHECK (event_type IN ('invite_created','invite_sent','invite_opened','code_redeemed','account_activated','reward_granted','referral_qualified'))"
+                . "CHECK (event_type IN ('invite_created','invite_sent','invite_opened','code_redeemed','account_provisioned','account_activated','reward_granted','referral_qualified'))"
             );
         }
     }
