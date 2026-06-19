@@ -91,7 +91,11 @@ const EVAL_HARNESS_API_BASE = '/admin/eval-harness/api';
 // Built per-render from the active team hash — the cross-mounted
 // BrowserRouter basename must mirror the host URL /app/{hash}/admin/…
 // or its internal sub-route links would drop the team segment.
-const evalHarnessRouteBase = (teamHash: string): string => `/app/${teamHash}/admin/eval-harness`;
+const evalHarnessRouteBase = (teamHash: string): string =>
+    // Empty hash (store not synced yet) would yield `/app//admin/eval-harness` and
+    // break the cross-mounted BrowserRouter basename. Mirror NotificationBell's
+    // fallback to the legacy non-team URL.
+    teamHash ? `/app/${teamHash}/admin/eval-harness` : '/app/admin/eval-harness';
 
 const EVAL_HARNESS_BOOTSTRAP_CONFIG_URL = '/api/admin/eval-harness/bootstrap-config';
 

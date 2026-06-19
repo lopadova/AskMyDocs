@@ -114,7 +114,15 @@ export function AnonymousChatView(): ReactNode {
                     type="button"
                     className="btn"
                     data-testid="anonymous-chat-back"
-                    onClick={() => navigate({ to: '/app/$teamHash/chat', params: { teamHash } })}
+                    onClick={() =>
+                        // Mirror NotificationBell's guard: an empty teamHash (store
+                        // not synced yet) would navigate to `/app//chat`. Fall back to
+                        // the bare `/app` index, which TeamRootRedirect bounces to the
+                        // active team's saved-chats list.
+                        teamHash
+                            ? navigate({ to: '/app/$teamHash/chat', params: { teamHash } })
+                            : navigate({ to: '/app' })
+                    }
                     aria-label="Back to saved chats"
                 >
                     <Icon.Chevron size={13} style={{ transform: 'rotate(180deg)' }} />
