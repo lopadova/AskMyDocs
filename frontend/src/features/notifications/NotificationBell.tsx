@@ -40,6 +40,11 @@ export function NotificationBell(): ReactNode {
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
+    // Fall back to the legacy non-team URL when no hash is available so the
+    // link is never a broken double-slash path like `/app//admin/notifications`.
+    const notificationsHref = teamHash
+        ? `/app/${teamHash}/admin/notifications`
+        : '/app/admin/notifications';
 
     const countQuery = useQuery({
         queryKey: ['notifications', 'unread-count'],
@@ -244,7 +249,7 @@ export function NotificationBell(): ReactNode {
                           * navigation links to `<Link>` in lockstep. */}
                         <a
                             data-testid="notif-bell-see-all"
-                            href={`/app/${teamHash}/admin/notifications`}
+                            href={notificationsHref}
                             className="text-sm text-blue-600 hover:underline"
                             onClick={() => setOpen(false)}
                         >
