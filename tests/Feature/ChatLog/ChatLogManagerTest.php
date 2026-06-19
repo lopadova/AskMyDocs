@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\ChatLog;
 
+use App\FinOps\ChatTurnCost;
+use App\FinOps\ChatTurnCostResolver;
 use App\Models\ChatLog;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
+use Mockery;
 use Tests\TestCase;
 
 class ChatLogManagerTest extends TestCase
@@ -146,5 +149,75 @@ class ChatLogManagerTest extends TestCase
         $row = ChatLog::first();
         $this->assertNull($row->cost);
         $this->assertNull($row->cost_currency);
+    }
+
+    public function test_anonymous_turn_prices_from_tokens_only_never_text(): void
+    {
+        // The anonymous (data-minimised) path persists cost too, but it MUST price
+        // from the token counts only — never the stripped question / answer (PII).
+        // Prove it with a resolver spy: promptText / completionText must be null.
+        config()->set('chat-log.enabled', true);
+        config()->set('chat-log.driver', 'database');
+        config()->set('chat-log.anonymous_level', 'minimal');
+
+        $resolver = Mockery::mock(ChatTurnCostResolver::class);
+        $resolver->shouldReceive('resolve')
+            ->once()
+            ->withArgs(function (
+                string $provider,
+                string $model,
+                ?int $promptTokens,
+                ?int $completionTokens,
+                ?string $promptText = null,
+                ?string $completionText = null,
+                ?string $traceId = null,
+            ): bool {
+                // NO text reaches the resolver on the anonymous path.
+                return $promptText === null
+                    && $completionText === null
+                    && $promptTokens === 800
+                    && $completionTokens === 200;
+            })
+            ->andReturn(new ChatTurnCost('0.00012300', 'USD', 'computed'));
+        $this->app->instance(ChatTurnCostResolver::class, $resolver);
+
+        (new ChatLogManager())->log($this->entry([
+            'anonymous' => true,
+            'question' => 'Email me at mario@example.com', // PII — must never be priced from / stored
+            'answer' => 'sensitive answer',
+            'aiProvider' => 'openai',
+            'aiModel' => 'gpt-4o',
+            'promptTokens' => 800,
+            'completionTokens' => 200,
+            'totalTokens' => 1000,
+            'traceId' => 'anon-trace-1',
+        ]));
+
+        $row = ChatLog::first();
+        $this->assertSame('0.00012300', (string) $row->cost);
+        $this->assertSame('USD', $row->cost_currency);
+        $this->assertSame('anon-trace-1', $row->trace_id);
+        // PII stripped on the anonymous row.
+        $this->assertSame('', $row->question);
+        $this->assertSame('', $row->answer);
+    }
+
+    public function test_anonymous_turn_leaves_cost_null_when_finops_disabled(): void
+    {
+        config()->set('chat-log.enabled', true);
+        config()->set('chat-log.driver', 'database');
+        config()->set('chat-log.anonymous_level', 'minimal');
+        config()->set('ai-finops.enabled', false);
+
+        (new ChatLogManager())->log($this->entry([
+            'anonymous' => true,
+            'promptTokens' => 100,
+            'completionTokens' => 50,
+        ]));
+
+        $row = ChatLog::first();
+        $this->assertNull($row->cost);
+        $this->assertNull($row->cost_currency);
+        $this->assertSame('', $row->question);
     }
 }
