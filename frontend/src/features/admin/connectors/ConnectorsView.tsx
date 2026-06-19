@@ -13,19 +13,19 @@ import {
     useSyncNow,
 } from './connectors-hooks';
 
-/** Extracts a top-level message + per-field errors from an axios 422 (validation or `{error}`). */
+/**
+ * Extracts a top-level message + per-field errors from an axios 422. Reuses
+ * `toAdminError()` for the standard Laravel `{ message, errors }` flattening
+ * (single source of truth, no drift) and only layers the connector-specific
+ * `{ error }` shape (a ConnectorAuthException, e.g. "IMAP login failed") on top.
+ */
 function parseConfigureError(e: unknown): { message: string; fieldErrors: Record<string, string> } {
-    const resp = (e as { response?: { data?: unknown } })?.response?.data as
-        | { message?: string; error?: string; errors?: Record<string, string[]> }
-        | undefined;
-    const fieldErrors: Record<string, string> = {};
-    if (resp?.errors) {
-        for (const [field, msgs] of Object.entries(resp.errors)) {
-            if (Array.isArray(msgs) && msgs.length > 0) fieldErrors[field] = msgs[0];
-        }
-    }
-    const message = resp?.error ?? resp?.message ?? toAdminError(e).message;
-    return { message, fieldErrors };
+    const base = toAdminError(e);
+    const connectorError = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+    return {
+        message: connectorError ?? base.message,
+        fieldErrors: base.fieldErrors,
+    };
 }
 
 /*
