@@ -26,6 +26,10 @@ class ChatLog extends Model
         'prompt_tokens',
         'completion_tokens',
         'total_tokens',
+        // v8.16/W3 — server-side per-turn cost authority (additive).
+        'cost',
+        'cost_currency',
+        'trace_id',
         'latency_ms',
         'client_ip',
         'user_agent',
@@ -36,6 +40,8 @@ class ChatLog extends Model
     protected $casts = [
         'sources' => 'array',
         'extra' => 'array',
+        // decimal cast keeps the 8-dp string precision the ledger uses (no float drift).
+        'cost' => 'decimal:8',
         'created_at' => 'datetime',
     ];
 

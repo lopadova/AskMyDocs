@@ -2,12 +2,16 @@
 
 namespace App\Services\ChatLog\Drivers;
 
+use App\FinOps\ChatTurnCost;
+use App\FinOps\ChatTurnCostResolver;
 use App\Models\ChatLog;
 use App\Services\ChatLog\ChatLogDriverInterface;
 use App\Services\ChatLog\ChatLogEntry;
 
 final class DatabaseChatLogDriver implements ChatLogDriverInterface
 {
+    public function __construct(private readonly ChatTurnCostResolver $costResolver) {}
+
     public function store(ChatLogEntry $entry): void
     {
         if ($entry->anonymous) {
@@ -15,6 +19,8 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
 
             return;
         }
+
+        $cost = $this->resolveCost($entry, $entry->question, $entry->answer);
 
         ChatLog::create([
             'session_id' => $entry->sessionId,
@@ -29,11 +35,33 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             'prompt_tokens' => $entry->promptTokens,
             'completion_tokens' => $entry->completionTokens,
             'total_tokens' => $entry->totalTokens,
+            // v8.16/W3 — server-resolved per-turn cost (null when finops absent).
+            'cost' => $cost?->cost,
+            'cost_currency' => $cost?->currency,
+            'trace_id' => $entry->traceId,
             'latency_ms' => $entry->latencyMs,
             'client_ip' => $entry->clientIp,
             'user_agent' => $entry->userAgent,
             'extra' => $entry->extra,
         ]);
+    }
+
+    /**
+     * Resolve the turn cost server-side. The anonymous path passes empty
+     * question/answer so the estimator can't reconstruct text — it still prices
+     * from the (non-PII) token counts.
+     */
+    private function resolveCost(ChatLogEntry $entry, string $promptText, string $completionText): ?ChatTurnCost
+    {
+        return $this->costResolver->resolve(
+            provider: $entry->aiProvider,
+            model: $entry->aiModel,
+            promptTokens: $entry->promptTokens,
+            completionTokens: $entry->completionTokens,
+            promptText: $promptText !== '' ? $promptText : null,
+            completionText: $completionText !== '' ? $completionText : null,
+            traceId: $entry->traceId,
+        );
     }
 
     /*
@@ -57,6 +85,10 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             return;
         }
 
+        // Cost is priced from the (non-PII) token counts only — pass no text so the
+        // estimator can never reconstruct the stripped question / answer.
+        $cost = $this->resolveCost($entry, '', '');
+
         ChatLog::create([
             'session_id' => $entry->sessionId, // fresh per-request UUID, not user-linkable
             'user_id' => null,
@@ -70,6 +102,9 @@ final class DatabaseChatLogDriver implements ChatLogDriverInterface
             'prompt_tokens' => $entry->promptTokens,
             'completion_tokens' => $entry->completionTokens,
             'total_tokens' => $entry->totalTokens,
+            'cost' => $cost?->cost,
+            'cost_currency' => $cost?->currency,
+            'trace_id' => $entry->traceId,
             'latency_ms' => $entry->latencyMs,
             'client_ip' => null,
             'user_agent' => null,
