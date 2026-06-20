@@ -42,7 +42,7 @@ export interface CredentialFieldSchema {
     secret: boolean;
     default: string | number | boolean | null;
     options: Record<string, string>;
-    showIf: { field: string; equals: string } | null;
+    showIf: { field: string; equals: string | number | boolean } | null;
     help: string | null;
     group: string | null;
 }

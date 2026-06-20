@@ -190,6 +190,17 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
+        // HARD environment gate (mirrors the AI_PROVIDER=fake seam): the fake
+        // factory bypasses real IMAP authentication, so enabling it outside
+        // testing/local is a misconfiguration that must fail loudly rather than
+        // silently accept any credentials in production.
+        if (! $this->app->environment(['testing', 'local'])) {
+            throw new \RuntimeException(
+                'CONNECTOR_IMAP_FAKE_PING must NEVER be enabled outside the testing/local environment — '
+                .'it replaces real IMAP authentication with an offline fake.',
+            );
+        }
+
         if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
             return;
         }
