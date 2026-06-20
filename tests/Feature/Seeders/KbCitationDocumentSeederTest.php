@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Seeders;
 
-use App\Http\Controllers\Api\KbDocumentPreviewController;
 use App\Models\Conversation;
 use App\Models\KnowledgeDocument;
 use App\Models\User;
@@ -12,7 +11,6 @@ use App\Support\TenantContext;
 use Database\Seeders\KbCitationDocumentSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
