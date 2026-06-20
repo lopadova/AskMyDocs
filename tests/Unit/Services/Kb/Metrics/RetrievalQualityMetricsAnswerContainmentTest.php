@@ -12,7 +12,7 @@ use Tests\TestCase;
  * padosoft/eval-harness `answer-containment-at-k`. 1.0 when the expected answer
  * appears in any of the top-k retrieved chunk texts, else 0.0.
  */
-final class RetrievalQualityMetricsAnswerAtKTest extends TestCase
+final class RetrievalQualityMetricsAnswerContainmentTest extends TestCase
 {
     public function test_answer_containment_hits_when_answer_in_top_k_text(): void
     {

@@ -22,8 +22,9 @@ use Padosoft\EvalHarness\Metrics\RetrievalNdcgAtKMetric;
  *
  * It converts the app's ranked-id list + relevance data into the package's
  * `actualOutput` JSON + {@see DatasetSample}, runs the package metric, and
- * returns the raw `float` score. `k` is passed per-sample as `metadata.k`
- * (the metric falls back to `eval-harness.metrics.retrieval.default_k`).
+ * returns the raw `float` score. `k` is passed per-sample as `metadata.k`; when
+ * omitted, the package metric applies its OWN built-in default k (the host does
+ * not publish an `eval-harness.metrics.retrieval` config block).
  *
  * @internal Use through {@see RetrievalQualityMetrics}, not directly from callers.
  */
@@ -92,6 +93,12 @@ final class PackageMetricAdapter
      */
     public function scoreRanked(Metric $metric, array $rankedIds, array $relevantIds, ?int $k = null): float
     {
+        // Consistency with the app-level k<=0 → 0.0 convention; also avoids
+        // propagating an invalid cutoff into the package metadata.
+        if ($k !== null && $k <= 0) {
+            return 0.0;
+        }
+
         // Behaviour-preservation: the old hand-rolled metrics returned 0.0 when
         // the relevant set was empty (nothing is relevant → MRR/hit/recall = 0).
         // The package instead REJECTS an empty expected_output with a
@@ -128,6 +135,12 @@ final class PackageMetricAdapter
      */
     public function scoreRankedWithGains(Metric $metric, array $rankedIds, array $gains, ?int $k = null): float
     {
+        // Consistency with ndcgAtK()'s k<=0 → 0.0; also avoids passing an invalid
+        // cutoff to the package metadata.
+        if ($k !== null && $k <= 0) {
+            return 0.0;
+        }
+
         // Same behaviour-preservation as scoreRanked(): an empty gains map meant
         // IDCG = 0 → nDCG 0.0 in the old code; the package would throw on the
         // empty expected_output instead. Short-circuit to 0.0.
