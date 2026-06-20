@@ -159,9 +159,9 @@ Route::middleware([
     // the caller's tenant + AccessScope — a citation can only open a document
     // the reader may see. {document} is numeric so it never shadows the literal
     // `/kb/documents/search` route above.
-    Route::get('/kb/documents/{document}/preview', KbDocumentPreviewController::class)
-        ->whereNumber('document')
-        ->name('api.kb.documents.preview');
+Route::get('/kb/documents/{documentId}/preview', KbDocumentPreviewController::class)
+    ->whereNumber('documentId')
+    ->name('api.kb.documents.preview');
 
     // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116
     // refactored `promote` from inline write+dispatch to the 4-step
