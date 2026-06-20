@@ -163,7 +163,9 @@ final class GamificationInsightsTest extends TestCase
         ]);
 
         $provider = Mockery::mock(\App\Ai\AiProviderInterface::class);
-        $provider->shouldReceive('chat')->andReturn(new AiResponse(content: $json, provider: 'mock', model: 'mock'));
+        // The provider's RESPONSE model (the actual model used) is recorded in
+        // preference to the configured one — distinct here to prove that.
+        $provider->shouldReceive('chat')->andReturn(new AiResponse(content: $json, provider: 'mock', model: 'openrouter/actual-model'));
         $ai = Mockery::mock(AiManager::class);
         $ai->shouldReceive('provider')->andReturn($provider);
         $this->app->instance(AiManager::class, $ai);
@@ -174,7 +176,7 @@ final class GamificationInsightsTest extends TestCase
         app(GamificationInsightsService::class)->recomputeForTenant('2026-W25');
 
         $card = app(GamificationInsightsService::class)->forUser($u->id);
-        $this->assertSame('test/free-model', $card['model']);
+        $this->assertSame('openrouter/actual-model', $card['model']);
         $this->assertSame('Great work!', $card['narrative']['headline']);
         $this->assertSame('Il Cartografo', $card['titles'][0]['label']);
     }
