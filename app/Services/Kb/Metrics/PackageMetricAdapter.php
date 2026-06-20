@@ -40,8 +40,9 @@ final class PackageMetricAdapter
 
     // ---------------------------------------------------------------------
     // High-level resolvers — callers (RetrievalQualityMetrics) use THESE so
-    // they never name a package metric class; this adapter resolves the metric
-    // from the container (which auto-wires its ConfigRepository).
+    // they never name a package metric class; this adapter constructs each
+    // metric directly with the INJECTED ConfigRepository ($this->configRepo),
+    // so it stays usable in pure (non-Laravel) contexts with no container.
     // ---------------------------------------------------------------------
 
     /**

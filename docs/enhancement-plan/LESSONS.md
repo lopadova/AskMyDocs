@@ -23,10 +23,13 @@
   lock test (`test_precision_at_k_is_kept_in_app_until_package_ships_it`) that
   fires when the package adds `retrieval-precision-at-k`. `dcg()` stays too (no
   standalone DCG upstream). Added `answerContainmentAtK` (new capability).
-- **Container needed for the delegated metrics.** The metric instances auto-wire a
-  `ConfigRepository` from the container, so `RetrievalQualityMetricsTest` moved
-  from plain `PHPUnit\Framework\TestCase` to `Tests\TestCase` (the adapter's
-  low-level methods stay pure/container-free for fast unit tests).
+- **Container needed only to resolve the ADAPTER.** `RetrievalQualityMetrics`
+  resolves `PackageMetricAdapter` from the container (which injects the
+  `ConfigRepository`); the adapter then constructs each package metric directly
+  with that injected config (no per-metric container auto-wiring). So the static
+  facade needs a booted container, which is why `RetrievalQualityMetricsTest`
+  moved from plain `PHPUnit\Framework\TestCase` to `Tests\TestCase` — while the
+  adapter's low-level methods stay pure/container-free for fast unit tests.
 - **File-chiave toccati:** `app/Services/Kb/Metrics/{PackageMetricAdapter,RetrievalQualityMetrics}.php`,
   `composer.json` (eval-harness `^1.3.0`).
 
