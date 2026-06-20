@@ -124,9 +124,24 @@ final class RetrievalQualityMetrics
      */
     public static function answerContainmentAtK(array $rankedChunks, string $expectedAnswer, int $k): float
     {
+        // Consistency with precisionAtK()/ndcgAtK(): a non-positive window has no
+        // top-k, so score 0.0 without emitting an invalid metadata.k to the
+        // package. An empty expected answer has nothing to contain → 0.0 too.
+        if ($k <= 0 || trim($expectedAnswer) === '') {
+            return 0.0;
+        }
+
         return self::adapter()->answerContainment($rankedChunks, $expectedAnswer, $k);
     }
 
+    /**
+     * Resolve the adapter from the container per call. NOT cached in a static
+     * property on purpose: the adapter holds the active {@see ConfigRepository},
+     * and PHPUnit reuses one process across tests — a static cache would pin the
+     * first test's config repo and leak it into later tests. The resolution is a
+     * cheap auto-wire of a single-dependency class, negligible even in a full
+     * benchmark sweep.
+     */
     private static function adapter(): PackageMetricAdapter
     {
         return app(PackageMetricAdapter::class);

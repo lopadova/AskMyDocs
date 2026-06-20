@@ -11,11 +11,13 @@
   `ndcgAtK` now delegate to `padosoft/eval-harness` (`retrieval-mrr` /
   `retrieval-ndcg-at-k`); the refactor is proven equal — not "looks similar" — by
   freezing the historical numbers and asserting `assertEqualsWithDelta(…, 1e-9)`.
-- **One anti-corruption file.** `app/Services/Kb/Metrics/PackageMetricAdapter.php`
-  is the ONLY app file that imports a `Padosoft\EvalHarness\…` symbol; it also
-  exposes high-level resolvers (`scoreMrr`/`scoreNdcg`/`answerContainment`) so
-  `RetrievalQualityMetrics` never even names a package class. A package API change
-  touches one file.
+- **One anti-corruption file (per layer).** `app/Services/Kb/Metrics/PackageMetricAdapter.php`
+  is the ONLY file in the retrieval-metrics layer (`app/Services/Kb/Metrics/`)
+  that imports a `Padosoft\EvalHarness\…` symbol; it also exposes high-level
+  resolvers (`scoreMrr`/`scoreNdcg`/`answerContainment`) so `RetrievalQualityMetrics`
+  never even names a package class. A retrieval-metric package API change touches
+  one file here. (The separate eval subsystem under `app/Eval/*` has its own,
+  independent eval-harness imports — out of scope for this layer.)
 - **Don't silently drop precision@k.** The package has hit/recall/mrr/ndcg/
   answer-containment but **no** precision@k; it stays hand-rolled with a decision-
   lock test (`test_precision_at_k_is_kept_in_app_until_package_ships_it`) that

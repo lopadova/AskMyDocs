@@ -33,4 +33,15 @@ final class RetrievalQualityMetricsAnswerAtKTest extends TestCase
         self::assertSame(0.0, M::answerContainmentAtK($chunks, 'answer is 42', 1)); // top-1 misses
         self::assertSame(1.0, M::answerContainmentAtK($chunks, 'answer is 42', 2)); // top-2 hits
     }
+
+    public function test_answer_containment_guards_non_positive_k_and_empty_answer(): void
+    {
+        // Consistency with precisionAtK()/ndcgAtK(): k <= 0 has no top-k → 0.0,
+        // and an empty expected answer has nothing to contain → 0.0 (never the
+        // degenerate "empty string is trivially contained" → 1.0).
+        $chunks = [['id' => 'a', 'text' => 'The answer is 42.']];
+        self::assertSame(0.0, M::answerContainmentAtK($chunks, 'answer is 42', 0));
+        self::assertSame(0.0, M::answerContainmentAtK($chunks, 'answer is 42', -3));
+        self::assertSame(0.0, M::answerContainmentAtK($chunks, '   ', 2));
+    }
 }

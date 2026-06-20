@@ -14,9 +14,11 @@ use Padosoft\EvalHarness\Metrics\RetrievalNdcgAtKMetric;
 /**
  * v8.18/W2 — anti-corruption layer between AskMyDocs's in-app ranked-chunk
  * results and the `padosoft/eval-harness` retrieval-metric math. The ONLY file
- * in this app that imports a `Padosoft\EvalHarness\…` symbol — a package API
- * change touches here and nowhere else. No HTTP, no DB: the delegated retrieval
- * metrics are pure.
+ * in the RETRIEVAL-METRICS layer (`app/Services/Kb/Metrics/`) that imports a
+ * `Padosoft\EvalHarness\…` symbol — so a package API change to the retrieval
+ * metrics touches here and nowhere else in this layer. (The separate eval
+ * subsystem under `app/Eval/*` has its own, independent eval-harness imports.)
+ * No HTTP, no DB: the delegated retrieval metrics are pure.
  *
  * It converts the app's ranked-id list + relevance data into the package's
  * `actualOutput` JSON + {@see DatasetSample}, runs the package metric, and
@@ -152,7 +154,7 @@ final class PackageMetricAdapter
             metadata: $k !== null ? ['k' => $k] : [],
         );
 
-        return $metric->score($sample, (string) json_encode(['retrieved' => $retrieved]))->score;
+        return $metric->score($sample, $this->encodeRetrieved($retrieved))->score;
     }
 
     /**
@@ -165,6 +167,23 @@ final class PackageMetricAdapter
             array_values($rankedIds),
         );
 
-        return (string) json_encode(['retrieved' => $retrieved]);
+        return $this->encodeRetrieved($retrieved);
+    }
+
+    /**
+     * Encode the package `actualOutput` envelope deterministically. Chunk text
+     * can carry invalid UTF-8 byte sequences; JSON_INVALID_UTF8_SUBSTITUTE keeps
+     * encoding total (a `�` substitution rather than a silent `false` → ""
+     * empty payload that would skew scoring), while JSON_THROW_ON_ERROR turns any
+     * other structural failure into an explicit exception instead of a cast-of-false.
+     *
+     * @param  list<array<string, string>>  $retrieved
+     */
+    private function encodeRetrieved(array $retrieved): string
+    {
+        return json_encode(
+            ['retrieved' => $retrieved],
+            JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE,
+        );
     }
 }
