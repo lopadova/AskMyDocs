@@ -63,6 +63,14 @@ final class KbCitationDocumentSeeder extends Seeder
             ],
         );
 
+        // updateOrCreate() with withTrashed() may have matched a previously
+        // soft-deleted row; restore it so SoftDeletes + AccessScopeScope don't
+        // keep the seeded doc hidden — which would 404 the preview endpoint and
+        // time out the citation-modal E2E on a runner where a prior run trashed it.
+        if ($doc->trashed()) {
+            $doc->restore();
+        }
+
         // Reset chunks so the body is deterministic across re-seeds.
         $doc->chunks()->delete();
         foreach (self::CHUNKS as $order => $text) {
