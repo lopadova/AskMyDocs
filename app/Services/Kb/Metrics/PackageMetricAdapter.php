@@ -156,9 +156,15 @@ final class PackageMetricAdapter
      * Run a metric whose actualOutput carries chunk TEXTS and whose
      * expected_output is an answer string (answer-containment@k).
      *
+     * PRIVATE: unlike scoreRanked/scoreRankedWithGains (which carry their own
+     * empty-set guards and are exercised directly by the unit test), this method
+     * does NOT guard k<=0 / empty answer — that guard lives in the public
+     * answerContainment() wrapper. Keeping it private prevents a caller from
+     * bypassing the guard and hitting the package's degenerate empty-string path.
+     *
      * @param  list<array{id:int|string, text:string}>  $rankedChunks  best-first
      */
-    public function scoreAnswerContainment(Metric $metric, array $rankedChunks, string $expectedAnswer, ?int $k = null): float
+    private function scoreAnswerContainment(Metric $metric, array $rankedChunks, string $expectedAnswer, ?int $k = null): float
     {
         $retrieved = array_map(
             static fn (array $c): array => ['id' => (string) $c['id'], 'text' => (string) $c['text']],
