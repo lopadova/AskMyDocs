@@ -33,11 +33,6 @@ final class PackageMetricAdapter
 
     public function __construct(private readonly ConfigRepository $configRepo) {}
 
-    public function config(): ConfigRepository
-    {
-        return $this->configRepo;
-    }
-
     // ---------------------------------------------------------------------
     // High-level resolvers — callers (RetrievalQualityMetrics) use THESE so
     // they never name a package metric class; this adapter constructs each
