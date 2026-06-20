@@ -78,9 +78,8 @@ final class AuthorizeTenantHeader
 
         // Team-switcher path: a membership in the requested tenant is the
         // proof the user belongs to that team. Single indexed EXISTS per
-        // request; logged at debug — this is the COMMON path for every
-        // request the SPA sends while operating in a non-default team.
-        if ($this->hasMembershipInTenant($user, $header)) {
+        // request; this is the COMMON path for every request the SPA sends
+        // while operating in a non-default team.
             return $next($request);
         }
 
