@@ -67,6 +67,13 @@ final class RetrievalQualityMetrics
         // v8.18/W2 — delegates the MRR formula to padosoft/eval-harness
         // `retrieval-mrr` (single source of truth). Signature unchanged; the
         // result is golden-equal (1e-9) to the historical hand-rolled value.
+        //
+        // No `k` is passed (left null) ON PURPOSE: the package RetrievalMrrMetric
+        // is rank-cutoff-INDEPENDENT — it scans the FULL ranked list for the first
+        // relevant id and documents that it "intentionally ignores k". This matches
+        // the historical behaviour (an unbounded scan), so a relevant id past any
+        // default_k still scores 1/rank, never 0. Passing a cutoff here would be
+        // both a no-op and a misleading signal.
         return self::adapter()->scoreMrr(
             array_values($rankedIds),
             self::relevantList($relevantIds),
@@ -136,8 +143,9 @@ final class RetrievalQualityMetrics
 
     /**
      * Resolve the adapter from the container per call. NOT cached in a static
-     * property on purpose: the adapter holds the active {@see ConfigRepository},
-     * and PHPUnit reuses one process across tests — a static cache would pin the
+     * property on purpose: the adapter holds the active
+     * {@see \Illuminate\Contracts\Config\Repository}, and PHPUnit reuses one
+     * process across tests — a static cache would pin the
      * first test's config repo and leak it into later tests. The resolution is a
      * cheap auto-wire of a single-dependency class, negligible even in a full
      * benchmark sweep.

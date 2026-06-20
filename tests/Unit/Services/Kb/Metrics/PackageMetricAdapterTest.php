@@ -24,11 +24,6 @@ final class PackageMetricAdapterTest extends TestCase
         ]);
     }
 
-    private function adapter(): PackageMetricAdapter
-    {
-        return new PackageMetricAdapter($this->configRepo());
-    }
-
     public function test_scores_mrr_from_ranked_ids_and_relevant_set(): void
     {
         $config = $this->configRepo();
