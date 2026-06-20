@@ -25,6 +25,15 @@ final class LaravelAiPinTest extends TestCase
 {
     public function test_laravel_ai_stays_on_0_6_while_regolo_pins_caret_0_6(): void
     {
+        // The deferral rationale is "regolo pins ^0.6", so the WHOLE guard is
+        // meaningful only when regolo is actually installed. Skip BEFORE the
+        // installed-version assertion so an environment without the regolo
+        // package skips cleanly instead of asserting an unrelated pin.
+        $regoloComposer = __DIR__.'/../../../vendor/padosoft/laravel-ai-regolo/composer.json';
+        if (! is_file($regoloComposer)) {
+            $this->markTestSkipped('regolo package not installed in this environment.');
+        }
+
         $installed = (string) InstalledVersions::getPrettyVersion('laravel/ai');
         // e.g. "v0.6.8" or "0.6.8"
         $this->assertMatchesRegularExpression(
@@ -34,11 +43,6 @@ final class LaravelAiPinTest extends TestCase
             'padosoft/laravel-ai-regolo allows ^0.7 (see PROGRESS-v8.18.md). '.
             'If this fails because regolo now allows ^0.7, revisit the bump and update this guard.',
         );
-
-        $regoloComposer = __DIR__.'/../../../vendor/padosoft/laravel-ai-regolo/composer.json';
-        if (! is_file($regoloComposer)) {
-            $this->markTestSkipped('regolo package not installed in this environment.');
-        }
 
         $manifest = json_decode((string) file_get_contents($regoloComposer), true, 512, JSON_THROW_ON_ERROR);
         $constraint = (string) ($manifest['require']['laravel/ai'] ?? '');

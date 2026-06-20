@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { composer, thread, waitForThreadReady } from './helpers';
-import { stubChatAssistantReply } from './helpers/stub-chat';
+import { buildAssistantMessage, buildUserMessage, stubChatAssistantReply } from './helpers/stub-chat';
 
 /*
  * v8.18/W1.1 (W3.3.C) — the chat cost meter renders the SERVER-resolved
@@ -37,9 +37,10 @@ test.describe('Chat — server cost meter', () => {
 
     test('renders the server USD cost from message metadata', async ({ page }) => {
         const question = 'What does the remote work policy cover?';
-        const assistant = {
+        // Helpers own the default shape (role/rating/created_at + base metadata);
+        // the spec only overrides the fields it asserts on — the SERVER cost.
+        const assistant = buildAssistantMessage({
             id: 2101,
-            role: 'assistant' as const,
             content: 'The remote work policy covers home-office stipends and equipment.',
             metadata: {
                 provider: 'mock',
@@ -51,17 +52,8 @@ test.describe('Chat — server cost meter', () => {
                 cost_currency: 'USD',
                 citations: [],
             },
-            rating: null,
-            created_at: new Date().toISOString(),
-        };
-        const user = {
-            id: 2100,
-            role: 'user' as const,
-            content: question,
-            metadata: null,
-            rating: null,
-            created_at: new Date().toISOString(),
-        };
+        });
+        const user = buildUserMessage({ id: 2100, content: question });
 
         await stubChatAssistantReply(page, { assistant, list: [user, assistant] });
         await sendAndSettle(page, question);
@@ -75,9 +67,8 @@ test.describe('Chat — server cost meter', () => {
 
     test('renders a non-USD server cost with the trailing ISO code', async ({ page }) => {
         const question = 'How do I request equipment?';
-        const assistant = {
+        const assistant = buildAssistantMessage({
             id: 2103,
-            role: 'assistant' as const,
             content: 'Equipment requests go through the IT portal.',
             metadata: {
                 provider: 'mock',
@@ -89,17 +80,8 @@ test.describe('Chat — server cost meter', () => {
                 cost_currency: 'EUR',
                 citations: [],
             },
-            rating: null,
-            created_at: new Date().toISOString(),
-        };
-        const user = {
-            id: 2102,
-            role: 'user' as const,
-            content: question,
-            metadata: null,
-            rating: null,
-            created_at: new Date().toISOString(),
-        };
+        });
+        const user = buildUserMessage({ id: 2102, content: question });
 
         await stubChatAssistantReply(page, { assistant, list: [user, assistant] });
         await sendAndSettle(page, question);
