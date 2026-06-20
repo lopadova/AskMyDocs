@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { KpiCard, type KpiState } from '../admin/dashboard/KpiCard';
 import { meDashboardApi, ME_DASHBOARD_QUERY_KEY } from './me-dashboard.api';
 import { MeBadges } from './MeBadges';
+import { CoachingCard } from './CoachingCard';
 
 /**
  * v8.15/W4.2 — the personal "your KB" dashboard: your contribution score, rank,
@@ -62,6 +63,7 @@ export function MeDashboard(): ReactNode {
             )}
 
             <MeBadges />
+            <CoachingCard />
         </section>
     );
 }
