@@ -266,25 +266,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Gamification (v8.15/W5) — OPT-IN
+    | Gamification (v8.15/W5; DEFAULT-ON since v8.18/W4)
     |--------------------------------------------------------------------------
     | A tasteful contributor-motivation layer: badges awarded when a user's
     | all-time engagement crosses a threshold, surfaced on the "My KB"
-    | dashboard alongside the (already-shipped) leaderboard. DEFAULT-OFF
-    | (R43 — tested both states); when off, no badges are awarded or shown.
-    | The badge catalog is config-driven so an operator can tune labels /
-    | thresholds (and per-tenant overrides can layer on top later) — each
-    | badge declares a `metric` (score | events | authored | active_days,
-    | all-time) and the `threshold` to reach it.
+    | dashboard alongside the (already-shipped) leaderboard. DEFAULT-ON as of
+    | v8.18 (R43 — still tested both states; set KB_GAMIFICATION_ENABLED=false
+    | to turn it off → no badges awarded or shown, AI layer dormant). The badge
+    | catalog is config-driven so an operator can tune labels / thresholds (and
+    | per-tenant overrides can layer on top later) — each badge declares a
+    | `metric` (score | events | authored | active_days, all-time) and the
+    | `threshold` to reach it.
+    |
+    | `ai.*` (v8.18/W4) adds an AI-narration layer ON TOP of the deterministic
+    | quality metrics: a weekly `gamification:narrate` run (+ on-demand refresh)
+    | computes per-user / per-project / per-tenant curation-quality metrics and
+    | asks a DEDICATED free model to write encouraging coaching cards, fun
+    | period titles, and project/tenant health narratives — persisted to
+    | `kb_gamification_insights`. Mirrors the digest narrator: config-gated,
+    | degrades to deterministic copy on any LLM failure (R14), never blocks.
+    | `ai.enabled` requires the gamification master switch above to be on.
     */
     'gamification' => [
-        'enabled' => (bool) env('KB_GAMIFICATION_ENABLED', false),
+        'enabled' => (bool) env('KB_GAMIFICATION_ENABLED', true),
         'badges' => [
             ['key' => 'first_contribution', 'label' => 'First contribution', 'icon' => '🌱', 'metric' => 'events', 'threshold' => 1],
             ['key' => 'contributor', 'label' => 'Contributor', 'icon' => '✍️', 'metric' => 'score', 'threshold' => 25],
             ['key' => 'prolific', 'label' => 'Prolific contributor', 'icon' => '🚀', 'metric' => 'score', 'threshold' => 100],
             ['key' => 'author', 'label' => 'Author', 'icon' => '📚', 'metric' => 'authored', 'threshold' => 5],
             ['key' => 'regular', 'label' => 'Regular', 'icon' => '🔥', 'metric' => 'active_days', 'threshold' => 5],
+        ],
+        'ai' => [
+            'enabled' => (bool) env('KB_GAMIFICATION_AI_ENABLED', true),
+            'provider' => env('KB_GAMIFICATION_AI_PROVIDER', 'openrouter') ?: null,
+            'model' => env('KB_GAMIFICATION_AI_MODEL', 'meta-llama/llama-3.3-70b-instruct:free') ?: null,
+            'max_tokens' => (int) env('KB_GAMIFICATION_AI_MAX_TOKENS', 400),
         ],
     ],
 

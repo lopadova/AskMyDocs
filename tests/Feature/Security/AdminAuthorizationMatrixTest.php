@@ -69,6 +69,10 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/engagement/leaderboard' => ['admin', 'super-admin'],
             // v8.15/W4 — engagement trend series.
             '/api/admin/engagement/series' => ['admin', 'super-admin'],
+            // v8.18/W4 — AI gamification insights (read). The POST regenerate is
+            // super-admin only and is covered by a dedicated authz test (the
+            // GET-based matrix would 405 a POST-only route).
+            '/api/admin/engagement/insights' => ['admin', 'super-admin'],
             // v8.15/W2 — digest preview.
             '/api/admin/digest/preview' => ['admin', 'super-admin'],
             '/api/admin/kb/tags' => ['admin', 'super-admin'],

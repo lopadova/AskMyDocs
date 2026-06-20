@@ -204,6 +204,9 @@ Route::middleware([
     // v8.15/W5 — per-user gamification badges (opt-in; empty when disabled).
     Route::get('/me/badges', [\App\Http\Controllers\Api\UserBadgesController::class, 'index'])
         ->name('api.me.badges');
+    // v8.18/W4 — the caller's own AI coaching card (self-scoped; null/disabled-safe).
+    Route::get('/me/coaching', [\App\Http\Controllers\Api\UserCoachingController::class, 'show'])
+        ->name('api.me.coaching');
 });
 
 /*
@@ -287,6 +290,15 @@ Route::middleware([
         // v8.15/W4 — engagement trend series for the admin charts.
         Route::get('/engagement/series', [\App\Http\Controllers\Api\Admin\EngagementController::class, 'series'])
             ->name('api.admin.engagement.series');
+
+        // v8.18/W4 — AI gamification insights (project/tenant health narrative).
+        // Read is admin|super-admin (group middleware); the on-demand REGENERATE
+        // is super-admin only (R32) — it can fan out LLM calls across the tenant.
+        Route::get('/engagement/insights', [\App\Http\Controllers\Api\Admin\GamificationInsightsController::class, 'show'])
+            ->name('api.admin.engagement.insights');
+        Route::post('/engagement/insights/regenerate', [\App\Http\Controllers\Api\Admin\GamificationInsightsController::class, 'regenerate'])
+            ->middleware('role:super-admin')
+            ->name('api.admin.engagement.insights.regenerate');
 
         // v8.15/W2 — digest preview (compose + render, no send). R32 matrix row
         // for `/api/admin/digest/preview`.
