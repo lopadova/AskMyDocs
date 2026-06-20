@@ -235,6 +235,45 @@ final class FinOpsReadToolsTest extends TestCase
         $this->assertSame([], $this->invokeBudgetStatus()['budgets']);
     }
 
+    public function test_spend_summary_total_cost_is_a_fixed_precision_decimal_string(): void
+    {
+        // v8.18/W1.3 — money crosses the MCP surface as an 8-dp decimal STRING,
+        // never a JSON float (which would lose trailing precision / vary by locale).
+        $this->seedRow('tenant-a', 'openai', 'gpt-5', costTotal: 1.25);
+
+        $this->tenants->set('tenant-a');
+
+        $payload = $this->invoke(['days' => 30, 'limit' => 10]);
+
+        $this->assertIsString($payload['total_cost']);
+        $this->assertMatchesRegularExpression('/^\d+\.\d{8}$/', $payload['total_cost']);
+        $this->assertIsString($payload['breakdown'][0]['cost']);
+        $this->assertSame('1.25000000', $payload['breakdown'][0]['cost']);
+    }
+
+    public function test_budget_status_exposes_fixed_precision_decimal_strings(): void
+    {
+        // v8.18/W1.3 — laravel-ai-finops ^1.3 adds the additive *_decimal keys
+        // (8-dp strings) alongside the back-compatible float keys. The MCP surface
+        // forwards them so a client can read exact money without float drift.
+        $this->seedBudget('tenant-a', 'Monthly cap', limit: 10.0, softLimitPct: 80);
+        $this->seedRow('tenant-a', 'openai', 'gpt-5', costTotal: 4.00);
+
+        $this->tenants->set('tenant-a');
+
+        $budget = $this->invokeBudgetStatus()['budgets'][0];
+
+        // Decimal STRINGS (the v1.3 contract this host bump consumes).
+        $this->assertIsString($budget['limit_decimal']);
+        $this->assertSame('10.00000000', $budget['limit_decimal']);
+        $this->assertSame('4.00000000', $budget['spent_decimal']);
+        $this->assertSame('6.00000000', $budget['remaining_decimal']);
+
+        // Back-compat float keys + the percent ratio are still present.
+        $this->assertEquals(10.0, $budget['limit']);
+        $this->assertEquals(40.0, $budget['percent']);
+    }
+
     /**
      * @param  array<string, int>  $args
      * @return array<string, mixed>
