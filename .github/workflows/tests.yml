@@ -210,16 +210,16 @@ jobs:
               sed -i "s|^${1}=.*|${1}=${2}|" .env
           }
           set_env APP_ENV testing
-          # E2E diagnosability (R22): force file logging with full stack
-          # traces so a 500 from any /api/* route on the Playwright run
-          # lands in storage/logs/laravel.log — which the "Dump Laravel log
-          # on failure" step tails. The default `stack`/APP_DEBUG=false combo
-          # left that file absent (`(no laravel.log file present)`), so
-          # backend errors behind a Playwright "element not visible" timeout
-          # were invisible. `single` writes laravel.log; APP_DEBUG=true keeps
-          # the trace. Testing-only — never set on a real deployment.
+          # E2E diagnosability (R22): force file logging so an unhandled
+          # exception from any /api/* route on the Playwright run lands in
+          # storage/logs/laravel.log — which the "Dump Laravel log on
+          # failure" step tails. The default `stack` channel left that file
+          # absent (`(no laravel.log file present)`), so backend errors
+          # behind a Playwright "element not visible" timeout were invisible.
+          # `single` writes laravel.log; Laravel records full traces there
+          # regardless of APP_DEBUG (APP_DEBUG only changes HTTP-response
+          # verbosity, so it stays false). Testing-only.
           set_env LOG_CHANNEL single
-          set_env APP_DEBUG true
           # APP_KEY is generated below by `php artisan key:generate
           # --force` (see "Migrate test database (CLI)") — it REPLACES
           # the empty `APP_KEY=` line from `.env.example` in-place,
@@ -252,14 +252,21 @@ jobs:
           # login flows survive across page navigations.
           set_env CACHE_STORE     array
           set_env SESSION_DRIVER  file
-          # Database-backed queue so /api/kb/ingest dispatches enqueue
-          # the job (returning 202) without running it immediately.
-          # `sync` would execute IngestDocumentJob on the request thread,
-          # which then calls the AI provider synchronously — without API
-          # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
-          # The test only asserts the 202; the actual indexing flow is
-          # covered by PHPUnit feature tests with Http::fake().
-          set_env QUEUE_CONNECTION database
+          # Sync queue so the drag-and-drop KB upload's IngestDocumentJob
+          # runs inline on commit and its queue-lifecycle events
+          # (JobProcessing / JobProcessed) fire — that is how
+          # KbUploadBatchItemProgress advances each item to `succeeded`, so
+          # kb-upload.spec.ts sees the aggregate reach data-done=1. The
+          # earlier `database` choice enqueued the job with NO worker in the
+          # E2E job, leaving the upload stuck at done=0 forever. The original
+          # reason for `database` — "sync would call the real AI provider and
+          # 500 without API keys" — no longer holds: the "Start Laravel
+          # server" step sets AI_PROVIDER=fake / AI_EMBEDDINGS_PROVIDER=fake,
+          # so inline ingest uses the offline fake provider. admin-kb.spec.ts
+          # still passes — it accepts 200/201/202 from /api/kb/ingest and its
+          # canonical-only assertion is agnostic to whether the non-canonical
+          # draft ingested.
+          set_env QUEUE_CONNECTION sync
           # `storage/framework/*` is gitignored except for `.gitkeep`,
           # so the cache/sessions/views subdirs may not exist on a
           # fresh CI clone. SESSION_DRIVER=file needs `sessions/`;
