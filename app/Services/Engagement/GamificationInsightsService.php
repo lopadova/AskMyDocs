@@ -140,21 +140,25 @@ final class GamificationInsightsService
     {
         $start = microtime(true);
 
-        KbGamificationInsight::query()->updateOrCreate(
-            [
+        // ATOMIC upsert on the composite UNIQUE (tenant_id, scope_type, scope_id,
+        // period_label) — NOT updateOrCreate, whose SELECT-then-write races under
+        // concurrency (double-clicked Rigenera, retries, a manual run overlapping
+        // the weekly cron) and would throw a unique-constraint violation (R21).
+        KbGamificationInsight::query()->upsert(
+            [[
                 'tenant_id' => $this->tenants->current(),
                 'scope_type' => $scopeType,
                 'scope_id' => $scopeId,
                 'period_label' => $period,
-            ],
-            [
-                'metrics' => $metrics,
-                'narrative' => $narrated['narrative'],
-                'titles' => $narrated['titles'],
+                'metrics' => json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'narrative' => json_encode($narrated['narrative'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'titles' => json_encode($narrated['titles'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
                 'model' => $narrated['model'],
                 'computed_at' => Carbon::now(),
                 'computed_duration_ms' => (int) round((microtime(true) - $start) * 1000),
-            ],
+            ]],
+            ['tenant_id', 'scope_type', 'scope_id', 'period_label'],
+            ['metrics', 'narrative', 'titles', 'model', 'computed_at', 'computed_duration_ms'],
         );
     }
 

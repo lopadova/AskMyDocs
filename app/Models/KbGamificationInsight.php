@@ -57,9 +57,14 @@ class KbGamificationInsight extends Model
         return $query->where('scope_type', $scopeType)->where('scope_id', $scopeId);
     }
 
-    /** Most recent insight for the scoped tenant + scope, or null if none. */
+    /**
+     * Most recent insight for the scoped tenant + scope, or null if none. Ordered
+     * by `computed_at` (the actual write clock) — NOT `period_label`, which is
+     * free-form input (e.g. "2026-W9" vs "2026-W10") and would sort wrong
+     * lexicographically. Null clocks sort last so a written row always wins.
+     */
     public function scopeLatestInsight(Builder $query): Builder
     {
-        return $query->orderByDesc('period_label')->orderByDesc('computed_at')->limit(1);
+        return $query->orderByRaw('computed_at IS NULL')->orderByDesc('computed_at')->limit(1);
     }
 }
