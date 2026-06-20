@@ -5,11 +5,16 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Kb\Metrics;
 
 use App\Services\Kb\Metrics\RetrievalQualityMetrics as M;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * v8.1 P2 — exact, deterministic checks on the retrieval-quality metrics
  * so any benchmark harness can trust the numbers.
+ *
+ * v8.18/W2 — `reciprocalRank` + `ndcgAtK` now DELEGATE to padosoft/eval-harness
+ * (via PackageMetricAdapter resolved from the container), so this suite extends
+ * Tests\TestCase (booted app). The existing assertions stay intact; the
+ * golden-equality tests below prove the delegation is behaviour-preserving.
  */
 final class RetrievalQualityMetricsTest extends TestCase
 {
@@ -77,5 +82,45 @@ final class RetrievalQualityMetricsTest extends TestCase
     {
         $this->assertEqualsWithDelta(0.5, M::precisionAtK(['a', 'b'], ['a'], 2), 1e-9);
         $this->assertEqualsWithDelta(0.5, M::precisionAtK(['a', 'b'], ['a' => true], 2), 1e-9);
+    }
+
+    // --- v8.18/W2 delegation: golden-equality (frozen pre-delegation numbers) ---
+
+    public function test_reciprocal_rank_delegates_with_identical_results(): void
+    {
+        self::assertSame(1.0, M::reciprocalRank(['a', 'b', 'c'], ['a']));
+        self::assertEqualsWithDelta(1 / 2, M::reciprocalRank(['a', 'b', 'c'], ['b']), 1e-9);
+        self::assertEqualsWithDelta(1 / 3, M::reciprocalRank(['a', 'b', 'c'], ['c']), 1e-9);
+        self::assertSame(0.0, M::reciprocalRank(['a', 'b'], ['z']));
+        // Lookup-map relevant set still accepted (back-compat).
+        self::assertSame(1.0, M::reciprocalRank(['a', 'b'], ['a' => true]));
+    }
+
+    public function test_ndcg_delegates_with_identical_results(): void
+    {
+        $gains = ['a' => 1, 'b' => 1, 'c' => 0, 'd' => 0];
+        self::assertEqualsWithDelta(1.0, M::ndcgAtK(['a', 'b', 'c', 'd'], $gains, 4), 1e-9);
+
+        $worse = M::ndcgAtK(['c', 'd', 'a', 'b'], $gains, 4);
+        self::assertGreaterThan(0.0, $worse);
+        self::assertLessThan(1.0, $worse);
+
+        $graded = ['hi' => 3, 'mid' => 2, 'lo' => 1];
+        self::assertEqualsWithDelta(1.0, M::ndcgAtK(['hi', 'mid', 'lo'], $graded, 3), 1e-9);
+        self::assertLessThan(
+            M::ndcgAtK(['hi', 'mid', 'lo'], $graded, 3),
+            M::ndcgAtK(['lo', 'mid', 'hi'], $graded, 3),
+        );
+        // k <= 0 guard preserved.
+        self::assertSame(0.0, M::ndcgAtK(['a'], $gains, 0));
+    }
+
+    public function test_precision_at_k_is_kept_in_app_until_package_ships_it(): void
+    {
+        // The package has hit/recall/mrr/ndcg/answer-containment but no
+        // precision@k. precisionAtK stays hand-rolled; revisit when the package
+        // adds 'retrieval-precision-at-k'.
+        self::assertFalse(class_exists('Padosoft\\EvalHarness\\Metrics\\RetrievalPrecisionAtKMetric'));
+        self::assertEqualsWithDelta(2 / 3, M::precisionAtK(['a', 'b', 'c', 'd'], ['a', 'c', 'x'], 3), 1e-9);
     }
 }

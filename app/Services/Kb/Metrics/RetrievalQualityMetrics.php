@@ -24,6 +24,11 @@ final class RetrievalQualityMetrics
     /**
      * Precision@k — fraction of the top-k retrieved ids that are relevant.
      *
+     * KEPT IN-APP (v8.18/W2): `padosoft/eval-harness` v1.3 ships
+     * hit/recall/mrr/ndcg/answer-containment but **no** precision@k, so this
+     * stays hand-rolled. Delegate it once the package adds
+     * `retrieval-precision-at-k` (recommended upstream — see the metrics LESSON).
+     *
      * @param  list<int|string>  $rankedIds   retrieved ids, best-first
      * @param  array<int|string, true>|list<int|string>  $relevantIds  the relevant set
      */
@@ -59,15 +64,13 @@ final class RetrievalQualityMetrics
      */
     public static function reciprocalRank(array $rankedIds, array $relevantIds): float
     {
-        $relevant = self::asSet($relevantIds);
-
-        foreach (array_values($rankedIds) as $index => $id) {
-            if (isset($relevant[$id])) {
-                return 1.0 / ($index + 1);
-            }
-        }
-
-        return 0.0;
+        // v8.18/W2 — delegates the MRR formula to padosoft/eval-harness
+        // `retrieval-mrr` (single source of truth). Signature unchanged; the
+        // result is golden-equal (1e-9) to the historical hand-rolled value.
+        return self::adapter()->scoreMrr(
+            array_values($rankedIds),
+            self::relevantList($relevantIds),
+        );
     }
 
     /**
@@ -82,19 +85,14 @@ final class RetrievalQualityMetrics
     public static function ndcgAtK(array $rankedIds, array $gains, int $k): float
     {
         if ($k <= 0) {
-            return 0.0;
+            return 0.0; // preserve the historical guard.
         }
 
-        $dcg = self::dcg(
-            array_map(static fn ($id) => (float) ($gains[$id] ?? 0.0), array_slice($rankedIds, 0, $k)),
-        );
-
-        // Ideal DCG: the same grades sorted descending (best possible order).
-        $idealGrades = array_values($gains);
-        rsort($idealGrades);
-        $idcg = self::dcg(array_slice(array_map('floatval', $idealGrades), 0, $k));
-
-        return $idcg > 0.0 ? $dcg / $idcg : 0.0;
+        // v8.18/W2 — delegates the nDCG@k formula (2^rel-1 gain + log2 discount,
+        // normalised by the ideal DCG) to padosoft/eval-harness
+        // `retrieval-ndcg-at-k`. Golden-equal (1e-9) to the old hand-rolled value;
+        // `dcg()` below stays in-app (the package exposes no standalone DCG).
+        return self::adapter()->scoreNdcg(array_values($rankedIds), $gains, $k);
     }
 
     /**
@@ -114,6 +112,36 @@ final class RetrievalQualityMetrics
         }
 
         return $dcg;
+    }
+
+    /**
+     * Answer-containment@k — 1.0 when the expected answer string is found within
+     * the top-k retrieved chunk TEXTS, else 0.0. ADDITIVE capability (v8.18/W2):
+     * delegates to padosoft/eval-harness `answer-containment-at-k`. AskMyDocs had
+     * no answer@k metric before; no existing caller changes.
+     *
+     * @param  list<array{id:int|string, text:string}>  $rankedChunks  best-first
+     */
+    public static function answerContainmentAtK(array $rankedChunks, string $expectedAnswer, int $k): float
+    {
+        return self::adapter()->answerContainment($rankedChunks, $expectedAnswer, $k);
+    }
+
+    private static function adapter(): PackageMetricAdapter
+    {
+        return app(PackageMetricAdapter::class);
+    }
+
+    /**
+     * Normalise the app's relevant set (a flat list OR an id=>true lookup map)
+     * into the flat string-id list the package's expected_output contract wants.
+     *
+     * @param  array<int|string, true>|list<int|string>  $relevantIds
+     * @return list<string>
+     */
+    private static function relevantList(array $relevantIds): array
+    {
+        return array_map('strval', array_keys(self::asSet($relevantIds)));
     }
 
     /**
