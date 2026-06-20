@@ -130,9 +130,33 @@ class DemoSeeder extends Seeder
         $this->seedConversations($admin);
         $this->seedChatLogs($admin);
         $this->seedProjects();
+        $this->seedDefaultTenant();
         $this->seedAcmeTenant($admin);
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    /**
+     * Label row for the DEFAULT tenant in the AI Act package's own `tenants`
+     * table. The package's TenantContextMiddleware resolves the active tenant
+     * by slug from the `X-Tenant-Id` header and 404s ("tenant not found") when
+     * the slug is absent. Since v8.17 the team switcher stamps
+     * `X-Tenant-Id: default` on every admin call — including the package's
+     * `/api/admin/ai-act-compliance/*` routes — so the `default` slug MUST
+     * exist here or the whole AI Act overview returns 404. `seedAcmeTenant`
+     * already does this for `acme`; `default` was the gap. Guarded so a
+     * deployment without the AI Act package migrations still seeds the rest.
+     */
+    private function seedDefaultTenant(): void
+    {
+        if (! Schema::hasTable('tenants')) {
+            return;
+        }
+
+        Tenant::query()->updateOrCreate(
+            ['slug' => 'default'],
+            ['name' => 'Default', 'status' => 'active'],
+        );
     }
 
     /**
