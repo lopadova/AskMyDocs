@@ -684,6 +684,12 @@ KB_DEFAULT_LIMIT=8
 # Chunking
 KB_CHUNK_TARGET_TOKENS=512
 KB_CHUNK_HARD_CAP_TOKENS=1024
+# Tail-overlap budget for MarkdownChunker (approx tokens). 0 = off. Since v8.18
+# this is active: it carries the tail of each oversized-section piece onto the
+# next chunk on paragraph boundaries. APPLIES TO NEW INGESTS ONLY — ingest is
+# idempotent on sha256(markdown), so changing this alone won't re-chunk existing
+# docs; force a new version (the markdown CONTENT must change, or HARD-delete +
+# re-ingest via `kb:delete --force` — a soft delete keeps the chunks).
 KB_CHUNK_OVERLAP_TOKENS=64
 
 # Embedding cache

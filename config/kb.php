@@ -535,9 +535,44 @@ return [
         'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chunking
+    |--------------------------------------------------------------------------
+    |
+    | `hard_cap_tokens` bounds each BASE piece (approx tokens, strlen/4) BEFORE
+    | overlap is applied — see the NOTE below on how overlap can grow the final
+    | chunk past this cap. `overlap_tokens` (wired into MarkdownChunker since v8.18) duplicates the
+    | tail of each oversized-section piece onto the head of the next piece,
+    | snapped to paragraph boundaries (never mid-word), so an answer straddling
+    | a chunk boundary still appears whole in at least one chunk. 0 = OFF (chunks
+    | have zero overlap — the pre-v8.18 behaviour). `target_tokens` is the soft
+    | target used by the connector chunkers (Notion/Jira/Confluence/...).
+    |
+    | NOTE: overlap is applied AFTER under-cap accumulation, so an overlapped
+    | chunk may exceed `hard_cap_tokens` by up to `overlap_tokens` (e.g. cap 1024
+    | + overlap 64 → up to ~1088 tokens). This is by design — the duplicated tail
+    | is the whole point — and stays well within embedding-model context limits.
+    |
+    | APPLIES TO NEW INGESTS ONLY: changing `overlap_tokens` changes chunk text,
+    | hence `knowledge_chunks.chunk_hash`. But ingestion is idempotent on
+    | `version_hash = sha256($markdown)`, so re-running ingest on UNCHANGED
+    | markdown short-circuits and will NOT re-chunk already-ingested docs just
+    | because this knob changed. To apply a new overlap setting to existing docs
+    | you must force a new version — the source markdown CONTENT must change
+    | (version_hash = sha256(markdown), so a no-op re-save won't re-version), or
+    | HARD-delete + re-ingest (`kb:delete --force`; a soft delete keeps the row +
+    | chunks, so it won't force re-chunking). New (or genuinely changed) content picks it up
+    | immediately; re-chunked content re-embeds (the embedding cache is keyed on
+    | text_hash, so changed chunk text misses the cache). Treat it like the
+    | embedding-dimensions contract. PdfPageChunker keeps page-granular chunks and
+    | intentionally does NOT overlap.
+    |
+    */
     'chunking' => [
         'target_tokens' => env('KB_CHUNK_TARGET_TOKENS', 512),
         'hard_cap_tokens' => env('KB_CHUNK_HARD_CAP_TOKENS', 1024),
+        // Tail-overlap budget for MarkdownChunker; 0 = off. Re-ingest required when changed.
         'overlap_tokens' => env('KB_CHUNK_OVERLAP_TOKENS', 64),
     ],
 
