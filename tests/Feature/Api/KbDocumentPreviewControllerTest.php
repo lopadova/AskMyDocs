@@ -19,6 +19,11 @@ use Tests\TestCase;
  *
  * Mirrors KbResolveWikilinkTest: the route is registered without auth here to
  * isolate the controller (real wiring adds auth:sanctum + tenant.authorize).
+ * The placeholder MUST be `{documentId}` — identical to the real route in
+ * routes/api.php — so it overwrites that route in the collection (same
+ * method+URI key) and the controller is exercised auth-free. A `{document}`
+ * mismatch registers a SECOND route instead of overwriting, letting the real
+ * auth:sanctum route win and 401 every unauthenticated assertion below.
  */
 final class KbDocumentPreviewControllerTest extends TestCase
 {
@@ -28,8 +33,8 @@ final class KbDocumentPreviewControllerTest extends TestCase
     {
         parent::setUp();
 
-        Route::get('/api/kb/documents/{document}/preview', KbDocumentPreviewController::class)
-            ->whereNumber('document')
+        Route::get('/api/kb/documents/{documentId}/preview', KbDocumentPreviewController::class)
+            ->whereNumber('documentId')
             ->name('api.kb.documents.preview');
 
         // Relax RBAC so tests that don't opt into memberships see all rows;
