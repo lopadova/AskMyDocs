@@ -114,12 +114,27 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class);
+        // v8.17 — IMAP connector (first credential-based). Its SP binds
+        // ImapClientFactoryInterface → ImapClientFactory and merges the xoauth2
+        // provider config, so the registry can instantiate ImapConnector.
+        $app->register(\Padosoft\AskMyDocsConnectorImap\ImapServiceProvider::class);
         // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
         // API mounts (api.enabled=true via the host config loaded in
         // getEnvironmentSetUp) and the AdminAuthorizationMatrix can verify the
         // secured `/api/admin/evidence-risk-review/*` group. The `-admin`
         // package is dont-discovered (AskMyDocs renders the admin natively).
         $app->register(\Padosoft\EvidenceRiskReview\EvidenceRiskReviewServiceProvider::class);
+
+        // v8.16 — padosoft/laravel-ai-finops core + companion admin SPA.
+        // Manual registration parallels every other vendor package above
+        // because Testbench skips Laravel's package-discovery cache. The core
+        // SP loadMigrationsFrom()s the ai_finops_* tables, binds UsageRecorder /
+        // PricingRegistry, and (config-gated) registers the metering hook on the
+        // laravel/ai lifecycle + the secured route group. The admin SP only
+        // registers its SPA route when `ai-finops-admin.enabled=true` (default
+        // false — bare boot is a safe no-op for tests that don't opt in).
+        $app->register(\Padosoft\LaravelAiFinOps\LaravelAiFinOpsServiceProvider::class);
+        $app->register(\Padosoft\LaravelAiFinOpsAdmin\LaravelAiFinOpsAdminServiceProvider::class);
 
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
@@ -216,6 +231,33 @@ abstract class TestCase extends OrchestraTestCase
         // overrides this back to false in its own getEnvironmentSetUp to prove
         // the clean 404 degrade.
         $app['config']->set('evidence-risk-review.api.enabled', true);
+        // v8.16 / R32 — host override of the laravel-ai-finops package config.
+        // CRITICAL: the package default `routes.middleware` is `['api']` +
+        // `auth_middleware` is `['auth']` (no Sanctum, no tenant scope, no RBAC),
+        // which would leave the spend ledger / budgets / policies / kill-switches
+        // reachable with only the stock web auth guard. Loading the host config
+        // here (the same file production loads) applies the
+        // auth:sanctum + tenant.authorize + finops.authorize stack so
+        // AdminAuthorizationMatrixTest verifies the SECURE configuration, not the
+        // insecure package default. array_merge keeps the package's other
+        // top-level keys (pricing, features, audit, …) while the host's routes /
+        // tenancy / currency / master-switch blocks win.
+        $app['config']->set('ai-finops', array_merge(
+            (array) $app['config']->get('ai-finops', []),
+            require __DIR__.'/../config/ai-finops.php',
+        ));
+        // The host config defaults `enabled` to env('AI_FINOPS_ENABLED', true);
+        // force it ON explicitly so the matrix + meter suites exercise the
+        // SECURED-AND-ENABLED surface regardless of a stray env in CI.
+        $app['config']->set('ai-finops.enabled', true);
+        // v8.16 — host override of the finops-admin SPA config. Default
+        // enabled=false so the SPA route is NOT registered and every request to
+        // /admin/ai-finops is a clean 404 (R43 OFF-state). FinOpsAdminMountingTest
+        // flips this ON in its own getEnvironmentSetUp to prove the wired state.
+        $app['config']->set('ai-finops-admin', array_merge(
+            (array) $app['config']->get('ai-finops-admin', []),
+            require __DIR__.'/../config/ai-finops-admin.php',
+        ));
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on
@@ -266,8 +308,26 @@ abstract class TestCase extends OrchestraTestCase
                 \Padosoft\AskMyDocsConnectorOneDrive\OneDriveConnector::class,
                 \Padosoft\AskMyDocsConnectorConfluence\ConfluenceConnector::class,
                 \Padosoft\AskMyDocsConnectorJira\JiraConnector::class,
+                // v8.17 — first credential-based connector (IMAP).
+                \Padosoft\AskMyDocsConnectorImap\ImapConnector::class,
             ],
         ), static fn (string $fqcn): bool => class_exists($fqcn)));
+        // v8.17 — in production the IMAP package's ServiceProvider
+        // `mergeConfigFrom('config/imap.php', 'connectors.providers.imap')`
+        // supplies the xoauth2 provider defaults (authorize_url, scopes, …).
+        // Because we overwrite the whole `connectors` config below, replicate
+        // that merge here so tests see the same provider config production does.
+        $imapConfigPath = __DIR__.'/../vendor/padosoft/askmydocs-connector-imap/config/imap.php';
+        if (is_file($imapConfigPath)) {
+            // Mirror Laravel's mergeConfigFrom semantics exactly: a SHALLOW
+            // array_merge(package, host) where the host's top-level keys win. The
+            // host ships no providers.imap block, so this resolves to the package
+            // config — same as production.
+            $connectorConfig['providers']['imap'] = array_merge(
+                (array) require $imapConfigPath,
+                (array) ($connectorConfig['providers']['imap'] ?? []),
+            );
+        }
         $app['config']->set('connectors', $connectorConfig);
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array
@@ -342,6 +402,12 @@ abstract class TestCase extends OrchestraTestCase
         // `ai.*` shortcut the host routes use.
         $router->aliasMiddleware('ai.disclosure', \Padosoft\AiActCompliance\Disclosure\AiDisclosureMiddleware::class);
         $router->aliasMiddleware('ai.consent', \Padosoft\AiActCompliance\Consent\RequireConsentMiddleware::class);
+        // v8.16 — method-aware finops authorization alias. Mirrors
+        // bootstrap/app.php (not executed under Testbench). The finops route
+        // group's `auth_middleware` references `finops.authorize`; without this
+        // alias every finops feature test throws "Target class [finops.authorize]
+        // does not exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('finops.authorize', \App\Http\Middleware\FinOpsAuthorize::class);
     }
 
     /**
@@ -396,5 +462,35 @@ abstract class TestCase extends OrchestraTestCase
         if ($this->app !== null && $this->app->bound(\App\Support\TenantContext::class)) {
             $this->app->make(\App\Support\TenantContext::class)->reset();
         }
+    }
+
+    /**
+     * Build a fake OpenAI-SDK `/responses` body for `Http::fake()`.
+     *
+     * Since v8.16/W2 the no-tools OpenAI chat turn flows through the laravel/ai
+     * SDK, which calls the `/responses` endpoint (NOT `/chat/completions`) and
+     * parses the `output[].content[].text` shape. Tests that previously faked the
+     * `choices[].message.content` chat-completions shape must use this instead.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function openAiSdkResponsesBody(
+        string $text,
+        string $model = 'gpt-4o-mini',
+        int $inputTokens = 1,
+        int $outputTokens = 1,
+    ): array
+    {
+        return [
+            'id' => 'resp_test',
+            'model' => $model,
+            'status' => 'completed',
+            'output' => [[
+                'type' => 'message',
+                'status' => 'completed',
+                'content' => [['type' => 'output_text', 'text' => $text]],
+            ]],
+            'usage' => ['input_tokens' => $inputTokens, 'output_tokens' => $outputTokens],
+        ];
     }
 }

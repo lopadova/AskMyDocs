@@ -171,25 +171,38 @@ tells buyers to demand:
   over real contribution metrics, default-OFF). Built to surpass Stack Overflow for Teams /
   Zendesk / Notion on packaging + delivery breadth; every capability tri-surface (PHP + API +
   MCP). See the [doc-site](https://padosoft.mintlify.app/engagement-suite).
+- **AI FinOps spend governance** (v8.16) — a cross-provider AI-spend layer: an immutable per-call
+  usage **ledger**, N-scope **budgets**, a policy DSL, chargeback, forecasting + anomaly detection
+  and multi-channel alerts, attributed per tenant, behind a method-aware admin gate. Every provider
+  moved onto the `laravel/ai` SDK (ADR 0015) so spend is metered natively; **real server-side
+  per-turn cost** now lands on every chat log (replacing the old client-side guess), and 3 MCP read
+  tools expose spend to agents. See the [doc-site](https://padosoft.mintlify.app/ai-finops).
+- **Credential-based connectors** (v8.17) — the connector framework gains its first **non-OAuth**
+  source: an **IMAP** mailbox (host/port/encryption/username/password **or** XOAUTH2) activatable
+  entirely from **Admin → Connectors**. The mechanism is **generic + schema-driven** (a connector
+  advertises `SupportsCredentialForm`; the host renders the form and routes the **secret straight to
+  the encrypted vault, never `config_json`**) — any future credential connector works unchanged. See
+  the [doc-site](https://padosoft.mintlify.app/connectors-credential).
 
 ---
 
 ## ✨ Universal Connectors
 
-**Plug AskMyDocs into Google Drive, Notion, OneDrive, Evernote, Fabric, Confluence, and Jira with OAuth in one click — every document chunked and cited correctly per source.**
+**Plug AskMyDocs into Google Drive, Notion, OneDrive, Evernote, Fabric, Confluence, Jira (OAuth in one click) and IMAP mailboxes (credential form) — every document chunked and cited correctly per source.**
 
 Most "RAG over docs" tools either expect a pile of pre-flattened
 markdown or ship a single brittle "Google Drive sync" feature. AskMyDocs
-v4.5 ships a real **connector framework** + **seven native connectors**
+ships a real **connector framework** + **eight native connectors**
 + **per-source chunkers** so every external knowledge corpus lands in
 the canonical KB with its provenance, native IDs, ACL hints, and
 status preserved — and gets chunked the way that source actually wants
 to be chunked.
 
-- **7 native connectors live in v4.5** — `google-drive` (OAuth2 + delta-query), `notion` (OAuth2 + block paginator), `evernote` (OAuth + `.enex` bulk import), `fabric` (API-key, OAuth pending upstream), `onedrive` (Microsoft Graph delta-query — supports `text/markdown` / `text/plain` / `application/pdf`; Office formats `.docx` / `.xlsx` / `.pptx` ingestion deferred), `confluence` (Atlassian OAuth 2.0 3LO; `cloud_id` persisted in tenant-scoped `connector_credentials.extra_json.cloud_id`, optionally reused by a Jira install in the same tenant/workspace), `jira` (Atlassian OAuth 2.0 3LO + ADF-to-markdown + injection-safe JQL builder).
+- **8 native connectors** — **OAuth** (v4.5): `google-drive` (OAuth2 + delta-query), `notion` (OAuth2 + block paginator), `evernote` (OAuth + `.enex` bulk import), `fabric` (API-key, OAuth pending upstream), `onedrive` (Microsoft Graph delta-query — supports `text/markdown` / `text/plain` / `application/pdf`; Office formats `.docx` / `.xlsx` / `.pptx` ingestion deferred), `confluence` (Atlassian OAuth 2.0 3LO; `cloud_id` persisted in tenant-scoped `connector_credentials.extra_json.cloud_id`, optionally reused by a Jira install in the same tenant/workspace), `jira` (Atlassian OAuth 2.0 3LO + ADF-to-markdown + injection-safe JQL builder); **credential** (v8.17): `imap` — the first **credential-based** connector (host/port/encryption/username/password **or** XOAUTH2 Gmail/M365), body + headers + attachments.
+- **Credential-based connectors (v8.17)** — a **generic, schema-driven** mechanism (no IMAP-specific code in the host): a connector implements `SupportsCredentialForm` and the host renders a credential form, validates it dynamically, and routes the **secret straight to the encrypted vault** (never to `config_json`). `POST /api/admin/connectors/{name}/configure` activates it from the panel — basic-auth pings + vaults (bad login → 422), XOAUTH2 redirects through the standard callback. Any future credential connector (SMTP, API-key sources) reuses the same form + endpoint unchanged. See the [credential-connectors doc](https://padosoft.mintlify.app/connectors-credential).
 - **Per-source chunkers** — `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` dispatched via `PipelineRegistry::resolveChunker()` (R23 FQCN-validated + `supports()` mutex-checked at boot).
 - **Rich frontmatter capture** — every connector populates document-level metadata (`connector`, `external_id`, `external_url`, native timestamps) plus chunk-level metadata (`source_type`, `search_tags` (top-level in chunk metadata), `recency_bucket`, ACL hint, status, preamble-path). Drives `KbSearchService` facets + `Reranker` Layer-4 signals (tag overlap + recency + status-active + preamble-match).
-- **Admin OAuth flow at `/app/admin/connectors`** — React SPA + Spatie super-admin gate + signed OAuth callback + per-installation `connector_installations` + `connector_credentials` rows + scheduler-driven incremental sync via `App\Jobs\ConnectorSyncJob`.
+- **Admin install flow at `/app/admin/connectors`** — React SPA + Spatie super-admin gate; OAuth connectors use a signed OAuth callback, credential connectors a host-rendered schema-driven form; per-installation `connector_installations` + `connector_credentials` rows + scheduler-driven incremental sync via `App\Jobs\ConnectorSyncJob`.
 - **Opt-in live-test recording infrastructure** — `tests/Live/Connectors/` skeleton + per-provider env-var guard + `docs/v4-platform/RUNBOOK-live-fixture-recording.md` junior-proof setup guide. CI runs only `Unit` + `Feature`; operators refresh fixtures explicitly when provider APIs drift.
 
 ### How it compares
@@ -203,8 +216,9 @@ to be chunked.
 | Native Evernote | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Native Confluence | ✅ | ✅ | ❌ | ❌ | partial | partial | ❌ |
 | Native Jira | ✅ | ✅ | ❌ | ❌ | ❌ | partial | ❌ |
+| Native IMAP / email (credential) | ✅ (v8.17) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Source-aware chunking framework | ✅ | private | ❌ | ❌ | ❌ | partial | partial |
-| Plugin/package extensibility | ✅ (v4.6 packages) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Plugin/package extensibility | ✅ (v4.6 packages + v8.17 credential form) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **Try it.** Read [`docs/connectors/README.md`](docs/connectors/README.md)
 for the developer guide (10-method `ConnectorInterface` contract +
@@ -228,7 +242,7 @@ top of the v4.0 Vercel AI SDK v6 `UIMessageChunk` streaming foundation.
 - **Suggested follow-up pills** — `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply; renders as clickable pill chips under the message; submits via the streaming endpoint when clicked.
 - **Full Vercel AI SDK v6 message-parts integration** — `MessageStreamController` emits canonical `start` / `text-start` / `text-delta` / `text-end` / `source-url` / `data` / `finish` frames over SSE; `useChatStream()` exposes `data-state="idle|loading|ready|empty|error"` for deterministic Playwright waits (SDK `submitted` and `streaming` statuses both map to `loading` via `mapStatusToDataState()` — see `frontend/src/features/chat/map-status-to-data-state.test.ts`).
 - **Canvas-ready architecture (artifact panel deferred to v5.x)** — Tier 2 stretch (tool-result rendering, streaming source-document parts, conversation export, image attachments, artifact panel) is deliberately deferred to a v5.x milestone so it can be designed alongside the MCP **client** tool-result surface and share one storage contract. See ADR 0008 D4.
-- **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::` (no SDK); Regolo is wired through the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`. `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
+- **Zero-config for OpenAI / Anthropic / Gemini / OpenRouter / Regolo** — every provider runs on the `laravel/ai` SDK (since v8.16, ADR 0015), so AI FinOps meters them natively. Anthropic + Gemini are fully SDK; OpenAI + OpenRouter are hybrid (SDK for no-tools chat + embeddings, raw `Http::` `/chat/completions` for the MCP tool-calling turn the SDK can't host); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter. `AiManager::chatStream()` synthesises a single-chunk SSE for providers without native streaming via the `FallbackStreaming` trait.
 
 **Try it.** Open `/app/chat` in the React SPA. Start a long answer
 and hit Stop; click Regenerate; hover the assistant message and pick
@@ -380,11 +394,12 @@ Shipped incrementally across **v8.11.0 → v8.11.10** (each its own tagged relea
 `kb:synthesize-concepts`, `kb:wiki-index`, `kb:wiki-lint`, `kb:wiki-navigate`,
 `kb:wiki-review`, `kb:apply-suggestion`, `kb:wiki-maintain`, `kb:wiki-promote`),
 **HTTP API** (RBAC-gated admin endpoints under `/api/admin/kb/*`), and **MCP**
-(the `enterprise-kb` server grew from 14 → **28 tools**, incl.
+(the `enterprise-kb` server grew from 14 → **31 tools**, incl.
 `KbWikiNavigateTool` as the primary agentic surface, `KbWikiPromoteTool` for
-promote/discard, and the v8.15 engagement trio `KbEngagementSummaryTool` /
-`KbDigestPreviewTool` / `KbUserBadgesTool`) — all thin layers over one shared
-core service per capability.
+promote/discard, the v8.15 engagement trio `KbEngagementSummaryTool` /
+`KbDigestPreviewTool` / `KbUserBadgesTool`, and the v8.16 AI FinOps read trio
+`FinOpsSpendSummaryTool` / `FinOpsTopModelsTool` / `FinOpsBudgetStatusTool`) — all
+thin layers over one shared core service per capability.
 
 **Admin Wiki UI (v8.12.0):** a full web surface on the whole engine — **Wiki
 Health** (lint + safe auto-fix), **Wiki Indices** (hub + per-project roll-ups +
@@ -406,7 +421,7 @@ DB_PASSWORD=secret
 
 ### AI Provider
 
-The system supports **five providers**. OpenAI, Anthropic, Gemini, and OpenRouter are called via raw `Http::`, which keeps auth, retries, timeouts, and response parsing under our control. Regolo is the exception: it is wired through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`), so chat + embeddings reuse its OpenAI-compatible client.
+The system supports **five providers**, all on the `laravel/ai` SDK since v8.16 (ADR 0015) so AI FinOps meters every provider through the SDK lifecycle events. Anthropic + Gemini are fully on the SDK; OpenAI + OpenRouter are hybrid — the SDK serves no-tools chat + embeddings, while the MCP tool-calling turn stays on raw `Http::` `/chat/completions` because the SDK owns its own tool loop and can't host AskMyDocs's external-MCP loop. Regolo runs through the `padosoft/laravel-ai-regolo` SDK adapter (built on `Laravel\Ai`).
 
 Config file: `config/ai.php`
 
@@ -529,6 +544,52 @@ If you change the embeddings provider/model (e.g. from OpenAI 1536-dim to Gemini
 2. Create a new migration that resizes the `embedding` `vector(N)` column on `knowledge_chunks` and `embedding_cache`
 3. Flush the cache so stale-dimension vectors don't pollute retrieval — call `app(\App\Services\Kb\EmbeddingCacheService::class)->flush()` (or scope by retired provider with `->flush('openai')`) from a tinker session. `kb:prune-embedding-cache --days=N` only evicts rows older than N days and returns early when `N <= 0`, so it is **not** a full-flush substitute.
 4. Re-index all documents
+
+### AI FinOps — spend governance (v8.16)
+
+Cost governance over AI spend is provided by
+[`padosoft/laravel-ai-finops`](https://github.com/padosoft/laravel-ai-finops)
+(+ the companion React admin panel
+[`padosoft/laravel-ai-finops-admin`](https://github.com/padosoft/laravel-ai-finops-admin)):
+a per-call usage ledger, N-scope budgets, a declarative policy DSL, chargeback,
+forecasting/anomaly detection, cost-aware routing and multi-channel alerts.
+
+The package meters automatically only for calls that flow through the
+`laravel/ai` SDK (here: Regolo). AskMyDocs extends coverage to the
+raw-`Http::` providers by hooking `AiManager` — `App\FinOps\AiCallMeter`
+records every **synchronous** OpenAI / Anthropic / Gemini / OpenRouter chat
+(`chat` / `chatWithHistory`) + embedding into the ledger (non-blocking,
+`ChatLogManager`-style; Regolo is skipped to avoid double-counting).
+**Streaming chat (`chatStream`, the SSE endpoint) is not yet metered** — a
+documented follow-up — so a turn served over streaming is not recorded in the
+ledger. Every recorded row is tenant-scoped via `App\Support\TenantContext`
+(R30).
+
+The API mounts under `api/admin/ai-finops` behind the admin stack
+(`auth:sanctum` + `tenant.authorize` + a **method-aware** gate: reads →
+`viewAiFinOps` = super-admin + admin; writes → `manageAiFinOps` =
+super-admin). The admin SPA mounts under `/admin/ai-finops` (default OFF).
+
+```bash
+# After composer install, create the ai_finops_* tables:
+php artisan migrate
+
+# Turn the admin panel on (AI_FINOPS_ADMIN_ENABLED=true) and publish its assets:
+php artisan vendor:publish --tag=ai-finops-admin-assets --force
+```
+
+```env
+AI_FINOPS_ENABLED=true          # master switch (routes + metering hook)
+AI_FINOPS_METERING=true         # record usage into the ledger
+AI_FINOPS_ENFORCEMENT=false     # hard budget/policy HTTP-402 blocks (opt-in)
+AI_FINOPS_CURRENCY=USD          # base = provider list-price currency
+AI_FINOPS_DISPLAY_CURRENCY=EUR
+AI_FINOPS_RETENTION_DAYS=730
+AI_FINOPS_ADMIN_ENABLED=false   # React cockpit at /admin/ai-finops (opt-in)
+```
+
+Maintenance crons (Tier-1 slots, staggered in the 04:xx window):
+`ai-finops:capture-prices`, `ai-finops:check-alerts`, `ai-finops:prune`.
 
 ### Storage (Laravel disks)
 
@@ -831,7 +892,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | `PdfPageChunker` page-aware PDF chunking | Slices on the `## Page N` boundaries emitted by `PdfConverter`; emits one chunk per non-empty page with `heading_path = "Page N"` for page-precise citations; intra-page split on `\n\n` when over `KB_CHUNK_HARD_CAP_TOKENS` | v3.0 |
 | Embedding cache (cross-tenant by design) | DB-backed LRU cache keyed on SHA-256(`text`) UNIQUE; eliminates redundant API calls on re-ingestion and repeated queries; `EmbeddingCacheService::flush($provider)` on provider/model change. Conditional approval gate via `KB_EMBEDDING_CACHE_APPROVAL_THRESHOLD` (default 5000) on v4.2+ | v1.0 |
 | Soft delete + retention sweep | `SoftDeletes` on `KnowledgeDocument`; hidden from every read path by default; `kb:prune-deleted` (03:30 daily) hard-deletes after `KB_SOFT_DELETE_RETENTION_DAYS` (default 30); cascades `kb_nodes` + `kb_edges` on final hard delete; immutable `kb_canonical_audit` row survives | v3.0 |
-| MCP server `enterprise-kb` (28 tools) | 5 retrieval + 5 canonical/promotion tools (v3.0), 4 propose-only canonical tools (v7), **11 Auto-Wiki tools** (v8.11–v8.12: set-evidence-tier / rebuild-wiki-links / synthesize-concepts / build-wiki-index / wiki-hub / wiki-lint / **wiki-navigate** / wiki-review / apply-suggestion / wiki-maintain / **wiki-promote**), and **3 Engagement tools** (v8.15: engagement-summary / digest-preview / user-badges) exposed for Claude Desktop / Claude Code / any MCP-compatible agent. Every host capability is reachable via MCP (R44 tri-surface) | v3.0 · v8.11 · v8.12 · v8.15 |
+| MCP server `enterprise-kb` (31 tools) | 5 retrieval + 5 canonical/promotion tools (v3.0), 4 propose-only canonical tools (v7), **11 Auto-Wiki tools** (v8.11–v8.12: set-evidence-tier / rebuild-wiki-links / synthesize-concepts / build-wiki-index / wiki-hub / wiki-lint / **wiki-navigate** / wiki-review / apply-suggestion / wiki-maintain / **wiki-promote**), **3 Engagement tools** (v8.15: engagement-summary / digest-preview / user-badges), and **3 AI FinOps read tools** (v8.16: finops-spend-summary / finops-top-models / finops-budget-status) exposed for Claude Desktop / Claude Code / any MCP-compatible agent. Every host capability is reachable via MCP (R44 tri-surface) | v3.0 · v8.11 · v8.12 · v8.15 · v8.16 |
 | Enterprise chat filters (10 dimensions) | `RetrievalFilters` DTO with `project_keys` / `tag_slugs` / `source_types` / `canonical_types` / `connector_types` / `doc_ids` / `folder_globs` / `date_from` / `date_to` / `languages`. Per-user saved presets with 404-not-403 cross-user isolation; `@mention` doc pinning via cursor-context detection | v3.0 |
 | Reranker canonical boost + status penalty | Reranker applies `priority × 0.003` canonical boost and `superseded −0.4` / `deprecated −0.4` / `archived −0.6` status penalties on top of the vector/keyword/heading fusion; non-canonical chunks get zero adjustment (legacy behaviour preserved) | v3.0 |
 | Source-aware chunkers + rich frontmatter capture | `PipelineRegistry::resolveChunker($sourceType)` dispatches per source (R23 FQCN-validated + `supports()` mutex-checked at boot) to: `NotionBlockChunker` / `ConfluencePageChunker` / `OfficeDocChunker` / `AtomicNoteChunker` / `JiraIssueChunker` / `PdfPageChunker` / `MarkdownChunker`. Document-level metadata carries `connector` + `external_id` + `external_url` + native timestamps; chunk-level metadata carries `source_type` + `search_tags` (top-level) + `recency_bucket` + ACL hint + status + preamble-path | v4.5 |
@@ -863,7 +924,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Speech-to-text (Web Speech API) | Browser-native mic input via `webkitSpeechRecognition`; zero external service, zero cost; defaults to `it-IT` (configurable). Chrome / Edge / Safari supported | v1.0 |
 | Few-shot learning loop | Thumbs up/down rating on every assistant message; `FewShotService` retrieves last 3 positively-rated Q&As per user/project and injects as "Examples of Well-Rated Answers" in the system prompt | v1.0 |
 | Smart visual artifacts | `~~~chart` JSON blocks render as Chart.js bar/line/pie/doughnut; `~~~actions` JSON renders as copy/download buttons; every code block ships a "Copy" button | v1.0 |
-| Multi-provider AI federation | OpenAI / Anthropic / Gemini / OpenRouter via raw `Http::` calls (no SDK); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`; `AiManager::chat()` + `chatStream()` + `embeddings()`; per-provider streaming where supported (all 5 native or via `FallbackStreaming` trait); chat and embeddings providers configured separately | v1.0 |
+| Multi-provider AI federation | OpenAI / Anthropic / Gemini / OpenRouter / Regolo all on the `laravel/ai` SDK (ADR 0015); OpenAI + OpenRouter hybrid (SDK no-tools chat + embeddings, raw `Http::` for the MCP tool-calling turn); `AiManager::chat()` + `chatStream()` + `embeddings()`; per-provider streaming where supported (all 5 native or via `FallbackStreaming` trait); chat and embeddings providers configured separately | v1.0 |
 | Stateless JSON chat API | `POST /api/kb/chat` synchronous endpoint kept as backward-compat fallback alongside the v4 SSE streaming path; same hybrid retrieval pipeline + refusal short-circuit + confidence score serve both | v1.0 |
 | Stop / regenerate / branch / inline-edit affordances | Vercel AI SDK UI Tier 1 closure: stop-streaming via `AbortController`; regenerate-last-assistant; branch-from-message endpoint (forks the conversation tree); inline-edit user message; copy-code-block. All wired on `MessageStreamController` + the `useChatStream()` hook | v4.5 |
 | Per-message provider/model/cost metadata | Enhanced badge below every assistant message shows `provider`, `model`, `started_at`, prompt + completion tokens, and derived USD cost when `config('ai.cost_rates')` is populated (keyed by `provider → model → {input, output}`); cost is omitted (not zero) when rates are missing. Public lookup at `GET /api/chat/cost-rates` with 1-hour CDN cache | v4.5 |
@@ -904,7 +965,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Cross-mounted admin SPAs (3 packages) | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (cross-mount since v4.4/W2) + `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` + `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (cross-mount since v4.4/W3, 3 fail-closed fences preserved). **Since v8.8.2 each package admin mounts center-only with no nested chrome (the host unified rail is the only menu):** the PII and Eval trees cross-mount their React panels directly; the Flow surface renders a native host panel (KPI probe of `/admin/flows/api/live` + section cards) that links out to the full Flow cockpit in a new tab (`target="_blank"`) — so no Blade+Alpine page is ever nested inside the host chrome. **This new-tab launcher supersedes ADR 0005's "flow-admin stays iframe-mounted" assumption** (the cockpit itself remains Blade+Alpine; only the host-side mounting changed) | v4.2 · v8.8.2 |
 | Laravel scheduler (14+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / **`kb:wiki-maintain` 04:40 (v8.11/P9 — Auto-Wiki sweep: rebuild indices + lint + backfill enrichment)** / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
-| Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 |
+| Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; **credential connectors (v8.17) open a host-rendered schema-driven form** (`CredentialConnectorForm`) → `POST /api/admin/connectors/{name}/configure` instead of an OAuth redirect; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 · credential form v8.17 |
 | Widget admin SPA (`/app/admin/widget`) | Manage the KITT embeddable widget: key CRUD + rotate (`pk_`/`sk_` returned once) + revoke, allowed-origins editor, theme designer (validated + sanitised), per-key `host_tools_enabled` toggle, copy-ready embed snippet, and a read-only sessions browser with PII-masked step replay. Key management is `manageWidgetKeys` (super-admin); session inspection is `viewWidgetSessions` (admin + super-admin); everything tenant-scoped. Sessions + steps pruned by `widget:prune-sessions` (daily, `WIDGET_SESSION_RETENTION_DAYS` default 90) which also prunes expired session tokens | v8.10 |
 
 ### Integrations & Extensibility
@@ -914,12 +975,13 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | MCP server (inward, 10 tools) | `enterprise-kb` server at `/mcp/kb` exposes the KB to Claude Desktop / Claude Code / any MCP-compatible agent (5 retrieval + 5 canonical/promote tools); `auth:sanctum` + `throttle:api` | v3.0 |
 | GitHub composite action `ingest-to-askmydocs` (v2) | Reusable action with diff-mode (every push: `git diff --diff-filter=AMR` ingest + `D`+`R` delete batches via `DELETE /api/kb/documents`) and full-sync mode; canonical-folder aware; max 100 docs / batch; `--rawfile` for ARG_MAX safety (R5) | v3.0 |
 | 9 registered Flow definitions (saga / compensation) | `kb.ingest` (5-step) / `kb.canonical-index` (3-step) / `kb.promote` (4-step approval-gated, first use of `approval-gate` primitive) / `kb.delete` (4-step) / `kb.prune-deleted` / `kb.prune-embedding-cache` (conditional approval gate) / `kb.prune-chat-logs` / `kb.rebuild-graph` / `kb.ingest-folder` (3-step fan-out). Reverse-order compensation chains; persisted to `flow_runs` + `flow_steps` + `flow_audit` + `flow_approvals` + `flow_webhook_outbox` | v4.2 |
-| Multi-AI-provider abstraction | OpenAI / Anthropic / Gemini / OpenRouter via raw `Http::` (no SDK); Regolo via the `padosoft/laravel-ai-regolo` SDK adapter on `laravel/ai`; `FallbackStreaming` trait synthesises single-chunk SSE for providers without native streaming | v1.0 |
+| Multi-AI-provider abstraction | OpenAI / Anthropic / Gemini / OpenRouter / Regolo all on the `laravel/ai` SDK (ADR 0015); OpenAI + OpenRouter hybrid (raw `Http::` retained only for the MCP tool-calling turn); `FallbackStreaming` trait synthesises single-chunk SSE for providers without native streaming | v1.0 |
 | Pluggable ingestion pipeline | 3 contracts (`ConverterInterface` / `ChunkerInterface` / `EnricherInterface`); `PipelineRegistry` with FQCN-validated-at-boot + `supports()` mutex (R23); add a new format = implement 3 interfaces + register in `config/kb-pipeline.php` | v3.0 |
 | Pluggable chat-log driver | `ChatLogDriverInterface`; `database` driver shipped; BigQuery / CloudWatch are extension points via `ChatLogManager::resolveDriver()` | v1.0 |
 | Sister `padosoft/*` package stack | `laravel-ai-regolo` v1.0 (Regolo provider for `laravel/ai`) + `laravel-pii-redactor` v1.2 (PII detection with EU country packs: Italy + Germany + Spain) + `laravel-pii-redactor-admin` v1.0.2 + `laravel-flow` v1.0 (saga engine + approval gates + webhook outbox + replay) + `laravel-flow-admin` v1.0.0 + `eval-harness` v1.2 (golden datasets + 7 metrics + cohorts + adversarial + LLM-as-judge) + `eval-harness-ui` v1.0.0 — every package MIT, every architecture test enforces standalone-agnostic invariants (zero refs to `KnowledgeDocument` / `kb_*` tables / `lopadova/askmydocs` in `src/`) | v4.2 |
 | External Patent Box dossier tool | `padosoft/laravel-patent-box-tracker` v0.1 generates audit-grade Italian Patent Box dossiers; **deliberately NOT in AskMyDocs `composer.json`** — operators install it in a separate Laravel project (R37 standalone-agnostic) and consume `tools/patent-box/2026.yml` from this repo. Commercialista-validated 2026-05-02 | v4.0 |
-| Connector framework + 7 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 7 native connectors: `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (all inline for v4.5; extracted to `padosoft/askmydocs-connector-*` packages in v4.6 per ADR 0008 D1) | v4.5 |
+| Connector framework + 8 native connectors | Plugin/package architecture (`ConnectorInterface` 10-method contract + `BaseConnector` + `OAuthCredentialVault` + `ConnectorRegistry` with R23 FQCN-validated discovery via `config/connectors.php::built_in` OR `composer.json::extra.askmydocs.connectors`). 8 native connectors: 7 OAuth — `google-drive` + `notion` + `evernote` + `fabric` + `onedrive` + `confluence` + `jira` (inline v4.5; extracted to `padosoft/askmydocs-connector-*` packages v4.6 per ADR 0008 D1) — plus the credential-based `imap` (v8.17) | v4.5 · imap v8.17 |
+| Credential-based connectors (generic, schema-driven) | `SupportsCredentialForm` capability (`connector-base` v1.2) lets a non-OAuth connector advertise a field schema (each field with a `target`). `ConfigureConnectorService` renders/validates it dynamically and routes the **secret → encrypted vault, never `config_json`**; `POST /api/admin/connectors/{name}/configure` (super-admin `can:manageConnectors`, R30 tenant-scoped, R32 matrix). Basic-auth pings + vaults (bad login → 422 + PENDING); XOAUTH2 reuses the existing OAuth callback. No `if (name==='imap')` anywhere — any future credential connector works unchanged | v8.17 |
 | **MCP client framework** | AskMyDocs as MCP **CLIENT** (outward direction) — tenant-scoped `McpServerRegistry` + `McpToolCallingService` orchestrates multi-turn tool-calling loops (max 3 iterations, configurable); `McpToolAuthorizer` gates per-user/per-server/per-tool access; v7.0/W6.3.B retired the v5.0 Node sidecar and now drives JSON-RPC directly over native HTTP / SSE / stdio transports via `padosoft/askmydocs-mcp-pack`; `McpHandshakeService` persists initialize+tools/list under `mcp_servers.handshake_response_json`; immutable audit trail in `mcp_tool_call_audit` (with `transport_error` status when the upstream connection is unreachable but not timing out); admin API for server CRUD + handshake + tool-list management; `AI_AGENTIC_ENABLED` master switch; OpenAI + OpenRouter providers wire tool schemas automatically | v5.0 |
 | **MCP admin web panel** (optional companion) | Standalone Laravel package `padosoft/askmydocs-mcp-pack-admin` ships a React SPA that cross-mounts under `/admin/mcp-pack` and surfaces every MCP-side capability above through 12 routes (Dashboard, Servers list + new-server wizard, per-server detail with 7 tabs, Tools matrix + try-it, Resources tree, Prompts playground, Audit log + drilldown, Circuit breakers, OpenAPI explorer, Settings, Help). **v1.1.0** (shipped 2026-05-18) drives the full live `padosoft/askmydocs-mcp-pack` v1.5+ REST surface end-to-end — 22 typed endpoints, 23 TanStack Query hooks across read+write paths, R21 two-call confirm-token protocol on tool invoke / audit replay / breaker reset, SSE live-feed consumer, 154 Vitest specs covering every binding. Composer-discoverable, RBAC-gated, dark+light themed — see [Optional: mount the MCP admin web panel](#optional-mount-the-mcp-admin-web-panel) | v7.0 |
 | **KITT embeddable agentic widget** | A one-`<script>` embeddable, page-aware, agentic chat widget served at `/widget/askmydocs-widget.js` and driven by `/api/widget/*` (gated by the `widget.key` middleware — public `pk_` + `Origin` allowlist, `sk_` secret for server-to-server, or single-use origin-bound `wt_` session tokens consumed atomically per R21). Runs the first-party retrieval stack (grounded + cited, tenant/project resolved server-side from the key — R30) inside a bounded ReAct loop: the widget captures a structured page snapshot and the LLM emits tool calls run in the page DOM (~20 FE verbs: `click`/`type`/`select`/`navigate_to`/`submit_form`/`wait_for`/…) or server-side via `/exec-tool` (`search_knowledge_base`). **Skills** are JSON manifests (`resources/widget/skills/*`) declaring `tools_enabled` + `auto_annotation_rules` + `default_policies`; the **Host-Tools Protocol** lets a host app expose its own tools, double-gated per key (`host_tools_enabled`) **and** per skill. Pages annotate with stable verb-based `data-kitt-*` attributes; `data-kitt-sensitive`/`password`/`hidden` values are force-nulled server-side. Tool schemas are sent only to providers in `config('widget.tool_calling_providers')` (default `openai,openrouter,fake`); otherwise it degrades to plain grounded chat. See [`docs/kitt/INTEGRATION.md`](docs/kitt/INTEGRATION.md) | v8.10 |
@@ -1479,6 +1541,8 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.12.0** | ✅ shipped 2026-06-15 | **Auto-Wiki admin UI (P10 — epic close)** — the full web surface on the P1–P9 engine, shipped as 7 real-data-tested sub-PRs (#282..#288). **Wiki Health** (`/app/admin/kb/wiki-health` — lint findings + safe auto-fix), **Wiki Indices** (hub + per-project roll-ups + operation log + one-click rebuild), **Wiki Explorer** (browse typed pages by provenance tier, **promote** auto→human, **discard** auto — a new tri-surface `WikiExplorerService` capability: `kb:wiki-promote` + `GET /api/admin/kb/wiki-pages` + `POST …/documents/{id}/wiki-{promote,discard}` + `KbWikiPromoteTool`, MCP roster 24→25), **Doc Insights → Apply** (turn cross-reference / impacted suggestions into audited reversible mutations over the P8 engine, with a 200-refusal surfaced distinctly from a transport error per R14), **Auto-Wiki Settings** (`/app/admin/kb/autowiki-settings` — per-(tenant,project) auto-build gate over `AutoWikiGate`, tri-state Inherit/On/Off, R43 both-states), and **tier-badged chat citations** (every citation carries `generation_source`; auto pages get an `auto` badge, R27 additive). Every screen has Vitest + real-data Playwright (R13) + an `AdminAuthorizationMatrix` row for each new endpoint (R32). |
 | **v8.13.0** | ✅ shipped 2026-06-15 | **Evidence & Risk Review integration (P11)** — the general risk-sweep / review-log engine deferred OUT of core at v8.11.2 lands as the standalone `padosoft/laravel-evidence-risk-review` (core, v1.1) + `-admin` (v1.0) sister packages, wired **tri-surface (R44)** into AskMyDocs over **one** shared core service: the package's Artisan command + MCP tools auto-register (PHP + MCP), the HTTP API mounts at `/api/admin/evidence-risk-review/*` (secured: `tenant.resolve` + `auth:sanctum` + `tenant.authorize` + `can:viewEvidenceRiskReview`, R32 matrix-locked), and a **native FE admin** at `/app/admin/evidence-risk-review` (Reviews log + detail / Profiles / Taxonomy / Try) cross-mounts against that API — the same convention as every sister admin (the `-admin` React bundle is composer-required but `dont-discover`ed). **R30:** a host `TenantResolver` binds the review log to the active tenant — a review is stamped on write and the read paths are forced to that tenant (a client `tenant` filter cannot widen it). **R43 both-states:** the whole admin surface is opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` (default-OFF — routes unregistered → clean 404 + a clean FE "unavailable" landing, never a 500); the optional LLM semantic pass over `AiManager` is a second default-OFF flag (`EVIDENCE_RISK_REVIEW_LLM_ENABLED`). +7 integration PHPUnit (tenant isolation E2E + LLM adapter + R43 on/off) + 3 Vitest + real-data Playwright (R13). |
 | **v8.15.0** | ✅ shipped 2026-06-17 | **Engagement & Intelligence Suite** (W1–W5) — the layer that turns the KB into a living system, surpassing Stack Overflow for Teams / Zendesk / Notion on packaging + delivery breadth. **W1** an append-only contribution log (`kb_contribution_events`, written from the existing ingest/promote/citation paths — never a new write path) + `EngagementMetricsService` (SQL-aggregated, R3) + daily `engagement:compute` snapshot (`kb_engagement_snapshots`). **W2** multi-channel rich digest — `DigestComposer` → `DigestRendererRegistry` (R23 mutex) → email (magazine HTML) / Discord embed / Slack Block Kit / Teams Adaptive Card, with an opt-in `AiDigestNarrator` on a **dedicated free OpenRouter model** (`KB_DIGEST_AI_MODEL=meta-llama/llama-3.3-70b-instruct:free`, default-ON, degrades to deterministic copy R14/R43); `digest:send {--frequency=weekly|monthly} {--dry-run} {--preview}`. **W3** per-user `digest_preferences` (frequency + per-section toggles) + in-app digest feed (`engagement_digest_feed` + `digest:prune-feed`) + monthly executive roll-up. **W4** a new personal **My KB** dashboard (`/app/me`) + admin engagement analytics (leaderboard / coverage / answer-rate / decision-debt trend), reusing `KpiCard`/`ChartCard`/recharts. **W5** opt-in **gamification** — config-driven badge catalog awarded over all-time engagement metrics (`kb_user_badges`, `gamification:recompute`, default-OFF `KB_GAMIFICATION_ENABLED`, R43 both-states). Every capability is **tri-surface** (R44): command + HTTP + MCP (`KbEngagementSummaryTool` / `KbDigestPreviewTool` / `KbUserBadgesTool`, roster 25→28) over one shared core; 5 tenant-aware tables (R30/R31). Deep doc-site pages: [Engagement Suite](https://padosoft.mintlify.app/engagement-suite) · [Digests](https://padosoft.mintlify.app/digests) · [Dashboards](https://padosoft.mintlify.app/dashboards) · [Gamification](https://padosoft.mintlify.app/gamification). |
+| **v8.16.0** | ✅ shipped 2026-06-19 | **AI FinOps spend governance** (`padosoft/laravel-ai-finops` + `-admin`). A cross-provider AI-spend governance layer — immutable per-call usage **ledger**, N-scope **budgets**, declarative **policy DSL**, **chargeback**/cost-centers, **forecasting** + anomaly detection, cost-aware routing, price-watch and multi-channel **alerts** — attributed per tenant (R30) and host-secured under `api/admin/ai-finops` behind a **method-aware** gate (reads → `viewAiFinOps` super-admin+admin; writes → `manageAiFinOps` super-admin), R32-matrix-locked; package-served React cockpit at `/admin/ai-finops` (default-OFF → clean 404, R43). **W1** the `AiCallMeter` metering bridge. **W2** ([ADR 0015](docs/adr/0015-v816-provider-sdk-migration.md)) migrates provider transport onto the `laravel/ai` SDK so the finops lifecycle hook meters every provider natively (Anthropic + Gemini fully SDK; OpenAI + OpenRouter hybrid — raw `Http::` retained only for the MCP tool-calling turn the bridge still meters); OpenRouter's real billed `usage.cost` becomes capturable. **W3** real **server-side per-turn cost**: `ChatTurnCostResolver` resolves the finops pricing cascade at `ChatLogManager` time onto additive `chat_logs.{cost,cost_currency,trace_id}` (ledger join), replacing the old static client-side guess; surfaced additively in chat `meta` (R27) across stateless / conversation / streaming. **W4** the **R44 third surface**: three tenant-scoped, master-switch + table-aware (R43) MCP read tools (`FinOps{SpendSummary,TopModels,BudgetStatus}Tool`, roster 28→31) + a real-data Playwright E2E over the admin SPA + doc-site parity. RC sequence `v8.16.0-rc1`..`rc4`, then GA. |
+| **v8.17.0** | ✅ shipped 2026-06-20 | **Credential-based connectors (IMAP)** — the first non-OAuth connector, activatable entirely from **Admin → Connectors** with the same "click → fill → activate" UX. A **generic, schema-driven** mechanism (no `if (name==='imap')` anywhere): a connector implements `SupportsCredentialForm` (`padosoft/askmydocs-connector-base` v1.2) and the host renders the form, validates it dynamically, splits each field by its `target` (**secret → encrypted vault, never `config_json`**), and activates via the connector's existing `initiateOAuth`/`handleOAuthCallback` contract — basic-auth pings + vaults (success → ACTIVE; bad creds → 422 with `error_json`), XOAUTH2 redirects through the unchanged callback. New `POST /api/admin/connectors/{name}/configure` (super-admin, `can:manageConnectors`, R32-matrix-locked + tenant-scoped R30); schema-driven React modal (R11/R15, honours `showIf`, secrets never pre-filled). Offline test seam (`CONNECTOR_IMAP_FAKE_PING`, hard-gated to testing/local, R43) + real-data Playwright happy+failure; deep [doc-site page](https://padosoft.mintlify.app/connectors-credential). Any future credential connector reuses the same form/endpoint unchanged. |
 | **Future** | ⏳ planned for v8.x or v9.0 | Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1578,7 +1642,7 @@ feature.
 | `padosoft/eval-harness` v1.2 | RAG / LLM evaluation framework — golden datasets, 7 metrics, cohorts, adversarial lane, LLM-as-judge regression detection | ✅ wired since v4.2 W3 (CI gate) + v4.3 W3 (nightly cron) + v4.4 W4 (adversarial opt-in) | [github](https://github.com/padosoft/eval-harness) |
 | `padosoft/eval-harness-ui` v1.0.0 | 8-page React + Vite admin SPA — read-only, non-prod-only | ✅ cross-mounted at `/admin/eval-harness` since v4.4 W3 (iframe in v4.2/W4); 3 fail-closed fences preserved | [github](https://github.com/padosoft/eval-harness-ui) |
 | `padosoft/laravel-patent-box-tracker` v0.1 | Italian Patent Box dossier auto-generator | ❌ external by design — operators install in a separate Laravel project; AskMyDocs ships `tools/patent-box/2026.yml` as input | [github](https://github.com/padosoft/laravel-patent-box-tracker) |
-| **Connectors** (8 packages, v4.6 extraction) — `padosoft/askmydocs-connector-base` v1.1.1 + `-google-drive` v1.0.1 + `-notion` v1.0.1 + `-evernote` v1.0.0 + `-fabric` v1.0.0 + `-onedrive` v1.0.0 + `-confluence` v1.0.0 + `-jira` v1.0.0 | Framework primitives + 7 standalone external-source connectors (OAuth2 + sync + source-aware markdown rendering) — each `composer require`-able; auto-discovered via `composer.json::extra.askmydocs.connectors`; talk to AskMyDocs through the `ConnectorIngestionContract` IoC bridge | ✅ wired since v4.6 W4 — `HostIngestionBridge` implements the contract (dispatch / path resolve / PII redact / audit / soft-delete by remote-id); inline `app/Connectors/BuiltIn/` from v4.5 fully replaced | [base](https://github.com/padosoft/askmydocs-connector-base) · [google-drive](https://github.com/padosoft/askmydocs-connector-google-drive) · [notion](https://github.com/padosoft/askmydocs-connector-notion) · [evernote](https://github.com/padosoft/askmydocs-connector-evernote) · [fabric](https://github.com/padosoft/askmydocs-connector-fabric) · [onedrive](https://github.com/padosoft/askmydocs-connector-onedrive) · [confluence](https://github.com/padosoft/askmydocs-connector-confluence) · [jira](https://github.com/padosoft/askmydocs-connector-jira) |
+| **Connectors** (9 packages, v4.6 extraction + v8.17 IMAP) — `padosoft/askmydocs-connector-base` v1.2 + `-google-drive` v1.0.1 + `-notion` v1.0.1 + `-evernote` v1.0.0 + `-fabric` v1.0.0 + `-onedrive` v1.0.0 + `-confluence` v1.0.0 + `-jira` v1.0.0 + `-imap` v1.2 | Framework primitives + 8 standalone external-source connectors — 7 OAuth2 (sync + source-aware markdown rendering) plus the **credential-based** `imap` (basic-auth / XOAUTH2). `-base` v1.2 adds the `SupportsCredentialForm` capability the host renders credential forms from. Each `composer require`-able; auto-discovered via `composer.json::extra.askmydocs.connectors`; talk to AskMyDocs through the `ConnectorIngestionContract` IoC bridge | ✅ wired since v4.6 W4 — `HostIngestionBridge` implements the contract (dispatch / path resolve / PII redact / audit / soft-delete by remote-id); `imap` added v8.17 (host renders the credential form, secret → encrypted vault) | [base](https://github.com/padosoft/askmydocs-connector-base) · [google-drive](https://github.com/padosoft/askmydocs-connector-google-drive) · [notion](https://github.com/padosoft/askmydocs-connector-notion) · [evernote](https://github.com/padosoft/askmydocs-connector-evernote) · [fabric](https://github.com/padosoft/askmydocs-connector-fabric) · [onedrive](https://github.com/padosoft/askmydocs-connector-onedrive) · [confluence](https://github.com/padosoft/askmydocs-connector-confluence) · [jira](https://github.com/padosoft/askmydocs-connector-jira) · [imap](https://github.com/padosoft/askmydocs-connector-imap) |
 | `padosoft/askmydocs-mcp-pack` v1.5.0 | Framework-agnostic MCP (Model Context Protocol) plumbing for Laravel — 6 contracts + multi-turn tool-calling orchestrator + stdio/HTTP transports + hash-only audit + RBAC hooks + **full admin REST surface (22 endpoints): me/tenants/api-keys, server CRUD + handshake + tools/resources/prompts, R21-atomic tool invoke / audit replay / breaker reset, SSE events, OpenAPI 3.1 spec**; standalone, zero AskMyDocs dependencies; 325 PHPUnit tests across 7 CI cells (PHP 8.3 × Laravel 11/12/13, PHP 8.4 × Laravel 11/12/13, PHP 8.5 × Laravel 13 only) | ✅ shipped 2026-05-18 (v1.5.0) — full cycle v1.0→v1.5 closed: v1.0 contracts, v1.1 transports + SSE, v1.2 server-side, v1.3 circuit breaker + retry, v1.4 admin REST minimal (6 endpoints), v1.5 admin REST complete (22 endpoints with sub-interface BC-safe extensions: `McpHostBridgeIdentityContract` + `McpServerMutableRegistryContract`). AskMyDocs v7.1+ pins `^1.5` | [github](https://github.com/padosoft/askmydocs-mcp-pack) |
 | `padosoft/askmydocs-mcp-pack-admin` v1.1.0 | Standalone React SPA companion — 12 routes covering server CRUD, handshake, tool catalog, paginated audit log, circuit-breaker dashboard, three-pane resources browser, prompt playground, OpenAPI explorer, settings + tour. Cross-mounts under `/admin/mcp-pack` exactly like `pii-redactor-admin` / `flow-admin` / `eval-harness-ui` | ✅ live wire-up GA 2026-05-18 (v1.1.0) — every page surface drives real `padosoft/askmydocs-mcp-pack` v1.5+ endpoints via TanStack Query: 22 typed endpoints + 19 hand-written types mirroring v1.5 OpenAPI, 13 read hooks + 10 mutation hooks, R21 two-call confirm-token protocol with second-leg expired-token guard on `useInvokeTool` / `useReplayAudit` / `useResetBreaker`, SSE live-feed consumer replacing prototype simulator, `<DataState>` shared wrapper enforcing R14+R11+R15 invariants. **154 Vitest specs across 22 test files** covering loading / error / empty / ready states + R21 happy + failure + ValidationError + SSE behaviour via MSW handlers shaped to the real wire schema. Full real-backend Playwright rewrite tracked for v1.1.x; v1.1.0 ships with a smoke spec only | [github](https://github.com/padosoft/askmydocs-mcp-pack-admin) |
 | `padosoft/laravel-evidence-risk-review` v1.1 + `-admin` v1.0 | Answer-grounding risk firewall: a budget-bounded deterministic + optional-LLM sweep that labels evidence tiers, scores per-claim risk verdicts (keep / soften / flag / remove), and appends a tenant-scoped review log; domain risk profiles + a pluggable check registry; tenancy-agnostic via a `TenantResolver` contract | ✅ wired tri-surface since v8.13 P11 — core PHP command + MCP tools auto-register; HTTP API at `/api/admin/evidence-risk-review/*` (host-secured + tenant-scoped); **native FE admin** at `/app/admin/evidence-risk-review` cross-mounts the core API (the `-admin` React bundle is composer-required but `dont-discover`ed). Opt-in (`EVIDENCE_RISK_REVIEW_ADMIN_ENABLED`, default-OFF, R43) | [core](https://github.com/padosoft/laravel-evidence-risk-review) · [admin](https://github.com/padosoft/laravel-evidence-risk-review-admin) |
@@ -1625,6 +1689,74 @@ including commercial use.
 ---
 
 ## Changelog
+
+**v8.17.0 — Credential-based connectors (IMAP) (GA, shipped 2026-06-20).** Adds the
+first **credential-based** connector (IMAP) to the connector framework, activatable
+entirely from **Admin → Connectors** like the OAuth ones — but through a **generic,
+schema-driven** mechanism with **no IMAP-specific branch** in the host, so every
+future credential connector (SMTP, API-key sources, …) works unchanged. A connector
+implements the new `SupportsCredentialForm` capability (`padosoft/askmydocs-connector-base`
+v1.2) and advertises a field schema (each field carries a `target`); the host renders
+the form from that schema, validates it **dynamically** (rules derived from the schema,
+defaults merged so `required_if` stays correct), and routes each value by its `target` —
+the **secret goes to the encrypted vault and never to `config_json`**, logs, or the API
+response. Activation reuses the connector's existing `initiateOAuth` / `handleOAuthCallback`
+contract (no new connector method): **basic-auth** replays a single-use state to ping +
+vault the credential (success → ACTIVE; a failed login → **422** with the row left PENDING +
+`error_json`, never a silent 200), while **XOAUTH2** (Gmail / M365) persists PENDING and
+redirects through the **unchanged** OAuth callback. New endpoint
+`POST /api/admin/connectors/{name}/configure` is super-admin-only (`can:manageConnectors`),
+tenant-scoped (R30) and locked into the R32 authorization matrix; the schema-driven React
+modal honours `showIf`, never pre-fills secrets, exposes `data-state`/`aria-busy` (R11/R15),
+and surfaces per-field 422s inline. Because the IMAP server is a **backend TCP dependency**
+Playwright can't stub, an offline `FakeImapClientFactory` seam (`CONNECTOR_IMAP_FAKE_PING`,
+**hard-gated to testing/local** so it can never bypass real auth in production, R43
+both-states tested) makes the happy + failure E2E deterministic. Pulls in
+`padosoft/askmydocs-connector-imap` v1.2 (+ `-base` v1.2); deep doc-site page
+[Credential-based connectors](https://padosoft.mintlify.app/connectors-credential).
+
+**v8.16.0 — AI FinOps spend-governance integration (GA, shipped 2026-06-19).** Installs
+`padosoft/laravel-ai-finops` (core) + `padosoft/laravel-ai-finops-admin` (React
+cockpit): cross-provider usage ledger, N-scope budgets, declarative policies,
+chargeback, forecasting/anomaly detection, cost-aware routing and alerts,
+attributed per tenant (R30) and host-secured under `api/admin/ai-finops` behind
+the admin stack + a **method-aware** gate (reads → `viewAiFinOps`
+super-admin+admin; writes → `manageAiFinOps` super-admin), locked by the R32
+authorization matrix; the SPA mounts at `/admin/ai-finops` (default OFF → clean
+404, R43). Tier-1 crons: `ai-finops:capture-prices` / `:check-alerts` / `:prune`.
+Across this cycle every AI provider moves onto the `laravel/ai` SDK so FinOps can
+meter chat, streaming and embeddings through native lifecycle events, and the
+static client-side cost table is replaced with authoritative server-side per-model
+cost (W3). **W1** (`v8.16.0-rc1`) lands the integration foundation: the
+`App\FinOps\AiCallMeter` bridge meters synchronous chat + embeddings for all
+providers (streaming not yet metered). **W2** (`v8.16.0-rc2`, ADR 0015) migrates
+all four `Http::`-based providers onto the native `laravel/ai` SDK drivers —
+Anthropic + Gemini fully SDK; OpenAI + OpenRouter hybrid (SDK no-tools chat +
+embeddings, raw `Http::` retained only for the MCP tool-calling turn the SDK
+can't host) — so the finops lifecycle hook meters every provider natively. The
+`AiCallMeter` bridge shrinks to the residual with-tools turn, and OpenRouter's
+real billed `usage.cost` becomes capturable (`AI_FINOPS_ACTUAL_COST`, default OFF).
+**W3** (`v8.16.0-rc3`) replaces "token cost set arbitrarily" with a real
+**server-side per-turn cost**: resolved server-side from the finops pricing cascade
+(`ChatTurnCostResolver`, called by the controllers for the response `meta` and by
+the chat-log driver when persisting), persisted on `chat_logs.cost` (decimal 18,8)
++ `cost_currency` (ISO-4217), and correlated to the turn's usage-ledger row(s)
+(a tool loop spans several) via a shared `trace_id`. Surfaced additively in the
+chat response `meta` (R27) and rendered by the FE `TokenCostMeter` in the configured
+base currency — replacing the old client-side compute from static rates — across the
+stateless, conversation and streaming chat endpoints. The resolver is metering-gated
+so it never adds a price-feed HTTP fetch to the response path.
+**W4** (`v8.16.0-rc4`) completes the third **R44** surface and ships the cycle to GA:
+three tenant-scoped (R30), OFF-path-safe (R43) MCP read tools on the `enterprise-kb`
+server — `FinOpsSpendSummaryTool` (window spend + per-(provider, model) breakdown),
+`FinOpsTopModelsTool` (costliest models with cost-share) and `FinOpsBudgetStatusTool`
+(per tenant-scoped budget limit/spend/state, delegating to the package `Budget::status()`
+core) — MCP roster **28→31**, each honouring both the `ai-finops.enabled` master switch
+and table presence so a disabled deployment reads nothing over MCP. Plus a real-data
+Playwright E2E over the package-served `/admin/ai-finops` admin SPA (admin reaches the
+shell; a viewer is denied **403** via the `viewAiFinOps` gate), with the package's
+prebuilt assets published + verified in CI; and a `docs-site` + CLAUDE.md parity pass
+(ADR 0015). `feature/v8.16` then merges to `main` as **v8.16.0** (R37).
 
 **v8.15.0 — Engagement & Intelligence Suite.** The layer that turns a knowledge
 base from a passive store into a living system — proactive digests, contributor

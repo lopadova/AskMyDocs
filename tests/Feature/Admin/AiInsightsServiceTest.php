@@ -161,14 +161,7 @@ class AiInsightsServiceTest extends TestCase
         ]);
 
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => '["redis","lru","cache-sizing"]'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('["redis","lru","cache-sizing"]'), 200),
         ]);
 
         $out = $this->svc()->suggestTagsBatch();
@@ -197,14 +190,7 @@ class AiInsightsServiceTest extends TestCase
         ]);
 
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => 'I am sorry, I cannot comply.'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('I am sorry, I cannot comply.'), 200),
         ]);
 
         $out = $this->svc()->suggestTagsBatch();
@@ -246,14 +232,7 @@ class AiInsightsServiceTest extends TestCase
         $this->makeChatLog([], 'What is the SSO url?', 0);
 
         Http::fake([
-            '*' => Http::response([
-                'choices' => [[
-                    'message' => ['content' => '[{"topic":"Deployment","sample_questions":["How do I deploy?"]}]'],
-                    'finish_reason' => 'stop',
-                ]],
-                'model' => 'gpt-4o-mini',
-                'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 1, 'total_tokens' => 2],
-            ], 200),
+            '*' => Http::response(self::openAiSdkResponsesBody('[{"topic":"Deployment","sample_questions":["How do I deploy?"]}]'), 200),
         ]);
 
         $out = $this->svc()->coverageGaps();

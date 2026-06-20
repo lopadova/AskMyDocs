@@ -346,14 +346,14 @@ class EmbeddingCacheServiceTest extends TestCase
         // lookup never matched its own writes, so every OpenRouter
         // embedding call became a permanent cache miss → redundant
         // paid API requests on every re-ingestion. The fix wires the
-        // provider's flat config key
-        // (`ai.providers.openrouter.embeddings_model`) into the
-        // resolver so reads and writes share a key.
+        // provider's SDK-shape config key
+        // (`ai.providers.openrouter.models.embeddings.default`, v8.16/W2)
+        // into the resolver so reads and writes share a key.
         config()->set('kb.embedding_cache.enabled', true);
         // phpunit.xml does not set `OPENROUTER_EMBEDDINGS_MODEL`, so
         // the config default `openai/text-embedding-3-small` applies
         // and is what the resolver will return below.
-        $configuredModel = config('ai.providers.openrouter.embeddings_model');
+        $configuredModel = config('ai.providers.openrouter.models.embeddings.default');
         $this->assertSame('openai/text-embedding-3-small', $configuredModel, 'Test config drift — expected the OPENROUTER_EMBEDDINGS_MODEL default');
 
         $provider = Mockery::mock(AiProviderInterface::class);

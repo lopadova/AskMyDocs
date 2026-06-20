@@ -23,11 +23,37 @@ export interface ConnectorInstallationDto {
     error: Record<string, unknown> | null;
 }
 
+/*
+ * v8.17 — credential-based connectors (IMAP). `auth_kind` discriminates an
+ * OAuth-redirect connector (`oauth`, the default) from a credential-form one
+ * (`credential`). For credential connectors the BE ships `credential_form_schema`
+ * — the ordered field definitions the FE renders, mirroring
+ * `Padosoft\AskMyDocsConnectorBase\Support\CredentialField::toArray()`. The form
+ * is driven ENTIRELY by this schema (no IMAP-specific FE branch).
+ */
+export type ConnectorAuthKind = 'oauth' | 'credential';
+
+export interface CredentialFieldSchema {
+    name: string;
+    label: string;
+    type: 'text' | 'number' | 'password' | 'select' | 'checkbox';
+    target: 'auth_mode' | 'provider' | 'connection' | 'secret' | 'config';
+    required: boolean;
+    secret: boolean;
+    default: string | number | boolean | null;
+    options: Record<string, string>;
+    showIf: { field: string; equals: string | number | boolean } | null;
+    help: string | null;
+    group: string | null;
+}
+
 export interface ConnectorEntry {
     key: string;
     display_name: string;
     icon_url: string;
     oauth_scopes: string[];
+    auth_kind: ConnectorAuthKind;
+    credential_form_schema: CredentialFieldSchema[] | null;
     installation: ConnectorInstallationDto | null;
 }
 
@@ -63,9 +89,46 @@ export interface DisableResponse {
     };
 }
 
+/*
+ * v8.17 — `ConnectorAdminController::configure()` envelope. `status` reflects the
+ * upserted installation (active for a successful basic-auth ping; pending for
+ * xoauth2 awaiting the provider redirect). `redirect_to` is non-null ONLY for
+ * xoauth2 — the provider authorize URL the browser must visit; the existing
+ * `oauth/callback` finishes the flow. A failed basic-auth credential returns
+ * HTTP 422 `{ error }` (handled by the mutation, not this shape).
+ */
+export interface ConfigureResponse {
+    data: {
+        id: number;
+        status: ConnectorStatus;
+        last_sync_at: string | null;
+        error: Record<string, unknown> | null;
+        redirect_to: string | null;
+    };
+}
+
+/**
+ * Submitted credential-form values keyed by field `name` (+ optional project_key).
+ * Deliberately excludes `null`: the form OMITS an emptied optional field rather
+ * than sending null, so the BE applies the schema default — sending `{ field: null }`
+ * would be a contract violation.
+ */
+export type ConfigureConnectorPayload = Record<string, string | number | boolean>;
+
 export const adminConnectorsApi = {
     async list(): Promise<ConnectorEntry[]> {
         const { data } = await api.get<ConnectorListResponse>('/api/admin/connectors');
+        return data.data;
+    },
+
+    async configure(
+        key: string,
+        payload: ConfigureConnectorPayload,
+    ): Promise<ConfigureResponse['data']> {
+        const { data } = await api.post<ConfigureResponse>(
+            `/api/admin/connectors/${encodeURIComponent(key)}/configure`,
+            payload,
+        );
         return data.data;
     },
 

@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     adminConnectorsApi,
+    type ConfigureConnectorPayload,
+    type ConfigureResponse,
     type ConnectorEntry,
     type DisableResponse,
 } from './connectors.api';
@@ -35,6 +37,27 @@ export function useStartInstall() {
         // No invalidation: the BE creates a `pending` row and returns
         // the OAuth redirect. The caller navigates away, so a refetch
         // would race with the navigation.
+    });
+}
+
+/*
+ * v8.17 — configure a credential-based connector (IMAP). On success the BE has
+ * upserted the installation (active for basic-auth, pending for xoauth2); we
+ * invalidate the list so the card reflects the new status. The xoauth2
+ * `redirect_to` is handled by the caller (navigates the browser to the provider).
+ * A failed basic-auth credential surfaces as a 422 the caller renders inline.
+ */
+export function useConfigureConnector() {
+    const qc = useQueryClient();
+    return useMutation<
+        ConfigureResponse['data'],
+        unknown,
+        { key: string; payload: ConfigureConnectorPayload }
+    >({
+        mutationFn: ({ key, payload }) => adminConnectorsApi.configure(key, payload),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
+        },
     });
 }
 

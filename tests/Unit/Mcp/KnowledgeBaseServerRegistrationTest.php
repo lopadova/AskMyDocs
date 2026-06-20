@@ -29,9 +29,20 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_twenty_eight_tools(): void
+    public function test_server_registers_exactly_thirty_one_tools(): void
     {
-        $this->assertCount(28, $this->registeredTools());
+        $this->assertCount(31, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_finops_read_tools(): void
+    {
+        // v8.16/W4 — the AI FinOps MCP read surfaces (R44 third surface):
+        // spend summary + top models (usage ledger) + budget status (budgets).
+        $tools = $this->registeredTools();
+
+        $this->assertContains(\App\Mcp\Tools\FinOpsSpendSummaryTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\FinOpsTopModelsTool::class, $tools);
+        $this->assertContains(\App\Mcp\Tools\FinOpsBudgetStatusTool::class, $tools);
     }
 
     public function test_server_registers_the_user_badges_tool(): void

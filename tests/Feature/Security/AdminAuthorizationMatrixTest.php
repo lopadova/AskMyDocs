@@ -102,6 +102,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/workflows' => ['admin', 'viewer', 'super-admin'], // viewWorkflows
             '/api/admin/ai-act-compliance/overview' => ['admin', 'dpo', 'super-admin'], // viewAiActCompliance
             '/api/admin/evidence-risk-review/reviews' => ['admin', 'dpo', 'super-admin'], // viewEvidenceRiskReview
+            '/api/admin/ai-finops/settings' => ['admin', 'super-admin'], // FinOpsAuthorize: GET → viewAiFinOps
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
@@ -167,6 +168,87 @@ final class AdminAuthorizationMatrixTest extends TestCase
             $status = $this->getJson($uri)->getStatusCode();
             $this->assertSame(401, $status, "Guest must be rejected (401) on [{$uri}] but got {$status}.");
         }
+    }
+
+    /**
+     * The matrix above asserts authorization with GET only. FinOps is special:
+     * `FinOpsAuthorize` is METHOD-AWARE — safe verbs (GET/HEAD) require
+     * `viewAiFinOps` (admin + super-admin), but mutating verbs require
+     * `manageAiFinOps` (super-admin ONLY). A GET-only matrix cannot catch an
+     * `admin` accidentally gaining WRITE access, so assert the write boundary
+     * explicitly on a representative mutating endpoint.
+     */
+    public function test_finops_write_methods_require_the_manage_gate(): void
+    {
+        // POST → SettingsController::setKillSwitch, inside the finops auth_middleware group.
+        $writeUri = '/api/admin/ai-finops/settings/kill-switch';
+
+        // admin passes the READ gate but must be DENIED (403) on a WRITE.
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on write [{$writeUri}] (manageAiFinOps = super-admin only) but got {$adminStatus}.",
+        );
+
+        // super-admin passes the MANAGE gate; the controller may 200/422/500 on the
+        // empty body — none of which is an authz failure — but it must NOT be 403.
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $superStatus,
+            "Role [super-admin] must pass the manage gate on write [{$writeUri}] but got 403.",
+        );
+
+        // (Guest auth on finops routes is already covered by
+        // test_guests_are_rejected_with_401_on_every_protected_endpoint — this
+        // method's job is the admin-vs-super-admin WRITE boundary specifically.)
+    }
+
+    /**
+     * v8.17 — the credential-connector `configure` endpoint is POST-only (a GET
+     * would 405, so it can't ride the GET matrix above). It sits in the same
+     * `admin/connectors` group gated by `can:manageConnectors` (super-admin only),
+     * so assert the write boundary explicitly: admin denied, super-admin passes.
+     * (Guest → 401 is already covered for the whole `admin/connectors` group by
+     * test_guests_are_rejected_with_401 on the GET `/api/admin/connectors` entry,
+     * which shares this route's identical middleware stack.)
+     */
+    public function test_configure_connector_requires_the_manage_connectors_gate(): void
+    {
+        $writeUri = '/api/admin/connectors/imap/configure';
+
+        // admin is NOT in the manageConnectors allow-set → 403.
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
+        );
+
+        // super-admin passes the gate; the controller/FormRequest may 422 on the
+        // empty body — not an authz failure — but it must NOT be 403.
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->postJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $superStatus,
+            "Role [super-admin] must pass the manageConnectors gate on [{$writeUri}] but got 403.",
+        );
+        // Also guard route wiring: a 404 would make "not 403" pass even if the
+        // endpoint were unmounted. An empty body for a super-admin yields 422.
+        $this->assertNotSame(
+            404,
+            $superStatus,
+            "[{$writeUri}] must be MOUNTED (super-admin got 404 — route missing?).",
+        );
     }
 
     private function userWithRole(string $role): User

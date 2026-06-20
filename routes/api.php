@@ -756,6 +756,10 @@ Route::middleware([
             ->name('api.admin.connectors.install');
         Route::get('/{name}/oauth/callback', [ConnectorAdminController::class, 'oauthCallback'])
             ->name('api.admin.connectors.oauth.callback');
+        // v8.17 — credential-based connectors (IMAP): host-rendered form →
+        // configure → ping/persist (basic) or redirect (xoauth2). Same gate group.
+        Route::post('/{name}/configure', [ConnectorAdminController::class, 'configure'])
+            ->name('api.admin.connectors.configure');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');

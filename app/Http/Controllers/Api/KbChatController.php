@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Ai\AiManager;
 use App\Ai\AiResponse;
+use App\FinOps\ChatTraceContext;
+use App\FinOps\ChatTurnCost;
+use App\FinOps\ChatTurnCostResolver;
 use App\Http\Requests\Api\KbChatRequest;
 use App\Services\ChatLog\ChatLogEntry;
 use App\Services\ChatLog\ChatLogManager;
@@ -39,6 +42,7 @@ class KbChatController extends Controller
         CounterfactualService $counterfactual,
         TenantContext $tenants,
         RedactorEngine $redactor,
+        ChatTurnCostResolver $costResolver,
     ): JsonResponse {
         $question = (string) $request->input('question');
 
@@ -124,7 +128,11 @@ class KbChatController extends Controller
             'projectKey' => $projectKey,
         ])->render();
 
-        $aiResponse = $ai->chat($systemPrompt, $question);
+        // v8.16/W3 — one trace id per turn: run the LLM call inside the finops
+        // trace context so the metering hook stamps this trace_id on the ledger
+        // row, and persist the SAME id on the chat_logs row (join key).
+        $traceId = ChatTraceContext::newTraceId();
+        $aiResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $ai->chat($systemPrompt, $question));
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
@@ -145,6 +153,7 @@ class KbChatController extends Controller
                 aiResponse: $aiResponse,
                 latencyMs: $latencyMs,
                 counterfactual: $counterfactualPanels,
+                traceId: $traceId,
             );
         }
 
@@ -162,6 +171,19 @@ class KbChatController extends Controller
             minThreshold: (float) config('kb.refusal.min_chunk_similarity', 0.45),
             answerWords: str_word_count($aiResponse->content),
             citationsCount: count($citations),
+        );
+
+        // v8.16/W3 — resolve the real per-turn cost server-side (cache-warm via the
+        // metering hook that just ran inside the trace context above). Null when
+        // finops metering is off — the meta keys still ship as null (R27).
+        $cost = $costResolver->resolve(
+            provider: $aiResponse->provider,
+            model: $aiResponse->model,
+            promptTokens: $aiResponse->promptTokens,
+            completionTokens: $aiResponse->completionTokens,
+            promptText: $question,
+            completionText: $aiResponse->content,
+            traceId: $traceId,
         );
 
         $chatLog->log(new ChatLogEntry(
@@ -191,6 +213,7 @@ class KbChatController extends Controller
                 'confidence' => $confidenceScore,
             ],
             anonymous: $anonymous,
+            traceId: $traceId,
         ));
 
         return response()->json($this->buildSuccessResponse(
@@ -201,6 +224,7 @@ class KbChatController extends Controller
             result: $result,
             totalLatencyMs: $latencyMs,
             counterfactual: $counterfactualPanels,
+            cost: $cost,
         ));
     }
 
@@ -225,6 +249,7 @@ class KbChatController extends Controller
         SearchResult $result,
         int $totalLatencyMs,
         array $counterfactual = [],
+        ?ChatTurnCost $cost = null,
     ): array {
         $retrievalMs = (int) ($result->meta['retrieval_ms'] ?? 0);
         $llmMs = max(0, $totalLatencyMs - $retrievalMs);
@@ -237,6 +262,11 @@ class KbChatController extends Controller
             'meta' => [
                 'provider' => $aiResponse->provider,
                 'model' => $aiResponse->model,
+                // v8.16/W3 — server-resolved per-turn cost (R27 additive: new
+                // sibling keys, null when finops is off / cost unresolved; the FE
+                // reads these instead of computing from static client-side rates).
+                'cost' => $cost?->cost,
+                'cost_currency' => $cost?->currency,
                 'chunks_used' => $result->totalChunks(),
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
@@ -344,6 +374,10 @@ class KbChatController extends Controller
             'meta' => [
                 'provider' => null,
                 'model' => null,
+                // v8.16/W3 — R27 shape uniformity: cost keys present on every path
+                // (null here — a pre-LLM refusal made no priced call).
+                'cost' => null,
+                'cost_currency' => null,
                 'chunks_used' => 0,
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),
@@ -455,6 +489,7 @@ class KbChatController extends Controller
         AiResponse $aiResponse,
         int $latencyMs,
         array $counterfactual = [],
+        ?string $traceId = null,
     ): JsonResponse {
         $reason = 'llm_self_refusal';
         $answer = $this->localizedRefusalMessage($reason);
@@ -483,6 +518,7 @@ class KbChatController extends Controller
                 'rejected_count' => $result->rejected->count(),
             ],
             anonymous: $request->isAnonymous(),
+            traceId: $traceId,
         ));
 
         // v8.8/W4 — record the content gap (LLM self-refusal). Side-channel.
@@ -500,6 +536,12 @@ class KbChatController extends Controller
             'meta' => [
                 'provider' => $aiResponse->provider,
                 'model' => $aiResponse->model,
+                // v8.16/W3 — R27 shape uniformity. This sentinel-refusal turn DID
+                // consume tokens, so its real cost is resolved + persisted on the
+                // chat_logs row by the driver; the response meta keeps the keys
+                // present (null here) rather than re-resolving on the refusal path.
+                'cost' => null,
+                'cost_currency' => null,
                 'chunks_used' => $result->totalChunks(),
                 'primary_count' => $result->primary->count(),
                 'expanded_count' => $result->expanded->count(),

@@ -30,6 +30,7 @@
           "canonical-and-promotion",
           "auto-wiki",
           "connectors",
+          "connectors-credential",
           "kitt-widget",
           "admin-panel",
           "projects-registry",
@@ -38,6 +39,7 @@
           "dashboards",
           "gamification",
           "evidence-risk-review",
+          "ai-finops",
           "pii-and-compliance"
         ]
       },

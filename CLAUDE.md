@@ -32,10 +32,14 @@ token.
 - Tests: PHPUnit 12 + Orchestra Testbench 11 + Vitest. SQLite is used in tests —
   `vector(N)` columns swap to JSON text via the migrations under
   `tests/database/migrations/`.
-- No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter: every such
-  provider is called via `Illuminate\Support\Facades\Http`. Regolo is
-  the exception — wired through the `padosoft/laravel-ai-regolo` SDK
-  adapter on `laravel/ai` for chat + embeddings.
+- **All providers run on the `laravel/ai` SDK (since v8.16/W2, ADR 0015).**
+  Anthropic + Gemini are FULLY SDK; OpenAI + OpenRouter are HYBRID — no-tools
+  chat + embeddings via the SDK, the MCP **with-tools** turn on raw
+  `Illuminate\Support\Facades\Http` `/chat/completions` (the SDK cannot host
+  AskMyDocs's external-MCP tool loop). Regolo is on the
+  `padosoft/laravel-ai-regolo` SDK adapter. `laravel/ai` is pinned `^0.6.8`.
+  (This reverses the earlier "No AI SDKs" rule — see ADR 0015 +
+  `docs/v4-platform/W2-sdk-migration-findings.md`.)
 
 ---
 
@@ -90,13 +94,14 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | HTTP entrypoints | `app/Http/Controllers/Api/*.php` |
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` + `app/Models/ChatLog.php` |
-| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (10 tools: 5 retrieval + 5 canonical/promote) |
+| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (31 tools: retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool`; count locked by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`) |
 | Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
 | Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
 | Admin KB surface (tree + detail + editor + graph + PDF) | `app/Services/Admin/KbTreeService.php`, `app/Http/Controllers/Api/Admin/KbTreeController.php`, `KbDocumentController.php`, `app/Services/Admin/Pdf/PdfRenderer*.php` |
 | Admin log viewer (H1) | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
 | Admin command runner (H2) | `app/Services/Admin/CommandRunnerService.php`, `app/Http/Controllers/Api/Admin/MaintenanceCommandController.php`, `app/Models/AdminCommandAudit.php`, `AdminCommandNonce.php`, `config/admin.php` (`allowed_commands`) |
 | AI insights (Phase I) | `app/Services/Admin/AiInsightsService.php`, `app/Http/Controllers/Api/Admin/AdminInsightsController.php`, `app/Console/Commands/InsightsComputeCommand.php`, `app/Models/AdminInsightsSnapshot.php` |
+| AI FinOps (v8.16, `padosoft/laravel-ai-finops` + `-admin`) | `app/FinOps/AiCallMeter.php` (metering bridge on AiManager; since v8.16/W2 + ADR 0015 it meters ONLY the residual raw-Http OpenAI/OpenRouter with-tools turn — every SDK-path call is metered by the finops lifecycle hook), `app/FinOps/HostTenantResolver.php`, `app/Http/Middleware/FinOpsAuthorize.php` (method-aware gate), `config/ai-finops.php` + `config/ai-finops-admin.php` (secure host overrides, R32), gates `viewAiFinOps`/`manageAiFinOps` in `AppServiceProvider`. **W3 server-side cost authority**: `app/FinOps/ChatTurnCostResolver.php` resolves real per-turn cost at `ChatLogManager` time onto additive `chat_logs.{cost,cost_currency,trace_id}` (`ChatTraceContext` joins the row to the ledger; FE reads the server cost — replaces the old static `config/ai.php cost_rates` client guess), all gated on `AI_FINOPS_METERING`. **W4 MCP read surface (R44)**: `app/Mcp/Tools/FinOps{SpendSummary,TopModels,BudgetStatus}Tool.php` (tenant-scoped R30, OFF-path safe R43). **W4 admin SPA**: package-served Blade SPA at `/admin/ai-finops` (`AI_FINOPS_ADMIN_ENABLED`, default-OFF → clean 404) |
 | SPA entrypoint | `app/Http/Controllers/SpaController.php`, `resources/views/app.blade.php`, `frontend/src/main.tsx`, `frontend/src/routes/index.tsx` |
 | Scheduler | `bootstrap/app.php` |
 | GitHub Action | `.github/actions/ingest-to-askmydocs/action.yml` (v2 — canonical-folder aware) |
@@ -197,9 +202,10 @@ by design, so rows survive hard deletes for forensic access.
 4. `SearchResult { primary, expanded, rejected, meta }` → prompt composed
    from `resources/views/prompts/kb_rag.blade.php` (typed blocks: `⚠ REJECTED
    APPROACHES` + `📎 RELATED CONTEXT` + primary `## Context`).
-5. `AiManager::chat()` → provider (raw `Http::` for OpenAI / Anthropic /
-   Gemini / OpenRouter; `padosoft/laravel-ai-regolo` SDK adapter on
-   `laravel/ai` for Regolo).
+5. `AiManager::chat()` → provider, all on the `laravel/ai` SDK (ADR 0015):
+   Anthropic/Gemini fully SDK; OpenAI/OpenRouter SDK for no-tools chat +
+   embeddings, raw `Http::` `/chat/completions` for the MCP with-tools turn;
+   Regolo via the `padosoft/laravel-ai-regolo` SDK adapter.
 6. `ChatLogManager::log()` in try/catch — **never** propagate logging failures.
 
 ### Ingestion
@@ -260,14 +266,18 @@ rotation. `kb:rebuild-graph` is a no-op when no canonical docs exist.
 
 ## 6. Non-obvious decisions (do not unwind without asking)
 
-- **No AI SDKs for OpenAI / Anthropic / Gemini / OpenRouter.** Provider
-  transport is raw `Http::`. This is intentional: full control over
-  auth, retries, timeouts, response parsing, and testability via
-  `Http::fake()`. Regolo is the documented exception — it is wired
-  through the `padosoft/laravel-ai-regolo` SDK adapter on
-  `laravel/ai` because that adapter is owned in-house (same author),
-  ships with its own test surface, and exposes the canonical
-  Padosoft observability / cost-rate hooks for free.
+- **All providers run on the `laravel/ai` SDK (v8.16/W2, ADR 0015 — reverses
+  the earlier "No AI SDKs" rule).** This was done so `padosoft/laravel-ai-finops`
+  meters every provider natively via the SDK lifecycle events (no host bridge)
+  and so OpenRouter's real `usage.cost` is capturable. Anthropic + Gemini are
+  FULLY SDK; OpenAI + OpenRouter are HYBRID — the SDK serves no-tools chat +
+  embeddings, but the MCP **with-tools** turn stays on raw `Http::`
+  `/chat/completions` because the SDK owns its own tool loop and cannot host
+  AskMyDocs's external-MCP loop (`McpToolCallingService` — dynamic JSON tools +
+  `role:'tool'` replay). The interim `App\FinOps\AiCallMeter` bridge now meters
+  ONLY that residual with-tools turn (`AiManager` gate). Do NOT re-route the
+  with-tools turn onto the SDK without a dedicated `Tool`-adapter ADR. Regolo
+  stays on the in-house `padosoft/laravel-ai-regolo` SDK adapter.
 - **Chat and embeddings providers are separate** (`AI_PROVIDER` vs
   `AI_EMBEDDINGS_PROVIDER`). Anthropic does not offer embeddings.
   OpenRouter exposes an OpenAI-compatible `/v1/embeddings` endpoint and
@@ -1516,9 +1526,14 @@ Check:
 ## 9. Extension points
 
 - **New AI provider:** implement `AiProviderInterface`, add a `match` case in
-  `AiManager::resolve()`, add a `providers.<name>` block in `config/ai.php`,
-  mirror the OpenAI test for coverage, update `.env.example` and the README
-  compatibility matrix.
+  `AiManager::resolve()`, add a `providers.<name>` block in `config/ai.php`
+  (SDK shape — `driver`/`key`/`url`/`models` — if the provider has a native
+  `laravel/ai` driver; use the `Concerns\SdkChat` trait), mirror the
+  `AnthropicProviderTest` (fully-SDK) or `OpenAiProviderTest` (hybrid) for
+  coverage, update `.env.example` and the README compatibility matrix. If the
+  provider is metered by the SDK lifecycle hook, leave it OUT of
+  `AiCallMeter::SDK_METERED_PROVIDERS`-bridging unless it serves a raw-Http
+  tool turn (see ADR 0015 + the `AiManager` metering gate).
 - **New chat-log driver:** implement `ChatLogDriverInterface`, register in
   `ChatLogManager::resolveDriver()`, add config in `config/chat-log.php`.
 - **New MCP tool:** extend `Laravel\Mcp\Server\Tool`, register on
