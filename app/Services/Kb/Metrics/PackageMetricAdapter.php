@@ -73,7 +73,10 @@ final class PackageMetricAdapter
         // window has no top-k, and an empty/whitespace expected answer has nothing
         // to contain → 0.0, never the package's degenerate "empty string is
         // contained" result. Matches RetrievalQualityMetrics::answerContainmentAtK().
-        if (($k !== null && $k <= 0) || trim($expectedAnswer) === '') {
+        // Trim once and forward the trimmed value so the guard + the scoring input
+        // stay consistent (a padded " answer " isn't handed to the metric padded).
+        $expectedAnswer = trim($expectedAnswer);
+        if (($k !== null && $k <= 0) || $expectedAnswer === '') {
             return 0.0;
         }
 

@@ -135,10 +135,15 @@ final class RetrievalQualityMetrics
      */
     public static function answerContainmentAtK(array $rankedChunks, string $expectedAnswer, int $k): float
     {
+        // Trim ONCE and forward the trimmed value so the emptiness guard and the
+        // scoring input stay consistent — a padded " answer " must not pass the
+        // guard yet arrive padded at the metric (a surprising false negative).
+        $expectedAnswer = trim($expectedAnswer);
+
         // Consistency with precisionAtK()/ndcgAtK(): a non-positive window has no
         // top-k, so score 0.0 without emitting an invalid metadata.k to the
         // package. An empty expected answer has nothing to contain → 0.0 too.
-        if ($k <= 0 || trim($expectedAnswer) === '') {
+        if ($k <= 0 || $expectedAnswer === '') {
             return 0.0;
         }
 
@@ -146,10 +151,12 @@ final class RetrievalQualityMetrics
     }
 
     /**
-     * Resolve the adapter from the container per call. NOT cached in a static
-     * property on purpose: the adapter holds the active
-     * {@see \Illuminate\Contracts\Config\Repository}, and PHPUnit reuses one
-     * process across tests — a static cache would pin the
+     * Resolve the adapter from the container per call. NOTE: because the delegated
+     * metrics (reciprocalRank / ndcgAtK / answerContainmentAtK) route through this,
+     * those static methods now require a BOOTED Laravel container — unlike the
+     * still-pure precisionAtK / dcg. NOT cached in a static property on purpose:
+     * the adapter holds the active {@see \Illuminate\Contracts\Config\Repository},
+     * and PHPUnit reuses one process across tests — a static cache would pin the
      * first test's config repo and leak it into later tests. The resolution is a
      * cheap auto-wire of a single-dependency class, negligible even in a full
      * benchmark sweep.
