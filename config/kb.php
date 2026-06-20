@@ -548,6 +548,11 @@ return [
     | have zero overlap — the pre-v8.18 behaviour). `target_tokens` is the soft
     | target used by the connector chunkers (Notion/Jira/Confluence/...).
     |
+    | NOTE: overlap is applied AFTER under-cap accumulation, so an overlapped
+    | chunk may exceed `hard_cap_tokens` by up to `overlap_tokens` (e.g. cap 1024
+    | + overlap 64 → up to ~1088 tokens). This is by design — the duplicated tail
+    | is the whole point — and stays well within embedding-model context limits.
+    |
     | RE-INGEST REQUIRED: changing `overlap_tokens` changes chunk text, hence
     | `knowledge_chunks.chunk_hash`, hence is NOT idempotent against already-
     | ingested docs — it forces a new document version + re-embed of the changed

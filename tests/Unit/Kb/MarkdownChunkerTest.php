@@ -265,10 +265,9 @@ class MarkdownChunkerTest extends TestCase
         $texts = $chunks->pluck('text')->all();
 
         $this->assertGreaterThan(1, $chunks->count());
-        // With overlap off, chunk[1] does NOT begin with chunk[0]'s content.
-        $this->assertStringStartsNotWith($texts[0], $texts[1]);
-        $this->assertStringContainsString('alpha', $texts[0]);
-        $this->assertStringContainsString('bravo', $texts[1]);
+        // Byte-identity: with overlap off, each emitted chunk is EXACTLY one
+        // source paragraph — no tail carried forward, no injected content.
+        $this->assertSame([$p1, $p2, $p3], $texts);
     }
 
     public function test_overlap_prepends_previous_tail_paragraph_to_next_chunk(): void
