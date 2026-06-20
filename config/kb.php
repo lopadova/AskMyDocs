@@ -558,7 +558,8 @@ return [
     | `version_hash = sha256($markdown)`, so re-running ingest on UNCHANGED
     | markdown short-circuits and will NOT re-chunk already-ingested docs just
     | because this knob changed. To apply a new overlap setting to existing docs
-    | you must force a new version — modify/touch the source markdown, or
+    | you must force a new version — the source markdown CONTENT must change
+    | (version_hash = sha256(markdown), so a no-op re-save won't re-version), or
     | delete + re-ingest. New (or genuinely changed) content picks it up
     | immediately; re-chunked content re-embeds (the embedding cache is keyed on
     | text_hash, so changed chunk text misses the cache). Treat it like the

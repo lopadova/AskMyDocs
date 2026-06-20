@@ -245,7 +245,7 @@ class MarkdownChunkerTest extends TestCase
     }
 
     // -------------------------------------------------------------
-    // v8.18/W3 — configurable chunk overlap (default OFF / 0)
+    // v8.18/W3 — configurable chunk overlap (0 disables overlap; shipped default 64)
     // -------------------------------------------------------------
 
     public function test_overlap_zero_is_byte_identical_to_no_overlap_output(): void
