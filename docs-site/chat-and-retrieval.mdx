@@ -69,7 +69,7 @@ Citations are not just labels — clicking one opens an **in-chat document modal
 (available to every authenticated reader, not only admins) that shows the cited
 document's full text without leaving the conversation. It fetches
 `GET /api/kb/documents/{id}/preview`, which returns the document's identity
-(`doc_id`, `slug`, `title`, `project_key`, canonical fields) plus a `content`
+(`document_id`, `slug`, `title`, `project_key`, canonical fields) plus a `content`
 string **reconstructed from the document's chunks in `chunk_order`**. Those chunks
 *are* the text retrieval grounded on, so the modal is the most faithful "what the
 answer actually used" view — and it needs no KB-disk access, so it works on any
