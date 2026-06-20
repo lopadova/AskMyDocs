@@ -83,6 +83,16 @@ export function ConnectorsView() {
         // v8.17 — credential connectors (IMAP) open a schema-driven form modal
         // instead of an OAuth redirect. OAuth connectors keep the existing flow.
         if (entry && entry.auth_kind === 'credential') {
+            // Guard a credential connector that advertises no schema — opening the
+            // modal would render an empty form the user could only submit into an
+            // unrecoverable 422. Surface a toast instead.
+            if (!entry.credential_form_schema || entry.credential_form_schema.length === 0) {
+                toast.error(
+                    `${entry.display_name} did not provide a credential form.`,
+                    'toast-connector-error',
+                );
+                return;
+            }
             setConfigureError(null);
             setConfigureFieldErrors({});
             setModalEntry(entry);

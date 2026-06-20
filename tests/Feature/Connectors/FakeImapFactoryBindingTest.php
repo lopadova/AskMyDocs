@@ -18,6 +18,14 @@ use Tests\TestCase;
  */
 final class FakeImapFactoryBindingTest extends TestCase
 {
+    protected function getEnvironmentSetUp($app): void
+    {
+        parent::getEnvironmentSetUp($app);
+        // Force OFF so the test is deterministic even if a developer has exported
+        // CONNECTOR_IMAP_FAKE_PING=true locally (e.g. to run the IMAP E2E).
+        $app['config']->set('connectors.fake_imap_ping', false);
+    }
+
     public function test_real_factory_is_bound_when_the_flag_is_off(): void
     {
         // The base TestCase leaves connectors.fake_imap_ping at its config default.
