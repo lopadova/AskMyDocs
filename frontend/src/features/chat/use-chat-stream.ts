@@ -250,11 +250,8 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                 if (xsrf !== null) {
                     headers['X-XSRF-TOKEN'] = xsrf;
                 }
-                // The SSE transport uses raw fetch, not the shared axios
-                // instance, so the team header stamped by lib/api.ts's
-                // request interceptor must be replicated by hand here.
                 const team = useTeamStore.getState().currentTeam;
-                if (team !== null) {
+                if (team !== null && team !== 'default') {
                     headers['X-Tenant-Id'] = team;
                 }
                 return { body, headers };
