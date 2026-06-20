@@ -121,8 +121,16 @@ final class GamificationNarratorService
                 return $fallback;
             }
 
+            // MERGE the model's narrative OVER the deterministic shape so the
+            // required keys (strengths/growth/next_steps/summary or actions/advice)
+            // ALWAYS exist even if a free model returns a partial object — the FE
+            // reads those arrays directly, so a missing key would white-screen (R14).
+            $narrative = is_array($decoded['narrative'] ?? null)
+                ? array_merge($fallback['narrative'], $decoded['narrative'])
+                : $fallback['narrative'];
+
             return [
-                'narrative' => is_array($decoded['narrative'] ?? null) ? $decoded['narrative'] : $fallback['narrative'],
+                'narrative' => $narrative,
                 'titles' => $this->normaliseTitles($decoded['titles'] ?? $fallback['titles']),
                 'model' => is_string($model) && $model !== '' ? $model : 'default',
             ];
@@ -141,8 +149,15 @@ final class GamificationNarratorService
      */
     private function facts(array $facts): string
     {
+        // NON-throwing on purpose: facts() is built BEFORE generate()'s try/catch.
+        // Metrics are controlled SQL scalars (no bad UTF-8 in practice), but
+        // JSON_INVALID_UTF8_SUBSTITUTE + a '{}' fallback keep it total so a
+        // pathological value degrades to an empty-facts prompt instead of throwing
+        // outside the guarded path (R14).
+        $json = json_encode($facts, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | JSON_INVALID_UTF8_SUBSTITUTE);
+
         return "Knowledge-curation facts (JSON):\n".
-            json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT).
+            ($json !== false ? $json : '{}').
             "\n\nReturn ONLY the JSON object described in the system prompt.";
     }
 

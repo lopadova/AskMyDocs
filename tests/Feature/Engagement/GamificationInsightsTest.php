@@ -175,6 +175,40 @@ final class GamificationInsightsTest extends TestCase
         $this->assertSame('Il Cartografo', $card['titles'][0]['label']);
     }
 
+    public function test_partial_llm_narrative_is_merged_over_the_deterministic_shape(): void
+    {
+        // A free model that returns a well-formed-JSON-but-INCOMPLETE narrative
+        // (only a headline) must NOT persist a row missing strengths/growth/
+        // next_steps/summary — the FE reads those arrays directly, so a missing
+        // key would white-screen the card (R14). The narrator merges the LLM
+        // narrative OVER the deterministic shape, so every required key survives.
+        config()->set('kb.gamification.ai.enabled', true);
+        config()->set('kb.gamification.ai.model', 'test/free-model');
+
+        $u = $this->user();
+        $this->event($u->id, 'created', 'eng', $this->doc('eng', true)->id);
+
+        $json = json_encode(['narrative' => ['headline' => 'Only a headline']]); // no strengths/growth/...
+
+        $provider = Mockery::mock(\App\Ai\AiProviderInterface::class);
+        $provider->shouldReceive('chat')->andReturn(new AiResponse(content: $json, provider: 'mock', model: 'mock'));
+        $ai = Mockery::mock(AiManager::class);
+        $ai->shouldReceive('provider')->andReturn($provider);
+        $this->app->instance(AiManager::class, $ai);
+        $this->app->forgetInstance(\App\Services\Engagement\GamificationNarratorService::class);
+        $this->app->forgetInstance(GamificationInsightsService::class);
+
+        app(GamificationInsightsService::class)->recomputeForTenant('2026-W25');
+
+        $card = app(GamificationInsightsService::class)->forUser($u->id);
+        $this->assertSame('Only a headline', $card['narrative']['headline']); // LLM value kept
+        // Required keys still present (from the deterministic fallback merge).
+        $this->assertIsArray($card['narrative']['strengths']);
+        $this->assertIsArray($card['narrative']['growth']);
+        $this->assertIsArray($card['narrative']['next_steps']);
+        $this->assertArrayHasKey('summary', $card['narrative']);
+    }
+
     public function test_narrate_command_runs_per_tenant(): void
     {
         $u = $this->user();

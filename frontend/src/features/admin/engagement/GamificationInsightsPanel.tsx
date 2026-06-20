@@ -106,11 +106,11 @@ export function GamificationInsightsPanel(): ReactNode {
                     </p>
                     <p style={{ color: 'var(--fg-2)' }}>{insight.narrative.summary}</p>
 
-                    {insight.narrative.actions.length > 0 && (
+                    {(insight.narrative.actions ?? []).length > 0 && (
                         <div data-testid="admin-gamification-insights-actions">
                             <h4>Recommended actions</h4>
                             <ul>
-                                {insight.narrative.actions.map((a, i) => (
+                                {(insight.narrative.actions ?? []).map((a, i) => (
                                     <li key={`action-${i}`}>{a}</li>
                                 ))}
                             </ul>

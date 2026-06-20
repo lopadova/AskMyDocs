@@ -55,6 +55,13 @@ export function CoachingCard(): ReactNode {
     }
 
     const { narrative, titles } = insight;
+    // Belt-and-braces: the backend guarantees these arrays exist (it merges the
+    // LLM narrative over a deterministic shape), but default here too so a future
+    // contract drift can never white-screen the card (R14).
+    const strengths = narrative.strengths ?? [];
+    const growth = narrative.growth ?? [];
+    const nextSteps = narrative.next_steps ?? [];
+    const titleList = titles ?? [];
 
     return (
         <section data-testid="me-coaching" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>
@@ -64,42 +71,42 @@ export function CoachingCard(): ReactNode {
             </p>
             <p style={{ color: 'var(--fg-2)' }}>{narrative.summary}</p>
 
-            {narrative.strengths.length > 0 && (
+            {strengths.length > 0 && (
                 <div data-testid="me-coaching-strengths">
                     <h4>Strengths</h4>
                     <ul>
-                        {narrative.strengths.map((s, i) => (
+                        {strengths.map((s, i) => (
                             <li key={`strength-${i}`}>{s}</li>
                         ))}
                     </ul>
                 </div>
             )}
 
-            {narrative.growth.length > 0 && (
+            {growth.length > 0 && (
                 <div data-testid="me-coaching-growth">
                     <h4>Growth areas</h4>
                     <ul>
-                        {narrative.growth.map((g, i) => (
+                        {growth.map((g, i) => (
                             <li key={`growth-${i}`}>{g}</li>
                         ))}
                     </ul>
                 </div>
             )}
 
-            {narrative.next_steps.length > 0 && (
+            {nextSteps.length > 0 && (
                 <div data-testid="me-coaching-next-steps">
                     <h4>Next steps</h4>
                     <ul>
-                        {narrative.next_steps.map((n, i) => (
+                        {nextSteps.map((n, i) => (
                             <li key={`next-${i}`}>{n}</li>
                         ))}
                     </ul>
                 </div>
             )}
 
-            {titles.length > 0 && (
+            {titleList.length > 0 && (
                 <div data-testid="me-coaching-titles" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-                    {titles.map((t) => (
+                    {titleList.map((t) => (
                         <div
                             key={t.key}
                             data-testid={`me-coaching-title-${t.key}`}
