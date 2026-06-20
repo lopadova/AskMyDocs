@@ -9,6 +9,8 @@ use App\Models\KbGamificationInsight;
 use App\Models\KnowledgeDocument;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * v8.18/W4 — the SINGLE core (R44) behind the AI gamification insights capability:
@@ -174,15 +176,40 @@ final class GamificationInsightsService
     }
 
     /**
+     * The busiest projects (by doc count) to write per-project insight rows for.
+     * Capped at {@see GamificationQualityMetricsService::MAX_TENANT_PROJECTS} so a
+     * tenant with thousands of projects can't fan out thousands of LLM calls in a
+     * single narrate run; the cap is LOGGED (no silent truncation).
+     *
      * @return list<string>
      */
     private function projectKeys(): array
     {
-        return KnowledgeDocument::query()
-            ->forTenant($this->tenants->current())
+        $tenant = $this->tenants->current();
+        $cap = GamificationQualityMetricsService::MAX_TENANT_PROJECTS;
+
+        $total = (int) KnowledgeDocument::query()
+            ->forTenant($tenant)
             ->whereNotNull('project_key')
             ->distinct()
+            ->count('project_key');
+
+        if ($total > $cap) {
+            Log::info('GamificationInsightsService: capping per-project insights.', [
+                'tenant_id' => $tenant,
+                'total_projects' => $total,
+                'computed' => $cap,
+            ]);
+        }
+
+        return KnowledgeDocument::query()
+            ->forTenant($tenant)
+            ->whereNotNull('project_key')
+            ->select('project_key', DB::raw('COUNT(*) as doc_count'))
+            ->groupBy('project_key')
+            ->orderByDesc('doc_count')
             ->orderBy('project_key')
+            ->limit($cap)
             ->pluck('project_key')
             ->map(static fn ($k): string => (string) $k)
             ->all();

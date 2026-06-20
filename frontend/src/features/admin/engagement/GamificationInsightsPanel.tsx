@@ -85,7 +85,18 @@ export function GamificationInsightsPanel(): ReactNode {
 
             {regenerate.isError && (
                 <div data-testid="admin-gamification-regenerate-error" role="alert">
-                    Could not regenerate insights — your account may lack the required permission.
+                    {/* Generic: isError covers 403 AND network/500/timeout — don't assume a
+                        permission problem. 403 (super-admin only) is the most likely cause for
+                        a plain admin, but the copy must not mislead on a transient failure. */}
+                    Could not regenerate insights. If this keeps happening, check your permissions
+                    or try again.{' '}
+                    <button
+                        type="button"
+                        data-testid="admin-gamification-regenerate-retry"
+                        onClick={() => regenerate.mutate()}
+                    >
+                        Retry
+                    </button>
                 </div>
             )}
 

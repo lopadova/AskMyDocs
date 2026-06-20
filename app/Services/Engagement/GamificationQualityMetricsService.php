@@ -27,6 +27,14 @@ use Illuminate\Support\Facades\DB;
  */
 final class GamificationQualityMetricsService
 {
+    /**
+     * Cap on the number of projects rolled into the tenant-level comparison.
+     * Each project runs several aggregate queries, so an uncapped loop over a
+     * tenant with thousands of projects would make the narrate / regenerate path
+     * very slow. The busiest projects (by doc count) are the most representative.
+     */
+    public const MAX_TENANT_PROJECTS = 50;
+
     public function __construct(private readonly TenantContext $tenants)
     {
     }
@@ -102,13 +110,17 @@ final class GamificationQualityMetricsService
     {
         $tenant = $this->tenants->current();
 
-        // The distinct project-key list is intrinsically small (one row per
-        // project, not per document) — safe to pluck.
+        // Cap the per-project rollup to the busiest projects (by doc count) so a
+        // tenant with thousands of projects can't turn this into an N×many-query
+        // sweep that times out the regenerate endpoint. Aggregated in SQL.
         $projectKeys = KnowledgeDocument::query()
             ->forTenant($tenant)
             ->whereNotNull('project_key')
-            ->distinct()
+            ->select('project_key', DB::raw('COUNT(*) as doc_count'))
+            ->groupBy('project_key')
+            ->orderByDesc('doc_count')
             ->orderBy('project_key')
+            ->limit(self::MAX_TENANT_PROJECTS)
             ->pluck('project_key')
             ->all();
 

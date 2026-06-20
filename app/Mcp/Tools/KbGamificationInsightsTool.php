@@ -49,18 +49,41 @@ class KbGamificationInsightsTool extends Tool
         $id = trim((string) ($request->get('id') ?? ''));
         $period = trim((string) ($request->get('period') ?? '')) ?: null;
 
-        $insight = match ($scope) {
-            // Require a strictly-numeric id for the user scope — `(int) "12abc"`
-            // would silently coerce to 12 and return the WRONG user's card.
-            KbGamificationInsight::SCOPE_USER => ctype_digit($id) ? $insights->forUser((int) $id, $period) : null,
-            KbGamificationInsight::SCOPE_PROJECT => $id === '' ? null : $insights->forScope(KbGamificationInsight::SCOPE_PROJECT, $id, $period),
-            KbGamificationInsight::SCOPE_TENANT => $insights->forScope(KbGamificationInsight::SCOPE_TENANT, '', $period),
+        // Distinguish a MALFORMED request (return an explicit `error`) from the
+        // legitimate "not computed yet / disabled" case (`available:false`, no error).
+        $error = match (true) {
+            ! in_array($scope, [KbGamificationInsight::SCOPE_USER, KbGamificationInsight::SCOPE_PROJECT, KbGamificationInsight::SCOPE_TENANT], true)
+                => "Unknown scope '{$scope}'. Use one of: user | project | tenant.",
+            // `(int) "12abc"` would silently coerce to 12 → the WRONG user's card.
+            $scope === KbGamificationInsight::SCOPE_USER && ! ctype_digit($id)
+                => 'The user scope requires a numeric id (the user id).',
+            $scope === KbGamificationInsight::SCOPE_PROJECT && $id === ''
+                => 'The project scope requires an id (the project_key).',
             default => null,
+        };
+
+        $scopeId = $scope === KbGamificationInsight::SCOPE_TENANT ? '' : $id;
+
+        if ($error !== null) {
+            return Response::json([
+                'available' => false,
+                'scope' => $scope,
+                'scope_id' => $scopeId,
+                'error' => $error,
+                'insight' => null,
+            ]);
+        }
+
+        $insight = match ($scope) {
+            KbGamificationInsight::SCOPE_USER => $insights->forUser((int) $id, $period),
+            KbGamificationInsight::SCOPE_PROJECT => $insights->forScope(KbGamificationInsight::SCOPE_PROJECT, $id, $period),
+            default => $insights->forScope(KbGamificationInsight::SCOPE_TENANT, '', $period),
         };
 
         return Response::json([
             'available' => $insight !== null,
             'scope' => $scope,
+            'scope_id' => $scopeId,
             'insight' => $insight,
         ]);
     }
