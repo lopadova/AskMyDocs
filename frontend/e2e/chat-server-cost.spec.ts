@@ -20,10 +20,13 @@ import { stubChatAssistantReply } from './helpers/stub-chat';
 test.describe('Chat — server cost meter', () => {
     test.describe.configure({ timeout: 60_000 });
 
-    async function sendAndSettle(page: import('@playwright/test').Page): Promise<void> {
+    async function sendAndSettle(
+        page: import('@playwright/test').Page,
+        prompt: string,
+    ): Promise<void> {
         await page.goto('/app/chat');
         const { input, send } = composer(page);
-        await input.fill('What does the remote work policy cover?');
+        await input.fill(prompt);
         await send.click();
         await waitForThreadReady(page, 45_000);
         await expect(thread(page)).toHaveAttribute('data-state', 'ready');
@@ -33,6 +36,7 @@ test.describe('Chat — server cost meter', () => {
     }
 
     test('renders the server USD cost from message metadata', async ({ page }) => {
+        const question = 'What does the remote work policy cover?';
         const assistant = {
             id: 2101,
             role: 'assistant' as const,
@@ -53,14 +57,14 @@ test.describe('Chat — server cost meter', () => {
         const user = {
             id: 2100,
             role: 'user' as const,
-            content: 'What does the remote work policy cover?',
+            content: question,
             metadata: null,
             rating: null,
             created_at: new Date().toISOString(),
         };
 
         await stubChatAssistantReply(page, { assistant, list: [user, assistant] });
-        await sendAndSettle(page);
+        await sendAndSettle(page, question);
 
         // The pill is marked cost-available and the amount is the SERVER value,
         // formatted by formatCost (USD >= 1 → 2 decimals → "$1.23").
@@ -70,6 +74,7 @@ test.describe('Chat — server cost meter', () => {
     });
 
     test('renders a non-USD server cost with the trailing ISO code', async ({ page }) => {
+        const question = 'How do I request equipment?';
         const assistant = {
             id: 2103,
             role: 'assistant' as const,
@@ -90,22 +95,23 @@ test.describe('Chat — server cost meter', () => {
         const user = {
             id: 2102,
             role: 'user' as const,
-            content: 'How do I request equipment?',
+            content: question,
             metadata: null,
             rating: null,
             created_at: new Date().toISOString(),
         };
 
         await stubChatAssistantReply(page, { assistant, list: [user, assistant] });
-        await sendAndSettle(page);
+        await sendAndSettle(page, question);
 
-        // Non-USD → trailing ISO code ("2.50 EUR"), proving the server currency
-        // (not a hard-coded $) drives the meter.
+        // Non-USD → the FULL formatted value with the trailing ISO code
+        // ("2.50 EUR": ≥1 → 2 decimals + " EUR"), proving the SERVER currency +
+        // amount (not a hard-coded "$") drive the meter.
         await expect(page.getByTestId('chat-token-cost')).toHaveAttribute(
             'data-cost-available',
             'true',
             { timeout: 30_000 },
         );
-        await expect(page.getByTestId('chat-token-cost-amount')).toContainText('EUR');
+        await expect(page.getByTestId('chat-token-cost-amount')).toContainText('2.50 EUR');
     });
 });

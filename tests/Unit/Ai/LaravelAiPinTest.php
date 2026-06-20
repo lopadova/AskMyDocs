@@ -43,16 +43,21 @@ final class LaravelAiPinTest extends TestCase
         $manifest = json_decode((string) file_get_contents($regoloComposer), true, 512, JSON_THROW_ON_ERROR);
         $constraint = (string) ($manifest['require']['laravel/ai'] ?? '');
 
-        $this->assertStringContainsString(
-            '0.6',
+        // The intent is specifically "regolo CARET-pins the 0.6 line" — assert the
+        // `^0.6` constraint exactly (regex), so loose forms like ">=0.6" (which
+        // WOULD allow 0.7) fail the guard rather than slipping through a substring.
+        $this->assertMatchesRegularExpression(
+            '/(^|[|\s])\^0\.6(\.\d+)?([|\s]|$)/',
             $constraint,
-            "padosoft/laravel-ai-regolo now constrains laravel/ai to '{$constraint}' (no longer ^0.6) — ".
-            'the 0.7-bump blocker may be lifted; revisit W1.2 and update this guard.',
+            "padosoft/laravel-ai-regolo now constrains laravel/ai to '{$constraint}' (no longer a plain ^0.6 ".
+            'caret pin) — the 0.7-bump blocker may be lifted; revisit W1.2 and update this guard.',
         );
-        $this->assertStringNotContainsString(
-            '0.7',
+        // And it must not (yet) allow the 0.7 line by any caret/range form.
+        $this->assertDoesNotMatchRegularExpression(
+            '/\^0\.7|>=\s*0\.7|0\.7\s*\|\||\|\|\s*0\.7|\^1\./',
             $constraint,
-            'regolo appears to allow ^0.7 now — revisit the deferred laravel/ai 0.7 bump.',
+            "regolo's laravel/ai constraint '{$constraint}' appears to allow 0.7+ now — revisit the deferred ".
+            'laravel/ai 0.7 bump and update this guard.',
         );
     }
 }
