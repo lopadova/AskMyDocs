@@ -13,9 +13,7 @@ use Illuminate\Routing\Controller;
 /**
  * Return the full source text of a CITED document so the chat UI can open it
  * in a modal ("the documents used to ground the answer"), for ANY authenticated
- * reader — not only the admins who can reach the KB admin surface.
- *
- * Contract: GET /api/kb/documents/{document}/preview
+ * Contract: GET /api/kb/documents/{documentId}/preview
  *   - 200: { document_id, title, source_path, slug, project_key, source_type,
  *            canonical_type, canonical_status, is_canonical, content }
  *   - 404: document not found OR outside the caller's tenant / AccessScope —
