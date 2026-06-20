@@ -43,7 +43,8 @@ flowchart LR
   HTTP --> UI[My KB dashboard · MeBadges]
 ```
 
-When `KB_GAMIFICATION_ENABLED=false` (the default) `evaluate()` awards nothing and
+When `KB_GAMIFICATION_ENABLED=false` (gamification is **on by default since v8.18**;
+set this to turn it off) `evaluate()` awards nothing and
 `badgesFor()` returns `enabled:false` with an empty roster, so the dashboard
 section is absent. Both states are tested (R43).
 
@@ -61,7 +62,7 @@ The default catalog (`config/kb.php` → `gamification.badges`) — fully operat
 
 | Knob | Env | Default |
 |---|---|---|
-| `enabled` | `KB_GAMIFICATION_ENABLED` | `false` |
+| `enabled` | `KB_GAMIFICATION_ENABLED` | `true` (default-ON since v8.18) |
 | `badges` | — (config catalog) | the five above |
 
 **Surfaces (tri-surface, R44):**

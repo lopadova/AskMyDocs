@@ -36,8 +36,8 @@ two derived layers built on top of it.
   contributor stats, citation impact, coverage %, answer rate and trends. A daily
   snapshot (`kb_engagement_snapshots`) freezes the rollup so dashboards and
   digests read O(1) instead of re-scanning the log.
-- **Gamification** (opt-in) derives badges from the same metrics. It computes
-  nothing new — it is a *view* over engagement, gated off by default.
+- **Gamification** derives badges from the same metrics. It computes
+  nothing new — it is a *view* over engagement, on by default since v8.18.
 
 Everything composes into a **digest**: a tenant- and user-scoped bundle of typed
 sections (newly created/promoted docs · stale/obsolete review queue · top
@@ -142,9 +142,9 @@ it, `BelongsToTenant`; R30/R31).
   latency/quality-critical, so the narrator defaults to a free OpenRouter model —
   it never competes with the primary chat model and costs ≈$0. See
   [Digests](/digests).
-- **Gamification is off by default and computes nothing new.** It is a view over
-  engagement metrics, gated by `KB_GAMIFICATION_ENABLED` and tested in both
-  states (R43). Teams that want quiet analytics get them; teams that want badges
+- **Gamification is ON by default (since v8.18) and computes nothing new.** It is a
+  view over engagement metrics, gated by `KB_GAMIFICATION_ENABLED` and tested in both
+  states (R43). Teams that want quiet analytics flip it off; everyone else gets badges
   opt in. See [Gamification](/gamification).
 
 ## Worked example
