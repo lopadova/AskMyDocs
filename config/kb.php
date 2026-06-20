@@ -540,8 +540,9 @@ return [
     | Chunking
     |--------------------------------------------------------------------------
     |
-    | `hard_cap_tokens` bounds each emitted chunk (approx tokens, strlen/4).
-    | `overlap_tokens` (wired into MarkdownChunker since v8.18) duplicates the
+    | `hard_cap_tokens` bounds each BASE piece (approx tokens, strlen/4) BEFORE
+    | overlap is applied — see the NOTE below on how overlap can grow the final
+    | chunk past this cap. `overlap_tokens` (wired into MarkdownChunker since v8.18) duplicates the
     | tail of each oversized-section piece onto the head of the next piece,
     | snapped to paragraph boundaries (never mid-word), so an answer straddling
     | a chunk boundary still appears whole in at least one chunk. 0 = OFF (chunks
@@ -560,7 +561,8 @@ return [
     | because this knob changed. To apply a new overlap setting to existing docs
     | you must force a new version — the source markdown CONTENT must change
     | (version_hash = sha256(markdown), so a no-op re-save won't re-version), or
-    | delete + re-ingest. New (or genuinely changed) content picks it up
+    | HARD-delete + re-ingest (`kb:delete --force`; a soft delete keeps the row +
+    | chunks, so it won't force re-chunking). New (or genuinely changed) content picks it up
     | immediately; re-chunked content re-embeds (the embedding cache is keyed on
     | text_hash, so changed chunk text misses the cache). Treat it like the
     | embedding-dimensions contract. PdfPageChunker keeps page-granular chunks and

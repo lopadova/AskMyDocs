@@ -482,9 +482,10 @@ class MarkdownChunker implements ChunkerInterface
 
     /**
      * Configurable overlap budget in approximate tokens. When > 0, the tail
-     * of each flushed multi-paragraph piece is duplicated onto the head of
-     * the next piece (on paragraph boundaries — never mid-word) so an answer
-     * straddling a chunk boundary still appears whole in at least one chunk.
+     * of each previous piece is duplicated onto the head of the next piece (on
+     * paragraph boundaries — never mid-word; a single-paragraph piece overlaps
+     * whole when it fits the budget) so an answer straddling a chunk boundary
+     * still appears whole in at least one chunk.
      *
      * Code default is 0 (OFF) so a container-less unit construction never
      * silently overlaps; the shipped config default is read from

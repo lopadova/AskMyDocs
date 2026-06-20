@@ -350,14 +350,24 @@ class MarkdownChunkerTest extends TestCase
 
     public function test_overlap_output_is_deterministic_across_runs(): void
     {
-        config()->set('kb.chunking.hard_cap_tokens', 80);
-        config()->set('kb.chunking.overlap_tokens', 20);
-        $md = "# S\n\n".str_repeat('alpha ', 60)."\n\n".str_repeat('beta ', 60)."\n\n".str_repeat('gamma ', 60);
+        // Sized so overlap ACTUALLY fires (R16): three distinct ~540-token
+        // paragraphs under a 1024 cap split into 3 pieces, and the 600-token
+        // overlap budget carries each whole boundary paragraph onto the next —
+        // so this guards real overlap concatenation, not a trivially-stable no-op.
+        config()->set('kb.chunking.hard_cap_tokens', 1024);
+        config()->set('kb.chunking.overlap_tokens', 600);
+        $p1 = trim(str_repeat('alpha ', 360));
+        $p2 = trim(str_repeat('beta ', 360));
+        $p3 = trim(str_repeat('gamma ', 360));
+        $md = "# S\n\n{$p1}\n\n{$p2}\n\n{$p3}";
 
         $a = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
         $b = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
 
         $this->assertSame($a, $b);
+        // Overlap genuinely happened: chunk[1] begins with chunk[0]'s tail paragraph.
+        $this->assertGreaterThan(1, count($a));
+        $this->assertStringStartsWith($this->lastParagraph($a[0]), $a[1]);
     }
 
     private function lastParagraph(string $text): string

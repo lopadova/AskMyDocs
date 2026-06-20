@@ -688,7 +688,8 @@ KB_CHUNK_HARD_CAP_TOKENS=1024
 # this is active: it carries the tail of each oversized-section piece onto the
 # next chunk on paragraph boundaries. APPLIES TO NEW INGESTS ONLY — ingest is
 # idempotent on sha256(markdown), so changing this alone won't re-chunk existing
-# docs; force a new version (the markdown CONTENT must change, or delete + re-ingest).
+# docs; force a new version (the markdown CONTENT must change, or HARD-delete +
+# re-ingest via `kb:delete --force` — a soft delete keeps the chunks).
 KB_CHUNK_OVERLAP_TOKENS=64
 
 # Embedding cache
