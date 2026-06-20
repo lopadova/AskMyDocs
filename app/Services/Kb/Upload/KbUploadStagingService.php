@@ -351,6 +351,13 @@ final class KbUploadStagingService
      * Flip the batch to its terminal state once no item is still in flight
      * (moving/queued/processing) AND none is still merely staged. Idempotent:
      * a no-op once the batch is already terminal.
+     *
+     * Under an async multi-worker queue, two items of the same batch can finish
+     * in separate worker processes at once and both call this. The terminal
+     * decision (count in-flight + flip status) therefore runs inside ONE
+     * `lockForUpdate` transaction on the batch row, mirroring the R21 commit
+     * gate: the second caller blocks, re-reads the now-`completed` status, and
+     * no-ops — so the batch is finalized exactly once.
      */
     public function finalizeBatchIfComplete(?KbIngestBatch $batch): void
     {
@@ -358,29 +365,39 @@ final class KbUploadStagingService
             return;
         }
 
-        $batch->refresh();
+        $tenantId = $batch->tenant_id;
+        $batchId = $batch->id;
+
         $settled = [
             KbIngestBatch::STATUS_COMPLETED,
             KbIngestBatch::STATUS_COMPLETED_WITH_ERRORS,
             KbIngestBatch::STATUS_CANCELLED,
             KbIngestBatch::STATUS_EXPIRED,
         ];
-        if (in_array($batch->status, $settled, true)) {
-            return;
-        }
 
-        $inFlight = $batch->items()->whereNotIn('status', KbIngestBatchItem::TERMINAL)->count();
-        if ($inFlight > 0) {
-            return;
-        }
+        DB::transaction(function () use ($tenantId, $batchId, $settled): void {
+            $fresh = KbIngestBatch::query()->forTenant($tenantId)
+                ->whereKey($batchId)->lockForUpdate()->first();
 
-        $failed = $batch->items()->where('status', KbIngestBatchItem::STATUS_FAILED)->count();
-        $batch->update([
-            'status' => $failed > 0
-                ? KbIngestBatch::STATUS_COMPLETED_WITH_ERRORS
-                : KbIngestBatch::STATUS_COMPLETED,
-            'finished_at' => now(),
-        ]);
+            if ($fresh === null || in_array($fresh->status, $settled, true)) {
+                return;
+            }
+
+            $inFlight = $fresh->items()->whereNotIn('status', KbIngestBatchItem::TERMINAL)->count();
+            if ($inFlight > 0) {
+                return;
+            }
+
+            $failed = $fresh->items()->where('status', KbIngestBatchItem::STATUS_FAILED)->count();
+            $fresh->update([
+                'status' => $failed > 0
+                    ? KbIngestBatch::STATUS_COMPLETED_WITH_ERRORS
+                    : KbIngestBatch::STATUS_COMPLETED,
+                'finished_at' => now(),
+            ]);
+        });
+
+        $batch->refresh();
     }
 
     /**

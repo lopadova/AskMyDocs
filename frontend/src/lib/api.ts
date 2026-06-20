@@ -33,10 +33,31 @@ export const api: AxiosInstance = axios.create({
  */
 const TENANT_EXEMPT_PREFIXES = ['/api/auth/', '/sanctum/', '/testing/'];
 
+/*
+ * The `default` tenant is the host's "no multi-tenancy" sentinel
+ * (App\Support\TenantContext::isDefault()): ResolveTenant resolves the
+ * SAME context whether the header is `default` or absent, so omitting it
+ * for `default` keeps first-party R30 scoping identical. Crucially, it
+ * also keeps the SPA compatible with sister-package mounts whose own
+ * tenant-context middleware 404s on an unknown tenant: the AI Act package
+ * (`ai-act.tenant-context`) deliberately never promotes `default` into a
+ * `tenants` row (App\Compliance\TenantContextBridge), so stamping
+ * `X-Tenant-Id: default` on `/api/admin/ai-act-compliance/*` 404'd that
+ * admin screen on every single-tenant deployment. With no header those
+ * package middlewares pass through to the host config fallback (their
+ * documented "no header" branch). Real tenants (e.g. `acme`, which DO get
+ * a package `tenants` row) still send the header and stay scoped.
+ */
+const DEFAULT_TENANT = 'default';
+
 api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;
     const url = config.url ?? '';
-    if (team !== null && !TENANT_EXEMPT_PREFIXES.some((p) => url.startsWith(p))) {
+    if (
+        team !== null &&
+        team !== DEFAULT_TENANT &&
+        !TENANT_EXEMPT_PREFIXES.some((p) => url.startsWith(p))
+    ) {
         // config.headers can be undefined for ad-hoc request configs; initialise
         // it (without clobbering existing defaults) before stamping the header.
         config.headers ??= new AxiosHeaders();
@@ -55,6 +76,16 @@ api.interceptors.response.use(
         // definition stale, so an in-SPA fix would loop (TeamGate keeps
         // honouring the URL). Still REJECT so the failing caller surfaces
         // its error state (R14) before the reload lands.
+        //
+        // Scope note (M2): this live recovery triggers only on the host's
+        // first-party `tenant_forbidden` 403. Sister-package mounts reject a
+        // revoked/stale tenant with their own statuses (the AI Act package:
+        // 404 unknown / 410 archived / 423 suspended) and bodies, which we do
+        // NOT blanket-recover from here — a 404 is too ambiguous to safely
+        // reset the active team on. Those cases self-heal on the next full
+        // bootstrap: `syncFromMe` re-validates the persisted team against the
+        // fresh `/api/auth/me` `teams` list and falls back to the first valid
+        // team. Live recovery is therefore best-effort for package routes.
         if (
             axios.isAxiosError(error) &&
             error.response?.status === 403 &&

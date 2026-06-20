@@ -310,7 +310,10 @@ export function ChatView(): ReactNode {
     const onSelect = (id: number | null) => {
         setActive(id);
         if (id !== null) {
-            navigate({ to: `/app/${teamHash}/chat/${id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(id) },
+            });
             return;
         }
         navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
@@ -326,7 +329,10 @@ export function ChatView(): ReactNode {
                 old ? [created, ...old] : [created],
             );
             setActive(created.id);
-            navigate({ to: `/app/${teamHash}/chat/${created.id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(created.id) },
+            });
             return created.id;
         } catch {
             return null;
@@ -442,7 +448,10 @@ export function ChatView(): ReactNode {
                 old ? [result.conversation, ...old] : [result.conversation],
             );
             setActive(result.conversation.id);
-            navigate({ to: `/app/${teamHash}/chat/${result.conversation.id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(result.conversation.id) },
+            });
         } catch (err) {
             // Branch is a non-critical action — log and let the user
             // retry. We don't surface a separate error banner; the
