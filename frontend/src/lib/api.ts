@@ -1,4 +1,4 @@
-import axios, { type AxiosInstance } from 'axios';
+import axios, { AxiosHeaders, type AxiosInstance } from 'axios';
 import { useTeamStore } from './team-store';
 
 /*
@@ -37,6 +37,9 @@ api.interceptors.request.use((config) => {
     const team = useTeamStore.getState().currentTeam;
     const url = config.url ?? '';
     if (team !== null && !TENANT_EXEMPT_PREFIXES.some((p) => url.startsWith(p))) {
+        // config.headers can be undefined for ad-hoc request configs; initialise
+        // it (without clobbering existing defaults) before stamping the header.
+        config.headers ??= new AxiosHeaders();
         config.headers['X-Tenant-Id'] = team;
     }
     return config;
