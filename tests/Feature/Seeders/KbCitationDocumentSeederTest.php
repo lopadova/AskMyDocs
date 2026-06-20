@@ -34,9 +34,6 @@ final class KbCitationDocumentSeederTest extends TestCase
         app(TenantContext::class)->set('default');
         $this->admin = User::create(['name' => 'Admin', 'email' => 'admin@demo.local', 'password' => Hash::make('x')]);
 
-        Route::get('/api/kb/documents/{document}/preview', KbDocumentPreviewController::class)
-            ->middleware('auth:sanctum')
-            ->whereNumber('document');
         config()->set('rbac.enforced', false);
     }
 
