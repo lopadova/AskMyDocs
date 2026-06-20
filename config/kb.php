@@ -535,9 +535,32 @@ return [
         'threshold_refusal_accuracy' => (float) env('KB_BENCHMARK_THRESHOLD_REFUSAL_ACCURACY', 0.95),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Chunking
+    |--------------------------------------------------------------------------
+    |
+    | `hard_cap_tokens` bounds each emitted chunk (approx tokens, strlen/4).
+    | `overlap_tokens` (wired into MarkdownChunker since v8.18) duplicates the
+    | tail of each oversized-section piece onto the head of the next piece,
+    | snapped to paragraph boundaries (never mid-word), so an answer straddling
+    | a chunk boundary still appears whole in at least one chunk. 0 = OFF (chunks
+    | have zero overlap — the pre-v8.18 behaviour). `target_tokens` is the soft
+    | target used by the connector chunkers (Notion/Jira/Confluence/...).
+    |
+    | RE-INGEST REQUIRED: changing `overlap_tokens` changes chunk text, hence
+    | `knowledge_chunks.chunk_hash`, hence is NOT idempotent against already-
+    | ingested docs — it forces a new document version + re-embed of the changed
+    | chunks (the embedding cache is keyed on text_hash, so changed text misses
+    | the cache). Treat it like the embedding-dimensions contract: flip it, then
+    | re-ingest the corpus. PdfPageChunker keeps page-granular chunks and
+    | intentionally does NOT overlap.
+    |
+    */
     'chunking' => [
         'target_tokens' => env('KB_CHUNK_TARGET_TOKENS', 512),
         'hard_cap_tokens' => env('KB_CHUNK_HARD_CAP_TOKENS', 1024),
+        // Tail-overlap budget for MarkdownChunker; 0 = off. Re-ingest required when changed.
         'overlap_tokens' => env('KB_CHUNK_OVERLAP_TOKENS', 64),
     ],
 

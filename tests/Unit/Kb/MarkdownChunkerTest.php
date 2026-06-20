@@ -243,4 +243,128 @@ class MarkdownChunkerTest extends TestCase
         $this->assertSame('section_aware', $chunks[0]['metadata']['strategy']);
         $this->assertSame(0, $chunks[0]['metadata']['order']);
     }
+
+    // -------------------------------------------------------------
+    // v8.18/W3 — configurable chunk overlap (default OFF / 0)
+    // -------------------------------------------------------------
+
+    public function test_overlap_zero_is_byte_identical_to_no_overlap_output(): void
+    {
+        config()->set('kb.chunking.hard_cap_tokens', 1024);
+        config()->set('kb.chunking.overlap_tokens', 0);
+
+        // Three DISTINCT oversized paragraphs (~540 tokens each) so the section
+        // splits into ≥2 pieces and adjacent chunks have genuinely different
+        // leading content — proving overlap=0 carries nothing forward.
+        $p1 = trim(str_repeat('alpha ', 360));
+        $p2 = trim(str_repeat('bravo ', 360));
+        $p3 = trim(str_repeat('charlie ', 360));
+        $md = "# Big\n\n{$p1}\n\n{$p2}\n\n{$p3}";
+
+        $chunks = $this->chunker->chunkLegacy('f.md', $md);
+        $texts = $chunks->pluck('text')->all();
+
+        $this->assertGreaterThan(1, $chunks->count());
+        // With overlap off, chunk[1] does NOT begin with chunk[0]'s content.
+        $this->assertStringStartsNotWith($texts[0], $texts[1]);
+        $this->assertStringContainsString('alpha', $texts[0]);
+        $this->assertStringContainsString('bravo', $texts[1]);
+    }
+
+    public function test_overlap_prepends_previous_tail_paragraph_to_next_chunk(): void
+    {
+        config()->set('kb.chunking.hard_cap_tokens', 1024);
+        config()->set('kb.chunking.overlap_tokens', 600); // big enough to carry a whole ~540-token paragraph
+
+        // Three distinct oversized paragraphs → the section splits and each
+        // boundary paragraph is the overlap candidate.
+        $p1 = trim(str_repeat('alpha ', 360));
+        $p2 = trim(str_repeat('bravo ', 360));
+        $p3 = trim(str_repeat('charlie ', 360));
+        $md = "# S\n\n{$p1}\n\n{$p2}\n\n{$p3}";
+
+        $chunks = $this->chunker->chunkLegacy('f.md', $md);
+        $texts = $chunks->pluck('text')->all();
+
+        $this->assertGreaterThan(1, $chunks->count());
+        // The last paragraph that ended chunk[0] reappears at the head of
+        // chunk[1] (overlap = duplicated boundary paragraph), whole (no partial word).
+        $tailOfFirst = $this->lastParagraph($texts[0]);
+        $this->assertStringStartsWith($tailOfFirst, $texts[1]);
+        $this->assertContains($tailOfFirst, [$p1, $p2, $p3]);
+    }
+
+    public function test_single_chunk_doc_is_unaffected_by_overlap(): void
+    {
+        // Small doc that fits the cap → exactly one piece → no adjacent
+        // chunk to overlap with. Output must equal the no-overlap output.
+        config()->set('kb.chunking.hard_cap_tokens', 1024);
+        config()->set('kb.chunking.overlap_tokens', 64);
+
+        $chunks = $this->chunker->chunkLegacy('f.md', "# Solo\n\nJust one short paragraph.");
+
+        $this->assertCount(1, $chunks);
+        $this->assertSame('Just one short paragraph.', $chunks[0]['text']);
+    }
+
+    public function test_overlap_larger_than_a_piece_does_not_overflow_or_loop(): void
+    {
+        // overlap budget bigger than the whole previous piece: take what
+        // whole paragraphs fit, never partial words, never duplicate the
+        // entire previous piece beyond its paragraph count.
+        config()->set('kb.chunking.hard_cap_tokens', 1024);
+        config()->set('kb.chunking.overlap_tokens', 100000); // absurdly large
+
+        $p1 = trim(str_repeat('alpha ', 360));
+        $p2 = trim(str_repeat('bravo ', 360));
+        $p3 = trim(str_repeat('charlie ', 360));
+        $md = "# S\n\n{$p1}\n\n{$p2}\n\n{$p3}";
+
+        $chunks = $this->chunker->chunkLegacy('f.md', $md);
+
+        $this->assertGreaterThan(1, $chunks->count());
+        foreach ($chunks as $chunk) {
+            $this->assertNotSame('', trim($chunk['text']));
+        }
+    }
+
+    public function test_over_budget_single_tail_paragraph_leaves_next_chunk_unchanged(): void
+    {
+        // The boundary paragraph alone exceeds the overlap budget → no tail
+        // is carried (we never split a paragraph mid-word), so chunk[1]
+        // equals its no-overlap content.
+        config()->set('kb.chunking.hard_cap_tokens', 80);
+        config()->set('kb.chunking.overlap_tokens', 1); // ~4 chars: smaller than any paragraph
+
+        $p1 = str_repeat('word ', 70);
+        $p2 = str_repeat('term ', 70);
+        $md = "# S\n\n{$p1}\n\n{$p2}";
+
+        $withOverlap = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
+
+        config()->set('kb.chunking.overlap_tokens', 0);
+        $noOverlap = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
+
+        // overlap=1 token can't fit any whole paragraph → identical to off.
+        $this->assertSame($noOverlap, $withOverlap);
+    }
+
+    public function test_overlap_output_is_deterministic_across_runs(): void
+    {
+        config()->set('kb.chunking.hard_cap_tokens', 80);
+        config()->set('kb.chunking.overlap_tokens', 20);
+        $md = "# S\n\n".str_repeat('alpha ', 60)."\n\n".str_repeat('beta ', 60)."\n\n".str_repeat('gamma ', 60);
+
+        $a = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
+        $b = $this->chunker->chunkLegacy('f.md', $md)->pluck('text')->all();
+
+        $this->assertSame($a, $b);
+    }
+
+    private function lastParagraph(string $text): string
+    {
+        $parts = preg_split('/\n{2,}/', trim($text));
+
+        return trim(end($parts));
+    }
 }
