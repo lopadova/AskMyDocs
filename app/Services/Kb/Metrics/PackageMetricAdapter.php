@@ -83,6 +83,15 @@ final class PackageMetricAdapter
      */
     public function scoreRanked(Metric $metric, array $rankedIds, array $relevantIds, ?int $k = null): float
     {
+        // Behaviour-preservation: the old hand-rolled metrics returned 0.0 when
+        // the relevant set was empty (nothing is relevant → MRR/hit/recall = 0).
+        // The package instead REJECTS an empty expected_output with a
+        // MetricException, so short-circuit here — a benchmark query with no
+        // labelled relevance must score 0.0, not abort the whole run.
+        if ($relevantIds === []) {
+            return 0.0;
+        }
+
         $sample = new DatasetSample(
             id: self::SAMPLE_ID,
             input: [],
@@ -101,6 +110,13 @@ final class PackageMetricAdapter
      */
     public function scoreRankedWithGains(Metric $metric, array $rankedIds, array $gains, ?int $k = null): float
     {
+        // Same behaviour-preservation as scoreRanked(): an empty gains map meant
+        // IDCG = 0 → nDCG 0.0 in the old code; the package would throw on the
+        // empty expected_output instead. Short-circuit to 0.0.
+        if ($gains === []) {
+            return 0.0;
+        }
+
         $graded = [];
         foreach ($gains as $id => $grade) {
             $graded[(string) $id] = (float) $grade;

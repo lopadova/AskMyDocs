@@ -123,4 +123,15 @@ final class RetrievalQualityMetricsTest extends TestCase
         self::assertFalse(class_exists('Padosoft\\EvalHarness\\Metrics\\RetrievalPrecisionAtKMetric'));
         self::assertEqualsWithDelta(2 / 3, M::precisionAtK(['a', 'b', 'c', 'd'], ['a', 'c', 'x'], 3), 1e-9);
     }
+
+    public function test_empty_relevance_scores_zero_not_throws(): void
+    {
+        // Behaviour-preservation regression: the pre-delegation metrics returned
+        // 0.0 for an unlabelled query (empty relevant set / empty gains). The
+        // package REJECTS an empty expected_output with a MetricException, so the
+        // adapter must short-circuit to 0.0 — otherwise a single benchmark query
+        // with no `relevance` block aborts the whole BenchmarkRunner sweep.
+        self::assertSame(0.0, M::reciprocalRank(['a', 'b', 'c'], []));
+        self::assertSame(0.0, M::ndcgAtK(['a', 'b', 'c'], [], 3));
+    }
 }
