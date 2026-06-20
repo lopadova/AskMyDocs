@@ -55,13 +55,13 @@ export function CoachingCard(): ReactNode {
     }
 
     const { narrative, titles } = insight;
-    // Belt-and-braces: the backend guarantees these arrays exist (it merges the
-    // LLM narrative over a deterministic shape), but default here too so a future
-    // contract drift can never white-screen the card (R14).
-    const strengths = narrative.strengths ?? [];
-    const growth = narrative.growth ?? [];
-    const nextSteps = narrative.next_steps ?? [];
-    const titleList = titles ?? [];
+    // Belt-and-braces: the backend type-reconciles the LLM narrative against a
+    // deterministic shape, but guard with Array.isArray here too — a wrong TYPE
+    // (e.g. an LLM-persisted string) must never reach .map() (R14).
+    const strengths = Array.isArray(narrative.strengths) ? narrative.strengths : [];
+    const growth = Array.isArray(narrative.growth) ? narrative.growth : [];
+    const nextSteps = Array.isArray(narrative.next_steps) ? narrative.next_steps : [];
+    const titleList = Array.isArray(titles) ? titles : [];
 
     return (
         <section data-testid="me-coaching" data-state="ready" aria-busy={query.isFetching} style={{ marginTop: 20 }}>

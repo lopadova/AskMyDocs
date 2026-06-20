@@ -41,10 +41,10 @@ function readyResponse() {
     return {
         available: true,
         scope: 'tenant',
-        scope_id: 'default',
+        scope_id: '',
         insight: {
             scope_type: 'tenant',
-            scope_id: 'default',
+            scope_id: '',
             period_label: 'June 2026',
             metrics: { contributors: 5 },
             narrative: {
@@ -80,7 +80,7 @@ describe('GamificationInsightsPanel', () => {
     });
 
     it('renders an empty state when not available (not null)', async () => {
-        vi.spyOn(api, 'get').mockResolvedValue({ data: { available: false, scope: 'tenant', scope_id: 'default', insight: null } } as never);
+        vi.spyOn(api, 'get').mockResolvedValue({ data: { available: false, scope: 'tenant', scope_id: '', insight: null } } as never);
         render(wrapped(<GamificationInsightsPanel />));
 
         // R16 — assert the empty-state testid, not "ready".

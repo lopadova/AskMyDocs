@@ -121,13 +121,12 @@ final class GamificationNarratorService
                 return $fallback;
             }
 
-            // MERGE the model's narrative OVER the deterministic shape so the
-            // required keys (strengths/growth/next_steps/summary or actions/advice)
-            // ALWAYS exist even if a free model returns a partial object — the FE
-            // reads those arrays directly, so a missing key would white-screen (R14).
-            $narrative = is_array($decoded['narrative'] ?? null)
-                ? array_merge($fallback['narrative'], $decoded['narrative'])
-                : $fallback['narrative'];
+            // Reconcile the model's narrative against the deterministic shape: every
+            // required key always exists AND keeps its expected TYPE (array fields
+            // stay arrays-of-strings, string fields stay strings). A free model that
+            // returns `strengths: "..."` (string) or omits a key can't white-screen
+            // the FE, which reads those arrays/strings directly (R14).
+            $narrative = $this->reconcileNarrative($decoded['narrative'] ?? null, $fallback['narrative']);
 
             return [
                 'narrative' => $narrative,
@@ -203,12 +202,53 @@ final class GamificationNarratorService
             if (! is_array($t) || ! isset($t['label']) || ! is_string($t['label']) || $t['label'] === '') {
                 continue;
             }
+            // preg_replace can return null on failure — cast to string so the
+            // never-throw narration path can't TypeError on strtolower(null).
+            $derivedKey = strtolower((string) preg_replace('/[^a-z0-9]+/i', '-', $t['label']));
             $out[] = [
-                'key' => is_string($t['key'] ?? null) ? $t['key'] : strtolower(preg_replace('/[^a-z0-9]+/i', '-', $t['label'])),
+                'key' => is_string($t['key'] ?? null) && $t['key'] !== '' ? $t['key'] : ($derivedKey !== '' ? $derivedKey : 'title'),
                 'label' => $t['label'],
                 'icon' => is_string($t['icon'] ?? null) && $t['icon'] !== '' ? $t['icon'] : '🏅',
                 'reason' => is_string($t['reason'] ?? null) ? $t['reason'] : '',
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Overlay a (possibly partial / mis-typed) model narrative onto the
+     * deterministic shape. For every key in the fallback: keep the model's value
+     * ONLY when it matches the fallback's type — an array field stays an
+     * array-of-strings, a string field stays a string — otherwise the fallback
+     * value is kept. This guarantees the persisted narrative always has every
+     * required key with the right type, so the FE never `.map()`s a non-array (R14).
+     *
+     * @param  mixed  $decoded
+     * @param  array<string, mixed>  $fallback
+     * @return array<string, mixed>
+     */
+    private function reconcileNarrative($decoded, array $fallback): array
+    {
+        if (! is_array($decoded)) {
+            return $fallback;
+        }
+
+        $out = $fallback;
+        foreach ($fallback as $key => $fallbackValue) {
+            if (! array_key_exists($key, $decoded)) {
+                continue;
+            }
+            $value = $decoded[$key];
+            if (is_array($fallbackValue)) {
+                // Array field (strengths / growth / next_steps / actions / advice):
+                // keep only when the model returned an array, filtered to strings.
+                $out[$key] = is_array($value) ? array_values(array_filter($value, 'is_string')) : $fallbackValue;
+            } elseif (is_string($fallbackValue)) {
+                $out[$key] = is_string($value) ? $value : $fallbackValue;
+            } else {
+                $out[$key] = $value;
+            }
         }
 
         return $out;

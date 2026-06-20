@@ -50,7 +50,9 @@ class KbGamificationInsightsTool extends Tool
         $period = trim((string) ($request->get('period') ?? '')) ?: null;
 
         $insight = match ($scope) {
-            KbGamificationInsight::SCOPE_USER => $id === '' ? null : $insights->forUser((int) $id, $period),
+            // Require a strictly-numeric id for the user scope — `(int) "12abc"`
+            // would silently coerce to 12 and return the WRONG user's card.
+            KbGamificationInsight::SCOPE_USER => ctype_digit($id) ? $insights->forUser((int) $id, $period) : null,
             KbGamificationInsight::SCOPE_PROJECT => $id === '' ? null : $insights->forScope(KbGamificationInsight::SCOPE_PROJECT, $id, $period),
             KbGamificationInsight::SCOPE_TENANT => $insights->forScope(KbGamificationInsight::SCOPE_TENANT, '', $period),
             default => null,

@@ -99,36 +99,42 @@ export function GamificationInsightsPanel(): ReactNode {
                 </p>
             )}
 
-            {dataState === 'ready' && insight && (
-                <div data-testid="admin-gamification-insights-body">
-                    <p data-testid="admin-gamification-insights-headline" style={{ fontWeight: 600, fontSize: 16 }}>
-                        {insight.narrative.headline}
-                    </p>
-                    <p style={{ color: 'var(--fg-2)' }}>{insight.narrative.summary}</p>
+            {dataState === 'ready' && insight && (() => {
+                // R14: a wrong TYPE (LLM-persisted string) must never reach .map().
+                const actions = Array.isArray(insight.narrative.actions) ? insight.narrative.actions : [];
+                const advice = Array.isArray(insight.narrative.advice) ? insight.narrative.advice : [];
 
-                    {(insight.narrative.actions ?? []).length > 0 && (
-                        <div data-testid="admin-gamification-insights-actions">
-                            <h4>Recommended actions</h4>
-                            <ul>
-                                {(insight.narrative.actions ?? []).map((a, i) => (
-                                    <li key={`action-${i}`}>{a}</li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
+                return (
+                    <div data-testid="admin-gamification-insights-body">
+                        <p data-testid="admin-gamification-insights-headline" style={{ fontWeight: 600, fontSize: 16 }}>
+                            {insight.narrative.headline}
+                        </p>
+                        <p style={{ color: 'var(--fg-2)' }}>{insight.narrative.summary}</p>
 
-                    {insight.narrative.advice && insight.narrative.advice.length > 0 && (
-                        <div data-testid="admin-gamification-insights-advice">
-                            <h4>Advice</h4>
-                            <ul>
-                                {insight.narrative.advice.map((a, i) => (
-                                    <li key={`advice-${i}`}>{a}</li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
-                </div>
-            )}
+                        {actions.length > 0 && (
+                            <div data-testid="admin-gamification-insights-actions">
+                                <h4>Recommended actions</h4>
+                                <ul>
+                                    {actions.map((a, i) => (
+                                        <li key={`action-${i}`}>{a}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {advice.length > 0 && (
+                            <div data-testid="admin-gamification-insights-advice">
+                                <h4>Advice</h4>
+                                <ul>
+                                    {advice.map((a, i) => (
+                                        <li key={`advice-${i}`}>{a}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
         </section>
     );
 }

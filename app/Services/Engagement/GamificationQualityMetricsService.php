@@ -41,26 +41,23 @@ final class GamificationQualityMetricsService
     {
         $tenant = $this->tenants->current();
 
-        $authoredIds = KbContributionEvent::query()
+        // R3: NEVER materialise the id list — `$scopedDocs()` is a fresh
+        // tenant-scoped Builder of the user's authored docs (a subquery), so every
+        // aggregate below runs entirely in SQL with no PHP-side id arrays.
+        $scopedDocs = fn () => KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('user_id', $userId)
-            ->whereIn('event', [KbContributionEvent::EVENT_CREATED, KbContributionEvent::EVENT_PROMOTED])
-            ->whereNotNull('document_id')
-            ->distinct()
-            ->pluck('document_id')
-            ->map(static fn ($id): int => (int) $id)
-            ->all();
+            ->whereIn('id', $this->authoredDocIdSubquery($tenant, $userId));
 
-        $quality = $this->docSetQuality($authoredIds);
+        $quality = $this->docSetQuality($scopedDocs);
 
         $citations = (int) KbContributionEvent::query()
             ->forTenant($tenant)
             ->where('event', KbContributionEvent::EVENT_CITED)
-            ->when($authoredIds !== [], fn ($q) => $q->whereIn('document_id', $authoredIds), fn ($q) => $q->whereRaw('1 = 0'))
+            ->whereIn('document_id', $this->authoredDocIdSubquery($tenant, $userId))
             ->count();
 
         return [
-            'authored_docs' => count($authoredIds),
+            'authored_docs' => (int) $scopedDocs()->count(),
             'citation_usefulness' => $citations,
         ] + $quality;
     }
@@ -74,14 +71,11 @@ final class GamificationQualityMetricsService
     {
         $tenant = $this->tenants->current();
 
-        $docIds = KnowledgeDocument::query()
+        $scopedDocs = fn () => KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->where('project_key', $projectKey)
-            ->pluck('id')
-            ->map(static fn ($id): int => (int) $id)
-            ->all();
+            ->where('project_key', $projectKey);
 
-        $quality = $this->docSetQuality($docIds);
+        $quality = $this->docSetQuality($scopedDocs);
 
         $contributors = (int) KbContributionEvent::query()
             ->forTenant($tenant)
@@ -92,7 +86,7 @@ final class GamificationQualityMetricsService
 
         return [
             'project_key' => $projectKey,
-            'total_docs' => count($docIds),
+            'total_docs' => $quality['total_docs'],
             'contributors' => $contributors,
             'health_score' => $this->compositeHealthScore($quality),
         ] + $quality;
@@ -108,6 +102,8 @@ final class GamificationQualityMetricsService
     {
         $tenant = $this->tenants->current();
 
+        // The distinct project-key list is intrinsically small (one row per
+        // project, not per document) — safe to pluck.
         $projectKeys = KnowledgeDocument::query()
             ->forTenant($tenant)
             ->whereNotNull('project_key')
@@ -129,71 +125,67 @@ final class GamificationQualityMetricsService
             ];
         }
 
-        $allDocIds = KnowledgeDocument::query()
-            ->forTenant($tenant)
-            ->pluck('id')
-            ->map(static fn ($id): int => (int) $id)
-            ->all();
-        $org = $this->docSetQuality($allDocIds);
+        $org = $this->docSetQuality(fn () => KnowledgeDocument::query()->forTenant($tenant));
 
         return [
             'projects' => $projects,
             'project_count' => count($projects),
-            'total_docs' => count($allDocIds),
+            'total_docs' => $org['total_docs'],
             'org_health_score' => $this->compositeHealthScore($org),
             'strength_matrix' => $this->strengthMatrix(),
         ] + $org;
     }
 
     /**
-     * Quality aggregate over a set of knowledge_documents primary keys. Returns
-     * zero-valued, well-formed metrics for an empty set (so an inactive
-     * user/project never crashes the narrator or the dashboard).
+     * Quality aggregate over a doc set described by a Builder FACTORY (`$scopedDocs`
+     * returns a fresh tenant-scoped `KnowledgeDocument` query each call). Every
+     * aggregate runs in SQL — including the health / edges / chunk counts, which
+     * pass `$scopedDocs()` as a SUBQUERY rather than a PHP id array (R3: no
+     * unbounded id materialisation, no oversized `IN (…)`). Returns zero-valued,
+     * well-formed metrics for an empty set so an inactive user/project never
+     * crashes the narrator or the dashboard.
      *
-     * @param  list<int>  $docIds
+     * @param  \Closure(): \Illuminate\Database\Eloquent\Builder<KnowledgeDocument>  $scopedDocs
      * @return array<string, mixed>
      */
-    private function docSetQuality(array $docIds): array
+    private function docSetQuality(\Closure $scopedDocs): array
     {
-        if ($docIds === []) {
+        $tenant = $this->tenants->current();
+
+        $total = (int) $scopedDocs()->count();
+        if ($total === 0) {
             return $this->emptyQuality();
         }
 
-        $tenant = $this->tenants->current();
-        $base = KnowledgeDocument::query()->forTenant($tenant)->whereIn('id', $docIds);
-
-        $total = (int) (clone $base)->count();
-        $canonical = (int) (clone $base)->canonical()->count();
-        $accepted = (int) (clone $base)->accepted()->count();
-        $withFrontmatter = (int) (clone $base)
-            ->canonical()
-            ->whereNotNull('frontmatter_json')
-            ->where('frontmatter_json', '!=', '')
-            ->where('frontmatter_json', '!=', '[]')
-            ->count();
-        $withEvidence = (int) (clone $base)
+        $canonical = (int) $scopedDocs()->canonical()->count();
+        $accepted = (int) $scopedDocs()->accepted()->count();
+        // `frontmatter_json` is a JSON column — `whereNotNull` is the only
+        // cross-driver-safe "is present" test (string comparisons like `!= ''`
+        // throw on Postgres, which has no `json <> text` operator).
+        $withFrontmatter = (int) $scopedDocs()->canonical()->whereNotNull('frontmatter_json')->count();
+        // evidence_tier is a plain string column, so `!= ''` is fine here.
+        $withEvidence = (int) $scopedDocs()
             ->whereNotNull('evidence_tier')
             ->where('evidence_tier', '!=', '')
             ->count();
-        $avgPriority = (float) ((clone $base)->avg('retrieval_priority') ?? 0.0);
+        $avgPriority = (float) ($scopedDocs()->avg('retrieval_priority') ?? 0.0);
 
-        // Stewardship: avg canonical-health-snapshot score over these docs.
+        // Stewardship: avg canonical-health-snapshot score over these docs (subquery).
         $avgHealth = (float) (KbCanonicalHealthSnapshot::query()
             ->forTenant($tenant)
-            ->whereIn('knowledge_document_id', $docIds)
+            ->whereIn('knowledge_document_id', $scopedDocs()->select('id'))
             ->avg('health_score') ?? 0.0);
 
-        // Graph connectivity: edges sourced from these docs (by canonical doc_id).
-        $docIdSlugs = (clone $base)->canonical()->whereNotNull('doc_id')->pluck('doc_id')->all();
-        $edges = $docIdSlugs === [] ? 0 : (int) KbEdge::query()
+        // Graph connectivity: edges sourced from these docs by canonical doc_id (subquery).
+        $edges = (int) KbEdge::query()
             ->forTenant($tenant)
-            ->whereIn('source_doc_id', $docIdSlugs)
+            ->whereIn('source_doc_id', $scopedDocs()->canonical()->whereNotNull('doc_id')->select('doc_id'))
             ->count();
 
-        // Structural depth: avg chunks per doc.
+        // Structural depth: avg chunks per doc (subquery).
         $chunks = (int) KnowledgeChunk::query()
             ->forTenant($tenant)
-            ->whereIn('knowledge_document_id', $docIds)
+            ->whereIn('knowledge_document_id', $scopedDocs()->select('id'))
             ->count();
 
         return [
@@ -207,8 +199,23 @@ final class GamificationQualityMetricsService
             'avg_health_score' => round($avgHealth, 2),
             'graph_edges' => $edges,
             'avg_chunks_per_doc' => round($chunks / max(1, $total), 2),
-            'evidence_tier_breakdown' => $this->evidenceBreakdown($docIds),
+            'evidence_tier_breakdown' => $this->evidenceBreakdown($scopedDocs),
         ];
+    }
+
+    /**
+     * Distinct document_ids a user authored (created|promoted) — a fresh subquery
+     * builder each call (R30: explicit tenant filter; R3: stays a SQL subquery).
+     */
+    private function authoredDocIdSubquery(string $tenant, int $userId): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('kb_contribution_events')
+            ->select('document_id')
+            ->where('tenant_id', $tenant)
+            ->where('user_id', $userId)
+            ->whereIn('event', [KbContributionEvent::EVENT_CREATED, KbContributionEvent::EVENT_PROMOTED])
+            ->whereNotNull('document_id')
+            ->distinct();
     }
 
     /**
@@ -291,18 +298,12 @@ final class GamificationQualityMetricsService
     }
 
     /**
-     * @param  list<int>  $docIds
+     * @param  \Closure(): \Illuminate\Database\Eloquent\Builder<KnowledgeDocument>  $scopedDocs
      * @return array<string, int>
      */
-    private function evidenceBreakdown(array $docIds): array
+    private function evidenceBreakdown(\Closure $scopedDocs): array
     {
-        if ($docIds === []) {
-            return [];
-        }
-
-        $rows = KnowledgeDocument::query()
-            ->forTenant($this->tenants->current())
-            ->whereIn('id', $docIds)
+        $rows = $scopedDocs()
             ->whereNotNull('evidence_tier')
             ->where('evidence_tier', '!=', '')
             ->select('evidence_tier', DB::raw('COUNT(*) as c'))
