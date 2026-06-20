@@ -17,12 +17,15 @@ class DashboardMetricsControllerTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * Mirror the Auth controller tests: mount routes/api.php under
-     * `api + web` middleware stack so Sanctum stateful + Spatie
-     * `role:` alias both resolve correctly. ResolveTenant is added
-     * explicitly (production prepends it in bootstrap/app.php, which
-     * Testbench does not execute) so X-Tenant-Id drives the active
-     * tenant in the cache-isolation test below.
+     * Mirror the Auth controller tests: mount routes/api.php under the
+     * `api` middleware group plus `ResolveTenant` (`['api',
+     * ResolveTenant::class]`) so Sanctum stateful + Spatie `role:` alias
+     * resolve correctly. `ResolveTenant` is the important addition here —
+     * production prepends it in bootstrap/app.php, which Testbench does
+     * not execute — so `X-Tenant-Id` drives the active tenant in the
+     * cache-isolation test below. The route groups in routes/api.php add
+     * EncryptCookies / StartSession themselves where they need the
+     * stateful session, so they are not re-applied at this level.
      */
     protected function defineRoutes($router): void
     {
