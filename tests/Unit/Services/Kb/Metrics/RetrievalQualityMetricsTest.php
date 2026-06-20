@@ -106,11 +106,11 @@ final class RetrievalQualityMetricsTest extends TestCase
         self::assertLessThan(1.0, $worse);
 
         $graded = ['hi' => 3, 'mid' => 2, 'lo' => 1];
-        self::assertEqualsWithDelta(1.0, M::ndcgAtK(['hi', 'mid', 'lo'], $graded, 3), 1e-9);
-        self::assertLessThan(
-            M::ndcgAtK(['hi', 'mid', 'lo'], $graded, 3),
-            M::ndcgAtK(['lo', 'mid', 'hi'], $graded, 3),
-        );
+        $idealOrder = M::ndcgAtK(['hi', 'mid', 'lo'], $graded, 3);   // descending = perfect
+        $reversedOrder = M::ndcgAtK(['lo', 'mid', 'hi'], $graded, 3); // ascending = worst
+        self::assertEqualsWithDelta(1.0, $idealOrder, 1e-9);
+        // The ideal (descending-gain) ranking must score HIGHER than the reversed one.
+        self::assertGreaterThan($reversedOrder, $idealOrder);
         // k <= 0 guard preserved.
         self::assertSame(0.0, M::ndcgAtK(['a'], $gains, 0));
     }
