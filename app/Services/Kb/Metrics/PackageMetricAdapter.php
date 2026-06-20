@@ -69,6 +69,14 @@ final class PackageMetricAdapter
      */
     public function answerContainment(array $rankedChunks, string $expectedAnswer, ?int $k = null): float
     {
+        // Guard at the adapter boundary too (the method is public): a non-positive
+        // window has no top-k, and an empty/whitespace expected answer has nothing
+        // to contain → 0.0, never the package's degenerate "empty string is
+        // contained" result. Matches RetrievalQualityMetrics::answerContainmentAtK().
+        if (($k !== null && $k <= 0) || trim($expectedAnswer) === '') {
+            return 0.0;
+        }
+
         return $this->scoreAnswerContainment(new AnswerContainmentAtKMetric($this->configRepo), $rankedChunks, $expectedAnswer, $k);
     }
 
