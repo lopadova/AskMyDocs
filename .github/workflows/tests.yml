@@ -210,6 +210,16 @@ jobs:
               sed -i "s|^${1}=.*|${1}=${2}|" .env
           }
           set_env APP_ENV testing
+          # E2E diagnosability (R22): force file logging with full stack
+          # traces so a 500 from any /api/* route on the Playwright run
+          # lands in storage/logs/laravel.log — which the "Dump Laravel log
+          # on failure" step tails. The default `stack`/APP_DEBUG=false combo
+          # left that file absent (`(no laravel.log file present)`), so
+          # backend errors behind a Playwright "element not visible" timeout
+          # were invisible. `single` writes laravel.log; APP_DEBUG=true keeps
+          # the trace. Testing-only — never set on a real deployment.
+          set_env LOG_CHANNEL single
+          set_env APP_DEBUG true
           # APP_KEY is generated below by `php artisan key:generate
           # --force` (see "Migrate test database (CLI)") — it REPLACES
           # the empty `APP_KEY=` line from `.env.example` in-place,
