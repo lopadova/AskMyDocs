@@ -77,6 +77,27 @@ A line-based, fence-aware finite-state machine (no external markdown library):
   (`KB_CHUNK_HARD_CAP_TOKENS`) gates oversize splits (target
   `KB_CHUNK_TARGET_TOKENS=512`, overlap `KB_CHUNK_OVERLAP_TOKENS=64`).
 
+#### Chunk overlap (`KB_CHUNK_OVERLAP_TOKENS`, since v8.18)
+
+When `> 0`, `MarkdownChunker` carries the **tail of each oversized-section piece
+onto the head of the next**, snapped to paragraph boundaries (never mid-word), so
+an answer that straddles a chunk boundary still appears whole in at least one
+chunk. `0` disables it (the pre-v8.18 behaviour). Two operational notes matter:
+
+- **The hard cap bounds the BASE piece, before overlap.** Overlap is a post-pass
+  over the already-split pieces, so a final chunk can exceed `KB_CHUNK_HARD_CAP_TOKENS`
+  by up to `KB_CHUNK_OVERLAP_TOKENS` (e.g. cap 1024 + overlap 64 → ~1088 tokens) —
+  by design, and well within embedding-model context limits. `PdfPageChunker` and
+  the connector chunkers keep their granular chunks and intentionally do **not**
+  overlap.
+- **Applies to NEW ingests only.** Ingestion is idempotent on
+  `version_hash = sha256(markdown)`, so changing this knob alone does **not**
+  re-chunk already-ingested docs (a no-op re-save keeps the same hash). To apply
+  a new setting to existing content, the markdown **content** must change, or
+  **hard-delete + re-ingest** (`kb:delete --force` — a soft delete keeps the
+  chunks). Changed chunk text re-embeds (the embedding cache is keyed on the chunk
+  text), so treat it like the embedding-dimension contract: flip it, then re-ingest.
+
 Frontmatter is stripped first (the `CanonicalParser` consumes it); `[[wikilinks]]`
 are extracted and attached to chunk `metadata`.
 
