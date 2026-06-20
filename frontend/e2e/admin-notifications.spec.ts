@@ -11,7 +11,8 @@ import { test } from './fixtures';
  * Scenarios:
  *   1. bell renders with `data-state=ready` after the unread-count
  *      query settles (real /api/notifications/unread-count).
- *   2. "See all" link routes to /app/admin/notifications and renders
+ *   2. "See all" link routes to the team-scoped
+ *      /app/{teamHash}/admin/notifications and renders
  *      the empty panel (DemoSeeder ships no notifications, so the
  *      default unread tab is `data-state=empty`).
  *   3. R13: failure injection — force /api/notifications to 500 and
@@ -43,7 +44,10 @@ test.describe('Notification bell + panel', () => {
         await expect(page.getByTestId('notif-bell-empty')).toBeVisible();
 
         await page.getByTestId('notif-bell-see-all').click();
-        await page.waitForURL('**/app/admin/notifications');
+        // v8.17 made every authed route team-scoped: /app/{teamHash}/admin/….
+        // Match the page suffix so the assertion tolerates the team-hash
+        // segment (same convention as the other admin specs' toHaveURL).
+        await page.waitForURL(/\/admin\/notifications$/);
 
         const panel = page.getByTestId('notif-panel');
         await expect(panel).toBeVisible();
