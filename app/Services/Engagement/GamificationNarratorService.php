@@ -135,10 +135,14 @@ final class GamificationNarratorService
                 ? $this->normaliseTitles($decoded['titles'])
                 : $fallback['titles'];
 
+            $modelUsed = is_string($response->model) && $response->model !== ''
+                ? $response->model
+                : (is_string($model) && $model !== '' ? $model : null);
+
             return [
                 'narrative' => $narrative,
                 'titles' => $titles,
-                'model' => is_string($model) && $model !== '' ? $model : 'default',
+                'model' => $modelUsed,
             ];
         } catch (Throwable $e) {
             Log::warning('GamificationNarratorService: narrative generation failed; using deterministic copy.', [
