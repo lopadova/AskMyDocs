@@ -117,6 +117,12 @@ export default defineConfig({
                   // The default-OFF clean-404 landing (flag off) is covered by
                   // FinOpsDisabledTest (phpunit), per R43 (both states tested).
                   AI_FINOPS_ADMIN_ENABLED: 'true',
+                  // v8.17 — OFFLINE IMAP seam so connectors-imap-super-admin.spec.ts
+                  // can drive the real credential-connector flow end-to-end (the IMAP
+                  // server is a BACKEND TCP dependency Playwright can't stub). The fake
+                  // ping is input-driven: host containing `invalid`/`fail` → 422,
+                  // otherwise → ACTIVE. Default-OFF in production.
+                  CONNECTOR_IMAP_FAKE_PING: 'true',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var

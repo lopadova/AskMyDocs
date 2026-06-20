@@ -1,13 +1,32 @@
+import { useEffect, useRef, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
 import { ConnectorCard } from './ConnectorCard';
+import { CredentialConnectorForm } from './CredentialConnectorForm';
+import type { ConfigureConnectorPayload, ConnectorEntry } from './connectors.api';
 import {
+    useConfigureConnector,
     useConnectors,
     useDestroyConnector,
     useStartInstall,
     useSyncNow,
 } from './connectors-hooks';
+
+/**
+ * Extracts a top-level message + per-field errors from an axios 422. Reuses
+ * `toAdminError()` for the standard Laravel `{ message, errors }` flattening
+ * (single source of truth, no drift) and only layers the connector-specific
+ * `{ error }` shape (a ConnectorAuthException, e.g. "IMAP login failed") on top.
+ */
+function parseConfigureError(e: unknown): { message: string; fieldErrors: Record<string, string> } {
+    const base = toAdminError(e);
+    const connectorError = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+    return {
+        message: connectorError ?? base.message,
+        fieldErrors: base.fieldErrors,
+    };
+}
 
 /*
  * v4.5/W3 — Connector admin landing page.
@@ -35,6 +54,19 @@ export function ConnectorsView() {
     const startInstall = useStartInstall();
     const syncNow = useSyncNow();
     const destroyConnector = useDestroyConnector();
+    const configureConnector = useConfigureConnector();
+
+    // v8.17 — the credential connector being configured (modal open) + its
+    // inline error state. Null = no modal.
+    const [modalEntry, setModalEntry] = useState<ConnectorEntry | null>(null);
+    const [configureError, setConfigureError] = useState<string | null>(null);
+    const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string>>({});
+    // Mirror the open modal so an in-flight configure can tell, on resolve,
+    // whether the user has since switched/closed the modal (R17).
+    const modalEntryRef = useRef<ConnectorEntry | null>(null);
+    useEffect(() => {
+        modalEntryRef.current = modalEntry;
+    }, [modalEntry]);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -47,6 +79,26 @@ export function ConnectorsView() {
     const entries = connectorsQuery.data ?? [];
 
     async function handleConnect(key: string) {
+        const entry = entries.find((c) => c.key === key);
+        // v8.17 — credential connectors (IMAP) open a schema-driven form modal
+        // instead of an OAuth redirect. OAuth connectors keep the existing flow.
+        if (entry && entry.auth_kind === 'credential') {
+            // Guard a credential connector that advertises no schema — opening the
+            // modal would render an empty form the user could only submit into an
+            // unrecoverable 422. Surface a toast instead.
+            if (!entry.credential_form_schema || entry.credential_form_schema.length === 0) {
+                toast.error(
+                    `${entry.display_name} did not provide a credential form.`,
+                    'toast-connector-error',
+                );
+                return;
+            }
+            setConfigureError(null);
+            setConfigureFieldErrors({});
+            setModalEntry(entry);
+            return;
+        }
+
         try {
             const result = await startInstall.mutateAsync(key);
             // Navigate the browser to the provider's OAuth URL. The
@@ -58,6 +110,38 @@ export function ConnectorsView() {
         } catch (e) {
             const err = toAdminError(e);
             toast.error(err.message, 'toast-connector-error');
+        }
+    }
+
+    async function handleConfigureSubmit(payload: ConfigureConnectorPayload) {
+        // Capture the connector this submission is for — the user may close the
+        // modal or switch to another connector while the request is in flight, so
+        // we must not act on whatever `modalEntry` happens to be when it resolves.
+        const target = modalEntry;
+        if (!target) return;
+        setConfigureError(null);
+        setConfigureFieldErrors({});
+        try {
+            const result = await configureConnector.mutateAsync({ key: target.key, payload });
+            // xoauth2 → the BE persisted a pending row and handed us the provider
+            // authorize URL; finish via the existing oauth/callback route.
+            if (result.redirect_to) {
+                window.location.assign(result.redirect_to);
+                return;
+            }
+            // basic-auth succeeded (ping ok, credential vaulted) → the row is
+            // ACTIVE. A success toast for `target` is always correct; only close
+            // the modal if it is STILL showing this connector (guard against the
+            // user having switched modals mid-request).
+            setModalEntry((cur) => (cur?.key === target.key ? null : cur));
+            toast.success(`${target.display_name} connected.`, 'toast-connector-configured');
+        } catch (e) {
+            // Only surface the error if the modal is STILL showing this connector
+            // — otherwise we'd paint target's error onto a different form.
+            if (modalEntryRef.current?.key !== target.key) return;
+            const { message, fieldErrors } = parseConfigureError(e);
+            setConfigureError(message);
+            setConfigureFieldErrors(fieldErrors);
         }
     }
 
@@ -208,6 +292,22 @@ export function ConnectorsView() {
                     </div>
                 )}
             </div>
+
+            {modalEntry && (
+                <CredentialConnectorForm
+                    entry={modalEntry}
+                    onSubmit={handleConfigureSubmit}
+                    onClose={() => setModalEntry(null)}
+                    submitError={configureError}
+                    fieldErrors={configureFieldErrors}
+                    // Scope the pending state to THIS connector — a configure in
+                    // flight for another connector must not disable this form.
+                    isSubmitting={
+                        configureConnector.isPending &&
+                        configureConnector.variables?.key === modalEntry.key
+                    }
+                />
+            )}
         </AdminShell>
     );
 }

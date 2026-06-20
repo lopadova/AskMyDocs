@@ -23,6 +23,7 @@ the way that source actually wants to be chunked.
 | `fabric` | API key | OAuth pending upstream |
 | `confluence` | Atlassian OAuth 2.0 3LO | `cloud_id` persisted, reusable by Jira |
 | `jira` | Atlassian OAuth 2.0 3LO | ADF→markdown + injection-safe JQL |
+| `imap` | **Credential** (basic / XOAUTH2) | the first credential-based connector — see [Credential-based connectors](/connectors-credential) |
 
 Each is a **standalone `padosoft/askmydocs-connector-*` Composer package**,
 `composer require`-able and auto-discovered via

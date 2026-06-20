@@ -171,6 +171,44 @@ class AppServiceProvider extends ServiceProvider
         $this->registerEvidenceRiskReviewIntegration();
         $this->registerEvidenceRiskReviewGates();
         $this->registerFinOpsGates();
+        $this->registerFakeImapFactory();
+    }
+
+    /**
+     * v8.17 — OFFLINE IMAP seam for E2E/local (mirrors AI_PROVIDER=fake). The
+     * IMAP server is reached by the BACKEND over TCP, so Playwright cannot stub
+     * it; when CONNECTOR_IMAP_FAKE_PING=true we swap the package factory for a
+     * deterministic, input-driven fake (host containing invalid/fail → login
+     * failure). Bound in boot() (not register()) so it wins over the package's
+     * own register()-time binding — same ordering rationale as the adapters
+     * above. DEFAULT OFF → production always uses the real factory. Guarded on
+     * the interface existing so a deployment without the IMAP package still boots.
+     */
+    private function registerFakeImapFactory(): void
+    {
+        if (config('connectors.fake_imap_ping', false) !== true) {
+            return;
+        }
+
+        // HARD environment gate (mirrors the AI_PROVIDER=fake seam): the fake
+        // factory bypasses real IMAP authentication, so enabling it outside
+        // testing/local is a misconfiguration that must fail loudly rather than
+        // silently accept any credentials in production.
+        if (! $this->app->environment(['testing', 'local'])) {
+            throw new \RuntimeException(
+                'CONNECTOR_IMAP_FAKE_PING must NEVER be enabled outside the testing/local environment — '
+                .'it replaces real IMAP authentication with an offline fake.',
+            );
+        }
+
+        if (! interface_exists(\Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class)) {
+            return;
+        }
+
+        $this->app->bind(
+            \Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface::class,
+            \App\Connectors\Testing\FakeImapClientFactory::class,
+        );
     }
 
     /**

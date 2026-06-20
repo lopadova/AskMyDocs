@@ -115,6 +115,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Fake IMAP ping (E2E / local seam — v8.17)
+    |--------------------------------------------------------------------------
+    |
+    | The IMAP server is reached by the BACKEND over TCP, so Playwright cannot
+    | stub it. When true, AppServiceProvider swaps the IMAP client factory for a
+    | deterministic, input-driven fake (host containing `invalid`/`fail` → login
+    | failure; otherwise success). DEFAULT OFF — production always talks to the
+    | real server. Mirrors the AI_PROVIDER=fake test seam.
+    |
+    */
+    'fake_imap_ping' => (bool) env('CONNECTOR_IMAP_FAKE_PING', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Per-connector provider settings
     |--------------------------------------------------------------------------
     |
