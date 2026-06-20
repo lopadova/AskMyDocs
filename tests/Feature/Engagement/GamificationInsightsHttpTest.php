@@ -11,6 +11,7 @@ use App\Services\Engagement\GamificationInsightsService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -21,7 +22,9 @@ use Tests\TestCase;
  *   - GET  /api/admin/engagement/insights       (admin|super-admin)
  *   - POST /api/admin/engagement/insights/regenerate (super-admin only)
  *
- * R43: every endpoint degrades cleanly (200 available:false) when disabled.
+ * R43: when disabled, the GET endpoints degrade to `200 available:false` and the
+ * POST regenerate returns `202 regenerated:false` (it accepts the request but
+ * does nothing) — both states tested.
  */
 final class GamificationInsightsHttpTest extends TestCase
 {
@@ -37,6 +40,9 @@ final class GamificationInsightsHttpTest extends TestCase
         parent::setUp();
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        // Spatie permission cache can survive the RefreshDatabase rollback under
+        // Testbench — flush it so a prior test's roles can't leak in.
+        Cache::flush();
         config()->set('kb.gamification.enabled', true);
         config()->set('kb.gamification.ai.enabled', false);
     }
@@ -125,5 +131,25 @@ final class GamificationInsightsHttpTest extends TestCase
     public function test_regenerate_requires_auth(): void
     {
         $this->postJson('/api/admin/engagement/insights/regenerate')->assertUnauthorized();
+    }
+
+    public function test_endpoints_degrade_when_gamification_disabled(): void
+    {
+        // R43: with the master switch off, the GET surfaces report available:false
+        // and the POST regenerate accepts the call but reports regenerated:false.
+        config()->set('kb.gamification.enabled', false);
+
+        $user = $this->user();
+        $this->actingAs($user)->getJson('/api/me/coaching')
+            ->assertOk()->assertJsonPath('available', false);
+
+        $admin = $this->user('admin');
+        $this->actingAs($admin)->getJson('/api/admin/engagement/insights?scope=tenant')
+            ->assertOk()->assertJsonPath('available', false);
+
+        $super = $this->user('super-admin');
+        $this->actingAs($super)->postJson('/api/admin/engagement/insights/regenerate', ['period' => '2026-W25'])
+            ->assertStatus(202)->assertJsonPath('regenerated', false);
+        $this->assertDatabaseCount('kb_gamification_insights', 0);
     }
 }

@@ -14,6 +14,7 @@ use App\Services\Engagement\GamificationQualityMetricsService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Mockery;
 use Tests\TestCase;
@@ -32,6 +33,9 @@ final class GamificationInsightsTest extends TestCase
         parent::setUp();
         app(TenantContext::class)->reset();
         $this->seed(RbacSeeder::class);
+        // Spatie permission cache can survive the RefreshDatabase rollback under
+        // Testbench — flush it so a prior test's roles can't leak in.
+        Cache::flush();
         config()->set('kb.gamification.enabled', true);
         config()->set('kb.gamification.ai.enabled', false); // deterministic path by default
     }

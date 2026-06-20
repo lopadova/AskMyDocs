@@ -1758,10 +1758,11 @@ Two dashboards read the same metrics so the numbers always agree: a personal
 **My KB** dashboard at `/app/me` (your score, rank, authored docs, citation impact,
 review queue) and an admin engagement panel (leaderboard / coverage / answer-rate /
 decision-debt trend), both on the existing `KpiCard`/`ChartCard`/recharts
-primitives. Finally, opt-in **gamification** awards a config-driven badge catalog
-over all-time engagement metrics (`kb_user_badges`, `gamification:recompute`) —
-`KB_GAMIFICATION_ENABLED` default-OFF, tested in both states (R43); when off the
-badges section is absent, not an empty box.
+primitives. Finally, **gamification** awards a config-driven badge catalog over
+all-time engagement metrics (`kb_user_badges`, `gamification:recompute`) —
+`KB_GAMIFICATION_ENABLED` **default-ON since v8.18** (set it to `false` to turn
+the whole layer, badges + AI insights, off), tested in both states (R43); when
+off the badges section is absent, not an empty box.
 
 Every capability is **tri-surface** (R44) over one shared core: Artisan command +
 HTTP endpoint + MCP tool (`KbEngagementSummaryTool` / `KbDigestPreviewTool` /

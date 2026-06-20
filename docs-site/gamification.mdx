@@ -1,6 +1,6 @@
 ---
-title: "Gamification (opt-in)"
-description: "A tasteful, default-off contributor-motivation layer: badges awarded when all-time engagement crosses a configurable threshold — a view over engagement metrics, computing nothing new."
+title: "Gamification"
+description: "A tasteful, default-ON (since v8.18) contributor-motivation layer: badges awarded when all-time engagement crosses a configurable threshold, plus an AI coaching layer over curation-quality metrics — a view over engagement data, computing nothing new for badges."
 icon: "award"
 ---
 
@@ -9,8 +9,9 @@ icon: "award"
 Most knowledge bases are written by a handful of people while everyone else only
 reads. Recognition is the cheapest lever to widen that base — but heavy-handed
 gamification (points spam, public shaming leaderboards) does more harm than good
-in a professional tool. AskMyDocs ships a *tasteful*, **opt-in** layer: a small
-set of badges that reflect real contribution, off by default, fully tunable.
+in a professional tool. AskMyDocs ships a *tasteful* layer: a small set of badges
+that reflect real contribution — **on by default since v8.18** (one env flag turns
+the whole layer off), fully tunable.
 
 ## Theory & background
 
@@ -74,9 +75,10 @@ All three delegate to the single `GamificationService`.
 
 ## Decision rationale (ADR-style)
 
-- **Default-off, both states tested (R43).** Gamification is a cultural choice, not
-  a default. A fresh deploy ships with it off and the OFF path is covered by a test
-  so flipping the knob holds no surprises.
+- **Default-ON (since v8.18), both states tested (R43).** Recognition is a default
+  worth shipping, so a fresh deploy now has gamification on — but it stays a single
+  env flag (`KB_GAMIFICATION_ENABLED=false`) away from fully off, and BOTH states are
+  covered by tests so flipping the knob holds no surprises.
 - **A view, not a new signal.** Badges read the same metrics the dashboards and
   digests use; there is no separate scoring system to keep in sync.
 - **Config-driven catalog.** Labels, icons, metrics and thresholds live in config

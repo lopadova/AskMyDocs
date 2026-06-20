@@ -128,9 +128,16 @@ final class GamificationNarratorService
             // the FE, which reads those arrays/strings directly (R14).
             $narrative = $this->reconcileNarrative($decoded['narrative'] ?? null, $fallback['narrative']);
 
+            // Titles: use the model's only when it returned an ARRAY (and keep just
+            // the well-formed ones); otherwise keep the deterministic fallback titles
+            // — a non-array `titles` (e.g. a string) must not silently drop them.
+            $titles = is_array($decoded['titles'] ?? null)
+                ? $this->normaliseTitles($decoded['titles'])
+                : $fallback['titles'];
+
             return [
                 'narrative' => $narrative,
-                'titles' => $this->normaliseTitles($decoded['titles'] ?? $fallback['titles']),
+                'titles' => $titles,
                 'model' => is_string($model) && $model !== '' ? $model : 'default',
             ];
         } catch (Throwable $e) {

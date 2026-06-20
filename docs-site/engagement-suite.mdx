@@ -91,7 +91,8 @@ flowchart LR
 - **`DigestRendererRegistry`** is an R23 strategy registry — FQCN validated at
   boot, non-overlapping `supports()` — with one renderer per channel reusing the
   existing notification channel adapters for transport.
-- **`GamificationService`** derives badges from the same metrics; default-off.
+- **`GamificationService`** derives badges from the same metrics; default-ON since
+  v8.18 (`KB_GAMIFICATION_ENABLED=false` turns it off). See [Gamification](/gamification).
 
 The core capabilities — engagement metrics, the digest, and gamification badges —
 are **tri-surface** (R44): an Artisan command, an HTTP endpoint, and an MCP tool,
