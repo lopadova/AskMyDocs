@@ -42,13 +42,13 @@ use Illuminate\Routing\Controller;
  */
 final class KbDocumentPreviewController extends Controller
 {
-    public function __invoke(int $document): JsonResponse
+    public function __invoke(int $documentId): JsonResponse
     {
         $tenant = app(TenantContext::class)->current();
 
         $doc = KnowledgeDocument::query()
             ->forTenant($tenant)
-            ->find($document);
+            ->find($documentId);
 
         if ($doc === null) {
             return response()->json(['message' => 'Document not found.'], 404);
