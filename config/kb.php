@@ -553,12 +553,16 @@ return [
     | + overlap 64 → up to ~1088 tokens). This is by design — the duplicated tail
     | is the whole point — and stays well within embedding-model context limits.
     |
-    | RE-INGEST REQUIRED: changing `overlap_tokens` changes chunk text, hence
-    | `knowledge_chunks.chunk_hash`, hence is NOT idempotent against already-
-    | ingested docs — it forces a new document version + re-embed of the changed
-    | chunks (the embedding cache is keyed on text_hash, so changed text misses
-    | the cache). Treat it like the embedding-dimensions contract: flip it, then
-    | re-ingest the corpus. PdfPageChunker keeps page-granular chunks and
+    | APPLIES TO NEW INGESTS ONLY: changing `overlap_tokens` changes chunk text,
+    | hence `knowledge_chunks.chunk_hash`. But ingestion is idempotent on
+    | `version_hash = sha256($markdown)`, so re-running ingest on UNCHANGED
+    | markdown short-circuits and will NOT re-chunk already-ingested docs just
+    | because this knob changed. To apply a new overlap setting to existing docs
+    | you must force a new version — modify/touch the source markdown, or
+    | delete + re-ingest. New (or genuinely changed) content picks it up
+    | immediately; re-chunked content re-embeds (the embedding cache is keyed on
+    | text_hash, so changed chunk text misses the cache). Treat it like the
+    | embedding-dimensions contract. PdfPageChunker keeps page-granular chunks and
     | intentionally does NOT overlap.
     |
     */
