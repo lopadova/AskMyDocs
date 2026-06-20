@@ -138,6 +138,7 @@ final class GamificationInsightsService
      */
     private function persist(string $scopeType, string $scopeId, string $period, array $metrics, array $narrated): void
     {
+        $tenant = $this->tenants->current();
         $start = microtime(true);
 
         // ATOMIC upsert on the composite UNIQUE (tenant_id, scope_type, scope_id,
@@ -146,7 +147,7 @@ final class GamificationInsightsService
         // the weekly cron) and would throw a unique-constraint violation (R21).
         KbGamificationInsight::query()->upsert(
             [[
-                'tenant_id' => $this->tenants->current(),
+                'tenant_id' => $tenant,
                 'scope_type' => $scopeType,
                 'scope_id' => $scopeId,
                 'period_label' => $period,
@@ -155,11 +156,20 @@ final class GamificationInsightsService
                 'titles' => $this->encodeJson($narrated['titles']),
                 'model' => $narrated['model'],
                 'computed_at' => Carbon::now(),
-                'computed_duration_ms' => (int) round((microtime(true) - $start) * 1000),
+                'computed_duration_ms' => null,
             ]],
             ['tenant_id', 'scope_type', 'scope_id', 'period_label'],
             ['metrics', 'narrative', 'titles', 'model', 'computed_at', 'computed_duration_ms'],
         );
+
+        $durationMs = (int) round((microtime(true) - $start) * 1000);
+
+        KbGamificationInsight::query()
+            ->where('tenant_id', $tenant)
+            ->where('scope_type', $scopeType)
+            ->where('scope_id', $scopeId)
+            ->where('period_label', $period)
+            ->update(['computed_duration_ms' => $durationMs]);
     }
 
     /**
