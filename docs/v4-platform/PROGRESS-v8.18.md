@@ -17,11 +17,13 @@ across context windows.
 
 ## Waves
 
-- **W1 — v8.16/v8.17 follow-ups** — 🟡
-  - W1.1 cost-meter SERVER-cost E2E — ⬜
-  - W1.2 laravel/ai 0.7 bump — 🔵 **BLOCKED**: `padosoft/laravel-ai-regolo` pins `laravel/ai:^0.6`; bumping
-    the host to `^0.7` would break Regolo. Deferred until regolo ships a `^0.7`-compatible release. Guard
-    test `tests/Unit/Ai/LaravelAiPinTest.php` locks the pin so the deferral can't drift silently.
+- **W1 — v8.16/v8.17 follow-ups** — 🟡 (branch `feature/v8.18-W1ab-followups`)
+  - W1.1 cost-meter SERVER-cost E2E — ✅ `frontend/e2e/chat-server-cost.spec.ts` (USD + non-USD; stubs only
+    the external `/messages` boundary, asserts server `metadata.cost` reaches the meter).
+  - W1.2 laravel/ai 0.7 bump — 🔵 **BLOCKED + GUARDED**: `padosoft/laravel-ai-regolo` pins `laravel/ai:^0.6`;
+    bumping the host to `^0.7` would break Regolo. Deferred until regolo ships a `^0.7`-compatible release.
+    Guard test `tests/Unit/Ai/LaravelAiPinTest.php` locks the pin (installed laravel/ai stays 0.6 while regolo
+    constrains ^0.6) so the deferral can't drift silently — it fails the moment regolo allows ^0.7.
   - W1.3 FinOps money fixed-precision — ⬜ (package release on `laravel-ai-finops` first, then host bump)
 - **W2 — eval-harness retrieval-metric delegation** — ⬜ (plan: `2026-06-16-askmydocs-eval-harness-delegation.md`; v1.3.0 on Packagist)
 - **W3 — configurable chunk overlap** — ⬜ (plan: `2026-06-16-askmydocs-chunk-overlap.md`)
