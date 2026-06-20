@@ -29,15 +29,19 @@ class GamificationInsightsController extends Controller
         ]);
 
         $scope = $validated['scope'] ?? KbGamificationInsight::SCOPE_TENANT;
+        // Trim ONCE and reuse for both the required check and the lookup, so
+        // `?scope=project&id=%20eng%20` can't pass validation yet miss the row
+        // (matches the MCP tool's id normalisation).
+        $id = trim((string) ($validated['id'] ?? ''));
 
-        if ($scope === KbGamificationInsight::SCOPE_PROJECT && trim((string) ($validated['id'] ?? '')) === '') {
+        if ($scope === KbGamificationInsight::SCOPE_PROJECT && $id === '') {
             return response()->json([
                 'message' => 'A project id is required when scope=project.',
                 'errors' => ['id' => ['The id field is required for the project scope.']],
             ], 422);
         }
 
-        $scopeId = $scope === KbGamificationInsight::SCOPE_PROJECT ? (string) $validated['id'] : '';
+        $scopeId = $scope === KbGamificationInsight::SCOPE_PROJECT ? $id : '';
         $insight = $insights->forScope($scope, $scopeId);
 
         return response()->json([

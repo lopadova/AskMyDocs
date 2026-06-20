@@ -150,9 +150,9 @@ final class GamificationInsightsService
                 'scope_type' => $scopeType,
                 'scope_id' => $scopeId,
                 'period_label' => $period,
-                'metrics' => json_encode($metrics, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                'narrative' => json_encode($narrated['narrative'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                'titles' => json_encode($narrated['titles'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                'metrics' => $this->encodeJson($metrics),
+                'narrative' => $this->encodeJson($narrated['narrative']),
+                'titles' => $this->encodeJson($narrated['titles']),
                 'model' => $narrated['model'],
                 'computed_at' => Carbon::now(),
                 'computed_duration_ms' => (int) round((microtime(true) - $start) * 1000),
@@ -160,6 +160,21 @@ final class GamificationInsightsService
             ['tenant_id', 'scope_type', 'scope_id', 'period_label'],
             ['metrics', 'narrative', 'titles', 'model', 'computed_at', 'computed_duration_ms'],
         );
+    }
+
+    /**
+     * Encode a payload to a JSON column value for the raw upsert (which bypasses
+     * Eloquent casts). JSON_INVALID_UTF8_SUBSTITUTE keeps encoding total on odd
+     * bytes; if it STILL returns false we persist a valid empty array `[]` rather
+     * than a boolean/0 that would later decode to a non-array and break the FE (R14).
+     *
+     * @param  mixed  $value
+     */
+    private function encodeJson($value): string
+    {
+        $json = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return $json !== false ? $json : '[]';
     }
 
     /**
