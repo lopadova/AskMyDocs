@@ -123,6 +123,16 @@ export default defineConfig({
                   // ping is input-driven: host containing `invalid`/`fail` → 422,
                   // otherwise → ACTIVE. Default-OFF in production.
                   CONNECTOR_IMAP_FAKE_PING: 'true',
+                  // v8.18/W4 — gamification stays ON (default) so the badges +
+                  // coaching surfaces render, but the AI NARRATION layer is forced
+                  // OFF for E2E: the narrator resolves the named `openrouter`
+                  // provider directly (not the `fake` default), so an enabled
+                  // narrate/regenerate would make a real OpenRouter HTTP call with a
+                  // 120s timeout and flake CI (R13/R38). With it off the deterministic
+                  // copy is used — the on-path the admin-gamification spec exercises.
+                  // The AI-ON path is covered by GamificationInsightsTest (phpunit,
+                  // mocked AiManager), per R43.
+                  KB_GAMIFICATION_AI_ENABLED: 'false',
                   // PHP_CLI_SERVER_WORKERS spawns N worker children for
                   // the PHP built-in dev server (PHP 7.4+). Without
                   // this env var (AND `--no-reload` above so the var

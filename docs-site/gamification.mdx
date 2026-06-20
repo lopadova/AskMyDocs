@@ -115,6 +115,69 @@ Retune the catalog — e.g. a stricter "author" badge:
 ['key' => 'author', 'label' => 'Author', 'icon' => '📚', 'metric' => 'authored', 'threshold' => 10],
 ```
 
+## AI coaching insights (v8.18)
+
+Threshold badges measure **quantity**. v8.18 adds an AI layer that measures, and
+narrates, **curation quality** — at the user, project and tenant level — without
+adding a single new write path. It mirrors the digest narrator: deterministic
+metrics first, an LLM only to *phrase* them, and it always degrades to
+deterministic copy.
+
+### What it computes
+
+`GamificationQualityMetricsService` derives quality signals from data that
+already exists (all tenant-scoped, all SQL-aggregated — R30/R3, no PHP-side id
+lists):
+
+| Signal | Derived from |
+|---|---|
+| Frontmatter completeness | `knowledge_documents.frontmatter_json` on canonical docs |
+| Evidence rigor | distribution of `evidence_tier` |
+| Canonicalization rate | % authored docs reaching `accepted` canonical status |
+| Stewardship / freshness | avg `kb_canonical_health_snapshot.health_score` |
+| Graph connectivity | `kb_edges` sourced from the docs |
+| Structural depth | avg chunks per doc |
+
+A transparent weighted mean of these is the **composite health score** (0–100).
+
+### What it narrates
+
+`GamificationNarratorService` (mirrors `AiDigestNarrator`) turns the metrics JSON
+into: a **user coaching card** (strengths · growth · next steps · summary) + fun
+AI-awarded **period titles** ("Il Cartografo", "Evidence Champion", "Lo Steward");
+a **project** health narrative + 3 concrete actions; and a **tenant** executive
+narrative. On any LLM failure — or when `KB_GAMIFICATION_AI_ENABLED=false` — it
+returns the deterministic copy with `model=null`. The merge is **type-reconciled**
+so a partial/mis-typed model response can never white-screen the FE (R14).
+
+```mermaid
+flowchart LR
+  QM[GamificationQualityMetricsService<br/>SQL, tenant-scoped] --> CORE[GamificationInsightsService]
+  NAR[GamificationNarratorService<br/>LLM → deterministic fallback] --> CORE
+  CORE -->|upsert, idempotent| T[(kb_gamification_insights)]
+  CMD[gamification:narrate<br/>weekly] --> CORE
+  T --> HTTP1[/api/me/coaching]
+  T --> HTTP2[/api/admin/engagement/insights]
+  T --> MCP[KbGamificationInsightsTool]
+  HTTP1 --> UI1[My KB · CoachingCard]
+  HTTP2 --> UI2[Admin · GamificationInsightsPanel]
+```
+
+### Surfaces & cadence (tri-surface, R44)
+
+- **Command:** `gamification:narrate {--tenant=} {--period=}` — weekly Tier-1
+  scheduler slot (`gamification_narrate`), no-op when disabled.
+- **HTTP:** `GET /api/me/coaching` (self-scoped), `GET /api/admin/engagement/insights?scope=project|tenant&id=…`
+  (admin), `POST …/regenerate` (super-admin, on-demand).
+- **MCP:** `KbGamificationInsightsTool` (`scope=user|project|tenant`).
+
+Persisted to `kb_gamification_insights` (tenant-aware; composite UNIQUE
+`(tenant_id, scope_type, scope_id, period_label)`, atomic upsert) so no LLM call
+runs in a request hot path. Config: `kb.gamification.ai.*`
+(`KB_GAMIFICATION_AI_{ENABLED,PROVIDER,MODEL,MAX_TOKENS}`), default a free
+OpenRouter model. The AI layer requires the master `KB_GAMIFICATION_ENABLED`
+to be on (R43 — both states tested for badges AND insights).
+
 ## Gotchas & operations
 
 <Warning>
