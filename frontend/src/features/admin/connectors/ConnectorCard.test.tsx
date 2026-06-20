@@ -21,6 +21,8 @@ function makeEntry(status: MakeEntryStatus): ConnectorEntry {
             display_name: 'Google Drive',
             icon_url: '/connectors/google-drive.svg',
             oauth_scopes: ['drive.readonly'],
+            auth_kind: 'oauth',
+            credential_form_schema: null,
             installation: null,
         };
     }
@@ -29,6 +31,8 @@ function makeEntry(status: MakeEntryStatus): ConnectorEntry {
         display_name: 'Google Drive',
         icon_url: '/connectors/google-drive.svg',
         oauth_scopes: ['drive.readonly'],
+        auth_kind: 'oauth',
+        credential_form_schema: null,
         installation: {
             id: 42,
             status,

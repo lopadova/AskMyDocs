@@ -114,6 +114,10 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\AskMyDocsConnectorOneDrive\OneDriveServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorConfluence\ConfluenceServiceProvider::class);
         $app->register(\Padosoft\AskMyDocsConnectorJira\JiraServiceProvider::class);
+        // v8.17 — IMAP connector (first credential-based). Its SP binds
+        // ImapClientFactoryInterface → ImapClientFactory and merges the xoauth2
+        // provider config, so the registry can instantiate ImapConnector.
+        $app->register(\Padosoft\AskMyDocsConnectorImap\ImapServiceProvider::class);
         // v8.13/P11 — Evidence Risk Review core package. Registered so its HTTP
         // API mounts (api.enabled=true via the host config loaded in
         // getEnvironmentSetUp) and the AdminAuthorizationMatrix can verify the
@@ -304,8 +308,26 @@ abstract class TestCase extends OrchestraTestCase
                 \Padosoft\AskMyDocsConnectorOneDrive\OneDriveConnector::class,
                 \Padosoft\AskMyDocsConnectorConfluence\ConfluenceConnector::class,
                 \Padosoft\AskMyDocsConnectorJira\JiraConnector::class,
+                // v8.17 — first credential-based connector (IMAP).
+                \Padosoft\AskMyDocsConnectorImap\ImapConnector::class,
             ],
         ), static fn (string $fqcn): bool => class_exists($fqcn)));
+        // v8.17 — in production the IMAP package's ServiceProvider
+        // `mergeConfigFrom('config/imap.php', 'connectors.providers.imap')`
+        // supplies the xoauth2 provider defaults (authorize_url, scopes, …).
+        // Because we overwrite the whole `connectors` config below, replicate
+        // that merge here so tests see the same provider config production does.
+        $imapConfigPath = __DIR__.'/../vendor/padosoft/askmydocs-connector-imap/config/imap.php';
+        if (is_file($imapConfigPath)) {
+            // Mirror Laravel's mergeConfigFrom semantics exactly: a SHALLOW
+            // array_merge(package, host) where the host's top-level keys win. The
+            // host ships no providers.imap block, so this resolves to the package
+            // config — same as production.
+            $connectorConfig['providers']['imap'] = array_merge(
+                (array) require $imapConfigPath,
+                (array) ($connectorConfig['providers']['imap'] ?? []),
+            );
+        }
         $app['config']->set('connectors', $connectorConfig);
         $app['config']->set('laravel-flow.persistence.enabled', true);
         // v4.2/W2 PR #116 — approval gate resume/reject requires a non-Array

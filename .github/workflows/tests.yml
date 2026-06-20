@@ -386,6 +386,13 @@ jobs:
           # The default-OFF clean-404 is covered by FinOpsDisabledTest (phpunit),
           # per R43 (both states tested).
           AI_FINOPS_ADMIN_ENABLED: 'true'
+          # v8.17 — OFFLINE IMAP seam (CONNECTOR_IMAP_FAKE_PING) so
+          # connectors-imap-super-admin.spec.ts drives the real credential-connector
+          # flow without a live IMAP server (a BACKEND TCP dependency Playwright
+          # can't stub). Input-driven fake: host containing invalid/fail → 422,
+          # otherwise → ACTIVE. Default-OFF in production. Read at runtime (no
+          # config:cache), so config('connectors.fake_imap_ping') resolves true.
+          CONNECTOR_IMAP_FAKE_PING: 'true'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

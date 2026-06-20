@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Http\Requests\Admin\ConfigureConnectorRequest;
+use App\Http\Resources\Admin\ConnectorInstallationResource;
+use App\Services\Admin\Connectors\ConfigureConnectorService;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
+use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
 use Illuminate\Http\JsonResponse;
@@ -46,27 +50,31 @@ final class ConnectorAdminController extends Controller
      * its current installation status for the active tenant (null when
      * not installed).
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         $installations = ConnectorInstallation::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->get()
             ->keyBy('connector_name');
 
-        $data = $this->registry->all()->map(function ($connector) use ($installations) {
+        $data = $this->registry->all()->map(function ($connector) use ($installations, $request) {
             $installation = $installations->get($connector->key());
+            $isCredential = $connector instanceof SupportsCredentialForm;
 
             return [
                 'key' => $connector->key(),
                 'display_name' => $connector->displayName(),
                 'icon_url' => $connector->iconUrl(),
                 'oauth_scopes' => $connector->oauthScopes(),
-                'installation' => $installation === null ? null : [
-                    'id' => $installation->id,
-                    'status' => $installation->status,
-                    'last_sync_at' => $installation->last_sync_at?->toIso8601String(),
-                    'error' => $installation->error_json,
-                ],
+                // v8.17 — `oauth` (redirect flow, the default) vs `credential`
+                // (host-rendered form). The FE branches the Connect button on
+                // this flag; the schema is the single source of truth for the
+                // form fields (no IMAP-specific FE/BE branch).
+                'auth_kind' => $isCredential ? 'credential' : 'oauth',
+                'credential_form_schema' => $isCredential ? $connector->credentialFormSchema() : null,
+                'installation' => $installation === null
+                    ? null
+                    : (new ConnectorInstallationResource($installation))->toArray($request),
             ];
         })->values();
 
@@ -208,6 +216,53 @@ final class ConnectorAdminController extends Controller
                 'installation_id' => $installation->id,
                 'status' => $installation->status,
             ],
+        ]);
+    }
+
+    /**
+     * POST /api/admin/connectors/{name}/configure
+     *
+     * v8.17 — activate a **credential-based** connector (e.g. IMAP) from the
+     * panel. Validates the dynamic schema-driven payload
+     * ({@see ConfigureConnectorRequest}) and delegates the whole flow to
+     * {@see ConfigureConnectorService}:
+     *   - basic  → the service pings + persists, row flips to ACTIVE; on a
+     *              credential failure a {@see ConnectorAuthException} surfaces as
+     *              **422** with the connector's message (row stays PENDING with
+     *              `error_json` — no 200-with-empty-body, R: surface-failures-loudly).
+     *   - xoauth2 → row stays PENDING, `redirect_to` carries the provider authorize
+     *              URL; the browser finishes via the existing `oauth/callback`.
+     *
+     * Never logs the payload (it carries the secret). The secret is routed to the
+     * encrypted vault by the connector, never into `config_json`/response.
+     */
+    public function configure(
+        ConfigureConnectorRequest $request,
+        string $name,
+        ConfigureConnectorService $service,
+    ): JsonResponse {
+        if ($this->registry->get($name) === null) {
+            throw new NotFoundHttpException("Connector '{$name}' is not registered.");
+        }
+
+        try {
+            $result = $service->configure(
+                $name,
+                $request->validated(),
+                (int) $request->user()->getAuthIdentifier(),
+            );
+        } catch (ConnectorAuthException $e) {
+            // Credential verification (e.g. IMAP login ping) failed. The row is
+            // left PENDING with error_json by the service; surface a 422 so the
+            // form shows the reason instead of a misleading success.
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => array_merge(
+                (new ConnectorInstallationResource($result->installation))->toArray($request),
+                ['redirect_to' => $result->redirectTo],
+            ),
         ]);
     }
 
