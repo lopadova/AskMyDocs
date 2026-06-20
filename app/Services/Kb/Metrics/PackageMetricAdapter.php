@@ -52,7 +52,7 @@ final class PackageMetricAdapter
      */
     public function scoreMrr(array $rankedIds, array $relevantIds, ?int $k = null): float
     {
-        return $this->scoreRanked(app(RetrievalMrrMetric::class), $rankedIds, $relevantIds, $k);
+        return $this->scoreRanked(new RetrievalMrrMetric($this->configRepo), $rankedIds, $relevantIds, $k);
     }
 
     /**
@@ -63,7 +63,7 @@ final class PackageMetricAdapter
      */
     public function scoreNdcg(array $rankedIds, array $gains, ?int $k = null): float
     {
-        return $this->scoreRankedWithGains(app(RetrievalNdcgAtKMetric::class), $rankedIds, $gains, $k);
+        return $this->scoreRankedWithGains(new RetrievalNdcgAtKMetric($this->configRepo), $rankedIds, $gains, $k);
     }
 
     /**
@@ -73,7 +73,7 @@ final class PackageMetricAdapter
      */
     public function answerContainment(array $rankedChunks, string $expectedAnswer, ?int $k = null): float
     {
-        return $this->scoreAnswerContainment(app(AnswerContainmentAtKMetric::class), $rankedChunks, $expectedAnswer, $k);
+        return $this->scoreAnswerContainment(new AnswerContainmentAtKMetric($this->configRepo), $rankedChunks, $expectedAnswer, $k);
     }
 
     /**
@@ -105,10 +105,19 @@ final class PackageMetricAdapter
     }
 
     /**
-     * Run a metric whose expected_output is a graded {id:grade} map (nDCG@k).
+     * Run a metric whose expected_output is a graded {id:gain} map (nDCG@k).
+     *
+     * IMPORTANT — gain transform happens HERE: the caller passes relevance
+     * GRADES (0,1,2,3,…), but `RetrievalNdcgAtKMetric` treats expected_output as
+     * the ALREADY-COMPUTED gains (it applies only the log discount, no exponent).
+     * AskMyDocs's historical nDCG used the standard `2^grade - 1` gain (see
+     * {@see RetrievalQualityMetrics::dcg()}), so we apply that transform here —
+     * clamping non-positive grades to 0.0 to match the old `dcg()` skip rule —
+     * before delegating. This keeps the delegated nDCG byte-equal to the
+     * pre-delegation numbers for GRADED relevance, not just binary.
      *
      * @param  list<int|string>  $rankedIds
-     * @param  array<int|string, int|float>  $gains
+     * @param  array<int|string, int|float>  $gains  id → relevance GRADE
      */
     public function scoreRankedWithGains(Metric $metric, array $rankedIds, array $gains, ?int $k = null): float
     {
@@ -121,7 +130,9 @@ final class PackageMetricAdapter
 
         $graded = [];
         foreach ($gains as $id => $grade) {
-            $graded[(string) $id] = (float) $grade;
+            $g = (float) $grade;
+            // 2^grade - 1 (standard nDCG gain); non-positive grade → 0.0 gain.
+            $graded[(string) $id] = $g > 0.0 ? (2 ** $g) - 1.0 : 0.0;
         }
 
         $sample = new DatasetSample(

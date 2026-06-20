@@ -95,10 +95,14 @@ final class RetrievalQualityMetrics
             return 0.0; // preserve the historical guard.
         }
 
-        // v8.18/W2 — delegates the nDCG@k formula (2^rel-1 gain + log2 discount,
-        // normalised by the ideal DCG) to padosoft/eval-harness
-        // `retrieval-ndcg-at-k`. Golden-equal (1e-9) to the old hand-rolled value;
-        // `dcg()` below stays in-app (the package exposes no standalone DCG).
+        // v8.18/W2 — delegates the nDCG@k formula to padosoft/eval-harness
+        // `retrieval-ndcg-at-k`. The package applies only the log2 discount +
+        // ideal-DCG normalisation; it expects ALREADY-TRANSFORMED gains. The
+        // standard `2^rel - 1` gain transform is therefore applied on the
+        // AskMyDocs side (in PackageMetricAdapter::scoreRankedWithGains) BEFORE
+        // delegating, so the result stays golden-equal (1e-9) to the old
+        // hand-rolled value for graded relevance — not just binary. `dcg()` below
+        // stays in-app (the package exposes no standalone DCG).
         return self::adapter()->scoreNdcg(array_values($rankedIds), $gains, $k);
     }
 

@@ -115,6 +115,29 @@ final class RetrievalQualityMetricsTest extends TestCase
         self::assertSame(0.0, M::ndcgAtK(['a'], $gains, 0));
     }
 
+    public function test_ndcg_graded_gain_math_matches_historical_2_pow_rel_minus_1(): void
+    {
+        // GRADED, NON-IDEAL ranking — this is the case that would silently break
+        // if the delegated path forwarded raw grades (linear gain) instead of the
+        // historical 2^rel-1 gain. Compute the historical nDCG via the in-app dcg()
+        // (which applies 2^rel-1) and assert the delegated ndcgAtK() equals it.
+        $gains = ['hi' => 3, 'mid' => 2, 'lo' => 1];
+        $ranking = ['lo', 'hi', 'mid']; // deliberately not ideal
+
+        // Historical: dcg() applies 2^grade-1 over the ranked grades; IDCG over the
+        // ideal (descending) grade order.
+        $dcg = M::dcg([1.0, 3.0, 2.0]);          // grades of lo, hi, mid in rank order
+        $idcg = M::dcg([3.0, 2.0, 1.0]);         // ideal descending
+        $expected = $dcg / $idcg;
+
+        self::assertEqualsWithDelta($expected, M::ndcgAtK($ranking, $gains, 3), 1e-9);
+        // Sanity: it must NOT equal the linear-gain value the package would yield
+        // without the 2^rel-1 transform (3/2/1 raw) — proving the transform fired.
+        $linearDcg = (1.0 / log(2, 2)) + (3.0 / log(3, 2)) + (2.0 / log(4, 2));
+        $linearIdcg = (3.0 / log(2, 2)) + (2.0 / log(3, 2)) + (1.0 / log(4, 2));
+        self::assertGreaterThan(1e-6, abs(($linearDcg / $linearIdcg) - $expected));
+    }
+
     public function test_precision_at_k_is_kept_in_app_until_package_ships_it(): void
     {
         // The package has hit/recall/mrr/ndcg/answer-containment but no
