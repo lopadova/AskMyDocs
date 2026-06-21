@@ -75,7 +75,7 @@ export function ProjectSelector({
         <select
             data-testid="chat-project-selector"
             aria-label="Project scope"
-            value={value ?? ''}
+            value={value ?? '__unset__'}
             onChange={(e) => onChange(e.target.value)}
             style={{
                 background: 'transparent',
@@ -88,18 +88,12 @@ export function ProjectSelector({
                 cursor: 'pointer',
             }}
         >
-            {allowAll ? (
-                <option value="">All projects</option>
-            ) : (
-                // No "All" offered but the resolved value is still unknown:
-                // keep an explicit, non-selectable placeholder so the
-                // control is never in an out-of-range state.
-                value === null && (
-                    <option value="" disabled>
-                        default
-                    </option>
-                )
+            {value === null && (
+                <option value="__unset__" disabled>
+                    default
+                </option>
             )}
+            {allowAll && <option value="">All projects</option>}
             {options.map((key) => (
                 <option key={key} value={key}>
                     {key}
