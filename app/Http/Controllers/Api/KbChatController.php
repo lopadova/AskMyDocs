@@ -503,8 +503,8 @@ class KbChatController extends Controller
      * chat path? Gated on the package master switch AND the per-control flag so an
      * operator can disable screening (or the whole package) and the chat path
      * degrades to a clean pass-through — never calling the facade (R43 OFF-state).
-     * The enforce/monitor MODE is resolved INSIDE AiGuardrails::screen(); this only
-     * decides whether we screen at all.
+     * The enforce/monitor/off MODE is resolved inside ChatGuardrails::screenInput()
+     * (via ControlMode::resolve); this gate only decides whether we screen at all.
      */
     private function guardrailsInputEnabled(): bool
     {

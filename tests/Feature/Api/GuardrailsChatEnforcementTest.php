@@ -122,6 +122,26 @@ final class GuardrailsChatEnforcementTest extends TestCase
         $this->assertDatabaseHas('ai_guardrails_injection_audit', ['blocked' => true]);
     }
 
+    public function test_a_degraded_audit_store_does_not_break_screening(): void
+    {
+        // R14 — auditing is observability, never on the critical path: if the
+        // injection-audit store throws, the prompt is still screened + blocked
+        // and the turn is a clean refusal, NOT a 500.
+        $throwing = Mockery::mock(\Padosoft\AiGuardrails\Contracts\InjectionAuditStore::class);
+        $throwing->shouldReceive('append')->andThrow(new \RuntimeException('audit DB down'));
+        $this->app->instance(\Padosoft\AiGuardrails\Contracts\InjectionAuditStore::class, $throwing);
+
+        $this->mockSearchGrounded();
+        $this->mockAiMustNotBeCalled();
+
+        $resp = $this->postJson('/api/kb/chat', [
+            'question' => self::INJECTION,
+            'project_key' => 'test',
+        ]);
+
+        $resp->assertOk()->assertJsonPath('refusal_reason', 'blocked_by_guardrails');
+    }
+
     public function test_input_screening_disabled_lets_the_same_prompt_through(): void
     {
         // R43 OFF-state: with input screening disabled the SAME injection prompt

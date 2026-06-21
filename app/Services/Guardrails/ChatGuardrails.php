@@ -64,16 +64,24 @@ final class ChatGuardrails
         $verdict = AiGuardrails::screen($prompt);
         $willBlock = $verdict->blocked && $mode->enforces();
 
-        $this->audit->append(new InjectionAttempt(
-            $prompt,
-            $willBlock,
-            $verdict->ruleId,
-            $principal,
-            new DateTimeImmutable('now', new DateTimeZone('UTC')),
-            $verdict->rulesetVersion,
-            $verdict->erroredRuleIds,
-            $verdict->matchedSpan,
-        ));
+        // Fire-and-forget audit: the block decision is already computed, so a
+        // store failure (DB hiccup, misconfig) must NOT 500 the chat turn — the
+        // screening verdict stands and a blocked prompt still becomes a clean
+        // refusal. Auditing is observability, never on the critical path (R14).
+        try {
+            $this->audit->append(new InjectionAttempt(
+                $prompt,
+                $willBlock,
+                $verdict->ruleId,
+                $principal,
+                new DateTimeImmutable('now', new DateTimeZone('UTC')),
+                $verdict->rulesetVersion,
+                $verdict->erroredRuleIds,
+                $verdict->matchedSpan,
+            ));
+        } catch (Throwable) {
+            // Swallow: a degraded audit store must not break guardrail screening.
+        }
 
         return $willBlock;
     }
