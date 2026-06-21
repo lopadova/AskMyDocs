@@ -20,7 +20,6 @@
 !/storage/framework/.gitkeep
 /storage/logs/*
 !/storage/logs/.gitkeep
-composer.lock
 .idea/
 .vscode/
 .env

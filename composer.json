@@ -8,6 +8,7 @@
         "laravel/ai": "^0.6.8",
         "laravel/framework": "^13.0",
         "laravel/sanctum": "^4.2",
+        "league/flysystem-aws-s3-v3": "^3.34",
         "padosoft/askmydocs-connector-base": "^1.2",
         "padosoft/askmydocs-connector-confluence": "^1.0",
         "padosoft/askmydocs-connector-evernote": "^1.0",
