@@ -477,6 +477,10 @@ class AppServiceProvider extends ServiceProvider
             KbRebuildGraphCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
+            // Operator helper: seed a demo user inside a tenant in the
+            // correct order. Lives in app code (not tinker) so it runs in
+            // production under `composer install --no-dev`.
+            \App\Console\Commands\DemoSeedUserCommand::class,
             // PR13 / Phase H2 — admin audit + nonces rotations.
             PruneAdminCommandAuditCommand::class,
             PruneAdminCommandNoncesCommand::class,
