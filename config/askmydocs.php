@@ -271,6 +271,12 @@ return [
             'enabled' => (bool) env('SCHEDULE_GAMIFICATION_RECOMPUTE_ENABLED', true),
             'cron' => (string) env('SCHEDULE_GAMIFICATION_RECOMPUTE_CRON', '20 5 * * *'),
         ],
+        // v8.18/W4 — weekly AI gamification insights (Mondays 05:40); no-op when
+        // gamification is disabled.
+        'gamification_narrate' => [
+            'enabled' => (bool) env('SCHEDULE_GAMIFICATION_NARRATE_ENABLED', true),
+            'cron' => (string) env('SCHEDULE_GAMIFICATION_NARRATE_CRON', '40 5 * * 1'),
+        ],
         // v8.7/W5 — Cloud Time Machine archived-version retention (daily 04:20).
         'kb_prune_archived_versions' => [
             'enabled' => (bool) env('SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_ENABLED', true),

@@ -393,6 +393,18 @@ jobs:
           # otherwise → ACTIVE. Default-OFF in production. Read at runtime (no
           # config:cache), so config('connectors.fake_imap_ping') resolves true.
           CONNECTOR_IMAP_FAKE_PING: 'true'
+          # v8.18/W4 — gamification stays ON (default) so the badges/coaching
+          # surfaces render, but the AI NARRATION layer is forced OFF for E2E.
+          # The narrator resolves the named `openrouter` provider directly (NOT the
+          # `fake` default), so an enabled narrate/regenerate makes a real OpenRouter
+          # HTTP call → 401 (no key) / 120s timeout, which stalls the dev server and
+          # cascades into following super-admin specs failing. CI skips
+          # playwright.config.ts's webServer block (E2E_SKIP_WEBSERVER=1), so this
+          # flag MUST live on THIS step's env. With it off the deterministic copy is
+          # used (the path admin-gamification-insights-super-admin.spec.ts exercises);
+          # the AI-ON path is covered by GamificationInsightsTest (phpunit, mocked
+          # AiManager), per R43.
+          KB_GAMIFICATION_AI_ENABLED: 'false'
           # Honoured because we explicitly run `--no-reload` below — without
           # the flag, Laravel's ServeCommand silently drops the env var and
           # runs the built-in PHP server single-threaded.

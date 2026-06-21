@@ -29,9 +29,15 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_one_tools(): void
+    public function test_server_registers_exactly_thirty_two_tools(): void
     {
-        $this->assertCount(31, $this->registeredTools());
+        $this->assertCount(32, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_gamification_insights_tool(): void
+    {
+        // v8.18/W4 — the AI gamification insights MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\KbGamificationInsightsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_finops_read_tools(): void
