@@ -80,6 +80,7 @@ final class AuthorizeTenantHeader
         // proof the user belongs to that team. Single indexed EXISTS per
         // request; this is the COMMON path for every request the SPA sends
         // while operating in a non-default team.
+        if ($this->hasMembershipInTenant($user, $header)) {
             return $next($request);
         }
 

@@ -49,14 +49,16 @@ export function FlowsView() {
 
         // Raw fetch (not the shared axios client) → the team header from
         // lib/api.ts's interceptor must be replicated by hand, like the
-        // chat SSE transport does.
+        // chat SSE transport does — INCLUDING the `default` sentinel skip
+        // (api.ts omits X-Tenant-Id for `default` so sister-package mounts
+        // take their host-config fallback instead of 404ing).
         const team = useTeamStore.getState().currentTeam;
         void fetch(FLOW_ADMIN_LIVE_URL, {
             method: 'GET',
             credentials: 'same-origin',
             headers: {
                 Accept: 'application/json',
-                ...(team !== null ? { 'X-Tenant-Id': team } : {}),
+                ...(team !== null && team !== 'default' ? { 'X-Tenant-Id': team } : {}),
             },
             signal: controller.signal,
         })
