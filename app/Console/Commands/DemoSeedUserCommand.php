@@ -39,7 +39,7 @@ class DemoSeedUserCommand extends Command
         {--name=Demo : Display name}
         {--tenant=demo : Tenant slug (a-z0-9_- , max 50)}
         {--project=demo : Project key within the tenant}
-        {--role=admin : Spatie role to assign (empty to skip)}';
+        {--role=admin,super-admin : Comma-separated Spatie roles to assign (empty to skip)}';
 
     protected $description = 'Create/refresh a demo user inside a tenant (tenant → project → user → role → membership).';
 
@@ -50,7 +50,10 @@ class DemoSeedUserCommand extends Command
         $name = (string) $this->option('name');
         $tenantId = (string) $this->option('tenant');
         $projectKey = (string) $this->option('project');
-        $roleName = trim((string) $this->option('role'));
+        $roleNames = array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) $this->option('role')),
+        )));
 
         // 0) Active tenant = the target, so every BelongsToTenant auto-fill
         //    (Project, ProjectMembership) lands in the right tenant. set()
@@ -89,9 +92,10 @@ class DemoSeedUserCommand extends Command
         );
         $this->line("user    : {$email} (#{$user->id})");
 
-        // 4) ROLE — Spatie role on the 'web' guard. Requires RbacSeeder to
-        //    have run so the role (and its permissions) exist.
-        if ($roleName !== '') {
+        // 4) ROLES — Spatie roles on the 'web' guard. Requires RbacSeeder to
+        //    have run so the roles (and their permissions) exist. Multiple
+        //    roles are additive (assignRole no-ops on duplicates).
+        foreach ($roleNames as $roleName) {
             $this->assignRole($user, $roleName);
         }
 
