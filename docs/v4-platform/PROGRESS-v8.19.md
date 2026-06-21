@@ -54,8 +54,11 @@ regolo + finops.
     `/api/admin/ai-guardrails/overview`), MCP `KbGuardrailsInsightsTool` (roster **32→33**).
   - Guardrails tables are GLOBAL security infra (no tenant_id, like embedding_cache) — not in the R31 model
     lists; isolation via admin RBAC.
-  - Tests green: GuardrailsChatEnforcementTest 4 (block→refusal+audit, R43 input/output OFF, exfil neutralized),
-    GuardrailsInsightsToolTest 2 (posture + R43 OFF), MCP registration 33, R32 matrix 5, chat suite 43.
+  - Tests green: GuardrailsChatEnforcementTest 5 (block→refusal+audit, R43 input/output OFF, exfil neutralized,
+    degraded-audit-store still refuses), GuardrailsInsightsToolTest 2 (posture + R43 OFF), MCP registration 33,
+    R32 matrix incl. the guardrails write-method boundary (admin 403 / super-admin pass on PUT /settings).
+  - **R45 doc-site** (`docs-site/ai-guardrails.mdx`) is authored in **W6** with the rest of the cycle's docs
+    (every wave defers its doc-site page to the single docs wave); README/changelog/MCP-count also land in W6.
 - **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — ⬜
 - **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — ⬜ (MCP 33→34)
 - **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜

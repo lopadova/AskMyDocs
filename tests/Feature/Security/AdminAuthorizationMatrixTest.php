@@ -215,6 +215,41 @@ final class AdminAuthorizationMatrixTest extends TestCase
     }
 
     /**
+     * v8.19 — the AI Guardrails API splits authorization by HTTP method via
+     * GuardrailsAuthorize: safe methods → `viewAiGuardrails` (super-admin + admin),
+     * mutating methods → `manageAiGuardrails` (super-admin ONLY). The GET-only
+     * matrix above proves the read gate; this asserts the WRITE boundary so a
+     * regression that let `admin` mutate the guardrail ruleset can't ship green.
+     */
+    public function test_guardrails_write_methods_require_the_manage_gate(): void
+    {
+        // PUT → the package SettingsController (overridable ruleset), inside the
+        // guardrails.authorize group: a mutating method requires manageAiGuardrails.
+        $writeUri = '/api/admin/ai-guardrails/settings';
+
+        // admin passes the READ gate but must be DENIED (403) on a WRITE.
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->putJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on write [{$writeUri}] (manageAiGuardrails = super-admin only) but got {$adminStatus}.",
+        );
+
+        // super-admin passes the MANAGE gate; the controller may 200/422 on the
+        // empty body — neither is an authz failure — but it must NOT be 403.
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->putJson($writeUri, [])
+            ->getStatusCode();
+        $this->assertNotSame(
+            403,
+            $superStatus,
+            "Role [super-admin] must pass the manage gate on write [{$writeUri}] but got 403.",
+        );
+    }
+
+    /**
      * v8.17 — the credential-connector `configure` endpoint is POST-only (a GET
      * would 405, so it can't ride the GET matrix above). It sits in the same
      * `admin/connectors` group gated by `can:manageConnectors` (super-admin only),
