@@ -19,8 +19,11 @@ across context windows.
 
 - **W1 — v8.16/v8.17 follow-ups** — ✅
   - W1.1 cost-meter SERVER-cost E2E — ✅ `frontend/e2e/chat-server-cost.spec.ts` (PR #331).
-  - W1.2 laravel/ai 0.7 bump — ✅ **DEFERRED + GUARDED** (PR #331): `tests/Unit/Ai/LaravelAiPinTest.php` locks
-    `laravel/ai` to 0.6 while `padosoft/laravel-ai-regolo` constrains `^0.6` (fails the moment regolo allows ^0.7).
+  - W1.2 laravel/ai 0.7 bump — ✅ **DEFERRED + GUARDED** (PR #331; guard updated in W5): regolo v1.2.0 has since
+    widened its constraint to `^0.6|^0.7|^0.8` (no longer the blocker), so the deferral is now a HOST-SIDE choice
+    — the host keeps `laravel/ai:^0.6.8` because the 0.7 bump (new SDK surface across all providers) is an untested
+    follow-up. `tests/Unit/Ai/LaravelAiPinTest.php` now locks the HOST composer pin to `^0.6` (fails the moment the
+    bump is done). **Follow-up: do the `laravel/ai` ^0.7 bump in a later cycle (regolo no longer blocks it).**
   - W1.3 FinOps money fixed-precision — ✅ package `laravel-ai-finops` **v1.3.0** released (additive 8-dp
     decimal-STRING money, `*_decimal`); host bumped to `^1.3` + guard tests (PR #333).
 - **W2 — eval-harness retrieval-metric delegation** — ✅ (PR #332): `PackageMetricAdapter` (sole anti-corruption
