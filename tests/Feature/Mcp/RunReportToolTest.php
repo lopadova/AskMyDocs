@@ -113,10 +113,30 @@ final class RunReportToolTest extends TestCase
         $this->assertSame('Governance Audit', $payload['report']['title']);
         $this->assertCount(2, $payload['report']['columns']);
         $this->assertSame('graph', $payload['report']['columns'][0]['agent']);
+        // The full agentic column identity (metric) is preserved.
+        $this->assertSame('is_canonical', $payload['report']['columns'][0]['metric']);
+        $this->assertSame('canonical_status', $payload['report']['columns'][1]['metric']);
         $this->assertSame(2, $payload['report']['summary']['documents']);
+        $this->assertSame(2, $payload['report']['summary']['total_documents']);
         $this->assertSame(2, $payload['report']['summary']['flag_counts']['green']);
         $this->assertSame(1, $payload['report']['summary']['flag_counts']['red']);
         $this->assertSame(1, $payload['report']['summary']['flag_counts']['grey']);
+    }
+
+    public function test_max_rows_caps_the_returned_documents_but_reports_the_total(): void
+    {
+        $review = $this->review('tenant-a');
+        $d1 = $this->doc('tenant-a');
+        $d2 = $this->doc('tenant-a');
+        $this->cell('tenant-a', $review->id, $d1, 0, 'Yes', CellFlag::GREEN);
+        $this->cell('tenant-a', $review->id, $d2, 0, 'No', CellFlag::GREY);
+
+        $this->tenants->set('tenant-a');
+        $payload = $this->invoke(['review_id' => $review->id, 'max_rows' => 1]);
+
+        $this->assertCount(1, $payload['report']['rows']);
+        $this->assertSame(1, $payload['report']['summary']['documents']);
+        $this->assertSame(2, $payload['report']['summary']['total_documents']);
     }
 
     public function test_cross_tenant_review_is_invisible(): void

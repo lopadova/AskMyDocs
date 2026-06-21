@@ -67,18 +67,36 @@ class KbRunReportTool extends Tool
                 'name' => (string) ($c['name'] ?? ''),
                 'format' => (string) ($c['format'] ?? 'text'),
                 'agent' => (string) ($c['agent'] ?? 'extract'),
+                // Preserve the full agentic column identity — names are not a
+                // stable contract for an MCP client (Copilot).
+                'metric' => isset($c['metric']) && $c['metric'] !== '' ? (string) $c['metric'] : null,
             ],
             is_array($review->columns_config) ? $review->columns_config : [],
         ));
 
-        $cells = TabularCell::query()
+        // Cap at the QUERY level: resolve the distinct document ids first, take
+        // the first N, and read ONLY those documents' cells — so a large report
+        // never loads more than `max_rows` rows worth of cells (Copilot).
+        $allDocIds = TabularCell::query()
             ->forTenant($tenant)
             ->where('review_id', $review->id)
+            ->distinct()
+            ->orderBy('document_id')
+            ->pluck('document_id');
+        $totalDocuments = $allDocIds->count();
+        $pageDocIds = $allDocIds->take($maxRows)->all();
+
+        $cells = $pageDocIds === [] ? collect() : TabularCell::query()
+            ->forTenant($tenant)
+            ->where('review_id', $review->id)
+            ->whereIn('document_id', $pageDocIds)
             ->orderBy('document_id')
             ->orderBy('column_index')
             ->get();
 
         $rowsByDoc = [];
+        // flag_counts reflects EXACTLY the returned page so the summary is always
+        // consistent with `rows`.
         $flagCounts = ['green' => 0, 'yellow' => 0, 'grey' => 0, 'red' => 0];
         foreach ($cells as $cell) {
             $docId = (int) $cell->document_id;
@@ -96,7 +114,7 @@ class KbRunReportTool extends Tool
             ];
         }
 
-        $rows = array_slice(array_values($rowsByDoc), 0, $maxRows);
+        $rows = array_values($rowsByDoc);
 
         return Response::json([
             'available' => true,
@@ -107,7 +125,9 @@ class KbRunReportTool extends Tool
                 'columns' => $columns,
                 'rows' => $rows,
                 'summary' => [
-                    'documents' => count($rowsByDoc),
+                    // Returned rows vs the full document count — never inconsistent.
+                    'documents' => count($rows),
+                    'total_documents' => $totalDocuments,
                     'flag_counts' => $flagCounts,
                 ],
             ],

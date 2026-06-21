@@ -91,12 +91,16 @@ class TabularReviewExtractor
         $graphColumns = [];
         $llmColumns = [];
         foreach ($columns as $idx => $col) {
-            if ($col['format']->isLlmFree() && $col['json_path'] !== null) {
-                $shortcutColumns[$idx] = $col;
-                continue;
-            }
+            // `agent: graph` WINS over the json_path format shortcut so the agent
+            // dimension is truly orthogonal — a graph column always resolves its
+            // governance metric and can never be silently downgraded into a
+            // metadata lookup by a stray `format: json_path` (Copilot).
             if ($col['agent']->isLlmFree()) { // AgentKind::GRAPH — deterministic governance.
                 $graphColumns[$idx] = $col;
+                continue;
+            }
+            if ($col['format']->isLlmFree() && $col['json_path'] !== null) {
+                $shortcutColumns[$idx] = $col;
                 continue;
             }
             $llmColumns[$idx] = $col;
