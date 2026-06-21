@@ -4,10 +4,21 @@ import { test } from './fixtures';
 /*
  * v8.9 — admin drag-and-drop KB upload.
  *
- * Runs against the REAL backend seeded by DemoSeeder. The E2E web server runs
- * the sync queue + the FAKE AI/embeddings provider (see playwright.config.ts
- * webServer.env), so the commit ingests inline with no external call — nothing
- * to stub (R13: zero interception on the happy path). The failure path uploads
+ * Runs against the REAL backend seeded by DemoSeeder, with the FAKE
+ * AI/embeddings provider — nothing to stub (R13: zero interception on the
+ * happy path). Per-file progress reconciles via Laravel's queue lifecycle
+ * events (App\Listeners\KbUploadBatchItemProgress); how the job runs depends
+ * on the queue connection:
+ *   - LOCAL `npm run e2e`: playwright.config.ts's webServer inherits the
+ *     default `sync` queue, so commit ingests inline and the events fire
+ *     synchronously.
+ *   - CI: QUEUE_CONNECTION=database (async) + a dedicated
+ *     `php artisan queue:work --queue=kb-ingest,default` worker drains the
+ *     committed IngestDocumentJob (see .github/workflows/tests.yml). Async is
+ *     deliberate (R38) — a sync queue would make every KB save block on the
+ *     full ingest pipeline and time out admin-kb-edit / admin-journey.
+ * Either way the commit→queue→progress→succeeded chain completes; the happy
+ * path polls the aggregate's data-* attrs until done. The failure path uploads
  * an unsupported file type and asserts the real 422 surfaces in the DOM, so it
  * needs no injection marker either.
  */
