@@ -41,7 +41,8 @@ across context windows.
   31→32 + sister-packages (eval-harness v1.3 runtime require, laravel-ai-finops v1.3) + feature/moat rows +
   doc-site (retrieval-pipeline.mdx eval-harness delegation note, ai-finops.mdx decimal-money note;
   gamification.mdx AI coaching deep section shipped in W4).
-- **GA — merge feature/v8.18 → main + tag v8.18.0** — 🟡 in progress.
+- **GA — merge feature/v8.18 → main + tag v8.18.0** — ✅ SHIPPED 2026-06-21. PR #337 merged `--merge` to `main`
+  @ `9198b0c6`; tag `v8.18.0` + GitHub Release published at that SHA. `feature/v8.18` preserved (R37).
 
 ## RC tags (R39)
 - Per-wave RC tags were NOT cut individually this cycle (waves merged directly into the integration branch under
@@ -54,4 +55,6 @@ across context windows.
   #332 (W2), #334 (W3), #335 (W4). Deep R36 Copilot loops (#332 ×10 rounds, #335 ×9 + 4 Copilot-autofix commits;
   notable real fixes: nDCG `2^grade-1` gain transform, Postgres-safe `frontmatter_json` whereNotNull, R3 subquery
   rewrite, atomic upsert R21, the super-admin E2E reseed-wipes-session fix, AI-off on the CI server step).
-- 2026-06-21: W5 docs refresh; GA pending (merge → main + tag v8.18.0 + Release).
+- 2026-06-21: W5 docs refresh (PR #336, incl. the W1.2 guard retarget to the host pin after regolo v1.2.0
+  widened to `^0.6|^0.7|^0.8`). GA: PR #337 (feature/v8.18 → main) CI green → merged `--merge` @ `9198b0c6` →
+  tag `v8.18.0` + GitHub Release published. Cycle closed.
