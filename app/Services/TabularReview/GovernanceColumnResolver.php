@@ -48,6 +48,9 @@ class GovernanceColumnResolver
         'staleness_days',
     ];
 
+    /** @var array<string, int> request-scoped memo of unfiltered edge counts. */
+    private array $edgeCountCache = [];
+
     public function __construct(private readonly TenantContext $ctx) {}
 
     /**
@@ -157,12 +160,25 @@ class GovernanceColumnResolver
             ->where($col, (string) $this->nodeUid($doc));
     }
 
+    /**
+     * Unfiltered incoming/outgoing edge count, memoised per
+     * (tenant|project|node|direction) so a governance report that asks for
+     * several edge-based metrics on the same document (graph_connectivity +
+     * is_orphan + incoming/outgoing_edges) issues each COUNT only once.
+     */
+    private function countEdges(KnowledgeDocument $doc, bool $incoming): int
+    {
+        $key = $this->ctx->current().'|'.$doc->project_key.'|'.((string) $this->nodeUid($doc)).'|'.($incoming ? 'in' : 'out');
+
+        return $this->edgeCountCache[$key] ??= $this->edgesQuery($doc, $incoming)->count();
+    }
+
     private function edgeCount(KnowledgeDocument $doc, bool $incoming): array
     {
         if ($this->nodeUid($doc) === null) {
             return $this->cell('n/a', CellFlag::GREY, 'Non-canonical document — not present in the graph.');
         }
-        $count = $this->edgesQuery($doc, $incoming)->count();
+        $count = $this->countEdges($doc, $incoming);
         $label = $incoming ? 'incoming' : 'outgoing';
         $flag = $count > 0 ? CellFlag::GREEN : CellFlag::YELLOW;
 
@@ -174,8 +190,8 @@ class GovernanceColumnResolver
         if ($this->nodeUid($doc) === null) {
             return $this->cell('n/a', CellFlag::GREY, 'Non-canonical document — not present in the graph.');
         }
-        $in = $this->edgesQuery($doc, incoming: true)->count();
-        $out = $this->edgesQuery($doc, incoming: false)->count();
+        $in = $this->countEdges($doc, incoming: true);
+        $out = $this->countEdges($doc, incoming: false);
         $total = $in + $out;
         $flag = $total === 0 ? CellFlag::RED : ($total < 2 ? CellFlag::YELLOW : CellFlag::GREEN);
 
@@ -187,7 +203,7 @@ class GovernanceColumnResolver
         if ($this->nodeUid($doc) === null) {
             return $this->cell('n/a', CellFlag::GREY, 'Non-canonical document — not present in the graph.');
         }
-        $total = $this->edgesQuery($doc, incoming: true)->count() + $this->edgesQuery($doc, incoming: false)->count();
+        $total = $this->countEdges($doc, incoming: true) + $this->countEdges($doc, incoming: false);
         $orphan = $total === 0;
 
         return $this->cell(

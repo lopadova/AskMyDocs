@@ -366,6 +366,10 @@ class TabularReviewExtractor
             $onCell?->__invoke($cell);
         }
 
+        // Return in stable column_index order (the buckets are processed
+        // graph→shortcut→llm, so the map's natural order is not column order).
+        ksort($byColumn);
+
         return array_values($byColumn);
     }
 
