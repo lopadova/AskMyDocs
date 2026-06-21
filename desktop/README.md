@@ -30,9 +30,13 @@ change**.
 1. **Rust toolchain** + Tauri v2 system deps — see
    <https://tauri.app/start/prerequisites/>.
 2. **Node ≥ 20**.
-3. The **AskMyDocs backend** reachable at **`https://askmydocs.test`** (the
-   repo's `APP_URL`, served by Valet/Herd). It must run a branch that includes
-   the desktop auth endpoints (`feature/desktop-demo` or merged) and have the
+3. An **AskMyDocs backend** reachable. By default the client targets the
+   **production deployment** at **`https://askmydocs.surfacesrl.com`**, so it
+   works out of the box — you just need a user to log in with. To develop
+   against a local backend instead (served by Valet/Herd at
+   `https://askmydocs.test`, the repo's `APP_URL`), override `VITE_API_BASE`
+   (see below). The backend must run a branch that includes the desktop auth
+   endpoints (`feature/desktop-demo` or merged) and have the
    `personal_access_tokens` table migrated:
 
    ```bash
@@ -40,19 +44,17 @@ change**.
    php artisan migrate          # creates personal_access_tokens (added for this client)
    ```
 
-   You also need a user to log in with (any seeded user, or create one via
-   tinker). The token endpoint authenticates the same credentials as the web
-   login.
+   The token endpoint authenticates the same credentials as the web login.
 
-If your backend runs elsewhere, override the base URL at build time with
+To target a different backend, override the base URL at build time with
 **`VITE_API_BASE`** (no code edit needed) and keep the HTTP scope in step:
 
 - `VITE_API_BASE=https://my-host npm run dev` — overrides `API_BASE` (default
-  `https://askmydocs.test`; see [`src/lib/api.ts`](src/lib/api.ts))
+  `https://askmydocs.surfacesrl.com`; see [`src/lib/api.ts`](src/lib/api.ts))
 - the HTTP scope in
   [`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json)
-  (allows `https://askmydocs.test`, `localhost:8000`, and the `192.168.*.*` /
-  `10.*.*` LAN ranges)
+  (allows `https://askmydocs.surfacesrl.com`, `https://askmydocs.test`,
+  `localhost:8000`, and the `192.168.*.*` / `10.*.*` LAN ranges)
 - this README
 
 ---
