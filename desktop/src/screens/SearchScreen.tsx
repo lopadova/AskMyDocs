@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, searchDocs } from "../lib/api";
+import { DocumentModal, type DocumentRef } from "../components/DocumentModal";
 import type { DocSearchResult } from "../lib/types";
 
 interface Props {
@@ -14,6 +15,8 @@ export function SearchScreen({ token, tenantId }: Props) {
   const [results, setResults] = useState<DocSearchResult[]>([]);
   const [state, setState] = useState<State>("idle");
   const [error, setError] = useState("");
+  // The document open in the fullpage MD viewer (null = closed).
+  const [openDoc, setOpenDoc] = useState<DocumentRef | null>(null);
 
   // Debounced search. The backend requires q >= 2 chars.
   useEffect(() => {
@@ -95,21 +98,45 @@ export function SearchScreen({ token, tenantId }: Props) {
       {state === "ready" && (
         <ul className="results" data-testid="search-results">
           {results.map((doc) => (
-            <li key={doc.id} className="result" data-testid={`search-result-${doc.id}`}>
-              <div className="result-title">{doc.title}</div>
-              <div className="result-meta">
-                <span className="badge ghost">{doc.project_key}</span>
-                <span className="badge ghost">{doc.source_type}</span>
-                {doc.canonical_type && (
-                  <span className="badge">{doc.canonical_type}</span>
+            <li key={doc.id}>
+              <button
+                type="button"
+                className="result"
+                data-testid={`search-result-${doc.id}`}
+                onClick={() =>
+                  setOpenDoc({
+                    documentId: doc.id,
+                    title: doc.title,
+                    projectKey: doc.project_key,
+                    sourcePath: doc.source_path,
+                  })
+                }
+                title="Open document"
+              >
+                <div className="result-title">{doc.title}</div>
+                <div className="result-meta">
+                  <span className="badge ghost">{doc.project_key}</span>
+                  <span className="badge ghost">{doc.source_type}</span>
+                  {doc.canonical_type && (
+                    <span className="badge">{doc.canonical_type}</span>
+                  )}
+                </div>
+                {doc.source_path && (
+                  <div className="result-path muted small">{doc.source_path}</div>
                 )}
-              </div>
-              {doc.source_path && (
-                <div className="result-path muted small">{doc.source_path}</div>
-              )}
+              </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {openDoc && (
+        <DocumentModal
+          token={token}
+          tenantId={tenantId}
+          target={openDoc}
+          onClose={() => setOpenDoc(null)}
+        />
       )}
     </div>
   );
