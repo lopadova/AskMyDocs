@@ -6,9 +6,15 @@ three things a non-browser client needs against the Laravel backend:
 - **Login** — `POST /api/auth/token` issues a Sanctum **Bearer token** (no
   cookie/CSRF dance). The token is stored locally and survives restarts.
 - **Chat** — `POST /api/kb/chat` (stateless, grounded answers with citations
-  and a confidence badge). Conversation threads are kept **locally** on disk.
+  and a confidence badge). Answers render as **markdown**, and each citation
+  opens its source document in the viewer. Conversation threads are kept
+  **locally** on disk.
 - **Search** — `GET /api/kb/documents/search` (document title/path
   autocomplete).
+- **Document viewer** — `GET /api/kb/documents/{id}/preview` returns a
+  document's full source text (reconstructed from its chunks, tenant +
+  AccessScope scoped). Clicking a search result or a chat citation opens a
+  **fullpage modal** rendering the markdown.
 
 All backend calls go through the **Tauri HTTP plugin** (Rust side), so the
 webview never performs a cross-origin request and the backend needs **no CORS
@@ -136,6 +142,8 @@ desktop/
 │   ├── lib/api.ts           # API client over @tauri-apps/plugin-http
 │   ├── lib/store.ts         # token + threads persistence (@tauri-apps/plugin-store)
 │   ├── lib/types.ts
+│   ├── components/Markdown.tsx       # react-markdown + remark-gfm (links → opener)
+│   ├── components/DocumentModal.tsx  # fullpage MD viewer (GET …/preview)
 │   ├── screens/LoginScreen.tsx
 │   ├── screens/ChatScreen.tsx
 │   └── screens/SearchScreen.tsx
