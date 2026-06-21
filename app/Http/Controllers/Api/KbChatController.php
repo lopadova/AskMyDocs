@@ -134,7 +134,8 @@ class KbChatController extends Controller
         // the LLM (not before retrieval) is security-equivalent for injection defense
         // — retrieval is a read-only vector search over our own KB that injection
         // cannot exploit — and lets us reuse refusalResponse().
-        $principal = $request->user()?->id !== null ? (string) $request->user()->id : null;
+        $userId = $request->user()?->id;
+        $principal = $userId !== null ? (string) $userId : null;
         if ($this->guardrailsInputEnabled() && $guardrails->screenInput($question, $principal)) {
             return $this->refusalResponse(
                 request: $request,

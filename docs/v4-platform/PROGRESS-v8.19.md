@@ -38,7 +38,7 @@ regolo + finops.
     assert the 0.8 line. ADR 0016 written. No host SDK code change needed.
 - **W2 — guardrails core (enforce on chat, tri-surface, RBAC)** — 🟡 impl done, testing
   - `composer require padosoft/laravel-ai-guardrails:^1.1.0` (v1.1.0, resolves on 0.8.1). 7 package migrations
-    published to `database/migrations/` + SQLite mirrors in `tests/database/migrations/` (0001_01_01_0000055-61).
+    published to `database/migrations/` + SQLite mirrors in `tests/database/migrations/` (0001_01_01_000055-000061).
   - `config/ai-guardrails.php` (host override): stores→database; `api` ON behind R32 stack
     (auth:sanctum + tenant.authorize + `guardrails.authorize`), prefix `api/admin/ai-guardrails`; output_handler
     tuned for a markdown RAG answer (sanitize_html=false — FE markdown renderer is the XSS boundary; redact_pii=false

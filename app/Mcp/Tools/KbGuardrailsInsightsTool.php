@@ -108,17 +108,23 @@ class KbGuardrailsInsightsTool extends Tool
         }
 
         $since = now()->subHours($hours);
-        $base = DB::table($table)->where('occurred_at', '>=', $since);
 
-        $screened = (clone $base)->count();
-        $blocked = (clone $base)->where('blocked', true)->count();
-        $observed = (clone $base)->where('blocked', false)->whereNotNull('rule_id')->count();
+        // One pass over the window: conditional COUNTs (count(case when … then 1
+        // end) ignores NULLs) instead of three separate scans, so this stays
+        // single-query as the audit table grows. Driver-portable across pgsql +
+        // sqlite (the `blocked = ?` bindings are cast per connection).
+        $row = DB::table($table)
+            ->where('occurred_at', '>=', $since)
+            ->selectRaw('count(*) as screened')
+            ->selectRaw('count(case when blocked = ? then 1 end) as blocked', [true])
+            ->selectRaw('count(case when blocked = ? and rule_id is not null then 1 end) as observed', [false])
+            ->first();
 
         return [
             'window_hours' => $hours,
-            'screened' => $screened,
-            'blocked' => $blocked,
-            'observed' => $observed,
+            'screened' => (int) ($row->screened ?? 0),
+            'blocked' => (int) ($row->blocked ?? 0),
+            'observed' => (int) ($row->observed ?? 0),
         ];
     }
 }
