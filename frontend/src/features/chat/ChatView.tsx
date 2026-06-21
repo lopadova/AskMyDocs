@@ -161,15 +161,17 @@ export function ChatView(): ReactNode {
     // user's reachable projects, otherwise a null-project conversation hits
     // the WHOLE tenant — a cross-membership leak. The constraint is applied
     // via `effectiveFilters` below (project_keys = my projects).
-    const isAllProjects = projectKey === null && teamProjectKeys.length > 0;
+    const isAllProjects = activeId !== null ? conversationProjectKey === null : scope === '';
     const projectLabel = projectKey ?? (isAllProjects ? 'all projects' : 'default');
 
     // The value rendered in the selector: '' for All, the project_key
     // otherwise. A new chat with no explicit choice shows the default.
+    // When the team has no reachable projects, keep it as `null` (unknown)
+    // rather than silently selecting the "All projects" sentinel.
     const projectScopeValue =
         activeId !== null
             ? conversationProjectKey ?? ''
-            : scope ?? defaultProjectKey ?? '';
+            : scope ?? defaultProjectKey;
 
     // One auto-title attempt per conversation id (the BE generateTitle is a
     // real LLM call; never fire it twice for the same thread).
