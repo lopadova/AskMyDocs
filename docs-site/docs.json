@@ -34,6 +34,7 @@
           "kitt-widget",
           "admin-panel",
           "projects-registry",
+          "team-switcher",
           "engagement-suite",
           "digests",
           "dashboards",
@@ -50,7 +51,8 @@
           "institutional-memory",
           "grounding-and-evidence-tiers",
           "anti-hallucination-firewall",
-          "multi-tenant-isolation"
+          "multi-tenant-isolation",
+          "isolation-testing"
         ]
       },
       {
