@@ -5,6 +5,36 @@
 
 ---
 
+## v8.18/W2 — eval-harness retrieval-metric delegation (2026-06-20)
+
+- **Behaviour-preserving delegation needs golden tests.** `reciprocalRank` +
+  `ndcgAtK` now delegate to `padosoft/eval-harness` (`retrieval-mrr` /
+  `retrieval-ndcg-at-k`); the refactor is proven equal — not "looks similar" — by
+  freezing the historical numbers and asserting `assertEqualsWithDelta(…, 1e-9)`.
+- **One anti-corruption file (per layer).** `app/Services/Kb/Metrics/PackageMetricAdapter.php`
+  is the ONLY file in the retrieval-metrics layer (`app/Services/Kb/Metrics/`)
+  that imports a `Padosoft\EvalHarness\…` symbol; it also exposes high-level
+  resolvers (`scoreMrr`/`scoreNdcg`/`answerContainment`) so `RetrievalQualityMetrics`
+  never even names a package class. A retrieval-metric package API change touches
+  one file here. (The separate eval subsystem under `app/Eval/*` has its own,
+  independent eval-harness imports — out of scope for this layer.)
+- **Don't silently drop precision@k.** The package has hit/recall/mrr/ndcg/
+  answer-containment but **no** precision@k; it stays hand-rolled with a decision-
+  lock test (`test_precision_at_k_is_kept_in_app_until_package_ships_it`) that
+  fires when the package adds `retrieval-precision-at-k`. `dcg()` stays too (no
+  standalone DCG upstream). Added `answerContainmentAtK` (new capability).
+- **Container needed only to resolve the ADAPTER.** `RetrievalQualityMetrics`
+  resolves `PackageMetricAdapter` from the container (which injects the
+  `ConfigRepository`); the adapter then constructs each package metric directly
+  with that injected config (no per-metric container auto-wiring). So the static
+  facade needs a booted container, which is why `RetrievalQualityMetricsTest`
+  moved from plain `PHPUnit\Framework\TestCase` to `Tests\TestCase` — while the
+  adapter's low-level methods stay pure/container-free for fast unit tests.
+- **File-chiave toccati:** `app/Services/Kb/Metrics/{PackageMetricAdapter,RetrievalQualityMetrics}.php`,
+  `composer.json` (eval-harness `^1.3.0`).
+
+---
+
 ## PR15 — Phase J (docs-e2e-polish agent, 2026-04-24)
 
 - **The dev bootstrap, in order, is non-negotiable.** If you clone this
