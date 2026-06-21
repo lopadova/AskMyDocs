@@ -234,20 +234,18 @@ export function ChatView(): ReactNode {
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
 
-    // When the scope is "All projects", constrain retrieval to the user's
-    // reachable projects so a project-less conversation never reaches the
-    // whole tenant (RBAC). The user's own FilterBar narrowing wins if they
-    // already picked project_keys. The FilterBar itself keeps showing the
-    // raw `filters` (this injection is request-only, not user-facing).
     const effectiveFilters = useMemo<FilterState>(() => {
-        if (!isAllProjects) {
+        // Any project-less conversation must be explicitly constrained to the
+        // user's reachable projects, otherwise retrieval becomes tenant-wide.
+        if (projectKey !== null) {
             return filters;
         }
         if ((filters.project_keys?.length ?? 0) > 0) {
             return filters;
         }
-        return { ...filters, project_keys: teamProjectKeys };
-    }, [isAllProjects, filters, teamProjectKeys]);
+        const keys = teamProjectKeys.length > 0 ? teamProjectKeys : ['__no_project_access__'];
+        return { ...filters, project_keys: keys };
+    }, [projectKey, filters, teamProjectKeys]);
 
     const collectionsQuery = useQuery({
         queryKey: ['chat-collections'],
