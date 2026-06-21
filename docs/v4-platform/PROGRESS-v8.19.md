@@ -26,11 +26,16 @@ regolo + finops.
 
 ## Waves
 
-- **W1 — laravel/ai 0.8.1 platform migration** — 🟡 in progress
-  - W1.0 break-change study (0.6→0.8; regolo's done migration as cheatsheet) — ⬜
-  - W1.1 release regolo on ^0.8 — ⬜
-  - W1.2 release finops on ^0.8 — ⬜
-  - W1.3 host bump ^0.6.8→^0.8.1 + compat pass (4 providers + finops hook + regolo) + LaravelAiPinTest flip + ADR 0016 — ⬜
+- **W1 — laravel/ai 0.8.1 platform migration** — ✅ (host code change = ZERO)
+  - W1.0 break-change study — ✅ only break 0.6→0.8 = `TranscriptionGateway::generateTranscription()` gained
+    `$providerOptions` (laravel/ai v0.7.0 #31; regolo diff #16 was the cheatsheet). Host uses chat+embeddings
+    only, NO transcription → not affected.
+  - W1.1 regolo — ✅ already published v1.2.1 (`^0.6|^0.7|^0.8.1`); host requires `^1.2.1`.
+  - W1.2 finops — ✅ already published v1.4.0 (0.8-line verified); host requires `^1.4`.
+  - W1.3 host bump — ✅ `composer.json laravel/ai ^0.6.8→^0.8.1`; `composer update` resolved a single
+    `laravel/ai 0.8.1` cleanly (finops v1.3.0→v1.4.0, regolo v1.0.1→v1.2.1). Tests green on 0.8.1:
+    `tests/Unit/Ai` 134 OK + `tests/Feature/FinOps` + chat + chatlog 49 OK. `LaravelAiPinTest` flipped to
+    assert the 0.8 line. ADR 0016 written. No host SDK code change needed.
 - **W2 — guardrails core (enforce on chat, tri-surface, RBAC)** — ⬜ (MCP 32→33)
 - **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — ⬜
 - **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — ⬜ (MCP 33→34)
