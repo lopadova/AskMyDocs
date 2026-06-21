@@ -1,0 +1,97 @@
+---
+title: "The team switcher"
+description: "Per-team SPA routing (/app/{teamHash}/…), automatic X-Tenant-Id stamping, cache isolation on switch, and a membership-aware authorization gate — the front-end half of AskMyDocs multi-tenancy."
+icon: "users"
+---
+
+## Motivation
+
+[Multi-tenant deployment](/multi-tenant-isolation) gives the **back end** a
+per-request `tenant_id` that scopes every Eloquent query (R30/R31). But a user who
+belongs to more than one team needs a **front-end** that makes the active team
+explicit, switches between teams without leaking data, and proves to the server
+that the team they ask for is one they actually belong to.
+
+The **team switcher** is that front-end half. It turns the abstract
+`X-Tenant-Id` header into a first-class part of the URL and the UI, so the active
+tenant is always visible, bookmarkable, and impossible to confuse across a switch.
+
+## Design
+
+```mermaid
+flowchart TD
+    A[GET /api/auth/me] -->|teams: groupBy tenant| B[team-store: teams + currentTeam]
+    B --> C{currentTeam == default?}
+    C -->|yes| D[no X-Tenant-Id header — host fallback]
+    C -->|no| E[axios interceptor stamps X-Tenant-Id: tenant]
+    E --> F[AuthorizeTenantHeader]
+    F -->|own tenant / cross-access / membership in tenant| G[request proceeds, R30-scoped]
+    F -->|no membership| H[403 tenant_forbidden]
+    H --> I[interceptor → resetToFirstTeam → reload /app]
+    B --> J[TeamSwitcher in topbar]
+    J -->|switchTeam| K[queryClient.clear + cancelQueries]
+    K --> L[AppShell remounts outlet on key=tenant_id]
+    L --> M[navigate /app/{teamHash}/…]
+```
+
+**The pieces**
+
+| Piece | Path | Responsibility |
+|---|---|---|
+| `team-store` | `frontend/src/lib/team-store.ts` | Zustand store (persisted): `teams`, `currentTeam`, `userId`; `syncFromMe`, `switchTeam`, `resetToFirstTeam` |
+| axios interceptor | `frontend/src/lib/api.ts` | Stamps `X-Tenant-Id` on every non-exempt request — **except** for the `default` sentinel (see below) |
+| `TeamSwitcher` | `frontend/src/components/shell/TeamSwitcher.tsx` | Topbar `menuitemradio` switcher; disabled single-team state; Escape returns focus to the trigger (R15) |
+| `TeamGate` + routes | `frontend/src/routes/index.tsx` | Hosts every authenticated screen under `/app/{teamHash}/…`; redirects legacy hash-less URLs into the active team's hash |
+| `TeamHash` | `app/Support/TeamHash.php` | BE-computed routing segment per tenant (a non-secret namespace) |
+| `/api/auth/me` `teams` | `app/Services/Auth/UserTeamsResolver.php` | Returns the teams the caller may operate in (own memberships + cross-access tenants) |
+| `AuthorizeTenantHeader` | `app/Http/Middleware/AuthorizeTenantHeader.php` | Validates `X-Tenant-Id` against the caller's own tenant, cross-access permission, **or** a membership in the requested tenant |
+
+## The `default` sentinel — why the header is omitted
+
+`default` is the host's "no multi-tenancy" sentinel (`App\Support\TenantContext::isDefault()`).
+`ResolveTenant` resolves the **same** host context whether the header is `default`
+or absent, so the SPA deliberately **does not stamp** `X-Tenant-Id` when the active
+team is `default`. This keeps R30 scoping identical **and** keeps the SPA
+compatible with sister-package route mounts whose own tenant-context middleware
+404s on an unknown tenant slug (the AI Act package never promotes `default` into a
+`tenants` row). Real tenants (e.g. `acme`) always send the header and stay scoped.
+Every manual header site — the axios interceptor, the chat SSE transport
+(`use-chat-stream.ts`), and the Flows live-probe raw fetch (`FlowsView.tsx`) —
+applies the **same** `team !== null && team !== 'default'` rule.
+
+## Cache isolation on switch
+
+Switching team must never render one tenant's cached data under another. `switchTeam`
+therefore `cancelQueries()` + `clear()`s the entire TanStack Query cache, and
+`AppShell` keys the route outlet on `currentTeam` so all page-local state remounts.
+A persisted selection is honoured only if it still belongs to the same user **and**
+still exists in the fresh `/api/auth/me` `teams` list — otherwise it falls back to
+the first team, so a revoked membership self-heals on the next bootstrap.
+
+## Authorization — the membership branch
+
+`AuthorizeTenantHeader` runs **after** `auth:sanctum` and **before** any
+tenant-aware query. It accepts the requested tenant when it is the caller's own
+tenant, when the caller holds the cross-access permission, **or** when the caller
+has a `project_membership` in the requested tenant — scoped to *both* the requested
+tenant *and* the calling user, so a membership in tenant B never opens tenant A and
+another user's membership never helps. Anything else returns `403 tenant_forbidden`,
+which the front-end response interceptor turns into a snap-back to the first valid
+team.
+
+## Worked example
+
+A user who is a member of `acme` and `globex` logs in:
+
+1. `GET /api/auth/me` returns `teams: [{tenant_id:'default',hash:…}, {tenant_id:'acme',hash:…}, {tenant_id:'globex',hash:…}]`.
+2. The SPA boots at `/app/{defaultHash}/…` (or the persisted team). KPI calls go out **without** a tenant header → host-default scope.
+3. The user picks **acme** in the topbar. The cache is cleared, the outlet remounts, the URL becomes `/app/{acmeHash}/admin/dashboard`, and every call now carries `X-Tenant-Id: acme`.
+4. A forged `X-Tenant-Id: stark` (no membership) → `403 tenant_forbidden` → the SPA resets to the first valid team and reloads.
+
+## Gotchas
+
+- **`teamHash` is a routing namespace, not a secret.** Authorization always stays on the server-validated `X-Tenant-Id`; guessing or forging a hash discloses and grants nothing.
+- **Don't stamp `default`.** Adding the header for the `default` sentinel re-introduces the sister-package 404 it was removed to fix — keep every manual header site on the `team !== null && team !== 'default'` rule.
+- **Live stale-tenant recovery is best-effort.** The interceptor auto-recovers only on the host's `tenant_forbidden` 403; package routes reject with their own statuses (404/410/423) and self-heal on the next `/api/auth/me` bootstrap.
+
+See also: [Multi-tenant isolation](/multi-tenant-isolation), [The project registry](/projects-registry).
