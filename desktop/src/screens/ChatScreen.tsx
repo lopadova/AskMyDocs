@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, chat } from "../lib/api";
+import { DocumentModal, type DocumentRef } from "../components/DocumentModal";
+import { Markdown } from "../components/Markdown";
 import { loadThreads, saveThreads } from "../lib/store";
 import type { Citation, LocalMessage, Thread } from "../lib/types";
 
@@ -41,6 +43,8 @@ export function ChatScreen({ token, tenantId }: Props) {
   // Mobile only: the thread list is an off-canvas drawer (CSS-gated under the
   // 640px breakpoint). On desktop the toggle is hidden so this stays false.
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The cited document open in the fullpage MD viewer (null = closed).
+  const [openDoc, setOpenDoc] = useState<DocumentRef | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   // Hydrate threads from disk once.
@@ -258,7 +262,14 @@ export function ChatScreen({ token, tenantId }: Props) {
               className={`bubble ${message.role}`}
               data-testid={`chat-message-${message.role}`}
             >
-              <div className="bubble-body">{message.content}</div>
+              {message.role === "assistant" ? (
+                <Markdown
+                  content={message.content}
+                  testId="chat-message-markdown"
+                />
+              ) : (
+                <div className="bubble-body">{message.content}</div>
+              )}
 
               {message.role === "assistant" &&
                 typeof message.confidence === "number" && (
@@ -281,11 +292,38 @@ export function ChatScreen({ token, tenantId }: Props) {
                 message.citations &&
                 message.citations.length > 0 && (
                   <ul className="citations" data-testid="chat-citations">
-                    {message.citations.map((citation, ci) => (
-                      <li key={ci} className="citation">
-                        {citationLabel(citation)}
-                      </li>
-                    ))}
+                    {message.citations.map((citation, ci) => {
+                      const docId =
+                        typeof citation.document_id === "number"
+                          ? citation.document_id
+                          : null;
+                      if (docId === null) {
+                        return (
+                          <li key={ci} className="citation">
+                            {citationLabel(citation)}
+                          </li>
+                        );
+                      }
+                      return (
+                        <li key={ci} className="citation">
+                          <button
+                            type="button"
+                            className="citation-open"
+                            onClick={() =>
+                              setOpenDoc({
+                                documentId: docId,
+                                title: citation.title,
+                                sourcePath: citation.source_path,
+                              })
+                            }
+                            data-testid={`chat-citation-${docId}-open`}
+                            title="Open source document"
+                          >
+                            {citationLabel(citation)}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
             </article>
@@ -331,6 +369,15 @@ export function ChatScreen({ token, tenantId }: Props) {
           </button>
         </form>
       </section>
+
+      {openDoc && (
+        <DocumentModal
+          token={token}
+          tenantId={tenantId}
+          target={openDoc}
+          onClose={() => setOpenDoc(null)}
+        />
+      )}
     </div>
   );
 }
