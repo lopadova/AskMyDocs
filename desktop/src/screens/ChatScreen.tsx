@@ -38,6 +38,9 @@ export function ChatScreen({ token, tenantId }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  // Mobile only: the thread list is an off-canvas drawer (CSS-gated under the
+  // 640px breakpoint). On desktop the toggle is hidden so this stays false.
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   // Hydrate threads from disk once.
@@ -81,6 +84,13 @@ export function ChatScreen({ token, tenantId }: Props) {
     setThreads((prev) => [thread, ...prev]);
     setActiveId(thread.id);
     setDraft("");
+    setDrawerOpen(false);
+  }
+
+  function openThread(id: string) {
+    setActiveId(id);
+    setError("");
+    setDrawerOpen(false);
   }
 
   function deleteThread(id: string) {
@@ -153,7 +163,19 @@ export function ChatScreen({ token, tenantId }: Props) {
 
   return (
     <div className="chat" data-testid="chat-screen">
-      <aside className="chat-sidebar" aria-label="Conversations">
+      {drawerOpen && (
+        <button
+          type="button"
+          className="chat-backdrop"
+          aria-label="Close conversations"
+          onClick={() => setDrawerOpen(false)}
+          data-testid="chat-drawer-backdrop"
+        />
+      )}
+      <aside
+        className={drawerOpen ? "chat-sidebar open" : "chat-sidebar"}
+        aria-label="Conversations"
+      >
         <button
           type="button"
           className="btn primary block"
@@ -178,10 +200,7 @@ export function ChatScreen({ token, tenantId }: Props) {
               <button
                 type="button"
                 className="thread-open"
-                onClick={() => {
-                  setActiveId(thread.id);
-                  setError("");
-                }}
+                onClick={() => openThread(thread.id)}
                 aria-current={thread.id === activeId}
                 data-testid={`chat-thread-${thread.id}-open`}
               >
@@ -202,6 +221,22 @@ export function ChatScreen({ token, tenantId }: Props) {
       </aside>
 
       <section className="chat-main">
+        <div className="chat-mobilebar">
+          <button
+            type="button"
+            className="btn ghost chat-drawer-toggle"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Show conversations"
+            aria-expanded={drawerOpen}
+            data-testid="chat-drawer-toggle"
+          >
+            ☰ Chats
+          </button>
+          <span className="chat-mobilebar-title muted small">
+            {active ? active.title : "New chat"}
+          </span>
+        </div>
+
         <div
           className="message-list"
           data-testid="chat-messages"

@@ -505,3 +505,186 @@ body {
   padding: 1px 7px;
   font-size: 11px;
 }
+
+/* ================= touch / mobile hardening (all sizes) ================= */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  -webkit-tap-highlight-color: transparent;
+}
+.message-list,
+.search,
+.thread-list {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+/* Tap feedback that fires on touch (hover sticks unreliably on iOS). */
+.btn:active,
+.tab:active,
+.thread-open:active,
+.chip:active {
+  opacity: 0.7;
+}
+/* The thread drawer (toggle bar + backdrop) is mobile-only. Hidden by default
+   so the desktop layout is byte-for-byte unchanged. */
+.chat-mobilebar,
+.chat-backdrop {
+  display: none;
+}
+.chat-mobilebar-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ================= iPhone / small screens ================= */
+@media (max-width: 640px) {
+  body {
+    font-size: 15px;
+  }
+  /* Inputs MUST be >= 16px or iOS auto-zooms the viewport on focus. */
+  .field input,
+  .composer-input,
+  .search-input,
+  .team-select {
+    font-size: 16px;
+  }
+
+  /* ---- topbar: wrap, honour the notch, controls flow to a second row ---- */
+  .topbar {
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top));
+    padding-left: calc(14px + env(safe-area-inset-left));
+    padding-right: calc(14px + env(safe-area-inset-right));
+  }
+  .topbar-end {
+    width: 100%;
+    margin-left: 0;
+    gap: 8px;
+  }
+  .team-switch {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .team-select {
+    width: 100%;
+    max-width: none;
+  }
+  .user {
+    display: none; /* the role badge + sign-out are enough on a phone */
+  }
+
+  /* ---- tabs become a fixed bottom tab bar (iOS idiom) ---- */
+  .tabs {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    gap: 0;
+    background: var(--bg-elevated);
+    border-top: 1px solid var(--border);
+    padding: 6px 8px;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    min-height: 44px;
+    padding: 10px 8px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+  /* keep scrollable content clear of the fixed bottom bar */
+  .content {
+    padding-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+
+  /* ---- teambar: side safe-areas ---- */
+  .teambar {
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+  }
+
+  /* ---- chat: the 240px sidebar becomes an off-canvas drawer ---- */
+  .chat {
+    position: relative;
+  }
+  .chat-mobilebar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    padding-left: calc(12px + env(safe-area-inset-left));
+    padding-right: calc(12px + env(safe-area-inset-right));
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+  .chat-drawer-toggle {
+    min-height: 40px;
+  }
+  .chat-sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 84%;
+    max-width: 320px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.45);
+    padding-left: calc(12px + env(safe-area-inset-left));
+  }
+  .chat-sidebar.open {
+    transform: translateX(0);
+  }
+  .chat-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    border: none;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .thread-open {
+    padding: 12px 10px; /* ~44px touch row */
+  }
+  .thread-delete {
+    padding: 10px 12px;
+  }
+
+  /* ---- composer + message / search side safe-areas, bigger targets ---- */
+  .composer {
+    padding: 10px;
+    padding-left: calc(10px + env(safe-area-inset-left));
+    padding-right: calc(10px + env(safe-area-inset-right));
+  }
+  .composer .btn {
+    min-height: 44px;
+  }
+  .search,
+  .message-list {
+    padding-left: calc(16px + env(safe-area-inset-left));
+    padding-right: calc(16px + env(safe-area-inset-right));
+  }
+  .bubble {
+    max-width: 90%;
+  }
+
+  /* ---- login: fill the width, honour the notch ---- */
+  .auth {
+    padding: 24px;
+    padding-top: calc(24px + env(safe-area-inset-top));
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 360px;
+  }
+}
