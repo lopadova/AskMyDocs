@@ -38,12 +38,15 @@ change**.
    tinker). The token endpoint authenticates the same credentials as the web
    login.
 
-If your backend runs elsewhere, change **all three** in lockstep:
+If your backend runs elsewhere, override the base URL at build time with
+**`VITE_API_BASE`** (no code edit needed) and keep the HTTP scope in step:
 
-- `API_BASE` in [`src/lib/api.ts`](src/lib/api.ts)
+- `VITE_API_BASE=https://my-host npm run dev` — overrides `API_BASE` (default
+  `https://askmydocs.test`; see [`src/lib/api.ts`](src/lib/api.ts))
 - the HTTP scope in
   [`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json)
-  (it currently allows `https://askmydocs.test` plus `localhost:8000`)
+  (allows `https://askmydocs.test`, `localhost:8000`, and the `192.168.*.*` /
+  `10.*.*` LAN ranges)
 - this README
 
 ---
@@ -60,6 +63,62 @@ Build a distributable bundle:
 
 ```bash
 npm run tauri build
+```
+
+---
+
+## Run on iPhone (iOS)
+
+The same codebase targets iOS via **Tauri v2 mobile**. The Rust shell already
+carries the `mobile_entry_point` and all three plugins (http / store / opener)
+support iOS, so there are **no native code changes** — the UI is responsive and
+notch/home-indicator aware (safe-area insets, a bottom tab bar, and the chat
+thread list as an off-canvas drawer).
+
+**Extra prerequisites:** macOS with **Xcode** + command-line tools, an Apple
+signing identity, and the iOS Rust targets:
+
+```bash
+xcode-select --install   # if not already installed
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+```
+
+**One-time** — generate the Xcode project (lands in `src-tauri/gen/apple`, which
+is gitignored):
+
+```bash
+cd desktop
+npm install
+npm run ios:init
+```
+
+**Reach the backend from the device.** On a physical iPhone, `askmydocs.test`
+and `localhost` resolve to the *phone*, not your Mac — point `API_BASE` at your
+Mac's LAN IP at build time, and serve Laravel on the LAN:
+
+```bash
+# 1. serve the backend so the phone can reach it (from the repo root)
+php artisan serve --host 0.0.0.0 --port 8000
+
+# 2. find your Mac's LAN IP, e.g. 192.168.1.50
+ipconfig getifaddr en0
+
+# 3. run on a connected device / simulator
+VITE_API_BASE=http://192.168.1.50:8000 npm run ios:dev
+```
+
+The HTTP capability scope already allows the `192.168.*.*` and `10.*.*` ranges
+(http + https). If your LAN uses `172.16–31.*`, add a matching line to
+[`src-tauri/capabilities/default.json`](src-tauri/capabilities/default.json).
+
+> The **iOS Simulator** shares the Mac's network, so there you can use
+> `VITE_API_BASE=http://localhost:8000` (or the default `.test` host if Valet/Herd
+> is running) without the LAN IP.
+
+**Build an `.ipa`:**
+
+```bash
+VITE_API_BASE=http://<mac-lan-ip>:8000 npm run ios:build
 ```
 
 ---
