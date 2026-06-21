@@ -373,7 +373,7 @@ class TabularReviewExtractor
      * One batched verify call: returns a map column_index => supported(bool).
      * Empty on any failure (caller keeps the extract result).
      *
-     * @param  array<int, array{summary: string, col: array<string, mixed>}|array<string, mixed>>  $candidates
+     * @param  array<int, array{col: array<string, mixed>, cell: TabularCell, content: array<string, mixed>, summary: string}>  $candidates
      * @param  array{chunks: list<array{id: int|string, heading: string, text: string}>, doc_id: int}  $chunkContext
      * @return array<int, bool>
      */

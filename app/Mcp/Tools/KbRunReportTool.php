@@ -74,17 +74,21 @@ class KbRunReportTool extends Tool
             is_array($review->columns_config) ? $review->columns_config : [],
         ));
 
-        // Cap at the QUERY level: resolve the distinct document ids first, take
-        // the first N, and read ONLY those documents' cells — so a large report
-        // never loads more than `max_rows` rows worth of cells (Copilot).
-        $allDocIds = TabularCell::query()
+        // Cap at the QUERY level so a large report never over-reads (Copilot):
+        // the total is a COUNT(DISTINCT) query (no rows materialised), and only
+        // the first `max_rows` distinct document ids are plucked (LIMIT-bounded).
+        $base = static fn () => TabularCell::query()
             ->forTenant($tenant)
-            ->where('review_id', $review->id)
+            ->where('review_id', $review->id);
+
+        $totalDocuments = $base()->distinct()->count('document_id');
+        $pageDocIds = $base()
+            ->select('document_id')
             ->distinct()
             ->orderBy('document_id')
-            ->pluck('document_id');
-        $totalDocuments = $allDocIds->count();
-        $pageDocIds = $allDocIds->take($maxRows)->all();
+            ->limit($maxRows)
+            ->pluck('document_id')
+            ->all();
 
         $cells = $pageDocIds === [] ? collect() : TabularCell::query()
             ->forTenant($tenant)

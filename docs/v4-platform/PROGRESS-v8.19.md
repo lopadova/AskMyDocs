@@ -75,8 +75,9 @@ regolo + finops.
   - Validation: `agent` + `metric` added to Store/Update TabularReview requests (metric required+enumerated for
     graph). Tri-surface (R44): PHP (extractor+seeder), HTTP (existing /api/admin/tabular-reviews/*), MCP
     `KbRunReportTool` (roster **33→34**, reads a report's matrix, R30/R43).
-  - Tests: GovernanceColumnResolverTest 10, extractor agentic 2 (graph deterministic no-LLM + verify downgrade),
-    RunReportToolTest 3 (matrix + R30 cross-tenant + R43 missing), MCP registration 34; full sweep 154 green.
+  - Tests: GovernanceColumnResolverTest 11 (incl. self-declared superseded_by), extractor agentic 2 (graph
+    deterministic no-LLM + verify downgrade), RunReportToolTest 4 (matrix + R30 cross-tenant + R43 missing +
+    max_rows cap), MCP registration 34; full sweep 154 green.
 - **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜
 - **W6 — README + doc-site** — ⬜
 - **GA — merge feature/v8.19 → main + tag v8.19.0** — ⬜
