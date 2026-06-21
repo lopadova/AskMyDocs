@@ -5,6 +5,7 @@ import { ConversationList } from './ConversationList';
 import { ConversationTitle } from './ConversationTitle';
 import { MessageThread } from './MessageThread';
 import { Composer } from './Composer';
+import { ProjectSelector } from './ProjectSelector';
 import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
@@ -90,8 +91,25 @@ export function ChatView(): ReactNode {
     const currentTeam = useTeamStore((s) => s.currentTeam);
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
-    const projectKey = activeTeam?.projects[0]?.project_key ?? null;
-    const projectLabel = projectKey ?? 'default';
+    // Reachable projects in the ACTIVE TEAM (R18 — the real membership
+    // domain from /api/auth/me, never a literal list).
+    const teamProjectKeys = useMemo(
+        () => (activeTeam?.projects ?? []).map((p) => p.project_key),
+        [activeTeam],
+    );
+    const defaultProjectKey = teamProjectKeys[0] ?? null;
+
+    // User's chosen project for NEW conversations. Null → fall back to the
+    // team default. A conversation binds to ONE project at creation
+    // (`conversations.project_key`) and the BE scopes every turn to it, so
+    // the selector drives conversation creation, not a per-turn filter.
+    const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+
+    // Switching team can leave a stale selection pointing at a project the
+    // new team can't reach — reset so the new team's default takes over.
+    useEffect(() => {
+        setSelectedProjectKey(null);
+    }, [currentTeam]);
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
@@ -114,6 +132,16 @@ export function ChatView(): ReactNode {
     });
     const activeConversation =
         activeId !== null ? conversationsQuery.data?.find((c) => c.id === activeId) ?? null : null;
+
+    // Effective project scope. For an EXISTING conversation the bound
+    // `conversations.project_key` is authoritative (the BE scopes every
+    // turn to it; a per-turn project filter can only narrow within it).
+    // For a brand-new chat we honour the user's selector, falling back to
+    // the team default.
+    const conversationProjectKey = activeConversation?.project_key ?? null;
+    const projectKey =
+        activeId !== null ? conversationProjectKey : selectedProjectKey ?? defaultProjectKey;
+    const projectLabel = projectKey ?? 'default';
 
     // One auto-title attempt per conversation id (the BE generateTitle is a
     // real LLM call; never fire it twice for the same thread).
@@ -317,6 +345,19 @@ export function ChatView(): ReactNode {
             return;
         }
         navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
+    };
+
+    // Switching the project scope. A conversation is bound to one project
+    // at creation, so to chat in a DIFFERENT project we start a fresh
+    // thread: when the user is inside an existing conversation whose
+    // project differs from the chosen one, reset to a new chat so the next
+    // turn's `requireConversation()` creates a conversation scoped to it.
+    const handleProjectChange = (next: string) => {
+        setSelectedProjectKey(next);
+        if (activeId !== null && conversationProjectKey !== next) {
+            setActive(null);
+            navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
+        }
     };
 
     const requireConversation = async (): Promise<number | null> => {
@@ -572,7 +613,11 @@ export function ChatView(): ReactNode {
                                 gap: 10,
                             }}
                         >
-                            <span>{projectLabel}</span>
+                            <ProjectSelector
+                                value={projectKey}
+                                projects={teamProjectKeys}
+                                onChange={handleProjectChange}
+                            />
                             <span>·</span>
                             <span>{headerMeta}</span>
                         </div>
@@ -614,6 +659,7 @@ export function ChatView(): ReactNode {
                     projectKey={projectKey}
                     modelLabel={headerMeta}
                     onRequireConversation={requireConversation}
+                    availableProjects={teamProjectKeys}
                     availableCollections={collectionsQuery.data ?? []}
                     filters={filters}
                     onFiltersChange={setFilters}
