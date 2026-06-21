@@ -41,9 +41,27 @@ export interface MePayload {
 }
 
 export interface Citation {
+  document_id?: number | null;
   source_path?: string | null;
   title?: string | null;
   [key: string]: unknown;
+}
+
+// GET /api/kb/documents/{documentId}/preview — full source text of a document,
+// reconstructed from its chunks in order, plus the canonical metadata the modal
+// header shows. `content` is "" when the document has no chunks (a real 200,
+// rendered as an explicit empty state — not a fake 404).
+export interface DocumentPreview {
+  document_id: number;
+  title: string;
+  source_path: string | null;
+  slug: string | null;
+  project_key: string;
+  source_type: string;
+  canonical_type: string | null;
+  canonical_status: string | null;
+  is_canonical: boolean;
+  content: string;
 }
 
 export interface ChatMeta {

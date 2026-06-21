@@ -8,6 +8,7 @@ import { fetch } from "@tauri-apps/plugin-http";
 import type {
   ChatResponse,
   DocSearchResult,
+  DocumentPreview,
   MePayload,
   TokenResponse,
 } from "./types";
@@ -162,6 +163,26 @@ export async function searchDocs(
   }
   const data = (body as { data?: DocSearchResult[] }).data;
   return Array.isArray(data) ? data : [];
+}
+
+/** Full source text + metadata of a single document, for the fullpage MD
+ *  viewer. Reachable by any authenticated reader and scoped to the caller's
+ *  tenant + AccessScope (R30) — a 404 means "not found OR not yours", with no
+ *  existence oracle. Works for both a search-result id and a chat citation's
+ *  document_id (same KnowledgeDocument primary key). */
+export async function fetchDocumentPreview(
+  token: string,
+  documentId: number,
+  tenantId?: string,
+): Promise<DocumentPreview> {
+  const res = await http(`${API_BASE}/api/kb/documents/${documentId}/preview`, {
+    headers: authHeaders(token, tenantId),
+  });
+  const body = await parseBody(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, errorMessage(body, "Could not open document"), body);
+  }
+  return body as DocumentPreview;
 }
 
 /** Best-effort token revocation (stateless Bearer endpoint, no CSRF); a network
