@@ -1,14 +1,20 @@
-import { test, expect } from './fixtures';
+import { test, expect } from '@playwright/test';
 
 /*
  * v8.18/W4 — Admin AI gamification insights — super-admin scenarios.
  *
  * Routed via the playwright.config.ts `chromium-super-admin` project
  * (testMatch /.*-super-admin\.spec\.ts/) so the storageState
- * playwright/.auth/super-admin.json is materialised by
- * super-admin.setup.ts BEFORE this spec runs. The `seeded` auto-fixture
- * (from ./fixtures) re-seeds DemoSeeder + re-logins as super@demo.local
- * before each test, so each scenario starts from a known baseline.
+ * playwright/.auth/super-admin.json is materialised by super-admin.setup.ts
+ * BEFORE this spec runs (which also `resetAndSeed`s the DemoSeeder corpus).
+ *
+ * IMPORTANT — imports from `@playwright/test`, NOT `./fixtures`, exactly like
+ * the other *-super-admin specs: the `seeded` auto-fixture calls
+ * `/testing/reset` (migrate:fresh), which would WIPE the super-admin session
+ * created by super-admin.setup and 401 every subsequent super-admin spec. We
+ * rely on the DemoSeeder corpus already seeded by the setup; a fresh corpus has
+ * no computed gamification insight, so the panel starts empty and Rigenera
+ * writes the first one.
  *
  * R13: real Laravel + real DB seed, NO internal page.route stubs against
  * /api/admin/* or /api/me/*. The AI provider is config-gated OFF in the
