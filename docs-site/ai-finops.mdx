@@ -253,6 +253,12 @@ on with `AI_FINOPS_ADMIN_ENABLED=true` and
   feed — by design, so the off path is free and side-effect-less.
 - **Regolo manual pricing.** Regolo is feed-less; enter its rates via
   `pricing/overrides` or it prices at zero.
+- **Fixed-precision decimal money (since v8.18, `laravel-ai-finops` v1.3.0).** The
+  package now also exposes every money value as a fixed-precision **8-dp decimal
+  string** under additive `*_decimal` keys, so small per-token costs survive
+  serialisation without float-rounding drift. The host runs `^1.3`; the three MCP
+  read tools and `ChatTurnCostResolver` read the new shape while the existing
+  numeric keys stay in place (additive — R27), so older clients are unaffected.
 
 <CardGroup cols={2}>
   <Card title="AI providers" icon="plug" href="/ai-providers">
