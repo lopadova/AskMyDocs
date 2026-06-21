@@ -13,46 +13,62 @@ import type { ReactNode } from 'react';
  *
  * This control surfaces the projects the user can actually reach in the
  * ACTIVE TEAM (derived from `/api/auth/me` memberships — R18, never a
- * literal list). Before it existed the chat was hard-pinned to
- * `activeTeam.projects[0]` with no way to reach any other project, so
- * content ingested under a different project (e.g. a connector's
- * `connector-imap`) was unreachable from the chat UI even though it was
- * indexed correctly.
+ * literal list). It mirrors the admin Knowledge picker's presentation
+ * (alphabetical order + an optional "All projects" entry) so the two
+ * surfaces read consistently, while keeping the chat membership-scoped
+ * (the admin picker is intentionally tenant-wide; the chat is RBAC-gated
+ * to what the user can access).
+ *
+ * The "All projects" entry (value `''`) means "search across ALL of MY
+ * reachable projects at once" — the parent turns it into a project-less
+ * conversation whose turns carry `project_keys = <my projects>`, so it is
+ * never a cross-tenant / cross-membership leak.
  *
  * Stateless / controlled (R29): the parent (ChatView) owns the selection
  * and decides what switching means (reset to a new conversation when the
- * chosen project differs from the current conversation's).
+ * chosen scope differs from the current conversation's).
  *
- * Single-project deployments (≤ 1 reachable project) render a read-only
- * label so they look exactly like the pre-selector chat (v3 parity).
+ * Single-project deployments (≤ 1 reachable project, no "All") render a
+ * read-only label so they look exactly like the pre-selector chat.
  *
  * R11: stable `data-testid`. R15: the `<select>` carries an accessible
  * name via `aria-label` (placeholder/visual text is NOT a label).
  */
 
 export interface ProjectSelectorProps {
-    /** Currently effective project_key, or null for a project-less scope. */
+    /**
+     * Currently effective scope: a `project_key`, the empty string `''`
+     * for "All projects", or `null` when no scope is resolved yet.
+     */
     value: string | null;
     /** Reachable project keys in the active team (the real domain — R18). */
     projects: string[];
-    /** Fired with the newly chosen project_key. */
+    /** When true, offer an "All projects" entry (value `''`). */
+    allowAll?: boolean;
+    /** Fired with the chosen value: a `project_key` or `''` for All. */
     onChange: (next: string) => void;
 }
 
-export function ProjectSelector({ value, projects, onChange }: ProjectSelectorProps): ReactNode {
-    // Always represent the effective value, even if it is not in the
+export function ProjectSelector({
+    value,
+    projects,
+    allowAll = false,
+    onChange,
+}: ProjectSelectorProps): ReactNode {
+    // Always represent a concrete effective value, even if it is not in the
     // reachable list (e.g. a conversation bound to a project the user no
     // longer has membership in) — otherwise the native <select> would
-    // render blank and silently mis-report the scope.
+    // render blank and silently mis-report the scope. The empty string is
+    // the "All projects" sentinel and is handled by `allowAll`, not here.
     const options =
-        value !== null && !projects.includes(value) ? [value, ...projects] : projects;
+        value !== null && value !== '' && !projects.includes(value)
+            ? [value, ...projects]
+            : projects;
 
-    // Single (or zero) reachable option → nothing to choose. Keep the
-    // read-only label so single-tenant deployments are unchanged.
-    if (options.length <= 1) {
-        return (
-            <span data-testid="chat-project-label">{value ?? 'default'}</span>
-        );
+    // Nothing to choose (single project, no "All") → read-only label,
+    // preserving single-tenant parity.
+    if (!allowAll && options.length <= 1) {
+        return <span data-testid="chat-project-label">{value ?? 'default'}</span>;
     }
 
     return (
@@ -72,13 +88,17 @@ export function ProjectSelector({ value, projects, onChange }: ProjectSelectorPr
                 cursor: 'pointer',
             }}
         >
-            {/* When the effective project is null (no membership resolved
-                yet) keep an explicit placeholder option so the control is
-                never in an out-of-range state. */}
-            {value === null && (
-                <option value="" disabled>
-                    default
-                </option>
+            {allowAll ? (
+                <option value="">All projects</option>
+            ) : (
+                // No "All" offered but the resolved value is still unknown:
+                // keep an explicit, non-selectable placeholder so the
+                // control is never in an out-of-range state.
+                value === null && (
+                    <option value="" disabled>
+                        default
+                    </option>
+                )
             )}
             {options.map((key) => (
                 <option key={key} value={key}>

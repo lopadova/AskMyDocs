@@ -92,23 +92,32 @@ export function ChatView(): ReactNode {
     const teamHash = useTeamStore(selectCurrentHash) ?? '';
     const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
     // Reachable projects in the ACTIVE TEAM (R18 — the real membership
-    // domain from /api/auth/me, never a literal list).
+    // domain from /api/auth/me, never a literal list). The DISPLAY list is
+    // sorted alphabetically to read consistently with the admin Knowledge
+    // picker; the NEW-chat default stays the team's first membership in
+    // /me order (sorting must not silently change which project a brand-new
+    // chat targets).
     const teamProjectKeys = useMemo(
-        () => (activeTeam?.projects ?? []).map((p) => p.project_key),
+        () =>
+            (activeTeam?.projects ?? [])
+                .map((p) => p.project_key)
+                .sort((a, b) => a.localeCompare(b)),
         [activeTeam],
     );
-    const defaultProjectKey = teamProjectKeys[0] ?? null;
+    const defaultProjectKey = (activeTeam?.projects ?? [])[0]?.project_key ?? null;
 
-    // User's chosen project for NEW conversations. Null → fall back to the
-    // team default. A conversation binds to ONE project at creation
-    // (`conversations.project_key`) and the BE scopes every turn to it, so
-    // the selector drives conversation creation, not a per-turn filter.
-    const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+    // Chosen scope for NEW conversations: null → team default (first
+    // project), '' → All projects (search across every reachable project),
+    // or a specific project_key. A conversation binds to ONE project at
+    // creation (`conversations.project_key`) and the BE scopes every turn
+    // to it, so the selector drives conversation creation, not a per-turn
+    // filter.
+    const [scope, setScope] = useState<string | null>(null);
 
-    // Switching team can leave a stale selection pointing at a project the
-    // new team can't reach — reset so the new team's default takes over.
+    // Switching team can leave a stale scope pointing at a project the new
+    // team can't reach — reset so the new team's default takes over.
     useEffect(() => {
-        setSelectedProjectKey(null);
+        setScope(null);
     }, [currentTeam]);
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
@@ -136,12 +145,31 @@ export function ChatView(): ReactNode {
     // Effective project scope. For an EXISTING conversation the bound
     // `conversations.project_key` is authoritative (the BE scopes every
     // turn to it; a per-turn project filter can only narrow within it).
-    // For a brand-new chat we honour the user's selector, falling back to
-    // the team default.
+    // For a brand-new chat we honour the user's selection, falling back to
+    // the team default. `projectKey === null` means "All projects".
     const conversationProjectKey = activeConversation?.project_key ?? null;
     const projectKey =
-        activeId !== null ? conversationProjectKey : selectedProjectKey ?? defaultProjectKey;
-    const projectLabel = projectKey ?? 'default';
+        activeId !== null
+            ? conversationProjectKey
+            : scope === null
+              ? defaultProjectKey
+              : scope === ''
+                ? null
+                : scope;
+
+    // "All projects" = a project-less scope that must be constrained to the
+    // user's reachable projects, otherwise a null-project conversation hits
+    // the WHOLE tenant — a cross-membership leak. The constraint is applied
+    // via `effectiveFilters` below (project_keys = my projects).
+    const isAllProjects = projectKey === null && teamProjectKeys.length > 0;
+    const projectLabel = projectKey ?? (isAllProjects ? 'all projects' : 'default');
+
+    // The value rendered in the selector: '' for All, the project_key
+    // otherwise. A new chat with no explicit choice shows the default.
+    const projectScopeValue =
+        activeId !== null
+            ? conversationProjectKey ?? ''
+            : scope ?? defaultProjectKey ?? '';
 
     // One auto-title attempt per conversation id (the BE generateTitle is a
     // real LLM call; never fire it twice for the same thread).
@@ -203,6 +231,22 @@ export function ChatView(): ReactNode {
     // request body. Composer is now a controlled component for
     // filters via `filters` + `onFiltersChange` props.
     const [filters, setFilters] = useState<FilterState>({});
+
+    // When the scope is "All projects", constrain retrieval to the user's
+    // reachable projects so a project-less conversation never reaches the
+    // whole tenant (RBAC). The user's own FilterBar narrowing wins if they
+    // already picked project_keys. The FilterBar itself keeps showing the
+    // raw `filters` (this injection is request-only, not user-facing).
+    const effectiveFilters = useMemo<FilterState>(() => {
+        if (!isAllProjects) {
+            return filters;
+        }
+        if ((filters.project_keys?.length ?? 0) > 0) {
+            return filters;
+        }
+        return { ...filters, project_keys: teamProjectKeys };
+    }, [isAllProjects, filters, teamProjectKeys]);
+
     const collectionsQuery = useQuery({
         queryKey: ['chat-collections'],
         queryFn: () => chatApi.listCollections(),
@@ -308,7 +352,7 @@ export function ChatView(): ReactNode {
 
     const chat = useChatStream({
         conversationId: activeId,
-        filters,
+        filters: effectiveFilters,
         initialMessages,
         onFinish: () => {
             // Refetch the conversations list (sidebar's recent activity
@@ -348,13 +392,15 @@ export function ChatView(): ReactNode {
     };
 
     // Switching the project scope. A conversation is bound to one project
-    // at creation, so to chat in a DIFFERENT project we start a fresh
-    // thread: when the user is inside an existing conversation whose
-    // project differs from the chosen one, reset to a new chat so the next
-    // turn's `requireConversation()` creates a conversation scoped to it.
-    const handleProjectChange = (next: string) => {
-        setSelectedProjectKey(next);
-        if (activeId !== null && conversationProjectKey !== next) {
+    // at creation, so to chat in a DIFFERENT scope we start a fresh thread:
+    // when the user is inside an existing conversation whose project
+    // differs from the chosen one, reset to a new chat so the next turn's
+    // `requireConversation()` creates a conversation scoped to it. `next`
+    // is a project_key or '' for All projects (→ project-less conversation).
+    const handleScopeChange = (next: string) => {
+        setScope(next);
+        const nextProjectKey = next === '' ? null : next;
+        if (activeId !== null && conversationProjectKey !== nextProjectKey) {
             setActive(null);
             navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
         }
@@ -614,9 +660,10 @@ export function ChatView(): ReactNode {
                             }}
                         >
                             <ProjectSelector
-                                value={projectKey}
+                                value={projectScopeValue}
                                 projects={teamProjectKeys}
-                                onChange={handleProjectChange}
+                                allowAll
+                                onChange={handleScopeChange}
                             />
                             <span>·</span>
                             <span>{headerMeta}</span>

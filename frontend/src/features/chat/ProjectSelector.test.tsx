@@ -59,4 +59,45 @@ describe('ProjectSelector', () => {
         expect(select.value).toBe('legacy-project');
         expect(screen.getByRole('option', { name: 'legacy-project' })).toBeInTheDocument();
     });
+
+    describe('allowAll', () => {
+        it('offers an "All projects" entry and selecting it emits the empty sentinel', async () => {
+            const onChange = vi.fn();
+            render(
+                <ProjectSelector
+                    value="hr-portal"
+                    projects={['hr-portal', 'connector-imap']}
+                    allowAll
+                    onChange={onChange}
+                />,
+            );
+            expect(screen.getByRole('option', { name: 'All projects' })).toBeInTheDocument();
+            await userEvent.selectOptions(
+                screen.getByTestId('chat-project-selector'),
+                'All projects',
+            );
+            expect(onChange).toHaveBeenCalledWith('');
+        });
+
+        it('shows "All projects" as selected when value is the empty string', () => {
+            render(
+                <ProjectSelector value="" projects={['hr-portal']} allowAll onChange={() => {}} />,
+            );
+            const select = screen.getByTestId('chat-project-selector') as HTMLSelectElement;
+            expect(select.value).toBe('');
+            expect(screen.getByRole('option', { name: 'All projects' }).getAttribute('value')).toBe(
+                '',
+            );
+        });
+
+        it('renders a <select> even with a single project (the "All" choice exists)', () => {
+            // Without allowAll a single project degrades to a read-only label;
+            // with allowAll there are always ≥2 meaningful choices.
+            render(
+                <ProjectSelector value="hr-portal" projects={['hr-portal']} allowAll onChange={() => {}} />,
+            );
+            expect(screen.getByTestId('chat-project-selector')).toBeInTheDocument();
+            expect(screen.queryByTestId('chat-project-label')).toBeNull();
+        });
+    });
 });
