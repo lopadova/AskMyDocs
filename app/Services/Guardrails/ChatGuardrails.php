@@ -6,6 +6,7 @@ namespace App\Services\Guardrails;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use Illuminate\Support\Facades\Log;
 use Padosoft\AiGuardrails\Audit\InjectionAttempt;
 use Padosoft\AiGuardrails\Contracts\InjectionAuditStore;
 use Padosoft\AiGuardrails\Contracts\OutputStatStore;
@@ -79,8 +80,11 @@ final class ChatGuardrails
                 $verdict->erroredRuleIds,
                 $verdict->matchedSpan,
             ));
-        } catch (Throwable) {
-            // Swallow: a degraded audit store must not break guardrail screening.
+        } catch (Throwable $e) {
+            // Non-blocking, but LOG so a degraded audit store is diagnosable
+            // (the W3 admin would otherwise show missing rows with no signal) —
+            // same posture as the other chat side-channels (SearchFailureRecorder).
+            Log::warning('ai-guardrails: failed to append an injection-audit attempt.', ['exception' => $e]);
         }
 
         return $willBlock;
@@ -110,8 +114,10 @@ final class ChatGuardrails
         if ($clean !== $text) {
             try {
                 $this->outputStats->record(OutputStatKind::MarkdownSanitized);
-            } catch (Throwable) {
-                // Fire-and-forget: a stats-store failure must never abort the chat answer.
+            } catch (Throwable $e) {
+                // Fire-and-forget (the answer must never break), but LOG so missing
+                // output-sanitization metrics are diagnosable during incident response.
+                Log::warning('ai-guardrails: failed to record an output-sanitization stat.', ['exception' => $e]);
             }
         }
 

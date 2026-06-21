@@ -102,8 +102,11 @@ class KbGuardrailsInsightsTool extends Tool
         }
 
         $table = (string) config('ai-guardrails.audit.table', 'ai_guardrails_injection_audit');
+        // Honour the configured store connection (a deployment may point the
+        // guardrails audit at a dedicated DB); null = the default connection.
+        $connection = config('ai-guardrails.audit.connection');
 
-        if (! Schema::hasTable($table)) {
+        if (! Schema::connection($connection)->hasTable($table)) {
             return null;
         }
 
@@ -113,7 +116,7 @@ class KbGuardrailsInsightsTool extends Tool
         // end) ignores NULLs) instead of three separate scans, so this stays
         // single-query as the audit table grows. Driver-portable across pgsql +
         // sqlite (the `blocked = ?` bindings are cast per connection).
-        $row = DB::table($table)
+        $row = DB::connection($connection)->table($table)
             ->where('occurred_at', '>=', $since)
             ->selectRaw('count(*) as screened')
             ->selectRaw('count(case when blocked = ? then 1 end) as blocked', [true])
