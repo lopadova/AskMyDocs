@@ -85,3 +85,9 @@ desktop/
   lives in the local store and every turn hits the stateless `/api/kb/chat`.
 - The Bearer token is kept in the plugin store (plaintext on disk). Hardening
   it into the OS keychain is a follow-up, not part of this demo.
+- **Local TLS:** the Tauri HTTP plugin (rustls) doesn't trust the local-CA cert
+  Valet/Herd serve `.test` hosts with, so cert verification is relaxed **for
+  local dev hosts only** (`api.ts` `LOCAL_DEV` guard + the `dangerous-settings`
+  Cargo feature). A real `https://` API_BASE keeps full verification. After
+  changing the Cargo feature or `api.ts`, **restart `npm run tauri dev`** so the
+  Rust shell recompiles.

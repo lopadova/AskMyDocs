@@ -13,6 +13,33 @@ export interface TokenResponse {
   user: AuthUser;
 }
 
+// One project the user belongs to (within a team/tenant). `role` is the
+// per-project membership role (member | admin | owner).
+export interface TeamProject {
+  project_key: string;
+  role: string;
+  scope?: unknown;
+}
+
+// A team == a tenant the user has access to. Carries the tenant id used as the
+// X-Tenant-Id header and the projects the user holds inside it.
+export interface Team {
+  tenant_id: string;
+  hash: string;
+  name: string;
+  projects: TeamProject[];
+}
+
+// GET /api/auth/me — identity + access. `roles` are global (Spatie) system
+// roles; `teams` group the user's project memberships per tenant.
+export interface MePayload {
+  user: AuthUser;
+  roles: string[];
+  permissions: string[];
+  projects: TeamProject[];
+  teams: Team[];
+}
+
 export interface Citation {
   source_path?: string | null;
   title?: string | null;

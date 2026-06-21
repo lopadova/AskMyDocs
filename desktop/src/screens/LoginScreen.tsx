@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { ApiError, requestToken } from "../lib/api";
+import { ApiError, API_BASE, requestToken } from "../lib/api";
 import { saveSession, type Session } from "../lib/store";
 
 interface Props {
@@ -28,7 +28,7 @@ export function LoginScreen({ onSuccess }: Props) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Network error — is the backend running on http://localhost:8000?",
+          : `Network error — is the backend reachable at ${API_BASE}?`,
       );
       setState("error");
     }

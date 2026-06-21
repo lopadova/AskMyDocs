@@ -46,6 +46,18 @@ export async function clearSession(): Promise<void> {
   await s.save();
 }
 
+export async function loadActiveTenant(): Promise<string | null> {
+  const s = await store();
+  const tenant = await s.get<string>("active_tenant");
+  return tenant ?? null;
+}
+
+export async function saveActiveTenant(tenantId: string): Promise<void> {
+  const s = await store();
+  await s.set("active_tenant", tenantId);
+  await s.save();
+}
+
 export async function loadThreads(): Promise<Thread[]> {
   const s = await store();
   const threads = await s.get<Thread[]>("threads");
