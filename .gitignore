@@ -66,3 +66,12 @@ public/_serve_router.php
 # macOS Finder metadata (must never be committed) — #40
 .DS_Store
 **/.DS_Store
+
+# Tauri desktop demo (desktop/) — Rust build cache, generated platform
+# projects, bundles and JS deps. NEVER versionare: il target Rust e i
+# bundle iOS/Android pesano centinaia di MB e contengono gitlink rotti
+# (swift-rs checkouts) che fanno fallire `git status` non-scoped.
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
+/desktop/node_modules/
+/desktop/dist/
