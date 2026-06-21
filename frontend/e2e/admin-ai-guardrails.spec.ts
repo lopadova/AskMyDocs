@@ -70,7 +70,9 @@ seededTest.describe('Admin AI Guardrails — admin (package-served SPA shell)', 
         // the exact count proves assets + hydration + the secured core API
         // end-to-end — and would catch 3/4 cards silently failing to render (R16).
         await expect(page.getByTestId('agr-control-card').first()).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByTestId('agr-control-card')).toHaveCount(4);
+        // Same explicit timeout as the visibility wait above — the default
+        // (shorter) timeout could flake on a slow CI runner mid-hydration.
+        await expect(page.getByTestId('agr-control-card')).toHaveCount(4, { timeout: 15_000 });
     });
 });
 
