@@ -8,53 +8,52 @@ use Composer\InstalledVersions;
 use PHPUnit\Framework\TestCase;
 
 /**
- * v8.18/W1.2 — DEFERRAL GUARD for the `laravel/ai` 0.7 bump.
+ * v8.19/W1 — PLATFORM-PIN GUARD for the `laravel/ai` 0.8 migration.
  *
- * History: the bump was originally blocked because `padosoft/laravel-ai-regolo`
- * pinned `laravel/ai:^0.6`. As of regolo v1.2.0 that constraint was widened to
- * `^0.6|^0.7|^0.8`, so REGOLO NO LONGER BLOCKS the bump. The host nonetheless
- * intentionally STAYS on `laravel/ai:^0.6.8` for now — moving to 0.7 is a
- * separate, untested change (new SDK surface across all five providers) tracked
- * as a follow-up, not shipped in v8.18.
+ * History: the 0.7/0.8 bump was deferred through v8.16–v8.18 (the SDK surface
+ * was untested across all five providers, and `padosoft/laravel-ai-regolo`
+ * originally pinned `^0.6`). In v8.19 the migration was done **totally**: regolo
+ * was released on `^0.6|^0.7|^0.8.1` (v1.2.1), finops on the 0.8 line (v1.4.0),
+ * and the host bumped to `laravel/ai:^0.8.1`. The only 0.6→0.8 breaking change
+ * (the `TranscriptionGateway::generateTranscription()` `$providerOptions`
+ * parameter, laravel/ai v0.7.0) does not affect AskMyDocs — the host uses chat +
+ * embeddings only, never transcription. See `docs/v4-platform/PROGRESS-v8.19.md`
+ * + `docs/adr/0016-v819-laravel-ai-0.8-platform-migration.md`.
  *
- * So the deferral is now a HOST-SIDE choice, and this guard locks THAT: the host
- * composer.json must keep `laravel/ai` on the `^0.6` line and the installed
- * version must resolve to 0.6.x. When someone deliberately does the 0.7 bump
- * (host constraint → `^0.7`), THIS TEST intentionally fails — the signal to
- * update/remove it. See `docs/v4-platform/PROGRESS-v8.18.md`.
+ * This guard now locks the migrated state: the installed `laravel/ai` must be on
+ * the 0.8 line AND the host composer.json must caret-pin `^0.8`. A drift back to
+ * `^0.6`/`^0.7` (or a forward jump to `^0.9`/`^1.`) fails the test as the signal
+ * to revisit the provider compatibility surface before re-pinning.
  */
 final class LaravelAiPinTest extends TestCase
 {
-    public function test_host_keeps_laravel_ai_on_0_6_until_the_0_7_bump_is_done(): void
+    public function test_host_is_on_the_laravel_ai_0_8_line(): void
     {
-        // The installed laravel/ai must still resolve to the 0.6 line.
+        // The installed laravel/ai must resolve to the 0.8 line.
         $installed = (string) InstalledVersions::getPrettyVersion('laravel/ai');
         $this->assertMatchesRegularExpression(
-            '/^v?0\.6\./',
+            '/^v?0\.8\./',
             $installed,
-            "laravel/ai is installed at {$installed}; the host intentionally stays on 0.6 (the 0.7 bump is a ".
-            'deferred follow-up, see PROGRESS-v8.18.md). If this fails because the bump was done, update this guard.',
+            "laravel/ai is installed at {$installed}; v8.19 migrated the platform to the 0.8 line. ".
+            'A different line means the pin drifted — revisit the provider compatibility surface (see PROGRESS-v8.19.md).',
         );
 
-        // The deferral lever is now the HOST composer.json pin (regolo widened its
-        // own constraint to ^0.6|^0.7|^0.8 in v1.2.0 and no longer blocks 0.7).
+        // The host composer.json must caret-pin the 0.8 line (e.g. "^0.8.1").
         $hostComposer = __DIR__.'/../../../composer.json';
         $manifest = json_decode((string) file_get_contents($hostComposer), true, 512, JSON_THROW_ON_ERROR);
         $constraint = (string) ($manifest['require']['laravel/ai'] ?? '');
 
-        // Host must caret-pin the 0.6 line (e.g. "^0.6.8"); a "^0.7"/">=0.7"/"^1."
-        // form means the bump was done → revisit/remove this guard.
+        // Must be an EXACT single caret-pin on the 0.8 line (e.g. "^0.8.1") —
+        // anchored, so any OR-widening ("^0.8.1 || ^0.9.0"), a forward bump
+        // ("^0.9"/"^1."), or a downgrade ("^0.6.8"/"^0.7") all fail
+        // deterministically and force a fresh provider compatibility pass
+        // before the pin moves.
         $this->assertMatchesRegularExpression(
-            '/(^|[|\s])\^0\.6(\.\d+)?([|\s]|$)/',
+            '/^\^0\.8(\.\d+)?$/',
             $constraint,
-            "the host composer.json now constrains laravel/ai to '{$constraint}' (no longer the deferred ^0.6 ".
-            'pin) — the 0.7 bump appears done; revisit W1.2 and update/remove this guard.',
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/\^0\.7|>=\s*0\.7|0\.7\s*\|\||\|\|\s*0\.7|\^1\./',
-            $constraint,
-            "the host composer.json laravel/ai constraint '{$constraint}' now allows 0.7+ — the deferral is over; ".
-            'update/remove this guard.',
+            "the host composer.json must pin laravel/ai to an exact single caret on the 0.8 line ".
+            "(e.g. ^0.8.1); it is '{$constraint}'. An OR-range, a 0.9/1.0 forward bump, or a downgrade ".
+            'to 0.6/0.7 all require a fresh provider compatibility pass before the pin moves.',
         );
     }
 }
