@@ -43,18 +43,17 @@ final class LaravelAiPinTest extends TestCase
         $manifest = json_decode((string) file_get_contents($hostComposer), true, 512, JSON_THROW_ON_ERROR);
         $constraint = (string) ($manifest['require']['laravel/ai'] ?? '');
 
+        // Must be an EXACT single caret-pin on the 0.8 line (e.g. "^0.8.1") —
+        // anchored, so any OR-widening ("^0.8.1 || ^0.9.0"), a forward bump
+        // ("^0.9"/"^1."), or a downgrade ("^0.6.8"/"^0.7") all fail
+        // deterministically and force a fresh provider compatibility pass
+        // before the pin moves.
         $this->assertMatchesRegularExpression(
-            '/(^|[|\s])\^0\.8(\.\d+)?([|\s]|$)/',
+            '/^\^0\.8(\.\d+)?$/',
             $constraint,
-            "the host composer.json constrains laravel/ai to '{$constraint}', not the expected ^0.8 line — ".
-            'a 0.9/1.0 bump or a downgrade needs a fresh provider compatibility pass before the pin moves.',
-        );
-        // Guard against silently slipping BACK to the deferred 0.6/0.7 pins.
-        $this->assertDoesNotMatchRegularExpression(
-            '/(^|[|\s])\^0\.[67](\.\d+)?([|\s]|$)/',
-            $constraint,
-            "the host composer.json laravel/ai constraint '{$constraint}' slipped back to the 0.6/0.7 line — ".
-            'the platform is migrated to 0.8; do not downgrade.',
+            "the host composer.json must pin laravel/ai to an exact single caret on the 0.8 line ".
+            "(e.g. ^0.8.1); it is '{$constraint}'. An OR-range, a 0.9/1.0 forward bump, or a downgrade ".
+            'to 0.6/0.7 all require a fresh provider compatibility pass before the pin moves.',
         );
     }
 }
