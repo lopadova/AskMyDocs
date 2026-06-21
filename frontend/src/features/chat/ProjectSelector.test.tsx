@@ -74,7 +74,7 @@ describe('ProjectSelector', () => {
             expect(screen.getByRole('option', { name: 'All projects' })).toBeInTheDocument();
             await userEvent.selectOptions(
                 screen.getByTestId('chat-project-selector'),
-                'All projects',
+                screen.getByRole('option', { name: 'All projects' }),
             );
             expect(onChange).toHaveBeenCalledWith('');
         });
