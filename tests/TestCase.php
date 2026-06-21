@@ -143,6 +143,11 @@ abstract class TestCase extends OrchestraTestCase
         // group consumed by the guardrails-admin SPA (W3). The host config
         // override below applies the R32 auth stack + database stores.
         $app->register(\Padosoft\AiGuardrails\AiGuardrailsServiceProvider::class);
+        // v8.19/W3 — guardrails-admin SPA. The package mounts its catch-all SPA
+        // route unconditionally; the host `guardrails-admin.enabled` middleware
+        // (config below) gates it default-OFF. Registered here so the mounting
+        // test can flip the flag on and assert the wired-and-secured route.
+        $app->register(\Padosoft\LaravelAiGuardrailsAdmin\LaravelAiGuardrailsAdminServiceProvider::class);
 
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
@@ -290,6 +295,14 @@ abstract class TestCase extends OrchestraTestCase
             require __DIR__.'/../config/ai-guardrails.php',
         ));
         $app['config']->set('ai-guardrails.enabled', true);
+        // v8.19/W3 — host override of the guardrails-admin SPA config. Default
+        // enabled=false so the GuardrailsAdminEnabled middleware 404s every route
+        // under /admin/ai-guardrails (R43 OFF-state). The mounting test flips this
+        // ON in its own getEnvironmentSetUp to prove the wired-and-secured route.
+        $app['config']->set('ai-guardrails-admin', array_merge(
+            (array) $app['config']->get('ai-guardrails-admin', []),
+            require __DIR__.'/../config/ai-guardrails-admin.php',
+        ));
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
         // routes; tests that exercise the admin routes flip this on
@@ -447,6 +460,12 @@ abstract class TestCase extends OrchestraTestCase
         // enforcement tests throw "Target class [guardrails.authorize] does not
         // exist". Keep in sync with bootstrap/app.php.
         $router->aliasMiddleware('guardrails.authorize', \App\Http\Middleware\GuardrailsAuthorize::class);
+        // v8.19/W3 — guardrails-admin master-switch gate alias. Mirrors
+        // bootstrap/app.php; the package's SPA route stack references
+        // `guardrails-admin.enabled` (first), so without this alias the admin
+        // mounting test throws "Target class [guardrails-admin.enabled] does not
+        // exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('guardrails-admin.enabled', \App\Http\Middleware\GuardrailsAdminEnabled::class);
     }
 
     /**

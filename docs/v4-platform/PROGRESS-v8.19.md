@@ -59,7 +59,20 @@ regolo + finops.
     R32 matrix incl. the guardrails write-method boundary (admin 403 / super-admin pass on PUT /settings).
   - **R45 doc-site** (`docs-site/ai-guardrails.mdx`) is authored in **W6** with the rest of the cycle's docs
     (every wave defers its doc-site page to the single docs wave); README/changelog/MCP-count also land in W6.
-- **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — ⬜
+- **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — 🟡 impl done, testing
+  - `composer require padosoft/laravel-ai-guardrails-admin:^1.0.0` (v1.0.0). Self-contained Blade-served React
+    SPA at `/admin/ai-guardrails` (like finops-admin, NOT a host-React cross-mount → no nav-config entry; reached
+    by direct URL + RBAC, consistent with finops-admin).
+  - The package mounts its catch-all route UNCONDITIONALLY (no `enabled` flag), so default-OFF (R43) is the
+    flow-admin pattern: host `config/ai-guardrails-admin.php` adds an `enabled` key (default false) +
+    `App\Http\Middleware\GuardrailsAdminEnabled` (first in the route middleware) `abort(404)`s when off. SP listed
+    in `bootstrap/providers.php`; alias `guardrails-admin.enabled` in bootstrap/app.php + TestCase.
+  - Route stack: `guardrails-admin.enabled,web,auth,can:viewAiGuardrails` (open the panel = viewAiGuardrails;
+    writes hit the core API's `manageAiGuardrails`). Prebuilt Vite assets published to
+    `public/vendor/ai-guardrails-admin/`. api_base → the W2 core prefix `/api/admin/ai-guardrails`.
+  - Tests: GuardrailsAdminMountingTest 5 (route registers + middleware; R43 OFF→404; viewer→403; admin→200);
+    Playwright `admin-ai-guardrails.spec.ts` (admin reaches the `#agr-root` shell; viewer→403; R13 real-data).
+    CI server env flag `AI_GUARDRAILS_ADMIN_ENABLED=true` in tests.yml + playwright.config.ts.
 - **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — ⬜ (MCP 33→34)
 - **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜
 - **W6 — README + doc-site** — ⬜
