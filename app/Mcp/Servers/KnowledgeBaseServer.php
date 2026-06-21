@@ -32,6 +32,7 @@ use App\Mcp\Tools\KbWikiNavigateTool;
 use App\Mcp\Tools\KbWikiPromoteTool;
 use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbRecentChangesTool;
+use App\Mcp\Tools\KbRunReportTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
 use App\Mcp\Tools\KbSetEvidenceTierTool;
@@ -107,6 +108,11 @@ class KnowledgeBaseServer extends Server
         // the four offline-first controls + injection-audit aggregate). Global
         // security infra (not tenant-scoped); aggregate-only, OFF-safe (R43).
         KbGuardrailsInsightsTool::class,
+
+        // v8.19/W4 — Agentic Knowledge Reports read surface (R44 third surface):
+        // read a saved tabular report's computed matrix (columns + per-document
+        // cells + flag summary), tenant-scoped (R30), never triggers extraction.
+        KbRunReportTool::class,
     ];
 
     protected function boot(): void

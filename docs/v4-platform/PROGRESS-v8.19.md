@@ -60,7 +60,23 @@ regolo + finops.
   - **R45 doc-site** (`docs-site/ai-guardrails.mdx`) is authored in **W6** with the rest of the cycle's docs
     (every wave defers its doc-site page to the single docs wave); README/changelog/MCP-count also land in W6.
 - **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — ⬜
-- **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — ⬜ (MCP 33→34)
+- **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — 🟡 impl done, testing
+  - `AgentKind` enum (extract/graph/verify) — the agentic dimension, orthogonal to FormatType; absent → extract
+    (backward-compatible, every pre-v8.19 review unchanged — 48 existing tabular tests stay green).
+  - `GovernanceColumnResolver` (deterministic, NO LLM): 10 metrics from the canonical graph (kb_edges) + doc
+    columns — evidence_tier, frontmatter_completeness, canonical_status, is_canonical, incoming/outgoing_edges,
+    graph_connectivity, is_orphan, supersession_status, staleness_days. Tenant-scoped (R30), R14 grey/red on
+    non-canonical/unknown.
+  - `TabularReviewExtractor` extended: `agent: graph` → resolver (LLM-free); `agent: verify` → a bounded second
+    LLM pass that downgrades a flag (green→yellow/else→red) when the value isn't supported by cited evidence
+    (R14: never worse than extract; verify failure keeps the original cell).
+  - Flagship preset "Canonical KB Governance Audit" (#16) seeded via `BuiltInWorkflowSeeder` — 8 graph governance
+    columns + 1 verify contradiction column (the ready-made library is now 16 templates).
+  - Validation: `agent` + `metric` added to Store/Update TabularReview requests (metric required+enumerated for
+    graph). Tri-surface (R44): PHP (extractor+seeder), HTTP (existing /api/admin/tabular-reviews/*), MCP
+    `KbRunReportTool` (roster **33→34**, reads a report's matrix, R30/R43).
+  - Tests: GovernanceColumnResolverTest 10, extractor agentic 2 (graph deterministic no-LLM + verify downgrade),
+    RunReportToolTest 3 (matrix + R30 cross-tenant + R43 missing), MCP registration 34; full sweep 154 green.
 - **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜
 - **W6 — README + doc-site** — ⬜
 - **GA — merge feature/v8.19 → main + tag v8.19.0** — ⬜

@@ -75,12 +75,23 @@ export const FORMAT_TYPES: ReadonlyArray<FormatType> = [
     'json_path',
 ] as const;
 
+/**
+ * v8.19/W4 — the agentic dimension of a column. `extract` (default) is the RAG
+ * LLM path; `graph` is a deterministic governance metric (carries `metric`);
+ * `verify` adds an anti-hallucination second pass. Optional so pre-v8.19
+ * reviews round-trip unchanged — and so the editor PRESERVES these keys on save
+ * (omitting them would silently convert a graph column back to an LLM extract).
+ */
+export type AgentKind = 'extract' | 'graph' | 'verify';
+
 export interface ColumnConfig {
     name: string;
     prompt?: string | null;
     format: FormatType;
     enum_values?: string[];
     json_path?: string | null;
+    agent?: AgentKind;
+    metric?: string | null;
 }
 
 export interface TabularReview {

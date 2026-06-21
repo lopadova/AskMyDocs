@@ -11,6 +11,7 @@ use App\Models\TabularCell;
 use App\Models\TabularReview;
 use App\Services\Kb\KbSearchService;
 use App\Services\Kb\Retrieval\RetrievalFilters;
+use App\Support\TabularReview\AgentKind;
 use App\Support\TabularReview\CellFlag;
 use App\Support\TabularReview\CellStatus;
 use App\Support\TabularReview\FormatType;
@@ -60,6 +61,7 @@ class TabularReviewExtractor
         private readonly AiManager $ai,
         private readonly KbSearchService $search,
         private readonly TenantContext $ctx,
+        private readonly GovernanceColumnResolver $governance,
     ) {}
 
     /**
@@ -83,19 +85,50 @@ class TabularReviewExtractor
             return [];
         }
 
-        // Group columns by extraction path: shortcut (no LLM) vs LLM batch.
+        // Group columns by extraction path: json_path shortcut (no LLM),
+        // graph governance (no LLM, deterministic), or the LLM batch.
         $shortcutColumns = [];
+        $graphColumns = [];
         $llmColumns = [];
         foreach ($columns as $idx => $col) {
-            $format = $col['format'];
-            if ($format->isLlmFree() && $col['json_path'] !== null) {
+            if ($col['format']->isLlmFree() && $col['json_path'] !== null) {
                 $shortcutColumns[$idx] = $col;
+                continue;
+            }
+            if ($col['agent']->isLlmFree()) { // AgentKind::GRAPH — deterministic governance.
+                $graphColumns[$idx] = $col;
                 continue;
             }
             $llmColumns[$idx] = $col;
         }
 
         $persisted = [];
+
+        // ── Graph governance path (deterministic, no LLM) ───────────
+        foreach ($graphColumns as $idx => $col) {
+            $resolved = $this->governance->resolve($doc, $col['metric']);
+            if ($resolved === null) {
+                $cell = $this->persistFailure(
+                    $tenant,
+                    $review,
+                    $doc,
+                    $idx,
+                    'Unknown governance metric "'.((string) $col['metric']).'" for graph column "'.$col['name'].'".',
+                );
+            } else {
+                $cell = $this->persistCell(
+                    $tenant,
+                    $review,
+                    $doc,
+                    $idx,
+                    status: CellStatus::READY,
+                    content: $resolved,
+                    flag: CellFlag::tryFrom($resolved['flag']) ?? CellFlag::GREY,
+                );
+            }
+            $persisted[] = $cell;
+            $onCell?->__invoke($cell);
+        }
 
         // ── Shortcut path ───────────────────────────────────────────
         foreach ($shortcutColumns as $idx => $col) {
@@ -234,7 +267,152 @@ class TabularReviewExtractor
             $onCell?->__invoke($cell);
         }
 
+        // ── Verify post-pass (anti-hallucination) ───────────────────
+        // For every `agent: verify` column the second pass re-checks the
+        // extracted value against its cited chunks and downgrades the flag when
+        // the value is not actually supported. One bounded LLM call total.
+        $persisted = $this->applyVerifyPass($tenant, $review, $doc, $llmColumns, $chunkContext, $persisted, $onCell);
+
         return $persisted;
+    }
+
+    /**
+     * v8.19/W4 — verify post-pass. Collects the READY cells of `agent: verify`
+     * columns, asks the model (ONE batched call) whether each value is supported
+     * by the document's retrieved evidence (the same chunk union the extract pass
+     * saw — deliberately broader than the cell's own citations, so the check
+     * never false-downgrades on a too-narrow citation set), and downgrades the
+     * flag (green→yellow, else→red) for the unsupported ones — re-persisting only
+     * those cells. A failure in the
+     * verify call leaves the original cells untouched (R14: never worse than the
+     * extract result).
+     *
+     * @param  array<int, array{name: string, prompt: string, format: FormatType, enum_values: list<string>, json_path: ?string, agent: AgentKind, metric: ?string}>  $llmColumns
+     * @param  array{chunks: list<array{id: int|string, heading: string, text: string}>, doc_id: int}  $chunkContext
+     * @param  list<TabularCell>  $persisted
+     * @return list<TabularCell>
+     */
+    private function applyVerifyPass(
+        string $tenant,
+        TabularReview $review,
+        KnowledgeDocument $doc,
+        array $llmColumns,
+        array $chunkContext,
+        array $persisted,
+        ?\Closure $onCell,
+    ): array {
+        // Index the persisted cells by column for in-place replacement.
+        $byColumn = [];
+        foreach ($persisted as $cell) {
+            $byColumn[$cell->column_index] = $cell;
+        }
+
+        // Candidate verify columns: agent=verify, with a READY cell + a value.
+        $candidates = [];
+        foreach ($llmColumns as $idx => $col) {
+            if (! $col['agent']->isVerify()) {
+                continue;
+            }
+            $cell = $byColumn[$idx] ?? null;
+            if ($cell === null || $cell->status !== CellStatus::READY->value) {
+                continue;
+            }
+            $content = is_array($cell->content) ? $cell->content : [];
+            $summary = isset($content['summary']) ? (string) $content['summary'] : '';
+            if (trim($summary) === '') {
+                continue;
+            }
+            $candidates[$idx] = ['col' => $col, 'cell' => $cell, 'content' => $content, 'summary' => $summary];
+        }
+
+        if ($candidates === []) {
+            return $persisted;
+        }
+
+        $verdicts = $this->runVerifyCall($candidates, $chunkContext);
+        if ($verdicts === []) {
+            return $persisted; // verify unavailable → keep the extract result untouched.
+        }
+
+        foreach ($candidates as $idx => $c) {
+            // Default to supported when the verifier omitted the column (fail-open
+            // — we never upgrade, only downgrade an explicitly-unsupported value).
+            if (($verdicts[$idx] ?? true) === true) {
+                continue;
+            }
+
+            $currentFlag = CellFlag::tryFrom((string) ($c['content']['flag'] ?? CellFlag::GREEN->value)) ?? CellFlag::GREEN;
+            $downgraded = $currentFlag === CellFlag::GREEN ? CellFlag::YELLOW : CellFlag::RED;
+
+            $content = $c['content'];
+            $content['flag'] = $downgraded->value;
+            $reasoning = isset($content['reasoning']) ? (string) $content['reasoning'] : '';
+            $content['reasoning'] = trim($reasoning.' [verify: not supported by cited evidence]');
+
+            $cell = $this->persistCell(
+                $tenant,
+                $review,
+                $doc,
+                $idx,
+                status: CellStatus::READY,
+                content: $content,
+                flag: $downgraded,
+            );
+            $byColumn[$idx] = $cell;
+            $onCell?->__invoke($cell);
+        }
+
+        return array_values($byColumn);
+    }
+
+    /**
+     * One batched verify call: returns a map column_index => supported(bool).
+     * Empty on any failure (caller keeps the extract result).
+     *
+     * @param  array<int, array{summary: string, col: array<string, mixed>}|array<string, mixed>>  $candidates
+     * @param  array{chunks: list<array{id: int|string, heading: string, text: string}>, doc_id: int}  $chunkContext
+     * @return array<int, bool>
+     */
+    private function runVerifyCall(array $candidates, array $chunkContext): array
+    {
+        $system = implode("\n", [
+            'You are a strict fact-checker. You are given EVIDENCE chunks and a list of STATEMENTS.',
+            'For EACH statement, decide whether it is DIRECTLY supported by the evidence.',
+            'Output ONE line of JSON per statement: {"column_index": <int>, "supported": true|false}.',
+            'Do NOT wrap output in markdown fences. Be conservative: if the evidence does not clearly',
+            'support the statement, answer false.',
+        ]);
+
+        $lines = ['Evidence:'];
+        foreach ($chunkContext['chunks'] as $chunk) {
+            $lines[] = sprintf('[chunk_id=%s] %s', (string) $chunk['id'], $chunk['text']);
+        }
+        $lines[] = '';
+        $lines[] = 'Statements:';
+        foreach ($candidates as $idx => $c) {
+            $lines[] = sprintf('  - column_index=%d  statement="%s"', $idx, str_replace('"', "'", $c['summary']));
+        }
+        $lines[] = '';
+        $lines[] = 'Now output one JSON line per statement. Nothing else.';
+
+        try {
+            $response = $this->ai->chat($system, implode("\n", $lines), ['temperature' => 0.0, 'max_tokens' => 600]);
+        } catch (\Throwable $e) {
+            Log::warning('TabularReviewExtractor verify call failed', ['message' => $e->getMessage()]);
+            return [];
+        }
+
+        $out = [];
+        $content = preg_replace('/^```(?:json)?\s*|\s*```$/m', '', trim($response->content)) ?? '';
+        foreach (preg_split('/\r?\n/', $content) ?: [] as $line) {
+            $decoded = json_decode(trim($line), true);
+            if (! is_array($decoded) || ! isset($decoded['column_index']) || ! is_numeric($decoded['column_index'])) {
+                continue;
+            }
+            $out[(int) $decoded['column_index']] = (bool) ($decoded['supported'] ?? true);
+        }
+
+        return $out;
     }
 
     /**
@@ -244,7 +422,7 @@ class TabularReviewExtractor
      * defence-in-depth.
      *
      * @param  array<int, mixed>  $raw
-     * @return array<int, array{name: string, prompt: string, format: FormatType, enum_values: list<string>, json_path: ?string}>
+     * @return array<int, array{name: string, prompt: string, format: FormatType, enum_values: list<string>, json_path: ?string, agent: AgentKind, metric: ?string}>
      */
     private function normaliseColumns(array $raw): array
     {
@@ -271,6 +449,12 @@ class TabularReviewExtractor
                 ? trim($col['json_path'])
                 : null;
 
+            // v8.19/W4 — the agentic dimension. Absent → Extract (backward-compatible).
+            $agent = AgentKind::fromNullable(isset($col['agent']) ? (string) $col['agent'] : null);
+            $metric = isset($col['metric']) && is_string($col['metric']) && trim($col['metric']) !== ''
+                ? trim($col['metric'])
+                : null;
+
             if ($name === '') {
                 continue;
             }
@@ -281,6 +465,8 @@ class TabularReviewExtractor
                 'format' => $format,
                 'enum_values' => $enumValues,
                 'json_path' => $jsonPath,
+                'agent' => $agent,
+                'metric' => $metric,
             ];
         }
         return $out;
