@@ -65,10 +65,12 @@ seededTest.describe('Admin AI Guardrails — admin (package-served SPA shell)', 
         await expect(page.getByTestId('agr-assets-missing')).toHaveCount(0, { timeout: 15_000 });
 
         // Real-data (R13): the dashboard fetches the core API
-        // (GET /api/admin/ai-guardrails/overview) and renders the four control
-        // cards (input screen / output handler / tool firewall / HITL). Their
-        // presence proves assets + hydration + the secured core API end-to-end.
+        // (GET /api/admin/ai-guardrails/overview) and renders the FOUR control
+        // cards (input screen / output handler / tool firewall / HITL). Asserting
+        // the exact count proves assets + hydration + the secured core API
+        // end-to-end — and would catch 3/4 cards silently failing to render (R16).
         await expect(page.getByTestId('agr-control-card').first()).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('agr-control-card')).toHaveCount(4);
     });
 });
 

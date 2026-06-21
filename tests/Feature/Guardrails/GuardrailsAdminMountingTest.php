@@ -59,7 +59,9 @@ final class GuardrailsAdminMountingTest extends TestCase
         $panel = Route::getRoutes()->getByName('ai-guardrails-admin.panel');
 
         $this->assertNotNull($panel, 'ai-guardrails-admin.panel must register when the SPA is enabled.');
-        $this->assertStringStartsWith('admin/ai-guardrails', $panel->uri());
+        // Assert against the CONFIGURED prefix (not a hard-coded literal) so a
+        // change to AI_GUARDRAILS_ADMIN_PREFIX doesn't fail a correct route.
+        $this->assertStringStartsWith((string) config('ai-guardrails-admin.mount_prefix'), $panel->uri());
     }
 
     public function test_route_is_gated_by_the_master_switch_auth_and_the_view_gate(): void
