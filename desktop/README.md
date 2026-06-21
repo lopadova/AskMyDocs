@@ -92,6 +92,11 @@ npm install
 npm run ios:init
 ```
 
+> Code signing uses the Apple Developer **Team ID** preset in
+> [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)
+> (`bundle.iOS.developmentTeam`). Build under a different team by overriding
+> the `APPLE_DEVELOPMENT_TEAM` env var.
+
 **Reach the backend from the device.** On a physical iPhone, `askmydocs.test`
 and `localhost` resolve to the *phone*, not your Mac — point `API_BASE` at your
 Mac's LAN IP at build time, and serve Laravel on the LAN:
