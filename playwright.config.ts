@@ -117,6 +117,12 @@ export default defineConfig({
                   // The default-OFF clean-404 landing (flag off) is covered by
                   // FinOpsDisabledTest (phpunit), per R43 (both states tested).
                   AI_FINOPS_ADMIN_ENABLED: 'true',
+                  // v8.19/W3 — light up the AI Guardrails admin SPA so
+                  // admin-ai-guardrails.spec.ts reaches the real package-served
+                  // Blade shell under /admin/ai-guardrails and proves the
+                  // viewAiGuardrails gate (admin allowed, viewer 403). Default-OFF
+                  // clean-404 is covered by GuardrailsAdminMountingTest (phpunit), R43.
+                  AI_GUARDRAILS_ADMIN_ENABLED: 'true',
                   // v8.17 — OFFLINE IMAP seam so connectors-imap-super-admin.spec.ts
                   // can drive the real credential-connector flow end-to-end (the IMAP
                   // server is a BACKEND TCP dependency Playwright can't stub). The fake

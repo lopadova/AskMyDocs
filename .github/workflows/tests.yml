@@ -342,6 +342,19 @@ jobs:
           test -n "$(ls -A public/vendor/ai-finops-admin 2>/dev/null)" \
             || { echo '::error::ai-finops-admin assets were not published'; exit 1; }
 
+      - name: Publish AI Guardrails admin assets (CLI)
+        env:
+          APP_ENV: testing
+        # Same rationale as the finops step above: /public/vendor is gitignored,
+        # so the guardrails-admin SPA bundle must be published from the vendor dir
+        # in CI. Assert it landed, otherwise admin-ai-guardrails.spec.ts would
+        # silently exercise the package's "assets not built" fallback (which still
+        # renders #agr-root) and pass green without serving the real SPA (R4/R14/R16).
+        run: |
+          php artisan vendor:publish --tag=ai-guardrails-admin-assets --force
+          test -n "$(ls -A public/vendor/ai-guardrails-admin 2>/dev/null)" \
+            || { echo '::error::ai-guardrails-admin assets were not published'; exit 1; }
+
       # Start Laravel explicitly in the workflow instead of relying on
       # playwright.config.ts `webServer`. The webServer block boots
       # artisan-serve under Playwright's own process supervisor and pipes
@@ -409,6 +422,12 @@ jobs:
           # The default-OFF clean-404 is covered by FinOpsDisabledTest (phpunit),
           # per R43 (both states tested).
           AI_FINOPS_ADMIN_ENABLED: 'true'
+          # v8.19/W3 — light up the AI Guardrails admin SPA so admin-ai-guardrails.spec.ts
+          # reaches the real package-served Blade shell at /admin/ai-guardrails and
+          # proves the viewAiGuardrails gate (admin 200, viewer 403). The default-OFF
+          # clean-404 landing is covered by GuardrailsAdminMountingTest (phpunit), per
+          # R43 (both states tested).
+          AI_GUARDRAILS_ADMIN_ENABLED: 'true'
           # v8.17 — OFFLINE IMAP seam (CONNECTOR_IMAP_FAKE_PING) so
           # connectors-imap-super-admin.spec.ts drives the real credential-connector
           # flow without a live IMAP server (a BACKEND TCP dependency Playwright

@@ -63,6 +63,16 @@ $providers = [
     //      preventing routes from leaking on an unprepared deploy.
     Padosoft\LaravelFlowAdmin\FlowAdminServiceProvider::class,
     App\Providers\FlowAdminIntegrationServiceProvider::class,
+    // v8.19/W3 — AI Guardrails Admin SPA (padosoft/laravel-ai-guardrails-admin
+    // v1.0.0). Listed explicitly for the same auto-discovery brittleness
+    // rationale as the siblings above. Like flow-admin, the package mounts its
+    // catch-all SPA route UNCONDITIONALLY — the host-app `enabled` flag is
+    // enforced through config/ai-guardrails-admin.php (the `enabled` key, not in
+    // the vendor config) + the `guardrails-admin.enabled` middleware (first in
+    // the route stack, aliased in bootstrap/app.php) which `abort(404)`s when the
+    // env switch is off, satisfying R43 (clean OFF-state) and preventing the
+    // route from leaking on an unprepared deploy.
+    Padosoft\LaravelAiGuardrailsAdmin\LaravelAiGuardrailsAdminServiceProvider::class,
     // v8.0/W1.2 — Notification dispatch pipeline. Binds the
     // ChannelRegistry singleton and registers NotificationDispatcher
     // as the listener for the 4 BaseNotificationEvent subclasses
