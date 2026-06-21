@@ -12,18 +12,28 @@ import type {
   TokenResponse,
 } from "./types";
 
-// Local backend served by Valet/Herd (matches the repo's APP_URL).
-export const API_BASE = "https://askmydocs.test";
+// Local backend served by Valet/Herd (matches the repo's APP_URL). Override at
+// build time with VITE_API_BASE — REQUIRED on a physical iPhone, where `.test`
+// and localhost resolve to the device itself: point it at the host machine's
+// LAN address, e.g. `VITE_API_BASE=http://192.168.1.50:8000 npm run ios:dev`.
+// Keep the HTTP scope in src-tauri/capabilities/default.json in lockstep.
+export const API_BASE = (
+  (import.meta.env.VITE_API_BASE ?? "https://askmydocs.test")
+    .trim()
+    .replace(/\/+$/, "")
+);
 
 // rustls (the Tauri HTTP plugin's default TLS backend) only trusts the public
 // webpki root store, so it REJECTS the local-CA certificate that Valet/Herd
 // serve `.test` hosts with — the symptom is a "Network error" before any HTTP
 // status. Relax cert verification for LOCAL DEV hosts only; any real (non-local)
 // API_BASE keeps full TLS verification. Requires the `dangerous-settings`
-// feature on tauri-plugin-http (see src-tauri/Cargo.toml).
+// feature on tauri-plugin-http (see src-tauri/Cargo.toml). RFC1918 LAN ranges
+// are included so a self-signed https backend reached from a device also works.
 const LOCAL_DEV =
   /(\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/.test(API_BASE) ||
-  /\.test(:|\/|$)/.test(API_BASE);
+  /\.test(:|\/|$)/.test(API_BASE) ||
+  /\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(API_BASE);
 
 function http(url: string, init: RequestInit = {}): Promise<Response> {
   if (!LOCAL_DEV) {
