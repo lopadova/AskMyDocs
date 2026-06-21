@@ -493,6 +493,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\DigestPruneFeedCommand::class,
             // v8.15/W5 — gamification badge awarding (opt-in).
             \App\Console\Commands\GamificationRecomputeCommand::class,
+            // v8.18/W4 — AI gamification insights (compute + narrate, per tenant).
+            \App\Console\Commands\GamificationNarrateCommand::class,
             // v8.0/W6.1 — full tenant collection membership reevaluation.
             CollectionsReevaluateCommand::class,
             // v8.0/W7.4 — consumer MCP debugger bootstrap snippet.

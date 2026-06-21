@@ -36,13 +36,16 @@ test.describe('Engagement dashboards', () => {
         await expect(page.getByTestId('me-dashboard-error')).toBeVisible();
     });
 
-    test('badges section stays hidden when gamification is off (real-data OFF state, R43)', async ({ page }) => {
-        // CI runs with KB_GAMIFICATION_ENABLED off: /api/me/badges returns
-        // enabled:false, so the badges section must not render at all. Real data,
-        // no stub — this is the OFF half of the R43 both-states contract.
+    test('badges section renders when gamification is on (real-data, default-ON since v8.18, R43)', async ({ page }) => {
+        // Gamification is ON by default since v8.18, so CI runs with it enabled:
+        // /api/me/badges returns enabled:true and the badges section renders. Real
+        // data, no stub. The OFF half of the R43 both-states contract (enabled:false
+        // → the section does not render at all) is covered at the unit layer by the
+        // MeBadges Vitest + GamificationTest (phpunit) — E2E can't flip the global
+        // flag per-test without breaking the insights specs that need it on.
         await page.goto('/app/me');
         await expect(page.getByTestId('me-dashboard')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
-        await expect(page.getByTestId('me-badges')).toHaveCount(0);
+        await expect(page.getByTestId('me-badges')).toBeVisible();
     });
 
     test('badges section surfaces an error when its API fails (R13: failure injection)', async ({ page }) => {

@@ -51,6 +51,7 @@ import { DigestFeedCard } from '../features/digest/DigestFeedCard';
 import { DigestPreferences } from '../features/digest/DigestPreferences';
 import { MeDashboard } from '../features/dashboard/MeDashboard';
 import { EngagementPanel } from '../features/admin/engagement/EngagementPanel';
+import { GamificationInsightsPanel } from '../features/admin/engagement/GamificationInsightsPanel';
 import { AdminNotificationDefaultsGrid } from '../features/notifications/AdminNotificationDefaultsGrid';
 import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
@@ -1056,6 +1057,7 @@ function AdminEngagementRoute() {
         <AdminShell section="engagement">
             <RequireRole roles={['admin', 'super-admin']}>
                 <EngagementPanel />
+                <GamificationInsightsPanel />
             </RequireRole>
         </AdminShell>
     );

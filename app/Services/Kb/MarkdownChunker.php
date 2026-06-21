@@ -354,7 +354,9 @@ class MarkdownChunker implements ChunkerInterface
             return [$text];
         }
 
-        return $this->accumulateParagraphs($text, $hardCapTokens);
+        $pieces = $this->accumulateParagraphs($text, $hardCapTokens);
+
+        return $this->applyOverlap($pieces, $this->overlapTokens());
     }
 
     /**
@@ -379,6 +381,59 @@ class MarkdownChunker implements ChunkerInterface
             return [$text];
         }
         return $out;
+    }
+
+    /**
+     * Carry the tail of each piece onto the head of the next, on paragraph
+     * boundaries, within the overlap-token budget. No-op when $overlap <= 0
+     * or there is only a single piece (single-chunk sections never overlap).
+     *
+     * The tail is taken from the ORIGINAL (pre-overlap) previous piece so
+     * overlap never compounds across three or more pieces.
+     *
+     * @param  list<string>  $pieces
+     * @return list<string>
+     */
+    private function applyOverlap(array $pieces, int $overlap): array
+    {
+        if ($overlap <= 0 || count($pieces) < 2) {
+            return $pieces;
+        }
+
+        $out = [$pieces[0]];
+        for ($i = 1, $n = count($pieces); $i < $n; $i++) {
+            $tail = $this->tailParagraphsWithinBudget($pieces[$i - 1], $overlap);
+            $out[] = $tail === '' ? $pieces[$i] : $tail . "\n\n" . $pieces[$i];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Take whole trailing paragraphs of $piece, newest-first, until adding
+     * the next would exceed $overlap tokens. Returns them in original order,
+     * "\n\n"-joined. Guarantees a paragraph boundary (never mid-word). When
+     * even a single trailing paragraph exceeds the budget, returns '' so the
+     * next chunk is unchanged (an over-budget single paragraph is not split).
+     */
+    private function tailParagraphsWithinBudget(string $piece, int $overlap): string
+    {
+        $paragraphs = preg_split(self::PARAGRAPH_SEP, trim($piece)) ?: [];
+        $picked = [];
+        $budget = 0;
+        for ($i = count($paragraphs) - 1; $i >= 0; $i--) {
+            $para = trim($paragraphs[$i]);
+            if ($para === '') {
+                continue;
+            }
+            $budget += $this->estimateTokens($para);
+            if ($budget > $overlap) {
+                break;
+            }
+            array_unshift($picked, $para);
+        }
+
+        return implode("\n\n", $picked);
     }
 
     /**
@@ -423,5 +478,32 @@ class MarkdownChunker implements ChunkerInterface
             return 1024;
         }
         return (int) config('kb.chunking.hard_cap_tokens', 1024);
+    }
+
+    /**
+     * Configurable overlap budget in approximate tokens. When > 0, the tail
+     * of each previous piece is duplicated onto the head of the next piece (on
+     * paragraph boundaries — never mid-word; a single-paragraph piece overlaps
+     * whole when it fits the budget) so an answer straddling a chunk boundary
+     * still appears whole in at least one chunk.
+     *
+     * Code default is 0 (OFF) so a container-less unit construction never
+     * silently overlaps; the shipped config default is read from
+     * `kb.chunking.overlap_tokens` when the container is bound. `max(0, …)`
+     * clamps a negative env misconfiguration to off.
+     */
+    private function overlapTokens(): int
+    {
+        if (! function_exists('config') || ! function_exists('app')) {
+            return 0;
+        }
+        try {
+            if (! app()->bound('config')) {
+                return 0;
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+        return max(0, (int) config('kb.chunking.overlap_tokens', 0));
     }
 }

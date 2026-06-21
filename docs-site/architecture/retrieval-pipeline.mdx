@@ -175,6 +175,16 @@ re-propose it.
   peer on priority alone.
 - **No canonical docs → identical to plain hybrid RAG.** The boost, graph
   expansion, and rejected injection all no-op.
+- **Retrieval-metric math is delegated to `padosoft/eval-harness` (since v8.18).**
+  The ranking metrics the `kb:benchmark` harness reports — MRR, nDCG@k, and the
+  new answer-containment@k — are no longer hand-rolled in the host. They are
+  computed by the package's `RetrievalMrrMetric` / `RetrievalNdcgAtKMetric` /
+  `AnswerContainmentAtKMetric`, reached through a single anti-corruption adapter
+  (`App\Services\Kb\Metrics\PackageMetricAdapter`) — the only file in the host
+  that imports a `Padosoft\EvalHarness\…` symbol, so a package API change is
+  absorbed in one place. The delegated nDCG keeps the historical `2^grade − 1`
+  gain so scores stay byte-comparable with pre-v8.18 baselines. `eval-harness`
+  is therefore a runtime `require` (`^1.3.0`), not just the CI gate.
 
 <CardGroup cols={2}>
   <Card title="Canonical graph" icon="share-nodes" href="/architecture/canonical-graph">

@@ -86,6 +86,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\EngagementDigestFeedEntry::class,
         // v8.15/W5 — gamification badges.
         \App\Models\KbUserBadge::class,
+        // v8.18/W4 — AI gamification insight snapshots.
+        \App\Models\KbGamificationInsight::class,
         \App\Models\ChatFilterPreset::class,
         \App\Models\ChatLogProvenance::class,
         // v4.7/W1 — tabular review backend tables.

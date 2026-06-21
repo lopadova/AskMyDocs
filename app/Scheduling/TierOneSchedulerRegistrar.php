@@ -64,6 +64,8 @@ final class TierOneSchedulerRegistrar
         ['digest_prune_feed', 'digest:prune-feed'],
         // v8.15/W5 — gamification badge awarding (opt-in; no-op when disabled).
         ['gamification_recompute', 'gamification:recompute'],
+        // v8.18/W4 — weekly AI gamification insights (compute + narrate per tenant).
+        ['gamification_narrate', 'gamification:narrate'],
         // v8.7/W5 — Cloud Time Machine archived-version retention.
         ['kb_prune_archived_versions', 'kb:prune-archived-versions'],
         // v8.9 — UI upload staging buffer retention sweep.

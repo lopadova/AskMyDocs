@@ -83,13 +83,13 @@ class ChatTurnCostResolver
             );
 
             return new ChatTurnCost(
-                // The finops CostBreakdown::$total is a native PHP float (the package's
-                // type), so number_format rounds it to a stable 8-dp decimal string —
-                // matching the chat_logs.cost decimal(18,8) column + the ledger's
-                // cost_total precision. (We can't start from a decimal string here;
-                // float is the package's source type, so 8-dp rounding is the most
-                // faithful serialization available.)
-                cost: number_format($resolution->cost->total, 8, '.', ''),
+                // v8.18/W1.3 — consume the package's own fixed-precision accessor
+                // (laravel-ai-finops ^1.3) instead of re-formatting the float here.
+                // CostBreakdown::totalDecimal() is number_format($total, 8) with
+                // signed-zero normalization, matching the chat_logs.cost
+                // decimal(18,8) column + the ledger's cost_total precision — and
+                // it can never emit a surprising "-0.00000000".
+                cost: $resolution->cost->totalDecimal(),
                 currency: $resolution->cost->currency,
                 method: $resolution->method->value,
             );
