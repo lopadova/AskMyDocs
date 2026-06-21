@@ -5,12 +5,10 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Http\Controllers\Api\ConversationController;
-use App\Models\Conversation;
 use App\Models\User;
 use App\Support\TenantContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 /**
