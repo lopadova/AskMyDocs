@@ -71,7 +71,9 @@ test.describe('Chat project selector', () => {
         await selector.selectOption('hr-portal');
 
         await expect.poll(() => page.url(), { timeout: 15_000 }).not.toMatch(/\/chat\/\d+/);
-        await expect(page.getByText('New chat')).toBeVisible();
+        // Scope to the header — "New chat" also appears on the sidebar's
+        // new-conversation affordance, so an unscoped getByText is ambiguous.
+        await expect(page.getByTestId('chat-header').getByText('New chat')).toBeVisible();
         // The selector now reflects the freshly chosen scope for the new chat.
         await expect(selector).toHaveValue('hr-portal');
     });
