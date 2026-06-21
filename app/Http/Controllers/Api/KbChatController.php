@@ -13,6 +13,7 @@ use App\Services\ChatLog\ChatLogManager;
 use App\Services\Kb\Chat\ChatRetrievalService;
 use App\Services\Kb\Grounding\ConfidenceCalculator;
 use App\Services\Kb\Retrieval\CounterfactualService;
+use App\Services\Guardrails\ChatGuardrails;
 use App\Services\Kb\Retrieval\SearchResult;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -43,6 +44,7 @@ class KbChatController extends Controller
         TenantContext $tenants,
         RedactorEngine $redactor,
         ChatTurnCostResolver $costResolver,
+        ChatGuardrails $guardrails,
     ): JsonResponse {
         $question = (string) $request->input('question');
 
@@ -121,6 +123,32 @@ class KbChatController extends Controller
             );
         }
 
+        // v8.19/W2 — INPUT GUARDRAIL (laravel-ai-guardrails Control B). Screen the
+        // user's question for prompt-injection / jailbreak / exfiltration BEFORE it
+        // reaches the LLM, and append the attempt to the append-only audit (which
+        // feeds the guardrails admin console, W3). A blocked prompt is a REFUSAL,
+        // not an error: same response shape as a no-context refusal (R26/R27), never
+        // a 500. The ChatGuardrails adapter resolves the enforce/monitor/off mode;
+        // the `guardrailsInputEnabled()` gate makes the master/per-control OFF state
+        // a clean pass-through that never reaches the adapter (R43). Screening before
+        // the LLM (not before retrieval) is security-equivalent for injection defense
+        // — retrieval is a read-only vector search over our own KB that injection
+        // cannot exploit — and lets us reuse refusalResponse().
+        $userId = $request->user()?->id;
+        $principal = $userId !== null ? (string) $userId : null;
+        if ($this->guardrailsInputEnabled() && $guardrails->screenInput($question, $principal)) {
+            return $this->refusalResponse(
+                request: $request,
+                chatLog: $chatLog,
+                question: $question,
+                projectKey: $projectKey,
+                result: $result,
+                startTime: $startTime,
+                reason: 'blocked_by_guardrails',
+                counterfactual: $counterfactualPanels,
+            );
+        }
+
         $systemPrompt = view('prompts.kb_rag', [
             'chunks' => $result->primary,
             'expanded' => $result->expanded,
@@ -133,6 +161,18 @@ class KbChatController extends Controller
         // row, and persist the SAME id on the chat_logs row (join key).
         $traceId = ChatTraceContext::newTraceId();
         $aiResponse = ChatTraceContext::within($traceId, fn (): AiResponse => $ai->chat($systemPrompt, $question));
+
+        // v8.19/W2 — OUTPUT GUARDRAIL (laravel-ai-guardrails Control C). Sanitize the
+        // model's answer (markdown-exfil neutralization; HTML escaping + PII redaction
+        // are disabled in the host config — see config/ai-guardrails.php) BEFORE it is
+        // logged, scored, or returned. Swapped in one place via AiResponse::withContent()
+        // so every downstream consumer (sentinel check, confidence, cost, chat log,
+        // response) sees the sanitized body. The adapter resolves enforce/monitor/off
+        // and records an output-stat; the `guardrailsOutputEnabled()` gate makes the OFF
+        // state a clean pass-through (R43).
+        if ($this->guardrailsOutputEnabled()) {
+            $aiResponse = $aiResponse->withContent($guardrails->sanitizeOutput($aiResponse->content));
+        }
 
         $latencyMs = (int) ((microtime(true) - $startTime) * 1000);
 
@@ -457,6 +497,31 @@ class KbChatController extends Controller
         }
 
         return (string) __('kb.no_grounded_answer');
+    }
+
+    /**
+     * v8.19/W2 — is the laravel-ai-guardrails INPUT screening control live for the
+     * chat path? Gated on the package master switch AND the per-control flag so an
+     * operator can disable screening (or the whole package) and the chat path
+     * degrades to a clean pass-through — never calling the facade (R43 OFF-state).
+     * The enforce/monitor/off MODE is resolved inside ChatGuardrails::screenInput()
+     * (via ControlMode::resolve); this gate only decides whether we screen at all.
+     */
+    private function guardrailsInputEnabled(): bool
+    {
+        return (bool) config('ai-guardrails.enabled', true)
+            && (bool) config('ai-guardrails.input_screen.enabled', true);
+    }
+
+    /**
+     * v8.19/W2 — is the laravel-ai-guardrails OUTPUT sanitization control live for
+     * the chat path? Same gating rationale as {@see guardrailsInputEnabled()}; in
+     * monitor/off mode AiGuardrails::sanitize() returns the answer unchanged.
+     */
+    private function guardrailsOutputEnabled(): bool
+    {
+        return (bool) config('ai-guardrails.enabled', true)
+            && (bool) config('ai-guardrails.output_handler.enabled', true);
     }
 
     /**

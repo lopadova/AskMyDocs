@@ -17,6 +17,7 @@ use App\Mcp\Tools\KbUserBadgesTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
 use App\Mcp\Tools\KbGraphSubgraphTool;
+use App\Mcp\Tools\KbGuardrailsInsightsTool;
 use App\Mcp\Tools\KbListDanglingWikilinksTool;
 use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
@@ -101,6 +102,11 @@ class KnowledgeBaseServer extends Server
         FinOpsSpendSummaryTool::class,
         FinOpsTopModelsTool::class,
         FinOpsBudgetStatusTool::class,
+
+        // v8.19/W2 — AI Guardrails posture read surface (R44 third surface over
+        // the four offline-first controls + injection-audit aggregate). Global
+        // security infra (not tenant-scoped); aggregate-only, OFF-safe (R43).
+        KbGuardrailsInsightsTool::class,
     ];
 
     protected function boot(): void
