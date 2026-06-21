@@ -23,6 +23,7 @@
         "padosoft/laravel-ai-act-compliance-admin": "^1.5.0",
         "padosoft/laravel-ai-finops": "^1.4",
         "padosoft/laravel-ai-finops-admin": "^1.2",
+        "padosoft/laravel-ai-guardrails": "^1.1.0",
         "padosoft/laravel-ai-regolo": "^1.2.1",
         "padosoft/laravel-evidence-risk-review": "^1.1",
         "padosoft/laravel-evidence-risk-review-admin": "^1.0",

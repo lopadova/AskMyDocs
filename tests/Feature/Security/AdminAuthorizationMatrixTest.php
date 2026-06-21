@@ -107,6 +107,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/ai-act-compliance/overview' => ['admin', 'dpo', 'super-admin'], // viewAiActCompliance
             '/api/admin/evidence-risk-review/reviews' => ['admin', 'dpo', 'super-admin'], // viewEvidenceRiskReview
             '/api/admin/ai-finops/settings' => ['admin', 'super-admin'], // FinOpsAuthorize: GET → viewAiFinOps
+            '/api/admin/ai-guardrails/overview' => ['admin', 'super-admin'], // GuardrailsAuthorize: GET → viewAiGuardrails
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys

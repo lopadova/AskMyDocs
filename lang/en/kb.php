@@ -17,5 +17,6 @@ return [
     'refusal' => [
         'no_relevant_context' => 'No documents in the knowledge base match this question.',
         'llm_self_refusal' => 'The AI cannot answer this question based on the provided documents.',
+        'blocked_by_guardrails' => 'This request was blocked by the input guardrails and was not processed.',
     ],
 ];
