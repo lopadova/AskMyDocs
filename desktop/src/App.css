@@ -506,6 +506,229 @@ body {
   font-size: 11px;
 }
 
+/* ---------- search result as a button ---------- */
+/* `.result` is now a <button>; reset its chrome but keep the card look. */
+button.result {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  transition: border-color 0.15s, background 0.15s;
+}
+button.result:hover {
+  border-color: var(--accent);
+  background: var(--bg-input);
+}
+button.result:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(91, 140, 255, 0.35);
+}
+
+/* ---------- clickable citation ---------- */
+.citation-open {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+.citation-open:hover {
+  text-decoration: underline;
+}
+.citation-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- document modal (fullpage MD viewer) ---------- */
+.doc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.doc-modal {
+  width: min(1000px, 92vw);
+  height: min(90vh, 100%);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.doc-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-modal-titles {
+  flex: 1;
+  min-width: 0;
+}
+.doc-modal-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.doc-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.doc-modal-path {
+  margin-top: 6px;
+  word-break: break-all;
+}
+.doc-modal-close {
+  font-size: 15px;
+  line-height: 1;
+  padding: 8px 12px;
+}
+.doc-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 18px 22px 28px;
+}
+.doc-modal-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+/* ---------- markdown typography (shared: modal + chat) ---------- */
+.md {
+  white-space: normal;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  line-height: 1.3;
+  margin: 1.2em 0 0.5em;
+  font-weight: 650;
+}
+.md h1 {
+  font-size: 1.5em;
+}
+.md h2 {
+  font-size: 1.3em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.25em;
+}
+.md h3 {
+  font-size: 1.12em;
+}
+.md p {
+  margin: 0.6em 0;
+}
+.md ul,
+.md ol {
+  margin: 0.6em 0;
+  padding-left: 1.4em;
+}
+.md li {
+  margin: 0.25em 0;
+}
+.md li > input[type="checkbox"] {
+  margin-right: 0.5em;
+}
+.md a.md-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.md a.md-link:hover {
+  text-decoration: underline;
+}
+.md .md-link-inert {
+  color: var(--text);
+  text-decoration: underline dotted var(--muted);
+}
+.md code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1em 0.4em;
+}
+.md pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+}
+.md pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+.md blockquote {
+  margin: 0.8em 0;
+  padding: 2px 14px;
+  border-left: 3px solid var(--accent-strong);
+  color: var(--muted);
+}
+.md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.2em 0;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.md th,
+.md td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.md th {
+  background: var(--bg-input);
+}
+.md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+/* Tighter spacing when markdown lives inside a chat bubble. */
+.bubble .md {
+  font-size: inherit;
+}
+
 /* ================= touch / mobile hardening (all sizes) ================= */
 html {
   -webkit-text-size-adjust: 100%;
@@ -686,5 +909,31 @@ body {
   .auth-card {
     width: 100%;
     max-width: 360px;
+  }
+
+  /* ---- document modal goes full-screen, notch/home-indicator aware ---- */
+  .doc-modal-backdrop {
+    padding: 0;
+  }
+  .doc-modal {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+  }
+  .doc-modal-head {
+    padding-top: calc(14px + env(safe-area-inset-top));
+    padding-left: calc(18px + env(safe-area-inset-left));
+    padding-right: calc(18px + env(safe-area-inset-right));
+  }
+  .doc-modal-close {
+    min-height: 40px;
+    min-width: 44px;
+  }
+  .doc-modal-body {
+    padding-left: calc(18px + env(safe-area-inset-left));
+    padding-right: calc(18px + env(safe-area-inset-right));
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
   }
 }
