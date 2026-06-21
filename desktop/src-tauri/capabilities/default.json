@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window: opener + scoped HTTP to the local AskMyDocs backend + local store.",
+  "description": "Capability for the main window: opener + scoped HTTP to the AskMyDocs backend (production + local) + local store.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,6 +10,7 @@
     {
       "identifier": "http:default",
       "allow": [
+        { "url": "https://askmydocs.surfacesrl.com/*" },
         { "url": "https://askmydocs.test/*" },
         { "url": "http://localhost:8000/*" },
         { "url": "http://127.0.0.1:8000/*" },

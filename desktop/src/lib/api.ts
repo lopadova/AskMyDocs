@@ -13,13 +13,14 @@ import type {
   TokenResponse,
 } from "./types";
 
-// Local backend served by Valet/Herd (matches the repo's APP_URL). Override at
-// build time with VITE_API_BASE — REQUIRED on a physical iPhone, where `.test`
-// and localhost resolve to the device itself: point it at the host machine's
-// LAN address, e.g. `VITE_API_BASE=http://192.168.1.50:8000 npm run ios:dev`.
+// Production backend (the live AskMyDocs deployment). Override at build time
+// with VITE_API_BASE to point at a local backend (e.g. Valet/Herd
+// `https://askmydocs.test`) or — REQUIRED on a physical iPhone, where `.test`
+// and localhost resolve to the device itself — at the host machine's LAN
+// address, e.g. `VITE_API_BASE=http://192.168.1.50:8000 npm run ios:dev`.
 // Keep the HTTP scope in src-tauri/capabilities/default.json in lockstep.
 export const API_BASE = (
-  (import.meta.env.VITE_API_BASE ?? "https://askmydocs.test")
+  (import.meta.env.VITE_API_BASE ?? "https://askmydocs.surfacesrl.com")
     .trim()
     .replace(/\/+$/, "")
 );
