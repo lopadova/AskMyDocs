@@ -88,6 +88,15 @@ final class GuardrailsAdminMountingTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_guest_is_redirected_to_login_when_enabled(): void
+    {
+        // A GUEST must NOT reach the panel: the `web` + `auth` guard redirects
+        // an unauthenticated request away (302). Asserting this explicitly guards
+        // against a regression that drops `auth` from the stack and makes the
+        // panel publicly reachable (Copilot).
+        $this->get('/admin/ai-guardrails')->assertRedirect();
+    }
+
     public function test_viewer_is_forbidden_when_enabled(): void
     {
         $this->actingAs($this->userWithRole('viewer'))
