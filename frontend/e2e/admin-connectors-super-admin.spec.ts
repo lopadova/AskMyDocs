@@ -116,7 +116,7 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         const backBtn = page.getByTestId('callback-back');
         await expect(backBtn).toBeVisible();
         await backBtn.click();
-        await expect(page).toHaveURL(/\/app\/admin\/connectors$/);
+        await expect(page).toHaveURL(/\/admin\/connectors$/);
     });
 
     baseTest('sidebar entry for Connectors navigates to /app/admin/connectors', async ({
@@ -130,7 +130,7 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         await expect(navButton).toBeVisible();
         await navButton.click();
 
-        await expect(page).toHaveURL(/\/app\/admin\/connectors$/);
+        await expect(page).toHaveURL(/\/admin\/connectors$/);
         await expect(page.getByTestId('admin-connectors')).toBeVisible({ timeout: 15_000 });
     });
 });

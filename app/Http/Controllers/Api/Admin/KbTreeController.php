@@ -54,26 +54,47 @@ class KbTreeController extends Controller
     }
 
     /**
-     * Copilot #5 fix: the project filter on the FE used to be hard-coded
-     * to `hr-portal` / `engineering`. This endpoint returns the distinct
-     * set of `project_key` values actually present in the DB (including
-     * soft-deleted rows — an admin restoring a trashed doc still needs
-     * to see its project even when the live-only list wouldn't expose
-     * it). The FE `<select>` renders one `<option>` per entry.
+     * The distinct set of project keys available in the active team, for
+     * the FE project pickers. Unions THREE sources so a project shows up
+     * regardless of how it came to exist (v8.9):
+     *
+     *   1. the `projects` registry (a project created in the admin
+     *      Projects page, even before its first document);
+     *   2. `knowledge_documents` (incl. soft-deleted — an admin restoring
+     *      a trashed doc still needs its project);
+     *   3. `project_memberships` (a project a user was granted access to
+     *      but that has no documents yet).
+     *
+     * All three are tenant-scoped (R30): only the active team's keys
+     * surface. The FE `<select>` renders one `<option>` per entry.
      */
     public function projects(): JsonResponse
     {
-        // R30 — only this tenant's project_key values may surface in the
-        // dropdown; KnowledgeDocument is tenant-aware and BelongsToTenant
-        // adds no global read scope, so apply the active tenant explicitly.
-        $projects = KnowledgeDocument::query()
-            ->forTenant(app(TenantContext::class)->current())
+        $tenantId = app(TenantContext::class)->current();
+
+        $fromRegistry = \App\Models\Project::query()
+            ->forTenant($tenantId)
+            ->pluck('project_key');
+
+        $fromDocuments = KnowledgeDocument::query()
+            ->forTenant($tenantId)
             ->withTrashed()
             ->whereNotNull('project_key')
             ->distinct()
-            ->orderBy('project_key')
-            ->pluck('project_key')
+            ->pluck('project_key');
+
+        $fromMemberships = \App\Models\ProjectMembership::query()
+            ->forTenant($tenantId)
+            ->whereNotNull('project_key')
+            ->distinct()
+            ->pluck('project_key');
+
+        $projects = $fromRegistry
+            ->concat($fromDocuments)
+            ->concat($fromMemberships)
             ->filter(fn ($k) => is_string($k) && trim($k) !== '')
+            ->unique()
+            ->sort()
             ->values()
             ->all();
 

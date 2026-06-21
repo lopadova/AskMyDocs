@@ -124,6 +124,24 @@ Se hai girato `DemoSeeder`/`RbacSeeder`: `admin@demo.local` / `password`
 (ruolo *admin*, vede quasi tutti i pannelli), `super@demo.local` / `password`
 (*super-admin*, vede tutto), `viewer@demo.local` / `password` (*viewer*).
 
+### Utenti per l'isolamento per-utente (opzionale)
+
+`ingest.sh` concede a **tutti** gli utenti la membership su **tutti e tre** i
+progetti (serve al Project Switcher) — l'opposto di "l'utente di AziendaX vede
+solo X". Per collaudare anche l'**asse per-utente** crea tre account `viewer`,
+ciascuno membro **solo** della propria azienda:
+
+```bash
+php artisan db:seed --class=Database\\Seeders\\CaseStudyUsersSeeder
+```
+
+Crea i tre `Project` + `rotta@case-study.local` / `prometeo@case-study.local` /
+`passolibero@case-study.local` (password `password`), ognuno con membership al
+solo progetto omonimo. Con **`KB_PROJECT_ISOLATION_ENABLED=true`** ogni account
+legge esclusivamente i documenti della propria azienda (il gate diventa la
+membership, non `kb.read.any`). È idempotente. Il test automatico di questo asse
+è `tests/Feature/Rbac/CaseStudyProjectIsolationTest.php` (gira in CI su SQLite).
+
 ---
 
 ## 4. Mappa dei pannelli della sidebar (23 voci, 5 gruppi)
@@ -345,6 +363,69 @@ dell'intero pacchetto.
 
 ---
 
+## 6.6 — Automazione (la checklist §6 come test eseguibile)
+
+La matrice §6/§6.5 sopra **non** è più solo manuale: vive come dati in
+`app/Support/CaseStudy/IsolationMatrix.php` (fonte unica) ed è eseguita da due
+superfici che non possono divergere dal README.
+
+**A) Test live end-to-end** — `tests/Live/Rag/LiveRagIsolationTest.php`.
+Ingesta le 3 aziende in un tenant usa-e-getta ed esegue tutta la matrice
+(N1–N6, P1–P5, D1–D2, Test E, Test F) sulla pipeline reale (pgvector +
+embeddings veri). Gated come `LiveRagPipelineTest` — non tocca i dati reali:
+
+```bash
+LIVE_RAG=1 DB_HOST=127.0.0.1 DB_PORT=5433 DB_DATABASE=askmydocs \
+  DB_USERNAME=postgres DB_PASSWORD=<pw> OPENROUTER_API_KEY=<real> \
+  QUEUE_CONNECTION=sync \
+  vendor/bin/phpunit tests/Live/Rag/LiveRagIsolationTest.php
+```
+
+Senza i gate (LIVE_RAG, chiave reale, pgvector raggiungibile) il test fa
+**skip** pulito: non gira in CI.
+
+**B) CLI di verifica su staging** — `case-study:verify-isolation`. Esegue la
+stessa matrice contro un DB **già ingestato** (lancia prima `ingest.sh`) e
+stampa una tabella PASS/FAIL, con exit non-zero se qualcosa trapela. Non chiama
+l'LLM di chat (solo retrieval + rifiuto + citazioni → deterministico):
+
+```bash
+php artisan case-study:verify-isolation                 # tutti e 3 i progetti, tenant 'default'
+php artisan case-study:verify-isolation --tenant=acme   # altro tenant
+php artisan case-study:verify-isolation --project=rotta-logistics
+php artisan case-study:verify-isolation --strict        # tratta anche i WARN come FAIL
+```
+
+**PASS / WARN / FAIL** — l'isolamento e il rifiuto sono due proprietà distinte:
+
+- **FAIL** = *fuga*: un documento di un'altra azienda è comparso (chunk/citazione
+  estranea o canarino estero). È il «difetto grave» del §6.1 — exit non-zero.
+- **WARN** = l'azienda selezionata ha **risposto** a una domanda fuori tema
+  attingendo ai **propri** documenti (stesso lessico — es. "parola d'ordine
+  della Procedura…") **invece di rifiutare**, *senza* far trapelare nulla di
+  un'altra azienda. **Non è una fuga**: è una calibrazione del rifiuto.
+- **PASS** = nessuna fuga e comportamento atteso.
+
+Il gate fallisce **solo sulle fughe** (exit non-zero su FAIL); i WARN non
+rompono l'isolamento. Il "Test E" (parola condivisa: stessa domanda → tre
+parole diverse per le tre aziende) è il caso più diagnostico e dev'essere
+sempre PASS. Per pretendere anche il rifiuto ideale del §6.1/§6.5 usa
+`--strict` (o, nel test live, `LIVE_RAG_STRICT=1`): i WARN diventano FAIL. Per
+*ottenere* davvero il rifiuto su quelle domande fuori tema, alza la soglia di
+grounding `KB_REFUSAL_MIN_SIMILARITY` (config `kb.refusal.min_chunk_similarity`,
+default 0.45) — è una scelta di prodotto, non di isolamento.
+
+**C) Asse per-utente in CI** — `vendor/bin/phpunit --filter CaseStudyProjectIsolationTest`
+(SQLite, nessun provider): prova che con `KB_PROJECT_ISOLATION_ENABLED=true`
+l'utente di un'azienda legge solo i suoi documenti (vedi §3).
+
+Il dataset sorgente è inoltre validato staticamente da
+`tests/Unit/CaseStudies/CaseStudyDatasetTest.php` (i canarini non si mescolano
+nei file `.md`), così un copia-incolla sbagliato rompe la build invece di
+produrre un falso positivo durante i test manuali.
+
+---
+
 ## 7. Come collaudare gli altri pannelli con questi dati (in breve)
 
 Dettaglio completo nei file `panels/*.md`. In sintesi:
@@ -382,6 +463,8 @@ Dettaglio completo nei file `panels/*.md`. In sintesi:
 - [ ] Grafo (tab Graph) di un documento: nessun nodo di un'altra azienda.
 - [ ] Parole d'ordine (Test E): stessa domanda sull'"Evacuazione Totale" → ogni azienda dà **la propria** parola (ORIZZONTE BLU / VENTO DEL NORD / MARE CALMO), mai quella di un'altra.
 - [ ] Parole d'ordine (Test F): chiedere la procedura di un'altra azienda → **rifiuto**.
+- [ ] **Automatizzato** (§6.6): `case-study:verify-isolation` stampa tutti PASS, oppure `LiveRagIsolationTest` è verde con i gate `LIVE_RAG`.
+- [ ] **Per-utente** (§3): `CaseStudyProjectIsolationTest` verde — l'utente di un'azienda, con isolamento ON, legge solo i suoi documenti.
 
 ---
 

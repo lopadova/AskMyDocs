@@ -63,6 +63,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbEdge::class,
         \App\Models\KbCanonicalAudit::class,
         \App\Models\ProjectMembership::class,
+        // v8.9 — first-class project registry (admin Projects page).
+        \App\Models\Project::class,
         \App\Models\KbTag::class,
         // v8.7/W1 — per-(tenant, project) synonym groups for query expansion.
         \App\Models\KbSynonym::class,
@@ -129,6 +131,9 @@ final class TenantIdMandatoryTest extends TestCase
         // wired since the migration shipped; this entry locks the
         // gate so a future refactor cannot silently drop them.
         \App\Models\KbChunkFeedback::class,
+        // v8.9 — UI drag-and-drop ingest upload batches (admin KB upload modal).
+        \App\Models\KbIngestBatch::class,
+        \App\Models\KbIngestBatchItem::class,
         // KITT embeddable widget channel (branch m-m/feature/kitt): the
         // public-key credential + the ReAct session/step audit trail are
         // all tenant-scoped — tenant/project are resolved FROM the key

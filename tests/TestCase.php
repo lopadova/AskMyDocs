@@ -145,6 +145,15 @@ abstract class TestCase extends OrchestraTestCase
         // ordering here is for consistency with the AppServiceProvider
         // group rather than a hard binding-resolution dependency.
         $app->register(\App\Providers\PiiBoundaryCoverageServiceProvider::class);
+        // v8.9 — KB UI upload progress wiring (KnowledgeDocument observer +
+        // the 3 queue-event listeners that drive batch-item status). Registered
+        // after AppServiceProvider so KbUploadStagingService's deps (TenantContext)
+        // are bound. Testbench skips bootstrap/providers.php, so without this the
+        // production listener never fires under PHPUnit and the commit→queue→
+        // progress chain is unverifiable (it is exercised by
+        // KbUploadCommitIntegrationTest). Safe for every other test: the observer
+        // no-ops when a doc carries no kb_upload_batch_item_id metadata.
+        $app->register(\App\Providers\KbUploadServiceProvider::class);
         // v4.2/W2 — IngestDocumentFlow definition + FlowRunRecord
         // tenant_id stamping hook. Registered after AppServiceProvider
         // because it depends on the TenantContext singleton it binds.

@@ -10,6 +10,7 @@ use App\Models\KnowledgeDocument;
 use App\Models\Message;
 use App\Models\User;
 use App\Services\Admin\AdminMetricsService;
+use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -43,7 +44,7 @@ class AdminMetricsServiceTest extends TestCase
         // Outside the 7-day window — excluded.
         $this->seedChatLog(latency: 999, projectKey: 'hr-portal', at: Carbon::now()->subDays(30));
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $overview = $svc->kpiOverview(null, 7);
 
         $this->assertSame(3, $overview['total_docs']);
@@ -60,7 +61,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(latency: 100, projectKey: 'hr-portal', at: Carbon::now()->subHour());
         $this->seedChatLog(latency: 100, projectKey: 'engineering', at: Carbon::now()->subHour());
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
 
         $hr = $svc->kpiOverview('hr-portal', 7);
         $this->assertSame(1, $hr['total_docs']);
@@ -77,7 +78,7 @@ class AdminMetricsServiceTest extends TestCase
         $trashed = $this->seedDoc('hr-portal', 'trashed.md');
         $trashed->delete();
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $overview = $svc->kpiOverview('hr-portal', 7);
 
         $this->assertSame(1, $overview['total_docs']);
@@ -91,7 +92,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(at: $today);
         $this->seedChatLog(at: $today->copy()->subDay());
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $buckets = $svc->chatVolume(null, 7);
 
         $this->assertGreaterThanOrEqual(1, count($buckets));
@@ -110,7 +111,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(provider: 'openai', promptTokens: 5, completionTokens: 7, totalTokens: 12, at: Carbon::now());
         $this->seedChatLog(provider: 'anthropic', promptTokens: 100, completionTokens: 200, totalTokens: 300, at: Carbon::now());
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $rows = $svc->tokenBurn(null, 7);
 
         $this->assertCount(2, $rows);
@@ -160,7 +161,7 @@ class AdminMetricsServiceTest extends TestCase
             'created_at' => Carbon::now(),
         ]);
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $dist = $svc->ratingDistribution(null, 7);
 
         $this->assertSame(1, $dist['positive']);
@@ -176,7 +177,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(projectKey: 'engineering', at: Carbon::now());
         $this->seedChatLog(projectKey: null, at: Carbon::now()); // excluded
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $rows = $svc->topProjects(5);
 
         $this->assertSame('hr-portal', $rows[0]['project_key']);
@@ -198,7 +199,7 @@ class AdminMetricsServiceTest extends TestCase
             'created_at' => Carbon::now()->toDateTimeString(),
         ]);
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $feed = $svc->activityFeed(10);
 
         $this->assertCount(2, $feed);
@@ -211,7 +212,7 @@ class AdminMetricsServiceTest extends TestCase
     {
         $this->seedChatLog(at: Carbon::now());
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $feed = $svc->activityFeed(5);
 
         $this->assertCount(1, $feed);
@@ -237,7 +238,7 @@ class AdminMetricsServiceTest extends TestCase
             'last_used_at' => Carbon::now()->subDays(60),
         ]);
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $overview = $svc->kpiOverview(null, 7);
 
         $this->assertSame(50.0, $overview['cache_hit_rate']);
@@ -252,7 +253,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChunk(1);
         $this->seedChunk(2);
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $this->assertSame(2, $svc->kpiOverview()['total_chunks']);
 
         $softDeleted->delete();
@@ -289,7 +290,7 @@ class AdminMetricsServiceTest extends TestCase
             'metadata' => [],
         ]);
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
         $withBoth = $svc->kpiOverview()['storage_used_mb'];
 
         $retired->delete();
@@ -308,7 +309,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subHour());
         $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subDays(10));
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
 
         $allSevenDays = $svc->topProjects(10, null, 7);
         $this->assertSame('hr-portal', $allSevenDays[0]['project_key']);
@@ -329,7 +330,7 @@ class AdminMetricsServiceTest extends TestCase
         $this->seedChatLog(projectKey: 'hr-portal', at: Carbon::now()->subHour());
         $this->seedChatLog(projectKey: 'engineering', at: Carbon::now()->subHour());
 
-        $svc = new AdminMetricsService;
+        $svc = $this->service();
 
         $scoped = $svc->activityFeed(20, 'hr-portal');
         foreach ($scoped as $row) {
@@ -337,6 +338,122 @@ class AdminMetricsServiceTest extends TestCase
                 $this->assertSame('hr-portal', $row['project']);
             }
         }
+    }
+
+    public function test_every_metric_excludes_rows_from_other_tenants(): void
+    {
+        // R30 — fixture on TWO tenants; the service must only ever see the
+        // active one. Rows created while the context points at 'acme' get
+        // tenant_id='acme' via BelongsToTenant's creating hook.
+        $user = $this->makeUser();
+        $this->seedDoc('hr-portal', 'default-doc.md');
+        $this->seedChunk(1);
+        $this->seedChatLog(latency: 100, projectKey: 'hr-portal', userId: $user->id, at: Carbon::now()->subHour());
+
+        $ctx = app(TenantContext::class);
+        $ctx->set('acme');
+        try {
+            $this->seedDoc('acme-kb', 'acme-doc.md');
+            $this->seedDoc('acme-kb', 'acme-doc-2.md');
+            $this->seedChunk(2);
+            $this->seedChunk(3);
+            $this->seedChatLog(latency: 500, projectKey: 'acme-kb', at: Carbon::now()->subHour());
+            $this->seedChatLog(latency: 500, projectKey: 'acme-kb', at: Carbon::now()->subHour());
+
+            $convo = Conversation::create([
+                'user_id' => $user->id,
+                'title' => 'acme convo',
+                'project_key' => 'acme-kb',
+            ]);
+            Message::create([
+                'conversation_id' => $convo->id,
+                'role' => 'assistant',
+                'content' => 'hi',
+                'rating' => 'positive',
+                'created_at' => Carbon::now(),
+            ]);
+
+            DB::table('kb_canonical_audit')->insert([
+                'tenant_id' => 'acme',
+                'project_key' => 'acme-kb',
+                'event_type' => 'promoted',
+                'actor' => 'system',
+                'slug' => 'acme-slug',
+                'created_at' => Carbon::now()->toDateTimeString(),
+            ]);
+        } finally {
+            $ctx->reset();
+        }
+
+        $svc = $this->service();
+
+        // Active tenant is 'default' again: only the default rows surface.
+        $overview = $svc->kpiOverview(null, 7);
+        $this->assertSame(1, $overview['total_docs']);
+        $this->assertSame(1, $overview['total_chunks']);
+        $this->assertSame(1, $overview['total_chats']);
+        $this->assertSame(100, $overview['avg_latency_ms']);
+
+        $volume = array_sum(array_column($svc->chatVolume(null, 7), 'count'));
+        $this->assertSame(1, $volume);
+
+        $burn = collect($svc->tokenBurn(null, 7));
+        $this->assertSame(30, (int) $burn->sum('total_tokens'));
+
+        $this->assertSame(0, $svc->ratingDistribution(null, 7)['total']);
+
+        $top = $svc->topProjects(10, null, 7);
+        $this->assertSame(['hr-portal'], array_column($top, 'project_key'));
+
+        $feed = $svc->activityFeed(20);
+        $this->assertNotEmpty($feed);
+        foreach ($feed as $row) {
+            $this->assertNotSame('acme-kb', $row['project'], 'activity feed leaked a foreign-tenant row');
+        }
+
+        // Flip the context: now ONLY the acme rows surface.
+        $ctx->set('acme');
+        try {
+            $acme = $this->service();
+            $acmeOverview = $acme->kpiOverview(null, 7);
+            $this->assertSame(2, $acmeOverview['total_docs']);
+            $this->assertSame(2, $acmeOverview['total_chunks']);
+            $this->assertSame(2, $acmeOverview['total_chats']);
+            $this->assertSame(1, $acme->ratingDistribution(null, 7)['total']);
+            $this->assertSame(['acme-kb'], array_column($acme->topProjects(10, null, 7), 'project_key'));
+        } finally {
+            $ctx->reset();
+        }
+    }
+
+    public function test_storage_used_mb_excludes_other_tenants(): void
+    {
+        $payload = str_repeat('X', 2 * 1024 * 1024); // ~2 MB
+
+        $ctx = app(TenantContext::class);
+        $ctx->set('acme');
+        try {
+            $this->seedDoc('acme-kb', 'acme-doc.md');
+            KnowledgeChunk::create([
+                'knowledge_document_id' => 1,
+                'project_key' => 'acme-kb',
+                'chunk_order' => 0,
+                'chunk_hash' => hash('sha256', 'acme'),
+                'heading_path' => '#',
+                'chunk_text' => $payload,
+                'metadata' => [],
+            ]);
+        } finally {
+            $ctx->reset();
+        }
+
+        // Default tenant has no chunks: the acme payload must not count.
+        $this->assertSame(0.0, $this->service()->kpiOverview()['storage_used_mb']);
+    }
+
+    private function service(): AdminMetricsService
+    {
+        return new AdminMetricsService(app(TenantContext::class));
     }
 
     private function makeUser(): User

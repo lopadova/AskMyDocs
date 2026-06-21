@@ -1,4 +1,5 @@
 import type { PromotionSuggestion } from './insights.api';
+import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 
 export interface PromotionSuggestionsCardProps {
     items: PromotionSuggestion[];
@@ -13,6 +14,7 @@ export interface PromotionSuggestionsCardProps {
  */
 export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProps) {
     const state = items.length === 0 ? 'empty' : 'ready';
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
     return (
         <div
             data-testid="insight-card-promotions"
@@ -90,9 +92,13 @@ export function PromotionSuggestionsCard({ items }: PromotionSuggestionsCardProp
                                 // pipeline (Phase 4). For now we surface the
                                 // doc id so the E2E can assert the chain.
                                 onClick={() => {
-                                    window.location.assign(
-                                        `/app/admin/kb?doc=${item.document_id}&tab=meta&promote=1`,
-                                    );
+                                    // Guard the empty-teamHash case (store not synced
+                                    // yet) — mirror NotificationBell's fallback to the
+                                    // legacy non-team URL instead of `/app//admin/kb`.
+                                    const target = teamHash
+                                        ? `/app/${teamHash}/admin/kb?doc=${item.document_id}&tab=meta&promote=1`
+                                        : `/app/admin/kb?doc=${item.document_id}&tab=meta&promote=1`;
+                                    window.location.assign(target);
                                 }}
                                 style={{
                                     fontSize: 11,

@@ -776,6 +776,37 @@ The `POST /api/kb/ingest` endpoint accepts an optional `mime_type` field per doc
 
 The `App\Support\Kb\SourceType` enum is a typed helper for the markdown/text/pdf/docx domain — `SourceType::fromMime()` and `SourceType::fromExtension()` are the canonical conversions used by the API controller and the folder walker. The actual ingest routing is config-driven via `config/kb-pipeline.php` (`converters` / `chunkers` / `mime_to_source_type`); adding a new format requires updating BOTH `config/kb-pipeline.php` AND `SourceType::fromMime()` / `fromExtension()` / `toMime()` / `supportedMimes()` so the API/CLI surfaces stay consistent with what the registry resolves.
 
+### UI upload (admin drag-and-drop)
+
+Admins can ingest documents straight from the KB admin page (no CLI / API client
+needed). An **Upload** button (and drag-and-drop onto a project/folder node when a
+single project is selected) opens a modal: files are buffered on the dedicated
+`kb-staging` disk, reviewed, then on **Commit** moved to the canonical `kb` disk and
+ingested through the **exact same pipeline** as `kb:ingest-folder` — one
+`IngestDocumentJob` per file. The modal then polls
+`GET /api/admin/kb/uploads/{batch}/status` and shows per-file progress
+(`staged → queued → processing → succeeded | failed`). Accepted formats match the
+CLI (`md`, `markdown`, `txt`, `pdf`, `docx`). Stale staging batches are swept daily
+by `kb:prune-staging-batches` (retention `KB_STAGING_RETENTION_HOURS`, default 24h).
+
+> **Queue prerequisite.** Meaningful, streaming progress requires an async queue
+> and a running worker:
+>
+> ```bash
+> # .env
+> QUEUE_CONNECTION=database        # jobs / failed_jobs tables already exist
+> # process (supervisor / systemd / Horizon)
+> php artisan queue:work --queue=kb-ingest,default
+> ```
+>
+> Under the default `QUEUE_CONNECTION=sync` the commit request runs the ingest
+> inline and **blocks** until every file is parsed/chunked/embedded/persisted; the
+> status endpoint then returns the terminal state on the first poll. Functional,
+> but the per-file progress stream is only visible with a real queue + worker.
+> Files canonical-typed (YAML frontmatter) are accepted but flagged with a
+> non-blocking warning that they will not be committed to your git `kb/` repo —
+> the canonical source of truth stays git → GitHub Action.
+
 ### Extending the Ingestion Pipeline
 
 AskMyDocs v3.0 introduces a pluggable ingestion pipeline driven by `config/kb-pipeline.php`. To add support for a new file format:

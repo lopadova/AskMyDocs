@@ -17,6 +17,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../../components/Icons';
+import { useTeamStore } from '../../../lib/team-store';
 
 const FLOW_ADMIN_BASE_URL = '/admin/flows';
 const FLOW_ADMIN_LIVE_URL = `${FLOW_ADMIN_BASE_URL}/api/live`;
@@ -46,10 +47,19 @@ export function FlowsView() {
         const controller = new AbortController();
         const id = window.setTimeout(() => controller.abort(), 10_000);
 
+        // Raw fetch (not the shared axios client) → the team header from
+        // lib/api.ts's interceptor must be replicated by hand, like the
+        // chat SSE transport does — INCLUDING the `default` sentinel skip
+        // (api.ts omits X-Tenant-Id for `default` so sister-package mounts
+        // take their host-config fallback instead of 404ing).
+        const team = useTeamStore.getState().currentTeam;
         void fetch(FLOW_ADMIN_LIVE_URL, {
             method: 'GET',
             credentials: 'same-origin',
-            headers: { Accept: 'application/json' },
+            headers: {
+                Accept: 'application/json',
+                ...(team !== null && team !== 'default' ? { 'X-Tenant-Id': team } : {}),
+            },
             signal: controller.signal,
         })
             .then(async (response) => {

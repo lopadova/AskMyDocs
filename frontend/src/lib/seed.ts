@@ -1,17 +1,14 @@
 /*
  * Dev-only seed data ported from `design-reference/project/data/seed.jsx`.
  * PR5-I will wire real API endpoints; today we need realistic shapes so
- * the shell (avatars, project switcher, command palette) renders the
- * same silhouette as the design mockup.
+ * the shell (avatars, command palette) renders the same silhouette as
+ * the design mockup.
+ *
+ * The old `PROJECTS` literal (and its `Project` type) is gone: the
+ * topbar switcher now selects TEAMS from the team-store, project lists
+ * derive from tenant-scoped endpoints (R18), and the chat takes its
+ * active project from the current team's memberships.
  */
-
-export type Project = {
-    key: string;
-    label: string;
-    color: string;
-    docs: number;
-    members: number;
-};
 
 export type SeedUser = {
     id: number;
@@ -24,13 +21,6 @@ export type SeedUser = {
     avatar: string;
     color: string;
 };
-
-export const PROJECTS: Project[] = [
-    { key: 'hr-portal', label: 'HR Portal', color: '#8b5cf6', docs: 428, members: 18 },
-    { key: 'legal-vault', label: 'Legal Vault', color: '#22d3ee', docs: 312, members: 11 },
-    { key: 'finance-ops', label: 'Finance Ops', color: '#f97316', docs: 197, members: 9 },
-    { key: 'engineering', label: 'Engineering', color: '#a3e635', docs: 654, members: 34 },
-];
 
 export const USERS: SeedUser[] = [
     {

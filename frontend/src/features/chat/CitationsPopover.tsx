@@ -4,11 +4,11 @@ import type { MessageCitation } from './chat.api';
 export interface CitationsPopoverProps {
     citations: MessageCitation[];
     /**
-     * Click handler for a citation chip — wired by ChatView to navigate to
-     * the KB document detail (`/app/admin/kb?doc=<id>`). Passed ONLY when the
-     * current user can reach the KB admin surface (admin / super-admin); for
-     * other roles the chip stays hover-only so it never dead-ends on a 403.
-     * Called only for citations that carry a `document_id`.
+     * Click handler for a citation chip — wired by ChatView to open the cited
+     * document in an in-chat modal ({@link CitationDocumentModal}) for EVERY
+     * reader. The modal fetches the source through a tenant + AccessScope-scoped
+     * endpoint, so it never dead-ends on a 403. Called only for citations that
+     * carry a `document_id`.
      */
     onOpenSource?: (citation: MessageCitation) => void;
 }

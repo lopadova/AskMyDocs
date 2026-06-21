@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { useChat as sdkUseChat, type UseChatHelpers } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
 import { ensureCsrfCookie } from '../../lib/api';
+import { useTeamStore } from '../../lib/team-store';
 import { isFilterStateEmpty, type FilterState, type Message as AppMessage } from './chat.api';
 
 /**
@@ -248,6 +249,10 @@ export function useChatStream(options: UseChatStreamOptions): UseChatHelpers<UIM
                 const xsrf = readXsrfCookie();
                 if (xsrf !== null) {
                     headers['X-XSRF-TOKEN'] = xsrf;
+                }
+                const team = useTeamStore.getState().currentTeam;
+                if (team !== null && team !== 'default') {
+                    headers['X-Tenant-Id'] = team;
                 }
                 return { body, headers };
             },

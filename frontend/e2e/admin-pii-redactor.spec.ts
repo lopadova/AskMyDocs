@@ -56,7 +56,7 @@ seededTest.describe('Admin PII Redactor — admin (cross-mount + nav)', () => {
         // tree; data-mount="cross-mount" proves we're on the v4.4/W2
         // path and not the legacy iframe shape (defensive against a
         // partial revert during a rebase).
-        await expect(page).toHaveURL(/\/app\/admin\/pii-redactor$/);
+        await expect(page).toHaveURL(/\/admin\/pii-redactor$/);
         await expect(page.getByTestId('admin-pii-redactor-host')).toBeVisible({ timeout: 15_000 });
         await expect(page.getByTestId('admin-pii-redactor-host')).toHaveAttribute(
             'data-mount',

@@ -5,7 +5,11 @@ declare(strict_types=1);
 namespace Tests\Unit\Middleware;
 
 use App\Http\Middleware\AuthorizeTenantHeader;
+use App\Models\ProjectMembership;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\TestCase;
 
@@ -22,6 +26,8 @@ use Tests\TestCase;
  */
 final class AuthorizeTenantHeaderTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_passes_through_when_no_header_present(): void
     {
         $this->assertPassesThrough($this->request(header: null, user: null));
@@ -58,6 +64,55 @@ final class AuthorizeTenantHeaderTest extends TestCase
         $this->assertPassesThrough($this->request(header: 'other-tenant', user: $user));
     }
 
+    public function test_allows_foreign_header_with_membership_in_requested_tenant(): void
+    {
+        // Team-switcher path: a regular user (no cross-access) holding a
+        // membership in the requested tenant may operate inside it.
+        $user = $this->realUser('member@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $user->id,
+            'project_key' => 'acme-kb',
+            'role' => 'editor',
+        ]);
+
+        $this->assertPassesThrough($this->request(header: 'acme', user: $user));
+    }
+
+    public function test_rejects_foreign_header_when_membership_is_in_another_tenant(): void
+    {
+        // A membership in tenant B must NOT open tenant A: the EXISTS is
+        // scoped forTenant(header), not "any membership at all".
+        $user = $this->realUser('wrong-tenant@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'globex',
+            'user_id' => $user->id,
+            'project_key' => 'globex-kb',
+            'role' => 'admin',
+        ]);
+
+        $response = $this->dispatch($this->request(header: 'acme', user: $user));
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+        $this->assertStringContainsString('tenant_forbidden', (string) $response->getContent());
+    }
+
+    public function test_rejects_foreign_header_when_membership_belongs_to_another_user(): void
+    {
+        $member = $this->realUser('the-member@example.com');
+        ProjectMembership::create([
+            'tenant_id' => 'acme',
+            'user_id' => $member->id,
+            'project_key' => 'acme-kb',
+            'role' => 'admin',
+        ]);
+
+        $outsider = $this->realUser('outsider@example.com');
+        $response = $this->dispatch($this->request(header: 'acme', user: $outsider));
+
+        $this->assertSame(Response::HTTP_FORBIDDEN, $response->getStatusCode());
+    }
+
     // -----------------------------------------------------------------
 
     private function assertPassesThrough(Request $request): void
@@ -84,6 +139,15 @@ final class AuthorizeTenantHeaderTest extends TestCase
         $request->setUserResolver(static fn () => $user);
 
         return $request;
+    }
+
+    private function realUser(string $email): User
+    {
+        return User::create([
+            'name' => 'Membership Tester',
+            'email' => $email,
+            'password' => Hash::make('secret123'),
+        ]);
     }
 
     private function user(string $ownTenant, bool $crossAccess): object

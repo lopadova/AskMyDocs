@@ -47,7 +47,7 @@ seededTest.describe('Admin Eval Harness — admin (cross-mount + nav)', () => {
         await expect(navButton).toBeVisible();
         await navButton.click();
 
-        await expect(page).toHaveURL(/\/app\/admin\/eval-harness$/);
+        await expect(page).toHaveURL(/\/admin\/eval-harness$/);
         const host = page.getByTestId('admin-eval-harness-host');
         await expect(host).toBeVisible({ timeout: 15_000 });
         await expect(host).toHaveAttribute('data-mount', 'cross-mount');

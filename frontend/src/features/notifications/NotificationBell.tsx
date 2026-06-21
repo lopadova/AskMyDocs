@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notificationsApi, type NotificationRow } from './notifications.api';
 import { summariseNotificationEvent } from './summarise';
+import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 
 /**
  * v8.0/W1.4 — Top-bar notification bell.
@@ -38,6 +39,12 @@ import { summariseNotificationEvent } from './summarise';
 export function NotificationBell(): ReactNode {
     const qc = useQueryClient();
     const [open, setOpen] = useState(false);
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
+    // Fall back to the legacy non-team URL when no hash is available so the
+    // link is never a broken double-slash path like `/app//admin/notifications`.
+    const notificationsHref = teamHash
+        ? `/app/${teamHash}/admin/notifications`
+        : '/app/admin/notifications';
 
     const countQuery = useQuery({
         queryKey: ['notifications', 'unread-count'],
@@ -242,7 +249,7 @@ export function NotificationBell(): ReactNode {
                           * navigation links to `<Link>` in lockstep. */}
                         <a
                             data-testid="notif-bell-see-all"
-                            href="/app/admin/notifications"
+                            href={notificationsHref}
                             className="text-sm text-blue-600 hover:underline"
                             onClick={() => setOpen(false)}
                         >

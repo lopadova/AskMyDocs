@@ -19,6 +19,15 @@ import { AI_ACT_DOMAINS, getAiActOverview, type AiActDomainResult } from './ai-a
  * `/api/admin/ai-act-compliance/*` (incidents, DSAR, consent, bias,
  * attestations, human-reviews) — no iframe, no recursion, live counts +
  * status tallies, with explicit loading / error / empty states (R14).
+ *
+ * Team-scope exception (see .claude/skills/team-scope-wiring, point 6):
+ * this is the surface where operators CREATE the `tenants` rows
+ * (POST /api/admin/ai-act-compliance/tenants) that the topbar team
+ * switcher uses as labels, and where DPOs run cross-tenant compliance
+ * reviews. Its tenants screen is therefore cross-tenant BY DESIGN and
+ * must not be "fixed" to filter by the active team; the per-domain data
+ * calls still flow through the shared axios client and honour
+ * X-Tenant-Id like everything else.
  */
 export function AiActComplianceView() {
     const query = useQuery({

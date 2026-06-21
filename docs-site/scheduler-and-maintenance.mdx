@@ -57,6 +57,7 @@ says otherwise.
 | `0 4 * * *` | `widget:prune-sessions` | `SCHEDULE_WIDGET_PRUNE_SESSIONS_*` |
 | `10 4 * * *` | `notifications:prune` | `SCHEDULE_NOTIFICATIONS_PRUNE_*` |
 | `10 4 * * *` | `ai-act:regulatory-poll` | `SCHEDULE_AI_ACT_REGULATORY_POLL_*` |
+| `15 4 * * *` | `kb:prune-staging-batches` | `SCHEDULE_KB_PRUNE_STAGING_BATCHES_*` |
 | `20 4 * * *` | `kb:prune-archived-versions` | `SCHEDULE_KB_PRUNE_ARCHIVED_VERSIONS_*` |
 | `30 4 * * *` | `admin-audit:prune` | `SCHEDULE_ADMIN_AUDIT_PRUNE_*` |
 | `40 4 * * *` | `kb:prune-orphan-files --dry-run` | `SCHEDULE_KB_PRUNE_ORPHAN_FILES_*` |
@@ -87,6 +88,10 @@ when that env is false the slot never runs regardless of its `SCHEDULE_*` value.
   `KB_SOFT_DELETE_RETENTION_DAYS`, cascading chunks + graph + file on disk.
 - **`kb:prune-archived-versions`** — drop old archived document versions beyond
   the per-family retention cap.
+- **`kb:prune-staging-batches`** — purge stale drag-and-drop upload staging
+  batches and their staged files on the `kb-staging` disk once past
+  `KB_STAGING_RETENTION_HOURS` (default 24; `--hours=N` overrides). Keeps the
+  staging area from accumulating abandoned review sessions.
 - **`kb:prune-orphan-files`** — remove markdown files on the KB disk with no
   matching `knowledge_documents` row.
 - **`kb:rebuild-graph`** — rebuild `kb_nodes` + `kb_edges` from canonical docs.

@@ -35,11 +35,12 @@ final class TenantReadScopeTest extends TestCase
         'ChatFilterPreset', 'ChatLog', 'ChatLogProvenance', 'ComplianceReport', 'DigestPreference',
         'Conversation', 'HiddenWorkflow', 'KbAnalysisSetting', 'KbCanonicalAudit',
         'KbCanonicalHealthSnapshot', 'KbChunkFeedback', 'KbCollection',
-        'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
+        'EngagementDigestFeedEntry', 'KbCollectionMember', 'KbContributionEvent', 'KbDocAnalysis', 'KbDocAnalysisApplication', 'KbEdge', 'KbEngagementSnapshot', 'KbGamificationInsight', 'KbIngestBatch',
+        'KbIngestBatchItem', 'KbNode', 'KbSearchFailure', 'KbSynonym', 'KbTag', 'KbUserBadge', 'KbWikiIndex', 'KnowledgeChunk',
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
-        'ProjectMembership', 'TabularCell', 'TabularReview',
+        'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
         'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
     ];
@@ -73,6 +74,7 @@ final class TenantReadScopeTest extends TestCase
         'app/Console/Commands/PruneDeletedDocumentsCommand.php' => 'Tenant enumeration → per-tenant DocumentDeleter (scoped downstream).',
         'app/Console/Commands/PruneOrphanFilesCommand.php' => 'Orphan-file maintenance sweep; reconciles disk vs DB by design.',
         'app/Console/Commands/DigestPruneFeedCommand.php' => 'Global digest-feed retention prune; intentionally instance-wide (same posture as the other prune sweeps).',
+        'app/Console/Commands/PruneStagingBatchesCommand.php' => 'Global upload-staging retention sweep; intentionally instance-wide (same posture as the other prune commands).',
         'app/Console/Commands/GamificationNarrateCommand.php' => 'Tenant enumeration → per-tenant GamificationInsightsService::recomputeForTenant (scoped downstream).',
 
         // User→tenant DISCOVERY for DSAR/compliance: its whole job is to find

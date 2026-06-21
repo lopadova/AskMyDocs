@@ -55,6 +55,7 @@
  */
 import { useEffect, useState } from 'react';
 import { api } from '../../../lib/api';
+import { selectCurrentHash, useTeamStore } from '../../../lib/team-store';
 import EvalHarnessUiApp from './cross-mount/main-entry';
 import type { AppBootstrapConfig } from './cross-mount/utils/bootstrap';
 
@@ -87,7 +88,14 @@ const EVAL_HARNESS_API_BASE = '/admin/eval-harness/api';
  * cross-mount has to use the host TanStack path so back/forward
  * navigation from the BrowserRouter sub-routes resolves correctly.
  */
-const EVAL_HARNESS_ROUTE_BASE = '/app/admin/eval-harness';
+// Built per-render from the active team hash — the cross-mounted
+// BrowserRouter basename must mirror the host URL /app/{hash}/admin/…
+// or its internal sub-route links would drop the team segment.
+const evalHarnessRouteBase = (teamHash: string): string =>
+    // Empty hash (store not synced yet) would yield `/app//admin/eval-harness` and
+    // break the cross-mounted BrowserRouter basename. Mirror NotificationBell's
+    // fallback to the legacy non-team URL.
+    teamHash ? `/app/${teamHash}/admin/eval-harness` : '/app/admin/eval-harness';
 
 const EVAL_HARNESS_BOOTSTRAP_CONFIG_URL = '/api/admin/eval-harness/bootstrap-config';
 
@@ -129,6 +137,7 @@ type LoadState = 'loading' | 'ready' | 'unavailable';
 export function EvalHarnessView() {
     const [config, setConfig] = useState<AppBootstrapConfig | null>(null);
     const [state, setState] = useState<LoadState>('loading');
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
 
     useEffect(() => {
         let active = true;
@@ -220,7 +229,7 @@ export function EvalHarnessView() {
                 <EvalHarnessUiApp
                     config={config}
                     apiBase={EVAL_HARNESS_API_BASE}
-                    routeBase={EVAL_HARNESS_ROUTE_BASE}
+                    routeBase={evalHarnessRouteBase(teamHash)}
                 />
             )}
         </div>

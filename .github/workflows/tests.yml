@@ -91,11 +91,14 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
-    # Cap the whole job at 20 minutes — Playwright's per-test retry +
-    # per-test timeout can compound to hours when a setup test
-    # consistently hits a slow failure. The cap turns a debug
-    # session from "hours of runner time" into a sharp 20 min loop.
-    timeout-minutes: 20
+    # Cap the whole job so Playwright's per-test retry + per-test timeout
+    # can't compound to hours when a setup test consistently hits a slow
+    # failure. The full suite legitimately runs ~18-20 min (the green
+    # baseline was 18m24s), so a 20-min cap cancelled passing runs on
+    # slower runner instances purely by timing variance (observed: 20m18s
+    # cancelled with ZERO test failures). 30 min gives ~10 min of headroom
+    # over the real runtime while still turning a runaway into a sharp loop.
+    timeout-minutes: 30
     # Depends on phpunit+vitest so E2E only spins up after core gates
     # are green.
     needs: [phpunit, vitest]
@@ -210,6 +213,16 @@ jobs:
               sed -i "s|^${1}=.*|${1}=${2}|" .env
           }
           set_env APP_ENV testing
+          # E2E diagnosability (R22): force file logging so an unhandled
+          # exception from any /api/* route on the Playwright run lands in
+          # storage/logs/laravel.log — which the "Dump Laravel log on
+          # failure" step tails. The default `stack` channel left that file
+          # absent (`(no laravel.log file present)`), so backend errors
+          # behind a Playwright "element not visible" timeout were invisible.
+          # `single` writes laravel.log; Laravel records full traces there
+          # regardless of APP_DEBUG (APP_DEBUG only changes HTTP-response
+          # verbosity, so it stays false). Testing-only.
+          set_env LOG_CHANNEL single
           # APP_KEY is generated below by `php artisan key:generate
           # --force` (see "Migrate test database (CLI)") — it REPLACES
           # the empty `APP_KEY=` line from `.env.example` in-place,
@@ -242,13 +255,23 @@ jobs:
           # login flows survive across page navigations.
           set_env CACHE_STORE     array
           set_env SESSION_DRIVER  file
-          # Database-backed queue so /api/kb/ingest dispatches enqueue
-          # the job (returning 202) without running it immediately.
-          # `sync` would execute IngestDocumentJob on the request thread,
-          # which then calls the AI provider synchronously — without API
-          # keys in CI, that bubbles up as a 500 from /api/kb/ingest.
-          # The test only asserts the 202; the actual indexing flow is
-          # covered by PHPUnit feature tests with Http::fake().
+          # Database queue (async) + a dedicated worker started below.
+          # Rationale (R38 — heavy work must NOT run inline behind
+          # `php artisan serve`): the KB upload progress widget needs the
+          # IngestDocumentJob's queue-lifecycle events to fire, but running
+          # the WHOLE ingest pipeline INLINE (QUEUE_CONNECTION=sync) makes
+          # EVERY KB write synchronous — a `save` in admin-kb-edit /
+          # admin-journey then blocks the HTTP request on parse→chunk→embed→
+          # persist (+ analyze + auto-wiki), inflating those saves from ~4s
+          # to ~15s and tipping them over their Playwright timeouts (observed
+          # on the sync-queue runs). Keeping the queue ASYNC preserves the
+          # fast save responses the admin specs assert, while a background
+          # `queue:work --queue=kb-ingest,default` worker (see "Start KB
+          # ingest queue worker") drains the committed jobs so the upload
+          # progress still reconciles to done=1. AI stays offline: the worker
+          # + server both set AI_PROVIDER=fake, so queued ingest never calls a
+          # real provider. admin-kb.spec.ts is agnostic to whether the
+          # non-canonical draft ingested (accepts 200/201/202).
           set_env QUEUE_CONNECTION database
           # `storage/framework/*` is gitignored except for `.gitkeep`,
           # so the cache/sessions/views subdirs may not exist on a
@@ -471,6 +494,47 @@ jobs:
           tail -200 storage/logs/artisan-serve.log || true
           exit 1
 
+      # KB UI upload progress reconciles ONLY via queue lifecycle events
+      # (JobProcessing/Processed → App\Listeners\KbUploadBatchItemProgress).
+      # With the async database queue (set above) a committed batch INSERTS
+      # IngestDocumentJob rows; this worker drains them so the events fire and
+      # the upload reaches data-done=1 — WITHOUT making KB saves synchronous
+      # (that's why we don't use QUEUE_CONNECTION=sync; see the queue comment
+      # + R38). Covers `kb-ingest` (IngestDocumentJob, via config('kb.ingest.
+      # queue')) and `default` (follow-on analyze/auto-wiki). OFFLINE AI so it
+      # never calls a real provider. `setsid -f` detaches it into its own
+      # session/PGID (same rationale as the artisan-serve start) so the
+      # runner's per-step cleanup can't HUP it mid-run; PGID captured for the
+      # "Stop queue worker" cleanup.
+      - name: Start KB ingest queue worker (testing)
+        env:
+          APP_ENV: testing
+          AI_PROVIDER: fake
+          AI_EMBEDDINGS_PROVIDER: fake
+        run: |
+          mkdir -p storage/logs
+          setsid -f php artisan queue:work database \
+              --queue=kb-ingest,default --sleep=1 --tries=3 --no-interaction \
+              > storage/logs/queue-worker.log 2>&1
+          for i in $(seq 1 10); do
+            wpid=$(pgrep -f 'artisan queue:work' | head -1)
+            if [ -n "$wpid" ]; then
+              wpgid=$(ps -o pgid= -p "$wpid" 2>/dev/null | tr -d ' ')
+              if [ -n "$wpgid" ]; then
+                echo "$wpgid" > /tmp/queue-worker.pgid
+                echo "KB ingest queue worker up (PID=$wpid, PGID=$wpgid)"
+              else
+                echo "$wpid" > /tmp/queue-worker.pid
+                echo "KB ingest queue worker up (PID=$wpid; no PGID)"
+              fi
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Queue worker did not start in time"
+          tail -100 storage/logs/queue-worker.log || true
+          exit 1
+
       - name: Run Playwright (chromium)
         env:
           APP_ENV: testing
@@ -503,6 +567,13 @@ jobs:
             tail -200 storage/logs/artisan-serve.log
           else
             echo "(no artisan-serve.log file present)"
+          fi
+          echo ""
+          echo "=== storage/logs/queue-worker.log (last 200 lines) ==="
+          if [ -f storage/logs/queue-worker.log ]; then
+            tail -200 storage/logs/queue-worker.log
+          else
+            echo "(no queue-worker.log file present)"
           fi
           echo ""
           echo "=== ls storage/framework/sessions ==="
@@ -572,5 +643,33 @@ jobs:
             for pid in $remaining; do
               kill -KILL "$pid" 2>/dev/null || true
             done
+          fi
+
+      - name: Stop queue worker
+        # `if: always()` so the dedicated KB ingest worker started above is
+        # reaped whether the run passed, failed, or was cancelled. Mirrors the
+        # PGID-then-PID teardown of the artisan-serve step.
+        if: always()
+        run: |
+          term_then_kill() {
+            local target="$1"
+            kill -TERM -- "$target" 2>/dev/null || true
+            sleep 1
+            if kill -0 -- "$target" 2>/dev/null; then
+              kill -KILL -- "$target" 2>/dev/null || true
+            fi
+          }
+          if [ -f /tmp/queue-worker.pgid ]; then
+            wpgid=$(cat /tmp/queue-worker.pgid)
+            echo "Stopping queue worker process group (pgid=$wpgid)..."
+            term_then_kill "-$wpgid" "queue-worker PG"
+            rm -f /tmp/queue-worker.pgid
+          elif [ -f /tmp/queue-worker.pid ]; then
+            wpid=$(cat /tmp/queue-worker.pid)
+            echo "Stopping queue worker (pid=$wpid)..."
+            term_then_kill "$wpid" "queue-worker PID"
+            rm -f /tmp/queue-worker.pid
+          else
+            echo "(no /tmp/queue-worker.pgid or .pid — worker step never ran)"
           fi
 

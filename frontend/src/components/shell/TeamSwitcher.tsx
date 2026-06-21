@@ -1,35 +1,47 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from '../Icons';
 import { ProjectDot } from './Avatar';
-import type { Project } from '../../lib/seed';
+import type { Team } from '../../lib/team-store';
 
-export type ProjectSwitcherProps = {
-    project: Project;
-    projects: Project[];
-    onChange: (p: Project) => void;
+export type TeamSwitcherProps = {
+    team: Team;
+    teams: Team[];
+    onChange: (t: Team) => void;
 };
 
 /*
- * Single-select project switcher.
+ * Single-select TEAM (= tenant) switcher in the topbar. Changing team
+ * re-scopes the whole SPA: lib/api.ts stamps `X-Tenant-Id` from the
+ * team store and AppShell remounts the route outlet.
  *
- * Copilot PR #33 a11y fixes:
- * - Switched from `role="listbox"` (which would have required full
- *   roving-tabindex / aria-activedescendant keyboard navigation) to
- *   the simpler ARIA `menu` + `menuitemradio` pattern that browsers
- *   already give natural keyboard semantics to (Tab cycles items,
- *   Enter/Space activates, native button focus ring).
- * - Escape now closes the popover AND returns focus to the trigger
- *   button (was: only mousedown-outside closed; keyboard users were
- *   stuck).
- * - aria-controls + per-instance menu id so screen readers can
- *   announce the relationship.
+ * A11y pattern inherited from the retired ProjectSwitcher (Copilot
+ * PR #33 fixes): ARIA `menu` + `menuitemradio`, Escape closes AND
+ * returns focus to the trigger, aria-controls wires trigger → menu.
+ *
+ * With a single team the trigger renders DISABLED rather than hidden:
+ * the user still sees which team they are in, the layout stays stable,
+ * and E2E selectors stay deterministic.
  */
-export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcherProps) {
+
+// Deterministic accent per team — teams (unlike the old seed projects)
+// carry no colour of their own.
+const TEAM_COLORS = ['#8b5cf6', '#22d3ee', '#f97316', '#a3e635', '#f43f5e', '#eab308'];
+
+function teamColor(teams: Team[], tenantId: string): string {
+    const idx = Math.max(
+        0,
+        teams.findIndex((t) => t.tenant_id === tenantId),
+    );
+    return TEAM_COLORS[idx % TEAM_COLORS.length];
+}
+
+export function TeamSwitcher({ team, teams, onChange }: TeamSwitcherProps) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement | null>(null);
     const triggerRef = useRef<HTMLButtonElement | null>(null);
     const reactId = useId();
-    const menuId = `project-switcher-menu-${reactId}`;
+    const menuId = `team-switcher-menu-${reactId}`;
+    const singleTeam = teams.length <= 1;
 
     const close = (returnFocus = false) => {
         setOpen(false);
@@ -65,10 +77,14 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                 ref={triggerRef}
                 type="button"
                 className="focus-ring"
+                data-testid="team-switcher-trigger"
                 onClick={() => setOpen((o) => !o)}
+                disabled={singleTeam}
+                aria-disabled={singleTeam}
                 aria-haspopup="menu"
                 aria-expanded={open}
                 aria-controls={open ? menuId : undefined}
+                aria-label={`Active team: ${team.name}`}
                 style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -77,22 +93,24 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                     background: 'var(--bg-2)',
                     border: '1px solid var(--panel-border)',
                     borderRadius: 9,
-                    cursor: 'pointer',
+                    cursor: singleTeam ? 'default' : 'pointer',
                     color: 'var(--fg-0)',
                     fontSize: 12.5,
                     fontWeight: 500,
+                    opacity: singleTeam ? 0.75 : 1,
                 }}
             >
-                <ProjectDot color={project.color} size={8} />
-                {project.label}
-                <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />
+                <ProjectDot color={teamColor(teams, team.tenant_id)} size={8} />
+                {team.name}
+                {!singleTeam && <Icon.ChevronDown size={13} style={{ color: 'var(--fg-3)' }} />}
             </button>
             {open && (
                 <div
                     id={menuId}
                     className="panel popin"
                     role="menu"
-                    aria-label="Switch project"
+                    aria-label="Switch team"
+                    data-testid="team-switcher-menu"
                     style={{
                         position: 'absolute',
                         top: 'calc(100% + 6px)',
@@ -113,16 +131,17 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                             letterSpacing: '.08em',
                         }}
                     >
-                        Switch project
+                        Switch team
                     </div>
-                    {projects.map((p) => (
+                    {teams.map((t) => (
                         <button
-                            key={p.key}
+                            key={t.tenant_id}
                             type="button"
                             role="menuitemradio"
-                            aria-checked={project.key === p.key}
+                            aria-checked={team.tenant_id === t.tenant_id}
+                            data-testid={`team-switcher-item-${t.tenant_id}`}
                             onClick={() => {
-                                onChange(p);
+                                onChange(t);
                                 close(true);
                             }}
                             style={{
@@ -131,7 +150,7 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                                 alignItems: 'center',
                                 gap: 10,
                                 padding: '8px 10px',
-                                background: project.key === p.key ? 'var(--bg-3)' : 'transparent',
+                                background: team.tenant_id === t.tenant_id ? 'var(--bg-3)' : 'transparent',
                                 border: 0,
                                 borderRadius: 7,
                                 cursor: 'pointer',
@@ -140,12 +159,12 @@ export function ProjectSwitcher({ project, projects, onChange }: ProjectSwitcher
                                 textAlign: 'left',
                             }}
                         >
-                            <ProjectDot color={p.color} size={10} />
-                            <span style={{ flex: 1 }}>{p.label}</span>
+                            <ProjectDot color={teamColor(teams, t.tenant_id)} size={10} />
+                            <span style={{ flex: 1 }}>{t.name}</span>
                             <span className="mono" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>
-                                {p.docs} docs
+                                {t.projects.length} projects
                             </span>
-                            {project.key === p.key && <Icon.Check size={13} />}
+                            {team.tenant_id === t.tenant_id && <Icon.Check size={13} />}
                         </button>
                     ))}
                 </div>

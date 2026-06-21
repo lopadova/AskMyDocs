@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Icon } from '../../../components/Icons';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
+import { GlobalScopeBadge } from '../shared/GlobalScopeBadge';
 import { toAdminError } from '../shared/errors';
 import type { AdminRole } from '../admin.api';
 import {
@@ -89,9 +90,10 @@ export function RolesView() {
                             }}
                         >
                             Roles
+                            <GlobalScopeBadge testId="roles-global-badge" />
                         </h1>
                         <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                            Spatie-backed roles and permission matrix.
+                            Spatie-backed roles and permission matrix — shared by every team.
                         </p>
                     </div>
                     <button

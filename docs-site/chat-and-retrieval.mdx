@@ -63,6 +63,35 @@ blocks (⚠ rejected, 📎 related, primary `## Context`). The response carries:
 - `citations` — the exact chunks that grounded it;
 - `meta` — provider, model, latency, retrieved-chunk count, filters echoed back.
 
+## The citation document modal
+
+Citations are not just labels — clicking one opens an **in-chat document modal**
+(available to every authenticated reader, not only admins) that shows the cited
+document's full text without leaving the conversation. It fetches
+`GET /api/kb/documents/{id}/preview`, which returns the document's identity
+(`document_id`, `slug`, `title`, `project_key`, canonical fields) plus a `content`
+string **reconstructed from the document's chunks in `chunk_order`**. Those chunks
+*are* the text retrieval grounded on, so the modal is the most faithful "what the
+answer actually used" view — and it needs no KB-disk access, so it works on any
+deployment (local or S3).
+
+**Isolation (R30) is the load-bearing detail.** The document is resolved with
+`forTenant(current())` AND the model's global `AccessScopeScope` (project
+isolation) AND `SoftDeletes` — exactly the boundary the real retrieval path
+applies. So "a document you could see cited" is precisely "a document you may
+open": a citation in team A can never surface team B's bytes. Missing,
+foreign-tenant, out-of-scope and soft-deleted all collapse to the same **404**
+(no existence oracle); a document that legitimately exists but has no chunks
+yields a **200 with an empty state**, never a fake 404. On the FE the modal
+renders `content` through `react-markdown` (no raw-HTML pass, so document bytes
+can't inject script) with distinct `loading` / `error` (+ retry) / `empty` /
+`ready` states.
+
+The preview is a **deliberate R44 single-surface exception** — a chat-UI read
+affordance over the *existing* document-read capability (already on the admin
+`KbDocumentController` HTTP surface and the MCP retrieval tools), so it ships
+HTTP-only by design.
+
 ## Filters
 
 The chat request accepts a `filters` object (project keys, tags, source types,

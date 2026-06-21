@@ -8,11 +8,12 @@ import { Composer } from './Composer';
 import { chatApi, type Conversation, type FilterState, type Message as AppMessage, type MessageCitation } from './chat.api';
 import { useChatStore } from './chat.store';
 import { useAuthStore } from '../../lib/auth-store';
-import { PROJECTS } from '../../lib/seed';
+import { selectCurrentHash, useTeamStore } from '../../lib/team-store';
 import { Icon } from '../../components/Icons';
 import { useChatStream } from './use-chat-stream';
 import type { RenderableMessage } from './message-shape-adapters';
 import { SuggestedFollowups } from './SuggestedFollowups';
+import { CitationDocumentModal } from './CitationDocumentModal';
 import { chatPreferencesApi, CHAT_PREFERENCES_QUERY_KEY } from './chat-preferences.api';
 
 const COLLECTION_SCOPE_PREF_PREFIX = 'askmydocs.chat.collection_scope.';
@@ -79,17 +80,30 @@ export function ChatView(): ReactNode {
         }
     }, [params.conversationId, activeId, setActive]);
 
-    const project = PROJECTS[0];
-    const projectLabel = project?.label ?? 'default';
-    const projectKey = project?.key ?? null;
+    // Active project = first project the user can access in the ACTIVE
+    // TEAM (team-store, synced from /api/auth/me `teams`). Replaces the
+    // old `PROJECTS[0]` seed literal (R18), which pinned every chat to
+    // 'hr-portal' regardless of the user's real memberships or team.
+    // Null (no membership in this team) degrades to a project-less
+    // conversation, same as the BE contract has always allowed.
+    const teams = useTeamStore((s) => s.teams);
+    const currentTeam = useTeamStore((s) => s.currentTeam);
+    const teamHash = useTeamStore(selectCurrentHash) ?? '';
+    const activeTeam = teams.find((t) => t.tenant_id === currentTeam);
+    const projectKey = activeTeam?.projects[0]?.project_key ?? null;
+    const projectLabel = projectKey ?? 'default';
 
     const [headerMeta] = useState<string>('claude-sonnet-4.5');
 
-    // Citation chips navigate to the KB document detail, which lives behind
-    // the admin/super-admin RBAC gate. Only wire the click for those roles so
-    // a viewer/editor chip stays hover-only instead of dead-ending on a 403.
+    // Clicking a citation opens the cited document in an in-chat modal — for
+    // EVERY reader, not only admins. The modal fetches the source through a
+    // tenant + AccessScope-scoped endpoint, so a reader can only ever open a
+    // document they may see. Admins additionally get an "Open in Knowledge
+    // Base" deep-link inside the modal (the old navigate target, which lives
+    // behind the admin RBAC gate).
     const roles = useAuthStore((s) => s.roles);
     const canViewKb = roles.includes('admin') || roles.includes('super-admin');
+    const [sourceCitation, setSourceCitation] = useState<MessageCitation | null>(null);
 
     // Conversations list (shared cache with the sidebar) — drives the header
     // title + the auto-generated/renamed name. TanStack dedupes the identical
@@ -109,8 +123,30 @@ export function ChatView(): ReactNode {
         if (citation.document_id == null) {
             return;
         }
-        navigate({ to: '/app/admin/kb', search: { doc: citation.document_id, tab: 'preview' } });
+        setSourceCitation(citation);
     };
+
+    // Admin-only secondary action inside the modal: jump to the full KB
+    // document page (deep-link behind the admin/super-admin RBAC gate).
+    const handleOpenInKb = (citation: MessageCitation) => {
+        if (citation.document_id == null) {
+            return;
+        }
+        setSourceCitation(null);
+        navigate({
+            to: '/app/$teamHash/admin/kb',
+            params: { teamHash },
+            search: { doc: citation.document_id, tab: 'preview' },
+        });
+    };
+
+    // Close the source modal whenever the active conversation changes — a
+    // citation belongs to one thread, so it must never stay mounted over a
+    // different conversation (covers sidebar select, branch, requireConversation
+    // and URL-driven activeId changes in one place).
+    useEffect(() => {
+        setSourceCitation(null);
+    }, [activeId]);
 
     // After a turn settles, if the conversation is still untitled, ask the BE
     // to generate a title from the transcript, then refetch the list so the
@@ -274,10 +310,13 @@ export function ChatView(): ReactNode {
     const onSelect = (id: number | null) => {
         setActive(id);
         if (id !== null) {
-            navigate({ to: `/app/chat/${id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(id) },
+            });
             return;
         }
-        navigate({ to: '/app/chat' });
+        navigate({ to: '/app/$teamHash/chat', params: { teamHash } });
     };
 
     const requireConversation = async (): Promise<number | null> => {
@@ -290,7 +329,10 @@ export function ChatView(): ReactNode {
                 old ? [created, ...old] : [created],
             );
             setActive(created.id);
-            navigate({ to: `/app/chat/${created.id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(created.id) },
+            });
             return created.id;
         } catch {
             return null;
@@ -406,7 +448,10 @@ export function ChatView(): ReactNode {
                 old ? [result.conversation, ...old] : [result.conversation],
             );
             setActive(result.conversation.id);
-            navigate({ to: `/app/chat/${result.conversation.id}` });
+            navigate({
+                to: '/app/$teamHash/chat/$conversationId',
+                params: { teamHash, conversationId: String(result.conversation.id) },
+            });
         } catch (err) {
             // Branch is a non-critical action — log and let the user
             // retry. We don't surface a separate error banner; the
@@ -479,7 +524,9 @@ export function ChatView(): ReactNode {
             <ConversationList
                 projectKey={projectKey}
                 onSelect={onSelect}
-                onNewAnonymous={() => navigate({ to: '/app/chat/anonymous' })}
+                onNewAnonymous={() =>
+                    navigate({ to: '/app/$teamHash/chat/anonymous', params: { teamHash } })
+                }
             />
             <div
                 style={{
@@ -551,7 +598,7 @@ export function ChatView(): ReactNode {
                     onBranchAt={handleBranchAt}
                     onEditUserMessage={handleEditUserMessage}
                     showCounterfactual={showCounterfactual}
-                    onOpenSource={canViewKb ? handleOpenSource : undefined}
+                    onOpenSource={handleOpenSource}
                 />
 
                 <SuggestedFollowups
@@ -576,6 +623,14 @@ export function ChatView(): ReactNode {
                     error={chat.error ?? null}
                 />
             </div>
+
+            {sourceCitation && (
+                <CitationDocumentModal
+                    citation={sourceCitation}
+                    onClose={() => setSourceCitation(null)}
+                    onOpenInKb={canViewKb ? handleOpenInKb : undefined}
+                />
+            )}
         </div>
     );
 }

@@ -265,6 +265,8 @@ class MaintenanceCommandController extends Controller
             'gamification_narrate' => 'Weekly AI gamification insights: curation-quality metrics + coaching narratives per user / project / tenant (no-op when disabled).',
             // v8.7/W5 — Cloud Time Machine retention.
             'kb_prune_archived_versions' => 'Hard-delete archived document versions beyond the retention cap (v8.7/W5).',
+            // v8.9 — UI upload staging buffer retention sweep.
+            'kb_prune_staging_batches' => 'Purge stale UI-upload staging batches + their staged files (v8.9).',
             // v8.11/P9 — scheduled Auto-Wiki maintenance.
             'kb_wiki_maintain' => 'Rebuild Auto-Wiki indices, lint wiki health, and backfill un-enriched docs (v8.11/P9).',
             // v8.16 — AI FinOps maintenance.

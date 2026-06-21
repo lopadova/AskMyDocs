@@ -60,6 +60,49 @@ and dispatches one `IngestDocumentJob` per document. Binary formats
 (`application/pdf`, `.docx`) require `content` **base64-encoded** with a
 `mime_type`; the controller decodes-or-422 before writing.
 
+## UI upload (admin drag-and-drop)
+
+The admin SPA ships a drag-and-drop upload modal (`/app/{team}/admin/kb`) so an
+operator can add documents without the CLI or a hand-rolled API call. It is a
+**third entry surface**, not a third execution path: at commit time it dispatches
+the *same* `IngestDocumentJob` as everything else (the "never skip the one path"
+rule above still holds). What it adds in front of that is a **human-reviewed
+staging buffer**.
+
+```mermaid
+flowchart LR
+    UP["POST /api/admin/kb/uploads<br/>multipart files[] + project_key + sub_path"] --> STG[("kb-staging disk<br/>{tenant}/{batch}/{uuid}.ext")]
+    STG --> REV["Review in modal<br/>per-file status + canonical warnings<br/>remove / cancel"]
+    REV --> COM["POST /uploads/&#123;batch&#125;/commit<br/>R21 atomic gate (lockForUpdate + committed_at)"]
+    COM --> MV["move each staged file → kb disk"]
+    MV --> JOB["IngestDocumentJob ×N<br/>(the one execution path)"]
+    JOB --> PROG["KbUploadBatchItemProgress<br/>queue events → item status"]
+    PROG --> POLL["GET /uploads/&#123;batch&#125;/status<br/>FE polls queued→processing→succeeded|failed"]
+```
+
+- **Stage** validates each file by extension (md / markdown / txt / pdf / docx),
+  normalizes `sub_path` through `KbPath` (a `..` traversal 422s, R1), rejects a
+  batch with **duplicate filenames** (they would collapse to one
+  `destination_path` and silently lose bytes), and stores the bytes on a dedicated
+  **`kb-staging`** disk under an opaque `{tenant}/{batch}/{uuid}.ext` name.
+- **Commit** is an **atomic single-use gate** (R21): the status flip + `committed_at`
+  stamp happen inside one `DB::transaction` with `lockForUpdate`, so a double
+  click 409s instead of ingesting twice. It then moves each staged file to the KB
+  disk and dispatches the ingest jobs (`202 Accepted`).
+- **Progress** is driven by a queue-lifecycle listener (`KbUploadBatchItemProgress`)
+  that advances each item `queued → processing → succeeded | failed` *without*
+  touching the shared job — the FE polls `GET …/status` until terminal.
+
+**Design rationale.** Why a separate `kb-staging` disk rather than writing
+straight to the KB disk: staged bytes are *unreviewed* and may be abandoned, so
+they must never be visible to retrieval or pollute the canonical tree before the
+operator commits. A dedicated private disk keeps the review buffer isolated, and
+the daily `kb:prune-staging-batches` sweep (past `KB_STAGING_RETENTION_HOURS`,
+default 24) reclaims abandoned sessions — see
+[scheduler & maintenance](/scheduler-and-maintenance). The whole surface is
+`role:admin|super-admin`, tenant-scoped (R30), and every batch/item resolves
+through a tenant-scoped route binding (no cross-tenant IDOR).
+
 ## Idempotency (the load-bearing invariant)
 
 `DocumentIngestor` hashes the markdown and **upserts on

@@ -511,6 +511,8 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\NotificationsDigestWeeklyCommand::class,
             // v8.7/W5 — Cloud Time Machine archived-version retention.
             \App\Console\Commands\PruneArchivedVersionsCommand::class,
+            // v8.9 — UI upload staging buffer retention sweep.
+            \App\Console\Commands\PruneStagingBatchesCommand::class,
             // v8.11/P1b — evidence-tier PHP surface (AutoSci #67, R44).
             \App\Console\Commands\KbEvidenceTierCommand::class,
             // v8.11/P2 — auto-wiki graph canonicalization PHP surface (R44).
@@ -531,6 +533,9 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\KbWikiMaintainCommand::class,
             // v8.11/P10 — Wiki Explorer promote/discard PHP surface (R44).
             \App\Console\Commands\KbWikiPromoteCommand::class,
+            // Case study — per-company documentation-isolation verifier
+            // (README §6 matrix against the live KB). Dev/ops diagnostic.
+            \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
         ]);
     }
 

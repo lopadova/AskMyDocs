@@ -2,6 +2,7 @@ import {
     createRootRoute,
     createRoute,
     createRouter,
+    Navigate,
     Outlet,
     redirect,
     useNavigate,
@@ -15,6 +16,7 @@ import { AnonymousChatView } from '../features/chat/AnonymousChatView';
 import { DashboardView } from '../features/admin/dashboard/DashboardView';
 import { UsersView } from '../features/admin/users/UsersView';
 import { RolesView } from '../features/admin/roles/RolesView';
+import { ProjectsList } from '../features/admin/projects/ProjectsList';
 import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
@@ -59,6 +61,8 @@ import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { RedirectIfAuth, RequireAuth, useAuthBootstrap } from './guards';
 import { useAuthStore } from '../lib/auth-store';
+import { selectCurrentHash, useTeamStore } from '../lib/team-store';
+import { useEffect } from 'react';
 
 function RootLayout() {
     useAuthBootstrap();
@@ -131,10 +135,22 @@ const resetRoute = createRoute({
     component: ResetRoute,
 });
 
+/*
+ * /app hosts ONLY the auth gate; the shell moved down into TeamGate so
+ * every authenticated route lives under the team segment:
+ *
+ *     /app/{teamHash}/chat, /app/{teamHash}/admin/kb, …
+ *
+ * The teamHash is the unique routing hash each team carries in the
+ * /api/auth/me `teams` payload (BE: App\Support\TeamHash). The URL is
+ * the source of truth for the active team: TeamGate syncs the store to
+ * whatever valid hash the URL carries, so deep links into another team
+ * switch teams, and reloads restore the team from the address bar.
+ */
 function AppLayout() {
     return (
         <RequireAuth>
-            <AppShell />
+            <Outlet />
         </RequireAuth>
     );
 }
@@ -145,12 +161,107 @@ const appRoute = createRoute({
     component: AppLayout,
 });
 
+/*
+ * Bare /app — RequireAuth has already resolved /api/auth/me by the time
+ * this renders, so the team store is populated; bounce to the active
+ * team's chat. Kept as a COMPONENT (not beforeLoad) because beforeLoad
+ * runs before the auth bootstrap completes and the hash would not be
+ * known yet.
+ */
+function TeamRootRedirect() {
+    const navigate = useNavigate();
+    const hash = useTeamStore(selectCurrentHash);
+
+    useEffect(() => {
+        if (hash !== null) {
+            navigate({ to: '/app/$teamHash/chat', params: { teamHash: hash }, replace: true });
+        }
+    }, [hash, navigate]);
+
+    return null;
+}
+
 const appIndexRoute = createRoute({
     getParentRoute: () => appRoute,
     path: '/',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/chat' });
-    },
+    component: TeamRootRedirect,
+});
+
+/*
+ * TeamGate — owns the `$teamHash` segment.
+ *
+ *  - Known hash      → sync the team store to the URL (switchTeam clears
+ *    the TanStack cache when the team actually changes) and render the
+ *    shell.
+ *  - Unknown segment → it is a LEGACY pre-hash URL (`/app/admin/kb`,
+ *    an old bookmark, an E2E goto): re-prefix it with the active team's
+ *    hash and replace, preserving the query string. The alias stubs
+ *    below then take care of pre-admin path shapes (`/app/{hash}/kb`).
+ */
+function TeamGate() {
+    const { teamHash } = teamRoute.useParams();
+    const teams = useTeamStore((s) => s.teams);
+    const currentTeam = useTeamStore((s) => s.currentTeam);
+    const switchTeam = useTeamStore((s) => s.switchTeam);
+    const navigate = useNavigate();
+
+    const team = teams.find((t) => t.hash === teamHash);
+
+    useEffect(() => {
+        if (team) {
+            if (team.tenant_id !== currentTeam) {
+                switchTeam(team.tenant_id);
+            }
+            return;
+        }
+        const active = teams.find((t) => t.tenant_id === currentTeam) ?? teams[0];
+        if (!active) {
+            return; // store not synced yet — RequireAuth still resolving
+        }
+        const rest = window.location.pathname.replace(/^\/app\/?/, '');
+        navigate({
+            to: `/app/${active.hash}/${rest}`,
+            search: true,
+            replace: true,
+        });
+    }, [team, teams, currentTeam, switchTeam, navigate]);
+
+    if (!team || team.tenant_id !== currentTeam) {
+        return null; // redirecting (legacy URL) or syncing (deep link)
+    }
+
+    return <AppShell />;
+}
+
+const teamRoute = createRoute({
+    getParentRoute: () => appRoute,
+    path: '$teamHash',
+    component: TeamGate,
+});
+
+// True only when the URL's `$teamHash` segment is a real team. The
+// in-team redirects below guard on this: for a LEGACY hash-less URL
+// (`/app/admin`) `$teamHash` captured "admin", which is NOT a team.
+// These were `beforeLoad` redirects, but beforeLoad fires DURING route
+// matching with that bogus "admin" param and races TeamGate's effect —
+// producing a corrupt URL like `/app/{hash}/admin/chat`. As guarded
+// components they render null for an unknown hash and let TeamGate's
+// effect re-prefix the whole path unambiguously; for a real hash they
+// redirect as before.
+function useHashIsKnownTeam(teamHash: string): boolean {
+    return useTeamStore((s) => s.teams.some((t) => t.hash === teamHash));
+}
+
+function TeamIndexRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/chat" params={{ teamHash }} replace />;
+}
+
+const teamIndexRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: '/',
+    component: TeamIndexRedirect,
 });
 
 // Copilot #11 fix: flat chat routes instead of nesting
@@ -161,7 +272,7 @@ const appIndexRoute = createRoute({
 // for `/app/chat/:conversationId`. Two sibling routes under
 // `appRoute` let `ChatView` receive the param in both shapes.
 const chatRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'chat',
     component: ChatView,
 });
@@ -171,12 +282,12 @@ const chatRoute = createRoute({
 // "anonymous" as a conversation id. Self-contained (no streaming/conversation
 // machinery) so the feature toggle never destabilises the normal chat path.
 const chatAnonymousRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'chat/anonymous',
     component: AnonymousChatView,
 });
 const chatConversationRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'chat/$conversationId',
     component: ChatView,
 });
@@ -186,33 +297,46 @@ const chatConversationRoute = createRoute({
 // links there directly (AppShell SECTION_ROUTES). The old paths redirect to
 // the real targets so any stale bookmark / deep link lands on the working
 // view instead of a dead-end stub.
+function DashboardAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin" params={{ teamHash }} replace />;
+}
+function KbAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/kb" params={{ teamHash }} replace />;
+}
+function InsightsAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/insights" params={{ teamHash }} replace />;
+}
+function UsersAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/users" params={{ teamHash }} replace />;
+}
+
 const dashboardRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'dashboard',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/admin' });
-    },
+    component: DashboardAliasRedirect,
 });
 const kbRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'kb',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/admin/kb' });
-    },
+    component: KbAliasRedirect,
 });
 const insightsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'insights',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/admin/insights' });
-    },
+    component: InsightsAliasRedirect,
 });
 const usersRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'users',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/admin/users' });
-    },
+    component: UsersAliasRedirect,
 });
 // Phase H1 — admin Log Viewer route. Same flat RBAC pattern as
 // AdminKbRoute: the RequireRole gate lives inside the component so
@@ -226,22 +350,26 @@ function AdminLogsRoute() {
 }
 
 const logsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'logs',
     component: AdminLogsRoute,
 });
 
 const adminLogsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/logs',
     component: AdminLogsRoute,
 });
+function MaintenanceAliasRedirect() {
+    const { teamHash } = teamRoute.useParams();
+    if (!useHashIsKnownTeam(teamHash)) return null;
+    return <Navigate to="/app/$teamHash/admin/maintenance" params={{ teamHash }} replace />;
+}
+
 const maintenanceRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'maintenance',
-    beforeLoad: () => {
-        throw redirect({ to: '/app/admin/maintenance' });
-    },
+    component: MaintenanceAliasRedirect,
 });
 
 // Phase H2 — admin Maintenance panel route. Same flat RBAC pattern as
@@ -257,7 +385,7 @@ function AdminMaintenanceRoute() {
 }
 
 const adminMaintenanceRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/maintenance',
     component: AdminMaintenanceRoute,
 });
@@ -275,9 +403,30 @@ function AdminRoute() {
 }
 
 const adminRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin',
     component: AdminRoute,
+});
+
+// v8.9 — Admin Projects registry. Same flat-RBAC pattern: the
+// RequireRole gate lives inside the component so a viewer hitting
+// /app/{hash}/admin/projects sees <AdminForbidden />. AdminShell wraps
+// here (route level) — like AdminSynonymsRoute — so ProjectsList stays
+// Router-context-free for Vitest.
+function AdminProjectsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="projects">
+                <ProjectsList />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminProjectsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/projects',
+    component: AdminProjectsRoute,
 });
 
 // PR7 / Phase F2 — flat admin children. Same shape as `chatRoute`
@@ -316,13 +465,13 @@ function AdminKbRoute() {
 }
 
 const adminUsersRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/users',
     component: AdminUsersRoute,
 });
 
 const adminRolesRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/roles',
     component: AdminRolesRoute,
 });
@@ -337,7 +486,7 @@ const adminKbSearchSchema = z.object({
 });
 
 const adminKbRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb',
     validateSearch: adminKbSearchSchema,
     component: AdminKbRoute,
@@ -352,7 +501,7 @@ function AdminKbHealthRoute() {
 }
 
 const adminKbHealthRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/health',
     component: AdminKbHealthRoute,
 });
@@ -369,7 +518,7 @@ function AdminTagsRoute() {
 }
 
 const adminTagsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/tags',
     component: AdminTagsRoute,
 });
@@ -387,7 +536,7 @@ function AdminSynonymsRoute() {
 }
 
 const adminSynonymsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/synonyms',
     component: AdminSynonymsRoute,
 });
@@ -404,7 +553,7 @@ function AdminKbInsightsRoute() {
 }
 
 const adminKbInsightsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/insights',
     component: AdminKbInsightsRoute,
 });
@@ -421,7 +570,7 @@ function AdminAnalysisSettingsRoute() {
 }
 
 const adminAnalysisSettingsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/analysis-settings',
     component: AdminAnalysisSettingsRoute,
 });
@@ -438,7 +587,7 @@ function AdminContentGapsRoute() {
 }
 
 const adminContentGapsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/content-gaps',
     component: AdminContentGapsRoute,
 });
@@ -455,7 +604,7 @@ function AdminWikiHealthRoute() {
 }
 
 const adminWikiHealthRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-health',
     component: AdminWikiHealthRoute,
 });
@@ -471,7 +620,7 @@ function AdminWikiIndicesRoute() {
 }
 
 const adminWikiIndicesRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-indices',
     component: AdminWikiIndicesRoute,
 });
@@ -487,7 +636,7 @@ function AdminWikiExplorerRoute() {
 }
 
 const adminWikiExplorerRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/wiki-explorer',
     component: AdminWikiExplorerRoute,
 });
@@ -503,7 +652,7 @@ function AdminAutoWikiSettingsRoute() {
 }
 
 const adminAutoWikiSettingsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/autowiki-settings',
     component: AdminAutoWikiSettingsRoute,
 });
@@ -528,7 +677,7 @@ function AdminKbTimeMachineRoute() {
 }
 
 const adminKbTimeMachineRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/kb/time-machine/$docId',
     component: AdminKbTimeMachineRoute,
 });
@@ -545,7 +694,7 @@ function AdminInsightsRoute() {
 }
 
 const adminInsightsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/insights',
     component: AdminInsightsRoute,
 });
@@ -570,7 +719,7 @@ function AdminPiiRedactorRoute() {
 }
 
 const adminPiiRedactorRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/pii-redactor',
     component: AdminPiiRedactorRoute,
 });
@@ -593,7 +742,7 @@ function AdminFlowsRoute() {
 }
 
 const adminFlowsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/flows',
     component: AdminFlowsRoute,
 });
@@ -631,7 +780,7 @@ function AdminEvalHarnessRoute() {
 // Bare-path route: handles the sidebar entry click + direct hits on
 // the dashboard root (/app/admin/eval-harness).
 const adminEvalHarnessRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/eval-harness',
     component: AdminEvalHarnessRoute,
 });
@@ -645,7 +794,7 @@ function AdminAiActComplianceRoute() {
 }
 
 const adminAiActComplianceRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/ai-act-compliance',
     component: AdminAiActComplianceRoute,
 });
@@ -666,13 +815,13 @@ function AdminEvidenceRiskReviewRoute() {
 }
 
 const adminEvidenceRiskReviewRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/evidence-risk-review',
     component: AdminEvidenceRiskReviewRoute,
 });
 
 const adminAiActComplianceSplatRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/ai-act-compliance/$',
     component: AdminAiActComplianceRoute,
 });
@@ -704,7 +853,7 @@ function AdminConnectorCallbackRoute() {
 }
 
 const adminConnectorsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/connectors',
     component: AdminConnectorsRoute,
 });
@@ -733,13 +882,13 @@ function AdminWorkflowsRoute() {
 }
 
 const adminTabularReviewsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/tabular-reviews',
     component: AdminTabularReviewsRoute,
 });
 
 const adminWorkflowsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/workflows',
     component: AdminWorkflowsRoute,
 });
@@ -758,7 +907,7 @@ function AdminMcpToolsRoute() {
 }
 
 const adminMcpToolsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/mcp-tools',
     component: AdminMcpToolsRoute,
 });
@@ -774,7 +923,7 @@ function AdminMcpTokensRoute() {
 }
 
 const adminMcpTokensRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/mcp/tokens',
     component: AdminMcpTokensRoute,
 });
@@ -790,7 +939,7 @@ function AdminCollectionsRoute() {
 }
 
 const adminCollectionsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/collections',
     component: AdminCollectionsRoute,
 });
@@ -809,7 +958,7 @@ function AdminWidgetRoute() {
 }
 
 const adminWidgetRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/widget',
     component: AdminWidgetRoute,
 });
@@ -823,7 +972,7 @@ function AdminComplianceReportsRoute() {
 }
 
 const adminComplianceReportsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/compliance/reports',
     component: AdminComplianceReportsRoute,
 });
@@ -851,7 +1000,7 @@ function AdminNotificationsRoute() {
 }
 
 const adminNotificationsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/notifications',
     component: AdminNotificationsRoute,
 });
@@ -914,13 +1063,13 @@ function AdminEngagementRoute() {
     );
 }
 const adminEngagementRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/engagement',
     component: AdminEngagementRoute,
 });
 
 const adminNotificationPreferencesRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/notifications/preferences',
     component: AdminNotificationPreferencesRoute,
 });
@@ -943,13 +1092,13 @@ function AdminNotificationDefaultsRoute() {
 }
 
 const adminNotificationDefaultsRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/notifications/defaults',
     component: AdminNotificationDefaultsRoute,
 });
 
 const adminConnectorCallbackRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/connectors/$key/callback',
     component: AdminConnectorCallbackRoute,
 });
@@ -962,10 +1111,64 @@ const adminConnectorCallbackRoute = createRoute({
 // render the same `<EvalHarnessView />` so the component lifecycle
 // stays identical regardless of the entry URL.
 const adminEvalHarnessSplatRoute = createRoute({
-    getParentRoute: () => appRoute,
+    getParentRoute: () => teamRoute,
     path: 'admin/eval-harness/$',
     component: AdminEvalHarnessRoute,
 });
+
+// Every authenticated page sits under the team segment; only the bare
+// /app redirector stays directly on appRoute.
+const teamChildren = [
+    teamIndexRoute,
+    chatRoute,
+    chatAnonymousRoute,
+    chatConversationRoute,
+    dashboardRoute,
+    kbRoute,
+    insightsRoute,
+    usersRoute,
+    logsRoute,
+    maintenanceRoute,
+    adminRoute,
+    adminProjectsRoute,
+    adminUsersRoute,
+    adminRolesRoute,
+    adminKbRoute,
+    adminKbHealthRoute,
+    adminWikiHealthRoute,
+    adminWikiIndicesRoute,
+    adminWikiExplorerRoute,
+    adminAutoWikiSettingsRoute,
+    adminTagsRoute,
+    adminSynonymsRoute,
+    adminKbInsightsRoute,
+    adminAnalysisSettingsRoute,
+    adminContentGapsRoute,
+    adminKbTimeMachineRoute,
+    adminLogsRoute,
+    adminMaintenanceRoute,
+    adminInsightsRoute,
+    adminPiiRedactorRoute,
+    adminFlowsRoute,
+    adminEvalHarnessRoute,
+    adminEvalHarnessSplatRoute,
+    adminAiActComplianceRoute,
+    adminAiActComplianceSplatRoute,
+    adminConnectorsRoute,
+    adminConnectorCallbackRoute,
+    adminTabularReviewsRoute,
+    adminWorkflowsRoute,
+    adminMcpToolsRoute,
+    adminMcpTokensRoute,
+    adminCollectionsRoute,
+    adminWidgetRoute,
+    adminComplianceReportsRoute,
+    adminNotificationsRoute,
+    adminNotificationPreferencesRoute,
+    adminNotificationDefaultsRoute,
+    adminEngagementRoute,
+    adminEvidenceRiskReviewRoute,
+];
 
 const routeTree = rootRoute.addChildren([
     indexRoute,
@@ -974,55 +1177,9 @@ const routeTree = rootRoute.addChildren([
     resetRoute,
     appRoute.addChildren([
         appIndexRoute,
-        chatRoute,
-        chatAnonymousRoute,
-        chatConversationRoute,
+        teamRoute.addChildren(teamChildren),
         digestRoute,
         meDashboardRoute,
-        adminEngagementRoute,
-        dashboardRoute,
-        kbRoute,
-        insightsRoute,
-        usersRoute,
-        logsRoute,
-        maintenanceRoute,
-        adminRoute,
-        adminUsersRoute,
-        adminRolesRoute,
-        adminKbRoute,
-        adminKbHealthRoute,
-        adminTagsRoute,
-        adminSynonymsRoute,
-        adminKbInsightsRoute,
-        adminAnalysisSettingsRoute,
-        adminContentGapsRoute,
-        adminWikiHealthRoute,
-        adminWikiIndicesRoute,
-        adminWikiExplorerRoute,
-        adminAutoWikiSettingsRoute,
-        adminKbTimeMachineRoute,
-        adminLogsRoute,
-        adminMaintenanceRoute,
-        adminInsightsRoute,
-        adminPiiRedactorRoute,
-        adminFlowsRoute,
-        adminEvalHarnessRoute,
-        adminEvalHarnessSplatRoute,
-        adminAiActComplianceRoute,
-        adminAiActComplianceSplatRoute,
-        adminEvidenceRiskReviewRoute,
-        adminConnectorsRoute,
-        adminConnectorCallbackRoute,
-        adminTabularReviewsRoute,
-        adminWorkflowsRoute,
-        adminMcpToolsRoute,
-        adminMcpTokensRoute,
-        adminCollectionsRoute,
-        adminWidgetRoute,
-        adminComplianceReportsRoute,
-        adminNotificationsRoute,
-        adminNotificationPreferencesRoute,
-        adminNotificationDefaultsRoute,
     ]),
 ]);
 

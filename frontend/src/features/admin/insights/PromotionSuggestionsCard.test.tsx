@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PromotionSuggestionsCard } from './PromotionSuggestionsCard';
+import { useTeamStore } from '../../../lib/team-store';
 
 describe('PromotionSuggestionsCard', () => {
     // Copilot #6 fix: the original test replaced `window.location` via
@@ -25,12 +26,20 @@ describe('PromotionSuggestionsCard', () => {
             writable: true,
             value: { assign: vi.fn() },
         });
+        // The card builds the pivot URL under the active team's hash —
+        // seed a known team so the assertion is deterministic.
+        useTeamStore.setState({
+            teams: [{ tenant_id: 'default', hash: 'def0def0def0', name: 'Default', projects: [] }],
+            currentTeam: 'default',
+            userId: 1,
+        });
     });
 
     afterEach(() => {
         if (originalLocationDescriptor) {
             Object.defineProperty(window, 'location', originalLocationDescriptor);
         }
+        useTeamStore.setState({ teams: [], currentTeam: null, userId: null });
     });
 
     it('renders the empty state when no items', () => {
@@ -83,7 +92,7 @@ describe('PromotionSuggestionsCard', () => {
         );
         await userEvent.click(screen.getByTestId('promotions-action-promote-7'));
         expect(window.location.assign).toHaveBeenCalledWith(
-            '/app/admin/kb?doc=7&tab=meta&promote=1',
+            '/app/def0def0def0/admin/kb?doc=7&tab=meta&promote=1',
         );
     });
 

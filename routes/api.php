@@ -35,6 +35,7 @@ use App\Http\Controllers\Api\ChatPreferencesController;
 use App\Http\Controllers\Api\KbChunkFeedbackController;
 use App\Http\Controllers\Api\KbCollectionPickerController;
 use App\Http\Controllers\Api\KbDeleteController;
+use App\Http\Controllers\Api\KbDocumentPreviewController;
 use App\Http\Controllers\Api\KbDocumentSearchController;
 use App\Http\Controllers\Api\KbIngestController;
 use App\Http\Controllers\Api\KbPromotionController;
@@ -152,6 +153,15 @@ Route::middleware([
     // apply automatically (R2).
     Route::get('/kb/resolve-wikilink', KbResolveWikilinkController::class)
         ->name('api.kb.resolve-wikilink');
+
+    // Full source text of a CITED document, for the chat "open source" modal.
+    // Reachable by every authenticated reader (not only admins) and scoped to
+    // the caller's tenant + AccessScope — a citation can only open a document
+    // the reader may see. {documentId} is numeric so it never shadows the literal
+    // `/kb/documents/search` route above.
+    Route::get('/kb/documents/{documentId}/preview', KbDocumentPreviewController::class)
+        ->whereNumber('documentId')
+        ->name('api.kb.documents.preview');
 
     // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116
     // refactored `promote` from inline write+dispatch to the 4-step
@@ -338,6 +348,32 @@ Route::middleware([
                 ->findOrFail($id);
         });
 
+        // v8.9 — KB upload (drag-and-drop) batches + items. R30 — tenant-scoped
+        // binding so an admin in tenant A cannot inspect/commit/cancel or
+        // delete an item of tenant B's batch by guessing the uuid (IDOR).
+        Route::bind('uploadBatch', function ($id) {
+            return \App\Models\KbIngestBatch::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current())
+                ->findOrFail($id);
+        });
+        Route::bind('uploadItem', function ($id, $route) {
+            $query = \App\Models\KbIngestBatchItem::query()
+                ->forTenant(app(\App\Support\TenantContext::class)->current());
+
+            // When the route also carries {uploadBatch} (DELETE
+            // …/{uploadBatch}/items/{uploadItem}), constrain the item to THAT
+            // batch — otherwise a caller could pair an arbitrary same-tenant
+            // item uuid with any batch id (an IDOR-in-tenant footgun). The
+            // uploadBatch param precedes uploadItem in the URI, so it is
+            // already the bound model here.
+            $batch = $route->parameter('uploadBatch');
+            if ($batch instanceof \App\Models\KbIngestBatch) {
+                $query->where('batch_id', $batch->id);
+            }
+
+            return $query->findOrFail($id);
+        });
+
         Route::apiResource('kb/documents', KbDocumentController::class)
             ->only(['show', 'destroy'])
             ->names([
@@ -378,6 +414,42 @@ Route::middleware([
             ->name('api.admin.compliance.reports.download_json');
         Route::get('/compliance/reports/{report}/pdf', [ComplianceReportController::class, 'downloadPdf'])
             ->name('api.admin.compliance.reports.download_pdf');
+
+        // v8.9 — Admin RESTful CRUD on the `projects` registry. Per-tenant
+        // scope (R30), int-typed `id` param keeps route binding plain.
+        // No `show` route — the list carries everything the page needs.
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/projects`).
+        Route::apiResource('projects', \App\Http\Controllers\Api\Admin\ProjectController::class)
+            ->parameters(['projects' => 'id'])
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->names([
+                'index' => 'api.admin.projects.index',
+                'store' => 'api.admin.projects.store',
+                'update' => 'api.admin.projects.update',
+                'destroy' => 'api.admin.projects.destroy',
+            ]);
+
+        // v8.9 — Admin drag-and-drop KB upload: stage → review → commit →
+        // poll. Reuses the exact Artisan ingest pipeline (IngestDocumentJob)
+        // on commit. R32 — covered by the AdminAuthorizationMatrix
+        // (`/api/admin/kb/uploads`). Bindings above scope every {uploadBatch}
+        // / {uploadItem} to the active tenant (R30).
+        Route::prefix('kb/uploads')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'index'])
+                ->name('api.admin.kb.uploads.index');
+            Route::post('/', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'store'])
+                ->name('api.admin.kb.uploads.store');
+            Route::get('/{uploadBatch}', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'show'])
+                ->name('api.admin.kb.uploads.show');
+            Route::get('/{uploadBatch}/status', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'status'])
+                ->name('api.admin.kb.uploads.status');
+            Route::post('/{uploadBatch}/commit', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'commit'])
+                ->name('api.admin.kb.uploads.commit');
+            Route::post('/{uploadBatch}/cancel', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'cancel'])
+                ->name('api.admin.kb.uploads.cancel');
+            Route::delete('/{uploadBatch}/items/{uploadItem}', [\App\Http\Controllers\Api\Admin\KbUploadController::class, 'destroyItem'])
+                ->name('api.admin.kb.uploads.items.destroy');
+        });
 
         // T2.10 — Admin RESTful CRUD on kb_tags. Per-project scope,
         // cascade on delete via FK ON DELETE CASCADE on
