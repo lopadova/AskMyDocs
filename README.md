@@ -869,7 +869,7 @@ TENANT_USER_COLUMN=tenant_id     # column on the User model that holds the tenan
 
 **What's tenant-scoped (and what isn't)**
 
-The 20 tenant-aware models (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — `KnowledgeDocument`, `KnowledgeChunk`, `ChatLog`, `Conversation`, `Message`, `KbNode`, `KbEdge`, `KbCanonicalAudit`, `ProjectMembership`, `KbTag`, `KnowledgeDocumentAcl`, `AdminCommandAudit`, `AdminCommandNonce`, `AdminInsightsSnapshot`, `ChatFilterPreset`, `ChatLogProvenance`, `TabularReview`, `TabularCell`, `Workflow`, `HiddenWorkflow`) all carry `tenant_id` and use the `BelongsToTenant` trait. The architecture test gates new models on every CI run so this list stays in lock-step with the migrations. The composite FKs on `kb_edges` are **project-scoped** (`(project_key, node_uid)` — intra-project referential integrity); cross-**tenant** isolation is enforced at the **application layer** via the R30 `forTenant()` scope (`BelongsToTenant` auto-stamps on write but adds **no** global read scope), not by the FK — `project_key` is shared across tenants.
+The tenant-aware models — the authoritative list lives in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS`, kept in lock-step with the migrations by the architecture test on every CI run (it spans `KnowledgeDocument` / `KnowledgeChunk`, the chat + conversation tables, the `kb_*` graph / canonical / engagement tables, `ProjectMembership` + the first-class `Project`, and the `KbIngestBatch` / `KbIngestBatchItem` upload-tracking pair, among others) — all carry `tenant_id` and use the `BelongsToTenant` trait. The composite FKs on `kb_edges` are **project-scoped** (`(project_key, node_uid)` — intra-project referential integrity); cross-**tenant** isolation is enforced at the **application layer** via the R30 `forTenant()` scope (`BelongsToTenant` auto-stamps on write but adds **no** global read scope), not by the FK — `project_key` is shared across tenants.
 
 `embedding_cache` is **intentionally NOT tenant-aware** — the cache is a cross-tenant reuse layer keyed by the composite `UNIQUE (text_hash, provider, model)` (v4.0.1, widened from `text_hash` alone so multiple provider/model embeddings of the same text coexist without forcing a flush). Sharing embeddings across tenants is a deliberate cost optimisation; `TenantIdMandatoryTest` documents the exclusion.
 
@@ -910,7 +910,7 @@ a **topbar team switcher** and a tenant that is always visible in the URL.
   that tenant (scoped to both the tenant *and* the user — no escalation); anything else
   is `403 tenant_forbidden`, which the SPA turns into a snap-back to the first valid team.
 
-→ Deep dive: [doc.askmydocs.padosoft.com/team-switcher](https://padosoft.mintlify.app/team-switcher).
+→ Deep dive: [padosoft.mintlify.app/team-switcher](https://padosoft.mintlify.app/team-switcher).
 
 ### First-class project registry
 
@@ -924,15 +924,18 @@ feature is purely additive, R27).
   **not** global: two teams may both own `engineering`); auto-filled `tenant_id` via
   `BelongsToTenant` (R30/R31).
 - **CRUD at `/app/{team}/admin/projects`** + `/api/admin/projects/*` (admin / super-admin).
-- **Immutable key** — the slug is auto-derived from the name on create and can't be
-  changed afterwards (a change would orphan every referencing row → 422).
+- **Immutable key** — `project_key` may be supplied explicitly on create or, when
+  omitted, is auto-slugged from the name (`resolveKey`); it is validated for slug shape
+  + per-tenant uniqueness (clean 422, not a raw DB error) and is **immutable** afterwards
+  (changing it would orphan every referencing row → 422).
 - **Delete-guard** — deleting a project still referenced by a document or membership is
   blocked with a 422, so the registry can never drift from the content.
-- **Backfill** — a seeder registers existing `(tenant_id, project_key)` pairs from
-  `knowledge_documents` + `project_memberships`. The KB project picker aggregates the
-  registry + existing documents + memberships for a complete list (R18).
+- **Backfill** — the `create_projects_table` migration's `up()` backfills one row per
+  distinct `(tenant_id, project_key)` already in use across `knowledge_documents` +
+  `project_memberships`. The KB project picker then aggregates the registry + existing
+  documents + memberships for a complete list (R18).
 
-→ Deep dive: [doc.askmydocs.padosoft.com/projects-registry](https://padosoft.mintlify.app/projects-registry).
+→ Deep dive: [padosoft.mintlify.app/projects-registry](https://padosoft.mintlify.app/projects-registry).
 
 ### In-chat source preview
 
@@ -944,7 +947,7 @@ authenticated user via `GET /api/kb/documents/{document}/preview`; admins additi
 get a deep-link to the full KB document page. A missing/forbidden document returns the
 correct 404/403 (R14), never a 200 with empty body.
 
-→ Deep dive: [doc.askmydocs.padosoft.com/chat-and-retrieval](https://padosoft.mintlify.app/chat-and-retrieval).
+→ Deep dive: [padosoft.mintlify.app/chat-and-retrieval](https://padosoft.mintlify.app/chat-and-retrieval).
 
 ### Automated isolation testing
 
@@ -958,7 +961,7 @@ an owning fact is unreachable → fails the gate) from **SOFT misses** (the refu
 wording was missed but nothing leaked → warning unless `--strict`), so an isolation gate
 is never coupled to model-phrasing calibration.
 
-→ Deep dive: [doc.askmydocs.padosoft.com/isolation-testing](https://padosoft.mintlify.app/isolation-testing).
+→ Deep dive: [padosoft.mintlify.app/isolation-testing](https://padosoft.mintlify.app/isolation-testing).
 
 ## Features by area
 
