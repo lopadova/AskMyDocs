@@ -25,6 +25,25 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 class AuthController extends Controller
 {
+    /**
+     * Least-privilege ability scope for desktop personal access tokens.
+     * The Tauri client only ever calls the KB read endpoints (search +
+     * preview) and the chat endpoint, so the token is minted with exactly
+     * those two abilities instead of the `['*']` wildcard. The consuming
+     * routes are gated with `token.ability:<ability>` (EnforceTokenAbility),
+     * so a stolen desktop token cannot reach a route scoped differently.
+     *
+     * @var list<string>
+     */
+    private const DESKTOP_TOKEN_ABILITIES = ['kb:read', 'kb:chat'];
+
+    /**
+     * Time-to-live for a desktop token. A finite expiry means a token leaked
+     * from a lost device self-revokes server-side instead of living forever
+     * (the global `sanctum.expiration` is null, so we set it per token).
+     */
+    private const DESKTOP_TOKEN_TTL_DAYS = 30;
+
     public function login(LoginRequest $request): JsonResponse
     {
         $key = $request->throttleKey();
@@ -68,6 +87,10 @@ class AuthController extends Controller
      *
      * Mirrors login's failure-only throttle (hit on bad credentials, clear on
      * success) on a separate bucket so the two flows don't interfere.
+     *
+     * The token is scoped to the least-privilege abilities the desktop client
+     * actually uses (DESKTOP_TOKEN_ABILITIES) and carries a finite expiry
+     * (DESKTOP_TOKEN_TTL_DAYS) — never the `['*']` wildcard, never immortal.
      */
     public function token(TokenRequest $request): JsonResponse
     {
@@ -93,7 +116,11 @@ class AuthController extends Controller
 
         RateLimiter::clear($key);
 
-        $token = $user->createToken($request->deviceName())->plainTextToken;
+        $token = $user->createToken(
+            $request->deviceName(),
+            self::DESKTOP_TOKEN_ABILITIES,
+            now()->addDays(self::DESKTOP_TOKEN_TTL_DAYS),
+        )->plainTextToken;
 
         return response()->json([
             'token' => $token,

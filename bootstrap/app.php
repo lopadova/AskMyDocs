@@ -52,6 +52,14 @@ return Application::configure(basePath: dirname(__DIR__))
             // /api/widget/* in routes/api.php, fuori dallo stack auth:sanctum.
             'widget.key' => \App\Http\Middleware\ResolveWidgetKey::class,
             'mcp.scope' => \App\Http\Middleware\EnforceMcpScope::class,
+            // Least-privilege gate for Bearer personal access tokens on the
+            // dual-auth /kb/* routes (the Tauri desktop demo). PAT-scoped:
+            // constrains ONLY real PersonalAccessToken requests, passing
+            // session / transient / unauthenticated traffic through to the
+            // route's own auth + RBAC stack. Sanctum's stock `ability`
+            // middleware can't be used here — it 401s the cookie SPA whose
+            // currentAccessToken() is a TransientToken. See AuthController::token().
+            'token.ability' => \App\Http\Middleware\EnforceTokenAbility::class,
             // v4.0/W3.1 — `auth` variant for SSE streaming routes that
             // returns JSON 401 instead of a 302 → /login redirect when
             // the session is expired. SSE clients send

@@ -128,8 +128,11 @@ Route::middleware([
     if ($consentFeature !== '') {
         $chatMiddleware[] = 'ai.consent:' . $consentFeature;
     }
+    // `token.ability:kb:chat` is a no-op for the cookie SPA (TransientToken)
+    // and only constrains Bearer PATs (the desktop demo): a token not scoped
+    // for chat is rejected before it can burn provider quota (EnforceTokenAbility).
     Route::post('/kb/chat', KbChatController::class)
-        ->middleware($chatMiddleware);
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']));
     // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
     // "New anonymous chat" surface as a clean disabled landing (R14/R43)
     // when `kb.anonymous_chat.enabled` is off, instead of only learning
@@ -152,6 +155,7 @@ Route::middleware([
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
     Route::get('/kb/documents/search', KbDocumentSearchController::class)
+        ->middleware('token.ability:kb:read')
         ->name('api.kb.documents.search');
     Route::get('/kb/collections', KbCollectionPickerController::class)
         ->name('api.kb.collections.index');
@@ -178,6 +182,7 @@ Route::middleware([
     // `/kb/documents/search` route above.
     Route::get('/kb/documents/{documentId}/preview', KbDocumentPreviewController::class)
         ->whereNumber('documentId')
+        ->middleware('token.ability:kb:read')
         ->name('api.kb.documents.preview');
 
     // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116
