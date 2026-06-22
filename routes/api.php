@@ -92,6 +92,23 @@ Route::middleware('web')->prefix('auth')->group(function () {
     });
 });
 
+// Stateless auth for non-browser clients (the Tauri desktop demo): Bearer
+// tokens, NO web session / CSRF. The cookie-based SPA keeps using the
+// `web`-middleware group above. These routes deliberately sit OUTSIDE `web`
+// so a token client without an XSRF cookie isn't rejected with 419 — the
+// whole point of the Bearer flow is to avoid the cookie+CSRF handshake.
+Route::prefix('auth')->group(function () {
+    // Throttling lives in AuthController@token (failure-only counter), same
+    // rationale as /login above.
+    Route::post('/token', [AuthController::class, 'token'])
+        ->name('api.auth.token');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::post('/token/revoke', [AuthController::class, 'revokeToken'])
+            ->name('api.auth.token.revoke');
+    });
+});
+
 Route::middleware([
     \Illuminate\Cookie\Middleware\EncryptCookies::class,
     \Illuminate\Session\Middleware\StartSession::class,
@@ -111,8 +128,11 @@ Route::middleware([
     if ($consentFeature !== '') {
         $chatMiddleware[] = 'ai.consent:' . $consentFeature;
     }
+    // `token.ability:kb:chat` is a no-op for the cookie SPA (TransientToken)
+    // and only constrains Bearer PATs (the desktop demo): a token not scoped
+    // for chat is rejected before it can burn provider quota (EnforceTokenAbility).
     Route::post('/kb/chat', KbChatController::class)
-        ->middleware($chatMiddleware);
+        ->middleware(array_merge($chatMiddleware, ['token.ability:kb:chat']));
     // v8.8.3 — anonymous-chat capability probe. Lets the SPA render the
     // "New anonymous chat" surface as a clean disabled landing (R14/R43)
     // when `kb.anonymous_chat.enabled` is off, instead of only learning
@@ -135,6 +155,7 @@ Route::middleware([
     // T2.6 — document title/path autocomplete for the FE chat composer's
     // @mention popover (T2.7/T2.8 will consume it).
     Route::get('/kb/documents/search', KbDocumentSearchController::class)
+        ->middleware('token.ability:kb:read')
         ->name('api.kb.documents.search');
     Route::get('/kb/collections', KbCollectionPickerController::class)
         ->name('api.kb.collections.index');
@@ -161,6 +182,7 @@ Route::middleware([
     // `/kb/documents/search` route above.
     Route::get('/kb/documents/{documentId}/preview', KbDocumentPreviewController::class)
         ->whereNumber('documentId')
+        ->middleware('token.ability:kb:read')
         ->name('api.kb.documents.preview');
 
     // Promotion pipeline (ADR 0003 — human-gated). v4.2/W2 PR #116

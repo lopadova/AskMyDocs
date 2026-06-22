@@ -3,13 +3,18 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\TokenRequest;
+use App\Models\User;
 use App\Services\Auth\UserTeamsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * JSON-native login / logout / me endpoints for the React SPA. Paired with
@@ -21,6 +26,25 @@ use Illuminate\Validation\ValidationException;
  */
 class AuthController extends Controller
 {
+    /**
+     * Least-privilege ability scope for desktop personal access tokens.
+     * The Tauri client only ever calls the KB read endpoints (search +
+     * preview) and the chat endpoint, so the token is minted with exactly
+     * those two abilities instead of the `['*']` wildcard. The consuming
+     * routes are gated with `token.ability:<ability>` (EnforceTokenAbility),
+     * so a stolen desktop token cannot reach a route scoped differently.
+     *
+     * @var list<string>
+     */
+    private const DESKTOP_TOKEN_ABILITIES = ['kb:read', 'kb:chat'];
+
+    /**
+     * Time-to-live for a desktop token. A finite expiry means a token leaked
+     * from a lost device self-revokes server-side instead of living forever
+     * (the global `sanctum.expiration` is null, so we set it per token).
+     */
+    private const DESKTOP_TOKEN_TTL_DAYS = 30;
+
     public function login(LoginRequest $request): JsonResponse
     {
         $key = $request->throttleKey();
@@ -56,14 +80,84 @@ class AuthController extends Controller
         ], 200);
     }
 
-    public function logout(Request $request): JsonResponse
+    /**
+     * Issue a Sanctum personal access token for a non-browser client (the
+     * Tauri desktop demo). Verifies the credentials WITHOUT opening a session,
+     * then returns the plaintext token. The client stores it and authenticates
+     * every subsequent call with `Authorization: Bearer <token>`.
+     *
+     * Mirrors login's failure-only throttle (hit on bad credentials, clear on
+     * success) on a separate bucket so the two flows don't interfere.
+     *
+     * The token is scoped to the least-privilege abilities the desktop client
+     * actually uses (DESKTOP_TOKEN_ABILITIES) and carries a finite expiry
+     * (DESKTOP_TOKEN_TTL_DAYS) — never the `['*']` wildcard, never immortal.
+     */
+    public function token(TokenRequest $request): JsonResponse
+    {
+        $key = $request->throttleKey();
+
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            $seconds = RateLimiter::availableIn($key);
+
+            throw ValidationException::withMessages([
+                'email' => [__('auth.throttle', ['seconds' => $seconds])],
+            ])->status(429);
+        }
+
+        $user = User::where('email', (string) $request->validated('email'))->first();
+
+        if ($user === null || ! Hash::check((string) $request->validated('password'), $user->password)) {
+            RateLimiter::hit($key);
+
+            throw ValidationException::withMessages([
+                'email' => [__('auth.failed')],
+            ]);
+        }
+
+        RateLimiter::clear($key);
+
+        $token = $user->createToken(
+            $request->deviceName(),
+            self::DESKTOP_TOKEN_ABILITIES,
+            now()->addDays(self::DESKTOP_TOKEN_TTL_DAYS),
+        )->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'token_type' => 'Bearer',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+        ], 201);
+    }
+
+    public function logout(Request $request): Response
     {
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return response()->json(null, 204);
+        return response()->noContent();
+    }
+
+    /**
+     * Revoke the personal access token the caller authenticated with — the
+     * Bearer-flow counterpart of logout(). Stateless (no web session/CSRF), so
+     * the desktop client can sign out without an XSRF cookie. Session-based
+     * callers carry a TransientToken (no delete()), so they no-op safely.
+     */
+    public function revokeToken(Request $request): Response
+    {
+        $token = $request->user()?->currentAccessToken();
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
+        }
+
+        return response()->noContent();
     }
 
     public function me(Request $request, UserTeamsResolver $teams): JsonResponse
