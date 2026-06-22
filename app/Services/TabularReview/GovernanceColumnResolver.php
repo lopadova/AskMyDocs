@@ -6,6 +6,7 @@ namespace App\Services\TabularReview;
 
 use App\Models\KbEdge;
 use App\Models\KnowledgeDocument;
+use App\Support\Canonical\CanonicalStatus;
 use App\Support\Canonical\EdgeType;
 use App\Support\Canonical\EvidenceTier;
 use App\Support\TabularReview\CellFlag;
@@ -127,10 +128,13 @@ class GovernanceColumnResolver
         if ($status === null) {
             return $this->cell('none', CellFlag::GREY, 'Document has no canonical status.');
         }
+        // Real CanonicalStatus taxonomy: draft / review / accepted / superseded /
+        // deprecated / archived. Accepted is authoritative (green); draft/review
+        // are in-flight (yellow); superseded/deprecated/archived are end-of-life (red).
         $flag = match ($status) {
-            'accepted' => CellFlag::GREEN,
-            'draft', 'proposed' => CellFlag::YELLOW,
-            'deprecated', 'superseded', 'rejected' => CellFlag::RED,
+            CanonicalStatus::Accepted->value => CellFlag::GREEN,
+            CanonicalStatus::Draft->value, CanonicalStatus::Review->value => CellFlag::YELLOW,
+            CanonicalStatus::Superseded->value, CanonicalStatus::Deprecated->value, CanonicalStatus::Archived->value => CellFlag::RED,
             default => CellFlag::GREY,
         };
 
