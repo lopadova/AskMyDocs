@@ -108,4 +108,37 @@ test.describe('Admin Tabular Reviews (W3)', () => {
         // Dialog stays open.
         await expect(page.getByTestId('admin-tabular-review-create-dialog')).toBeVisible();
     });
+
+    test('W5 — selecting agent=graph reveals the governance metric picker', async ({ page }) => {
+        // v8.19/W5 — the agentic column editor. A `graph` column resolves a
+        // deterministic governance metric, so the metric picker must appear when
+        // (and only when) the column's agent is set to graph. FE-driven against
+        // the real page (no seed dependency).
+        await page.goto('/app/admin/tabular-reviews');
+        await expect(page.getByTestId('admin-tabular-reviews')).toBeVisible({ timeout: 15_000 });
+        await page.getByTestId('admin-tabular-reviews-create').click();
+        await expect(page.getByTestId('admin-tabular-review-create-dialog')).toBeVisible();
+
+        // No metric picker for the default `extract` agent.
+        await expect(page.getByTestId('admin-tabular-review-create-column-0-metric')).toHaveCount(0);
+
+        await page.getByTestId('admin-tabular-review-create-column-0-agent').selectOption('graph');
+        const metric = page.getByTestId('admin-tabular-review-create-column-0-metric');
+        await expect(metric).toBeVisible();
+        await expect(metric.locator('option', { hasText: 'evidence_tier' })).toHaveCount(1);
+    });
+
+    test('W5 — the ready-made template gallery opens and reaches a non-loading state', async ({ page }) => {
+        // v8.19/W5 — the template gallery is a real-backend read of the built-in
+        // system workflows. R14: it must always resolve to ready/empty/error —
+        // never hang or crash — independent of how many templates are seeded.
+        await page.goto('/app/admin/tabular-reviews');
+        await expect(page.getByTestId('admin-tabular-reviews')).toBeVisible({ timeout: 15_000 });
+
+        await page.getByTestId('admin-tabular-reviews-from-template').click();
+        const gallery = page.getByTestId('admin-tabular-review-template-gallery');
+        await expect(gallery).toBeVisible();
+        await expect(gallery).toHaveAttribute('data-state', /ready|empty|error/, { timeout: 15_000 });
+        await expect(gallery).not.toHaveAttribute('data-state', 'loading');
+    });
 });

@@ -91,7 +91,23 @@ regolo + finops.
   - Tests: GovernanceColumnResolverTest 11 (incl. self-declared superseded_by), extractor agentic 2 (graph
     deterministic no-LLM + verify downgrade), RunReportToolTest 4 (matrix + R30 cross-tenant + R43 missing +
     max_rows cap), MCP registration 34; full sweep 174 green.
-- **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜
+- **W5 — Agentic Knowledge Reports FE (rich report surface)** — 🟡 impl done, testing
+  - Builds on the existing (v4.7) Tabular Review detail view (which already has an accessible DOM matrix +
+    flag-coloured cells + sync generate). W5 adds the genuinely-new agentic-report surface:
+    - **Agentic column editor**: `agent` select (extract/graph/verify) + a governance `metric` picker shown only
+      for `graph` columns — wired to the v8.19/W4 `AGENT_KINDS` + `GOVERNANCE_METRICS` constants (mirror the BE SSOT).
+      The create dialog now PRESERVES agent/metric on save (the W4 ColumnConfig fields).
+    - **Evidence side-panel**: clicking a populated cell opens an accessible side-panel with the summary, flag,
+      reasoning and the cited KB chunks (chunk id + quote) — the "see the evidence" UX.
+    - **Ready-made template gallery**: "From template" lists the built-in (`is_system`) tabular workflows (the 16
+      seeded templates incl. "Canonical KB Governance Audit") and pre-fills the create dialog from the chosen one.
+  - Test-infra: a guarded in-memory `localStorage` polyfill in `test-setup.ts` (no-op in CI; fixes a broken local
+    Node localStorage that made every store-persisting Vitest fail).
+  - **Deferred to a v8.19.x follow-up (documented)**: the SSE progressive-paint generate + the Glide canvas grid.
+    The accessible DOM matrix (R11/R15 testable) + sync generate already ship; the canvas migration is parked for
+    testability/a11y reasons (canvas cells can't carry per-cell testids/ARIA).
+  - Tests: TabularReviewsList Vitest 10 (7 existing + 3 W5: graph→metric picker, evidence panel, gallery prefill);
+    Playwright admin-tabular-reviews.spec.ts +2 (agent=graph metric picker; gallery reaches non-loading, R14).
 - **W6 — README + doc-site** — ⬜
 - **GA — merge feature/v8.19 → main + tag v8.19.0** — ⬜
 

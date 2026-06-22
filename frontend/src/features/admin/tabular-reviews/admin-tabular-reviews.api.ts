@@ -84,6 +84,27 @@ export const FORMAT_TYPES: ReadonlyArray<FormatType> = [
  */
 export type AgentKind = 'extract' | 'graph' | 'verify';
 
+/** The three agentic column kinds, in editor order. */
+export const AGENT_KINDS: ReadonlyArray<AgentKind> = ['extract', 'graph', 'verify'] as const;
+
+/**
+ * Mirrors `App\Services\TabularReview\GovernanceColumnResolver::METRICS` — the
+ * deterministic governance signals a `graph` column can resolve. R18/R9: keep in
+ * lock-step with the BE constant (the FE editor + the BE validator share it).
+ */
+export const GOVERNANCE_METRICS: ReadonlyArray<string> = [
+    'evidence_tier',
+    'frontmatter_completeness',
+    'canonical_status',
+    'is_canonical',
+    'incoming_edges',
+    'outgoing_edges',
+    'graph_connectivity',
+    'is_orphan',
+    'supersession_status',
+    'staleness_days',
+] as const;
+
 export interface ColumnConfig {
     name: string;
     prompt?: string | null;
@@ -92,6 +113,51 @@ export interface ColumnConfig {
     json_path?: string | null;
     agent?: AgentKind;
     metric?: string | null;
+}
+
+/**
+ * Coerce a system workflow's `columns_config` (typed `unknown[]` on the wire)
+ * into well-formed {@link ColumnConfig} rows for the create dialog. A malformed
+ * template row (missing `name`, unknown `format`/`agent`/`metric`) is sanitised
+ * — never trusted blind-cast — so a bad seed can't crash the editor (R14): each
+ * field falls back to a safe default and rows without a usable `name` are dropped.
+ */
+export function normalizeTemplateColumns(raw: unknown): ColumnConfig[] {
+    if (!Array.isArray(raw)) {
+        return [];
+    }
+    const columns: ColumnConfig[] = [];
+    for (const item of raw) {
+        if (typeof item !== 'object' || item === null) {
+            continue;
+        }
+        const row = item as Record<string, unknown>;
+        const name = typeof row.name === 'string' ? row.name.trim() : '';
+        if (name === '') {
+            continue;
+        }
+        const format = FORMAT_TYPES.includes(row.format as FormatType) ? (row.format as FormatType) : 'text';
+        const agent = AGENT_KINDS.includes(row.agent as AgentKind) ? (row.agent as AgentKind) : undefined;
+        const metric =
+            agent === 'graph' && typeof row.metric === 'string' && GOVERNANCE_METRICS.includes(row.metric)
+                ? row.metric
+                : null;
+        // Preserve enum_values (e.g. enum_status columns in the seeded templates) —
+        // dropping it silently loses the extraction/validation constraint.
+        const enumValues = Array.isArray(row.enum_values)
+            ? row.enum_values.filter((v): v is string => typeof v === 'string')
+            : undefined;
+        columns.push({
+            name,
+            prompt: typeof row.prompt === 'string' ? row.prompt : null,
+            format,
+            ...(enumValues && enumValues.length > 0 ? { enum_values: enumValues } : {}),
+            json_path: typeof row.json_path === 'string' ? row.json_path : null,
+            agent,
+            metric,
+        });
+    }
+    return columns;
 }
 
 export interface TabularReview {
