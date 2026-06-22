@@ -29,15 +29,21 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_four_tools(): void
+    public function test_server_registers_exactly_thirty_five_tools(): void
     {
-        $this->assertCount(34, $this->registeredTools());
+        $this->assertCount(35, $this->registeredTools());
     }
 
     public function test_server_registers_the_run_report_tool(): void
     {
         // v8.19/W4 — the Agentic Knowledge Reports MCP read surface (R44 third surface).
         $this->assertContains(\App\Mcp\Tools\KbRunReportTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_connector_installations_tool(): void
+    {
+        // v8.20 — the multi-account connectors MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\ConnectorInstallationsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_gamification_insights_tool(): void

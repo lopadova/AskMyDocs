@@ -5,6 +5,7 @@ namespace App\Mcp\Servers;
 use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
+use App\Mcp\Tools\ConnectorInstallationsTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
 use App\Mcp\Tools\KbApplySuggestionTool;
@@ -113,6 +114,11 @@ class KnowledgeBaseServer extends Server
         // read a saved tabular report's computed matrix (columns + per-document
         // cells + flag summary), tenant-scoped (R30), never triggers extraction.
         KbRunReportTool::class,
+
+        // v8.20 — multi-account connectors read surface (R44 third surface):
+        // list this tenant's connector accounts + sync status, tenant-scoped (R30),
+        // over the same core as the HTTP index + `connectors:list` command.
+        ConnectorInstallationsTool::class,
     ];
 
     protected function boot(): void

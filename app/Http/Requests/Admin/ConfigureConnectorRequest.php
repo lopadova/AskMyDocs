@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Admin;
 
+use App\Support\TenantContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
@@ -76,6 +77,21 @@ final class ConfigureConnectorRequest extends FormRequest
 
         $this->dontFlash = array_values(array_unique([...$this->dontFlash, ...$secretFields]));
 
+        // v8.20 multi-account: default an omitted/blank `label` to 'default'
+        // (matching the column default) so the per-(tenant, connector) unique
+        // rule below always evaluates — two label-less creates collide on
+        // 'default' with a friendly 422 instead of a raw DB integrity error.
+        if ($this->input('label') === null || $this->input('label') === '') {
+            $defaults['label'] = 'default';
+        }
+
+        // A blank project binding means "inherit the tenant default" — normalise
+        // '' → null so `nullable` short-circuits the `exists` rule (an empty
+        // string is never a real project_key).
+        if ($this->input('project_key') === '') {
+            $defaults['project_key'] = null;
+        }
+
         if ($defaults !== []) {
             $this->merge($defaults);
         }
@@ -94,8 +110,29 @@ final class ConfigureConnectorRequest extends FormRequest
             return [];
         }
 
+        $tenantId = app(TenantContext::class)->current();
+        $name = (string) $this->route('name');
+
         $rules = [
-            'project_key' => ['sometimes', 'nullable', 'string', 'max:255'],
+            // v8.20 — account discriminator. Required (a 'default' is merged in
+            // prepareForValidation when omitted) and unique per (tenant, connector):
+            // creating a second account with an existing label is a 422, never a
+            // silent overwrite. The DB unique (tenant_id, connector_name, label) is
+            // the authoritative backstop for the create-race.
+            'label' => [
+                'required', 'string', 'max:64',
+                'regex:/^[\pL\pN][\pL\pN _.-]*$/u',
+                Rule::unique('connector_installations', 'label')
+                    ->where('tenant_id', $tenantId)
+                    ->where('connector_name', $name),
+            ],
+            // v8.20 — optional KB project binding. Validated against the tenant's
+            // REAL project registry (R18 — same domain the FE dropdown lists);
+            // null/blank = the tenant default (kb.ingest.default_project).
+            'project_key' => [
+                'sometimes', 'nullable', 'string', 'max:120',
+                Rule::exists('projects', 'project_key')->where('tenant_id', $tenantId),
+            ],
         ];
 
         foreach ($connector->credentialFormSchema() as $field) {

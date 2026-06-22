@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Models\Project;
 use App\Models\User;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
@@ -64,11 +65,38 @@ final class ConnectorAdminControllerTest extends TestCase
         $byKey = collect($data)->keyBy('key');
         $this->assertTrue($byKey->has('google-drive'));
         $this->assertSame('Google Drive', $byKey['google-drive']['display_name']);
-        $this->assertSame(
-            ConnectorInstallation::STATUS_ACTIVE,
-            $byKey['google-drive']['installation']['status'],
-        );
-        $this->assertNotNull($byKey['google-drive']['installation']['last_sync_at']);
+
+        // v8.20 — installations is a LIST of accounts (was a single nullable row).
+        $installs = $byKey['google-drive']['installations'];
+        $this->assertIsArray($installs);
+        $this->assertCount(1, $installs);
+        $this->assertSame(ConnectorInstallation::STATUS_ACTIVE, $installs[0]['status']);
+        $this->assertNotNull($installs[0]['last_sync_at']);
+        $this->assertSame('default', $installs[0]['label']);
+        $this->assertArrayHasKey('project_key', $installs[0]);
+    }
+
+    public function test_index_lists_multiple_accounts_per_connector_for_tenant(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        foreach (['support', 'sales'] as $label) {
+            ConnectorInstallation::create([
+                'tenant_id' => 'default',
+                'connector_name' => 'google-drive',
+                'label' => $label,
+                'status' => ConnectorInstallation::STATUS_ACTIVE,
+                'created_by' => $admin->id,
+            ]);
+        }
+
+        $resp = $this->actingAs($admin)->getJson('/api/admin/connectors');
+        $resp->assertOk();
+
+        $entry = collect($resp->json('data'))->firstWhere('key', 'google-drive');
+        $labels = collect($entry['installations'])->pluck('label')->all();
+        // Ordered by label (service summary orderBy label).
+        $this->assertSame(['sales', 'support'], $labels);
     }
 
     public function test_start_install_returns_oauth_url_with_state_token(): void
@@ -311,6 +339,172 @@ final class ConnectorAdminControllerTest extends TestCase
         ]);
     }
 
+    public function test_start_install_with_distinct_labels_creates_separate_accounts(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $first = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=support');
+        $first->assertOk();
+
+        $second = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=sales');
+        $second->assertOk();
+
+        $this->assertNotSame(
+            $first->json('data.installation_id'),
+            $second->json('data.installation_id'),
+            'A distinct label must create a separate account, not re-arm the first.',
+        );
+        $this->assertSame(
+            2,
+            ConnectorInstallation::query()->where('connector_name', 'google-drive')->count(),
+        );
+    }
+
+    public function test_start_install_with_same_label_rearms_the_existing_account(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $active = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=support');
+
+        $resp->assertOk();
+        // Same account re-armed, not a duplicate.
+        $this->assertSame($active->id, $resp->json('data.installation_id'));
+        $active->refresh();
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $active->status);
+        $this->assertSame(
+            1,
+            ConnectorInstallation::query()->where('connector_name', 'google-drive')->count(),
+        );
+    }
+
+    public function test_update_renames_label_and_rebinds_project(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        Project::create(['project_key' => 'acme-hr', 'name' => 'Acme HR']);
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['label' => 'support-eu', 'project_key' => 'acme-hr'],
+        );
+
+        $resp->assertOk();
+        $this->assertSame('support-eu', $resp->json('data.label'));
+        $this->assertSame('acme-hr', $resp->json('data.project_key'));
+
+        $installation->refresh();
+        $this->assertSame('support-eu', $installation->label);
+        $this->assertSame('acme-hr', $installation->project_key);
+    }
+
+    public function test_update_can_clear_the_project_binding_to_inherit_the_default(): void
+    {
+        // R43 — the OTHER state: clearing project_key (blank → null) unbinds the
+        // account so it inherits the tenant default.
+        $admin = $this->makeSuperAdmin();
+
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'project_key' => null,
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+        // First bind it via a seeded project, then clear.
+        Project::create(['project_key' => 'acme-hr', 'name' => 'Acme HR']);
+        $installation->forceFill(['project_key' => 'acme-hr'])->save();
+
+        $resp = $this->actingAs($admin)->patchJson(
+            "/api/admin/connectors/{$installation->id}",
+            ['project_key' => ''],
+        );
+
+        $resp->assertOk();
+        $this->assertNull($resp->json('data.project_key'));
+        $installation->refresh();
+        $this->assertNull($installation->project_key);
+    }
+
+    public function test_update_rejects_a_duplicate_label(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'label' => 'support', 'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+        $sales = ConnectorInstallation::create([
+            'tenant_id' => 'default', 'connector_name' => 'google-drive',
+            'label' => 'sales', 'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/connectors/{$sales->id}", ['label' => 'support'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['label']);
+    }
+
+    public function test_update_404_for_cross_tenant_installation(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        $foreign = ConnectorInstallation::create([
+            'tenant_id' => 'tenant-foreign', 'connector_name' => 'google-drive',
+            'label' => 'support', 'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->patchJson("/api/admin/connectors/{$foreign->id}", ['label' => 'renamed'])
+            ->assertStatus(404);
+    }
+
+    public function test_deleting_an_installation_cascades_its_credentials(): void
+    {
+        // R28 — the connector_credentials FK is cascadeOnDelete: removing the
+        // account row removes its vault row, independent of the connector's own
+        // best-effort disconnect(). Delete the model DIRECTLY to isolate the FK.
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $this->makeSuperAdmin()->id,
+        ]);
+        ConnectorCredential::create([
+            'tenant_id' => 'default',
+            'connector_installation_id' => $installation->id,
+            'encrypted_access_token' => \Illuminate\Support\Facades\Crypt::encryptString('secret'),
+        ]);
+
+        $installation->delete();
+
+        $this->assertDatabaseMissing('connector_credentials', [
+            'connector_installation_id' => $installation->id,
+        ]);
+    }
+
     public function test_non_super_admin_gets_403_on_every_endpoint(): void
     {
         $user = $this->makeRegularAdmin();
@@ -321,7 +515,8 @@ final class ConnectorAdminControllerTest extends TestCase
         $this->actingAs($user)->getJson('/api/admin/connectors/google-drive/install')->assertStatus(403);
         // callback
         $this->actingAs($user)->getJson('/api/admin/connectors/google-drive/oauth/callback')->assertStatus(403);
-        // sync-now / disable / destroy
+        // update / sync-now / disable / destroy
+        $this->actingAs($user)->patchJson('/api/admin/connectors/1', ['label' => 'x'])->assertStatus(403);
         $this->actingAs($user)->postJson('/api/admin/connectors/1/sync-now')->assertStatus(403);
         $this->actingAs($user)->postJson('/api/admin/connectors/1/disable')->assertStatus(403);
         $this->actingAs($user)->deleteJson('/api/admin/connectors/1')->assertStatus(403);
@@ -331,6 +526,7 @@ final class ConnectorAdminControllerTest extends TestCase
     {
         $this->getJson('/api/admin/connectors')->assertStatus(401);
         $this->getJson('/api/admin/connectors/google-drive/install')->assertStatus(401);
+        $this->patchJson('/api/admin/connectors/1', ['label' => 'x'])->assertStatus(401);
         $this->postJson('/api/admin/connectors/1/sync-now')->assertStatus(401);
         $this->postJson('/api/admin/connectors/1/disable')->assertStatus(401);
         $this->deleteJson('/api/admin/connectors/1')->assertStatus(401);
@@ -365,7 +561,8 @@ final class ConnectorAdminControllerTest extends TestCase
         $resp = $this->actingAs($admin)->getJson('/api/admin/connectors');
         $resp->assertOk();
         $entry = collect($resp->json('data'))->firstWhere('key', 'google-drive');
-        $this->assertNull($entry['installation']);
+        // v8.20 — the foreign tenant's account never appears; the list is empty.
+        $this->assertSame([], $entry['installations']);
     }
 
     private function makeSuperAdmin(): User
