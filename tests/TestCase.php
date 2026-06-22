@@ -61,6 +61,10 @@ abstract class TestCase extends OrchestraTestCase
         // SearchKnowledgeBaseTool.
         $app->register(\App\Providers\WidgetServiceProvider::class);
 
+        // Invite system — wires the deferred-redemption listener to the
+        // Login + Registered auth events (Testbench skips bootstrap/providers.php).
+        $app->register(\App\Providers\InviteServiceProvider::class);
+
         // v4.2/W3 — padosoft/eval-harness service provider. Manual
         // registration because Testbench skips package auto-discovery.
         // Provides EvalEngine, MetricResolver, YamlDatasetLoader, and
@@ -201,6 +205,10 @@ abstract class TestCase extends OrchestraTestCase
         // the disk or validate the config shape.
         $app['config']->set('filesystems', require __DIR__.'/../config/filesystems.php');
         $app['config']->set('chat-log', require __DIR__.'/../config/chat-log.php');
+        // Invite system — Testbench does not auto-load project config files,
+        // so without this CodeGenerator's alphabet/reserved list and the
+        // signup-gate toggle fall back to bare defaults (empty reserved list).
+        $app['config']->set('invite', require __DIR__.'/../config/invite.php');
         $app['config']->set('sanctum', require __DIR__.'/../config/sanctum.php');
         $app['config']->set('cors', require __DIR__.'/../config/cors.php');
         $app['config']->set('auth', require __DIR__.'/../config/auth.php');

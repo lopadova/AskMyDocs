@@ -43,6 +43,10 @@ final class TenantReadScopeTest extends TestCase
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
         'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',
+        // Invite system (feature/invite-system) — the 8 canonical invite entities
+        // + the analytics event log.
+        'AbuseSignal', 'Invitation', 'InviteCampaign', 'InviteCode',
+        'Redemption', 'Referral', 'Reward', 'WaitlistEntry', 'InviteAnalyticsEvent',
     ];
 
     /**

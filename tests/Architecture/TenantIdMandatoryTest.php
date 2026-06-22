@@ -146,6 +146,18 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\KbWikiIndex::class,
         // v8.11/P8 — apply-engine application audit.
         \App\Models\KbDocAnalysisApplication::class,
+        // Invite system (feature/invite-system) — the 8 canonical invite
+        // entities. All tenant-aware (R30/R31); the external Account
+        // (\App\Models\User) is the cross-tenant identity and stays excluded.
+        \App\Models\InviteCampaign::class,
+        \App\Models\InviteCode::class,
+        \App\Models\Invitation::class,
+        \App\Models\Redemption::class,
+        \App\Models\Referral::class,
+        \App\Models\Reward::class,
+        \App\Models\WaitlistEntry::class,
+        \App\Models\AbuseSignal::class,
+        \App\Models\InviteAnalyticsEvent::class,
     ];
 
     public function test_every_tenant_aware_model_uses_belongs_to_tenant_trait(): void
