@@ -355,6 +355,10 @@ export function ConnectorsView() {
 
             {modal?.kind === 'credential-add' && (
                 <CredentialConnectorForm
+                    // key on the connector identity → React remounts (fresh
+                    // label/project/field state) if the modal is reused for a
+                    // different connector without closing first (R17).
+                    key={`credential-add-${modal.entry.key}`}
                     entry={modal.entry}
                     projects={projects}
                     onSubmit={handleCredentialSubmit}
@@ -370,6 +374,7 @@ export function ConnectorsView() {
 
             {modal?.kind === 'oauth-add' && (
                 <AccountMetaForm
+                    key={`oauth-add-${modal.entry.key}`}
                     connectorKey={modal.entry.key}
                     title={`Add ${modal.entry.display_name} account`}
                     submitLabel="Continue to provider"
@@ -384,6 +389,9 @@ export function ConnectorsView() {
 
             {modal?.kind === 'edit' && (
                 <AccountMetaForm
+                    // key on the account identity → remount with the right
+                    // pre-filled values when switching Edit between accounts (R17).
+                    key={`edit-${modal.account.id}`}
                     connectorKey={modal.entry.key}
                     title={`Edit ${modal.entry.display_name} account`}
                     submitLabel="Save changes"

@@ -3,10 +3,10 @@ import type { ConnectorInstallationDto, ConnectorStatus } from './connectors.api
 /*
  * Pure helpers extracted so they can be unit-tested without React.
  *
- * `derivedStatus(entry)` collapses "no installation row" to a synthetic
- * `not_installed` state so the FE has a single switch surface. The BE
- * intentionally returns `installation: null` for connectors the active
- * tenant hasn't installed — the synthetic key keeps the UI code flat.
+ * `accountStatus(installation)` collapses a null/absent installation to a
+ * synthetic `not_installed` state so the per-account UI has a single switch
+ * surface (v8.20 multi-account — each connector lists N accounts, each with its
+ * own status; a connector with zero accounts renders the empty state).
  *
  * `formatRelative(ts)` renders a coarse, locale-free relative
  * timestamp suitable for testid-driven assertions (E2E + Vitest).

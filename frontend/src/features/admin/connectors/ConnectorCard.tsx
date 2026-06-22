@@ -292,19 +292,13 @@ function AccountRow({
                     </button>
                 )}
 
-                {status === 'disabled' && (
-                    <button
-                        type="button"
-                        data-testid={`connector-account-${account.id}-reenable`}
-                        className="focus-ring"
-                        disabled={syncing}
-                        onClick={() => onSync(account.id)}
-                        style={primaryButton(syncing)}
-                    >
-                        Re-enable sync
-                    </button>
-                )}
-
+                {/*
+                 * A DISABLED account intentionally exposes only Edit + Remove:
+                 * the BE has no "enable" endpoint (re-enabling is a future action
+                 * / re-install per the disable() contract), and a manual sync-now
+                 * would NOT clear the DISABLED status — so a "Re-enable" button
+                 * here would mislead the operator.
+                 */}
                 {status !== 'pending' && (
                     <button
                         type="button"
