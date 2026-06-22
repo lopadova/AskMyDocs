@@ -13,7 +13,7 @@ This file is loaded automatically by both:
 - **GitHub Copilot Code Review** (cloud loop per R36) — same path
   scoping; the instructions surface in the bot's review context.
 
-The full R-rule catalogue (R1..R40) lives in
+The full R-rule catalogue (R1..R46) lives in
 [CLAUDE.md](../../CLAUDE.md) and
 [.github/copilot-instructions.md](../copilot-instructions.md). This
 file is the **path-scoped critical subset** the two Copilot surfaces

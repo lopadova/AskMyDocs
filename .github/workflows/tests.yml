@@ -5,6 +5,13 @@ on:
     branches: [main, 'feature/v*', 'feature/v*/**']
   pull_request:
     branches: [main, 'feature/v*', 'feature/v*/**']
+    # `labeled` is added on top of the defaults (opened/synchronize/reopened)
+    # so that adding the `run-e2e` label (R46 final-gate step) fires a fresh
+    # workflow run with the label now present — which lights up the gated
+    # `playwright` job below. Without `labeled` in this list, `gh pr edit
+    # --add-label run-e2e` would NOT re-trigger CI and the E2E job would
+    # never run on the labelled state.
+    types: [opened, synchronize, reopened, labeled]
 
 # A pushed PR branch fires BOTH the `push` and `pull_request` events, so
 # without this the full suite (incl. the long Playwright job) ran TWICE
@@ -30,10 +37,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Laravel 13 floor is PHP 8.3; we also guarantee 8.4 and 8.5 so
-        # the package can ship against the next two PHP minors without
-        # regression surprises.
-        php: ['8.3', '8.4', '8.5']
+        # CI-speed experiment (2026-06-22, Lorenzo): the 3-cell matrix
+        # (8.3 + 8.4 + 8.5) ran ~10 min in parallel on PR #349. We trim
+        # CI to a SINGLE runner on the top minor (8.5) to see if a lone
+        # cell is meaningfully faster; if the wall-time is unchanged
+        # Lorenzo will tell us to restore the full 8.3/8.4/8.5 matrix.
+        # Laravel 13's floor is still PHP 8.3 — local `composer install`
+        # pins platform.php=8.3.0, so the floor stays covered off-CI.
+        php: ['8.5']
 
     steps:
       - name: Checkout
@@ -91,6 +102,27 @@ jobs:
   playwright:
     name: Playwright E2E
     runs-on: ubuntu-latest
+    # R46 — deferred-E2E fast loop. Playwright (~18-20 min) is the most
+    # expensive gate and Copilot reviews the DIFF, not E2E results, so
+    # running it on every Copilot round is pure waste. It is therefore
+    # GATED: it runs only when
+    #   (a) the commit is a push to `main` (post-merge safety net — main
+    #       must always stay E2E-green), OR
+    #   (b) the PR carries the `run-e2e` label (added via
+    #       `gh pr edit <N> --add-label run-e2e` ONLY at the very end of
+    #       the R46 flow, after php+vite CI is green AND the cloud Copilot
+    #       loop has 0 outstanding must-fix).
+    # During the unit-CI + Copilot rounds the PR has no label → this job
+    # is skipped → CI returns in ~3 min instead of ~25. The `phpunit` and
+    # `vitest` jobs above ALWAYS run and remain the per-round gate.
+    #
+    # NOTE: `github.event_name == 'push'` is true on feature-branch pushes
+    # too (a PR-branch push fires both `push` and `pull_request`), so the
+    # push arm is narrowed to `refs/heads/main`. Feature-branch E2E is
+    # reached exclusively through the label arm.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     # Cap the whole job so Playwright's per-test retry + per-test timeout
     # can't compound to hours when a setup test consistently hits a slow
     # failure. The full suite legitimately runs ~18-20 min (the green
