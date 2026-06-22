@@ -46,11 +46,13 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
  * `typeof setItem === 'function'` check is not enough.
  */
 function ambientLocalStorageWorks(): boolean {
-    const ls = globalThis.localStorage as Storage | undefined;
-    if (!ls || typeof ls.setItem !== 'function' || typeof ls.removeItem !== 'function') {
-        return false;
-    }
     try {
+        // Even READING globalThis.localStorage can throw on an opaque origin /
+        // disabled-storage runtime, so the access itself is inside the try.
+        const ls = globalThis.localStorage as Storage | undefined;
+        if (!ls || typeof ls.setItem !== 'function' || typeof ls.removeItem !== 'function') {
+            return false;
+        }
         const probe = '__ls_probe__';
         ls.setItem(probe, '1');
         ls.removeItem(probe);
@@ -79,12 +81,17 @@ if (!ambientLocalStorageWorks()) {
         },
     };
     // `defineProperty` throws if the runtime already exposes a non-configurable
-    // `localStorage` (some Node/JSDOM combos do). In that case the ambient one is
-    // present-but-broken and we cannot replace it — swallow and let the test that
-    // actually needs storage surface the real error, rather than crashing setup.
+    // `localStorage` (some Node/JSDOM combos do). Fall back to a plain assignment,
+    // which still installs the polyfill on a non-configurable-but-WRITABLE slot.
+    // If even that fails, swallow and let the test that actually needs storage
+    // surface the real error rather than crashing the whole setup.
     try {
         Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage, configurable: true });
     } catch {
-        /* non-configurable ambient localStorage — leave it as-is */
+        try {
+            (globalThis as { localStorage: Storage }).localStorage = memoryStorage;
+        } catch {
+            /* non-configurable, non-writable ambient localStorage — leave it as-is */
+        }
     }
 }
