@@ -108,7 +108,16 @@ regolo + finops.
     testability/a11y reasons (canvas cells can't carry per-cell testids/ARIA).
   - Tests: TabularReviewsList Vitest 10 (7 existing + 3 W5: graph→metric picker, evidence panel, gallery prefill);
     Playwright admin-tabular-reviews.spec.ts +2 (agent=graph metric picker; gallery reaches non-loading, R14).
-- **W6 — README + doc-site** — ⬜
+- **W6 — README + doc-site** — ✅
+  - README every section: MCP-count 32→**34** (L400 prose + the MCP table row), finops version note bumped
+    v1.3.0/^1.3 → **v1.4.0/^1.4** + 0.8 line, roadmap row **v8.19.0 ✅ shipped 2026-06-22**, changelog top entry
+    (six-wave prose), sister-packages table (regolo v1.0→**v1.2.1** + 0.8 note, **two new guardrails rows**),
+    sister-stack moat line (regolo/finops/guardrails + 0.8), **two new moat-table feature rows** (Agentic
+    Knowledge Reports + AI Guardrails), **two above-the-fold moat bullets**.
+  - doc-site (R45 deep pages): new `ai-guardrails.mdx` + `agentic-knowledge-reports.mdx` (full template:
+    motivation → theory → design+Mermaid → data-model → security/flags → ADR rationale → worked example →
+    gotchas → CardGroup), registered in `docs.json` (Guides group); `sister-packages.mdx` +finops/guardrails
+    rows + 0.8 Note. docs.json valid JSON, every listed page exists.
 - **GA — merge feature/v8.19 → main + tag v8.19.0** — ⬜
 
 ## Log
