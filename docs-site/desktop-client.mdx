@@ -153,7 +153,7 @@ into the Laravel CI — it is a demonstration of the public token-auth surface.
   the server's `/conversations` endpoints use the web-session guard, so a Bearer
   client cannot reach them; every turn hits the stateless `/api/kb/chat`.
 - **Search** → `GET /api/kb/documents/search` (title/path autocomplete).
-- **Document viewer** → `GET /api/kb/documents/{id}/preview` returns a document's
+- **Document viewer** → `GET /api/kb/documents/{documentId}/preview` returns a document's
   full source text (tenant + AccessScope scoped), rendered as a full-page modal.
 
 All backend calls go through the **Tauri HTTP plugin** (the Rust side), so the

@@ -325,7 +325,7 @@ that proves it end to end.
 - **`EnforceTokenAbility` (`token.ability:<ability>`)** — a per-route gate that
   constrains **only** Bearer PATs (`403` `token_ability_forbidden` if a token is
   scoped wrong) and is a **no-op for the cookie SPA**, so dual-auth routes
-  (`/api/kb/chat`, `/api/kb/documents/search`, `/api/kb/documents/{id}/preview`)
+  (`/api/kb/chat`, `/api/kb/documents/search`, `/api/kb/documents/{documentId}/preview`)
   serve both transports without breaking either.
 - **Tauri v2 desktop client** (`desktop/`) — login, grounded chat with clickable
   markdown citations, document search, and a full-page source-document viewer.
@@ -1088,7 +1088,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
 | Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
-| Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{id}/preview` routes and is a no-op for the cookie SPA | desktop client |
+| Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{documentId}/preview` routes and is a no-op for the cookie SPA | desktop client |
 | Tauri desktop + iOS client (`desktop/`) | Self-contained Tauri v2 + React (Vite) demo client: login, grounded chat with clickable markdown citations, document search, full-page source viewer; conversation threads persist **locally** (the Bearer client can't reach the session-guarded `/conversations`); all calls route through the Tauri HTTP plugin (no CORS change); same codebase targets iOS via Tauri v2 mobile; outside Laravel CI | desktop client |
 | Immutable audit trail | `kb_canonical_audit` records every promote/update/deprecate/hard-delete (no `updated_at`, no FK to docs — survives hard deletes for forensic access); `admin_command_audit` stamps every destructive maintenance run with started/completed/failed timestamps + output/error capture | v3.0 |
 | DB-backed single-use confirm tokens for destructive commands | `AdminCommandNonce` table; signed `confirm_token` issued at preview, consumed inside `DB::transaction` with `lockForUpdate()` + `update()` in the same closure (R21 atomic invariant); composite UNIQUE on `(token_hash, consumed_at)` | v3.0 |
@@ -1861,7 +1861,7 @@ and a failure-only throttle (own bucket) returns `429` after 5 attempts.
 (session callers no-op). The new `EnforceTokenAbility` middleware
 (`token.ability:<ability>` alias in `bootstrap/app.php`) is a PAT-scoped gate on
 the **dual-auth** routes `/api/kb/chat` (`kb:chat`), `/api/kb/documents/search`
-and `/api/kb/documents/{id}/preview` (`kb:read`): it rejects a wrongly-scoped PAT
+and `/api/kb/documents/{documentId}/preview` (`kb:read`): it rejects a wrongly-scoped PAT
 with `403 token_ability_forbidden` while being a **no-op for the cookie SPA**
 (a `TransientToken`), so one route serves both transports without breaking
 either. Ships the vendored `personal_access_tokens` migration. The Tauri client

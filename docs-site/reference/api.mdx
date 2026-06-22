@@ -58,7 +58,7 @@ never immortal. Wrong/unknown credentials → `422`. Request fields: `email`
 | `POST` | `/api/kb/feedback` | `auth:sanctum` | chunk feedback |
 | `GET` | `/api/kb/related` | `auth:sanctum` | graph neighbours |
 | `GET` | `/api/kb/documents/search` | `auth:sanctum` + `token.ability:kb:read` | document search |
-| `GET` | `/api/kb/documents/{id}/preview` | `auth:sanctum` + `token.ability:kb:read` | document source preview |
+| `GET` | `/api/kb/documents/{documentId}/preview` | `auth:sanctum` + `token.ability:kb:read` | document source preview |
 | `GET` | `/api/kb/collections` | `auth:sanctum` | collection picker |
 | `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
 | `DELETE` | `/api/kb/documents` | `auth:sanctum` | delete by path |
