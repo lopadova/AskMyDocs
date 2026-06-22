@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\Admin\TabularReviewStreamController;
 use App\Http\Controllers\Api\Admin\UserController;
 use App\Http\Controllers\Api\Admin\WorkflowController;
 use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\RegisterController;
 use App\Http\Controllers\Api\Auth\PasswordResetController as ApiPasswordResetController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\ChatFilterPresetController;
@@ -66,6 +67,13 @@ Route::middleware('web')->prefix('auth')->group(function () {
     // double-counting and spurious 429s — hence intentionally omitted.
     Route::post('/login', [AuthController::class, 'login'])
         ->name('api.auth.login');
+
+    // Public self-registration, invite-gated (RegisterController enforces the
+    // invitation_required gate). Per-IP throttle to blunt automated signup
+    // abuse; the heavy invite anti-abuse gate runs inside the redemption.
+    Route::post('/register', [RegisterController::class, 'register'])
+        ->middleware('throttle:10,1')
+        ->name('api.auth.register');
 
     Route::post('/forgot-password', [ApiPasswordResetController::class, 'forgot'])
         ->middleware('throttle:forgot')
@@ -168,6 +176,16 @@ Route::middleware([
         ->parameters(['chat-filter-presets' => 'id'])
         ->names('api.chat-filter-presets');
     Route::delete('/kb/documents', KbDeleteController::class);
+
+    // Invite system — user-facing redemption surface (any authenticated
+    // account). The same RedemptionService backs the PHP + MCP surfaces (R44).
+    // `validate` writes nothing (advisory pre-check).
+    Route::post('/invite/redeem', [\App\Http\Controllers\Api\Invite\RedemptionController::class, 'redeem'])
+        ->name('api.invite.redeem');
+    Route::post('/invite/validate', [\App\Http\Controllers\Api\Invite\RedemptionController::class, 'validateCode'])
+        ->name('api.invite.validate');
+    Route::get('/invite/pending-count', [\App\Http\Controllers\Api\Invite\RedemptionController::class, 'pendingCount'])
+        ->name('api.invite.pending-count');
 
     // Wikilink hover-card resolver for the React chat UI. Uses the
     // default-scoped KnowledgeDocument so soft-deletes + RBAC filter
@@ -501,6 +519,31 @@ Route::middleware([
                 'update' => 'api.admin.kb.synonyms.update',
                 'destroy' => 'api.admin.kb.synonyms.destroy',
             ]);
+
+        // Invite system — admin campaign management + code issuance/revocation.
+        // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/invite/campaigns`).
+        Route::get('invite/campaigns', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'index'])
+            ->name('api.admin.invite.campaigns.index');
+        // Grantable tenants for the multi-tenant grant editor (same admin group
+        // → same role:admin|super-admin gate, covered by the matrix above).
+        Route::get('invite/tenants', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'tenants'])
+            ->name('api.admin.invite.tenants');
+        Route::post('invite/campaigns', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'store'])
+            ->name('api.admin.invite.campaigns.store');
+        Route::get('invite/campaigns/{id}', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'show'])
+            ->whereNumber('id')->name('api.admin.invite.campaigns.show');
+        Route::patch('invite/campaigns/{id}', [\App\Http\Controllers\Api\Admin\InviteCampaignController::class, 'update'])
+            ->whereNumber('id')->name('api.admin.invite.campaigns.update');
+        Route::get('invite/codes', [\App\Http\Controllers\Api\Admin\InviteCodeController::class, 'index'])
+            ->name('api.admin.invite.codes.index');
+        Route::post('invite/codes', [\App\Http\Controllers\Api\Admin\InviteCodeController::class, 'store'])
+            ->name('api.admin.invite.codes.store');
+        Route::post('invite/codes/{id}/revoke', [\App\Http\Controllers\Api\Admin\InviteCodeController::class, 'revoke'])
+            ->whereNumber('id')->name('api.admin.invite.codes.revoke');
+        Route::get('invite/metrics', [\App\Http\Controllers\Api\Admin\InviteMetricsController::class, 'index'])
+            ->name('api.admin.invite.metrics');
+        Route::post('invite/invitations', [\App\Http\Controllers\Api\Admin\InviteInvitationController::class, 'store'])
+            ->name('api.admin.invite.invitations.store');
 
         // v8.7/W3–W4 — read-only AI document-change analyses (Doc Insights).
         // R32 — covered by the AdminAuthorizationMatrix (`/api/admin/kb/analyses`).
