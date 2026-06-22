@@ -9,9 +9,11 @@ import { api } from '../../../lib/api';
  * truth. The status enum is mirrored from
  * `Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation::STATUSES`
  * (v4.6 package extraction; previously `App\Models\ConnectorInstallation`).
- * The `display_name` / `icon_url` / `oauth_scopes` / `installation`
+ * The `display_name` / `icon_url` / `oauth_scopes` / `installations[]`
  * shape mirrors the JSON envelope returned by
- * `ConnectorAdminController::index()`.
+ * `ConnectorAdminController::index()`. v8.20 multi-account: the primary
+ * contract is the `installations[]` LIST (each with `label` + `project_key`);
+ * the BE still emits a back-compat single `installation` key the FE ignores.
  */
 
 export type ConnectorStatus = 'pending' | 'active' | 'disabled' | 'errored';

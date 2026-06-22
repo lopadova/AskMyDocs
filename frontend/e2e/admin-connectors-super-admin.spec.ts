@@ -195,7 +195,9 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         // The list-page render + sidebar nav are covered by the other
         // three scenarios in this file. The contract surface is
         // covered here.
-        const installResp = await request.get('/api/admin/connectors/google-drive/install');
+        // v8.20 — pass an explicit label (the BE defaults to 'default' when
+        // omitted, but being explicit documents the multi-account contract).
+        const installResp = await request.get('/api/admin/connectors/google-drive/install?label=probe');
         if (!installResp.ok()) {
             throw new Error(
                 `GET install returned ${installResp.status()}: ${await installResp.text()}`,
