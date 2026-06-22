@@ -194,6 +194,10 @@ function AccountRow({
     const badge = statusBadgeStyle(status);
     const lastSync = formatRelative(account.last_sync_at, now);
     const [confirmingRemove, setConfirmingRemove] = useState(false);
+    // ANY action in flight for this account locks every action button — the
+    // parent's in-flight guard ignores a second action on a busy id, so a still-
+    // enabled button would be a confusing silent no-op.
+    const locked = syncing || busy;
 
     return (
         <li
@@ -272,9 +276,9 @@ function AccountRow({
                         type="button"
                         data-testid={`connector-account-${account.id}-cancel-install`}
                         className="focus-ring"
-                        disabled={busy}
+                        disabled={locked}
                         onClick={() => onCancelInstall(account.id)}
-                        style={ghostButton(busy)}
+                        style={ghostButton(locked)}
                     >
                         {busy ? 'Cancelling…' : 'Cancel install'}
                     </button>
@@ -285,9 +289,9 @@ function AccountRow({
                         type="button"
                         data-testid={`connector-account-${account.id}-sync`}
                         className="focus-ring"
-                        disabled={syncing}
+                        disabled={locked}
                         onClick={() => onSync(account.id)}
-                        style={primaryButton(syncing)}
+                        style={primaryButton(locked)}
                     >
                         {syncing ? 'Queuing…' : status === 'errored' ? 'Retry sync' : 'Sync now'}
                     </button>
@@ -317,9 +321,9 @@ function AccountRow({
                         type="button"
                         data-testid={`connector-account-${account.id}-disable`}
                         className="focus-ring"
-                        disabled={busy}
+                        disabled={locked}
                         onClick={() => onDisable(account.id)}
-                        style={ghostButton(busy)}
+                        style={ghostButton(locked)}
                     >
                         Disable
                     </button>
@@ -330,8 +334,9 @@ function AccountRow({
                         type="button"
                         data-testid={`connector-account-${account.id}-remove`}
                         className="focus-ring"
+                        disabled={locked}
                         onClick={() => setConfirmingRemove(true)}
-                        style={ghostButton()}
+                        style={ghostButton(locked)}
                     >
                         Remove
                     </button>
@@ -342,12 +347,12 @@ function AccountRow({
                             type="button"
                             data-testid={`connector-account-${account.id}-remove-confirm`}
                             className="focus-ring"
-                            disabled={busy}
+                            disabled={locked}
                             onClick={() => {
                                 onRemove(account.id);
                                 setConfirmingRemove(false);
                             }}
-                            style={dangerButton(busy)}
+                            style={dangerButton(locked)}
                         >
                             Confirm remove
                         </button>
