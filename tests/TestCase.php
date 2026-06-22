@@ -466,6 +466,12 @@ abstract class TestCase extends OrchestraTestCase
         // mounting test throws "Target class [guardrails-admin.enabled] does not
         // exist". Keep in sync with bootstrap/app.php.
         $router->aliasMiddleware('guardrails-admin.enabled', \App\Http\Middleware\GuardrailsAdminEnabled::class);
+        // Desktop PAT least-privilege gate. Mirrors bootstrap/app.php (not
+        // executed under Testbench). The /kb/chat + /kb/documents/search +
+        // /preview routes reference `token.ability:<ability>`; without this
+        // alias TokenTest's enforcement cases throw "Target class
+        // [token.ability] does not exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('token.ability', \App\Http\Middleware\EnforceTokenAbility::class);
     }
 
     /**

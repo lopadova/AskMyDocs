@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 /**
@@ -53,6 +54,13 @@ class TokenTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 1);
         $this->assertDatabaseHas('personal_access_tokens', ['name' => 'my-laptop']);
 
+        // The token is least-privilege (NOT a `['*']` god-token) and carries a
+        // finite expiry — the security contract, not just the 201 shape.
+        $pat = PersonalAccessToken::firstOrFail();
+        $this->assertEqualsCanonicalizing(['kb:read', 'kb:chat'], $pat->abilities);
+        $this->assertNotNull($pat->expires_at);
+        $this->assertTrue($pat->expires_at->isFuture());
+
         // The token must actually authenticate a Bearer-protected route — this
         // is the behaviour the endpoint exists for, not just a 201 shape.
         $token = $response->json('token');
@@ -60,6 +68,87 @@ class TokenTest extends TestCase
             ->getJson('/api/auth/me')
             ->assertOk()
             ->assertJsonPath('user.id', $user->id);
+    }
+
+    public function test_minted_token_is_scoped_to_kb_read_and_chat_not_wildcard(): void
+    {
+        $user = $this->makeUser();
+
+        $this->postJson('/api/auth/token', [
+            'email' => $user->email,
+            'password' => 'secret123',
+        ])->assertCreated();
+
+        $pat = PersonalAccessToken::firstOrFail();
+
+        $this->assertTrue($pat->can('kb:read'));
+        $this->assertTrue($pat->can('kb:chat'));
+        // The whole point of the fix: NOT a wildcard, and nothing else.
+        $this->assertFalse($pat->can('*'));
+        $this->assertFalse($pat->can('kb:write'));
+        $this->assertFalse($pat->can('admin'));
+    }
+
+    public function test_minted_token_expires_in_thirty_days(): void
+    {
+        $user = $this->makeUser();
+
+        $this->postJson('/api/auth/token', [
+            'email' => $user->email,
+            'password' => 'secret123',
+        ])->assertCreated();
+
+        $pat = PersonalAccessToken::firstOrFail();
+
+        $this->assertNotNull($pat->expires_at);
+        // 30-day TTL, with a generous tolerance so the assertion isn't clock-racy.
+        $this->assertEqualsWithDelta(
+            now()->addDays(30)->getTimestamp(),
+            $pat->expires_at->getTimestamp(),
+            120,
+        );
+    }
+
+    public function test_pat_lacking_kb_read_is_forbidden_on_the_search_route(): void
+    {
+        $user = $this->makeUser();
+        // A Bearer PAT minted WITHOUT the kb:read ability — the gate must 403 it
+        // even though the token authenticates fine.
+        $token = $user->createToken('scopeless', [])->plainTextToken;
+
+        $this->withToken($token)
+            ->getJson('/api/kb/documents/search?q=hello')
+            ->assertStatus(403)
+            ->assertJsonPath('error', 'token_ability_forbidden');
+    }
+
+    public function test_desktop_token_passes_the_kb_read_gate_on_the_search_route(): void
+    {
+        $user = $this->makeUser();
+        // The real issued token carries kb:read, so it clears the gate and the
+        // controller answers (empty result set, not a 403).
+        $token = $this->postJson('/api/auth/token', [
+            'email' => $user->email,
+            'password' => 'secret123',
+        ])->json('token');
+
+        $this->withToken($token)
+            ->getJson('/api/kb/documents/search?q=hello')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+    }
+
+    public function test_session_user_without_a_pat_is_not_blocked_by_the_token_ability_gate(): void
+    {
+        // R43 — the gate must be a no-op in the OFF state too: a cookie/session
+        // user (TransientToken, never a PersonalAccessToken) must reach the same
+        // route the desktop PAT is scoped against, never a spurious 403.
+        $user = $this->makeUser();
+
+        $this->actingAs($user, 'web')
+            ->getJson('/api/kb/documents/search?q=hello')
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
     }
 
     public function test_device_name_defaults_when_omitted(): void
