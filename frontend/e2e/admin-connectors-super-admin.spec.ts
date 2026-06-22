@@ -1,4 +1,5 @@
-import { test as baseTest, expect } from '@playwright/test';
+import { test as baseTest, expect, type Page } from '@playwright/test';
+import { resetDb, seedDb } from './setup-helpers';
 
 /*
  * v4.5/W3 — Connector admin SPA scenarios.
@@ -34,6 +35,111 @@ import { test as baseTest, expect } from '@playwright/test';
 
 baseTest.describe.configure({ timeout: 90_000 });
 
+// ── v8.20 — OAuth AccountMetaForm (label + project binding) ──────────────────
+//
+// Auth: resetDb/seedDb invalidates the storageState session, so each test
+// re-logs-in inline (same pattern as connectors-imap-super-admin.spec.ts).
+// R13: the ONLY page.route interception is the external OAuth redirect
+// (accounts.google.com) — the application boundary. Internal routes are real.
+
+const PASSWORD = 'password';
+
+async function loginAs(page: Page, email: string): Promise<void> {
+    await page.request.get('/sanctum/csrf-cookie');
+    const xsrf = (await page.context().cookies()).find((c) => c.name === 'XSRF-TOKEN');
+    if (!xsrf) throw new Error('XSRF-TOKEN cookie missing after /sanctum/csrf-cookie');
+    const res = await page.request.post('/api/auth/login', {
+        data: { email, password: PASSWORD },
+        headers: { 'X-XSRF-TOKEN': decodeURIComponent(xsrf.value), Accept: 'application/json' },
+    });
+    if (!res.ok()) throw new Error(`Login failed for ${email}: ${res.status()} ${await res.text()}`);
+}
+
+baseTest.describe('Admin Connectors — OAuth AccountMetaForm (multi-account, v8.20)', () => {
+    baseTest.describe.configure({ timeout: 120_000 });
+
+    baseTest.beforeEach(async ({ page }) => {
+        await resetDb(page);
+        await seedDb(page);
+        await loginAs(page, 'super@demo.local');
+    });
+
+    baseTest('happy — Add account opens AccountMetaForm with label + project fields; install API called with label', async ({
+        page,
+    }) => {
+        await page.goto('/app/admin/connectors');
+        await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+
+        await page.getByTestId('connector-google-drive-add-account').click();
+
+        const form = page.getByTestId('connector-google-drive-account-form');
+        await expect(form).toBeVisible();
+        await expect(form).toHaveAttribute('data-state', 'idle');
+
+        // R18: project dropdown derives from the real project registry (not hard-coded).
+        await expect(page.getByTestId('connector-google-drive-account-form-label')).toBeVisible();
+        await expect(page.getByTestId('connector-google-drive-account-form-project')).toBeVisible();
+
+        await page.getByTestId('connector-google-drive-account-form-label').fill('Support');
+
+        // Capture the install API request before the external OAuth redirect fires.
+        // Abort the external navigation so the test does not leave the application
+        // boundary (R13: accounts.google.com is the external service boundary).
+        const installRequestPromise = page.waitForRequest(
+            (req) =>
+                req.url().includes('/api/admin/connectors/google-drive/install') &&
+                req.method() === 'GET',
+            { timeout: 15_000 },
+        );
+        await page.route('https://accounts.google.com/**', (route) => route.abort());
+
+        await page.getByTestId('connector-google-drive-account-form-submit').click();
+
+        // The install API was called and the label param was forwarded.
+        const installRequest = await installRequestPromise;
+        expect(new URL(installRequest.url()).searchParams.get('label')).toBe('Support');
+    });
+
+    baseTest('failure — duplicate label shows inline label-error; modal stays open', async ({
+        page,
+    }) => {
+        // Seed a PENDING google-drive installation with label "Support" via the real
+        // install endpoint so the connector already has one account. The next install
+        // attempt with the same label must be rejected with a 422 (duplicate label).
+        const seedResp = await page.request.get(
+            '/api/admin/connectors/google-drive/install?label=Support',
+        );
+        if (!seedResp.ok()) {
+            throw new Error(`seed install failed: ${seedResp.status()} ${await seedResp.text()}`);
+        }
+
+        await page.goto('/app/admin/connectors');
+        await expect(page.getByTestId('admin-connectors')).toHaveAttribute('data-state', 'ready', {
+            timeout: 15_000,
+        });
+
+        // The card shows 1 pending account; "Add account" CTA is still accessible.
+        const card = page.getByTestId('connector-list-card-google-drive');
+        await expect(card).toHaveAttribute('data-account-count', '1', { timeout: 10_000 });
+
+        await page.getByTestId('connector-google-drive-add-account').click();
+        await expect(page.getByTestId('connector-google-drive-account-form')).toBeVisible();
+
+        // Submit with the same label → BE returns 422 (unique violation on label).
+        await page.getByTestId('connector-google-drive-account-form-label').fill('Support');
+        await page.getByTestId('connector-google-drive-account-form-submit').click();
+
+        // R14: 422 label error surfaces inline; modal stays open; account count unchanged.
+        await expect(
+            page.getByTestId('connector-google-drive-account-form-label-error'),
+        ).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId('connector-google-drive-account-form')).toBeVisible();
+        await expect(card).toHaveAttribute('data-account-count', '1');
+    });
+});
+
 baseTest.describe('Admin Connectors — super-admin', () => {
     baseTest('lands on /app/admin/connectors with both reference connectors visible', async ({
         page,
@@ -58,8 +164,9 @@ baseTest.describe('Admin Connectors — super-admin', () => {
             'data-status',
             'not_installed',
         );
-        await expect(page.getByTestId('connector-google-drive-connect')).toBeVisible();
-        await expect(page.getByTestId('connector-notion-connect')).toBeVisible();
+        // v8.20 — the per-connector CTA is now "Add account".
+        await expect(page.getByTestId('connector-google-drive-add-account')).toBeVisible();
+        await expect(page.getByTestId('connector-notion-add-account')).toBeVisible();
     });
 
     baseTest('connect — BE returns redirect_to with OAuth scopes', async ({ request }) => {

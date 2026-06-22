@@ -1,10 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { adminProjectsApi, type AdminProject } from '../projects/admin-projects.api';
 import {
     adminConnectorsApi,
     type ConfigureConnectorPayload,
     type ConfigureResponse,
     type ConnectorEntry,
+    type ConnectorInstallationDto,
     type DisableResponse,
+    type StartInstallParams,
+    type UpdateInstallationParams,
 } from './connectors.api';
 
 /*
@@ -33,10 +37,36 @@ export function useConnectors() {
 
 export function useStartInstall() {
     return useMutation({
-        mutationFn: (key: string) => adminConnectorsApi.startInstall(key),
+        mutationFn: (params: StartInstallParams) => adminConnectorsApi.startInstall(params),
         // No invalidation: the BE creates a `pending` row and returns
         // the OAuth redirect. The caller navigates away, so a refetch
         // would race with the navigation.
+    });
+}
+
+/**
+ * v8.20 — real project registry for the account binding dropdown (R18: options
+ * derive from the DB, never a hard-coded subset). Tenant-scoped server-side.
+ */
+export function useProjectOptions() {
+    return useQuery<AdminProject[]>({
+        queryKey: ['admin', 'projects', 'list'],
+        queryFn: () => adminProjectsApi.list(),
+        staleTime: 60_000,
+    });
+}
+
+/**
+ * v8.20 — PATCH metadata edit (rename label / rebind project) of an existing
+ * account. Invalidates the list so the cards reflect the change.
+ */
+export function useUpdateInstallation() {
+    const qc = useQueryClient();
+    return useMutation<ConnectorInstallationDto, unknown, UpdateInstallationParams>({
+        mutationFn: (params) => adminConnectorsApi.update(params),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: CONNECTORS_KEY });
+        },
     });
 }
 

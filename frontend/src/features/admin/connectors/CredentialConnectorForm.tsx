@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import type { AdminProject } from '../projects/admin-projects.api';
 import type {
     ConfigureConnectorPayload,
     ConnectorEntry,
@@ -25,6 +26,8 @@ import type {
 export interface CredentialConnectorFormProps {
     /** The connector being configured — must carry a non-null credential_form_schema. */
     entry: ConnectorEntry;
+    /** v8.20 — real project registry for the binding dropdown (R18). */
+    projects: AdminProject[];
     onSubmit: (payload: ConfigureConnectorPayload) => void;
     onClose: () => void;
     /** Top-level error (e.g. the BE's "IMAP login failed" 422 message). */
@@ -54,6 +57,7 @@ function initialValue(field: CredentialFieldSchema): FieldValue {
 
 export function CredentialConnectorForm({
     entry,
+    projects,
     onSubmit,
     onClose,
     submitError,
@@ -61,6 +65,11 @@ export function CredentialConnectorForm({
     isSubmitting,
 }: CredentialConnectorFormProps): ReactNode {
     const schema = useMemo(() => entry.credential_form_schema ?? [], [entry.credential_form_schema]);
+
+    // v8.20 — account label (required) + optional project binding. These are NOT
+    // schema fields; the host injects them into the configure payload.
+    const [label, setLabel] = useState('');
+    const [projectKey, setProjectKey] = useState('');
 
     const [values, setValues] = useState<Record<string, FieldValue>>(() => {
         const seed: Record<string, FieldValue> = {};
@@ -106,6 +115,12 @@ export function CredentialConnectorForm({
             const value = values[field.name];
             if (value === '') continue;
             payload[field.name] = value;
+        }
+        // v8.20 — inject the account label (required) + optional project binding.
+        // An empty project is OMITTED so the BE applies the tenant default.
+        payload.label = label.trim();
+        if (projectKey !== '') {
+            payload.project_key = projectKey;
         }
         onSubmit(payload);
     };
@@ -168,6 +183,65 @@ export function CredentialConnectorForm({
                 <h2 id={titleId} style={{ margin: 0, fontSize: 14, color: 'var(--fg-0)' }}>
                     Connect {entry.display_name}
                 </h2>
+
+                {/* v8.20 — account label + project binding (injected, not schema). */}
+                <label
+                    htmlFor={`connector-${entry.key}-form-label`}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+                >
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>
+                        Account label<span style={{ color: 'var(--err, #fca5a5)' }}> *</span>
+                    </span>
+                    <input
+                        id={`connector-${entry.key}-form-label`}
+                        data-testid={`connector-${entry.key}-form-label`}
+                        type="text"
+                        required
+                        value={label}
+                        onChange={(e) => setLabel(e.target.value)}
+                        placeholder="e.g. Support, Sales"
+                        style={inputStyle()}
+                    />
+                    {fieldErrors?.label && (
+                        <span
+                            data-testid={`connector-${entry.key}-form-label-error`}
+                            role="alert"
+                            style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
+                        >
+                            {fieldErrors.label}
+                        </span>
+                    )}
+                </label>
+
+                <label
+                    htmlFor={`connector-${entry.key}-form-project_key`}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+                >
+                    <span style={{ color: 'var(--fg-2)', fontSize: 11 }}>KB project binding</span>
+                    <select
+                        id={`connector-${entry.key}-form-project_key`}
+                        data-testid={`connector-${entry.key}-form-project_key`}
+                        value={projectKey}
+                        onChange={(e) => setProjectKey(e.target.value)}
+                        style={inputStyle()}
+                    >
+                        <option value="">Global (tenant default)</option>
+                        {projects.map((p) => (
+                            <option key={p.project_key} value={p.project_key}>
+                                {p.name} ({p.project_key})
+                            </option>
+                        ))}
+                    </select>
+                    {fieldErrors?.project_key && (
+                        <span
+                            data-testid={`connector-${entry.key}-form-project_key-error`}
+                            role="alert"
+                            style={{ fontSize: 10.5, color: 'var(--err, #fca5a5)' }}
+                        >
+                            {fieldErrors.project_key}
+                        </span>
+                    )}
+                </label>
 
                 {groups.map((grp, gi) => (
                     <div

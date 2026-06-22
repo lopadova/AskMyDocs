@@ -1,4 +1,4 @@
-import type { ConnectorEntry, ConnectorStatus } from './connectors.api';
+import type { ConnectorInstallationDto, ConnectorStatus } from './connectors.api';
 
 /*
  * Pure helpers extracted so they can be unit-tested without React.
@@ -17,8 +17,14 @@ import type { ConnectorEntry, ConnectorStatus } from './connectors.api';
 
 export type DerivedConnectorStatus = ConnectorStatus | 'not_installed';
 
-export function derivedStatus(entry: ConnectorEntry): DerivedConnectorStatus {
-    return entry.installation?.status ?? 'not_installed';
+/**
+ * v8.20 — status of ONE account (installation). A null installation collapses to
+ * the synthetic `not_installed` (used for the "no accounts yet" connector state).
+ */
+export function accountStatus(
+    installation: ConnectorInstallationDto | null | undefined,
+): DerivedConnectorStatus {
+    return installation?.status ?? 'not_installed';
 }
 
 export interface StatusBadgeStyle {

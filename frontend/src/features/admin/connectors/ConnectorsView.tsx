@@ -2,22 +2,29 @@ import { useEffect, useRef, useState } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
+import { AccountMetaForm, type AccountMetaFormValues } from './AccountMetaForm';
 import { ConnectorCard } from './ConnectorCard';
 import { CredentialConnectorForm } from './CredentialConnectorForm';
-import type { ConfigureConnectorPayload, ConnectorEntry } from './connectors.api';
+import type {
+    ConfigureConnectorPayload,
+    ConnectorEntry,
+    ConnectorInstallationDto,
+} from './connectors.api';
 import {
     useConfigureConnector,
     useConnectors,
     useDestroyConnector,
+    useDisableConnector,
+    useProjectOptions,
     useStartInstall,
     useSyncNow,
+    useUpdateInstallation,
 } from './connectors-hooks';
 
 /**
  * Extracts a top-level message + per-field errors from an axios 422. Reuses
  * `toAdminError()` for the standard Laravel `{ message, errors }` flattening
- * (single source of truth, no drift) and only layers the connector-specific
- * `{ error }` shape (a ConnectorAuthException, e.g. "IMAP login failed") on top.
+ * and layers the connector-specific `{ error }` shape on top.
  */
 function parseConfigureError(e: unknown): { message: string; fieldErrors: Record<string, string> } {
     const base = toAdminError(e);
@@ -29,44 +36,45 @@ function parseConfigureError(e: unknown): { message: string; fieldErrors: Record
 }
 
 /*
- * v4.5/W3 — Connector admin landing page.
+ * v8.20 — Connector admin landing page (multi-account).
  *
- * Renders one card per registered connector (Google Drive + Notion
- * always — additional cards appear as more reference connectors are
- * registered under W3+). Empty state is defensive: the registry is
- * always seeded with at least two connectors in this release, so an
- * empty list means the BE returned `[]`, which is itself a defect
- * worth surfacing.
+ * One card per registered connector; each card lists the active tenant's
+ * ACCOUNTS for that connector (multi-account) with per-account actions.
+ * "Add account" opens either the schema-driven credential form (IMAP) or the
+ * label+project metadata form (OAuth connectors); "Edit" rebinds an account's
+ * label/project. Every account optionally binds to a real KB project (R18
+ * dropdown from the project registry).
  *
- * Mutations flow through TanStack Query so every state transition
- * (install / sync / disconnect) invalidates the list and the cards
- * refetch. No optimistic updates — connector ops are infrequent and
- * the server's status enum is the source of truth.
- *
- * R14 — every error surfaces as a toast (with deterministic testid).
- * Silent 200 paths are impossible: each mutation explicitly catches
- * and reports via toast.error().
+ * R14 — every mutation surfaces success/failure via a toast (deterministic
+ * testid). No silent 200 paths.
  */
+
+type Modal =
+    | { kind: 'credential-add'; entry: ConnectorEntry }
+    | { kind: 'oauth-add'; entry: ConnectorEntry }
+    | { kind: 'edit'; entry: ConnectorEntry; account: ConnectorInstallationDto }
+    | null;
 
 export function ConnectorsView() {
     const toast = useToast();
     const connectorsQuery = useConnectors();
+    const projectsQuery = useProjectOptions();
     const startInstall = useStartInstall();
     const syncNow = useSyncNow();
+    const disableConnector = useDisableConnector();
     const destroyConnector = useDestroyConnector();
     const configureConnector = useConfigureConnector();
+    const updateInstallation = useUpdateInstallation();
 
-    // v8.17 — the credential connector being configured (modal open) + its
-    // inline error state. Null = no modal.
-    const [modalEntry, setModalEntry] = useState<ConnectorEntry | null>(null);
-    const [configureError, setConfigureError] = useState<string | null>(null);
-    const [configureFieldErrors, setConfigureFieldErrors] = useState<Record<string, string>>({});
-    // Mirror the open modal so an in-flight configure can tell, on resolve,
-    // whether the user has since switched/closed the modal (R17).
-    const modalEntryRef = useRef<ConnectorEntry | null>(null);
+    const [modal, setModal] = useState<Modal>(null);
+    const [modalError, setModalError] = useState<string | null>(null);
+    const [modalFieldErrors, setModalFieldErrors] = useState<Record<string, string>>({});
+    // Mirror the open modal so an in-flight request can tell, on resolve, whether
+    // the user has since switched/closed it (R17 — never paint onto a stale form).
+    const modalRef = useRef<Modal>(null);
     useEffect(() => {
-        modalEntryRef.current = modalEntry;
-    }, [modalEntry]);
+        modalRef.current = modal;
+    }, [modal]);
 
     const state: 'loading' | 'ready' | 'error' | 'empty' = connectorsQuery.isLoading
         ? 'loading'
@@ -77,71 +85,107 @@ export function ConnectorsView() {
             : 'ready';
 
     const entries = connectorsQuery.data ?? [];
+    const projects = projectsQuery.data ?? [];
 
-    async function handleConnect(key: string) {
-        const entry = entries.find((c) => c.key === key);
-        // v8.17 — credential connectors (IMAP) open a schema-driven form modal
-        // instead of an OAuth redirect. OAuth connectors keep the existing flow.
-        if (entry && entry.auth_kind === 'credential') {
-            // Guard a credential connector that advertises no schema — opening the
-            // modal would render an empty form the user could only submit into an
-            // unrecoverable 422. Surface a toast instead.
-            if (!entry.credential_form_schema || entry.credential_form_schema.length === 0) {
-                toast.error(
-                    `${entry.display_name} did not provide a credential form.`,
-                    'toast-connector-error',
-                );
-                return;
-            }
-            setConfigureError(null);
-            setConfigureFieldErrors({});
-            setModalEntry(entry);
-            return;
-        }
-
-        try {
-            const result = await startInstall.mutateAsync(key);
-            // Navigate the browser to the provider's OAuth URL. The
-            // provider will redirect back to /app/admin/connectors/<key>/callback
-            // once the user completes (or rejects) the consent screen.
-            // We use window.location.assign() so the back-button behaviour
-            // is predictable (single history entry).
-            window.location.assign(result.redirect_to);
-        } catch (e) {
-            const err = toAdminError(e);
-            toast.error(err.message, 'toast-connector-error');
+    function openModalReset(next: Modal) {
+        setModalError(null);
+        setModalFieldErrors({});
+        setModal(next);
+        // R14 — surface projects-load failure so users know project binding is unavailable
+        // rather than silently presenting an empty dropdown that looks like "no projects".
+        if (next !== null && projectsQuery.isError) {
+            toast.error(
+                'Could not load the project list — KB project binding will default to tenant default.',
+                'toast-projects-load-error',
+            );
         }
     }
 
-    async function handleConfigureSubmit(payload: ConfigureConnectorPayload) {
-        // Capture the connector this submission is for — the user may close the
-        // modal or switch to another connector while the request is in flight, so
-        // we must not act on whatever `modalEntry` happens to be when it resolves.
-        const target = modalEntry;
-        if (!target) return;
-        setConfigureError(null);
-        setConfigureFieldErrors({});
+    function handleAddAccount(key: string) {
+        const entry = entries.find((c) => c.key === key);
+        if (!entry) return;
+        if (entry.auth_kind === 'credential') {
+            if (!entry.credential_form_schema || entry.credential_form_schema.length === 0) {
+                toast.error(`${entry.display_name} did not provide a credential form.`, 'toast-connector-error');
+                return;
+            }
+            openModalReset({ kind: 'credential-add', entry });
+            return;
+        }
+        openModalReset({ kind: 'oauth-add', entry });
+    }
+
+    function handleEdit(entry: ConnectorEntry, account: ConnectorInstallationDto) {
+        openModalReset({ kind: 'edit', entry, account });
+    }
+
+    async function handleCredentialSubmit(payload: ConfigureConnectorPayload) {
+        const current = modal;
+        if (current?.kind !== 'credential-add') return;
+        const target = current.entry;
+        setModalError(null);
+        setModalFieldErrors({});
         try {
             const result = await configureConnector.mutateAsync({ key: target.key, payload });
-            // xoauth2 → the BE persisted a pending row and handed us the provider
-            // authorize URL; finish via the existing oauth/callback route.
             if (result.redirect_to) {
                 window.location.assign(result.redirect_to);
                 return;
             }
-            // basic-auth succeeded (ping ok, credential vaulted) → the row is
-            // ACTIVE. A success toast for `target` is always correct; only close
-            // the modal if it is STILL showing this connector (guard against the
-            // user having switched modals mid-request).
-            setModalEntry((cur) => (cur?.key === target.key ? null : cur));
-            toast.success(`${target.display_name} connected.`, 'toast-connector-configured');
+            setModal((cur) => (cur?.kind === 'credential-add' && cur.entry.key === target.key ? null : cur));
+            toast.success(`${target.display_name} account connected.`, 'toast-connector-configured');
         } catch (e) {
-            // Only surface the error if the modal is STILL showing this connector
-            // — otherwise we'd paint target's error onto a different form.
-            if (modalEntryRef.current?.key !== target.key) return;
+            const open = modalRef.current;
+            if (open?.kind !== 'credential-add' || open.entry.key !== target.key) return;
             const { message, fieldErrors } = parseConfigureError(e);
-            setConfigureError(message);
-            setConfigureFieldErrors(fieldErrors);
+            setModalError(message);
+            setModalFieldErrors(fieldErrors);
+        }
+    }
+
+    async function handleOAuthAddSubmit(values: AccountMetaFormValues) {
+        const current = modal;
+        if (current?.kind !== 'oauth-add') return;
+        const target = current.entry;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            const result = await startInstall.mutateAsync({
+                key: target.key,
+                label: values.label,
+                projectKey: values.projectKey || null,
+            });
+            // Navigate to the provider's OAuth screen; the existing callback route
+            // finishes the flow.
+            window.location.assign(result.redirect_to);
+        } catch (e) {
+            const open = modalRef.current;
+            if (open?.kind !== 'oauth-add' || open.entry.key !== target.key) return;
+            const { message, fieldErrors } = parseConfigureError(e);
+            setModalError(message);
+            setModalFieldErrors(fieldErrors);
+        }
+    }
+
+    async function handleEditSubmit(values: AccountMetaFormValues) {
+        const current = modal;
+        if (current?.kind !== 'edit') return;
+        const target = current.account;
+        setModalError(null);
+        setModalFieldErrors({});
+        try {
+            await updateInstallation.mutateAsync({
+                installationId: target.id,
+                label: values.label,
+                project_key: values.projectKey, // '' clears → tenant default
+            });
+            setModal((cur) => (cur?.kind === 'edit' && cur.account.id === target.id ? null : cur));
+            toast.success('Account updated.', 'toast-connector-updated');
+        } catch (e) {
+            const open = modalRef.current;
+            if (open?.kind !== 'edit' || open.account.id !== target.id) return;
+            const { message, fieldErrors } = parseConfigureError(e);
+            setModalError(message);
+            setModalFieldErrors(fieldErrors);
         }
     }
 
@@ -150,19 +194,40 @@ export function ConnectorsView() {
             await syncNow.mutateAsync(installationId);
             toast.success('Sync queued.', 'toast-connector-synced');
         } catch (e) {
-            const err = toAdminError(e);
-            toast.error(err.message, 'toast-connector-error');
+            toast.error(toAdminError(e).message, 'toast-connector-error');
         }
     }
 
-    async function handleDisconnect(installationId: number) {
+    async function handleDisable(installationId: number) {
+        try {
+            await disableConnector.mutateAsync(installationId);
+            toast.success('Account disabled.', 'toast-connector-disabled');
+        } catch (e) {
+            toast.error(toAdminError(e).message, 'toast-connector-error');
+        }
+    }
+
+    async function handleRemove(installationId: number) {
         try {
             await destroyConnector.mutateAsync(installationId);
-            toast.success('Connector disconnected.', 'toast-connector-disconnected');
+            toast.success('Account removed.', 'toast-connector-disconnected');
         } catch (e) {
-            const err = toAdminError(e);
-            toast.error(err.message, 'toast-connector-error');
+            toast.error(toAdminError(e).message, 'toast-connector-error');
         }
+    }
+
+    const syncingId = syncNow.isPending ? (syncNow.variables ?? null) : null;
+    const busyId = destroyConnector.isPending
+        ? (destroyConnector.variables ?? null)
+        : disableConnector.isPending
+          ? (disableConnector.variables ?? null)
+          : null;
+
+    function addPendingFor(key: string): boolean {
+        return (
+            (startInstall.isPending && startInstall.variables?.key === key) ||
+            (configureConnector.isPending && configureConnector.variables?.key === key)
+        );
     }
 
     return (
@@ -187,7 +252,8 @@ export function ConnectorsView() {
                         Connectors
                     </h1>
                     <p style={{ fontSize: 12.5, color: 'var(--fg-3)', margin: 0 }}>
-                        Connect external sources via OAuth and sync their content into your knowledge base.
+                        Connect multiple accounts per source and bind each to a project (or the tenant
+                        default), then sync their content into your knowledge base.
                     </p>
                 </div>
 
@@ -264,7 +330,7 @@ export function ConnectorsView() {
                         data-testid="admin-connectors-grid"
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
                             gap: 12,
                         }}
                     >
@@ -272,40 +338,63 @@ export function ConnectorsView() {
                             <ConnectorCard
                                 key={entry.key}
                                 entry={entry}
-                                onConnect={handleConnect}
+                                onAddAccount={handleAddAccount}
                                 onSync={handleSync}
-                                onDisconnect={handleDisconnect}
-                                onCancelInstall={handleDisconnect}
-                                pending={{
-                                    connecting:
-                                        startInstall.isPending &&
-                                        startInstall.variables === entry.key,
-                                    syncing:
-                                        syncNow.isPending &&
-                                        syncNow.variables === entry.installation?.id,
-                                    disconnecting:
-                                        destroyConnector.isPending &&
-                                        destroyConnector.variables === entry.installation?.id,
-                                }}
+                                onDisable={handleDisable}
+                                onRemove={handleRemove}
+                                onEdit={(installation) => handleEdit(entry, installation)}
+                                onCancelInstall={handleRemove}
+                                syncingId={syncingId}
+                                busyId={busyId}
+                                addPending={addPendingFor(entry.key)}
                             />
                         ))}
                     </div>
                 )}
             </div>
 
-            {modalEntry && (
+            {modal?.kind === 'credential-add' && (
                 <CredentialConnectorForm
-                    entry={modalEntry}
-                    onSubmit={handleConfigureSubmit}
-                    onClose={() => setModalEntry(null)}
-                    submitError={configureError}
-                    fieldErrors={configureFieldErrors}
-                    // Scope the pending state to THIS connector — a configure in
-                    // flight for another connector must not disable this form.
+                    entry={modal.entry}
+                    projects={projects}
+                    onSubmit={handleCredentialSubmit}
+                    onClose={() => setModal(null)}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
                     isSubmitting={
                         configureConnector.isPending &&
-                        configureConnector.variables?.key === modalEntry.key
+                        configureConnector.variables?.key === modal.entry.key
                     }
+                />
+            )}
+
+            {modal?.kind === 'oauth-add' && (
+                <AccountMetaForm
+                    connectorKey={modal.entry.key}
+                    title={`Add ${modal.entry.display_name} account`}
+                    submitLabel="Continue to provider"
+                    projects={projects}
+                    onSubmit={handleOAuthAddSubmit}
+                    onClose={() => setModal(null)}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
+                    isSubmitting={startInstall.isPending}
+                />
+            )}
+
+            {modal?.kind === 'edit' && (
+                <AccountMetaForm
+                    connectorKey={modal.entry.key}
+                    title={`Edit ${modal.entry.display_name} account`}
+                    submitLabel="Save changes"
+                    projects={projects}
+                    initialLabel={modal.account.label}
+                    initialProjectKey={modal.account.project_key}
+                    onSubmit={handleEditSubmit}
+                    onClose={() => setModal(null)}
+                    submitError={modalError}
+                    fieldErrors={modalFieldErrors}
+                    isSubmitting={updateInstallation.isPending}
                 />
             )}
         </AdminShell>
