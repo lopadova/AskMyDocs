@@ -138,10 +138,14 @@ document.
 
 `POST /api/auth/token/revoke` (behind `auth:sanctum`) is the Bearer-flow
 counterpart of `logout()`. It deletes the PAT the caller authenticated with and
-returns **`204`**. It is stateless — no web session, no CSRF — so a desktop
-client can sign out without an `XSRF-TOKEN` cookie. A session-based caller carries
-a `TransientToken` (not a `PersonalAccessToken`), so the delete is skipped and the
-call no-ops safely. Unauthenticated callers get `401`.
+returns **`204`**. It is stateless — registered **outside** the `web` group
+(no `StartSession` / CSRF) — so a desktop client signs out without an
+`XSRF-TOKEN` cookie. It is **PAT-only in practice**: because the route has no
+session middleware, a cookie-SPA caller can't establish a stateful session here
+and should use `POST /api/auth/logout` instead. (`revokeToken()` defensively
+skips the delete for a non-`PersonalAccessToken` `currentAccessToken()`, but that
+branch is effectively unreachable on this session-less route.) Unauthenticated
+callers get `401`.
 
 ### The Tauri desktop client (`desktop/`)
 
@@ -194,8 +198,9 @@ attempts on the `token|email|ip` bucket).
 
 ### `POST /api/auth/token/revoke` (`auth:sanctum`)
 
-No body. Deletes the caller's PAT and returns **`204`**. Session callers no-op
-(also `204`). Unauthenticated → `401`.
+No body. Deletes the caller's PAT and returns **`204`**. **PAT-only in
+practice** (registered outside the `web` group, no session middleware) —
+cookie/session clients use `POST /api/auth/logout`. Unauthenticated → `401`.
 
 ### `EnforceTokenAbility` (`token.ability:<ability>[,<ability>…]`)
 

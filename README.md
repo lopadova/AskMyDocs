@@ -1857,8 +1857,9 @@ Sanctum personal access token is scoped to least-privilege abilities
 (`kb:read` + `kb:chat`, never `['*']`) and carries a **finite 30-day expiry** so a
 leaked token self-revokes server-side; wrong/unknown credentials return `422`,
 and a failure-only throttle (own bucket) returns `429` after 5 attempts.
-`POST /api/auth/token/revoke` deletes the caller's PAT and returns `204`
-(session callers no-op). The new `EnforceTokenAbility` middleware
+`POST /api/auth/token/revoke` deletes the caller's PAT and returns `204` — it is
+registered outside the `web` group (PAT-only in practice; cookie/session clients
+use `POST /api/auth/logout`). The new `EnforceTokenAbility` middleware
 (`token.ability:<ability>` alias in `bootstrap/app.php`) is a PAT-scoped gate on
 the **dual-auth** routes `/api/kb/chat` (`kb:chat`), `/api/kb/documents/search`
 and `/api/kb/documents/{documentId}/preview` (`kb:read`): it rejects a wrongly-scoped PAT
