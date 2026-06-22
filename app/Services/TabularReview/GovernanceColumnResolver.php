@@ -7,6 +7,7 @@ namespace App\Services\TabularReview;
 use App\Models\KbEdge;
 use App\Models\KnowledgeDocument;
 use App\Support\Canonical\EdgeType;
+use App\Support\Canonical\EvidenceTier;
 use App\Support\TabularReview\CellFlag;
 use App\Support\TenantContext;
 use Illuminate\Support\Carbon;
@@ -88,17 +89,21 @@ class GovernanceColumnResolver
 
     private function evidenceTier(KnowledgeDocument $doc): array
     {
-        $tier = is_string($doc->evidence_tier) && $doc->evidence_tier !== '' ? $doc->evidence_tier : null;
+        // Use the real EvidenceTier taxonomy (guideline/peer_reviewed/official/
+        // preprint/news/blog/search_hint/unverified), mapped via its own rank() +
+        // isLowConfidence() so the flags track the domain's evidence-strength axis
+        // — not a guessed primary/secondary scheme.
+        $tier = EvidenceTier::tryFromLoose($doc->evidence_tier);
         if ($tier === null) {
-            return $this->cell('unset', CellFlag::YELLOW, 'No evidence_tier set on this document.');
+            return $this->cell('unverified', CellFlag::YELLOW, 'No evidence tier assessed on this document.');
         }
-        $flag = match ($tier) {
-            'primary' => CellFlag::GREEN,
-            'secondary' => CellFlag::YELLOW,
-            default => CellFlag::GREY,
+        $flag = match (true) {
+            $tier->isLowConfidence() => CellFlag::RED,   // blog / search_hint / unverified
+            $tier->rank() >= 60 => CellFlag::GREEN,        // guideline / peer_reviewed / official
+            default => CellFlag::YELLOW,                    // preprint / news
         };
 
-        return $this->cell($tier, $flag, "Document evidence tier is '{$tier}'.");
+        return $this->cell($tier->value, $flag, "Evidence tier is '{$tier->value}' (strength {$tier->rank()}).");
     }
 
     private function frontmatterCompleteness(KnowledgeDocument $doc): array

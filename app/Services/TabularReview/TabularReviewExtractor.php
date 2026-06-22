@@ -351,7 +351,7 @@ class TabularReviewExtractor
             $content = $c['content'];
             $content['flag'] = $downgraded->value;
             $reasoning = isset($content['reasoning']) ? (string) $content['reasoning'] : '';
-            $content['reasoning'] = trim($reasoning.' [verify: not supported by cited evidence]');
+            $content['reasoning'] = trim($reasoning." [verify: not supported by the document's retrieved evidence]");
 
             $cell = $this->persistCell(
                 $tenant,

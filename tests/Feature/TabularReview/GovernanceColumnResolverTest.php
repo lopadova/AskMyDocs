@@ -50,7 +50,7 @@ final class GovernanceColumnResolverTest extends TestCase
             'canonical_type' => 'decision',
             'doc_id' => 'dec-'.uniqid(),
             'slug' => 'dec-'.Str::random(6),
-            'evidence_tier' => 'primary',
+            'evidence_tier' => 'guideline',
             'retrieval_priority' => 60,
             'frontmatter_json' => ['slug' => 'x', 'type' => 'decision', 'title' => 'T'],
             'source_updated_at' => Carbon::now(),
@@ -74,11 +74,20 @@ final class GovernanceColumnResolverTest extends TestCase
         ]);
     }
 
-    public function test_evidence_tier_primary_is_green(): void
+    public function test_evidence_tier_strong_is_green_low_confidence_is_red(): void
     {
-        $cell = $this->resolver->resolve($this->doc(['evidence_tier' => 'primary']), 'evidence_tier');
-        $this->assertSame('primary', $cell['summary']);
-        $this->assertSame(CellFlag::GREEN->value, $cell['flag']);
+        // Real EvidenceTier taxonomy: guideline/peer_reviewed/official are strong
+        // (GREEN); blog/search_hint/unverified are low-confidence (RED).
+        $strong = $this->resolver->resolve($this->doc(['evidence_tier' => 'guideline']), 'evidence_tier');
+        $this->assertSame('guideline', $strong['summary']);
+        $this->assertSame(CellFlag::GREEN->value, $strong['flag']);
+
+        $weak = $this->resolver->resolve($this->doc(['evidence_tier' => 'blog']), 'evidence_tier');
+        $this->assertSame('blog', $weak['summary']);
+        $this->assertSame(CellFlag::RED->value, $weak['flag']);
+
+        $mid = $this->resolver->resolve($this->doc(['evidence_tier' => 'news']), 'evidence_tier');
+        $this->assertSame(CellFlag::YELLOW->value, $mid['flag']);
     }
 
     public function test_canonical_status_deprecated_is_red(): void
