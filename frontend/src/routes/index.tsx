@@ -21,6 +21,7 @@ import { KbView } from '../features/admin/kb/KbView';
 import { KbHealthView } from '../features/admin/kb-health/KbHealthView';
 import { TagsList } from '../features/admin/tags/TagsList';
 import { SynonymsList } from '../features/admin/synonyms/SynonymsList';
+import { InviteView } from '../features/admin/invite/InviteView';
 import { KbInsightsView } from '../features/admin/kb-insights/KbInsightsView';
 import { AnalysisSettingsView } from '../features/admin/analysis-settings/AnalysisSettingsView';
 import { ContentGapsView } from '../features/admin/content-gaps/ContentGapsView';
@@ -57,6 +58,7 @@ import { WidgetAdminView } from '../features/admin/widget/WidgetAdminView';
 import { AdminShell } from '../features/admin/shell/AdminShell';
 import { RequireRole } from './role-guard';
 import { LoginPage } from '../features/auth/LoginPage';
+import { RegisterPage } from '../features/auth/RegisterPage';
 import { ForgotPasswordPage } from '../features/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../features/auth/ResetPasswordPage';
 import { RedirectIfAuth, RequireAuth, useAuthBootstrap } from './guards';
@@ -87,6 +89,7 @@ function LoginRoute() {
             <LoginPage
                 onSuccess={() => navigate({ to: '/app' })}
                 onNavigateForgot={() => navigate({ to: '/forgot-password' })}
+                onNavigateRegister={() => navigate({ to: '/register' })}
             />
         </RedirectIfAuth>
     );
@@ -96,6 +99,24 @@ const loginRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
     component: LoginRoute,
+});
+
+function RegisterRoute() {
+    const navigate = useNavigate();
+    return (
+        <RedirectIfAuth>
+            <RegisterPage
+                onSuccess={() => navigate({ to: '/app' })}
+                onNavigateLogin={() => navigate({ to: '/login' })}
+            />
+        </RedirectIfAuth>
+    );
+}
+
+const registerRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/register',
+    component: RegisterRoute,
 });
 
 function ForgotRoute() {
@@ -539,6 +560,24 @@ const adminSynonymsRoute = createRoute({
     getParentRoute: () => teamRoute,
     path: 'admin/kb/synonyms',
     component: AdminSynonymsRoute,
+});
+
+// Invite system — campaigns / codes / metrics / invitations. Same
+// flat-RBAC + AdminShell pattern as Synonyms.
+function AdminInviteRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <AdminShell section="invite">
+                <InviteView />
+            </AdminShell>
+        </RequireRole>
+    );
+}
+
+const adminInviteRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/invite',
+    component: AdminInviteRoute,
 });
 
 // v8.7/W3–W4 — Doc Insights (AI document-change analyses).
@@ -1168,11 +1207,13 @@ const teamChildren = [
     adminNotificationDefaultsRoute,
     adminEngagementRoute,
     adminEvidenceRiskReviewRoute,
+    adminInviteRoute,
 ];
 
 const routeTree = rootRoute.addChildren([
     indexRoute,
     loginRoute,
+    registerRoute,
     forgotRoute,
     resetRoute,
     appRoute.addChildren([
