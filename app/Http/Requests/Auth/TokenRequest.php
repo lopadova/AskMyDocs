@@ -32,8 +32,14 @@ class TokenRequest extends FormRequest
 
     /**
      * Human-readable label stored on the personal access token so a user can
-     * tell devices apart in a future "manage sessions" view. Falls back to a
-     * stable default when the client omits it.
+     * tell devices apart in a future "manage sessions" view.
+     *
+     * The Tauri desktop client ALWAYS sends its own label
+     * (`device_name: "AskMyDocs Desktop"`, see desktop/src/lib/api.ts), so the
+     * `'desktop-demo'` below is a server-side fallback for clients that omit
+     * the field (curl, tests) — not the string the real desktop app ships.
+     * The two are intentionally different: one is the client's identity, the
+     * other the unnamed-client default.
      */
     public function deviceName(): string
     {

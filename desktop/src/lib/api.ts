@@ -112,6 +112,8 @@ export async function requestToken(
   const res = await http(`${API_BASE}/api/auth/token`, {
     method: "POST",
     headers: authHeaders(),
+    // This client always names itself; the backend's `desktop-demo` default
+    // (TokenRequest::deviceName) only applies when device_name is omitted.
     body: JSON.stringify({ email, password, device_name: "AskMyDocs Desktop" }),
   });
   const body = await parseBody(res);
