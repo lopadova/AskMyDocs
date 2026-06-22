@@ -189,7 +189,7 @@ export default defineConfig({
             // state; every *-super-admin.spec.ts under the super-admin
             // one. Keep the ignore list a single regex so new RBAC
             // denial / elevation specs don't need this config touched.
-            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/, /role-access\.spec\.ts/],
+            testIgnore: [/.*\.setup\.ts/, /.*-viewer\.spec\.ts/, /.*-super-admin\.spec\.ts/, /role-access\.spec\.ts/, /register\.spec\.ts/],
         },
         {
             // Non-admin project — runs ONLY the *-viewer scenarios.
@@ -229,6 +229,19 @@ export default defineConfig({
             },
             dependencies: ['setup'],
             testMatch: /role-access\.spec\.ts/,
+        },
+        {
+            // Public invite-gated registration runs in a CLEAN (unauthenticated)
+            // context — the /register page sits behind RedirectIfAuth, so any
+            // leaked admin cookie would bounce it to /app. Depends on `setup`
+            // only to serialise the boot-time DB migrate; the spec reseeds.
+            name: 'chromium-auth-public',
+            use: {
+                ...devices['Desktop Chrome'],
+                storageState: { cookies: [], origins: [] },
+            },
+            dependencies: ['setup'],
+            testMatch: /register\.spec\.ts/,
         },
     ],
 });
