@@ -791,6 +791,7 @@ function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
             aria-modal="true"
             aria-label="Ready-made report templates"
             data-state={state}
+            aria-busy={state === 'loading'}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 55 }}
         >
             <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(560px, 90vw)', maxHeight: '85vh', overflow: 'auto' }}>

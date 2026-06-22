@@ -240,6 +240,16 @@ describe('TabularReviewsList', () => {
         const metricValues = Array.from(metric.querySelectorAll('option')).map((o) => o.value);
         expect(metricValues).toContain('evidence_tier');
         expect(metricValues).toContain('supersession_status');
+
+        // R16 — lock in the "no avoidable 422" gating: with title + project
+        // filled but the graph column carrying NO metric, submit stays disabled;
+        // picking a governance metric flips it enabled.
+        await userEvent.type(screen.getByTestId('admin-tabular-review-create-title'), 'Governance');
+        await userEvent.type(screen.getByTestId('admin-tabular-review-create-project'), 'eng');
+        const submit = screen.getByTestId('admin-tabular-review-create-submit');
+        expect(submit).toBeDisabled();
+        await userEvent.selectOptions(metric, 'evidence_tier');
+        expect(submit).toBeEnabled();
     });
 
     it('opens the evidence side-panel with reasoning + citations when a cell is clicked (v8.19/W5)', async () => {
