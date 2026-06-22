@@ -2,7 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
 import { parseLaravelError, flattenLaravelError } from '../../../lib/laravel-errors';
-import { adminTabularReviewsApi, FORMAT_TYPES, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
+import { adminTabularReviewsApi, AGENT_KINDS, FORMAT_TYPES, GOVERNANCE_METRICS, type AgentKind, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
+import { adminWorkflowsApi } from '../workflows/admin-workflows.api';
 import { AdminShell } from '../shell/AdminShell';
 
 /**
@@ -22,6 +23,10 @@ export function TabularReviewsList(): ReactNode {
     const [createOpen, setCreateOpen] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
     const [activeId, setActiveId] = useState<number | null>(null);
+    // v8.19/W5 — ready-made template gallery: open state + the pre-fill the
+    // chosen template hands to the create dialog.
+    const [galleryOpen, setGalleryOpen] = useState(false);
+    const [templateInitial, setTemplateInitial] = useState<{ title: string; columns_config: ColumnConfig[] } | null>(null);
     // BE Gate `viewTabularReviews` admits viewer for READ-ONLY; mutation
     // routes also enforce `denyMutationForViewer()`. Mirror that client-
     // side so a viewer never sees a button that 403s.
@@ -91,20 +96,24 @@ export function TabularReviewsList(): ReactNode {
             <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
                 <h2 style={{ fontSize: 18, margin: 0 }}>Tabular Reviews</h2>
                 {canMutate && (
-                    <button
-                        type="button"
-                        data-testid="admin-tabular-reviews-create"
-                        onClick={() => setCreateOpen(true)}
-                        style={{
-                            padding: '7px 14px',
-                            borderRadius: 6,
-                            border: '1px solid var(--hairline)',
-                            background: 'var(--bg-2)',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        + New review
-                    </button>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                        <button
+                            type="button"
+                            data-testid="admin-tabular-reviews-from-template"
+                            onClick={() => setGalleryOpen(true)}
+                            style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--hairline)', background: 'var(--bg-2)', cursor: 'pointer' }}
+                        >
+                            From template
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="admin-tabular-reviews-create"
+                            onClick={() => { setTemplateInitial(null); setCreateOpen(true); }}
+                            style={{ padding: '7px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent)', color: 'white', cursor: 'pointer' }}
+                        >
+                            + New review
+                        </button>
+                    </div>
                 )}
             </header>
 
@@ -177,8 +186,21 @@ export function TabularReviewsList(): ReactNode {
                 </table>
             )}
 
+            {galleryOpen && (
+                <TemplateGalleryDialog
+                    onClose={() => setGalleryOpen(false)}
+                    onPick={(tpl) => {
+                        setTemplateInitial(tpl);
+                        setGalleryOpen(false);
+                        setCreateError(null);
+                        setCreateOpen(true);
+                    }}
+                />
+            )}
+
             {createOpen && (
                 <CreateReviewDialog
+                    initial={templateInitial}
                     onClose={() => {
                         setCreateOpen(false);
                         setCreateError(null);
@@ -198,6 +220,8 @@ interface DialogProps {
     onSubmit: (payload: CreateReviewPayload) => void;
     submitting: boolean;
     error: string | null;
+    /** v8.19/W5 — when launched from the template gallery, pre-fill title + columns. */
+    initial?: { title: string; columns_config: ColumnConfig[] } | null;
 }
 
 /**
@@ -218,12 +242,14 @@ const nextColumnKey = (): number => {
     return columnKeySeq;
 };
 
-function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProps): ReactNode {
-    const [title, setTitle] = useState('');
+function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: DialogProps): ReactNode {
+    const [title, setTitle] = useState(initial?.title ?? '');
     const [projectKey, setProjectKey] = useState('');
-    const [columns, setColumns] = useState<KeyedColumn[]>([
-        { _key: nextColumnKey(), name: '', prompt: '', format: 'text' },
-    ]);
+    const [columns, setColumns] = useState<KeyedColumn[]>(
+        initial && initial.columns_config.length > 0
+            ? initial.columns_config.map((c) => ({ ...c, _key: nextColumnKey() }))
+            : [{ _key: nextColumnKey(), name: '', prompt: '', format: 'text' }],
+    );
 
     const updateColumn = (i: number, patch: Partial<ColumnConfig>) => {
         setColumns((prev) => prev.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
@@ -337,6 +363,39 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                                     <option key={ft} value={ft}>{ft}</option>
                                 ))}
                             </select>
+                            {/* v8.19/W5 — the agentic dimension: extract (RAG LLM),
+                              * graph (deterministic governance metric, no LLM), or
+                              * verify (anti-hallucination second pass). */}
+                            <select
+                                aria-label={`Column ${i + 1} agent`}
+                                data-testid={`admin-tabular-review-create-column-${i}-agent`}
+                                value={c.agent ?? 'extract'}
+                                onChange={(e) => {
+                                    const agent = e.target.value as AgentKind;
+                                    // Drop a stale metric when leaving graph so a
+                                    // non-graph column never carries a metric.
+                                    updateColumn(i, agent === 'graph' ? { agent } : { agent, metric: null });
+                                }}
+                                style={{ width: '100%', padding: 6, marginTop: 4 }}
+                            >
+                                {AGENT_KINDS.map((a) => (
+                                    <option key={a} value={a}>agent: {a}</option>
+                                ))}
+                            </select>
+                            {(c.agent ?? 'extract') === 'graph' && (
+                                <select
+                                    aria-label={`Column ${i + 1} governance metric`}
+                                    data-testid={`admin-tabular-review-create-column-${i}-metric`}
+                                    value={c.metric ?? ''}
+                                    onChange={(e) => updateColumn(i, { metric: e.target.value })}
+                                    style={{ width: '100%', padding: 6, marginTop: 4 }}
+                                >
+                                    <option value="">— pick a governance metric —</option>
+                                    {GOVERNANCE_METRICS.map((m) => (
+                                        <option key={m} value={m}>{m}</option>
+                                    ))}
+                                </select>
+                            )}
                             {columns.length > 1 && (
                                 <button
                                     type="button"
@@ -372,7 +431,14 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error }: DialogProp
                     <button
                         type="button"
                         data-testid="admin-tabular-review-create-submit"
-                        disabled={submitting || title.trim() === '' || projectKey.trim() === ''}
+                        disabled={
+                            submitting
+                            || title.trim() === ''
+                            || projectKey.trim() === ''
+                            // A graph column needs a metric (else the BE 422s) —
+                            // gate the submit so the misconfiguration can't be sent.
+                            || columns.some((c) => c.agent === 'graph' && !c.metric)
+                        }
                         onClick={() =>
                             onSubmit({
                                 title: title.trim(),
@@ -408,6 +474,8 @@ interface ShowProps {
 function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
     const qc = useQueryClient();
     const [showMutationError, setShowMutationError] = useState<string | null>(null);
+    // v8.19/W5 — the evidence side-panel: which cell (doc × column) is open.
+    const [selectedCell, setSelectedCell] = useState<{ docId: number; col: number } | null>(null);
     const { roles } = useAuthStore();
     const canMutate = roles.includes('admin') || roles.includes('super-admin');
     const showQuery = useQuery({
@@ -579,10 +647,28 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                                                 background: cellFlagBg(cell?.flag),
                                             }}
                                         >
-                                            <span aria-hidden="true" style={{ marginRight: 4, fontSize: 11 }}>
-                                                {cellFlagGlyph(flag)}
-                                            </span>
-                                            {summary}
+                                            {/* v8.19/W5 — click a populated cell to open the
+                                              * evidence side-panel (reasoning + cited chunks). */}
+                                            <button
+                                                type="button"
+                                                data-testid={`admin-tabular-review-show-cell-${docId}-${i}-open`}
+                                                onClick={() => cell && setSelectedCell({ docId, col: i })}
+                                                disabled={!cell}
+                                                style={{
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    font: 'inherit',
+                                                    color: 'inherit',
+                                                    textAlign: 'left',
+                                                    cursor: cell ? 'pointer' : 'default',
+                                                }}
+                                            >
+                                                <span aria-hidden="true" style={{ marginRight: 4, fontSize: 11 }}>
+                                                    {cellFlagGlyph(flag)}
+                                                </span>
+                                                {summary}
+                                            </button>
                                             {reasoning && (
                                                 <span
                                                     data-testid={`admin-tabular-review-show-cell-${docId}-${i}-reasoning`}
@@ -604,6 +690,136 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                     </tbody>
                 </table>
             )}
+
+            {selectedCell && (() => {
+                const cell = cellsByDoc.get(selectedCell.docId)?.get(selectedCell.col);
+                const col = columns[selectedCell.col];
+                const citations = Array.isArray(cell?.content?.citations) ? cell!.content!.citations : [];
+                return (
+                    <aside
+                        data-testid="admin-tabular-review-evidence-panel"
+                        role="dialog"
+                        aria-label={`Evidence for ${col?.name ?? 'column'} on document #${selectedCell.docId}`}
+                        style={{
+                            position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(420px, 92vw)',
+                            background: 'var(--bg-1)', borderLeft: '1px solid var(--hairline)',
+                            boxShadow: '-8px 0 24px rgba(0,0,0,0.15)', padding: 20, overflow: 'auto', zIndex: 60,
+                        }}
+                    >
+                        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <strong>{col?.name ?? `Column ${selectedCell.col + 1}`}</strong>
+                            <button
+                                type="button"
+                                data-testid="admin-tabular-review-evidence-panel-close"
+                                onClick={() => setSelectedCell(null)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}
+                                aria-label="Close evidence panel"
+                            >
+                                ×
+                            </button>
+                        </header>
+                        <p style={{ color: 'var(--fg-3)', fontSize: 12, marginTop: 0 }}>
+                            Document #{selectedCell.docId}
+                            {col?.agent ? ` · agent: ${col.agent}` : ''}
+                            {col?.metric ? ` · metric: ${col.metric}` : ''}
+                        </p>
+                        <p data-testid="admin-tabular-review-evidence-flag" data-flag={cell?.flag ?? 'empty'}>
+                            <span aria-hidden="true" style={{ marginRight: 6 }}>{cellFlagGlyph(cell?.flag ?? 'empty')}</span>
+                            <strong>{cell?.content?.summary ?? '—'}</strong>
+                        </p>
+                        {cell?.content?.reasoning && (
+                            <p data-testid="admin-tabular-review-evidence-reasoning" style={{ color: 'var(--fg-2)' }}>
+                                {cell.content.reasoning}
+                            </p>
+                        )}
+                        <h4 style={{ marginBottom: 6 }}>Citations</h4>
+                        {citations.length === 0 ? (
+                            <p data-testid="admin-tabular-review-evidence-no-citations" style={{ color: 'var(--fg-3)', fontSize: 12 }}>
+                                No cited evidence (deterministic or unsupported cell).
+                            </p>
+                        ) : (
+                            <ul data-testid="admin-tabular-review-evidence-citations" style={{ paddingLeft: 16 }}>
+                                {citations.map((raw, ci) => {
+                                    const c = (raw ?? {}) as { chunk_id?: unknown; quote?: unknown };
+                                    return (
+                                        <li key={ci} data-testid={`admin-tabular-review-evidence-citation-${ci}`} style={{ marginBottom: 8, fontSize: 13 }}>
+                                            <code style={{ color: 'var(--fg-3)' }}>chunk {String(c.chunk_id ?? '?')}</code>
+                                            {typeof c.quote === 'string' && c.quote !== '' && (
+                                                <blockquote style={{ margin: '4px 0 0', paddingLeft: 8, borderLeft: '2px solid var(--hairline)' }}>
+                                                    {c.quote}
+                                                </blockquote>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
+                    </aside>
+                );
+            })()}
+        </div>
+    );
+}
+
+interface GalleryProps {
+    onClose: () => void;
+    onPick: (tpl: { title: string; columns_config: ColumnConfig[] }) => void;
+}
+
+/**
+ * v8.19/W5 — the ready-made template gallery. Lists the built-in system
+ * `tabular` workflows (the 16 seeded templates incl. "Canonical KB Governance
+ * Audit") so an operator can start a report from a curated set of columns
+ * instead of building them by hand. Picking one pre-fills the create dialog.
+ */
+function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
+    const query = useQuery({
+        queryKey: ['admin-workflows', 'system'],
+        queryFn: () => adminWorkflowsApi.list('system'),
+    });
+    // Only the built-in (`is_system`) tabular workflows are "ready-made templates".
+    const templates = (query.data ?? []).filter(
+        (w) => w.is_system === true && w.type === 'tabular' && Array.isArray(w.columns_config) && w.columns_config.length > 0,
+    );
+    const state = query.isLoading ? 'loading' : query.isError ? 'error' : templates.length === 0 ? 'empty' : 'ready';
+
+    return (
+        <div
+            data-testid="admin-tabular-review-template-gallery"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ready-made report templates"
+            data-state={state}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 55 }}
+        >
+            <div style={{ background: 'var(--bg-1)', padding: 24, borderRadius: 8, width: 'min(560px, 90vw)', maxHeight: '85vh', overflow: 'auto' }}>
+                <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ marginTop: 0 }}>Start from a ready-made template</h3>
+                    <button type="button" data-testid="admin-tabular-review-template-gallery-close" onClick={onClose} aria-label="Close template gallery" style={{ background: 'none', border: 'none', fontSize: 18, cursor: 'pointer' }}>×</button>
+                </header>
+                {state === 'loading' && <p data-testid="admin-tabular-review-template-gallery-loading">Loading…</p>}
+                {state === 'error' && <p data-testid="admin-tabular-review-template-gallery-error" role="alert">Could not load templates.</p>}
+                {state === 'empty' && <p data-testid="admin-tabular-review-template-gallery-empty">No ready-made templates available.</p>}
+                {state === 'ready' && (
+                    <ul data-testid="admin-tabular-review-template-gallery-list" style={{ listStyle: 'none', padding: 0, display: 'grid', gap: 8, marginTop: 12 }}>
+                        {templates.map((w) => (
+                            <li key={w.id}>
+                                <button
+                                    type="button"
+                                    data-testid={`admin-tabular-review-template-${w.id}-use`}
+                                    onClick={() => onPick({ title: w.title, columns_config: (w.columns_config ?? []) as ColumnConfig[] })}
+                                    style={{ width: '100%', textAlign: 'left', padding: 10, border: '1px solid var(--hairline)', borderRadius: 6, background: 'var(--bg-2)', cursor: 'pointer' }}
+                                >
+                                    <strong>{w.title}</strong>
+                                    <span style={{ display: 'block', color: 'var(--fg-3)', fontSize: 12 }}>
+                                        {(w.columns_config ?? []).length} columns · {w.practice ?? 'generic'}
+                                    </span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
         </div>
     );
 }

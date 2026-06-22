@@ -225,4 +225,84 @@ describe('TabularReviewsList', () => {
         // Dialog is still open so the user can retry.
         expect(screen.getByTestId('admin-tabular-review-create-dialog')).toBeVisible();
     });
+
+    it('graph agent reveals the governance metric picker (v8.19/W5)', async () => {
+        mockGet.mockResolvedValue({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0 } } });
+        render(wrapped(<TabularReviewsList />));
+        await screen.findByTestId('admin-tabular-reviews-empty');
+        await userEvent.click(screen.getByTestId('admin-tabular-reviews-create'));
+        await screen.findByTestId('admin-tabular-review-create-dialog');
+
+        // No metric picker until the column's agent is `graph`.
+        expect(screen.queryByTestId('admin-tabular-review-create-column-0-metric')).toBeNull();
+        await userEvent.selectOptions(screen.getByTestId('admin-tabular-review-create-column-0-agent'), 'graph');
+        const metric = (await screen.findByTestId('admin-tabular-review-create-column-0-metric')) as HTMLSelectElement;
+        const metricValues = Array.from(metric.querySelectorAll('option')).map((o) => o.value);
+        expect(metricValues).toContain('evidence_tier');
+        expect(metricValues).toContain('supersession_status');
+    });
+
+    it('opens the evidence side-panel with reasoning + citations when a cell is clicked (v8.19/W5)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.startsWith('/api/admin/tabular-reviews?') || url === '/api/admin/tabular-reviews') {
+                return Promise.resolve({ data: { data: REVIEWS, meta: { current_page: 1, last_page: 1, per_page: 100, total: 2 } } });
+            }
+            if (url.startsWith('/api/admin/tabular-reviews/')) {
+                return Promise.resolve({
+                    data: {
+                        data: REVIEWS[0],
+                        cells: [{
+                            id: 5, review_id: 1, document_id: 42, column_index: 0,
+                            content: { summary: 'On track', reasoning: 'Status field says on track.', citations: [{ chunk_id: 'c-9', quote: 'project is on track' }] },
+                            status: 'ready', flag: 'green',
+                        }],
+                        cells_meta: { total: 1, returned: 1, offset: 0, limit: 2000, truncated: false },
+                    },
+                });
+            }
+            return Promise.reject(new Error(`unexpected GET ${url}`));
+        });
+
+        render(wrapped(<TabularReviewsList />));
+        await waitFor(() => expect(screen.getByTestId('admin-tabular-review-row-1')).toBeVisible());
+        await userEvent.click(screen.getByTestId('admin-tabular-review-row-1-open'));
+        await screen.findByTestId('admin-tabular-review-show');
+        await userEvent.click(await screen.findByTestId('admin-tabular-review-show-cell-42-0-open'));
+
+        const panel = await screen.findByTestId('admin-tabular-review-evidence-panel');
+        expect(panel).toBeVisible();
+        expect(screen.getByTestId('admin-tabular-review-evidence-reasoning').textContent).toContain('on track');
+        expect(screen.getByTestId('admin-tabular-review-evidence-citation-0').textContent).toContain('c-9');
+    });
+
+    it('lists built-in tabular templates and prefills the create dialog (v8.19/W5)', async () => {
+        mockGet.mockImplementation((url: string) => {
+            if (url.startsWith('/api/admin/workflows')) {
+                return Promise.resolve({ data: { data: [
+                    { id: 16, title: 'Canonical KB Governance Audit', type: 'tabular', is_system: true, practice: 'engineering', columns_config: [{ name: 'Canonical?', format: 'yes_no', agent: 'graph', metric: 'is_canonical' }] },
+                    { id: 6, title: 'Meeting Notes Summary', type: 'assistant', is_system: true, columns_config: [] },
+                ] } });
+            }
+            if (url.startsWith('/api/admin/tabular-reviews')) {
+                return Promise.resolve({ data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 100, total: 0 } } });
+            }
+            return Promise.reject(new Error(`unexpected GET ${url}`));
+        });
+
+        render(wrapped(<TabularReviewsList />));
+        await screen.findByTestId('admin-tabular-reviews-empty');
+        await userEvent.click(screen.getByTestId('admin-tabular-reviews-from-template'));
+        await screen.findByTestId('admin-tabular-review-template-gallery');
+
+        // Only the tabular system template renders (the assistant one is filtered out).
+        const useBtn = await screen.findByTestId('admin-tabular-review-template-16-use');
+        expect(screen.queryByTestId('admin-tabular-review-template-6-use')).toBeNull();
+        await userEvent.click(useBtn);
+
+        // The create dialog opens pre-filled with the template's title + graph column.
+        await screen.findByTestId('admin-tabular-review-create-dialog');
+        expect((screen.getByTestId('admin-tabular-review-create-title') as HTMLInputElement).value).toBe('Canonical KB Governance Audit');
+        expect((screen.getByTestId('admin-tabular-review-create-column-0-agent') as HTMLSelectElement).value).toBe('graph');
+        expect(screen.getByTestId('admin-tabular-review-create-column-0-metric')).toBeVisible();
+    });
 });

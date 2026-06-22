@@ -84,6 +84,27 @@ export const FORMAT_TYPES: ReadonlyArray<FormatType> = [
  */
 export type AgentKind = 'extract' | 'graph' | 'verify';
 
+/** The three agentic column kinds, in editor order. */
+export const AGENT_KINDS: ReadonlyArray<AgentKind> = ['extract', 'graph', 'verify'] as const;
+
+/**
+ * Mirrors `App\Services\TabularReview\GovernanceColumnResolver::METRICS` — the
+ * deterministic governance signals a `graph` column can resolve. R18/R9: keep in
+ * lock-step with the BE constant (the FE editor + the BE validator share it).
+ */
+export const GOVERNANCE_METRICS: ReadonlyArray<string> = [
+    'evidence_tier',
+    'frontmatter_completeness',
+    'canonical_status',
+    'is_canonical',
+    'incoming_edges',
+    'outgoing_edges',
+    'graph_connectivity',
+    'is_orphan',
+    'supersession_status',
+    'staleness_days',
+] as const;
+
 export interface ColumnConfig {
     name: string;
     prompt?: string | null;
