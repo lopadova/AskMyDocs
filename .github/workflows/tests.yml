@@ -122,7 +122,7 @@ jobs:
     # reached exclusively through the label arm.
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     # Cap the whole job so Playwright's per-test retry + per-test timeout
     # can't compound to hours when a setup test consistently hits a slow
     # failure. The full suite legitimately runs ~18-20 min (the green

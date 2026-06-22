@@ -1512,8 +1512,10 @@ Standing convention from **2026-06-22** (Lorenzo). The expensive gate is
 **Playwright E2E** (~18-20 min × matrix); Copilot reviews the **diff**, not
 test results — so running E2E on every test/CI/Copilot round is pure waste.
 The fix: run the fast unit gates (PHPUnit + Vitest) on every round and **defer
-E2E to exactly two runs** — one local pre-PR, one CI at the very end — while
-keeping **two hard E2E gates before merge**. This collapses days of
+E2E to two phases** — one local pre-PR, one CI at the very end (at least twice;
+the CI phase legitimately re-runs on each fix-push while the `run-e2e` label is
+on, plus any flake reruns) — while keeping **two hard E2E gates before merge**.
+This collapses days of
 mostly-waiting into hours with **zero loss of quality or robustness** (both E2E
 gates still block the merge).
 
@@ -1526,9 +1528,10 @@ test-execution ordering changes):**
    + `npm test` + `npm run test:legacy`). **NO Playwright.** Fix until green.
 3. **Local copilot-cli critic loop (R40)** until `0 must-fix`. Between rounds
    re-run **only** php+vite — **never** Playwright.
-4. **Local Playwright E2E** (`npm run e2e`) — run it **once** now that php+vite
-   is green and copilot-cli is clean. Fix until green. **Do NOT engage Copilot
-   during this phase** (E2E fixes are not a review trigger).
+4. **Local Playwright E2E** (`npm run e2e`) — run it now that php+vite is green
+   and copilot-cli is clean. Fix until green. **No Copilot for spec-only fixes**
+   — but if an E2E fix touches non-trivial **app** code (not just `*.spec.ts`),
+   re-run the local copilot-cli loop (R40) on that delta before moving on.
 5. **Open the PR.** CI runs **unit-only** (PHPUnit + Vitest); the `playwright`
    job is gated OFF because the PR has no `run-e2e` label. Fix until php+vite CI
    green. *(md-only PRs: see the exception below.)*
@@ -1551,7 +1554,9 @@ through the normal flow.)
 
 **CI mechanism.** `.github/workflows/tests.yml`: the `playwright` job carries
 `if: (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-contains(github.event.pull_request.labels.*.name, 'run-e2e')`, and the
+(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-e2e'))`
+(the PR-field read is guarded behind the `pull_request` event so push runs never
+dereference PR-only fields), and the
 `pull_request` trigger lists `types: [opened, synchronize, reopened, labeled]`
 so adding the label re-triggers the run. `main` pushes always run E2E
 (post-merge safety net). The `run-e2e` label must exist in the repo

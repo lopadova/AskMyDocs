@@ -17,9 +17,11 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 
 Playwright E2E (~18-20 min) is the most expensive gate and Copilot reviews the
 **diff**, not E2E results — so **E2E never runs inside the test/CI/Copilot
-rounds**. It runs **exactly twice**: once locally before the PR, once in CI as
-the final gate after the cloud Copilot loop closes. Both still block the merge,
-so quality is unchanged; only the wasted E2E cycles are removed.
+rounds**. It runs in **two phases** (at least twice): once locally before the
+PR, then in CI as the final gate after the cloud Copilot loop closes — the CI
+phase legitimately re-runs on each fix-push while the `run-e2e` label is on,
+plus any flake reruns. Both phases block the merge, so quality is unchanged;
+only the per-round wasted E2E cycles are removed.
 
 Per-PR order (the rest of this skill's loop applies WITHIN steps 5-6):
 
@@ -28,7 +30,9 @@ Per-PR order (the rest of this skill's loop applies WITHIN steps 5-6):
    `npm test` + `npm run test:legacy`). **No Playwright.** Fix until green.
 3. **Local copilot-cli loop (R40)** until `0 must-fix` — between rounds re-run
    **only** php+vite.
-4. **Local Playwright once** (`npm run e2e`). Fix until green. **No Copilot.**
+4. **Local Playwright** (`npm run e2e`). Fix until green. **No Copilot for
+   spec-only fixes** — re-run the local copilot-cli loop (R40) if an E2E fix
+   touches non-trivial app code.
 5. **Open PR** → CI runs **unit-only** (the `playwright` job is gated OFF; no
    `run-e2e` label). Fix until php+vite CI green.
 6. **Cloud Copilot loop** (the canonical loop below) until `0 outstanding
@@ -241,9 +245,10 @@ cd frontend && npm test               # vitest must pass
 vendor/bin/phpunit --testsuite Architecture  # R30+R31+R32+R34+R35
 ```
 
-`npm run e2e` runs exactly twice across the whole PR per R46: once locally
-before opening the PR (step 4), and once in CI as the final gate after the
-label is added (step 7). It is NOT part of the per-round Copilot gate.
+`npm run e2e` runs in two phases across the whole PR per R46 (at least twice):
+once locally before opening the PR (step 4), and in CI as the final gate after
+the label is added (step 7) — the CI phase re-runs on each fix-push while the
+label is on, plus any flake reruns. It is NOT part of the per-round Copilot gate.
 
 ### Phase D-final — Add the E2E label (R46 step 7, ONCE, after cloud Copilot = 0 must-fix)
 ```bash

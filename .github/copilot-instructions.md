@@ -620,7 +620,9 @@ runs inside the test/CI/Copilot rounds. Per-PR order:
    test:legacy`). No Playwright. Fix until green.
 3. Local copilot-cli loop (R40) until `0 must-fix` — between rounds re-run only
    php+vite.
-4. Local Playwright (`npm run e2e`) once. Fix until green. No Copilot here.
+4. Local Playwright (`npm run e2e`). Fix until green. No Copilot for spec-only
+   fixes — but re-run the local copilot-cli loop (R40) if an E2E fix touches
+   non-trivial app code.
 5. Open PR. CI runs unit-only; the `playwright` job is gated OFF (no `run-e2e`
    label). Fix until php+vite CI green.
 6. Cloud Copilot loop (R36) until `0 outstanding must-fix` — CI still php+vite
