@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\Auth\UserTeamsResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -133,14 +134,14 @@ class AuthController extends Controller
         ], 201);
     }
 
-    public function logout(Request $request): JsonResponse
+    public function logout(Request $request): Response
     {
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 
     /**
@@ -149,14 +150,14 @@ class AuthController extends Controller
      * the desktop client can sign out without an XSRF cookie. Session-based
      * callers carry a TransientToken (no delete()), so they no-op safely.
      */
-    public function revokeToken(Request $request): JsonResponse
+    public function revokeToken(Request $request): Response
     {
         $token = $request->user()?->currentAccessToken();
         if ($token instanceof PersonalAccessToken) {
             $token->delete();
         }
 
-        return response()->json(null, 204);
+        return response()->noContent();
     }
 
     public function me(Request $request, UserTeamsResolver $teams): JsonResponse
