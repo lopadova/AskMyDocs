@@ -57,5 +57,13 @@ if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localSto
             store.set(key, String(value));
         },
     };
-    Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage, configurable: true });
+    // `defineProperty` throws if the runtime already exposes a non-configurable
+    // `localStorage` (some Node/JSDOM combos do). In that case the ambient one is
+    // present-but-broken and we cannot replace it — swallow and let the test that
+    // actually needs storage surface the real error, rather than crashing setup.
+    try {
+        Object.defineProperty(globalThis, 'localStorage', { value: memoryStorage, configurable: true });
+    } catch {
+        /* non-configurable ambient localStorage — leave it as-is */
+    }
 }

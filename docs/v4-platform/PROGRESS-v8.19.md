@@ -95,7 +95,7 @@ regolo + finops.
   - Builds on the existing (v4.7) Tabular Review detail view (which already has an accessible DOM matrix +
     flag-coloured cells + sync generate). W5 adds the genuinely-new agentic-report surface:
     - **Agentic column editor**: `agent` select (extract/graph/verify) + a governance `metric` picker shown only
-      for `graph` columns — wired to the v8.16 `AGENT_KINDS` + `GOVERNANCE_METRICS` constants (mirror the BE SSOT).
+      for `graph` columns — wired to the v8.19/W4 `AGENT_KINDS` + `GOVERNANCE_METRICS` constants (mirror the BE SSOT).
       The create dialog now PRESERVES agent/metric on save (the W4 ColumnConfig fields).
     - **Evidence side-panel**: clicking a populated cell opens an accessible side-panel with the summary, flag,
       reasoning and the cited KB chunks (chunk id + quote) — the "see the evidence" UX.

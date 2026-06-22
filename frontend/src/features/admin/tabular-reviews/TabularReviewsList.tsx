@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../../lib/auth-store';
 import { parseLaravelError, flattenLaravelError } from '../../../lib/laravel-errors';
-import { adminTabularReviewsApi, AGENT_KINDS, FORMAT_TYPES, GOVERNANCE_METRICS, type AgentKind, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
+import { adminTabularReviewsApi, AGENT_KINDS, FORMAT_TYPES, GOVERNANCE_METRICS, normalizeTemplateColumns, type AgentKind, type ColumnConfig, type CreateReviewPayload, type FormatType, type TabularReview } from './admin-tabular-reviews.api';
 import { adminWorkflowsApi } from '../workflows/admin-workflows.api';
 import { AdminShell } from '../shell/AdminShell';
 
@@ -387,7 +387,7 @@ function CreateReviewDialog({ onClose, onSubmit, submitting, error, initial }: D
                                     aria-label={`Column ${i + 1} governance metric`}
                                     data-testid={`admin-tabular-review-create-column-${i}-metric`}
                                     value={c.metric ?? ''}
-                                    onChange={(e) => updateColumn(i, { metric: e.target.value })}
+                                    onChange={(e) => updateColumn(i, { metric: e.target.value || null })}
                                     style={{ width: '100%', padding: 6, marginTop: 4 }}
                                 >
                                     <option value="">— pick a governance metric —</option>
@@ -652,6 +652,7 @@ function TabularReviewShow({ id, onBack }: ShowProps): ReactNode {
                                             <button
                                                 type="button"
                                                 data-testid={`admin-tabular-review-show-cell-${docId}-${i}-open`}
+                                                aria-label={cell ? `${ariaLabel} — open evidence` : ariaLabel}
                                                 onClick={() => cell && setSelectedCell({ docId, col: i })}
                                                 disabled={!cell}
                                                 style={{
@@ -807,7 +808,7 @@ function TemplateGalleryDialog({ onClose, onPick }: GalleryProps): ReactNode {
                                 <button
                                     type="button"
                                     data-testid={`admin-tabular-review-template-${w.id}-use`}
-                                    onClick={() => onPick({ title: w.title, columns_config: (w.columns_config ?? []) as ColumnConfig[] })}
+                                    onClick={() => onPick({ title: w.title, columns_config: normalizeTemplateColumns(w.columns_config) })}
                                     style={{ width: '100%', textAlign: 'left', padding: 10, border: '1px solid var(--hairline)', borderRadius: 6, background: 'var(--bg-2)', cursor: 'pointer' }}
                                 >
                                     <strong>{w.title}</strong>
