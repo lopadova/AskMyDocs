@@ -197,6 +197,9 @@ export function CredentialConnectorForm({
                         data-testid={`connector-${entry.key}-form-label`}
                         type="text"
                         required
+                        // At least one non-whitespace char — matches the trimmed
+                        // submission so a whitespace-only label can't 422.
+                        pattern=".*\S.*"
                         value={label}
                         onChange={(e) => setLabel(e.target.value)}
                         placeholder="e.g. Support, Sales"

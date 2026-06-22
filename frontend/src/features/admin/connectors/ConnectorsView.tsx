@@ -383,7 +383,11 @@ export function ConnectorsView() {
                     onClose={() => setModal(null)}
                     submitError={modalError}
                     fieldErrors={modalFieldErrors}
-                    isSubmitting={startInstall.isPending}
+                    // Scope to THIS connector — another connector's install in
+                    // flight must not disable this modal.
+                    isSubmitting={
+                        startInstall.isPending && startInstall.variables?.key === modal.entry.key
+                    }
                 />
             )}
 
@@ -402,7 +406,12 @@ export function ConnectorsView() {
                     onClose={() => setModal(null)}
                     submitError={modalError}
                     fieldErrors={modalFieldErrors}
-                    isSubmitting={updateInstallation.isPending}
+                    // Scope to THIS account — editing another account while a
+                    // PATCH is in flight must not disable this modal.
+                    isSubmitting={
+                        updateInstallation.isPending &&
+                        updateInstallation.variables?.installationId === modal.account.id
+                    }
                 />
             )}
         </AdminShell>
