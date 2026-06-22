@@ -207,16 +207,26 @@ export function ConnectorsView() {
     // resolves.
     const [syncingIds, setSyncingIds] = useState<ReadonlySet<number>>(() => new Set());
     const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(() => new Set());
+    // Synchronous in-flight guard (a ref updates immediately, unlike batched
+    // state) so a double-trigger on the same account can't start two overlapping
+    // runs — the first finishing would otherwise clear the busy flag while the
+    // second is still in flight.
+    const inFlightRef = useRef<Set<number>>(new Set());
 
     async function track(
         setter: Dispatch<SetStateAction<ReadonlySet<number>>>,
         id: number,
         run: () => Promise<void>,
     ) {
+        if (inFlightRef.current.has(id)) {
+            return; // an action for this account is already running — ignore.
+        }
+        inFlightRef.current.add(id);
         setter((s) => new Set(s).add(id));
         try {
             await run();
         } finally {
+            inFlightRef.current.delete(id);
             setter((s) => {
                 const next = new Set(s);
                 next.delete(id);
