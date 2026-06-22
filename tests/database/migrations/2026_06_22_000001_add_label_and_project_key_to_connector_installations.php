@@ -11,10 +11,14 @@ use Illuminate\Support\Facades\Schema;
  * SQLite test-bench mirror of
  * `padosoft/askmydocs-connector-base` migration
  * `2026_06_22_000001_add_label_and_project_key_to_connector_installations`
- * (v1.3.0). Copied VERBATIM — Laravel dedups migrations by filename, so
- * this identical-named copy keeps the test schema in lockstep with what
- * the package SP loads in production (v4.6 mirror convention,
- * `tests/TestCase.php::defineDatabaseMigrations`).
+ * (v1.3.0). Laravel dedups migrations by filename, so this identical-named
+ * copy keeps the test schema in lockstep with what the package SP loads in
+ * production (v4.6 mirror convention, `tests/TestCase.php::defineDatabaseMigrations`).
+ *
+ * One deliberate divergence from the package source: the label-disambiguation
+ * helper trims with multibyte-safe `mb_substr`/`mb_strlen` (the package uses
+ * byte-based `substr`/`strlen`, which can split a multibyte label at the 64-char
+ * boundary). To be upstreamed to connector-base in a follow-up release.
  *
  * Multi-account + project-scoped connector installations.
  *
@@ -119,8 +123,11 @@ return new class extends Migration
             ->pluck('label')
             ->flip();
 
+        // Multibyte-safe: labels allow Unicode (the HTTP/API regex is \pL\pN),
+        // so trim with mb_substr/mb_strlen — a byte-based substr could split a
+        // multibyte char and store invalid UTF-8.
         $build = static function (string $suffix) use ($base): string {
-            return substr($base, 0, max(0, 64 - strlen($suffix))).$suffix;
+            return mb_substr($base, 0, max(0, 64 - mb_strlen($suffix))).$suffix;
         };
 
         $candidate = $build('-'.$id);

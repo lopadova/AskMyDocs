@@ -49,11 +49,14 @@ final class ConnectorInstallationService
     public function summary(): array
     {
         /** @var Collection<string, Collection<int, ConnectorInstallation>> $byConnector */
+        // Select only the columns the roster serializes — never hydrate the
+        // potentially-large `config_json` (or other unused columns) just to
+        // render a status list (lean as installations grow).
         $byConnector = ConnectorInstallation::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->orderBy('connector_name')
             ->orderBy('label')
-            ->get()
+            ->get(['id', 'connector_name', 'label', 'project_key', 'status', 'last_sync_at', 'error_json'])
             ->groupBy('connector_name');
 
         return $this->registry->all()->map(function ($connector) use ($byConnector): array {
