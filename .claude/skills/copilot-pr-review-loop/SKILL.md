@@ -13,13 +13,49 @@ description: After EVERY commit-push-PR cycle, the agent MUST loop on Copilot re
 1. Copilot review has **0 outstanding comments** (all addressed)
 2. CI has **0 failing checks** (all green or expected-skipped)
 
+## R46 — Deferred-E2E ordering (READ FIRST, supersedes the test-execution order below)
+
+Playwright E2E (~18-20 min) is the most expensive gate and Copilot reviews the
+**diff**, not E2E results — so **E2E never runs inside the test/CI/Copilot
+rounds**. It runs **exactly twice**: once locally before the PR, once in CI as
+the final gate after the cloud Copilot loop closes. Both still block the merge,
+so quality is unchanged; only the wasted E2E cycles are removed.
+
+Per-PR order (the rest of this skill's loop applies WITHIN steps 5-6):
+
+1. Implement.
+2. **Local FAST unit gate only**: PHPUnit + Vitest (`vendor/bin/phpunit` +
+   `npm test` + `npm run test:legacy`). **No Playwright.** Fix until green.
+3. **Local copilot-cli loop (R40)** until `0 must-fix` — between rounds re-run
+   **only** php+vite.
+4. **Local Playwright once** (`npm run e2e`). Fix until green. **No Copilot.**
+5. **Open PR** → CI runs **unit-only** (the `playwright` job is gated OFF; no
+   `run-e2e` label). Fix until php+vite CI green.
+6. **Cloud Copilot loop** (the canonical loop below) until `0 outstanding
+   must-fix` — CI each round is **php+vite only**, ~3 min not ~25.
+7. **Final E2E gate**:
+   `gh pr edit <N> --repo lopadova/AskMyDocs --add-label run-e2e`. The `labeled`
+   event re-fires CI with the label present → the gated `playwright` job runs.
+   Fix until E2E green. **No Copilot for E2E-only fixes.**
+8. **Merge** when BOTH: `0` Copilot must-fix AND all CI green (incl. the
+   labelled E2E run).
+
+**md-only exception:** a diff touching only `.md` files engages **no** Copilot
+(skip local copilot-cli AND the cloud loop). `.mdx` doc-site pages are NOT
+covered — they ship with feature code (R45) and follow the full flow.
+
+The `run-e2e` label must exist in the repo once: `gh label create run-e2e
+--repo lopadova/AskMyDocs --color 5319e7 --description "Fire the gated
+Playwright E2E job (R46 final gate)"`.
+
 ## The 9-step flow (canonical, applies to EVERY PR on EVERY repo)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ 1. fine task — implementation complete                            │
-│ 2. test tutti verdi in locale                                     │
-│    (phpunit + vitest + playwright + architecture)                 │
+│ 2. test tutti verdi in locale — FAST gate first                   │
+│    (phpunit + vitest + architecture); Playwright runs ONCE        │
+│    locally AFTER the local copilot-cli loop closes (R46 step 4)   │
 │ 3. apri PR with --reviewer copilot-pull-request-reviewer          │
 │    ← MANDATORY FLAG (canonical bot login; "copilot" alias only    │
 │     works when Copilot Code Review is enabled in repo settings)   │
@@ -194,11 +230,29 @@ gh run view <run-id> --log-failed | head -200
 ```
 
 ### Phase D — Fix locally + test gate
+
+During the cloud Copilot loop (R46 step 6) the gate is **php+vite + architecture
+only** — Playwright is deferred to the final gate, so do NOT run `npm run e2e`
+here:
+
 ```bash
 vendor/bin/phpunit --no-coverage     # all tests must pass
 cd frontend && npm test               # vitest must pass
-npm run e2e                           # playwright must pass
 vendor/bin/phpunit --testsuite Architecture  # R30+R31+R32+R34+R35
+```
+
+`npm run e2e` runs exactly twice across the whole PR per R46: once locally
+before opening the PR (step 4), and once in CI as the final gate after the
+label is added (step 7). It is NOT part of the per-round Copilot gate.
+
+### Phase D-final — Add the E2E label (R46 step 7, ONCE, after cloud Copilot = 0 must-fix)
+```bash
+# Only after the cloud Copilot loop reports 0 outstanding must-fix AND
+# php+vite CI is green. This fires the gated Playwright job via the
+# `labeled` pull_request event.
+gh pr edit <PR> --repo lopadova/AskMyDocs --add-label run-e2e
+# then loop on the Playwright CI result (read failed-job log + artefacts
+# per R22) until green — WITHOUT re-engaging Copilot for E2E-only fixes.
 ```
 
 ### Phase E — Commit + push
@@ -272,7 +326,11 @@ Reply explaining; mark resolved when consensus reached.
 - ❌ Mark Copilot comment "resolved" without actually fixing
 - ❌ Merge with even 1 outstanding Copilot must-fix comment
 - ❌ Merge with CI red (any check failure)
-- ❌ Run only phpunit and skip vitest / playwright / architecture
+- ❌ Run only phpunit and skip vitest / architecture in the per-round gate
+  (Playwright is intentionally deferred per R46 — but vitest + architecture are NOT)
+- ❌ Run Playwright inside the Copilot rounds, or add the `run-e2e` label before
+  the cloud Copilot loop reaches 0 must-fix (R46 violation)
+- ❌ Engage Copilot on an md-only PR, or on an E2E-only fix (R46)
 - ❌ Wait less than 60s after push before checking CI (CI may not have started)
 - ❌ **Poll only `copilot-pull-request-reviewer[bot]` and ignore `Copilot` (User type Bot)** — the formal bot fires once at PR open and almost never re-reviews; the conversational `Copilot` bot is the one that posts "Ready to merge" / "Re-review complete" verdicts in issue-thread comments after every `@copilot review` mention. Missing it means waiting indefinitely on a phantom review that already happened. (Discovered on `padosoft/laravel-patent-box-tracker` PR #2 cycle 2 on 2026-05-01: Copilot user-bot had posted the explicit "Ready to merge" verdict 50+ minutes earlier; the agent sat idle because the polling loop filtered for the wrong login.)
 - ❌ Treat absence of new formal `pull-request reviews` after a push as "Copilot is silent / timeout" — the user-bot may have already posted the verdict in `/issues/<N>/comments`. Check that channel before declaring timeout.

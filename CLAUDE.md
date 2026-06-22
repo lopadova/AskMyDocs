@@ -1506,6 +1506,72 @@ Check:
 
 → See `.claude/skills/mintlify-doc-authoring/SKILL.md`.
 
+### R46 — Deferred-E2E fast loop: run Playwright LAST, never inside the Copilot rounds
+
+Standing convention from **2026-06-22** (Lorenzo). The expensive gate is
+**Playwright E2E** (~18-20 min × matrix); Copilot reviews the **diff**, not
+test results — so running E2E on every test/CI/Copilot round is pure waste.
+The fix: run the fast unit gates (PHPUnit + Vitest) on every round and **defer
+E2E to exactly two runs** — one local pre-PR, one CI at the very end — while
+keeping **two hard E2E gates before merge**. This collapses days of
+mostly-waiting into hours with **zero loss of quality or robustness** (both E2E
+gates still block the merge).
+
+**The canonical per-PR order (supersedes the "tests run everything every round"
+assumption in R36/R40/R22 — the review *loops* of R36/R40 still apply, only the
+test-execution ordering changes):**
+
+1. **Implement** the task.
+2. **Local unit gate (FAST only).** Run PHPUnit + Vitest (`vendor/bin/phpunit`
+   + `npm test` + `npm run test:legacy`). **NO Playwright.** Fix until green.
+3. **Local copilot-cli critic loop (R40)** until `0 must-fix`. Between rounds
+   re-run **only** php+vite — **never** Playwright.
+4. **Local Playwright E2E** (`npm run e2e`) — run it **once** now that php+vite
+   is green and copilot-cli is clean. Fix until green. **Do NOT engage Copilot
+   during this phase** (E2E fixes are not a review trigger).
+5. **Open the PR.** CI runs **unit-only** (PHPUnit + Vitest); the `playwright`
+   job is gated OFF because the PR has no `run-e2e` label. Fix until php+vite CI
+   green. *(md-only PRs: see the exception below.)*
+6. **Cloud Copilot review loop (R36)** until `0 outstanding must-fix`. CI during
+   this phase still runs **php+vite only** (no label yet) — each round returns
+   in ~3 min, not ~25.
+7. **Final E2E gate.** ONLY when cloud Copilot has nothing left:
+   `gh pr edit <N> --repo lopadova/AskMyDocs --add-label run-e2e`. The `labeled`
+   event re-fires CI with the label present → the `playwright` job runs. Fix
+   until E2E green. **Do NOT engage Copilot for E2E-only fixes.**
+8. **Merge** when BOTH gates hold (conjunctive): `0` outstanding Copilot must-fix
+   **AND** all CI green — including the labelled Playwright run.
+
+**md-only exception (Lorenzo, 2026-06-22):** when a change touches **only `.md`
+files**, do NOT engage Copilot at all (skip both the local copilot-cli loop AND
+the cloud Copilot review). This narrows the R36/R40 "applies to docs-only PRs"
+clause: prose-only diffs don't need a code reviewer. (`.mdx` doc-site pages are
+*not* covered by this exception — they ship with feature code under R45 and go
+through the normal flow.)
+
+**CI mechanism.** `.github/workflows/tests.yml`: the `playwright` job carries
+`if: (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+contains(github.event.pull_request.labels.*.name, 'run-e2e')`, and the
+`pull_request` trigger lists `types: [opened, synchronize, reopened, labeled]`
+so adding the label re-triggers the run. `main` pushes always run E2E
+(post-merge safety net). The `run-e2e` label must exist in the repo
+(`gh label create run-e2e`).
+
+**Residual risk (accepted):** a late Copilot fix made with no E2E running could
+break an E2E test, surfaced only at step 7 — cost is one extra E2E cycle, and
+the step-4 local E2E run already de-risks it. If a step-7 E2E fix touches
+non-trivial **app** code (not just `*.spec.ts`), re-run the local copilot-cli
+loop (R40) on that delta before merge.
+
+**Anti-patterns:**
+- ❌ Running Playwright (local or CI) inside the Copilot review rounds.
+- ❌ Adding `run-e2e` before the cloud Copilot loop is at `0 must-fix`.
+- ❌ Engaging Copilot on an E2E-only fix (step 4 or step 7).
+- ❌ Merging on php+vite-green alone without the labelled E2E run passing.
+- ❌ Running the Copilot loop on an md-only PR.
+
+→ See `.claude/skills/copilot-pr-review-loop/SKILL.md`.
+
 ---
 
 ## 8. Testing & CI
@@ -1547,7 +1613,7 @@ Check:
   single helper for path normalization (`KbPath`), a single deletion service
   (`DocumentDeleter`), a single ingestion path (`DocumentIngestor`). Plug
   into those instead of cloning logic.
-- Follow **every R-rule above (R1–R32 + R36–R45 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
+- Follow **every R-rule above (R1–R32 + R36–R46 are the populated set; R33–R35 are intentionally unallocated)** before opening a PR —
   R1..R21 exist because Copilot caught them the first time. R14..R21
   were distilled at PR16 from ~110 live Copilot findings across
   PRs #16..#31; see `docs/enhancement-plan/COPILOT-FINDINGS.md` for the

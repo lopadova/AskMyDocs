@@ -609,6 +609,37 @@ diagram → data model → ADR-style rationale linking `/docs/adr/*` → worked 
 file for every nav entry. A README bump with no doc-site page is an incomplete PR.
 See full rule in `CLAUDE.md` R45 + `.claude/skills/mintlify-doc-authoring/`.
 
+### R46 — Deferred-E2E fast loop: run Playwright LAST, never inside the Copilot rounds
+
+Standing from 2026-06-22 (Lorenzo). Playwright E2E (~18-20 min) is the most
+expensive gate, and Copilot reviews the diff — not E2E results — so E2E never
+runs inside the test/CI/Copilot rounds. Per-PR order:
+
+1. Implement.
+2. Local unit gate FAST only: PHPUnit + Vitest (`npm test` + `npm run
+   test:legacy`). No Playwright. Fix until green.
+3. Local copilot-cli loop (R40) until `0 must-fix` — between rounds re-run only
+   php+vite.
+4. Local Playwright (`npm run e2e`) once. Fix until green. No Copilot here.
+5. Open PR. CI runs unit-only; the `playwright` job is gated OFF (no `run-e2e`
+   label). Fix until php+vite CI green.
+6. Cloud Copilot loop (R36) until `0 outstanding must-fix` — CI still php+vite
+   only.
+7. Final gate: `gh pr edit <N> --add-label run-e2e` → the `labeled` event
+   re-fires CI and the gated Playwright job runs. Fix until green. No Copilot
+   for E2E-only fixes.
+8. Merge when BOTH: 0 Copilot must-fix AND all CI green (incl. the labelled
+   E2E run).
+
+**md-only exception:** a diff touching only `.md` files engages **no** Copilot
+(skip local copilot-cli AND cloud Copilot). `.mdx` doc-site pages are NOT
+covered — they ship with feature code (R45) and follow the normal flow.
+
+CI: `tests.yml` gates `playwright` behind
+`(push to main) || contains(labels, 'run-e2e')`, with `pull_request` types
+including `labeled`. See full rule in `CLAUDE.md` R46 +
+`.claude/skills/copilot-pr-review-loop/`.
+
 ---
 
 ## 7. Testing & CI
