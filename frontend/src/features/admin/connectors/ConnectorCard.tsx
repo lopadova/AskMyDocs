@@ -10,9 +10,10 @@ import { accountStatus, formatRelative, statusBadgeStyle } from './status-utils'
  * to a KB `project_key`). The header carries an "Add account" CTA; each account
  * row carries its own status badge + per-account actions:
  *   - pending  → Cancel install (removes the PENDING row)
- *   - active   → Sync now · Edit · Disconnect
- *   - errored  → Retry sync · Edit · Disconnect
- *   - disabled → Re-enable (add w/ same label re-arms) · Edit · Remove
+ *   - active   → Sync now · Edit · Disable · Remove
+ *   - errored  → Retry sync · Edit · Disable · Remove
+ *   - disabled → Edit · Remove (no "re-enable" button — there is no enable
+ *                endpoint; re-add the account with the same label to re-arm)
  *
  * Stateless aside from the inline per-account "confirm remove" toggle, which is
  * keyed by installation id so two accounts' confirms never collide.
@@ -31,10 +32,10 @@ export interface ConnectorCardProps {
     onRemove: (installationId: number) => void;
     onEdit: (installation: ConnectorInstallationDto) => void;
     onCancelInstall: (installationId: number) => void;
-    /** installation id whose sync is in flight, or null. */
-    syncingId?: number | null;
-    /** installation id whose disable/remove is in flight, or null. */
-    busyId?: number | null;
+    /** installation ids whose sync is in flight. */
+    syncingIds?: ReadonlySet<number>;
+    /** installation ids whose disable/remove is in flight. */
+    busyIds?: ReadonlySet<number>;
     /** an add/connect for THIS connector is in flight. */
     addPending?: boolean;
     now?: Date;
@@ -48,8 +49,8 @@ export function ConnectorCard({
     onRemove,
     onEdit,
     onCancelInstall,
-    syncingId,
-    busyId,
+    syncingIds,
+    busyIds,
     addPending,
     now,
 }: ConnectorCardProps) {
@@ -155,8 +156,8 @@ export function ConnectorCard({
                             onRemove={onRemove}
                             onEdit={onEdit}
                             onCancelInstall={onCancelInstall}
-                            syncing={syncingId === acct.id}
-                            busy={busyId === acct.id}
+                            syncing={syncingIds?.has(acct.id) ?? false}
+                            busy={busyIds?.has(acct.id) ?? false}
                             now={now}
                         />
                     ))}

@@ -91,7 +91,11 @@ export interface StartInstallParams {
 export interface UpdateInstallationParams {
     installationId: number;
     label?: string;
-    /** Empty string clears the binding (inherit tenant default); undefined leaves it. */
+    /**
+     * Empty string OR null clears the binding (inherit the tenant default);
+     * `undefined` leaves the existing binding untouched (the key is omitted from
+     * the PATCH body). The wrapper maps a present null → '' on the wire.
+     */
     project_key?: string | null;
 }
 

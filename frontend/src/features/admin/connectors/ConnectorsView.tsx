@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { AdminShell } from '../shell/AdminShell';
 import { ToastHost, useToast } from '../shared/Toast';
 import { toAdminError } from '../shared/errors';
@@ -189,39 +189,63 @@ export function ConnectorsView() {
         }
     }
 
-    async function handleSync(installationId: number) {
+    // Per-account in-flight tracking. A single `useMutation().variables` only
+    // remembers the MOST RECENT mutate call, so two quick actions on different
+    // accounts would lose the earlier row's pending state. Track the actual set
+    // of in-flight ids instead so every busy account stays disabled until it
+    // resolves.
+    const [syncingIds, setSyncingIds] = useState<ReadonlySet<number>>(() => new Set());
+    const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(() => new Set());
+
+    async function track(
+        setter: Dispatch<SetStateAction<ReadonlySet<number>>>,
+        id: number,
+        run: () => Promise<void>,
+    ) {
+        setter((s) => new Set(s).add(id));
         try {
-            await syncNow.mutateAsync(installationId);
-            toast.success('Sync queued.', 'toast-connector-synced');
-        } catch (e) {
-            toast.error(toAdminError(e).message, 'toast-connector-error');
+            await run();
+        } finally {
+            setter((s) => {
+                const next = new Set(s);
+                next.delete(id);
+                return next;
+            });
         }
+    }
+
+    async function handleSync(installationId: number) {
+        await track(setSyncingIds, installationId, async () => {
+            try {
+                await syncNow.mutateAsync(installationId);
+                toast.success('Sync queued.', 'toast-connector-synced');
+            } catch (e) {
+                toast.error(toAdminError(e).message, 'toast-connector-error');
+            }
+        });
     }
 
     async function handleDisable(installationId: number) {
-        try {
-            await disableConnector.mutateAsync(installationId);
-            toast.success('Account disabled.', 'toast-connector-disabled');
-        } catch (e) {
-            toast.error(toAdminError(e).message, 'toast-connector-error');
-        }
+        await track(setBusyIds, installationId, async () => {
+            try {
+                await disableConnector.mutateAsync(installationId);
+                toast.success('Account disabled.', 'toast-connector-disabled');
+            } catch (e) {
+                toast.error(toAdminError(e).message, 'toast-connector-error');
+            }
+        });
     }
 
     async function handleRemove(installationId: number) {
-        try {
-            await destroyConnector.mutateAsync(installationId);
-            toast.success('Account removed.', 'toast-connector-disconnected');
-        } catch (e) {
-            toast.error(toAdminError(e).message, 'toast-connector-error');
-        }
+        await track(setBusyIds, installationId, async () => {
+            try {
+                await destroyConnector.mutateAsync(installationId);
+                toast.success('Account removed.', 'toast-connector-disconnected');
+            } catch (e) {
+                toast.error(toAdminError(e).message, 'toast-connector-error');
+            }
+        });
     }
-
-    const syncingId = syncNow.isPending ? (syncNow.variables ?? null) : null;
-    const busyId = destroyConnector.isPending
-        ? (destroyConnector.variables ?? null)
-        : disableConnector.isPending
-          ? (disableConnector.variables ?? null)
-          : null;
 
     function addPendingFor(key: string): boolean {
         return (
@@ -344,8 +368,8 @@ export function ConnectorsView() {
                                 onRemove={handleRemove}
                                 onEdit={(installation) => handleEdit(entry, installation)}
                                 onCancelInstall={handleRemove}
-                                syncingId={syncingId}
-                                busyId={busyId}
+                                syncingIds={syncingIds}
+                                busyIds={busyIds}
                                 addPending={addPendingFor(entry.key)}
                             />
                         ))}

@@ -118,7 +118,9 @@ describe('ConnectorCard (multi-account)', () => {
     });
 
     it('disables sync + shows "Queuing…" for the account whose sync is in flight', () => {
-        render(<ConnectorCard {...NOOP} syncingId={42} entry={entry([account(42, 'support', 'active')])} />);
+        render(
+            <ConnectorCard {...NOOP} syncingIds={new Set([42])} entry={entry([account(42, 'support', 'active')])} />,
+        );
         const btn = screen.getByTestId('connector-account-42-sync');
         expect(btn).toBeDisabled();
         expect(btn).toHaveTextContent('Queuing…');
