@@ -291,6 +291,39 @@ final class AdminAuthorizationMatrixTest extends TestCase
         );
     }
 
+    /**
+     * v8.20 — the multi-account `PATCH /api/admin/connectors/{installationId}`
+     * metadata edit. PATCH-only (can't ride the GET matrix), same
+     * `can:manageConnectors` (super-admin only) gate as the rest of the group.
+     * Assert the write boundary explicitly: admin denied, super-admin passes
+     * the gate (a non-existent id then 404s — not an authz failure).
+     */
+    public function test_update_connector_installation_requires_the_manage_connectors_gate(): void
+    {
+        $writeUri = '/api/admin/connectors/1';
+
+        $adminStatus = $this->actingAs($this->userWithRole('admin'))
+            ->patchJson($writeUri, ['label' => 'x'])
+            ->getStatusCode();
+        $this->assertSame(
+            403,
+            $adminStatus,
+            "Role [admin] must be DENIED (403) on PATCH [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
+        );
+
+        // super-admin passes the gate; no installation #1 exists → exactly 404
+        // (not 403, and not a 500 that would also satisfy "not 403"). Asserting
+        // the precise status keeps this a real route+gate regression check.
+        $superStatus = $this->actingAs($this->userWithRole('super-admin'))
+            ->patchJson($writeUri, ['label' => 'x'])
+            ->getStatusCode();
+        $this->assertSame(
+            404,
+            $superStatus,
+            "Role [super-admin] must pass the manageConnectors gate and then 404 on the missing id for PATCH [{$writeUri}] but got {$superStatus}.",
+        );
+    }
+
     private function userWithRole(string $role): User
     {
         $user = User::create([
