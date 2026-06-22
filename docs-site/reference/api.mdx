@@ -38,7 +38,7 @@ this page is the navigable map.
 | `POST` | `/api/auth/2fa/verify` | `auth:sanctum` |
 | `POST` | `/api/auth/2fa/disable` | `auth:sanctum` |
 | `POST` | `/api/auth/token` | public (`429` after 5 failed attempts) — mints a Bearer PAT |
-| `POST` | `/api/auth/token/revoke` | `auth:sanctum` — deletes the caller's PAT (`204`) |
+| `POST` | `/api/auth/token/revoke` | `auth:sanctum` (PAT-only; outside `web` session/CSRF) — deletes the caller's PAT (`204`) |
 
 **`POST /api/auth/token`** is the stateless Bearer-token flow for non-browser
 clients (the Tauri desktop client). It verifies credentials *without* a session
