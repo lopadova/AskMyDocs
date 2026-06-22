@@ -38,8 +38,10 @@
           "digests",
           "dashboards",
           "gamification",
+          "agentic-knowledge-reports",
           "evidence-risk-review",
           "ai-finops",
+          "ai-guardrails",
           "pii-and-compliance"
         ]
       },

@@ -17,6 +17,8 @@ enforcing **standalone-agnostic** invariants (zero references to AskMyDocs model
 | Package | Role |
 |---|---|
 | `padosoft/laravel-ai-regolo` | Regolo provider for `laravel/ai` (EU OpenAI-compatible) — see [AI providers](/ai-providers). |
+| `padosoft/laravel-ai-finops` (+ `-admin`) | Cross-provider AI-spend governance metered natively on the `laravel/ai` SDK — see [AI FinOps](/ai-finops). |
+| `padosoft/laravel-ai-guardrails` (+ `-admin`) | AI safety firewall enforced on the live chat path — input screening + output sanitization — see [AI Guardrails](/ai-guardrails). |
 | `padosoft/laravel-pii-redactor` (+ `-admin`) | PII detection + redaction, EU country packs, 6 detectors, 4 strategies — see [PII & compliance](/pii-and-compliance). |
 | `padosoft/laravel-flow` (+ `-admin`) | In-process saga / compensation engine + approval gates + webhook outbox + replay. |
 | `padosoft/eval-harness` (+ `-ui`) | RAG / LLM evaluation — golden datasets, metrics, cohorts, adversarial lane, LLM-as-judge. |
@@ -24,6 +26,14 @@ enforcing **standalone-agnostic** invariants (zero references to AskMyDocs model
 | `padosoft/askmydocs-mcp-pack` (+ `-admin`) | Framework-agnostic MCP plumbing — see [MCP server](/mcp-server). |
 | `padosoft/laravel-evidence-risk-review` (+ `-admin`) | Answer-grounding risk firewall — see [Evidence & Risk Review](/evidence-risk-review). |
 | `padosoft/laravel-ai-act-compliance` (+ `-admin`) | EU AI Act pack — DSAR, bias monitoring, risk register, consent/disclosure. |
+
+<Note>
+**Platform on `laravel/ai` 0.8 (since v8.19).** The packages that touch the AI SDK
+in code — `laravel-ai-regolo` (v1.2.1) and `laravel-ai-finops` (v1.4.0) — were each
+released onto `laravel/ai` **^0.8** before the host bumped `^0.6.8 → ^0.8.1` in one
+coherent resolve. `laravel-ai-guardrails` is born on `^0.8`. The whole stack runs on
+a single SDK line — no version skew ([ADR 0016](/architecture/decisions)).
+</Note>
 
 ## How they integrate
 
