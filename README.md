@@ -885,7 +885,7 @@ TENANT_USER_COLUMN=tenant_id     # column on the User model that holds the tenan
 
 **What's tenant-scoped (and what isn't)**
 
-The 20 tenant-aware models (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — `KnowledgeDocument`, `KnowledgeChunk`, `ChatLog`, `Conversation`, `Message`, `KbNode`, `KbEdge`, `KbCanonicalAudit`, `ProjectMembership`, `KbTag`, `KnowledgeDocumentAcl`, `AdminCommandAudit`, `AdminCommandNonce`, `AdminInsightsSnapshot`, `ChatFilterPreset`, `ChatLogProvenance`, `TabularReview`, `TabularCell`, `Workflow`, `HiddenWorkflow`) all carry `tenant_id` and use the `BelongsToTenant` trait. The architecture test gates new models on every CI run so this list stays in lock-step with the migrations. The composite FKs on `kb_edges` are **project-scoped** (`(project_key, node_uid)` — intra-project referential integrity); cross-**tenant** isolation is enforced at the **application layer** via the R30 `forTenant()` scope (`BelongsToTenant` auto-stamps on write but adds **no** global read scope), not by the FK — `project_key` is shared across tenants.
+The tenant-aware models — the authoritative list lives in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS`, kept in lock-step with the migrations by the architecture test on every CI run (it spans `KnowledgeDocument` / `KnowledgeChunk`, the chat + conversation tables, the `kb_*` graph / canonical / engagement tables, `ProjectMembership` + the first-class `Project`, and the `KbIngestBatch` / `KbIngestBatchItem` upload-tracking pair, among others) — all carry `tenant_id` and use the `BelongsToTenant` trait. The composite FKs on `kb_edges` are **project-scoped** (`(project_key, node_uid)` — intra-project referential integrity); cross-**tenant** isolation is enforced at the **application layer** via the R30 `forTenant()` scope (`BelongsToTenant` auto-stamps on write but adds **no** global read scope), not by the FK — `project_key` is shared across tenants.
 
 `embedding_cache` is **intentionally NOT tenant-aware** — the cache is a cross-tenant reuse layer keyed by the composite `UNIQUE (text_hash, provider, model)` (v4.0.1, widened from `text_hash` alone so multiple provider/model embeddings of the same text coexist without forcing a flush). Sharing embeddings across tenants is a deliberate cost optimisation; `TenantIdMandatoryTest` documents the exclusion.
 
@@ -900,6 +900,84 @@ The 20 tenant-aware models (enumerated in `tests/Architecture/TenantIdMandatoryT
 | **R38** | Heavy work (`migrate:fresh`, big seeders) belongs in CLI workflow steps, not behind `php artisan serve` — keeps E2E reliable |
 | **R39** | Tag `vX.Y.0-rcN` at every Wn weekly milestone closure pinned to the exact closure SHA — gives auditors and downstream consumers serialised milestone visibility |
 ---
+
+### Team switcher (per-team SPA routing)
+
+The front-end half of multi-tenancy. A user who belongs to more than one team gets
+a **topbar team switcher** and a tenant that is always visible in the URL.
+
+- **`/api/auth/me` returns a `teams` array** (`UserTeamsResolver`) grouping the
+  caller's memberships by tenant + any cross-access tenants — the switcher only ever
+  offers teams whose requests would actually be authorised.
+- **Per-team URLs** — every authenticated screen lives under `/app/{teamHash}/…`
+  (`TeamHash` is a BE-computed, non-secret routing namespace; authorization stays on
+  the server-validated header). Legacy hash-less bookmarks redirect into the active
+  team's hash.
+- **Automatic `X-Tenant-Id` stamping** — the shared axios client stamps the header on
+  every call, with one deliberate exception: the **`default` sentinel** is never sent
+  (it resolves the same host context with or without the header, and omitting it keeps
+  sister-package route mounts on their host-config fallback instead of 404ing). The
+  chat SSE transport and the Flows live-probe raw fetch apply the same rule.
+- **Cache isolation on switch** — switching team `clear()`s the whole TanStack Query
+  cache and remounts the route outlet (`key=tenant_id`), so no tenant's data ever
+  renders under another; a revoked membership self-heals on the next bootstrap.
+- **Membership-aware gate** — `AuthorizeTenantHeader` accepts the requested tenant for
+  the caller's own tenant, a cross-access permission, **or** a `project_membership` in
+  that tenant (scoped to both the tenant *and* the user — no escalation); anything else
+  is `403 tenant_forbidden`, which the SPA turns into a snap-back to the first valid team.
+
+→ Deep dive: [padosoft.mintlify.app/team-switcher](https://padosoft.mintlify.app/team-switcher).
+
+### First-class project registry
+
+`project_key` — the join key behind every document, chunk, chat log, membership, node
+and edge — is now a manageable first-class row. The **project registry** gives it a
+human name + description, a governed lifecycle, and a delete-guard, while staying a
+**soft registry** (the key keeps working everywhere even with no registry row, so the
+feature is purely additive, R27).
+
+- **`projects` table, tenant-aware** — `UNIQUE (tenant_id, project_key)` (per-tenant,
+  **not** global: two teams may both own `engineering`); auto-filled `tenant_id` via
+  `BelongsToTenant` (R30/R31).
+- **CRUD at `/app/{team}/admin/projects`** + `/api/admin/projects/*` (admin / super-admin).
+- **Immutable key** — `project_key` may be supplied explicitly on create or, when
+  omitted, is auto-slugged from the name (`resolveKey`); it is validated for slug shape
+  + per-tenant uniqueness (clean 422, not a raw DB error) and is **immutable** afterwards
+  (changing it would orphan every referencing row → 422).
+- **Delete-guard** — deleting a project still referenced by a document or membership is
+  blocked with a 422, so the registry can never drift from the content.
+- **Backfill** — the `create_projects_table` migration's `up()` backfills one row per
+  distinct `(tenant_id, project_key)` already in use across `knowledge_documents` +
+  `project_memberships`. The KB project picker then aggregates the registry + existing
+  documents + memberships for a complete list (R18).
+
+→ Deep dive: [padosoft.mintlify.app/projects-registry](https://padosoft.mintlify.app/projects-registry).
+
+### In-chat source preview
+
+Citations are now openable **in the chat itself**. Clicking a cited source opens a
+modal with the full document text, reconstructed from its chunks in `chunk_order` —
+tenant- and access-scope-isolated (`forTenant` + `AccessScopeScope` + soft-delete), so
+a citation can never open another tenant's or another scope's bytes. Available to every
+authenticated user via `GET /api/kb/documents/{document}/preview`; admins additionally
+get a deep-link to the full KB document page. A missing/forbidden document returns the
+correct 404/403 (R14), never a 200 with empty body.
+
+→ Deep dive: [padosoft.mintlify.app/chat-and-retrieval](https://padosoft.mintlify.app/chat-and-retrieval).
+
+### Automated isolation testing
+
+Isolation is not just enforced — it's **verified against a real ingested KB**. A single
+executable `IsolationMatrix` (`app/Support/CaseStudy/IsolationMatrix.php`) is consumed
+identically by a live E2E test (`LiveRagIsolationTest`, opt-in `LIVE_RAG=1` + real
+pgvector + embeddings), an operator CLI (`php artisan case-study:verify-isolation
+[--strict]`), and a CI membership-axis test (`CaseStudyProjectIsolationTest`). It
+separates **HARD breaches** (a real leak — a foreign chunk/citation/canary surfaces, or
+an owning fact is unreachable → fails the gate) from **SOFT misses** (the refusal *ideal*
+wording was missed but nothing leaked → warning unless `--strict`), so an isolation gate
+is never coupled to model-phrasing calibration.
+
+→ Deep dive: [padosoft.mintlify.app/isolation-testing](https://padosoft.mintlify.app/isolation-testing).
 
 ## Features by area
 
@@ -963,6 +1041,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Stop / regenerate / branch / inline-edit affordances | Vercel AI SDK UI Tier 1 closure: stop-streaming via `AbortController`; regenerate-last-assistant; branch-from-message endpoint (forks the conversation tree); inline-edit user message; copy-code-block. All wired on `MessageStreamController` + the `useChatStream()` hook | v4.5 |
 | Per-message provider/model/cost metadata | Enhanced badge below every assistant message shows `provider`, `model`, `started_at`, prompt + completion tokens, and derived USD cost when `config('ai.cost_rates')` is populated (keyed by `provider → model → {input, output}`); cost is omitted (not zero) when rates are missing. Public lookup at `GET /api/chat/cost-rates` with 1-hour CDN cache | v4.5 |
 | Suggested follow-up pills | `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply via `AiManager::chat()`; renders as clickable pill chips above the composer; clicking submits via the streaming endpoint. Best-effort — provider error / parse failure / empty response returns `[]` and the row is not rendered. Triggered once on `onFinish` per assistant turn at `POST /conversations/{id}/suggested-followups` | v4.5 |
+| In-chat source preview | Clicking a citation opens the cited document in a modal — full text reconstructed from chunks in `chunk_order` via `GET /api/kb/documents/{document}/preview`, tenant- + access-scope-isolated (`forTenant` + `AccessScopeScope` + soft-delete; cross-scope read impossible), 404/403 on miss (R14). Open to every authenticated user; admins get an extra deep-link to the full KB document page | team switcher cycle |
 
 ### Security & Compliance
 
@@ -970,7 +1049,9 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 |---|---|---|
 | Evidence & Risk Review firewall | `padosoft/laravel-evidence-risk-review` v1.1 wired tri-surface (PHP command + MCP tools + HTTP API + native FE admin at `/app/admin/evidence-risk-review`): a budget-bounded sweep labels source evidence tiers and scores per-claim risk verdicts (keep / soften / flag / remove) into a tenant-scoped review log. Host `TenantResolver` binding forces R30 isolation (a client `tenant` filter cannot widen scope); opt-in via `EVIDENCE_RISK_REVIEW_ADMIN_ENABLED` + optional LLM pass over `AiManager` via `EVIDENCE_RISK_REVIEW_LLM_ENABLED` (both default-OFF, R43) | v8.13 |
 | PII redaction at 11 persistence boundaries | `padosoft/laravel-pii-redactor` v1.2 wired at: (1) chat-message middleware, (2) embedding-cache pre-redact, (3) AI-insights snippet sanitiser, (4) operator detokenize endpoint, (5) Monolog log channel processor, (6) failed-jobs sanitiser via `JobFailed` listener with deterministic UUID match, (7) `Conversation`+`Message` `saving` observers, (8) `ChatLog::creating` observer, (9) `AdminCommandAudit::creating` observer, (10) `AdminInsightsSnapshot::creating` observer (6 JSON columns), (11) Flow `CurrentPayloadRedactorProvider` contract binding (covers run input + step results + audit + webhook outbox + approvals in one wire). All 5 v4.3 env knobs default OFF | v4.3 |
-| Multi-tenant isolation (R30 + R31) | 20 tenant-aware models carry `tenant_id` (enumerated in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS`); `BelongsToTenant` trait auto-fills from `TenantContext` on `creating`; composite tenant-scoped FK on `kb_edges` makes cross-tenant edges structurally impossible; architecture test `TenantIdMandatoryTest` gates new models | v4.0 |
+| Multi-tenant isolation (R30 + R31) | The tenant-aware models (authoritative list in `tests/Architecture/TenantIdMandatoryTest::TENANT_AWARE_MODELS` — incl. `Project` + the `KbIngestBatch`/`KbIngestBatchItem` upload-tracking pair added with the team switcher) carry `tenant_id`; `BelongsToTenant` auto-fills from `TenantContext` on `creating`; the `kb_edges` composite FK is **project-scoped** (`(project_key, node_uid)`, intra-project integrity) while cross-**tenant** isolation is the application-layer R30 `forTenant()` scope (the trait adds **no** global read scope); architecture tests `TenantIdMandatoryTest` + `TenantReadScopeTest` gate new models | v4.0 |
+| Team switcher membership gate | `AuthorizeTenantHeader` validates `X-Tenant-Id` after `auth:sanctum`: accepts the caller's own tenant, a cross-access permission, **or** a `project_membership` in the requested tenant — scoped to **both** the tenant *and* the user, so a membership in another tenant or another user's membership never widens access; else `403 tenant_forbidden`. `TeamHash` is a non-secret routing namespace (auth never keys on it). The SPA omits the `X-Tenant-Id` header for the `default` sentinel so sister-package mounts fall back instead of 404ing | team switcher cycle |
+| Automated isolation verification | Executable `IsolationMatrix` shared by a live E2E (`LiveRagIsolationTest`, opt-in `LIVE_RAG=1` + real pgvector/embeddings), the `case-study:verify-isolation [--strict]` CLI, and the CI membership-axis `CaseStudyProjectIsolationTest`; separates HARD breaches (real leak → fail) from SOFT refusal-ideal misses (warning unless `--strict`); `KB_PROJECT_ISOLATION_ENABLED` tested in both states (R43) | team switcher cycle |
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
 | Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
@@ -997,10 +1078,12 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Per-user notification feed (bell + panel + API) | Top-bar `<NotificationBell />` polls `/api/notifications/unread-count` every 30s (R11 `data-state` + `aria-busy`); `/app/admin/notifications` full panel with `unread\|read\|dismissed\|all` tabs, BE-derived event-type filter (R18 — `GET /api/notifications/event-types`), pagination, per-row mark-read/dismiss, bulk mark-all-read scoped to the active filter; HMAC-signed one-click email unsubscribe; channels (`in_app`, `email`) ship as part of v8.0/W1.3, joined by **W2.1** external channels `discord` + `slack` + `teams` + generic `webhook` (all default-OFF — opt in by setting the corresponding `NOTIFICATIONS_DISCORD_URL` / `NOTIFICATIONS_SLACK_URL` / `NOTIFICATIONS_TEAMS_URL` / `NOTIFICATIONS_WEBHOOK_URL` env var; the generic webhook channel additionally signs every request with `X-AskMyDocs-Signature: sha256=<hmac>` when `NOTIFICATIONS_WEBHOOK_SECRET` is set). External-channel sends route through the queueable `SendExternalNotificationJob` with `[5, 30, 120]s` backoff (R14 — terminal failure recorded on the row's `channel_dispatch_log`); 4xx responses (except 429) are surfaced as `failed` immediately without retry. Per-user `notification_preferences` matrix wired in v8.0/W2; daily `notifications:prune` 04:10 retains rows for `NOTIFICATIONS_RETENTION_DAYS` (default 90, set 0 to disable) — see env block below. R21 atomic mark-read + dismiss (`whereNull('read_at')->update(...)` + COALESCE); R30 cross-tenant isolation enforced on every endpoint including mutations; presenter strips forensic `channel_dispatch_log` + `tenant_id` + `user_id` from the FE feed. | v8.0 |
 | Stale-doc review + weekly digest (KB lifecycle) | `kb:stale-review-sweep` (daily) fires a `kb_doc_stale_review` notification for any document untouched longer than `KB_HEALTH_STALE_REVIEW_MONTHS` (default 6, set 0 to disable) — time-based, every doc type, ACL-scoped to eligible reviewers, idempotent per content version via a `metadata.stale_review_notified_at` marker. `notifications:digest-weekly` (Monday) aggregates the week's `notification_events` per tenant into a `notification_digests` row and emails each email-opted-in user their OWN roundup (`WeeklyDigestMail`), stamping `sent_at` + `recipients_count` — so a user can keep noisy per-event email OFF and still get the Monday digest. Both slots are env-tunable (`SCHEDULE_KB_STALE_REVIEW_SWEEP_*` / `SCHEDULE_NOTIFICATIONS_DIGEST_WEEKLY_*`). | v8.7 |
 | Cross-mounted admin SPAs (3 packages) | `padosoft/laravel-pii-redactor-admin` v1.0.2 at `/admin/pii-redactor` (cross-mount since v4.4/W2) + `padosoft/laravel-flow-admin` v1.0.0 at `/admin/flows` + `padosoft/eval-harness-ui` v1.0.0 at `/admin/eval-harness` non-prod-only (cross-mount since v4.4/W3, 3 fail-closed fences preserved). **Since v8.8.2 each package admin mounts center-only with no nested chrome (the host unified rail is the only menu):** the PII and Eval trees cross-mount their React panels directly; the Flow surface renders a native host panel (KPI probe of `/admin/flows/api/live` + section cards) that links out to the full Flow cockpit in a new tab (`target="_blank"`) — so no Blade+Alpine page is ever nested inside the host chrome. **This new-tab launcher supersedes ADR 0005's "flow-admin stays iframe-mounted" assumption** (the cockpit itself remains Blade+Alpine; only the host-side mounting changed) | v4.2 · v8.8.2 |
-| Laravel scheduler (14+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / **`kb:wiki-maintain` 04:40 (v8.11/P9 — Auto-Wiki sweep: rebuild indices + lint + backfill enrichment)** / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
+| Laravel scheduler (14+ entries) | `kb:prune-embedding-cache` 03:10 / `chat-log:prune` 03:20 / `kb:prune-deleted` 03:30 / `kb:rebuild-graph` 03:40 / `queue:prune-failed` 04:00 / **`notifications:prune` 04:10 (v8.0/W1.5, default 90d retention via `NOTIFICATIONS_RETENTION_DAYS`; set 0 to disable)** / `admin-audit:prune` 04:30 / `kb:prune-orphan-files` 04:40 / **`kb:wiki-maintain` 04:40 (v8.11/P9 — Auto-Wiki sweep: rebuild indices + lint + backfill enrichment)** / `admin-nonces:prune` 04:50 / `insights:compute` 05:00 / `eval:nightly` 05:30 (v4.3+, default OFF) / **`kb:stale-review-sweep` 03:55 + `notifications:digest-weekly` Mon 07:00 (v8.7/W2)** / **`kb:prune-staging-batches` (team switcher cycle — sweeps stale drag-and-drop upload batches + their staged files)**; all `onOneServer()->withoutOverlapping()`. **v8.0/W2.4 — every slot's cron + enabled flag is now env-tunable** via the 24 `SCHEDULE_*_CRON` / `SCHEDULE_*_ENABLED` knobs (see `.env.example` Tier-1 scheduler section); defaults preserve the overnight rotation above byte-for-byte. The `GET /api/admin/commands/scheduler-status` widget surfaces the effective cron times after env overrides. | v3.0 |
 | Sidebar gating + R29 testid hierarchy | Sidebar entries always rendered, visibility enforced server-side via per-route fences (RequireRole + middleware `can:` + env `abort(404)`); every actionable element uses `feature-resource-{id}-{action[-substep]}` testid convention for Playwright stability | v3.0 |
 | Connector admin SPA (`/app/admin/connectors`) | React DataTable with per-connector install/uninstall flow; OAuth callback handler at `/app/admin/connectors/$key/callback`; **credential connectors (v8.17) open a host-rendered schema-driven form** (`CredentialConnectorForm`) → `POST /api/admin/connectors/{name}/configure` instead of an OAuth redirect; per-installation `connector_installations` + `connector_credentials` rows (encrypted via `OAuthCredentialVault`); scheduler-driven `ConnectorSyncJob`; Spatie `manageConnectors` super-admin gate at controller + route layer | v4.5 · credential form v8.17 |
 | Widget admin SPA (`/app/admin/widget`) | Manage the KITT embeddable widget: key CRUD + rotate (`pk_`/`sk_` returned once) + revoke, allowed-origins editor, theme designer (validated + sanitised), per-key `host_tools_enabled` toggle, copy-ready embed snippet, and a read-only sessions browser with PII-masked step replay. Key management is `manageWidgetKeys` (super-admin); session inspection is `viewWidgetSessions` (admin + super-admin); everything tenant-scoped. Sessions + steps pruned by `widget:prune-sessions` (daily, `WIDGET_SESSION_RETENTION_DAYS` default 90) which also prunes expired session tokens | v8.10 |
+| Project registry (`/app/{team}/admin/projects`) | First-class CRUD over `project_key` — name + description, per-tenant `UNIQUE (tenant_id, project_key)` (R28), immutable key (422 on change), delete-guard when still referenced by a doc/membership (422), seeder backfill from existing keys; soft registry (the key works with or without a row). `/api/admin/projects/*`, admin / super-admin | team switcher cycle |
+| KB drag-and-drop upload UI | Stage → review → commit (R21 atomic gate) → poll progress. Files buffer on a dedicated `kb-staging` disk under opaque UUID paths (no filename traversal/collision), then move to the `kb` disk on commit and dispatch the **same** `IngestDocumentJob` as every other ingest path; per-file progress reconciles via queue-lifecycle events; `kb:prune-staging-batches` sweeps stale batches. `/api/admin/kb/uploads/*`, admin / super-admin | team switcher cycle |
 
 ### Integrations & Extensibility
 
@@ -1759,6 +1842,29 @@ flag + reasoning + cited KB chunks), and a one-click **template gallery** of the
 seed rows are sanitized, never blind-cast). Vitest + real-data Playwright (R12/R13); the SSE progressive-paint generate
 and the Glide canvas grid are documented v8.19.x follow-ups (deferred for per-cell testability/a11y). **W6** refreshes
 the README every section and ships the two deep doc-site pages (R45). RC sequence then GA per R37/R39.
+
+**Team switcher, KB upload UI & project registry (merged to main 2026-06-21).**
+A multi-tenant front-end + KB-governance feature set. **Team switcher** —
+`/api/auth/me` now returns a `teams` array; every authenticated SPA screen lives
+under `/app/{teamHash}/…`; the shared axios client auto-stamps `X-Tenant-Id`
+(omitting the `default` sentinel so sister-package mounts fall back instead of
+404ing); switching team clears the TanStack Query cache + remounts the outlet so no
+tenant's data leaks across a switch; `AuthorizeTenantHeader` gains a
+membership-in-requested-tenant branch (scoped to both tenant and user — no
+escalation). **KB drag-and-drop upload** — stage → review → commit (R21 atomic gate)
+→ poll progress, files buffered on a dedicated `kb-staging` disk under opaque UUID
+paths then moved to the `kb` disk and ingested through the **same**
+`IngestDocumentJob` as every other path; per-file progress reconciles via
+queue-lifecycle events; `kb:prune-staging-batches` sweeps stale batches. **First-class
+project registry** — `projects` table with per-tenant `UNIQUE (tenant_id,
+project_key)`, immutable key, delete-guard, seeder backfill, CRUD at
+`/api/admin/projects/*`. **In-chat source preview** — open a cited document in a modal,
+reconstructed from chunks and tenant/access-scope isolated, via
+`GET /api/kb/documents/{document}/preview`. **Automated isolation testing** — an
+executable `IsolationMatrix` shared by a live E2E, the `case-study:verify-isolation`
+CLI, and a CI membership-axis test, separating HARD breaches from SOFT
+refusal-ideal misses. Three new tenant-aware models (`Project`, `KbIngestBatch`,
+`KbIngestBatchItem`) join the R30/R31 architecture gates.
 
 **v8.18.0 — Retrieval-quality, money-precision & AI coaching (GA, shipped 2026-06-21).**
 Five waves. **W1.1** ships a real-data Playwright E2E proving the chat meter shows the
