@@ -747,7 +747,9 @@ body {
 .btn:active,
 .tab:active,
 .thread-open:active,
-.chip:active {
+.chip:active,
+button.result:active,
+.citation-open:active {
   opacity: 0.7;
 }
 /* The thread drawer (toggle bar + backdrop) is mobile-only. Hidden by default
@@ -935,5 +937,20 @@ body {
     padding-left: calc(18px + env(safe-area-inset-left));
     padding-right: calc(18px + env(safe-area-inset-right));
     padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+
+  /* ---- bigger, comfortably-tappable citation + result targets ---- */
+  .citations {
+    gap: 6px;
+  }
+  .citation {
+    font-size: 13px;
+  }
+  .citation-open {
+    display: inline-block;
+    padding: 6px 0;
+  }
+  button.result {
+    padding: 14px 14px;
   }
 }
