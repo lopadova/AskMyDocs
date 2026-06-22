@@ -209,5 +209,14 @@ return Application::configure(basePath: dirname(__DIR__))
         if ((bool) config('askmydocs.composite_gates.ai_act_regulatory_poll', false)) {
             $registrar->registerSlot($schedule, 'ai_act_regulatory_poll', 'ai-act:regulatory-poll');
         }
+
+        // Invite system — nightly GDPR retention sweep: anonymize Redemption /
+        // AbuseSignal / Invitation PII past INVITE_PII_RETENTION_DAYS, in place,
+        // preserving the aggregates (Phase 6). onOneServer + withoutOverlapping
+        // mirrors the other rotation slots; `--days=0` disables it.
+        $schedule->command('invite:prune-pii')
+            ->dailyAt('03:50')
+            ->onOneServer()
+            ->withoutOverlapping();
     })
     ->create();
