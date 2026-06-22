@@ -37,19 +37,37 @@ this page is the navigable map.
 | `POST` | `/api/auth/2fa/enable` | `auth:sanctum` |
 | `POST` | `/api/auth/2fa/verify` | `auth:sanctum` |
 | `POST` | `/api/auth/2fa/disable` | `auth:sanctum` |
+| `POST` | `/api/auth/token` | public (`429` after 5 failed attempts) — mints a Bearer PAT |
+| `POST` | `/api/auth/token/revoke` | `auth:sanctum` — deletes the caller's PAT (`204`) |
+
+**`POST /api/auth/token`** is the stateless Bearer-token flow for non-browser
+clients (the Tauri desktop client). It verifies credentials *without* a session
+or CSRF and returns `201 { token, token_type: "Bearer", user }`. The minted
+Sanctum personal access token is scoped to least-privilege abilities
+(`kb:read` + `kb:chat`) and carries a finite 30-day expiry — never `['*']`,
+never immortal. Wrong/unknown credentials → `422`. Request fields: `email`
+(required), `password` (required), `device_name` (optional, max 120). See
+[Desktop client & token authentication](/desktop-client).
 
 ## KB chat & search — `/api/kb`
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/kb/chat` | `auth:sanctum` + `ai.disclosure` | grounded answer |
+| `POST` | `/api/kb/chat` | `auth:sanctum` + `ai.disclosure` + `token.ability:kb:chat` | grounded answer |
 | `GET` | `/api/kb/chat/anonymous-config` | `auth:sanctum` | anonymous-chat config |
 | `POST` | `/api/kb/feedback` | `auth:sanctum` | chunk feedback |
 | `GET` | `/api/kb/related` | `auth:sanctum` | graph neighbours |
-| `GET` | `/api/kb/documents/search` | `auth:sanctum` | document search |
+| `GET` | `/api/kb/documents/search` | `auth:sanctum` + `token.ability:kb:read` | document search |
+| `GET` | `/api/kb/documents/{id}/preview` | `auth:sanctum` + `token.ability:kb:read` | document source preview |
 | `GET` | `/api/kb/collections` | `auth:sanctum` | collection picker |
 | `GET` | `/api/kb/resolve-wikilink` | `auth:sanctum` | resolve a `[[slug]]` |
 | `DELETE` | `/api/kb/documents` | `auth:sanctum` | delete by path |
+
+The `token.ability:<ability>` gate (`EnforceTokenAbility` middleware) constrains
+**only** Bearer personal access tokens: a PAT not scoped for the action gets
+`403 { "error": "token_ability_forbidden" }`. It is a **no-op for cookie-SPA
+sessions** (which carry a `TransientToken`, governed by the route's RBAC stack),
+so these dual-auth routes serve both transports without breaking either.
 
 **`POST /api/kb/chat`** — request: `question` (string, required, max 10000),
 `anonymous` (bool, optional), a legacy top-level `project_key` (string, optional),

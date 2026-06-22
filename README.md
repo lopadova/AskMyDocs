@@ -306,6 +306,39 @@ for the inline layout). Full developer guide:
 > the host site must follow to mitigate them** — including `data-kitt-skip` to
 > keep sensitive page regions out of the snapshot.
 
+## ✨ Desktop & mobile client + token authentication
+
+**A native Tauri v2 + React desktop/iOS client — and the stateless Bearer-token auth flow that powers any non-browser client without a cookie/CSRF dance.**
+
+The React SPA authenticates with Sanctum's *stateful* cookie flow (CSRF
+round-trip), which is exactly wrong for a native app, a CLI, or a CI runner. So
+AskMyDocs ships a **second transport** behind the same `auth:sanctum` guard —
+least-privilege, finite-expiry Bearer tokens — plus a reference desktop client
+that proves it end to end.
+
+- **`POST /api/auth/token`** — verifies credentials with **no session, no CSRF**
+  and returns a Sanctum personal access token (`201 { token, token_type:
+  "Bearer", user }`). The token is scoped to exactly `kb:read` + `kb:chat`
+  (never the `['*']` wildcard) and **self-expires after 30 days**, so a token
+  leaked from a lost device revokes itself server-side. `POST
+  /api/auth/token/revoke` is the stateless sign-out (`204`).
+- **`EnforceTokenAbility` (`token.ability:<ability>`)** — a per-route gate that
+  constrains **only** Bearer PATs (`403` `token_ability_forbidden` if a token is
+  scoped wrong) and is a **no-op for the cookie SPA**, so dual-auth routes
+  (`/api/kb/chat`, `/api/kb/documents/search`, `/api/kb/documents/{id}/preview`)
+  serve both transports without breaking either.
+- **Tauri v2 desktop client** (`desktop/`) — login, grounded chat with clickable
+  markdown citations, document search, and a full-page source-document viewer.
+  Conversation threads persist **locally**; all backend calls go through the
+  Tauri HTTP plugin so the backend needs **no CORS change**.
+- **iOS from the same codebase** — Tauri v2 mobile, responsive UI with
+  safe-area insets and an off-canvas thread drawer, no native code changes.
+
+**Try it.** `cd desktop && npm install && npm run tauri dev`. Full runbook —
+including the iOS build flow — in [`desktop/README.md`](desktop/README.md); the
+auth flow is documented in the
+[doc site](https://padosoft.mintlify.app/desktop-client).
+
 ## ✨ Institutional Memory — anti-repetition retrieval over a living knowledge graph
 
 **Your KB doesn't just store documents — it remembers what your team decided,
@@ -1055,6 +1088,8 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | `ResolveTenant` middleware + 4 resolvers | Header (`X-Tenant-ID`), domain regex, authenticated user column, or `'default'` (v3 backward compat); per-request singleton; queue workers re-bind tenant via try/finally restore | v4.0 |
 | Spatie RBAC (5 roles) | `super-admin` / `admin` / `editor` / `viewer` / `dpo` (DPO added in v4.2 for PII admin); permission matrix grouped by dotted-prefix domain; gates wired at controller + route + middleware layer | v3.0 |
 | Sanctum stateful SPA + Bearer tokens | Two transports feed the same guard: cookie-based SPA (`/sanctum/csrf-cookie` + `X-XSRF-TOKEN`) and personal access tokens for API clients / MCP / GitHub Action; `AuthenticateForSse` middleware emits JSON 401 (not HTML redirect) on streaming endpoints | v3.0 |
+| Stateless token-auth for non-browser clients | `POST /api/auth/token` verifies credentials with **no session / no CSRF** and mints a Sanctum PAT scoped to least-privilege `kb:read` + `kb:chat` with a **finite 30-day expiry** (never `['*']`, never immortal); `POST /api/auth/token/revoke` is the stateless sign-out (`204`); `EnforceTokenAbility` (`token.ability:<ability>`) gate constrains **only** PATs (`403 token_ability_forbidden`) on the dual-auth `/api/kb/chat` + `/api/kb/documents/search` + `/api/kb/documents/{id}/preview` routes and is a no-op for the cookie SPA | desktop client |
+| Tauri desktop + iOS client (`desktop/`) | Self-contained Tauri v2 + React (Vite) demo client: login, grounded chat with clickable markdown citations, document search, full-page source viewer; conversation threads persist **locally** (the Bearer client can't reach the session-guarded `/conversations`); all calls route through the Tauri HTTP plugin (no CORS change); same codebase targets iOS via Tauri v2 mobile; outside Laravel CI | desktop client |
 | Immutable audit trail | `kb_canonical_audit` records every promote/update/deprecate/hard-delete (no `updated_at`, no FK to docs — survives hard deletes for forensic access); `admin_command_audit` stamps every destructive maintenance run with started/completed/failed timestamps + output/error capture | v3.0 |
 | DB-backed single-use confirm tokens for destructive commands | `AdminCommandNonce` table; signed `confirm_token` issued at preview, consumed inside `DB::transaction` with `lockForUpdate()` + `update()` in the same closure (R21 atomic invariant); composite UNIQUE on `(token_hash, consumed_at)` | v3.0 |
 | 6-gate Artisan whitelist runner | `CommandRunnerService` enforces: (1) whitelist lookup in `config('admin.allowed_commands')`, (2) args_schema validation, (3) confirm_token + single-use nonce, (4) Spatie permission gate (`commands.run` admin / `commands.destructive` super-admin), (5) audit-before-execute, (6) per-user `throttle:10,1` rate limit | v3.0 |
@@ -1810,6 +1845,34 @@ including commercial use.
 ---
 
 ## Changelog
+
+**Desktop client & token authentication (merged to main 2026-06-22).**
+A native **Tauri v2 + React** desktop/iOS client (`desktop/`) plus the
+stateless **Bearer-token** auth flow that powers any non-browser client.
+`POST /api/auth/token` (`AuthController::token`, validated by `TokenRequest`)
+verifies credentials with **no session / no CSRF** — it sits outside the `web`
+middleware group so a token client without an `XSRF-TOKEN` cookie isn't rejected
+with `419` — and returns `201 { token, token_type: "Bearer", user }`. The minted
+Sanctum personal access token is scoped to least-privilege abilities
+(`kb:read` + `kb:chat`, never `['*']`) and carries a **finite 30-day expiry** so a
+leaked token self-revokes server-side; wrong/unknown credentials return `422`,
+and a failure-only throttle (own bucket) returns `429` after 5 attempts.
+`POST /api/auth/token/revoke` deletes the caller's PAT and returns `204`
+(session callers no-op). The new `EnforceTokenAbility` middleware
+(`token.ability:<ability>` alias in `bootstrap/app.php`) is a PAT-scoped gate on
+the **dual-auth** routes `/api/kb/chat` (`kb:chat`), `/api/kb/documents/search`
+and `/api/kb/documents/{id}/preview` (`kb:read`): it rejects a wrongly-scoped PAT
+with `403 token_ability_forbidden` while being a **no-op for the cookie SPA**
+(a `TransientToken`), so one route serves both transports without breaking
+either. Ships the vendored `personal_access_tokens` migration. The Tauri client
+demonstrates login, grounded chat with clickable markdown citations, document
+search, and a full-page source-document viewer; conversation threads persist
+**locally** (the Bearer client can't reach the session-guarded
+`/conversations`), all calls route through the Tauri HTTP plugin (no CORS
+change), and the same codebase targets **iOS** via Tauri v2 mobile. The desktop
+project is self-contained (own `package.json` + Rust crate) and outside the
+Laravel CI. See [`desktop/README.md`](desktop/README.md) and the deep doc-site
+page.
 
 **v8.19.0 — laravel/ai 0.8 platform migration + AI Guardrails + Agentic Knowledge Reports (GA, shipped 2026-06-22).**
 Six waves. **W1** is the platform-wide SDK migration ([ADR 0016](docs/adr/0016-v819-laravel-ai-0.8-platform-migration.md)):

@@ -63,6 +63,7 @@
         "pages": [
           "ai-providers",
           "mcp-server",
+          "desktop-client",
           "sister-packages"
         ]
       },
