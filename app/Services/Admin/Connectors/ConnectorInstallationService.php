@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace App\Services\Admin\Connectors;
 
 use App\Support\TenantContext;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -70,10 +73,11 @@ final class ConnectorInstallationService
                 // v8.20 — a LIST of accounts (was a single nullable installation).
                 'installations' => $installations,
                 // Back-compat (R27 additive): the pre-v8.20 single-installation
-                // shape — the first account or null. Lets the not-yet-migrated FE
-                // keep rendering until PR2 switches it to `installations`; remove
-                // it there.
-                'installation' => $installations[0] ?? null,
+                // shape. Prefer the legacy 'default'-label account so a tenant
+                // that later adds more accounts doesn't surface an arbitrary one
+                // (e.g. 'sales') to the not-yet-migrated FE; PR2 switches it to
+                // `installations` and removes this.
+                'installation' => $this->backCompatInstallation($installations),
             ];
         })->values()->all();
     }
@@ -98,6 +102,47 @@ final class ConnectorInstallationService
     }
 
     /**
+     * The pre-v8.20 single-installation back-compat shape: the legacy
+     * 'default'-label account when present, else the first account, else null.
+     *
+     * @param  list<array<string,mixed>>  $installations
+     * @return array<string,mixed>|null
+     */
+    private function backCompatInstallation(array $installations): ?array
+    {
+        foreach ($installations as $installation) {
+            if (($installation['label'] ?? null) === 'default') {
+                return $installation;
+            }
+        }
+
+        return $installations[0] ?? null;
+    }
+
+    /**
+     * Cache key mapping an OAuth `state` token back to the installation that
+     * issued it, so a concurrent callback resolves the RIGHT account.
+     */
+    private function stateInstallationKey(string $name, string $token): string
+    {
+        return "connector:install_state:{$this->tenantContext->current()}:{$name}:{$token}";
+    }
+
+    /**
+     * Resolve the installation id an OAuth `state` token was issued for (v8.20
+     * multi-account: more than one account on a connector can be PENDING at
+     * once, so "most recent pending" is no longer correct). Returns null when
+     * the token was never mapped (e.g. an install issued before this cache
+     * existed) — the caller then falls back to most-recent-pending.
+     */
+    public function installationIdForState(string $name, string $token): ?int
+    {
+        $id = Cache::get($this->stateInstallationKey($name, $token));
+
+        return $id === null ? null : (int) $id;
+    }
+
+    /**
      * OAuth-connector account creation / re-grant.
      *
      * find-or-rearm by (tenant, connector, label): an existing account with the
@@ -105,6 +150,15 @@ final class ConnectorInstallationService
      * stuck row); a new label creates a fresh account. project_key is only
      * (re)written when explicitly supplied, so a re-grant never silently clears
      * an existing binding.
+     *
+     * Concurrency (R21):
+     *   - CREATE path: the read-then-create can lose a same-label race; the
+     *     UniqueConstraintViolationException is caught and we fall through to the
+     *     re-arm path so the second request is idempotent-by-label.
+     *   - RE-ARM path: wrapped in DB::transaction + lockForUpdate so two
+     *     concurrent re-grants on the same label cannot race on project_key
+     *     (the conditional project_key write is not idempotent across callers
+     *     with different values — last-write-wins without the lock).
      *
      * @return array{installation: ConnectorInstallation, redirect_to: string}
      */
@@ -120,36 +174,103 @@ final class ConnectorInstallationService
             throw new NotFoundHttpException("Connector '{$name}' is not registered.");
         }
 
-        $installation = ConnectorInstallation::query()
+        $installation = $this->findByLabel($name, $label);
+
+        if ($installation === null) {
+            try {
+                $installation = ConnectorInstallation::create([
+                    'tenant_id' => $this->tenantContext->current(),
+                    'connector_name' => $name,
+                    'label' => $label,
+                    'project_key' => $projectKey,
+                    'status' => ConnectorInstallation::STATUS_PENDING,
+                    'created_by' => $createdBy,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // A concurrent start-install for the same label won the race;
+                // degrade to re-arm so this call stays idempotent-by-label.
+                $installation = null; // resolved inside the re-arm transaction below
+            }
+        }
+
+        // R21 — re-arm path: lock the row before reading wasRecentlyCreated and
+        // before writing status / project_key, so two concurrent re-grants on the
+        // same label cannot clobber each other's project_key update.
+        if ($installation === null || $installation->wasRecentlyCreated === false) {
+            $installation = DB::transaction(function () use ($name, $label, $projectKey, $projectKeyProvided, $createdBy) {
+                $locked = ConnectorInstallation::query()
+                    ->where('tenant_id', $this->tenantContext->current())
+                    ->where('connector_name', $name)
+                    ->where('label', $label)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($locked === null) {
+                    // Extremely rare: the create path above also missed (e.g. the
+                    // concurrent winner deleted the row before we could lock it).
+                    // Create fresh inside the transaction.
+                    return ConnectorInstallation::create([
+                        'tenant_id' => $this->tenantContext->current(),
+                        'connector_name' => $name,
+                        'label' => $label,
+                        'project_key' => $projectKey,
+                        'status' => ConnectorInstallation::STATUS_PENDING,
+                        'created_by' => $createdBy,
+                    ]);
+                }
+
+                $attrs = [
+                    'status' => ConnectorInstallation::STATUS_PENDING,
+                    'error_json' => null,
+                ];
+                if ($projectKeyProvided) {
+                    $attrs['project_key'] = $projectKey;
+                }
+                $locked->forceFill($attrs)->save();
+
+                return $locked;
+            });
+        }
+
+        if ($installation === null) {
+            // Should be unreachable (created or re-fetched above), but never
+            // hand a null installation to the connector.
+            throw new NotFoundHttpException("Could not resolve installation for connector '{$name}'.");
+        }
+
+        $redirectTo = $connector->initiateOAuth($installation->id);
+        $this->mapStateToInstallation($name, $redirectTo, $installation->id);
+
+        return [
+            'installation' => $installation,
+            'redirect_to' => $redirectTo,
+        ];
+    }
+
+    private function findByLabel(string $name, string $label): ?ConnectorInstallation
+    {
+        return ConnectorInstallation::query()
             ->where('tenant_id', $this->tenantContext->current())
             ->where('connector_name', $name)
             ->where('label', $label)
             ->first();
+    }
 
-        if ($installation === null) {
-            $installation = ConnectorInstallation::create([
-                'tenant_id' => $this->tenantContext->current(),
-                'connector_name' => $name,
-                'label' => $label,
-                'project_key' => $projectKey,
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'created_by' => $createdBy,
-            ]);
-        } else {
-            $attrs = [
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'error_json' => null,
-            ];
-            if ($projectKeyProvided) {
-                $attrs['project_key'] = $projectKey;
-            }
-            $installation->forceFill($attrs)->save();
+    /**
+     * Parse the `state` token out of the provider authorize URL and cache the
+     * token → installation id mapping (15-minute TTL, matching the OAuth state
+     * lifetime) so the callback can resolve the right account.
+     */
+    private function mapStateToInstallation(string $name, string $redirectTo, int $installationId): void
+    {
+        parse_str((string) parse_url($redirectTo, PHP_URL_QUERY), $query);
+        $token = isset($query['state']) ? (string) $query['state'] : '';
+
+        if ($token === '') {
+            return;
         }
 
-        return [
-            'installation' => $installation,
-            'redirect_to' => $connector->initiateOAuth($installation->id),
-        ];
+        Cache::put($this->stateInstallationKey($name, $token), $installationId, now()->addMinutes(15));
     }
 
     /**
@@ -157,27 +278,41 @@ final class ConnectorInstallationService
      * re-auth is intentionally NOT handled here — that re-runs the connector's
      * own configure/OAuth round-trip. Metadata-only edits never touch the vault.
      *
+     * R21 — lockForUpdate + save inside DB::transaction so a concurrent rename on
+     * the same installation does not interleave (a label rename can fail the DB
+     * unique; the transaction ensures we hold the row from read to write).
+     *
      * @param  array<string,mixed>  $attrs  Subset of {label, project_key}; only
      *                                       present keys are updated (PATCH).
      */
     public function updateMetadata(int $installationId, array $attrs): ConnectorInstallation
     {
-        $installation = $this->findOr404($installationId);
+        return DB::transaction(function () use ($installationId, $attrs) {
+            $installation = ConnectorInstallation::query()
+                ->where('id', $installationId)
+                ->where('tenant_id', $this->tenantContext->current())
+                ->lockForUpdate()
+                ->first();
 
-        $update = [];
-        if (array_key_exists('label', $attrs)) {
-            $update['label'] = (string) $attrs['label'];
-        }
-        if (array_key_exists('project_key', $attrs)) {
-            $value = $attrs['project_key'];
-            $update['project_key'] = ($value === '' || $value === null) ? null : (string) $value;
-        }
+            if ($installation === null) {
+                throw new NotFoundHttpException("Installation {$installationId} not found.");
+            }
 
-        if ($update !== []) {
-            $installation->forceFill($update)->save();
-        }
+            $update = [];
+            if (array_key_exists('label', $attrs)) {
+                $update['label'] = (string) $attrs['label'];
+            }
+            if (array_key_exists('project_key', $attrs)) {
+                $value = $attrs['project_key'];
+                $update['project_key'] = ($value === '' || $value === null) ? null : (string) $value;
+            }
 
-        return $installation;
+            if ($update !== []) {
+                $installation->forceFill($update)->save();
+            }
+
+            return $installation;
+        });
     }
 
     /**

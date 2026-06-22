@@ -77,6 +77,13 @@ final class ConnectorsInstallCommand extends Command
         string $name,
         string $tenant,
     ): int {
+        $label = (string) $this->option('label');
+        if (! $this->isValidLabel($label)) {
+            $this->error("Invalid --label '{$label}': must start with a letter/digit, use only letters, digits, spaces, '_', '.', '-', and be at most 64 chars (matches the HTTP/API rule).");
+
+            return self::FAILURE;
+        }
+
         $project = $this->resolveProject($tenant);
         if ($project === false) {
             return self::FAILURE;
@@ -140,6 +147,17 @@ final class ConnectorsInstallCommand extends Command
         ));
 
         return $installation->status === ConnectorInstallation::STATUS_ACTIVE ? self::SUCCESS : self::FAILURE;
+    }
+
+    /**
+     * Same label constraint the HTTP layer enforces (ConfigureConnectorRequest):
+     * keeps CLI-created labels consistent across every surface (R44).
+     */
+    private function isValidLabel(string $label): bool
+    {
+        return $label !== ''
+            && mb_strlen($label) <= 64
+            && preg_match('/^[\pL\pN][\pL\pN _.-]*$/u', $label) === 1;
     }
 
     /**

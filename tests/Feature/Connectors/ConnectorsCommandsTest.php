@@ -133,6 +133,21 @@ final class ConnectorsCommandsTest extends TestCase
         $this->assertSame(0, ConnectorInstallation::query()->count());
     }
 
+    public function test_connectors_install_rejects_an_invalid_label(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $this->artisan('connectors:install', [
+            'connector' => 'imap',
+            '--tenant' => 'default',
+            '--label' => 'bad/label',
+        ])
+            ->expectsOutputToContain('Invalid --label')
+            ->assertExitCode(1);
+
+        $this->assertSame(0, ConnectorInstallation::query()->count());
+    }
+
     public function test_connectors_install_refuses_oauth_connectors(): void
     {
         $this->artisan('connectors:install', [

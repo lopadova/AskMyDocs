@@ -102,11 +102,14 @@ final class ConnectorAdminController extends Controller
      * Provider redirect target. Validates the state token, exchanges
      * the auth code for credentials via the connector's
      * `handleOAuthCallback()`, and flips the installation to
-     * `active`. The active row is identified by the cached state
-     * token; we accept it implicitly via the connector's own
-     * validation. To survive concurrent callbacks across tenants we
-     * additionally lookup the most-recent `pending` row for the
-     * active tenant + connector.
+     * `active`.
+     *
+     * v8.20 multi-account: several accounts on the same connector can be PENDING
+     * at once, so we resolve the EXACT account the `state` token was issued for
+     * (cached at install time) instead of guessing "most recent pending" — which
+     * would attach the provider's credentials/error to the wrong account. The
+     * most-recent-pending lookup remains a fallback for tokens issued before the
+     * mapping existed (and for the single-account case it is identical).
      */
     public function oauthCallback(Request $request, string $name): JsonResponse
     {
@@ -115,12 +118,7 @@ final class ConnectorAdminController extends Controller
             throw new NotFoundHttpException("Connector '{$name}' is not registered.");
         }
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', $this->tenantContext->current())
-            ->where('connector_name', $name)
-            ->where('status', ConnectorInstallation::STATUS_PENDING)
-            ->orderByDesc('id')
-            ->first();
+        $installation = $this->resolvePendingInstallation($request, $name);
 
         if ($installation === null) {
             throw new NotFoundHttpException(
@@ -318,6 +316,40 @@ final class ConnectorAdminController extends Controller
         $this->installations->delete($installationId);
 
         return response()->json(null, 204);
+    }
+
+    /**
+     * Resolve the PENDING installation an OAuth callback belongs to.
+     *
+     * Prefer the exact account the `state` token was issued for (v8.20
+     * multi-account — cached at install time, tenant-scoped). Fall back to the
+     * most-recent PENDING row for (tenant, connector) when the token is unknown
+     * (legacy installs / single-account), preserving the pre-v8.20 behaviour.
+     */
+    private function resolvePendingInstallation(Request $request, string $name): ?ConnectorInstallation
+    {
+        $token = (string) $request->query('state', '');
+        if ($token !== '') {
+            $installationId = $this->installations->installationIdForState($name, $token);
+            if ($installationId !== null) {
+                $installation = ConnectorInstallation::query()
+                    ->where('id', $installationId)
+                    ->where('tenant_id', $this->tenantContext->current())
+                    ->where('connector_name', $name)
+                    ->where('status', ConnectorInstallation::STATUS_PENDING)
+                    ->first();
+                if ($installation !== null) {
+                    return $installation;
+                }
+            }
+        }
+
+        return ConnectorInstallation::query()
+            ->where('tenant_id', $this->tenantContext->current())
+            ->where('connector_name', $name)
+            ->where('status', ConnectorInstallation::STATUS_PENDING)
+            ->orderByDesc('id')
+            ->first();
     }
 
     /**

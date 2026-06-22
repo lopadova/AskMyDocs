@@ -339,6 +339,72 @@ final class ConnectorAdminControllerTest extends TestCase
         ]);
     }
 
+    public function test_index_back_compat_installation_prefers_the_default_label(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        // Create a non-default account FIRST (lower id, sorts first by label),
+        // then the legacy 'default'. The back-compat single `installation` must
+        // surface 'default', not the alphabetically-first 'aaa'.
+        foreach (['aaa', 'default'] as $label) {
+            ConnectorInstallation::create([
+                'tenant_id' => 'default',
+                'connector_name' => 'google-drive',
+                'label' => $label,
+                'status' => ConnectorInstallation::STATUS_ACTIVE,
+                'created_by' => $admin->id,
+            ]);
+        }
+
+        $resp = $this->actingAs($admin)->getJson('/api/admin/connectors');
+        $resp->assertOk();
+        $entry = collect($resp->json('data'))->firstWhere('key', 'google-drive');
+        $this->assertSame('default', $entry['installation']['label']);
+    }
+
+    public function test_oauth_callback_routes_to_the_account_the_state_was_issued_for(): void
+    {
+        $admin = $this->makeSuperAdmin();
+
+        // Two concurrent OAuth installs on the same connector, different labels.
+        $support = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=support');
+        $support->assertOk();
+        $sales = $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=sales');
+        $sales->assertOk();
+
+        // The SUPPORT state — even though SALES is the most recent pending row.
+        parse_str(parse_url($support->json('data.redirect_to'), PHP_URL_QUERY), $q);
+        $supportState = $q['state'] ?? '';
+        $supportId = $support->json('data.installation_id');
+        $salesId = $sales->json('data.installation_id');
+        $this->assertNotSame($supportId, $salesId);
+
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response([
+                'access_token' => 'tok', 'refresh_token' => 'ref',
+                'token_type' => 'Bearer', 'expires_in' => 3600,
+                'scope' => 'https://www.googleapis.com/auth/drive.readonly',
+            ], 200),
+        ]);
+
+        $resp = $this->actingAs($admin)->getJson(
+            '/api/admin/connectors/google-drive/oauth/callback?code=auth-code&state='.$supportState,
+        );
+        $resp->assertOk();
+
+        // The callback activated SUPPORT (the state's owner), NOT the most-recent SALES.
+        $this->assertSame($supportId, $resp->json('data.installation_id'));
+        $this->assertSame(
+            ConnectorInstallation::STATUS_ACTIVE,
+            ConnectorInstallation::find($supportId)->status,
+        );
+        $this->assertSame(
+            ConnectorInstallation::STATUS_PENDING,
+            ConnectorInstallation::find($salesId)->status,
+        );
+    }
+
     public function test_start_install_with_distinct_labels_creates_separate_accounts(): void
     {
         $admin = $this->makeSuperAdmin();

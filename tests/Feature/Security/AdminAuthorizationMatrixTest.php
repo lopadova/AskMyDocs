@@ -311,14 +311,16 @@ final class AdminAuthorizationMatrixTest extends TestCase
             "Role [admin] must be DENIED (403) on PATCH [{$writeUri}] (manageConnectors = super-admin only) but got {$adminStatus}.",
         );
 
-        // super-admin passes the gate; no installation #1 exists → 404 (not 403).
+        // super-admin passes the gate; no installation #1 exists → exactly 404
+        // (not 403, and not a 500 that would also satisfy "not 403"). Asserting
+        // the precise status keeps this a real route+gate regression check.
         $superStatus = $this->actingAs($this->userWithRole('super-admin'))
             ->patchJson($writeUri, ['label' => 'x'])
             ->getStatusCode();
-        $this->assertNotSame(
-            403,
+        $this->assertSame(
+            404,
             $superStatus,
-            "Role [super-admin] must pass the manageConnectors gate on PATCH [{$writeUri}] but got 403.",
+            "Role [super-admin] must pass the manageConnectors gate and then 404 on the missing id for PATCH [{$writeUri}] but got {$superStatus}.",
         );
     }
 
