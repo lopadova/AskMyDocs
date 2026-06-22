@@ -100,6 +100,16 @@ return Application::configure(basePath: dirname(__DIR__))
             // safe methods (GET/HEAD) on `viewAiFinOps` (super-admin + admin) and
             // mutating methods on `manageAiFinOps` (super-admin only).
             'finops.authorize' => \App\Http\Middleware\FinOpsAuthorize::class,
+            // v8.19 — method-aware authorization for the laravel-ai-guardrails API.
+            // The guardrails package controllers do NO internal authorization;
+            // mounted in `config('ai-guardrails.api.middleware')` it gates safe
+            // methods (GET/HEAD) on `viewAiGuardrails` (super-admin + admin) and
+            // mutating methods on `manageAiGuardrails` (super-admin only).
+            'guardrails.authorize' => \App\Http\Middleware\GuardrailsAuthorize::class,
+            // v8.19/W3 — master-switch gate for the guardrails-admin SPA. First in
+            // config('ai-guardrails-admin.middleware'); 404s every route under the
+            // prefix while AI_GUARDRAILS_ADMIN_ENABLED is false (R43 OFF-state).
+            'guardrails-admin.enabled' => \App\Http\Middleware\GuardrailsAdminEnabled::class,
         ]);
 
         // CSRF except list — `/testing/*` POST endpoints are env-gated

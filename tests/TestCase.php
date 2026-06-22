@@ -136,6 +136,19 @@ abstract class TestCase extends OrchestraTestCase
         $app->register(\Padosoft\LaravelAiFinOps\LaravelAiFinOpsServiceProvider::class);
         $app->register(\Padosoft\LaravelAiFinOpsAdmin\LaravelAiFinOpsAdminServiceProvider::class);
 
+        // v8.19 — padosoft/laravel-ai-guardrails core. Manual registration
+        // parallels every other vendor package (Testbench skips package
+        // discovery). The SP wires the screen/sanitize/firewall/HITL controls,
+        // the append-only stores, and (config-gated) the secured HTTP API route
+        // group consumed by the guardrails-admin SPA (W3). The host config
+        // override below applies the R32 auth stack + database stores.
+        $app->register(\Padosoft\AiGuardrails\AiGuardrailsServiceProvider::class);
+        // v8.19/W3 — guardrails-admin SPA. The package mounts its catch-all SPA
+        // route unconditionally; the host `guardrails-admin.enabled` middleware
+        // (config below) gates it default-OFF. Registered here so the mounting
+        // test can flip the flag on and assert the wired-and-secured route.
+        $app->register(\Padosoft\LaravelAiGuardrailsAdmin\LaravelAiGuardrailsAdminServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -266,6 +279,29 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('ai-finops-admin', array_merge(
             (array) $app['config']->get('ai-finops-admin', []),
             require __DIR__.'/../config/ai-finops-admin.php',
+        ));
+        // v8.19 / R32 — host override of the laravel-ai-guardrails package config.
+        // CRITICAL: the package default `api.middleware` is `[]` (so an enabled
+        // API would fail-close at boot, and the data endpoints carry no auth).
+        // Loading the host config here (the same file production loads) turns the
+        // API ON behind the auth:sanctum + tenant.authorize + guardrails.authorize
+        // stack and flips the append-only stores to `database`, so both
+        // AdminAuthorizationMatrixTest and the enforcement suites exercise the
+        // SECURE configuration. array_merge keeps the package's other top-level
+        // keys (enabled, input_screen, output_handler, modes, …) while the host's
+        // api / stores blocks win.
+        $app['config']->set('ai-guardrails', array_merge(
+            (array) $app['config']->get('ai-guardrails', []),
+            require __DIR__.'/../config/ai-guardrails.php',
+        ));
+        $app['config']->set('ai-guardrails.enabled', true);
+        // v8.19/W3 — host override of the guardrails-admin SPA config. Default
+        // enabled=false so the GuardrailsAdminEnabled middleware 404s every route
+        // under /admin/ai-guardrails (R43 OFF-state). The mounting test flips this
+        // ON in its own getEnvironmentSetUp to prove the wired-and-secured route.
+        $app['config']->set('ai-guardrails-admin', array_merge(
+            (array) $app['config']->get('ai-guardrails-admin', []),
+            require __DIR__.'/../config/ai-guardrails-admin.php',
         ));
         // v4.2/W4 sub-PR 5 — pii-redactor-admin published config. Default
         // enabled=false so the SP boot short-circuits before registering
@@ -417,6 +453,19 @@ abstract class TestCase extends OrchestraTestCase
         // alias every finops feature test throws "Target class [finops.authorize]
         // does not exist". Keep in sync with bootstrap/app.php.
         $router->aliasMiddleware('finops.authorize', \App\Http\Middleware\FinOpsAuthorize::class);
+        // v8.19 — method-aware guardrails authorization alias. Mirrors
+        // bootstrap/app.php (not executed under Testbench). The guardrails API
+        // middleware (config('ai-guardrails.api.middleware')) references
+        // `guardrails.authorize`; without this alias the guardrails matrix /
+        // enforcement tests throw "Target class [guardrails.authorize] does not
+        // exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('guardrails.authorize', \App\Http\Middleware\GuardrailsAuthorize::class);
+        // v8.19/W3 — guardrails-admin master-switch gate alias. Mirrors
+        // bootstrap/app.php; the package's SPA route stack references
+        // `guardrails-admin.enabled` (first), so without this alias the admin
+        // mounting test throws "Target class [guardrails-admin.enabled] does not
+        // exist". Keep in sync with bootstrap/app.php.
+        $router->aliasMiddleware('guardrails-admin.enabled', \App\Http\Middleware\GuardrailsAdminEnabled::class);
     }
 
     /**

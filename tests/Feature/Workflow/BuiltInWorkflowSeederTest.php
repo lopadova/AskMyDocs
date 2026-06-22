@@ -14,8 +14,9 @@ use Tests\TestCase;
 /**
  * v4.7/W2 — BuiltInWorkflowSeeder tests.
  *
- * Asserts the seeder mints exactly 15 system templates and is
- * idempotent on a second run (no duplicates, same total).
+ * Asserts the seeder mints exactly 16 system templates (v8.19/W4 added the
+ * "Canonical KB Governance Audit" agentic report) and is idempotent on a second
+ * run (no duplicates, same total).
  */
 final class BuiltInWorkflowSeederTest extends TestCase
 {
@@ -29,18 +30,18 @@ final class BuiltInWorkflowSeederTest extends TestCase
         // first. Without this, an earlier suite that switched the
         // singleton to 'acme' would silently seed system workflows
         // into the wrong tenant — the count assertion would still
-        // pass (15 rows exist) but the assertion that the seeder
+        // pass (16 rows exist) but the assertion that the seeder
         // wrote into the DEFAULT tenant would fail.
         Cache::flush();
         app(TenantContext::class)->set('default');
     }
 
-    public function test_seeder_creates_exactly_15_system_workflows(): void
+    public function test_seeder_creates_exactly_16_system_workflows(): void
     {
         $this->seed(BuiltInWorkflowSeeder::class);
 
         $rows = Workflow::query()->where('is_system', true)->get();
-        $this->assertCount(15, $rows, 'Expected exactly 15 built-in system workflows.');
+        $this->assertCount(16, $rows, 'Expected exactly 16 built-in system workflows.');
 
         // Each must carry is_system=true, a null user_id, AND a
         // tenant_id matching the active TenantContext (default). The
@@ -58,6 +59,6 @@ final class BuiltInWorkflowSeederTest extends TestCase
         $this->seed(BuiltInWorkflowSeeder::class);
         $this->seed(BuiltInWorkflowSeeder::class);
 
-        $this->assertSame(15, Workflow::query()->where('is_system', true)->count());
+        $this->assertSame(16, Workflow::query()->where('is_system', true)->count());
     }
 }

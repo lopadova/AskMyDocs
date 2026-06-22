@@ -13,9 +13,11 @@ use Illuminate\Database\Seeder;
 /**
  * v4.7/W2 — Built-in workflow templates.
  *
- * Seeds 15 system workflows (is_system=true, user_id=null) covering
- * the AskMyDocs enterprise feature set. Idempotent on re-run: the
- * (tenant_id, title, is_system=true) tuple is the natural key.
+ * Seeds 16 system workflows (is_system=true, user_id=null) covering
+ * the AskMyDocs enterprise feature set — including the v8.19/W4 flagship
+ * "Canonical KB Governance Audit" agentic report (deterministic `agent: graph`
+ * governance columns + an `agent: verify` contradiction check). Idempotent on
+ * re-run: the (tenant_id, title, is_system=true) tuple is the natural key.
  *
  * Copilot iter 15 — multi-tenant invocation pattern:
  *
@@ -279,6 +281,28 @@ class BuiltInWorkflowSeeder extends Seeder
                     ['name' => 'Sensitivity Level', 'prompt' => 'Low / medium / high.', 'format' => 'enum_status', 'enum_values' => ['low', 'medium', 'high']],
                     ['name' => 'Action Required', 'prompt' => 'Redact / pseudonymise / encrypt / no-op.', 'format' => 'enum_status', 'enum_values' => ['redact', 'pseudonymise', 'encrypt', 'no-op']],
                     ['name' => 'Status', 'prompt' => 'Open / in-progress / done.', 'format' => 'enum_status', 'enum_values' => ['open', 'in-progress', 'done']],
+                ],
+            ],
+            // 16 — v8.19/W4 — the flagship AGENTIC report. Rows = canonical docs;
+            // every column except the last is a DETERMINISTIC `agent: graph`
+            // governance metric (no LLM) computed from kb_edges + the doc's own
+            // canonical columns; the last is an `agent: verify` contradiction
+            // check. This turns the KB into an auditable governance matrix.
+            [
+                'title' => 'Canonical KB Governance Audit',
+                'type' => $tabular,
+                'practice' => $engineering,
+                'prompt_md' => 'Audit each canonical document for governance health: canonical status, evidence tier, frontmatter completeness, graph connectivity, supersession, and staleness. Most columns are computed deterministically from the canonical graph; the final column verifies the document against the rest of the knowledge base for contradictions.',
+                'columns_config' => [
+                    ['name' => 'Canonical?', 'format' => 'yes_no', 'agent' => 'graph', 'metric' => 'is_canonical'],
+                    ['name' => 'Status', 'format' => 'text', 'agent' => 'graph', 'metric' => 'canonical_status'],
+                    ['name' => 'Evidence Tier', 'format' => 'text', 'agent' => 'graph', 'metric' => 'evidence_tier'],
+                    ['name' => 'Frontmatter', 'format' => 'percentage', 'agent' => 'graph', 'metric' => 'frontmatter_completeness'],
+                    ['name' => 'Graph Edges', 'format' => 'number', 'agent' => 'graph', 'metric' => 'graph_connectivity'],
+                    ['name' => 'Orphan?', 'format' => 'yes_no', 'agent' => 'graph', 'metric' => 'is_orphan'],
+                    ['name' => 'Supersession', 'format' => 'text', 'agent' => 'graph', 'metric' => 'supersession_status'],
+                    ['name' => 'Staleness (days)', 'format' => 'number', 'agent' => 'graph', 'metric' => 'staleness_days'],
+                    ['name' => 'Contradiction Check', 'prompt' => 'Does this document contradict other guidance in the knowledge base? Summarise any conflict, or state "no conflict".', 'format' => 'text', 'agent' => 'verify'],
                 ],
             ],
         ];

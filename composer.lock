@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7ff54a51386db3bb69ab46a057a2e203",
+    "content-hash": "dc9f55812e65c0ef7df2ccbea8e19c78",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -1210,16 +1210,16 @@
         },
         {
             "name": "laravel/ai",
-            "version": "v0.6.8",
+            "version": "v0.8.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/ai.git",
-                "reference": "b457ea4c0ec0fb1bca5504666332b653f7648d7e"
+                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/ai/zipball/b457ea4c0ec0fb1bca5504666332b653f7648d7e",
-                "reference": "b457ea4c0ec0fb1bca5504666332b653f7648d7e",
+                "url": "https://api.github.com/repos/laravel/ai/zipball/b23bc857576d7c4b3bb52ffd8be936ae74005d23",
+                "reference": "b23bc857576d7c4b3bb52ffd8be936ae74005d23",
                 "shasum": ""
             },
             "require": {
@@ -1227,19 +1227,25 @@
                 "illuminate/console": "^12.0|^13.0",
                 "illuminate/container": "^12.0|^13.0",
                 "illuminate/contracts": "^12.0|^13.0",
+                "illuminate/database": "^12.0|^13.0",
                 "illuminate/filesystem": "^12.0|^13.0",
-                "illuminate/json-schema": "^12.0|^13.0",
+                "illuminate/json-schema": "^12.62|^13.15",
                 "illuminate/support": "^12.0|^13.0",
                 "laravel/prompts": "^0.3.6",
                 "laravel/serializable-closure": "^2.0",
                 "php": "^8.3"
             },
             "require-dev": {
+                "laravel/mcp": "^0.8",
                 "laravel/pint": "^1.26",
                 "mockery/mockery": "^1.6.12",
                 "orchestra/testbench": "^10.6|^11.0",
                 "pestphp/pest": "^3.0|^4.0",
-                "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+                "pestphp/pest-plugin-laravel": "^3.0|^4.0",
+                "phpstan/phpstan": "^2.1"
+            },
+            "suggest": {
+                "laravel/mcp": "Required to use MCP client tools or MCP server tools with Laravel AI agents."
             },
             "type": "library",
             "extra": {
@@ -1274,7 +1280,7 @@
                 "issues": "https://github.com/laravel/ai/issues",
                 "source": "https://github.com/laravel/ai"
             },
-            "time": "2026-05-11T10:46:54+00:00"
+            "time": "2026-06-10T11:23:35+00:00"
         },
         {
             "name": "laravel/framework",
@@ -4104,6 +4110,142 @@
                 "source": "https://github.com/padosoft/laravel-ai-finops-admin"
             },
             "time": "2026-06-01T10:24:50+00:00"
+        },
+        {
+            "name": "padosoft/laravel-ai-guardrails",
+            "version": "v1.2.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/laravel-ai-guardrails.git",
+                "reference": "1b0db0e8782afb366ac8ebc9c555567ea5c26660"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails/zipball/1b0db0e8782afb366ac8ebc9c555567ea5c26660",
+                "reference": "1b0db0e8782afb366ac8ebc9c555567ea5c26660",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "illuminate/console": "^13.0",
+                "illuminate/contracts": "^13.0",
+                "illuminate/database": "^13.0",
+                "illuminate/support": "^13.0",
+                "laravel/ai": "^0.8",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "ezyang/htmlpurifier": "^4.19",
+                "laravel/mcp": "^0.8",
+                "laravel/pint": "^1.18",
+                "orchestra/testbench": "^11.0",
+                "padosoft/laravel-flow": "^1.0",
+                "padosoft/laravel-pii-redactor": "^1.0",
+                "phpstan/phpstan": "^2.0",
+                "phpunit/phpunit": "^12.0"
+            },
+            "suggest": {
+                "ext-intl": "Enables Unicode NFKC normalization (fullwidth/homoglyph folding) in the input screener; without it that pass is skipped.",
+                "ezyang/htmlpurifier": "Upgrades output_handler.html_mode=allowlist to HTMLPurifier-grade HTML sanitization (control C); falls back to the built-in allowlist when absent.",
+                "laravel/mcp": "Exposes the guardrail tools (screen/sanitize/audit) as an MCP server surface (mcp.enabled).",
+                "padosoft/laravel-flow": "Enables the HITL approval bridge (control D) via approvalGate().",
+                "padosoft/laravel-pii-redactor": "Enables PII redaction in the output handler (control C)."
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "AiGuardrails": "Padosoft\\AiGuardrails\\Facades\\AiGuardrails"
+                    },
+                    "providers": [
+                        "Padosoft\\AiGuardrails\\AiGuardrailsServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\AiGuardrails\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "description": "Deterministic prompt-injection guardrails for laravel/ai: tool firewall, input screening + injection audit, untrusted-output sanitization, and a HITL approval bridge.",
+            "homepage": "https://github.com/padosoft/laravel-ai-guardrails",
+            "keywords": [
+                "ai",
+                "ai-safety",
+                "guardrails",
+                "hitl",
+                "laravel",
+                "prompt-injection"
+            ],
+            "support": {
+                "issues": "https://github.com/padosoft/laravel-ai-guardrails/issues",
+                "source": "https://github.com/padosoft/laravel-ai-guardrails"
+            },
+            "time": "2026-06-20T19:03:16+00:00"
+        },
+        {
+            "name": "padosoft/laravel-ai-guardrails-admin",
+            "version": "v1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/padosoft/laravel-ai-guardrails-admin.git",
+                "reference": "26de996c7e9b19a30823cf778b1ba9c5e5614439"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/padosoft/laravel-ai-guardrails-admin/zipball/26de996c7e9b19a30823cf778b1ba9c5e5614439",
+                "reference": "26de996c7e9b19a30823cf778b1ba9c5e5614439",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/contracts": "^11.0|^12.0|^13.0",
+                "illuminate/routing": "^11.0|^12.0|^13.0",
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "illuminate/view": "^11.0|^12.0|^13.0",
+                "php": "^8.3"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.24",
+                "orchestra/testbench": "^9.0|^10.0|^11.0",
+                "phpstan/phpstan": "^2.1",
+                "phpunit/phpunit": "^11.5|^12.0"
+            },
+            "suggest": {
+                "padosoft/laravel-ai-guardrails": "^1.1 provides the HTTP guardrails API consumed by this admin panel."
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Padosoft\\LaravelAiGuardrailsAdmin\\LaravelAiGuardrailsAdminServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Padosoft\\LaravelAiGuardrailsAdmin\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Lorenzo Padovani",
+                    "email": "lorenzo.padovani@padosoft.com"
+                }
+            ],
+            "description": "Laravel admin panel for the AI Guardrails HTTP API.",
+            "support": {
+                "issues": "https://github.com/padosoft/laravel-ai-guardrails-admin/issues",
+                "source": "https://github.com/padosoft/laravel-ai-guardrails-admin/tree/v1.0.0"
+            },
+            "time": "2026-06-19T12:19:56+00:00"
         },
         {
             "name": "padosoft/laravel-ai-regolo",

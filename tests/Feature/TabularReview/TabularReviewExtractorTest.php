@@ -76,6 +76,62 @@ final class TabularReviewExtractorTest extends TestCase
         $this->assertSame(CellFlag::GREEN->value, $cells[0]->flag);
     }
 
+    public function test_graph_column_is_deterministic_and_skips_the_llm(): void
+    {
+        // v8.19/W4 — an `agent: graph` governance column is resolved
+        // deterministically from the canonical columns + the graph; the LLM is
+        // never called for it.
+        $review = $this->makeReview([
+            ['name' => 'Canonical?', 'format' => 'yes_no', 'agent' => 'graph', 'metric' => 'is_canonical'],
+        ]);
+        $doc = KnowledgeDocument::create([
+            'project_key' => $review->project_key,
+            'source_type' => 'markdown',
+            'title' => 'Canonical doc',
+            'source_path' => 'c-'.uniqid().'.md',
+            'document_hash' => str_repeat('c', 64),
+            'version_hash' => str_repeat('d', 64),
+            'status' => 'indexed',
+            'is_canonical' => true,
+            'canonical_status' => 'accepted',
+            'slug' => 'dec-'.uniqid(),
+        ]);
+
+        Http::fake(['*' => Http::response(['error' => 'should_not_be_called'], 500)]);
+
+        $cells = $this->extractor()->extract($review, $doc);
+
+        $this->assertCount(1, $cells);
+        $this->assertSame('Yes', $cells[0]->content['summary']);
+        $this->assertSame(CellFlag::GREEN->value, $cells[0]->flag);
+        Http::assertNothingSent();
+    }
+
+    public function test_verify_column_downgrades_an_unsupported_value(): void
+    {
+        // v8.19/W4 — a `verify` column: the extract pass returns green, the
+        // verify pass says the value is NOT supported by the cited evidence, so
+        // the flag is downgraded green→yellow and the reasoning is annotated.
+        $review = $this->makeReview([
+            ['name' => 'Claim', 'prompt' => 'What does it claim?', 'format' => 'text', 'agent' => 'verify'],
+        ]);
+        $doc = $this->makeDoc($review->project_key);
+        $this->makeChunk($doc, 'H', 'Body.');
+        $this->stubSearch($doc);
+
+        Http::fake(['*' => Http::sequence()
+            ->push($this->aiPayload('{"column_index":0,"summary":"Bold claim","flag":"green","reasoning":"","citations":[]}'), 200)
+            ->push($this->aiPayload('{"column_index":0,"supported":false}'), 200),
+        ]);
+
+        $cells = $this->extractor()->extract($review, $doc);
+
+        $this->assertCount(1, $cells);
+        $this->assertSame('Bold claim', $cells[0]->content['summary']);
+        $this->assertSame(CellFlag::YELLOW->value, $cells[0]->flag);
+        $this->assertStringContainsString('not supported', $cells[0]->content['reasoning']);
+    }
+
     public function test_extract_invokes_on_cell_callback(): void
     {
         $review = $this->makeReview([

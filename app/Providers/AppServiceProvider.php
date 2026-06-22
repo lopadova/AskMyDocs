@@ -171,6 +171,7 @@ class AppServiceProvider extends ServiceProvider
         $this->registerEvidenceRiskReviewIntegration();
         $this->registerEvidenceRiskReviewGates();
         $this->registerFinOpsGates();
+        $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
     }
 
@@ -283,6 +284,36 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::define('manageAiFinOps', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasRole('super-admin');
+        });
+    }
+
+    /**
+     * v8.19 — AI Guardrails admin surface gates (R32).
+     *
+     *   - viewAiGuardrails   → super-admin + admin (open the panel, read the
+     *                          injection audit / firewall / output-stats / posture)
+     *   - manageAiGuardrails → super-admin only (mutate the ruleset via
+     *                          PUT /settings, approve/reject parked HITL tool calls)
+     * The split is enforced per HTTP method by App\Http\Middleware\GuardrailsAuthorize
+     * (the package controllers do no internal authorization). dpo/editor/viewer
+     * are excluded — the security guardrail console is not their remit.
+     */
+    private function registerGuardrailsGates(): void
+    {
+        Gate::define('viewAiGuardrails', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
+
+        Gate::define('manageAiGuardrails', function ($user): bool {
             if ($user === null) {
                 return false;
             }

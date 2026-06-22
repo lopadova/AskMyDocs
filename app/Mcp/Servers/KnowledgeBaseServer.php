@@ -17,6 +17,7 @@ use App\Mcp\Tools\KbUserBadgesTool;
 use App\Mcp\Tools\KbDocumentsByTypeTool;
 use App\Mcp\Tools\KbGraphNeighborsTool;
 use App\Mcp\Tools\KbGraphSubgraphTool;
+use App\Mcp\Tools\KbGuardrailsInsightsTool;
 use App\Mcp\Tools\KbListDanglingWikilinksTool;
 use App\Mcp\Tools\KbProposeCanonicalEditTool;
 use App\Mcp\Tools\KbPromotionSuggestTool;
@@ -31,6 +32,7 @@ use App\Mcp\Tools\KbWikiNavigateTool;
 use App\Mcp\Tools\KbWikiPromoteTool;
 use App\Mcp\Tools\KbWikiReviewTool;
 use App\Mcp\Tools\KbRecentChangesTool;
+use App\Mcp\Tools\KbRunReportTool;
 use App\Mcp\Tools\KbSearchTool;
 use App\Mcp\Tools\KbSearchByProjectTool;
 use App\Mcp\Tools\KbSetEvidenceTierTool;
@@ -101,6 +103,16 @@ class KnowledgeBaseServer extends Server
         FinOpsSpendSummaryTool::class,
         FinOpsTopModelsTool::class,
         FinOpsBudgetStatusTool::class,
+
+        // v8.19/W2 — AI Guardrails posture read surface (R44 third surface over
+        // the four offline-first controls + injection-audit aggregate). Global
+        // security infra (not tenant-scoped); aggregate-only, OFF-safe (R43).
+        KbGuardrailsInsightsTool::class,
+
+        // v8.19/W4 — Agentic Knowledge Reports read surface (R44 third surface):
+        // read a saved tabular report's computed matrix (columns + per-document
+        // cells + flag summary), tenant-scoped (R30), never triggers extraction.
+        KbRunReportTool::class,
     ];
 
     protected function boot(): void

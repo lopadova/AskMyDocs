@@ -29,15 +29,27 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_two_tools(): void
+    public function test_server_registers_exactly_thirty_four_tools(): void
     {
-        $this->assertCount(32, $this->registeredTools());
+        $this->assertCount(34, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_run_report_tool(): void
+    {
+        // v8.19/W4 — the Agentic Knowledge Reports MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\KbRunReportTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_gamification_insights_tool(): void
     {
         // v8.18/W4 — the AI gamification insights MCP read surface (R44 third surface).
         $this->assertContains(\App\Mcp\Tools\KbGamificationInsightsTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_guardrails_insights_tool(): void
+    {
+        // v8.19/W2 — the AI Guardrails posture MCP read surface (R44 third surface).
+        $this->assertContains(\App\Mcp\Tools\KbGuardrailsInsightsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_finops_read_tools(): void
