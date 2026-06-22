@@ -124,8 +124,10 @@ export function AccountMetaForm({
                         required
                         // At least one non-whitespace char — native validation
                         // matches the trimmed submission so a whitespace-only
-                        // label can't slip through to an avoidable 422.
-                        pattern=".*\S.*"
+                        // label can't slip through to an avoidable 422. JS-string
+                        // expression so the DOM receives a literal `\S` regardless
+                        // of JSX string-escape interpretation.
+                        pattern={'.*\\S.*'}
                         readOnly={labelReadOnly}
                         value={label}
                         onChange={(e) => setLabel(e.target.value)}

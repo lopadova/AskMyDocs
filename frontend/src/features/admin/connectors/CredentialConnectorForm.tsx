@@ -198,8 +198,9 @@ export function CredentialConnectorForm({
                         type="text"
                         required
                         // At least one non-whitespace char — matches the trimmed
-                        // submission so a whitespace-only label can't 422.
-                        pattern=".*\S.*"
+                        // submission so a whitespace-only label can't 422. JS-string
+                        // expression so the DOM receives a literal `\S`.
+                        pattern={'.*\\S.*'}
                         value={label}
                         onChange={(e) => setLabel(e.target.value)}
                         placeholder="e.g. Support, Sales"
