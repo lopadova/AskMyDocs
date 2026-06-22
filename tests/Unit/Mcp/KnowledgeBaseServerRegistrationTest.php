@@ -69,6 +69,14 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         $this->assertContains(\App\Mcp\Tools\KbUserBadgesTool::class, $this->registeredTools());
     }
 
+    public function test_server_registers_the_invite_tools(): void
+    {
+        // Invite system (R44 third surface) — validate (read) + generate (write).
+        $this->assertContains(\App\Mcp\Tools\InviteValidateCodeTool::class, $this->registeredTools());
+        $this->assertContains(\App\Mcp\Tools\InviteGenerateCodesTool::class, $this->registeredTools());
+        $this->assertContains(\App\Mcp\Tools\InviteMetricsTool::class, $this->registeredTools());
+    }
+
     public function test_server_registers_the_engagement_summary_tool(): void
     {
         // v8.15/W1 — the engagement analytics MCP read surface (R44).
