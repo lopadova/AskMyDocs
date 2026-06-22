@@ -142,10 +142,16 @@ export function normalizeTemplateColumns(raw: unknown): ColumnConfig[] {
             agent === 'graph' && typeof row.metric === 'string' && GOVERNANCE_METRICS.includes(row.metric)
                 ? row.metric
                 : null;
+        // Preserve enum_values (e.g. enum_status columns in the seeded templates) —
+        // dropping it silently loses the extraction/validation constraint.
+        const enumValues = Array.isArray(row.enum_values)
+            ? row.enum_values.filter((v): v is string => typeof v === 'string')
+            : undefined;
         columns.push({
             name,
             prompt: typeof row.prompt === 'string' ? row.prompt : null,
             format,
+            ...(enumValues && enumValues.length > 0 ? { enum_values: enumValues } : {}),
             json_path: typeof row.json_path === 'string' ? row.json_path : null,
             agent,
             metric,

@@ -39,7 +39,28 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
  * missing or broken, so CI (where localStorage works) is a no-op and local runs
  * are deterministic.
  */
-if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localStorage.setItem !== 'function') {
+/**
+ * Probe the ambient localStorage: it counts as usable only if a setItem +
+ * removeItem round-trip does NOT throw. Some runtimes expose a setItem function
+ * that still throws at call time (no valid backing store / quota), so a bare
+ * `typeof setItem === 'function'` check is not enough.
+ */
+function ambientLocalStorageWorks(): boolean {
+    const ls = globalThis.localStorage as Storage | undefined;
+    if (!ls || typeof ls.setItem !== 'function' || typeof ls.removeItem !== 'function') {
+        return false;
+    }
+    try {
+        const probe = '__ls_probe__';
+        ls.setItem(probe, '1');
+        ls.removeItem(probe);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+if (!ambientLocalStorageWorks()) {
     const store = new Map<string, string>();
     const memoryStorage: Storage = {
         get length(): number {

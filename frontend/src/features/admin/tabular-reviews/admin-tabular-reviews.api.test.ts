@@ -48,4 +48,20 @@ describe('normalizeTemplateColumns', () => {
         const [col] = normalizeTemplateColumns([{ name: 'X', agent: 'hallucinate' }]);
         expect(col?.agent).toBeUndefined();
     });
+
+    it('preserves enum_values for an enum_status template column', () => {
+        const [col] = normalizeTemplateColumns([
+            { name: 'Status', format: 'enum_status', enum_values: ['draft', 'accepted', 'deprecated'] },
+        ]);
+        expect(col?.format).toBe('enum_status');
+        expect(col?.enum_values).toEqual(['draft', 'accepted', 'deprecated']);
+    });
+
+    it('strips non-string entries from enum_values and omits the key when empty', () => {
+        const [mixed] = normalizeTemplateColumns([{ name: 'A', enum_values: ['ok', 3, null, 'fine'] }]);
+        expect(mixed?.enum_values).toEqual(['ok', 'fine']);
+
+        const [emptyAfterFilter] = normalizeTemplateColumns([{ name: 'B', enum_values: [1, 2] }]);
+        expect(emptyAfterFilter && 'enum_values' in emptyAfterFilter).toBe(false);
+    });
 });
