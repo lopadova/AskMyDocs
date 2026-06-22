@@ -84,7 +84,10 @@ final class ConnectorAdminController extends Controller
             $name,
             (string) ($validated['label'] ?? 'default'),
             $validated['project_key'] ?? null,
-            $request->has('project_key'),
+            // `filled()` (not `has()`): a present-but-blank `?project_key=` must
+            // NOT count as "provided" — a re-grant leaves an existing binding
+            // untouched (clearing is done via PATCH), per the request docstring.
+            $request->filled('project_key'),
             (int) $request->user()->getAuthIdentifier(),
         );
 

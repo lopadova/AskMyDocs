@@ -454,6 +454,31 @@ final class ConnectorAdminControllerTest extends TestCase
         );
     }
 
+    public function test_reinstall_with_blank_project_key_leaves_the_binding_untouched(): void
+    {
+        $admin = $this->makeSuperAdmin();
+        Project::create(['project_key' => 'acme-hr', 'name' => 'Acme HR']);
+
+        $bound = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'project_key' => 'acme-hr',
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => $admin->id,
+        ]);
+
+        // Re-grant with an explicitly BLANK project_key — must NOT clear the
+        // existing binding (filled() vs has(): blank is not "provided").
+        $this->actingAs($admin)
+            ->getJson('/api/admin/connectors/google-drive/install?label=support&project_key=')
+            ->assertOk();
+
+        $bound->refresh();
+        $this->assertSame('acme-hr', $bound->project_key);
+        $this->assertSame(ConnectorInstallation::STATUS_PENDING, $bound->status);
+    }
+
     public function test_update_renames_label_and_rebinds_project(): void
     {
         $admin = $this->makeSuperAdmin();
