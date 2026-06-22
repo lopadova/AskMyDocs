@@ -91,15 +91,26 @@ export function ConnectorsView() {
         setModalError(null);
         setModalFieldErrors({});
         setModal(next);
-        // R14 — surface projects-load failure so users know project binding is unavailable
-        // rather than silently presenting an empty dropdown that looks like "no projects".
-        if (next !== null && projectsQuery.isError) {
+    }
+
+    // R14 — surface a projects-load failure loudly whenever a modal is open and
+    // the project list errors — whether it had already failed when the modal
+    // opened OR fails afterwards (the dropdown would otherwise sit silently empty
+    // and read as "no projects"). Toast once per modal-open.
+    const projectsErrorToasted = useRef(false);
+    useEffect(() => {
+        if (modal === null) {
+            projectsErrorToasted.current = false;
+            return;
+        }
+        if (projectsQuery.isError && !projectsErrorToasted.current) {
+            projectsErrorToasted.current = true;
             toast.error(
                 'Could not load the project list — KB project binding will default to tenant default.',
                 'toast-projects-load-error',
             );
         }
-    }
+    }, [modal, projectsQuery.isError, toast]);
 
     function handleAddAccount(key: string) {
         const entry = entries.find((c) => c.key === key);

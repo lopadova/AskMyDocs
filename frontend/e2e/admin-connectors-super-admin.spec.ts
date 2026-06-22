@@ -174,7 +174,7 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         await expect(page.getByTestId('connector-notion-add-account')).toBeVisible();
     });
 
-    baseTest('connect — BE returns redirect_to with OAuth scopes', async ({ request }) => {
+    baseTest('connect — BE returns redirect_to with OAuth scopes', async ({ page }) => {
         // BE contract probe only — no UI navigation.
         //
         // We deliberately do NOT exercise the click-then-navigate UI
@@ -197,7 +197,11 @@ baseTest.describe('Admin Connectors — super-admin', () => {
         // covered here.
         // v8.20 — pass an explicit label (the BE defaults to 'default' when
         // omitted, but being explicit documents the multi-account contract).
-        const installResp = await request.get('/api/admin/connectors/google-drive/install?label=probe');
+        // page.request keeps the call in the authenticated page context
+        // (storageState cookies), avoiding a 401 from a separate request context.
+        const installResp = await page.request.get(
+            '/api/admin/connectors/google-drive/install?label=probe',
+        );
         if (!installResp.ok()) {
             throw new Error(
                 `GET install returned ${installResp.status()}: ${await installResp.text()}`,
