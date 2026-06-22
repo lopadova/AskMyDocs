@@ -52,10 +52,16 @@ final class KbCitationDocumentSeederTest extends TestCase
         // The preview endpoint reconstructs the body from the seeded chunks, so
         // the modal has REAL content to render (R13). Authenticate so the
         // auth:sanctum contract is exercised (not bypassed by RBAC=false).
-        // `['*']` mirrors a real principal on this route — a cookie SPA reader
-        // (TransientToken, all abilities) or a desktop PAT scoped for kb:read;
-        // the route now carries the PAT-only `token.ability:kb:read` gate, and
-        // a bare Sanctum::actingAs() mints a scopeless token that it 403s.
+        //
+        // Why `['*']` and not a bare actingAs: `Sanctum::actingAs()` does NOT
+        // mint a session TransientToken — it mints a `Mockery::mock(
+        // PersonalAccessToken)` with `shouldIgnoreMissing(false)`, so `can()`
+        // returns false for any ability it wasn't told about. That mock IS an
+        // `instanceof PersonalAccessToken`, so the route's PAT-only
+        // `token.ability:kb:read` gate evaluates it and 403s a bare call. `['*']`
+        // stubs `can()` => true, matching a real principal on this route — a
+        // cookie SPA reader (a genuine session TransientToken, which the gate
+        // bypasses) or a desktop PAT scoped for kb:read.
         Sanctum::actingAs($this->admin, ['*']);
         $this->getJson("/api/kb/documents/{$doc->id}/preview")
             ->assertOk()
