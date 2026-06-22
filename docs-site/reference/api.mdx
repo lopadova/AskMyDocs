@@ -66,8 +66,10 @@ never immortal. Wrong/unknown credentials → `422`. Request fields: `email`
 The `token.ability:<ability>` gate (`EnforceTokenAbility` middleware) constrains
 **only** Bearer personal access tokens: a PAT not scoped for the action gets
 `403 { "error": "token_ability_forbidden" }`. It is a **no-op for cookie-SPA
-sessions** (which carry a `TransientToken`, governed by the route's RBAC stack),
-so these dual-auth routes serve both transports without breaking either.
+sessions** (which carry a `TransientToken`, governed by the route's own gates —
+the `/api/kb/*` group is `auth:sanctum` + `tenant.authorize` plus AccessScope /
+project-membership scoping, not Spatie RBAC), so these dual-auth routes serve
+both transports without breaking either.
 
 **`POST /api/kb/chat`** — request: `question` (string, required, max 10000),
 `anonymous` (bool, optional), a legacy top-level `project_key` (string, optional),

@@ -39,7 +39,9 @@ Sanctum has two authentication shapes behind one `auth:sanctum` guard:
   request is a `Laravel\Sanctum\TransientToken` — a sentinel that means "this
   request is session-authenticated, not token-authenticated". A `TransientToken`
   answers `can()` as `true` for everything (the session user's real
-  authorization is the route's RBAC stack, not token abilities).
+  authorization comes from the route's own gates — for the `/api/kb/*` group,
+  `auth:sanctum` + `tenant.authorize` plus the controller/model AccessScope +
+  project-membership scoping — not from token abilities).
 - **Personal access tokens (PATs)** — the request carries
   `Authorization: Bearer <token>`; Sanctum hydrates the user from the hashed
   token row in `personal_access_tokens`. The current access token is a real
@@ -54,7 +56,9 @@ it throws the moment the current token is `null` or transient, so it would `401`
 every cookie-authenticated request. The host therefore ships a PAT-scoped gate,
 `EnforceTokenAbility`, that only constrains real `PersonalAccessToken`s and passes
 session / transient / unauthenticated requests straight through to the route's own
-`auth:sanctum` + `tenant.authorize` + RBAC stack.
+gates — for the `/api/kb/*` group, `auth:sanctum` + `tenant.authorize` plus the
+controller/model AccessScope + project-membership scoping (the KB group carries no
+Spatie `role:` / `permission:` middleware).
 
 ## Design
 
@@ -298,7 +302,8 @@ including the iOS build flow — lives in `desktop/README.md`.
   neither its expiry nor an explicit revoke.
 - **The `token.ability` gate is a no-op for the SPA.** Do not assume it enforces
   anything for cookie-authenticated requests — those are governed by the route's
-  RBAC stack. The gate only ever constrains real PATs.
+  own gates (`auth:sanctum` + `tenant.authorize` + AccessScope / project-membership
+  scoping for the KB group). The gate only ever constrains real PATs.
 - **The desktop project is outside Laravel CI.** It is a self-contained demo with
   its own toolchain (Rust + Node); changes there are not exercised by the host
   PHP/Vitest/Playwright suites.

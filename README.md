@@ -992,7 +992,7 @@ Citations are now openable **in the chat itself**. Clicking a cited source opens
 modal with the full document text, reconstructed from its chunks in `chunk_order` —
 tenant- and access-scope-isolated (`forTenant` + `AccessScopeScope` + soft-delete), so
 a citation can never open another tenant's or another scope's bytes. Available to every
-authenticated user via `GET /api/kb/documents/{document}/preview`; admins additionally
+authenticated user via `GET /api/kb/documents/{documentId}/preview`; admins additionally
 get a deep-link to the full KB document page. A missing/forbidden document returns the
 correct 404/403 (R14), never a 200 with empty body.
 
@@ -1074,7 +1074,7 @@ and the ADR set under [`docs/adr/`](docs/adr/)).
 | Stop / regenerate / branch / inline-edit affordances | Vercel AI SDK UI Tier 1 closure: stop-streaming via `AbortController`; regenerate-last-assistant; branch-from-message endpoint (forks the conversation tree); inline-edit user message; copy-code-block. All wired on `MessageStreamController` + the `useChatStream()` hook | v4.5 |
 | Per-message provider/model/cost metadata | Enhanced badge below every assistant message shows `provider`, `model`, `started_at`, prompt + completion tokens, and derived USD cost when `config('ai.cost_rates')` is populated (keyed by `provider → model → {input, output}`); cost is omitted (not zero) when rates are missing. Public lookup at `GET /api/chat/cost-rates` with 1-hour CDN cache | v4.5 |
 | Suggested follow-up pills | `SuggestedFollowupGenerator` derives three follow-up prompts from the assistant's last reply via `AiManager::chat()`; renders as clickable pill chips above the composer; clicking submits via the streaming endpoint. Best-effort — provider error / parse failure / empty response returns `[]` and the row is not rendered. Triggered once on `onFinish` per assistant turn at `POST /conversations/{id}/suggested-followups` | v4.5 |
-| In-chat source preview | Clicking a citation opens the cited document in a modal — full text reconstructed from chunks in `chunk_order` via `GET /api/kb/documents/{document}/preview`, tenant- + access-scope-isolated (`forTenant` + `AccessScopeScope` + soft-delete; cross-scope read impossible), 404/403 on miss (R14). Open to every authenticated user; admins get an extra deep-link to the full KB document page | team switcher cycle |
+| In-chat source preview | Clicking a citation opens the cited document in a modal — full text reconstructed from chunks in `chunk_order` via `GET /api/kb/documents/{documentId}/preview`, tenant- + access-scope-isolated (`forTenant` + `AccessScopeScope` + soft-delete; cross-scope read impossible), 404/403 on miss (R14). Open to every authenticated user; admins get an extra deep-link to the full KB document page | team switcher cycle |
 
 ### Security & Compliance
 
@@ -1923,7 +1923,7 @@ project registry** — `projects` table with per-tenant `UNIQUE (tenant_id,
 project_key)`, immutable key, delete-guard, seeder backfill, CRUD at
 `/api/admin/projects/*`. **In-chat source preview** — open a cited document in a modal,
 reconstructed from chunks and tenant/access-scope isolated, via
-`GET /api/kb/documents/{document}/preview`. **Automated isolation testing** — an
+`GET /api/kb/documents/{documentId}/preview`. **Automated isolation testing** — an
 executable `IsolationMatrix` shared by a live E2E, the `case-study:verify-isolation`
 CLI, and a CI membership-axis test, separating HARD breaches from SOFT
 refusal-ideal misses. Three new tenant-aware models (`Project`, `KbIngestBatch`,
