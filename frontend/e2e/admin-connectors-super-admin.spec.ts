@@ -95,7 +95,12 @@ baseTest.describe('Admin Connectors — OAuth AccountMetaForm (multi-account, v8
         );
         await page.route('https://accounts.google.com/**', (route) => route.abort());
 
-        await page.getByTestId('connector-google-drive-account-form-submit').click();
+        // noWaitAfter — the submit fires window.location.assign() to the external
+        // OAuth URL (aborted above); without this the click auto-waits on the
+        // navigation and can flake. We only need the outgoing install request.
+        await page
+            .getByTestId('connector-google-drive-account-form-submit')
+            .click({ noWaitAfter: true });
 
         // The install API was called and the label param was forwarded.
         const installRequest = await installRequestPromise;

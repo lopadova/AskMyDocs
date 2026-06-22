@@ -88,6 +88,15 @@ export function CredentialConnectorForm({
         setValues(seed);
     }, [schema]);
 
+    // Reset the injected label/project too on connector identity change — so a
+    // reused modal instance never leaks a previous account's label/binding into
+    // the next submission (the parent also keys this component by connector, so
+    // this is belt-and-suspenders).
+    useEffect(() => {
+        setLabel('');
+        setProjectKey('');
+    }, [entry.key]);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === 'Escape') onClose();
