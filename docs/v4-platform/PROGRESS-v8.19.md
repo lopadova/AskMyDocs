@@ -59,7 +59,7 @@ regolo + finops.
     R32 matrix incl. the guardrails write-method boundary (admin 403 / super-admin pass on PUT /settings).
   - **R45 doc-site** (`docs-site/ai-guardrails.mdx`) is authored in **W6** with the rest of the cycle's docs
     (every wave defers its doc-site page to the single docs wave); README/changelog/MCP-count also land in W6.
-- **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — 🟡 impl done, testing
+- **W3 — guardrails-admin SPA mount (RBAC, default-OFF, E2E)** — ✅ (PR #342 merged)
   - `composer require padosoft/laravel-ai-guardrails-admin:^1.0.0` (v1.0.0). Self-contained Blade-served React
     SPA at `/admin/ai-guardrails` (like finops-admin, NOT a host-React cross-mount → no nav-config entry; reached
     by direct URL + RBAC, consistent with finops-admin).
@@ -70,10 +70,27 @@ regolo + finops.
   - Route stack: `guardrails-admin.enabled,web,auth,can:viewAiGuardrails` (open the panel = viewAiGuardrails;
     writes hit the core API's `manageAiGuardrails`). Prebuilt Vite assets published to
     `public/vendor/ai-guardrails-admin/`. api_base → the W2 core prefix `/api/admin/ai-guardrails`.
-  - Tests: GuardrailsAdminMountingTest 5 (route registers + middleware; R43 OFF→404; viewer→403; admin→200);
-    Playwright `admin-ai-guardrails.spec.ts` (admin reaches the `#agr-root` shell; viewer→403; R13 real-data).
-    CI server env flag `AI_GUARDRAILS_ADMIN_ENABLED=true` in tests.yml + playwright.config.ts.
-- **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — ⬜ (MCP 33→34)
+  - Tests: GuardrailsAdminMountingTest 6 (route registers + middleware; R43 OFF→404; guest redirect; viewer→403;
+    admin→200); Playwright `admin-ai-guardrails.spec.ts` (admin reaches the `#agr-root` shell + 4 control cards;
+    viewer→403; R13 real-data). CI asset-publish step + server env flag `AI_GUARDRAILS_ADMIN_ENABLED=true`.
+- **W4 — Agentic Knowledge Reports backend (agentic columns + governance + library)** — 🟡 impl done, testing
+  - `AgentKind` enum (extract/graph/verify) — the agentic dimension, orthogonal to FormatType; absent → extract
+    (backward-compatible, every pre-v8.19 review unchanged — 48 existing tabular tests stay green).
+  - `GovernanceColumnResolver` (deterministic, NO LLM): 10 metrics from the canonical graph (kb_edges) + doc
+    columns — evidence_tier, frontmatter_completeness, canonical_status, is_canonical, incoming/outgoing_edges,
+    graph_connectivity, is_orphan, supersession_status, staleness_days. Tenant-scoped (R30), R14 grey/red on
+    non-canonical/unknown.
+  - `TabularReviewExtractor` extended: `agent: graph` → resolver (LLM-free, wins over json_path); `agent: verify`
+    → a bounded second LLM pass that downgrades a flag (green→yellow/else→red) when the value isn't supported by
+    the document's retrieved evidence (R14: never worse than extract; verify failure keeps the original cell).
+  - Flagship preset "Canonical KB Governance Audit" (#16) seeded via `BuiltInWorkflowSeeder` — 8 graph governance
+    columns + 1 verify contradiction column (the ready-made library is now 16 templates; seeder test 15→16).
+  - Validation: `agent` + `metric` added to Store/Update TabularReview requests (metric required+enumerated for
+    graph). Tri-surface (R44): PHP (extractor+seeder), HTTP (existing /api/admin/tabular-reviews/*), MCP
+    `KbRunReportTool` (roster **33→34**, reads a report's matrix bounded by COUNT(DISTINCT)+LIMIT, R30/R43).
+  - Tests: GovernanceColumnResolverTest 11 (incl. self-declared superseded_by), extractor agentic 2 (graph
+    deterministic no-LLM + verify downgrade), RunReportToolTest 4 (matrix + R30 cross-tenant + R43 missing +
+    max_rows cap), MCP registration 34; full sweep 174 green.
 - **W5 — Agentic Knowledge Reports FE (Glide grid + streaming + editor)** — ⬜
 - **W6 — README + doc-site** — ⬜
 - **GA — merge feature/v8.19 → main + tag v8.19.0** — ⬜

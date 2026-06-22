@@ -42,6 +42,14 @@ class UpdateTabularReviewRequest extends FormRequest
                 'string',
                 'max:200',
             ],
+            // v8.19/W4 — agentic dimension; mirrors the store-request rule.
+            'columns_config.*.agent' => ['nullable', 'string', Rule::in(\App\Support\TabularReview\AgentKind::values())],
+            'columns_config.*.metric' => [
+                'required_if:columns_config.*.agent,graph',
+                'nullable',
+                'string',
+                Rule::in(\App\Services\TabularReview\GovernanceColumnResolver::METRICS),
+            ],
             'workflow_id' => ['sometimes', 'nullable', 'integer'],
             'shared_with' => ['sometimes', 'nullable', 'array'],
             'shared_with.*' => ['integer'],

@@ -42,6 +42,16 @@ class StoreTabularReviewRequest extends FormRequest
                 'string',
                 'max:200',
             ],
+            // v8.19/W4 — the agentic dimension (default extract). A `graph`
+            // column computes a deterministic governance metric, so the `metric`
+            // key is required + must name a known governance signal.
+            'columns_config.*.agent' => ['nullable', 'string', Rule::in(\App\Support\TabularReview\AgentKind::values())],
+            'columns_config.*.metric' => [
+                'required_if:columns_config.*.agent,graph',
+                'nullable',
+                'string',
+                Rule::in(\App\Services\TabularReview\GovernanceColumnResolver::METRICS),
+            ],
             'workflow_id' => ['nullable', 'integer'],
             'shared_with' => ['nullable', 'array'],
             'shared_with.*' => ['integer'],
