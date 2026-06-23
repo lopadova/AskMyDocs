@@ -145,6 +145,39 @@ hard delete cascades the graph). Soft delete is the default
 (`KB_SOFT_DELETE_ENABLED=true`); rows hide from every read path until
 `kb:prune-deleted` hard-deletes them after the retention window.
 
+## Queue baseline & sync observability (v8.21)
+
+Connector sync and per-document ingestion run on **dedicated queues** so they
+don't compete with the chat hot path or `default` background work
+(autowiki / change-analysis):
+
+| Role | Queue | Env |
+|---|---|---|
+| Connector sync (`ConnectorSyncJob`) | `connectors` | `CONNECTOR_SYNC_JOB_QUEUE` |
+| Per-document ingestion (`IngestDocumentJob`) | `kb-ingest` | `KB_INGEST_QUEUE` |
+| Everything else | `default` | (queue connection default) |
+
+Run a worker per queue — e.g.
+`php artisan queue:work --queue=connectors`,
+`--queue=kb-ingest`, `--queue=default` — or, under Horizon, one
+auto-scaling supervisor per queue. The previous default (`CONNECTOR_SYNC_JOB_QUEUE=default`)
+let a slow remote sync starve the rest of `default`; the v8.21 default is
+`connectors`.
+
+**Observability.** Each `ConnectorSyncJob` execution is recorded host-side into
+`connector_sync_runs` (started/finished, duration, documents discovered,
+status: running / success / partial / failed). Read it three ways (R44):
+
+- **CLI** — `php artisan ingestion:status --tenant=<id>` (queue depths + recent runs).
+- **HTTP** — `GET /api/admin/ingestion/queue` (depths) and
+  `GET /api/admin/connectors/{installationId}/sync-runs` (per-account history),
+  super-admin only.
+- **MCP** — the `KbIngestionStatusTool` read tool.
+
+Per-document ingestion status (derived from the Flow engine's `flow_runs`) is a
+tracked follow-up — `flow_runs` is not tenant-scoped, so exposing it safely
+needs a tenant-isolation pass first.
+
 ## Gotchas & operations
 
 - Use `App\Support\KbPath::normalize()` for every source path — ingest and delete

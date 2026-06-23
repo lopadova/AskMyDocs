@@ -173,15 +173,19 @@ final class ConnectorSyncRunRecorder
     {
         try {
             $payload = $event->job->payload();
-            if (($payload['data']['commandName'] ?? null) !== ConnectorSyncJob::class) {
+            // commandName is optional on some drivers/payloads — fall back to
+            // displayName (same posture as FailedJobResource::resolveJobClass).
+            $commandName = $payload['data']['commandName'] ?? $payload['data']['displayName'] ?? null;
+            if ($commandName !== ConnectorSyncJob::class) {
+                return null;
+            }
+            $serialized = $payload['data']['command'] ?? null;
+            if (! is_string($serialized) || $serialized === '') {
                 return null;
             }
             // Restrict allowed classes to prevent PHP object-injection from a
             // tampered queue payload (the job carries only int + string props).
-            $command = unserialize(
-                $payload['data']['command'],
-                ['allowed_classes' => [ConnectorSyncJob::class]],
-            );
+            $command = unserialize($serialized, ['allowed_classes' => [ConnectorSyncJob::class]]);
 
             return $command instanceof ConnectorSyncJob ? $command : null;
         } catch (Throwable) {
