@@ -245,6 +245,32 @@ final class AppSettingsGovernanceTest extends TestCase
         $this->assertSame(60, $resolver->effective('connector.sync_cadence_minutes', 'default'));
     }
 
+    public function test_core_normalises_empty_project_key_to_wildcard(): void
+    {
+        // set()/effective() are callable directly — an empty/whitespace scope
+        // must behave as tenant-wide, not as a project override or empty scope.
+        $resolver = new AppSettingsResolver;
+        $resolver->set('ai.provider', 'anthropic', 'default', '   ');
+
+        $this->assertDatabaseHas('app_settings', [
+            'tenant_id' => 'default',
+            'project_key' => '*',
+            'setting_key' => 'ai.provider',
+        ]);
+        $this->assertSame('anthropic', $resolver->effective('ai.provider', 'default', ''));
+    }
+
+    public function test_set_rejects_non_scalar_value(): void
+    {
+        $resolver = new AppSettingsResolver;
+
+        $this->assertValidationError(
+            fn () => $resolver->set('ai.provider', ['array'], 'default'),
+            'value',
+            '/must be a scalar/',
+        );
+    }
+
     public function test_set_rejects_overlong_project_key(): void
     {
         $resolver = new AppSettingsResolver;

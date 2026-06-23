@@ -37,6 +37,10 @@ class AppSettingsResolver
             return null;
         }
 
+        // Normalise at the core — this service is callable directly, not only
+        // through the (already-normalising) surfaces (empty/whitespace → '*').
+        $projectKey = AppSetting::normalizeProjectKey($projectKey);
+
         // A tenant-scoped key never varies by project: ignore the project row
         // on READ too, so reads stay consistent with writes (set() rejects
         // project overrides) and a stray/legacy project row can't silently
@@ -86,6 +90,8 @@ class AppSettingsResolver
      */
     public function all(string $tenantId, string $projectKey = AppSetting::WILDCARD): array
     {
+        $projectKey = AppSetting::normalizeProjectKey($projectKey);
+
         // Prefetch every governable key's rows at both the wildcard and the
         // requested project scope in ONE query, then layer + cast in memory —
         // the read surface stays O(1) queries as the registry grows (avoids the
@@ -135,6 +141,11 @@ class AppSettingsResolver
      */
     public function set(string $key, mixed $value, string $tenantId, string $projectKey = AppSetting::WILDCARD): void
     {
+        // Normalise at the core — this service is callable directly, so an
+        // empty/whitespace project_key must mean tenant-wide ('*'), not be
+        // treated as a project override or persisted as an empty scope.
+        $projectKey = AppSetting::normalizeProjectKey($projectKey);
+
         $descriptor = AppSettingRegistry::get($key);
         if ($descriptor === null) {
             throw ValidationException::withMessages(['key' => ["Unknown setting '{$key}'."]]);
@@ -250,6 +261,14 @@ class AppSettingsResolver
     {
         $type = (string) $descriptor['type'];
 
+        // The HTTP surface accepts any JSON type for `value`. A non-scalar
+        // (array/object) is never valid for any governable key — reject it up
+        // front so it reliably becomes a 422 with no noisy filter_var warning
+        // (R14), and a corrupt DB row falls through to the next layer.
+        if (! is_scalar($value)) {
+            throw ValidationException::withMessages(['value' => ['Value must be a scalar.']]);
+        }
+
         if ($type === 'enum') {
             $options = (array) ($descriptor['enum'] ?? []);
             if (! in_array($value, $options, true)) {
@@ -289,13 +308,7 @@ class AppSettingsResolver
             return $bool;
         }
 
-        // string (and any other type): a non-scalar (array/object) must NOT be
-        // coerced to "Array" — reject it so a corrupt row falls through to the
-        // next layer (mirrors the int/bool/enum invariant, R14).
-        if (! is_scalar($value)) {
-            throw ValidationException::withMessages(['value' => ['Value must be a string.']]);
-        }
-
+        // string (and any other type): non-scalars are already rejected above.
         return (string) $value;
     }
 }
