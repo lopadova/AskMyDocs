@@ -49,13 +49,17 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
     const overrideAtScope = scopedToProject ? setting.source === 'project' : setting.source === 'tenant';
 
     const submit = () => {
-        const raw =
+        // For int, send the trimmed STRING (not Number(draft)) — an intermediate
+        // value like "-" or "1e" would become NaN, which JSON-serializes to null
+        // and would silently CLEAR the override. Sending the string lets the BE
+        // int validator reject it with a 422 instead. Empty → null = clear.
+        const raw: string | number | boolean | null =
             setting.type === 'bool'
                 ? draft === 'true'
                 : setting.type === 'int'
                   ? draft.trim() === ''
                       ? null
-                      : Number(draft)
+                      : draft.trim()
                   : draft;
         mutation.mutate({ key: setting.key, value: raw });
     };
