@@ -48,7 +48,16 @@ final class ProjectMembershipProvisioner implements Provisioner
 
         foreach ($grant->projects as $projectKey) {
             try {
-                ProjectMembership::query()->firstOrCreate(
+                // withoutGlobalScopes(): a grant tenant can differ from the
+                // request's active tenant (one code provisions across several
+                // tenants). ProjectMembership carries no tenant global scope
+                // today, but asserting it here keeps the cross-tenant lookup
+                // correct even if one is ever added — the firstOrCreate must
+                // match on the GRANT's tenant, never the active one. The INSERT
+                // still lands in $grant->tenantId because we pass it explicitly
+                // (BelongsToTenant::creating only auto-fills when tenant_id is
+                // empty, so it never overwrites our value).
+                ProjectMembership::query()->withoutGlobalScopes()->firstOrCreate(
                     [
                         'tenant_id' => $grant->tenantId,
                         'user_id' => $userId,
