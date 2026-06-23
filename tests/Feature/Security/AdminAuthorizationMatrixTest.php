@@ -98,7 +98,6 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
             '/api/admin/connectors' => ['super-admin'],                 // manageConnectors
             '/api/admin/ingestion/queue' => ['super-admin'],            // manageConnectors (v8.21 Ciclo 2)
-            '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
             '/api/admin/mcp-servers' => ['super-admin'],                // manageMcpTools
             '/api/admin/mcp/tokens' => ['super-admin'],                 // manageMcpTools
             '/api/admin/mcp-tool-call-audit' => ['admin', 'super-admin'], // viewMcpAudit
@@ -110,6 +109,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/evidence-risk-review/reviews' => ['admin', 'dpo', 'super-admin'], // viewEvidenceRiskReview
             '/api/admin/ai-finops/settings' => ['admin', 'super-admin'], // FinOpsAuthorize: GET → viewAiFinOps
             '/api/admin/ai-guardrails/overview' => ['admin', 'super-admin'], // GuardrailsAuthorize: GET → viewAiGuardrails
+
+            // ── Role-middleware groups — `role:` middleware, not a Gate ──
+            '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys

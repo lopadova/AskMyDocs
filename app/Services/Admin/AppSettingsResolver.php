@@ -289,6 +289,13 @@ class AppSettingsResolver
             return $bool;
         }
 
+        // string (and any other type): a non-scalar (array/object) must NOT be
+        // coerced to "Array" — reject it so a corrupt row falls through to the
+        // next layer (mirrors the int/bool/enum invariant, R14).
+        if (! is_scalar($value)) {
+            throw ValidationException::withMessages(['value' => ['Value must be a string.']]);
+        }
+
         return (string) $value;
     }
 }

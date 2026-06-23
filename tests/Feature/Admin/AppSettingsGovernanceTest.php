@@ -122,32 +122,46 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver->set('connector.sync_cadence_minutes', '60', 'default');
         $this->assertSame(60, $resolver->effective('connector.sync_cadence_minutes', 'default'));
 
-        $this->expectExceptionMessageMatches('/between 5 and 1440/');
-        $resolver->set('connector.sync_cadence_minutes', 3, 'default');
+        // Assert on the FIELD error (errors()), not getMessage() — Laravel's
+        // ValidationException message is not a stable contract across versions.
+        $this->assertValidationError(
+            fn () => $resolver->set('connector.sync_cadence_minutes', 3, 'default'),
+            'value',
+            '/between 5 and 1440/',
+        );
     }
 
     public function test_enum_setting_rejects_unknown_value(): void
     {
         $resolver = new AppSettingsResolver;
 
-        $this->expectExceptionMessageMatches('/must be one of/');
-        $resolver->set('ai.provider', 'not-a-provider', 'default');
+        $this->assertValidationError(
+            fn () => $resolver->set('ai.provider', 'not-a-provider', 'default'),
+            'value',
+            '/must be one of/',
+        );
     }
 
     public function test_set_rejects_unknown_key(): void
     {
         $resolver = new AppSettingsResolver;
 
-        $this->expectExceptionMessageMatches('/Unknown setting/');
-        $resolver->set('totally.made.up', 'x', 'default');
+        $this->assertValidationError(
+            fn () => $resolver->set('totally.made.up', 'x', 'default'),
+            'key',
+            '/Unknown setting/',
+        );
     }
 
     public function test_set_rejects_deploy_only_key(): void
     {
         $resolver = new AppSettingsResolver;
 
-        $this->expectExceptionMessageMatches('/deploy-managed/');
-        $resolver->set('ai_finops.enabled', true, 'default');
+        $this->assertValidationError(
+            fn () => $resolver->set('ai_finops.enabled', true, 'default'),
+            'key',
+            '/deploy-managed/',
+        );
     }
 
     public function test_normalize_project_key_handles_non_scalar_and_whitespace(): void
@@ -195,8 +209,11 @@ final class AppSettingsGovernanceTest extends TestCase
 
         // ai.provider is tenant-scoped — a per-project override is rejected
         // rather than silently accepted (would falsify provenance).
-        $this->expectExceptionMessageMatches('/tenant-scoped/');
-        $resolver->set('ai.provider', 'anthropic', 'default', 'engineering');
+        $this->assertValidationError(
+            fn () => $resolver->set('ai.provider', 'anthropic', 'default', 'engineering'),
+            'project_key',
+            '/tenant-scoped/',
+        );
     }
 
     public function test_int_setting_rejects_decimal(): void
@@ -204,8 +221,11 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver = new AppSettingsResolver;
 
         // A decimal must NOT be silently truncated to an int.
-        $this->expectExceptionMessageMatches('/must be an integer/');
-        $resolver->set('connector.sync_cadence_minutes', '12.5', 'default');
+        $this->assertValidationError(
+            fn () => $resolver->set('connector.sync_cadence_minutes', '12.5', 'default'),
+            'value',
+            '/must be an integer/',
+        );
     }
 
     public function test_int_setting_rejects_float_and_scientific_strings(): void
@@ -213,12 +233,11 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver = new AppSettingsResolver;
 
         foreach (['60.0', '60e0', '6e1', ' 60.0 '] as $bad) {
-            try {
-                $resolver->set('connector.sync_cadence_minutes', $bad, 'default');
-                $this->fail("Expected '{$bad}' to be rejected as a non-integer.");
-            } catch (\Illuminate\Validation\ValidationException $e) {
-                $this->assertStringContainsString('must be an integer', $e->getMessage());
-            }
+            $this->assertValidationError(
+                fn () => $resolver->set('connector.sync_cadence_minutes', $bad, 'default'),
+                'value',
+                '/must be an integer/',
+            );
         }
 
         // A pure-digit string (and surrounding whitespace) is still accepted.
@@ -230,8 +249,30 @@ final class AppSettingsGovernanceTest extends TestCase
     {
         $resolver = new AppSettingsResolver;
 
-        $this->expectExceptionMessageMatches('/must not exceed 120/');
-        $resolver->set('connector.sync_cadence_minutes', 60, 'default', str_repeat('a', 121));
+        $this->assertValidationError(
+            fn () => $resolver->set('connector.sync_cadence_minutes', 60, 'default', str_repeat('a', 121)),
+            'project_key',
+            '/must not exceed 120/',
+        );
+    }
+
+    /**
+     * Assert the callback throws a ValidationException whose $field error
+     * matches $pattern. Asserts on errors() (the stable contract), not
+     * getMessage() (which Laravel does not guarantee across versions).
+     */
+    private function assertValidationError(callable $fn, string $field, string $pattern): void
+    {
+        try {
+            $fn();
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey($field, $e->errors());
+            $this->assertMatchesRegularExpression($pattern, implode(' ', $e->errors()[$field]));
+
+            return;
+        }
+
+        $this->fail('Expected a ValidationException to be thrown.');
     }
 
     public function test_set_null_clears_the_override(): void
