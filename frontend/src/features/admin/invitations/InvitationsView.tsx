@@ -18,7 +18,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Icon } from '../../../components/Icons';
-import { useTeamStore } from '../../../lib/team-store';
+import { api } from '../../../lib/api';
 
 const INVITATIONS_ADMIN_BASE_URL = '/admin/invitations';
 const INVITATIONS_METRICS_URL = '/api/admin/invitations/metrics';
@@ -38,28 +38,17 @@ export function InvitationsView() {
         const controller = new AbortController();
         const id = window.setTimeout(() => controller.abort(), 10_000);
 
-        // Raw fetch (not the shared axios client) → replicate lib/api.ts's team
-        // header by hand, INCLUDING the `default` sentinel skip (api.ts omits
-        // X-Tenant-Id for `default` so sister-package mounts take their
-        // host-config fallback instead of 404ing). Same pattern as FlowsView.
-        const team = useTeamStore.getState().currentTeam;
-        void fetch(INVITATIONS_METRICS_URL, {
-            method: 'GET',
-            credentials: 'same-origin',
-            headers: {
-                Accept: 'application/json',
-                ...(team !== null && team !== 'default' ? { 'X-Tenant-Id': team } : {}),
-            },
-            signal: controller.signal,
-        })
-            .then(async (response) => {
+        // Use the shared SPA axios client (lib/api.ts) — it carries the
+        // stateful-Sanctum contract (X-Requested-With: XMLHttpRequest + Accept +
+        // withCredentials) and the X-Tenant-Id interceptor (with the `default`
+        // sentinel skip), so the metrics read authenticates in real browsers via
+        // the session cookie. A raw fetch without X-Requested-With can be treated
+        // by Sanctum as a stateless API call and fail auth.
+        void api
+            .get<{ data?: Record<string, unknown> }>(INVITATIONS_METRICS_URL, { signal: controller.signal })
+            .then((response) => {
                 if (!active) return;
-                if (!response.ok) {
-                    setState('error');
-                    return;
-                }
-                const body = (await response.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
-                const data = body?.data ?? null;
+                const data = response.data?.data ?? null;
                 // R14: validate the SHAPE, not just non-null. A non-JSON 200, a
                 // renamed field, or a string where a number is expected would
                 // otherwise render NaN KPIs that look like valid data. Require
