@@ -45,8 +45,13 @@ class AppSettingsResolver
             $projectKey = AppSetting::WILDCARD;
         }
 
+        // The memo serves the AI hot path within a single (short-lived) web
+        // request. In a long-lived console process (queue worker, MCP server)
+        // it would pin a value until restart and defeat the "runtime" nature of
+        // app_settings — so re-query every call there.
+        $useMemo = ! app()->runningInConsole();
         $memoKey = "{$tenantId}\0{$projectKey}\0{$key}";
-        if (array_key_exists($memoKey, $this->memo)) {
+        if ($useMemo && array_key_exists($memoKey, $this->memo)) {
             return $this->memo[$memoKey];
         }
 
@@ -64,7 +69,13 @@ class AppSettingsResolver
             ?? $rows->get(AppSetting::WILDCARD)?->value_json
             ?? $default;
 
-        return $this->memo[$memoKey] = $this->cast($raw, (string) $descriptor['type']);
+        $value = $this->cast($raw, (string) $descriptor['type']);
+
+        if ($useMemo) {
+            $this->memo[$memoKey] = $value;
+        }
+
+        return $value;
     }
 
     /**

@@ -35,6 +35,7 @@ class AppSettingsTool extends Tool
         return [
             'project_key' => $schema->string()
                 ->description('Resolve overrides for this project (optional; defaults to the tenant-wide "*" scope).')
+                ->nullable()
                 ->default(AppSetting::WILDCARD),
         ];
     }
