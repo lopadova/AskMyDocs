@@ -22,11 +22,11 @@ const connectorsMock: QueryMock<ConnectorEntry[]> = { data: [], isLoading: false
 
 vi.mock('./ingestion-hooks', () => ({
     useQueueDepths: () => ({ ...queueMock, refetch: vi.fn() }),
-    useSyncRuns: () => runsMock,
+    useSyncRuns: () => ({ ...runsMock, refetch: vi.fn() }),
 }));
 
 vi.mock('../connectors/connectors-hooks', () => ({
-    useConnectors: () => connectorsMock,
+    useConnectors: () => ({ ...connectorsMock, refetch: vi.fn() }),
 }));
 
 vi.mock('../shell/AdminShell', () => ({
