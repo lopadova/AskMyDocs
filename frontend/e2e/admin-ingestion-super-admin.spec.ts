@@ -68,7 +68,7 @@ baseTest.describe('Admin Ingestion & Sync — super-admin', () => {
         // the UI error branch (data-state="error" + admin-ingestion-queue-error
         // + admin-ingestion-queue-retry) is exercised end-to-end in the browser.
         await page.route('**/api/admin/ingestion/queue', (route) =>
-            route.fulfill({ status: 500, body: JSON.stringify({ message: 'server error' }) }),
+            route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'server error' }) }),
         );
 
         await page.goto('/app/admin/ingestion');

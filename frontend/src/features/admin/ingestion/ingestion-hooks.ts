@@ -26,7 +26,14 @@ export function useQueueDepths() {
 export function useSyncRuns(installationId: number | null) {
     return useQuery<SyncRunDto[]>({
         queryKey: [...INGESTION_KEY, 'sync-runs', installationId],
-        queryFn: () => adminIngestionApi.syncRuns(installationId as number),
+        queryFn: () => {
+            // Runtime guard (not a cast): if `enabled` gating ever regresses,
+            // fail loudly instead of requesting `/sync-runs` for a null id.
+            if (installationId === null) {
+                throw new Error('useSyncRuns invoked without an installationId');
+            }
+            return adminIngestionApi.syncRuns(installationId);
+        },
         enabled: installationId !== null,
         refetchInterval: 15_000,
         staleTime: 5_000,
