@@ -29,9 +29,19 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_six_tools(): void
+    public function test_server_registers_exactly_thirty_nine_tools(): void
     {
-        $this->assertCount(36, $this->registeredTools());
+        $this->assertCount(39, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_invitations_tools(): void
+    {
+        // padosoft/laravel-invitations tri-surface (R44 third surface): the
+        // package's three MCP tools registered on the host server.
+        $tools = $this->registeredTools();
+        $this->assertContains(\Padosoft\Invitations\Mcp\Tools\InviteValidateCodeTool::class, $tools);
+        $this->assertContains(\Padosoft\Invitations\Mcp\Tools\InviteGenerateCodesTool::class, $tools);
+        $this->assertContains(\Padosoft\Invitations\Mcp\Tools\InviteMetricsTool::class, $tools);
     }
 
     public function test_server_registers_the_ingestion_status_tool(): void
@@ -186,6 +196,19 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         // PSR-4. We assert at the SOURCE FILE level (PSR-4 path) so the
         // test survives environments without laravel/mcp installed.
         foreach ($this->registeredTools() as $toolClass) {
+            // Vendor-namespaced tools (e.g. the padosoft/laravel-invitations
+            // MCP surface) live under vendor/ and resolve via composer's PSR-4
+            // autoload — they don't map onto the host `app/` PSR-4 root, so
+            // assert their loadability instead of a host-relative file path.
+            if (! str_starts_with($toolClass, 'App\\')) {
+                $this->assertTrue(
+                    class_exists($toolClass),
+                    "Registered MCP tool {$toolClass} is not autoloadable"
+                );
+
+                continue;
+            }
+
             $relativePath = str_replace(
                 ['App\\', '\\'],
                 ['app/', '/'],

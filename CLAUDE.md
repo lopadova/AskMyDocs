@@ -94,8 +94,9 @@ kb:delete / DELETE /api/kb/documents / --prune-orphans / kb:prune-deleted
 | HTTP entrypoints | `app/Http/Controllers/Api/*.php` |
 | Artisan | `app/Console/Commands/*.php` |
 | Chat logging | `app/Services/ChatLog/*` + `app/Models/ChatLog.php` |
-| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (35 tools: retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool` + the v8.18/W4 AI gamification read surface `KbGamificationInsightsTool` + the v8.19/W4 Agentic Knowledge Reports read surface `KbRunReportTool` + the v8.20 multi-account connectors read surface `ConnectorInstallationsTool`; count locked by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`) |
+| MCP | `app/Mcp/Servers/KnowledgeBaseServer.php`, `app/Mcp/Tools/*` (39 tools: retrieval + canonical/promote + auto-wiki + engagement + the v8.16/W4 AI FinOps read surfaces `FinOps{SpendSummary,TopModels,BudgetStatus}Tool` + the v8.18/W4 AI gamification read surface `KbGamificationInsightsTool` + the v8.19/W4 Agentic Knowledge Reports read surface `KbRunReportTool` + the v8.20 multi-account connectors read surface `ConnectorInstallationsTool` + the `padosoft/laravel-invitations` tri-surface `Invite{ValidateCode,GenerateCodes,Metrics}Tool` (vendor-namespaced, registered on the host server); count locked by `tests/Unit/Mcp/KnowledgeBaseServerRegistrationTest.php`) |
 | Admin RBAC + auth | `app/Http/Controllers/Api/Admin/*.php`, `app/Services/Admin/*.php`, `app/Http/Requests/Admin/*.php`, `app/Http/Resources/Admin/*.php` |
+| Invitations (`padosoft/laravel-invitations`) | `config/invitations.php` (host route middleware + `manageInvitations` gate, `INVITE_REQUIRED` default-false R43), `app/Invitations/ProjectMembershipProvisioner.php` (GRANT-never-REVOKE project membership from a `TenantGrant`), `App\Models\User` (implements `InvitedAccount`), `AppServiceProvider::registerInvitationsIntegration()` (TenantResolver→TenantContext + provisioner tag) + `registerInvitationsGates()`; MCP `Invite{ValidateCode,GenerateCodes,Metrics}Tool` on `KnowledgeBaseServer`; routes auto-mount at `/api/{admin/}invitations/*`. The 9 invite tables are package-owned + tenant-aware (R30/R31 in the package's CI). |
 | Admin metrics + health | `app/Services/Admin/AdminMetricsService.php`, `HealthCheckService.php`, `app/Http/Controllers/Api/Admin/DashboardMetricsController.php` |
 | Admin KB surface (tree + detail + editor + graph + PDF) | `app/Services/Admin/KbTreeService.php`, `app/Http/Controllers/Api/Admin/KbTreeController.php`, `KbDocumentController.php`, `app/Services/Admin/Pdf/PdfRenderer*.php` |
 | Admin log viewer (H1) | `app/Services/Admin/LogTailService.php`, `app/Http/Controllers/Api/Admin/LogViewerController.php` |
@@ -861,6 +862,15 @@ admin_command_nonces, admin_insights_snapshots, chat_filter_presets.
 layer keyed `UNIQUE(text_hash, provider, model)` (same text+provider+model embeds once
 across tenants); `TenantIdMandatoryTest` documents the exclusion. (`User` is likewise
 excluded as cross-tenant identity.)
+**Package-owned tenant-aware tables** (NOT in the host `TenantIdMandatoryTest`
+enumeration because their models live in `vendor/`, not `app/Models/` — the
+package enforces R30/R31 in its own CI; same posture as the
+`padosoft/askmydocs-connector-base` tables): the 9
+`padosoft/laravel-invitations` tables — `invite_campaigns`, `invite_codes`,
+`invitations`, `invite_redemptions`, `invite_referrals`, `invite_rewards`,
+`invite_waitlist`, `invite_abuse_signals`, `invite_analytics_events` — each
+carry `tenant_id` and are scoped through the host `TenantContext` (bound to the
+package's `Padosoft\Invitations\Contracts\TenantResolver` in `AppServiceProvider`).
 → See `.claude/skills/cross-tenant-isolation/SKILL.md`.
 
 ### R31 — `tenant_id` mandatory on every tenant-aware Model + migration
