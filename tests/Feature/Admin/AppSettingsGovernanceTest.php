@@ -214,6 +214,18 @@ final class AppSettingsGovernanceTest extends TestCase
         $this->assertInstanceOf(AnthropicProvider::class, (new AiManager)->provider());
     }
 
+    public function test_aimanager_ignores_a_stale_unconfigured_provider_override(): void
+    {
+        // A stored override that is no longer a configured provider (removed
+        // from config, or a bad manual DB value) must NOT reach resolve() and
+        // throw — provider() falls back to the config default (R43/R14).
+        app(AppSettingsResolver::class)->set('ai.provider', 'anthropic', 'default');
+        config(['ai.providers.anthropic' => null]);
+        app(TenantContext::class)->set('default');
+
+        $this->assertInstanceOf(OpenAiProvider::class, (new AiManager)->provider());
+    }
+
     public function test_aimanager_falls_back_to_config_default_when_resolver_throws(): void
     {
         // R43/R14 OFF-safe: a governance/DB failure must NEVER break the chat

@@ -81,7 +81,14 @@ class AiManager
             $override = app(\App\Services\Admin\AppSettingsResolver::class)
                 ->effective('ai.provider', $tenant);
 
-            return is_string($override) && $override !== '' ? $override : $configDefault;
+            // Only honour an override that is actually configured — a stale or
+            // corrupted value (provider removed from config, bad manual DB row)
+            // would otherwise make resolve() throw and break the chat path.
+            if (is_string($override) && $override !== '' && config("ai.providers.{$override}") !== null) {
+                return $override;
+            }
+
+            return $configDefault;
         } catch (\Throwable) {
             return $configDefault;
         }
