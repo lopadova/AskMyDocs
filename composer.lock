@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f6c3c48f5c44735b3e7651314fe2a4fd",
+    "content-hash": "427beb76f9f8519229c759124a854ced",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -4587,16 +4587,16 @@
         },
         {
             "name": "padosoft/laravel-invitations",
-            "version": "v1.0.0-rc.1",
+            "version": "v1.0.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/laravel-invitations.git",
-                "reference": "4a5db246aa3653e96b22b4d5ff748259e7f212c1"
+                "reference": "eedf73ab1d36009f4c42cbe853811c5d44ceb12d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/laravel-invitations/zipball/4a5db246aa3653e96b22b4d5ff748259e7f212c1",
-                "reference": "4a5db246aa3653e96b22b4d5ff748259e7f212c1",
+                "url": "https://api.github.com/repos/padosoft/laravel-invitations/zipball/eedf73ab1d36009f4c42cbe853811c5d44ceb12d",
+                "reference": "eedf73ab1d36009f4c42cbe853811c5d44ceb12d",
                 "shasum": ""
             },
             "require": {
@@ -4659,9 +4659,9 @@
             ],
             "support": {
                 "issues": "https://github.com/padosoft/laravel-invitations/issues",
-                "source": "https://github.com/padosoft/laravel-invitations/tree/v1.0.0-rc.1"
+                "source": "https://github.com/padosoft/laravel-invitations/tree/v1.0.0"
             },
-            "time": "2026-06-23T13:29:10+00:00"
+            "time": "2026-06-23T16:41:28+00:00"
         },
         {
             "name": "padosoft/laravel-pii-redactor",
@@ -11873,9 +11873,7 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "padosoft/laravel-invitations": 10
-    },
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {

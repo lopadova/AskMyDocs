@@ -31,7 +31,7 @@
         "padosoft/laravel-evidence-risk-review-admin": "^1.0",
         "padosoft/laravel-flow": "^1.0",
         "padosoft/laravel-flow-admin": "^1.0",
-        "padosoft/laravel-invitations": "^1.0@beta",
+        "padosoft/laravel-invitations": "^1.0",
         "padosoft/laravel-pii-redactor": "^1.2",
         "padosoft/laravel-pii-redactor-admin": "^1.0.2",
         "phpoffice/phpword": "^1.3",

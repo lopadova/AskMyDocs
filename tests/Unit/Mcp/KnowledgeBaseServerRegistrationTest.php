@@ -238,7 +238,9 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
      */
     private function composerClassLoader(): \Composer\Autoload\ClassLoader
     {
-        foreach (spl_autoload_functions() as $autoloader) {
+        // spl_autoload_functions() returns false when NO autoloader is
+        // registered; cast so `foreach (false as …)` can't raise a warning.
+        foreach ((array) spl_autoload_functions() as $autoloader) {
             if (is_array($autoloader) && ($autoloader[0] ?? null) instanceof \Composer\Autoload\ClassLoader) {
                 return $autoloader[0];
             }
