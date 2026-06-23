@@ -5,17 +5,21 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Requests\Admin\ConfigureConnectorRequest;
+use App\Http\Requests\Admin\StartConnectorInstallRequest;
+use App\Http\Requests\Admin\UpdateConnectorInstallationRequest;
 use App\Http\Resources\Admin\ConnectorInstallationResource;
 use App\Services\Admin\Connectors\ConfigureConnectorService;
+use App\Services\Admin\Connectors\ConnectorInstallationService;
 use App\Support\TenantContext;
 use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
-use Padosoft\AskMyDocsConnectorBase\Contracts\SupportsCredentialForm;
 use Padosoft\AskMyDocsConnectorBase\Exceptions\ConnectorAuthException;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
@@ -41,103 +45,56 @@ final class ConnectorAdminController extends Controller
     public function __construct(
         private readonly ConnectorRegistry $registry,
         private readonly TenantContext $tenantContext,
+        private readonly ConnectorInstallationService $installations,
     ) {}
 
     /**
      * GET /api/admin/connectors
      *
-     * Returns every registered connector (built-in + composer) with
-     * its current installation status for the active tenant (null when
-     * not installed).
+     * Returns every registered connector (built-in + composer) with the
+     * active tenant's installed ACCOUNTS (v8.20 multi-account — a list;
+     * empty when none installed). The shape is the read core
+     * {@see ConnectorInstallationService::summary()}, shared verbatim with
+     * the MCP read tool and the `connectors:list` command.
      */
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
-        $installations = ConnectorInstallation::query()
-            ->where('tenant_id', $this->tenantContext->current())
-            ->get()
-            ->keyBy('connector_name');
-
-        $data = $this->registry->all()->map(function ($connector) use ($installations, $request) {
-            $installation = $installations->get($connector->key());
-            $isCredential = $connector instanceof SupportsCredentialForm;
-
-            return [
-                'key' => $connector->key(),
-                'display_name' => $connector->displayName(),
-                'icon_url' => $connector->iconUrl(),
-                'oauth_scopes' => $connector->oauthScopes(),
-                // v8.17 — `oauth` (redirect flow, the default) vs `credential`
-                // (host-rendered form). The FE branches the Connect button on
-                // this flag; the schema is the single source of truth for the
-                // form fields (no IMAP-specific FE/BE branch).
-                'auth_kind' => $isCredential ? 'credential' : 'oauth',
-                'credential_form_schema' => $isCredential ? $connector->credentialFormSchema() : null,
-                'installation' => $installation === null
-                    ? null
-                    : (new ConnectorInstallationResource($installation))->toArray($request),
-            ];
-        })->values();
-
-        return response()->json(['data' => $data]);
+        return response()->json(['data' => $this->installations->summary()]);
     }
 
     /**
-     * GET /api/admin/connectors/{name}/install
+     * GET /api/admin/connectors/{name}/install?label=&project_key=
      *
-     * Pre-creates a `connector_installations` row in `pending` status
-     * for the active tenant, then asks the connector to build the
-     * provider OAuth URL. The browser navigates to `redirect_to` to
-     * complete the flow.
+     * v8.20 multi-account — creates a NEW pending account for the active tenant
+     * (or re-arms the existing one with the SAME `label`, e.g. re-granting after
+     * a scope expansion), then asks the connector to build the provider OAuth
+     * URL. The browser navigates to `redirect_to` to complete the flow. An
+     * omitted `label` defaults to 'default' (the single-account flow); pass a
+     * distinct label to connect a second account on the same connector.
      *
-     * iter2 finding #4 — when an installation row already exists for
-     * the active tenant + connector (regardless of its current
-     * status: ACTIVE / PENDING / ERRORED / DISABLED), we ALWAYS arm
-     * it back to PENDING and clear `error_json`. The unique
-     * `(tenant_id, connector_name)` constraint allows only one row
-     * per tenant per connector, so the reinstall flow MUST drive the
-     * single row through the OAuth lifecycle again. If we left the
-     * row in ACTIVE while issuing a new OAuth URL, the subsequent
-     * `oauthCallback()` 404s (it only looks at PENDING rows) and the
-     * operator is stuck — exactly the bug Copilot iter1 caught.
+     * The find-or-rearm-by-label keeps a re-grant on PENDING (the
+     * `oauthCallback()` only matches PENDING rows) without disturbing the
+     * tenant's OTHER accounts on the same connector.
      */
-    public function startInstall(Request $request, string $name): JsonResponse
+    public function startInstall(StartConnectorInstallRequest $request, string $name): JsonResponse
     {
-        $connector = $this->registry->get($name);
-        if ($connector === null) {
-            throw new NotFoundHttpException("Connector '{$name}' is not registered.");
-        }
+        $validated = $request->validated();
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', $this->tenantContext->current())
-            ->where('connector_name', $name)
-            ->first();
-
-        if ($installation === null) {
-            $installation = ConnectorInstallation::create([
-                'tenant_id' => $this->tenantContext->current(),
-                'connector_name' => $name,
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'created_by' => $request->user()->getAuthIdentifier(),
-            ]);
-        } else {
-            // iter2 finding #4 — re-arm regardless of prior status so
-            // the reinstall flow goes through the standard
-            // PENDING → callback → ACTIVE round-trip even when the
-            // operator clicks "Install" on a currently-active row
-            // (intentional reinstall, e.g. re-grant after a scope
-            // expansion).
-            $installation->forceFill([
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'error_json' => null,
-            ])->save();
-        }
-
-        $redirectTo = $connector->initiateOAuth($installation->id);
+        $result = $this->installations->startOAuthInstall(
+            $name,
+            (string) ($validated['label'] ?? 'default'),
+            $validated['project_key'] ?? null,
+            // `filled()` (not `has()`): a present-but-blank `?project_key=` must
+            // NOT count as "provided" — a re-grant leaves an existing binding
+            // untouched (clearing is done via PATCH), per the request docstring.
+            $request->filled('project_key'),
+            (int) $request->user()->getAuthIdentifier(),
+        );
 
         return response()->json([
             'data' => [
-                'installation_id' => $installation->id,
-                'redirect_to' => $redirectTo,
+                'installation_id' => $result['installation']->id,
+                'redirect_to' => $result['redirect_to'],
             ],
         ]);
     }
@@ -148,11 +105,14 @@ final class ConnectorAdminController extends Controller
      * Provider redirect target. Validates the state token, exchanges
      * the auth code for credentials via the connector's
      * `handleOAuthCallback()`, and flips the installation to
-     * `active`. The active row is identified by the cached state
-     * token; we accept it implicitly via the connector's own
-     * validation. To survive concurrent callbacks across tenants we
-     * additionally lookup the most-recent `pending` row for the
-     * active tenant + connector.
+     * `active`.
+     *
+     * v8.20 multi-account: several accounts on the same connector can be PENDING
+     * at once, so we resolve the EXACT account the `state` token was issued for
+     * (cached at install time) instead of guessing "most recent pending" — which
+     * would attach the provider's credentials/error to the wrong account. The
+     * most-recent-pending lookup remains a fallback for tokens issued before the
+     * mapping existed (and for the single-account case it is identical).
      */
     public function oauthCallback(Request $request, string $name): JsonResponse
     {
@@ -161,12 +121,7 @@ final class ConnectorAdminController extends Controller
             throw new NotFoundHttpException("Connector '{$name}' is not registered.");
         }
 
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', $this->tenantContext->current())
-            ->where('connector_name', $name)
-            ->where('status', ConnectorInstallation::STATUS_PENDING)
-            ->orderByDesc('id')
-            ->first();
+        $installation = $this->resolvePendingInstallation($request, $name);
 
         if ($installation === null) {
             throw new NotFoundHttpException(
@@ -256,6 +211,18 @@ final class ConnectorAdminController extends Controller
             // left PENDING with error_json by the service; surface a 422 so the
             // form shows the reason instead of a misleading success.
             return response()->json(['error' => $e->getMessage()], 422);
+        } catch (QueryException $e) {
+            // v8.20 — duplicate (tenant, connector, label) lost the create-race
+            // (the Request unique rule is best-effort UX; the DB unique is the
+            // authority, R21). Surface it as the same field error the rule emits
+            // rather than a raw 500.
+            if ($this->isDuplicateLabel($e)) {
+                throw ValidationException::withMessages([
+                    'label' => ['An account with this label already exists for this connector.'],
+                ]);
+            }
+
+            throw $e;
         }
 
         return response()->json([
@@ -274,7 +241,7 @@ final class ConnectorAdminController extends Controller
      */
     public function syncNow(int $installationId): JsonResponse
     {
-        $installation = $this->findInstallationOr404($installationId);
+        $installation = $this->installations->findOr404($installationId);
 
         ConnectorSyncJob::dispatch($installation->id, $installation->tenant_id);
 
@@ -295,7 +262,7 @@ final class ConnectorAdminController extends Controller
      */
     public function disable(int $installationId): JsonResponse
     {
-        $installation = $this->findInstallationOr404($installationId);
+        $installation = $this->installations->findOr404($installationId);
 
         $installation->forceFill([
             'status' => ConnectorInstallation::STATUS_DISABLED,
@@ -310,44 +277,104 @@ final class ConnectorAdminController extends Controller
     }
 
     /**
+     * PATCH /api/admin/connectors/{installationId}
+     *
+     * v8.20 — edit an existing account's metadata: rename the `label` and/or
+     * rebind `project_key` (blank = inherit the tenant default). PARTIAL —
+     * only present keys change. Credential re-auth is out of scope (delete +
+     * re-add); this never touches the vault. Returns the updated account.
+     */
+    public function update(
+        UpdateConnectorInstallationRequest $request,
+        int $installationId,
+    ): JsonResponse {
+        try {
+            $installation = $this->installations->updateMetadata(
+                $installationId,
+                $request->validated(),
+            );
+        } catch (QueryException $e) {
+            if ($this->isDuplicateLabel($e)) {
+                throw ValidationException::withMessages([
+                    'label' => ['An account with this label already exists for this connector.'],
+                ]);
+            }
+
+            throw $e;
+        }
+
+        return response()->json([
+            'data' => (new ConnectorInstallationResource($installation))->toArray($request),
+        ]);
+    }
+
+    /**
      * DELETE /api/admin/connectors/{installationId}
      *
-     * Calls the connector's `disconnect()` (which revokes upstream
-     * + clears credentials), then deletes the installation row. The
-     * companion `connector_credentials` row cascades via FK.
+     * Disconnects upstream (best-effort) then deletes the account row. The
+     * companion `connector_credentials` row cascades via FK (R28).
      */
     public function destroy(int $installationId): JsonResponse
     {
-        $installation = $this->findInstallationOr404($installationId);
-
-        $connector = $this->registry->get($installation->connector_name);
-        if ($connector !== null) {
-            try {
-                $connector->disconnect($installation->id);
-            } catch (\Throwable $e) {
-                // Disconnect is best-effort — never block the operator
-                // from removing a stuck installation just because the
-                // upstream revoke endpoint returned a non-2xx.
-                report($e);
-            }
-        }
-
-        $installation->delete();
+        $this->installations->delete($installationId);
 
         return response()->json(null, 204);
     }
 
-    private function findInstallationOr404(int $installationId): ConnectorInstallation
+    /**
+     * Resolve the PENDING installation an OAuth callback belongs to.
+     *
+     * Prefer the exact account the `state` token was issued for (v8.20
+     * multi-account — cached at install time, tenant-scoped). Fall back to the
+     * most-recent PENDING row for (tenant, connector) when the token is unknown
+     * (legacy installs / single-account), preserving the pre-v8.20 behaviour.
+     */
+    private function resolvePendingInstallation(Request $request, string $name): ?ConnectorInstallation
     {
-        $installation = ConnectorInstallation::query()
-            ->where('id', $installationId)
-            ->where('tenant_id', $this->tenantContext->current())
-            ->first();
-
-        if ($installation === null) {
-            throw new NotFoundHttpException("Installation {$installationId} not found.");
+        $token = (string) $request->query('state', '');
+        if ($token !== '') {
+            $installationId = $this->installations->installationIdForState($name, $token);
+            if ($installationId !== null) {
+                $installation = ConnectorInstallation::query()
+                    ->where('id', $installationId)
+                    ->where('tenant_id', $this->tenantContext->current())
+                    ->where('connector_name', $name)
+                    ->where('status', ConnectorInstallation::STATUS_PENDING)
+                    ->first();
+                if ($installation !== null) {
+                    return $installation;
+                }
+            }
         }
 
-        return $installation;
+        return ConnectorInstallation::query()
+            ->where('tenant_id', $this->tenantContext->current())
+            ->where('connector_name', $name)
+            ->where('status', ConnectorInstallation::STATUS_PENDING)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Recognise the (tenant, connector, label) unique violation across drivers.
+     *
+     * R14: confirm it IS an integrity/unique constraint violation via SQLSTATE
+     * BEFORE inspecting the message — so a schema error or unrelated constraint
+     * that happens to mention "connector_installations" is never misclassified
+     * as a 422. SQLSTATE 23505 = Postgres unique; 23000 = MySQL/SQLite integrity
+     * (covers duplicate-key + UNIQUE). Message check then narrows to the specific
+     * label constraint: named index (Postgres/MySQL) or the column-list form
+     * SQLite emits (`connector_installations.label`).
+     */
+    private function isDuplicateLabel(QueryException $e): bool
+    {
+        if (! in_array($e->errorInfo[0] ?? '', ['23000', '23505'], true)) {
+            return false;
+        }
+
+        $message = $e->getMessage();
+
+        return str_contains($message, 'uq_connector_installations_tenant_name_label')
+            || str_contains($message, 'connector_installations.label');
     }
 }

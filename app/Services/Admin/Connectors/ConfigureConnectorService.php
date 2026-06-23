@@ -40,7 +40,8 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  *     `oauth/callback` route finishes the flow. No change to that route.
  *
  * R30 — every `connector_installations` query is scoped to the active tenant;
- * the upsert rides the UNIQUE `(tenant_id, connector_name)` constraint.
+ * the create rides the UNIQUE `(tenant_id, connector_name, label)` constraint
+ * (v8.20 multi-account — N labelled accounts per connector per tenant).
  * Security — the secret is never persisted in `config_json`/logs/response; the
  * single-use state lifecycle is owned by the connector (issue → consume).
  */
@@ -68,11 +69,15 @@ final class ConfigureConnectorService
 
         [$config, $secret, $secretField] = $this->splitPayload($connector->credentialFormSchema(), $validated);
 
-        if (array_key_exists('project_key', $validated) && $validated['project_key'] !== null) {
-            $config['project_key'] = (string) $validated['project_key'];
-        }
+        // v8.20 multi-account: `label` + `project_key` are first-class COLUMNS
+        // (not config_json). project_key is the optional KB project binding;
+        // null = the tenant default resolved by BaseConnector::resolveProjectKey().
+        $label = (string) ($validated['label'] ?? 'default');
+        $projectKey = isset($validated['project_key']) && $validated['project_key'] !== '' && $validated['project_key'] !== null
+            ? (string) $validated['project_key']
+            : null;
 
-        $installation = $this->upsertPending($name, $config, $createdBy);
+        $installation = $this->createPending($name, $label, $projectKey, $config, $createdBy);
 
         $authMode = (string) ($config['auth_mode'] ?? 'basic');
 
@@ -179,34 +184,29 @@ final class ConfigureConnectorService
     }
 
     /**
+     * Create a NEW pending installation for the active tenant.
+     *
+     * v8.20 multi-account: configure always CREATES a fresh account keyed on
+     * (tenant_id, connector_name, label). A duplicate label is rejected by
+     * {@see ConfigureConnectorRequest}'s unique rule (friendly 422) and, in the
+     * create-race window, by the DB unique `uq_connector_installations_tenant_name_label`
+     * (the controller maps the resulting QueryException to 422). Re-authing an
+     * existing account is NOT done here — it edits the row by id (see
+     * ConnectorInstallationService); configure is strictly additive.
+     *
      * @param  array<string,mixed>  $config
      */
-    private function upsertPending(string $name, array $config, int $createdBy): ConnectorInstallation
+    private function createPending(string $name, string $label, ?string $projectKey, array $config, int $createdBy): ConnectorInstallation
     {
-        $installation = ConnectorInstallation::query()
-            ->where('tenant_id', $this->tenantContext->current())
-            ->where('connector_name', $name)
-            ->first();
-
-        if ($installation === null) {
-            return ConnectorInstallation::create([
-                'tenant_id' => $this->tenantContext->current(),
-                'connector_name' => $name,
-                'config_json' => $config,
-                'status' => ConnectorInstallation::STATUS_PENDING,
-                'created_by' => $createdBy,
-            ]);
-        }
-
-        // Re-configure: re-arm the single (tenant, name) row through the
-        // PENDING → active round-trip and clear any prior error.
-        $installation->forceFill([
+        return ConnectorInstallation::create([
+            'tenant_id' => $this->tenantContext->current(),
+            'connector_name' => $name,
+            'label' => $label,
+            'project_key' => $projectKey,
             'config_json' => $config,
             'status' => ConnectorInstallation::STATUS_PENDING,
-            'error_json' => null,
-        ])->save();
-
-        return $installation;
+            'created_by' => $createdBy,
+        ]);
     }
 
     private function completeBasicAuth(

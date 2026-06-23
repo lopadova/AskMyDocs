@@ -571,6 +571,11 @@ class AppServiceProvider extends ServiceProvider
             // Case study — per-company documentation-isolation verifier
             // (README §6 matrix against the live KB). Dev/ops diagnostic.
             \App\Console\Commands\CaseStudyVerifyIsolationCommand::class,
+            // v8.20 — multi-account connectors PHP surface (R44): read roster +
+            // interactive credential install, over ConnectorInstallationService /
+            // ConfigureConnectorService.
+            \App\Console\Commands\ConnectorsListCommand::class,
+            \App\Console\Commands\ConnectorsInstallCommand::class,
         ]);
     }
 

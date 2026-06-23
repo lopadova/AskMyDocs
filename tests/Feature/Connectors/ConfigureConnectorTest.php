@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Connectors;
 
+use App\Models\Project;
 use App\Models\User;
 use Carbon\Carbon;
 use Database\Seeders\RbacSeeder;
@@ -38,6 +39,10 @@ final class ConfigureConnectorTest extends TestCase
         parent::setUp();
         $this->seed(RbacSeeder::class);
         Cache::flush();
+
+        // v8.20 — the credential `configure` payload binds the account to a real
+        // project (R18 exists rule). Seed it in the active (default) tenant.
+        Project::create(['project_key' => 'support-mailbox', 'name' => 'Support Mailbox']);
     }
 
     public function test_index_marks_imap_as_credential_with_a_form_schema(): void
@@ -82,6 +87,12 @@ final class ConfigureConnectorTest extends TestCase
         $this->assertSame('basic', $config['auth_mode']);
         $this->assertArrayNotHasKey('password', $config);
         $this->assertStringNotContainsString('s3cr3t-app-pw', json_encode($config));
+
+        // v8.20 — project binding is a first-class COLUMN, never config_json,
+        // and the default label is applied when the payload omits one.
+        $this->assertSame('support-mailbox', $installation->project_key);
+        $this->assertArrayNotHasKey('project_key', $config);
+        $this->assertSame('default', $installation->label);
 
         // The secret is in the encrypted vault.
         $this->assertSame('s3cr3t-app-pw', app(OAuthCredentialVault::class)->getAccessToken($installation->id));
@@ -230,12 +241,74 @@ final class ConfigureConnectorTest extends TestCase
         );
     }
 
+    public function test_configure_creates_multiple_accounts_with_distinct_labels(): void
+    {
+        $this->bindImapFactory(pingSucceeds: true);
+        $admin = $this->superAdmin();
+
+        foreach (['Support', 'Sales'] as $label) {
+            $this->actingAs($admin)
+                ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => $label]))
+                ->assertOk();
+        }
+
+        $this->assertSame(
+            2,
+            ConnectorInstallation::query()
+                ->where('tenant_id', 'default')->where('connector_name', 'imap')->count(),
+        );
+        $labels = ConnectorInstallation::query()
+            ->where('connector_name', 'imap')->orderBy('label')->pluck('label')->all();
+        $this->assertSame(['Sales', 'Support'], $labels);
+    }
+
+    public function test_configure_rejects_a_duplicate_label_for_the_same_connector(): void
+    {
+        // E2E §7 invariant: a third account reusing an existing label is rejected
+        // by the (tenant, connector, label) unique — a 422, never a silent merge.
+        $this->bindImapFactory(pingSucceeds: true);
+        $admin = $this->superAdmin();
+
+        $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Support']))
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->postJson('/api/admin/connectors/imap/configure', $this->basicPayload(['label' => 'Support']))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['label']);
+
+        $this->assertSame(
+            1,
+            ConnectorInstallation::query()->where('connector_name', 'imap')->count(),
+        );
+    }
+
+    public function test_configure_without_project_key_inherits_the_tenant_default(): void
+    {
+        // R43 — the OTHER state: no project binding → project_key column stays
+        // null (BaseConnector::resolveProjectKey falls back to the tenant default).
+        $this->bindImapFactory(pingSucceeds: true);
+
+        $payload = $this->basicPayload();
+        unset($payload['project_key']);
+
+        $this->actingAs($this->superAdmin())
+            ->postJson('/api/admin/connectors/imap/configure', $payload)
+            ->assertOk();
+
+        $installation = ConnectorInstallation::query()
+            ->where('tenant_id', 'default')->where('connector_name', 'imap')->firstOrFail();
+        $this->assertNull($installation->project_key);
+    }
+
     /**
+     * @param  array<string,mixed>  $overrides
      * @return array<string,mixed>
      */
-    private function basicPayload(): array
+    private function basicPayload(array $overrides = []): array
     {
-        return [
+        return array_merge([
             'auth_mode' => 'basic',
             'host' => 'imap.example.com',
             'port' => 993,
@@ -244,7 +317,7 @@ final class ConfigureConnectorTest extends TestCase
             'username' => 'alice@example.com',
             'password' => 's3cr3t-app-pw',
             'project_key' => 'support-mailbox',
-        ];
+        ], $overrides);
     }
 
     private function superAdmin(): User

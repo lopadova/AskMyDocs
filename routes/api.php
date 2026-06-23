@@ -794,6 +794,10 @@ Route::middleware([
         // configure → ping/persist (basic) or redirect (xoauth2). Same gate group.
         Route::post('/{name}/configure', [ConnectorAdminController::class, 'configure'])
             ->name('api.admin.connectors.configure');
+        // v8.20 — edit an existing account's metadata (label / project binding).
+        Route::patch('/{installationId}', [ConnectorAdminController::class, 'update'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.update');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');

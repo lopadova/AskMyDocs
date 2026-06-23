@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "f36aea4b81d41f2223241ebd1de9f6b4",
+    "content-hash": "193d9703a3c5378ff0d90a829126d361",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -2913,16 +2913,16 @@
         },
         {
             "name": "padosoft/askmydocs-connector-base",
-            "version": "v1.2.0",
+            "version": "v1.3.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-base.git",
-                "reference": "a339d58ae234850137b94a9335e2036c02ed34ab"
+                "reference": "a00f8d031b9269d20e91d36913236aa9b5d2f538"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/a339d58ae234850137b94a9335e2036c02ed34ab",
-                "reference": "a339d58ae234850137b94a9335e2036c02ed34ab",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-base/zipball/a00f8d031b9269d20e91d36913236aa9b5d2f538",
+                "reference": "a00f8d031b9269d20e91d36913236aa9b5d2f538",
                 "shasum": ""
             },
             "require": {
@@ -2991,23 +2991,23 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.2.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-base/tree/v1.3.1",
                 "issues": "https://github.com/padosoft/askmydocs-connector-base/issues"
             },
-            "time": "2026-06-19T12:09:58+00:00"
+            "time": "2026-06-22T15:42:35+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-confluence",
-            "version": "v1.0.0",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-confluence.git",
-                "reference": "2e6d259ed4bdbc25b270ea1410ffbdb043155bd3"
+                "reference": "02fd475cff8c105a461bcaeea789ff7e0e6b4c75"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-confluence/zipball/2e6d259ed4bdbc25b270ea1410ffbdb043155bd3",
-                "reference": "2e6d259ed4bdbc25b270ea1410ffbdb043155bd3",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-confluence/zipball/02fd475cff8c105a461bcaeea789ff7e0e6b4c75",
+                "reference": "02fd475cff8c105a461bcaeea789ff7e0e6b4c75",
                 "shasum": ""
             },
             "require": {
@@ -3016,7 +3016,7 @@
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3081,23 +3081,23 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-confluence/tree/v1.0.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-confluence/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-confluence/issues"
             },
-            "time": "2026-05-12T08:06:36+00:00"
+            "time": "2026-06-22T15:49:07+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-evernote",
-            "version": "v1.0.0",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-evernote.git",
-                "reference": "b21128fd39b0b04b1aaca44e8972d836a44101dc"
+                "reference": "c3d2b213e6a4a1ac10a49a64363123ec3b57c7c4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-evernote/zipball/b21128fd39b0b04b1aaca44e8972d836a44101dc",
-                "reference": "b21128fd39b0b04b1aaca44e8972d836a44101dc",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-evernote/zipball/c3d2b213e6a4a1ac10a49a64363123ec3b57c7c4",
+                "reference": "c3d2b213e6a4a1ac10a49a64363123ec3b57c7c4",
                 "shasum": ""
             },
             "require": {
@@ -3107,7 +3107,7 @@
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3173,30 +3173,30 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-evernote/tree/v1.0.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-evernote/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-evernote/issues"
             },
-            "time": "2026-05-12T07:11:02+00:00"
+            "time": "2026-06-22T15:44:17+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-fabric",
-            "version": "v1.0.0",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-fabric.git",
-                "reference": "6a843c17cfaf5d786d072d97bc0ba9a039dbc34c"
+                "reference": "41f62d02a5cf09fd37f97784306c5db0f5badda5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-fabric/zipball/6a843c17cfaf5d786d072d97bc0ba9a039dbc34c",
-                "reference": "6a843c17cfaf5d786d072d97bc0ba9a039dbc34c",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-fabric/zipball/41f62d02a5cf09fd37f97784306c5db0f5badda5",
+                "reference": "41f62d02a5cf09fd37f97784306c5db0f5badda5",
                 "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3260,30 +3260,30 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-fabric/tree/v1.0.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-fabric/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-fabric/issues"
             },
-            "time": "2026-05-12T07:25:50+00:00"
+            "time": "2026-06-22T15:44:26+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-google-drive",
-            "version": "v1.0.1",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-google-drive.git",
-                "reference": "883ae56b47b0947d5a8c3a1496ded3fc7f3bf942"
+                "reference": "06fbd4588bbe4f7a7c11fe7ebf5ae8c502ef5798"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-google-drive/zipball/883ae56b47b0947d5a8c3a1496ded3fc7f3bf942",
-                "reference": "883ae56b47b0947d5a8c3a1496ded3fc7f3bf942",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-google-drive/zipball/06fbd4588bbe4f7a7c11fe7ebf5ae8c502ef5798",
+                "reference": "06fbd4588bbe4f7a7c11fe7ebf5ae8c502ef5798",
                 "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3348,23 +3348,23 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-google-drive/tree/v1.0.1",
+                "source": "https://github.com/padosoft/askmydocs-connector-google-drive/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-google-drive/issues"
             },
-            "time": "2026-05-12T06:38:36+00:00"
+            "time": "2026-06-22T15:20:58+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-imap",
-            "version": "v1.2.0",
+            "version": "v1.3.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-imap.git",
-                "reference": "6c52836354d83de2635df7e9b689ae598e3d2d2f"
+                "reference": "e62693bf29523ce4e60ac2711fb619dbfd15eff1"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/6c52836354d83de2635df7e9b689ae598e3d2d2f",
-                "reference": "6c52836354d83de2635df7e9b689ae598e3d2d2f",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-imap/zipball/e62693bf29523ce4e60ac2711fb619dbfd15eff1",
+                "reference": "e62693bf29523ce4e60ac2711fb619dbfd15eff1",
                 "shasum": ""
             },
             "require": {
@@ -3373,7 +3373,7 @@
                 "illuminate/support": "^12.0|^13.0",
                 "league/html-to-markdown": "^5.1",
                 "nesbot/carbon": "^2.0|^3.0",
-                "padosoft/askmydocs-connector-base": "^1.2",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3",
                 "webklex/php-imap": "^6.0"
             },
@@ -3423,30 +3423,30 @@
             ],
             "description": "IMAP email connector for AskMyDocs — ingest mailboxes (body, headers, attachments) as RAG knowledge.",
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.2.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-imap/tree/v1.3.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-imap/issues"
             },
-            "time": "2026-06-19T12:21:30+00:00"
+            "time": "2026-06-22T15:48:59+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-jira",
-            "version": "v1.0.0",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-jira.git",
-                "reference": "1d6c4ae5330421debcda73fc92ad140bc2803df2"
+                "reference": "1935ab3472dc332ea9a3bcbcbaa1f695defdf09a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-jira/zipball/1d6c4ae5330421debcda73fc92ad140bc2803df2",
-                "reference": "1d6c4ae5330421debcda73fc92ad140bc2803df2",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-jira/zipball/1935ab3472dc332ea9a3bcbcbaa1f695defdf09a",
+                "reference": "1935ab3472dc332ea9a3bcbcbaa1f695defdf09a",
                 "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3511,30 +3511,30 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-jira/tree/v1.0.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-jira/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-jira/issues"
             },
-            "time": "2026-05-12T08:18:32+00:00"
+            "time": "2026-06-22T15:17:57+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-notion",
-            "version": "v1.0.1",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-notion.git",
-                "reference": "13f0366a26bef2d9349f49b06742d912226e90ce"
+                "reference": "926251bff69bfb4fcbd3496e934e7c4578ed0df8"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-notion/zipball/13f0366a26bef2d9349f49b06742d912226e90ce",
-                "reference": "13f0366a26bef2d9349f49b06742d912226e90ce",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-notion/zipball/926251bff69bfb4fcbd3496e934e7c4578ed0df8",
+                "reference": "926251bff69bfb4fcbd3496e934e7c4578ed0df8",
                 "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3599,30 +3599,30 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-notion/tree/v1.0.1",
+                "source": "https://github.com/padosoft/askmydocs-connector-notion/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-notion/issues"
             },
-            "time": "2026-05-12T06:37:49+00:00"
+            "time": "2026-06-22T15:22:54+00:00"
         },
         {
             "name": "padosoft/askmydocs-connector-onedrive",
-            "version": "v1.0.0",
+            "version": "v1.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/padosoft/askmydocs-connector-onedrive.git",
-                "reference": "d40fec26dc84080c5b268e85264b7ec58a33cb9e"
+                "reference": "6704341180ceec2b1248f6b79a108add65246ebe"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-onedrive/zipball/d40fec26dc84080c5b268e85264b7ec58a33cb9e",
-                "reference": "d40fec26dc84080c5b268e85264b7ec58a33cb9e",
+                "url": "https://api.github.com/repos/padosoft/askmydocs-connector-onedrive/zipball/6704341180ceec2b1248f6b79a108add65246ebe",
+                "reference": "6704341180ceec2b1248f6b79a108add65246ebe",
                 "shasum": ""
             },
             "require": {
                 "illuminate/contracts": "^12.0|^13.0",
                 "illuminate/http": "^12.0|^13.0",
                 "illuminate/support": "^12.0|^13.0",
-                "padosoft/askmydocs-connector-base": "^1.1.1",
+                "padosoft/askmydocs-connector-base": "^1.3",
                 "php": "^8.3"
             },
             "require-dev": {
@@ -3688,10 +3688,10 @@
                 "rag"
             ],
             "support": {
-                "source": "https://github.com/padosoft/askmydocs-connector-onedrive/tree/v1.0.0",
+                "source": "https://github.com/padosoft/askmydocs-connector-onedrive/tree/v1.1.0",
                 "issues": "https://github.com/padosoft/askmydocs-connector-onedrive/issues"
             },
-            "time": "2026-05-12T07:35:56+00:00"
+            "time": "2026-06-22T15:44:34+00:00"
         },
         {
             "name": "padosoft/askmydocs-mcp-pack",

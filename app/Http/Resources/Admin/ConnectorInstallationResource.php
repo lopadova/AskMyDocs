@@ -31,6 +31,11 @@ final class ConnectorInstallationResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            // v8.20 — multi-account: `label` disambiguates the N accounts a
+            // tenant connects on the same connector; `project_key` is the
+            // optional KB project binding (null = the tenant default).
+            'label' => $this->label,
+            'project_key' => $this->project_key,
             'status' => $this->status,
             'last_sync_at' => $this->last_sync_at?->toIso8601String(),
             'error' => $this->error_json,
