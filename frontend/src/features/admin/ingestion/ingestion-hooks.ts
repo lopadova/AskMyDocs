@@ -16,6 +16,10 @@ export function useQueueDepths() {
         // Backlog changes second-to-second as workers drain it.
         refetchInterval: 10_000,
         staleTime: 5_000,
+        // Fail fast on a polled query — surface the error immediately and let
+        // the next poll / manual retry recover, rather than fanning 3 retries
+        // out of every 10s tick during an outage.
+        retry: false,
     });
 }
 
@@ -26,5 +30,6 @@ export function useSyncRuns(installationId: number | null) {
         enabled: installationId !== null,
         refetchInterval: 15_000,
         staleTime: 5_000,
+        retry: false,
     });
 }

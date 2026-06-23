@@ -180,7 +180,16 @@ export function IngestionView() {
                         </div>
                     ) : runsQuery.isError ? (
                         <div data-testid="admin-ingestion-runs-error" role="alert" style={errorStyle}>
-                            Could not load sync runs.
+                            Could not load sync runs.{' '}
+                            <button
+                                type="button"
+                                data-testid="admin-ingestion-runs-retry"
+                                className="focus-ring"
+                                onClick={() => runsQuery.refetch()}
+                                style={retryStyle}
+                            >
+                                Retry
+                            </button>
                         </div>
                     ) : (runsQuery.data ?? []).length === 0 ? (
                         <div data-testid="admin-ingestion-runs-empty" role="status" style={panelStyle}>
