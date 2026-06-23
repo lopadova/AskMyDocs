@@ -149,6 +149,16 @@ abstract class TestCase extends OrchestraTestCase
         // test can flip the flag on and assert the wired-and-secured route.
         $app->register(\Padosoft\LaravelAiGuardrailsAdmin\LaravelAiGuardrailsAdminServiceProvider::class);
 
+        // padosoft/laravel-invitations — invite-by-code engine. Manual
+        // registration parallels every other vendor package (Testbench skips
+        // package discovery). The SP loadMigrationsFrom()s the 9 invite tables,
+        // binds the vendor-neutral TenantResolver default + tags the
+        // SpatiePermissionProvisioner, and (config-gated) loads the invite route
+        // file. Registered BEFORE AppServiceProvider so the host's boot()-time
+        // overrides — TenantResolver → TenantContext, ProjectMembershipProvisioner
+        // added to the tag, manageInvitations gate — win definitively.
+        $app->register(\Padosoft\Invitations\InvitationsServiceProvider::class);
+
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
         $app->register(\App\Providers\AppServiceProvider::class);
@@ -320,6 +330,23 @@ abstract class TestCase extends OrchestraTestCase
         // controller's own check. Tests that exercise the wired routes
         // flip this on via config(['eval-harness-ui.enabled' => true]).
         $app['config']->set('eval-harness-ui', require __DIR__.'/../config/eval-harness-ui.php');
+        // padosoft/laravel-invitations host config override. Testbench doesn't
+        // auto-load project config/, so the package would otherwise see its
+        // vendor default (['web','auth'] route middleware) instead of the host's
+        // SPA-session + Sanctum + tenant + manageInvitations stack. Loading the
+        // SECURE host config here is what lets AdminAuthorizationMatrixTest verify
+        // the real `/api/admin/invitations/*` gate (R32). invitation_required
+        // stays its config default (false) — R43 OFF path.
+        //
+        // Merge (host keys win) instead of replace so any vendor-default key the
+        // host config does not restate still survives — mirrors the
+        // mergeConfigFrom pattern used for ai-act-compliance / ai-finops /
+        // ai-guardrails above (the package SP's hasConfigFile() already merged
+        // its default into the container by the time this runs).
+        $app['config']->set('invitations', array_merge(
+            (array) $app['config']->get('invitations', []),
+            require __DIR__.'/../config/invitations.php',
+        ));
         // v8.0/W2.2 — askmydocs.* namespace (notifications subsystem).
         // Without this, `config('askmydocs.notifications.*')` returns
         // null in tests and the preferences-grid endpoint ships an

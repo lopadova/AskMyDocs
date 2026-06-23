@@ -38,6 +38,9 @@ use Padosoft\AskMyDocsConnectorBase\Contracts\ConnectorIngestionContract;
 use Padosoft\AskMyDocsConnectorBase\Support\TenantContext as PackageTenantContext;
 use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
+use App\Invitations\ProjectMembershipProvisioner;
+use Padosoft\Invitations\Contracts\TenantResolver as InvitationsTenantResolver;
+use Padosoft\Invitations\Services\AccountProvisioningService;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
 use App\Services\Admin\Pdf\PdfRendererFactory;
@@ -185,6 +188,79 @@ class AppServiceProvider extends ServiceProvider
         $this->registerFinOpsGates();
         $this->registerGuardrailsGates();
         $this->registerFakeImapFactory();
+        $this->registerInvitationsIntegration();
+        $this->registerInvitationsGates();
+    }
+
+    /**
+     * padosoft/laravel-invitations host wiring (R44 backend surfaces). Bound in
+     * boot() (not register()) so it wins over the package's own
+     * packageRegistered() defaults — same ordering rationale as the MCP +
+     * evidence-risk-review adapters above:
+     *
+     *   - TenantResolver  → the host's request-scoped TenantContext, so every
+     *     invite query/write is scoped to the active tenant (R30). The package
+     *     binds a single-tenant DefaultTenantResolver via bindIf(); an explicit
+     *     bind() here overrides it definitively.
+     *   - Provisioner tag → adds the AskMyDocs ProjectMembershipProvisioner to
+     *     the `invitations.provisioners` tag alongside the package's default
+     *     SpatiePermissionProvisioner. The package's contextual
+     *     giveTagged('invitations.provisioners') for AccountProvisioningService
+     *     resolves the tag lazily, so both provisioners run per redemption: the
+     *     Spatie one raises the role, ours raises per-project membership.
+     */
+    private function registerInvitationsIntegration(): void
+    {
+        $this->app->bind(InvitationsTenantResolver::class, function ($app): InvitationsTenantResolver {
+            $ctx = $app->make(TenantContext::class);
+
+            return new class($ctx) implements InvitationsTenantResolver
+            {
+                public function __construct(private readonly TenantContext $ctx) {}
+
+                public function current(): string
+                {
+                    return $this->ctx->current();
+                }
+            };
+        });
+
+        // Append the host provisioner to the package tag (the package already
+        // tagged its SpatiePermissionProvisioner in packageRegistered()).
+        $this->app->tag([ProjectMembershipProvisioner::class], 'invitations.provisioners');
+
+        // Re-assert the contextual binding so AccountProvisioningService receives
+        // the FULL tag (package default + host provisioner). The package set this
+        // in packageRegistered() before our tag entry existed; the closure re-reads
+        // the tag at resolution, but re-binding is explicit + future-proof.
+        $this->app->when(AccountProvisioningService::class)
+            ->needs('$provisioners')
+            ->giveTagged('invitations.provisioners');
+    }
+
+    /**
+     * padosoft/laravel-invitations admin RBAC gate (R32). The package routes
+     * carry no internal authorization — admin gating is entirely the host
+     * `invitations.routes.admin_middleware` config (set in config/invitations.php
+     * to the authenticated + tenant-scoped + role-gated stack). This gate is the
+     * matrix anchor for `/api/admin/invitations/*`:
+     *
+     *   - manageInvitations → super-admin + admin (campaigns, code generation,
+     *     metrics, direct invitations). dpo/editor/viewer are excluded — issuing
+     *     access-granting invite codes is an administrative act.
+     *
+     * (The user-facing redeem surface rides `user_middleware` = the
+     * authenticated stack; any logged-in account may redeem a code.)
+     */
+    private function registerInvitationsGates(): void
+    {
+        Gate::define('manageInvitations', function ($user): bool {
+            if ($user === null) {
+                return false;
+            }
+
+            return $user->hasAnyRole(['super-admin', 'admin']);
+        });
     }
 
     /**

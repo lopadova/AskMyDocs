@@ -109,6 +109,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
             '/api/admin/evidence-risk-review/reviews' => ['admin', 'dpo', 'super-admin'], // viewEvidenceRiskReview
             '/api/admin/ai-finops/settings' => ['admin', 'super-admin'], // FinOpsAuthorize: GET → viewAiFinOps
             '/api/admin/ai-guardrails/overview' => ['admin', 'super-admin'], // GuardrailsAuthorize: GET → viewAiGuardrails
+            // padosoft/laravel-invitations admin surface — config('invitations.routes.admin_middleware')
+            // = SPA-session + auth:sanctum + tenant.authorize + can:manageInvitations.
+            '/api/admin/invitations/metrics' => ['admin', 'super-admin'], // manageInvitations
 
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
