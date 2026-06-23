@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+    accountStatus,
     callbackErrorMessage,
-    derivedStatus,
     formatRelative,
     statusBadgeStyle,
 } from './status-utils';
-import type { ConnectorEntry } from './connectors.api';
+import type { ConnectorInstallationDto } from './connectors.api';
 
 /*
  * Pure-helper tests. Exercise every branch of the status switch,
@@ -18,32 +18,22 @@ import type { ConnectorEntry } from './connectors.api';
  *      switch to 'min ago', not "any non-empty string".
  */
 
-const baseEntry: ConnectorEntry = {
-    key: 'google-drive',
-    display_name: 'Google Drive',
-    icon_url: '/connectors/google-drive.svg',
-    oauth_scopes: ['drive.readonly'],
-    auth_kind: 'oauth',
-    credential_form_schema: null,
-    installation: null,
-};
-
-describe('derivedStatus', () => {
-    it('returns "not_installed" when installation is null', () => {
-        expect(derivedStatus(baseEntry)).toBe('not_installed');
+describe('accountStatus', () => {
+    it('returns "not_installed" when the installation is null/undefined', () => {
+        expect(accountStatus(null)).toBe('not_installed');
+        expect(accountStatus(undefined)).toBe('not_installed');
     });
 
     it('returns the installation.status when present', () => {
-        const entry: ConnectorEntry = {
-            ...baseEntry,
-            installation: {
-                id: 1,
-                status: 'active',
-                last_sync_at: null,
-                error: null,
-            },
+        const installation: ConnectorInstallationDto = {
+            id: 1,
+            label: 'support',
+            project_key: 'acme-hr',
+            status: 'active',
+            last_sync_at: null,
+            error: null,
         };
-        expect(derivedStatus(entry)).toBe('active');
+        expect(accountStatus(installation)).toBe('active');
     });
 });
 

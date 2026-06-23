@@ -99,11 +99,16 @@ function makeEntry(): ConnectorEntry {
         oauth_scopes: [],
         auth_kind: 'credential',
         credential_form_schema: SCHEMA,
-        installation: null,
+        installations: [],
     };
 }
 
-const NOOP = { onSubmit: vi.fn(), onClose: vi.fn() };
+const PROJECTS = [
+    { id: 1, project_key: 'acme-hr', name: 'Acme HR', description: null, document_count: 0, member_count: 0 },
+];
+
+// v8.20 — every render needs the projects prop (binding dropdown, R18).
+const NOOP = { onSubmit: vi.fn(), onClose: vi.fn(), projects: PROJECTS };
 
 describe('CredentialConnectorForm', () => {
     it('renders the basic-auth fields from the schema (host/username/password) and hides xoauth2-only fields', () => {
@@ -133,10 +138,13 @@ describe('CredentialConnectorForm', () => {
         expect(screen.getByTestId('connector-imap-form-username')).toBeInTheDocument();
     });
 
-    it('submits only the visible field values', () => {
+    it('submits only the visible field values plus the injected label', () => {
         const onSubmit = vi.fn();
-        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} />);
+        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} projects={PROJECTS} />);
 
+        fireEvent.change(screen.getByTestId('connector-imap-form-label'), {
+            target: { value: 'Support' },
+        });
         fireEvent.change(screen.getByTestId('connector-imap-form-host'), {
             target: { value: 'imap.example.com' },
         });
@@ -151,6 +159,7 @@ describe('CredentialConnectorForm', () => {
         expect(onSubmit).toHaveBeenCalledTimes(1);
         const payload = onSubmit.mock.calls[0][0];
         expect(payload).toMatchObject({
+            label: 'Support',
             auth_mode: 'basic',
             host: 'imap.example.com',
             username: 'alice@example.com',
@@ -158,16 +167,37 @@ describe('CredentialConnectorForm', () => {
         });
         // xoauth2_provider is hidden in basic mode → must NOT be submitted.
         expect(payload).not.toHaveProperty('xoauth2_provider');
+        // No project selected → project_key omitted (BE applies tenant default).
+        expect(payload).not.toHaveProperty('project_key');
+    });
+
+    it('injects the selected project_key into the payload', () => {
+        const onSubmit = vi.fn();
+        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} projects={PROJECTS} />);
+
+        fireEvent.change(screen.getByTestId('connector-imap-form-label'), { target: { value: 'Support' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-project_key'), {
+            target: { value: 'acme-hr' },
+        });
+        fireEvent.change(screen.getByTestId('connector-imap-form-host'), { target: { value: 'imap.example.com' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-username'), { target: { value: 'a@b.c' } });
+        fireEvent.change(screen.getByTestId('connector-imap-form-password'), { target: { value: 'pw' } });
+        fireEvent.click(screen.getByTestId('connector-imap-form-submit'));
+
+        expect(onSubmit.mock.calls[0][0].project_key).toBe('acme-hr');
     });
 
     it('pre-fills the number default and omits a cleared optional number from the payload (no NaN/null)', () => {
         const onSubmit = vi.fn();
-        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} />);
+        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={onSubmit} onClose={vi.fn()} projects={PROJECTS} />);
 
         const port = screen.getByTestId('connector-imap-form-port') as HTMLInputElement;
         expect(port.value).toBe('993');
 
         // Fill the required fields so the submit isn't blocked by native validation.
+        fireEvent.change(screen.getByTestId('connector-imap-form-label'), {
+            target: { value: 'Support' },
+        });
         fireEvent.change(screen.getByTestId('connector-imap-form-host'), {
             target: { value: 'imap.example.com' },
         });
@@ -234,7 +264,7 @@ describe('CredentialConnectorForm', () => {
 
     it('closes on Cancel', () => {
         const onClose = vi.fn();
-        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={vi.fn()} onClose={onClose} />);
+        render(<CredentialConnectorForm entry={makeEntry()} onSubmit={vi.fn()} onClose={onClose} projects={PROJECTS} />);
 
         fireEvent.click(screen.getByTestId('connector-imap-form-cancel'));
         expect(onClose).toHaveBeenCalledTimes(1);
