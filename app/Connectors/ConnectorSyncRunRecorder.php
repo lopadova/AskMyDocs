@@ -55,8 +55,8 @@ final class ConnectorSyncRunRecorder
             $run = ConnectorSyncRun::create([
                 'tenant_id' => $job->tenantId,
                 'connector_installation_id' => $job->installationId,
-                'connector_name' => $installation->connector_name ?? 'unknown',
-                'label' => $installation->label ?? 'default',
+                'connector_name' => $installation?->connector_name ?? 'unknown',
+                'label' => $installation?->label ?? 'default',
                 'queue' => $event->job->getQueue(),
                 'status' => ConnectorSyncRun::STATUS_RUNNING,
                 'started_at' => now(),
