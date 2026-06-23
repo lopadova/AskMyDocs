@@ -198,12 +198,21 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         foreach ($this->registeredTools() as $toolClass) {
             // Vendor-namespaced tools (e.g. the padosoft/laravel-invitations
             // MCP surface) live under vendor/ and resolve via composer's PSR-4
-            // autoload — they don't map onto the host `app/` PSR-4 root, so
-            // assert their loadability instead of a host-relative file path.
+            // autoload — they don't map onto the host `app/` PSR-4 root. Assert
+            // the class is RESOLVABLE through composer's autoload map WITHOUT
+            // loading it (ClassLoader::findFile() returns the mapped file path
+            // or false). Using class_exists() here would autoload + execute the
+            // tool class, defeating this test's "survive without laravel/mcp"
+            // goal and coupling it to optional-dep side effects.
             if (! str_starts_with($toolClass, 'App\\')) {
-                $this->assertTrue(
-                    class_exists($toolClass),
-                    "Registered MCP tool {$toolClass} is not autoloadable"
+                $mappedFile = $this->composerClassLoader()->findFile($toolClass);
+                $this->assertNotFalse(
+                    $mappedFile,
+                    "Registered MCP tool {$toolClass} is not in composer's autoload map"
+                );
+                $this->assertFileExists(
+                    (string) $mappedFile,
+                    "Registered MCP tool {$toolClass} maps to a missing file {$mappedFile}"
                 );
 
                 continue;
@@ -220,6 +229,22 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
                 "Registered MCP tool {$toolClass} has no source file at {$relativePath}"
             );
         }
+    }
+
+    /**
+     * The registered Composer PSR-4 ClassLoader, resolved from the active
+     * autoloader stack — never instantiates or loads the target class, so the
+     * autoload-map lookup above stays side-effect-free.
+     */
+    private function composerClassLoader(): \Composer\Autoload\ClassLoader
+    {
+        foreach (spl_autoload_functions() as $autoloader) {
+            if (is_array($autoloader) && ($autoloader[0] ?? null) instanceof \Composer\Autoload\ClassLoader) {
+                return $autoloader[0];
+            }
+        }
+
+        $this->fail('Composer ClassLoader is not registered on the autoload stack.');
     }
 
     public function test_server_attributes_advertise_the_expected_name_and_version(): void
