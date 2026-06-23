@@ -119,6 +119,13 @@ describe('IngestionView', () => {
         expect(screen.queryByTestId('admin-ingestion-no-accounts')).not.toBeInTheDocument();
     });
 
+    it('shows a queues empty-state when the depths array is empty', () => {
+        queueMock.data = [];
+        wrap(<IngestionView />);
+        expect(screen.getByTestId('admin-ingestion-queues-empty')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-ingestion-queues')).not.toBeInTheDocument();
+    });
+
     it('shows the no-accounts empty state when nothing is installed', () => {
         queueMock.data = [];
         connectorsMock.data = [];

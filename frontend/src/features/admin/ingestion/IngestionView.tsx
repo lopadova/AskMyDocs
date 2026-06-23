@@ -103,7 +103,12 @@ export function IngestionView() {
                             </button>
                         </div>
                     )}
-                    {state === 'ready' && (
+                    {state === 'ready' && (queueQuery.data ?? []).length === 0 && (
+                        <div data-testid="admin-ingestion-queues-empty" role="status" style={panelStyle}>
+                            No queues reported — the queue driver may not expose depths.
+                        </div>
+                    )}
+                    {state === 'ready' && (queueQuery.data ?? []).length > 0 && (
                         <div
                             data-testid="admin-ingestion-queues"
                             style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}
