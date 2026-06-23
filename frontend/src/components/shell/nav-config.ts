@@ -35,6 +35,7 @@ export type SidebarSection =
     | 'evidence-risk-review'
     | 'pii-redactor'
     | 'connectors'
+    | 'ingestion'
     | 'flows'
     | 'eval-harness'
     | 'mcp-tools'
@@ -117,6 +118,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Operations',
         items: [
             { id: 'connectors', label: 'Connectors', icon: 'Link', route: '/app/$teamHash/admin/connectors' },
+            { id: 'ingestion', label: 'Ingestion & Sync', icon: 'Activity', route: '/app/$teamHash/admin/ingestion' },
             { id: 'flows', label: 'Flows', icon: 'Bolt', route: '/app/$teamHash/admin/flows' },
             { id: 'eval-harness', label: 'Eval Harness', icon: 'Brain', route: '/app/$teamHash/admin/eval-harness' },
             { id: 'mcp-tools', label: 'MCP Tools', icon: 'Terminal', route: '/app/$teamHash/admin/mcp-tools' },
