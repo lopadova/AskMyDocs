@@ -49,6 +49,8 @@ export function IngestionView() {
         return out;
     }, [connectorsQuery.data]);
 
+    const connectorsLoaded = !connectorsQuery.isLoading && !connectorsQuery.isError;
+
     const [selectedId, setSelectedId] = useState<number | null>(null);
     // Default the selection to the first account once they load.
     const effectiveId = selectedId ?? accounts[0]?.installationId ?? null;
@@ -138,7 +140,11 @@ export function IngestionView() {
                             disabled={accounts.length === 0}
                             style={selectStyle}
                         >
-                            {accounts.length === 0 && <option value="">No connected accounts</option>}
+                            {connectorsQuery.isLoading && <option value="">Loading accounts…</option>}
+                            {connectorsQuery.isError && <option value="">Couldn’t load accounts</option>}
+                            {connectorsLoaded && accounts.length === 0 && (
+                                <option value="">No connected accounts</option>
+                            )}
                             {accounts.map((a) => (
                                 <option key={a.installationId} value={a.installationId}>
                                     {a.connectorKey} · {a.label}
@@ -147,7 +153,24 @@ export function IngestionView() {
                         </select>
                     </div>
 
-                    {accounts.length === 0 ? (
+                    {connectorsQuery.isLoading ? (
+                        <div data-testid="admin-ingestion-accounts-loading" role="status" aria-busy="true" style={panelStyle}>
+                            Loading connectors…
+                        </div>
+                    ) : connectorsQuery.isError ? (
+                        <div data-testid="admin-ingestion-accounts-error" role="alert" style={errorStyle}>
+                            Could not load connectors.{' '}
+                            <button
+                                type="button"
+                                data-testid="admin-ingestion-accounts-retry"
+                                className="focus-ring"
+                                onClick={() => connectorsQuery.refetch()}
+                                style={retryStyle}
+                            >
+                                Retry
+                            </button>
+                        </div>
+                    ) : accounts.length === 0 ? (
                         <div data-testid="admin-ingestion-no-accounts" role="status" style={panelStyle}>
                             No connectors are installed yet — connect one to see its sync history.
                         </div>

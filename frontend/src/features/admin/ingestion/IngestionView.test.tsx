@@ -48,6 +48,8 @@ beforeEach(() => {
     runsMock.isLoading = false;
     runsMock.isError = false;
     connectorsMock.data = [];
+    connectorsMock.isLoading = false;
+    connectorsMock.isError = false;
 });
 
 function entry(installations: { id: number; label: string }[]): ConnectorEntry {
@@ -96,6 +98,25 @@ describe('IngestionView', () => {
         expect(screen.getByTestId('ingestion-queue-kb-ingest')).toHaveAttribute('data-depth', '0');
         // null depth renders the n/a sentinel.
         expect(screen.getByTestId('ingestion-queue-default')).toHaveAttribute('data-depth', 'n/a');
+    });
+
+    it('shows a connectors loading state (not the empty sentinel) while accounts load', () => {
+        queueMock.data = [];
+        connectorsMock.isLoading = true;
+        connectorsMock.data = undefined;
+        wrap(<IngestionView />);
+        expect(screen.getByTestId('admin-ingestion-accounts-loading')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-ingestion-no-accounts')).not.toBeInTheDocument();
+    });
+
+    it('surfaces a connectors error (not the empty sentinel) on failure', () => {
+        queueMock.data = [];
+        connectorsMock.isError = true;
+        connectorsMock.data = undefined;
+        wrap(<IngestionView />);
+        expect(screen.getByTestId('admin-ingestion-accounts-error')).toBeInTheDocument();
+        expect(screen.getByTestId('admin-ingestion-accounts-retry')).toBeInTheDocument();
+        expect(screen.queryByTestId('admin-ingestion-no-accounts')).not.toBeInTheDocument();
     });
 
     it('shows the no-accounts empty state when nothing is installed', () => {
