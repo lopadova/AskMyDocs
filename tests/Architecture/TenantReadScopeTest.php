@@ -40,6 +40,7 @@ final class TenantReadScopeTest extends TestCase
         'KnowledgeDocument', 'KnowledgeDocumentAcl', 'McpServer',
         'McpTenantToken', 'McpToolCallAudit', 'Message', 'NotificationDigest',
         'NotificationEvent', 'NotificationPreference', 'NotificationTenantDefault',
+        'ConnectorSyncRun',
         'Project', 'ProjectMembership', 'TabularCell', 'TabularReview',
         'TenantSchedulerOverride', 'WidgetKey', 'WidgetSession',
         'WidgetSessionStep', 'WidgetSessionToken', 'Workflow',

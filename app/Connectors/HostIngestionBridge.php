@@ -61,6 +61,7 @@ final class HostIngestionBridge implements ConnectorIngestionContract
     public function __construct(
         private readonly TenantContext $tenantContext,
         private readonly DocumentDeleter $deleter,
+        private readonly SyncRunContext $syncRunContext,
     ) {}
 
     public function dispatchIngestion(
@@ -87,6 +88,12 @@ final class HostIngestionBridge implements ConnectorIngestionContract
             mimeType: $mimeType,
             tenantId: $tenantId,
         );
+
+        // v8.21 (Ciclo 2) — count this document against the connector sync run
+        // currently executing in this worker (no-op outside a sync, e.g. the
+        // HTTP/CLI ingest paths), so connector_sync_runs.items_discovered is
+        // accurate without a package change.
+        $this->syncRunContext->recordDispatch();
     }
 
     public function resolveKbSourcePath(string $relativePath): array

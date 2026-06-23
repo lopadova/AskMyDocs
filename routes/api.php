@@ -798,6 +798,10 @@ Route::middleware([
         Route::patch('/{installationId}', [ConnectorAdminController::class, 'update'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.update');
+        // v8.21 (Ciclo 2) — per-account sync-run history (read-only).
+        Route::get('/{installationId}/sync-runs', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'syncRuns'])
+            ->whereNumber('installationId')
+            ->name('api.admin.connectors.sync-runs');
         Route::post('/{installationId}/sync-now', [ConnectorAdminController::class, 'syncNow'])
             ->whereNumber('installationId')
             ->name('api.admin.connectors.sync-now');
@@ -814,6 +818,30 @@ Route::middleware([
         // applies uniformly.
         Route::post('/evernote/import-enex', [EvernoteEnexController::class, 'importEnex'])
             ->name('api.admin.connectors.evernote.import-enex');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Admin — Ingestion & Sync observability (v8.21 / Ciclo 2, super-admin)
+|--------------------------------------------------------------------------
+|
+| Read-only queue-depth + sync-run views for the "Ingestion & Sync"
+| admin screen. Same `can:manageConnectors` allow-set (super-admin) as
+| the connectors surface; the per-account sync-run history lives under
+| the connectors group above.
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'can:manageConnectors',
+])
+    ->prefix('admin/ingestion')
+    ->group(function () {
+        Route::get('/queue', [\App\Http\Controllers\Api\Admin\IngestionController::class, 'queue'])
+            ->name('api.admin.ingestion.queue');
     });
 
 /*

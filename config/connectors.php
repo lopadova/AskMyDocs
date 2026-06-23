@@ -110,8 +110,16 @@ return [
     | (e.g. `connectors` worker pool) so it doesn't compete with
     | the chat / ingest hot path.
     |
+    | v8.21 (Ciclo 2 — queue baseline): the default is now `connectors`,
+    | NOT `default`. Connector sync is bursty + slow (network IO to remote
+    | providers) and previously shared `default` with autowiki + change-
+    | analysis. Run a dedicated worker pool: `queue:work --queue=connectors`
+    | (sync), `--queue=kb-ingest` (per-doc ingestion, see kb.ingest.queue),
+    | `--queue=default` (everything else). See the Ingestion & Sync docs for
+    | the Horizon autoscaling note.
+    |
     */
-    'sync_job_queue' => env('CONNECTOR_SYNC_JOB_QUEUE', 'default'),
+    'sync_job_queue' => env('CONNECTOR_SYNC_JOB_QUEUE', 'connectors'),
 
     /*
     |--------------------------------------------------------------------------
