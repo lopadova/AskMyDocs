@@ -20,16 +20,20 @@ const CADENCE_KEY = 'connector.sync_cadence_minutes';
 baseTest.describe.configure({ timeout: 90_000 });
 
 baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
-    baseTest.afterEach(async ({ page }) => {
-        // Clear any tenant-wide cadence override so the screen is back to its
-        // config default for the next spec. Clearing a non-existent override is
-        // a valid 200, so we assert the cleanup succeeded rather than swallowing
-        // failures (a silent failure would leak cross-spec state / mask a 401).
+    // Clear any tenant-wide cadence override BOTH before and after each test so
+    // the "config default" baseline is deterministic even on the FIRST test
+    // (a previous run/spec may have left a persisted override). Clearing a
+    // non-existent override is a valid 200, so we assert success rather than
+    // swallowing failures (a silent failure would leak state / mask a 401).
+    const clearCadence = async (page: import('@playwright/test').Page) => {
         const resp = await page.request.put('/api/admin/app-settings', {
             data: { key: CADENCE_KEY, value: null, project_key: '*' },
         });
         expect(resp.ok()).toBeTruthy();
-    });
+    };
+
+    baseTest.beforeEach(async ({ page }) => clearCadence(page));
+    baseTest.afterEach(async ({ page }) => clearCadence(page));
 
     baseTest('lands on /app/admin/app-settings with the governable settings table', async ({ page }) => {
         await page.goto('/app/admin/app-settings');

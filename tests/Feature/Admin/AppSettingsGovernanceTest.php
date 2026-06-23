@@ -402,9 +402,12 @@ final class AppSettingsGovernanceTest extends TestCase
     {
         $resp = $this->actingAs($this->superAdmin())->getJson('/api/admin/app-settings');
 
-        $resp->assertOk()
-            ->assertJsonPath('data.0.key', 'ai.provider')
-            ->assertJsonPath('data.0.source', 'config');
+        $resp->assertOk();
+        // Assert by key match, not array index — the roster order is an
+        // implementation detail of the registry.
+        $row = collect($resp->json('data'))->firstWhere('key', 'ai.provider');
+        $this->assertNotNull($row);
+        $this->assertSame('config', $row['source']);
     }
 
     public function test_super_admin_sets_an_override_via_http(): void
@@ -419,10 +422,10 @@ final class AppSettingsGovernanceTest extends TestCase
             'setting_key' => 'ai.provider',
         ]);
 
-        $this->actingAs($this->superAdmin())
-            ->getJson('/api/admin/app-settings')
-            ->assertJsonPath('data.0.value', 'anthropic')
-            ->assertJsonPath('data.0.source', 'tenant');
+        $resp = $this->actingAs($this->superAdmin())->getJson('/api/admin/app-settings')->assertOk();
+        $row = collect($resp->json('data'))->firstWhere('key', 'ai.provider');
+        $this->assertSame('anthropic', $row['value']);
+        $this->assertSame('tenant', $row['source']);
     }
 
     public function test_http_normalises_empty_project_key_to_wildcard(): void
@@ -432,11 +435,12 @@ final class AppSettingsGovernanceTest extends TestCase
         // not resolved as a literal empty project scope).
         app(AppSettingsResolver::class)->set('ai.provider', 'anthropic', 'default');
 
-        $this->actingAs($this->superAdmin())
+        $resp = $this->actingAs($this->superAdmin())
             ->getJson('/api/admin/app-settings?project_key=')
-            ->assertOk()
-            ->assertJsonPath('data.0.value', 'anthropic')
-            ->assertJsonPath('data.0.source', 'tenant');
+            ->assertOk();
+        $row = collect($resp->json('data'))->firstWhere('key', 'ai.provider');
+        $this->assertSame('anthropic', $row['value']);
+        $this->assertSame('tenant', $row['source']);
     }
 
     public function test_http_accepts_explicit_null_project_key(): void
