@@ -85,8 +85,12 @@ final class IngestionObservabilityTest extends TestCase
         $resp = $this->actingAs($admin)->getJson('/api/admin/ingestion/queue');
         $resp->assertOk();
         $roles = collect($resp->json('data'))->pluck('role')->all();
+        // All THREE logical roles are always present (even if some share a
+        // physical queue), per the documented contract.
         $this->assertContains('connector-sync', $roles);
         $this->assertContains('kb-ingest', $roles);
+        $this->assertContains('default', $roles);
+        $this->assertCount(3, $resp->json('data'));
     }
 
     public function test_sync_runs_endpoint_returns_runs_for_an_installation(): void

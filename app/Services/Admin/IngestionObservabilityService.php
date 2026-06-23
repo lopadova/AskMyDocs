@@ -37,28 +37,25 @@ final class IngestionObservabilityService
      */
     public function queueDepths(): array
     {
-        $connectors = (string) config('connectors.sync_job_queue', 'connectors');
-        $kbIngest = (string) config('kb.ingest.queue', 'kb-ingest');
-
-        // De-dupe by queue name (a deployment may point two roles at one queue)
-        // while keeping a stable, documented order.
-        $queues = [
-            ['name' => $connectors, 'role' => 'connector-sync'],
-            ['name' => $kbIngest, 'role' => 'kb-ingest'],
-            ['name' => 'default', 'role' => 'default'],
+        $roles = [
+            ['role' => 'connector-sync', 'name' => (string) config('connectors.sync_job_queue', 'connectors')],
+            ['role' => 'kb-ingest', 'name' => (string) config('kb.ingest.queue', 'kb-ingest')],
+            ['role' => 'default', 'name' => 'default'],
         ];
 
-        $seen = [];
+        // ALWAYS return all three logical roles (the documented contract), even
+        // when an operator points two of them at the same physical queue — only
+        // the depth lookup is de-duped so a shared queue isn't sized twice.
+        $depthCache = [];
         $out = [];
-        foreach ($queues as $q) {
-            if (isset($seen[$q['name']])) {
-                continue;
+        foreach ($roles as $r) {
+            if (! array_key_exists($r['name'], $depthCache)) {
+                $depthCache[$r['name']] = $this->depthOf($r['name']);
             }
-            $seen[$q['name']] = true;
             $out[] = [
-                'name' => $q['name'],
-                'role' => $q['role'],
-                'depth' => $this->depthOf($q['name']),
+                'name' => $r['name'],
+                'role' => $r['role'],
+                'depth' => $depthCache[$r['name']],
             ];
         }
 
