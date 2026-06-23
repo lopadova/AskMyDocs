@@ -113,6 +113,9 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // = SPA-session + auth:sanctum + tenant.authorize + can:manageInvitations.
             '/api/admin/invitations/metrics' => ['admin', 'super-admin'], // manageInvitations
 
+            // ── Role-middleware groups — `role:` middleware, not a Gate ──
+            '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
+
             // ── Widget admin (M6) — Gate::define() in AppServiceProvider ──
             '/api/admin/widget-keys' => ['super-admin'],                     // manageWidgetKeys
             '/api/admin/widget-sessions' => ['admin', 'super-admin'],        // viewWidgetSessions

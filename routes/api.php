@@ -845,6 +845,31 @@ Route::middleware([
     });
 
 /*
+|--------------------------------------------------------------------------
+| Admin — Runtime configuration governance (v8.22 / Ciclo 3, super-admin)
+|--------------------------------------------------------------------------
+|
+| Read effective governable settings + set/clear per-(tenant, project)
+| overrides without a deploy. Super-admin only (changes AI provider /
+| cadence / runtime switches). Deploy-only keys are read-only (422 on set).
+|
+*/
+Route::middleware([
+    \Illuminate\Cookie\Middleware\EncryptCookies::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    'auth:sanctum',
+    'tenant.authorize',
+    'role:super-admin',
+])
+    ->prefix('admin/app-settings')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'index'])
+            ->name('api.admin.app-settings.index');
+        Route::put('/', [\App\Http\Controllers\Api\Admin\AppSettingsController::class, 'update'])
+            ->name('api.admin.app-settings.update');
+    });
+
+/*
 |---------------------------------------------------------------------------
 | Admin — MCP servers (v5.0/W1-W2)
 |--------------------------------------------------------------------------

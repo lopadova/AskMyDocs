@@ -39,6 +39,7 @@ import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/E
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
 import { ConnectorCallback } from '../features/admin/connectors/ConnectorCallback';
 import { IngestionView } from '../features/admin/ingestion/IngestionView';
+import { AppSettingsView } from '../features/admin/app-settings/AppSettingsView';
 import { AiActComplianceView } from '../features/admin/ai-act-compliance/AiActComplianceView';
 import { TabularReviewsList } from '../features/admin/tabular-reviews/TabularReviewsList';
 import { McpToolsView } from '../features/admin/mcp-tools/McpToolsView';
@@ -875,6 +876,22 @@ const adminIngestionRoute = createRoute({
     component: AdminIngestionRoute,
 });
 
+// v8.22 (Ciclo 3) — Runtime configuration governance. Super-admin only (the BE
+// route is gated `role:super-admin`).
+function AdminAppSettingsRoute() {
+    return (
+        <RequireRole roles={['super-admin']}>
+            <AppSettingsView />
+        </RequireRole>
+    );
+}
+
+const adminAppSettingsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/app-settings',
+    component: AdminAppSettingsRoute,
+});
+
 // v4.7/W3 — Tabular Reviews + Workflows admin SPA routes.
 // `viewTabularReviews` / `viewWorkflows` BE Gates admit the `viewer`
 // role for READ-ONLY access (the BE controllers' denyMutationForViewer()
@@ -1174,6 +1191,7 @@ const teamChildren = [
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
     adminIngestionRoute,
+    adminAppSettingsRoute,
     adminTabularReviewsRoute,
     adminWorkflowsRoute,
     adminMcpToolsRoute,

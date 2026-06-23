@@ -74,6 +74,7 @@
         "icon": "gear",
         "pages": [
           "configuration",
+          "runtime-config-governance",
           "self-hosting",
           "scheduler-and-maintenance",
           "troubleshooting"
