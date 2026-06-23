@@ -21,11 +21,14 @@ baseTest.describe.configure({ timeout: 90_000 });
 
 baseTest.describe('Admin Configuration (app-settings) — super-admin', () => {
     baseTest.afterEach(async ({ page }) => {
-        // Belt-and-suspenders cleanup: clear any tenant-wide cadence override so
-        // the screen is back to its config default for the next spec.
-        await page.request
-            .put('/api/admin/app-settings', { data: { key: CADENCE_KEY, value: null, project_key: '*' } })
-            .catch(() => undefined);
+        // Clear any tenant-wide cadence override so the screen is back to its
+        // config default for the next spec. Clearing a non-existent override is
+        // a valid 200, so we assert the cleanup succeeded rather than swallowing
+        // failures (a silent failure would leak cross-spec state / mask a 401).
+        const resp = await page.request.put('/api/admin/app-settings', {
+            data: { key: CADENCE_KEY, value: null, project_key: '*' },
+        });
+        expect(resp.ok()).toBeTruthy();
     });
 
     baseTest('lands on /app/admin/app-settings with the governable settings table', async ({ page }) => {

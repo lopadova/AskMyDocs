@@ -13,8 +13,8 @@ import { WILDCARD, type AppSettingDto } from './app-settings.api';
  * keys are read-only; a tenant-scoped key is read-only while a project scope
  * is active (it can only vary tenant-wide).
  *
- * R11/R29 testids, R14 explicit empty/loading/error + inline 422, R15 labelled
- * controls.
+ * R11 testid/ARIA/state contract, R14 explicit empty/loading/error + inline
+ * 422, R15 labelled controls.
  */
 
 function sourceBadge(source: string): { bg: string; border: string; fg: string; text: string } {
@@ -43,6 +43,10 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
     const readOnly = setting.deploy_only || (scopedToProject && setting.scope !== 'both');
     const dirty = draft !== (setting.value === null ? '' : String(setting.value));
     const badge = sourceBadge(setting.source);
+    // Reset clears the override AT THE CURRENT SCOPE only. A 'tenant' source seen
+    // while a project scope is active is INHERITED (lives at '*'), so Reset here
+    // could not clear it — don't offer an action that wouldn't work.
+    const overrideAtScope = scopedToProject ? setting.source === 'project' : setting.source === 'tenant';
 
     const submit = () => {
         const raw =
@@ -138,7 +142,7 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                         >
                             {mutation.isPending ? 'Saving…' : 'Save'}
                         </button>
-                        {setting.source !== 'config' && (
+                        {overrideAtScope && (
                             <button
                                 type="button"
                                 data-testid={`app-setting-${setting.key}-clear`}
