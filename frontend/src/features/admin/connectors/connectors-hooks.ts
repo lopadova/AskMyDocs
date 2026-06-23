@@ -50,7 +50,10 @@ export function useStartInstall() {
  */
 export function useProjectOptions() {
     return useQuery<AdminProject[]>({
-        queryKey: ['admin', 'projects', 'list'],
+        // Share the SAME cache key as the projects admin surface (ProjectsList)
+        // so the dropdown refreshes when a project is created/renamed/deleted
+        // there — and so the two don't duplicate-fetch the same list.
+        queryKey: ['admin-projects'],
         queryFn: () => adminProjectsApi.list(),
         staleTime: 60_000,
     });
