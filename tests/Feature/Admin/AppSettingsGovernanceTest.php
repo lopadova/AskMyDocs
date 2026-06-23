@@ -228,6 +228,20 @@ final class AppSettingsGovernanceTest extends TestCase
             ->assertJsonPath('data.0.source', 'tenant');
     }
 
+    public function test_http_normalises_empty_project_key_to_wildcard(): void
+    {
+        // A tenant '*' override must surface as source=tenant even when the
+        // caller passes an empty ?project_key= (normalised to the wildcard,
+        // not resolved as a literal empty project scope).
+        app(AppSettingsResolver::class)->set('ai.provider', 'anthropic', 'default');
+
+        $this->actingAs($this->superAdmin())
+            ->getJson('/api/admin/app-settings?project_key=')
+            ->assertOk()
+            ->assertJsonPath('data.0.value', 'anthropic')
+            ->assertJsonPath('data.0.source', 'tenant');
+    }
+
     public function test_http_rejects_deploy_only_key_with_422(): void
     {
         $this->actingAs($this->superAdmin())

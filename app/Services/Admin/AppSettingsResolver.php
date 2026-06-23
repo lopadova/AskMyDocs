@@ -65,18 +65,30 @@ final class AppSettingsResolver
      */
     public function all(string $tenantId, string $projectKey = AppSetting::WILDCARD): array
     {
+        // Prefetch every governable key's rows at both the wildcard and the
+        // requested project scope in ONE query, then layer + cast in memory —
+        // the read surface stays O(1) queries as the registry grows (avoids the
+        // earlier O(keys) N+1).
+        $rows = AppSetting::query()
+            ->where('tenant_id', $tenantId)
+            ->whereIn('setting_key', array_keys(AppSettingRegistry::all()))
+            ->whereIn('project_key', array_unique([AppSetting::WILDCARD, $projectKey]))
+            ->get();
+
+        /** @var array<string, array<string, mixed>> $byKey [setting_key][project_key] => value_json */
+        $byKey = [];
+        foreach ($rows as $row) {
+            $byKey[$row->setting_key][$row->project_key] = $row->value_json;
+        }
+
         $out = [];
         foreach (AppSettingRegistry::all() as $key => $d) {
-            $project = AppSetting::query()
-                ->where('tenant_id', $tenantId)->where('setting_key', $key)
-                ->where('project_key', $projectKey)->value('value_json');
-            $wildcard = AppSetting::query()
-                ->where('tenant_id', $tenantId)->where('setting_key', $key)
-                ->where('project_key', AppSetting::WILDCARD)->value('value_json');
+            $project = $byKey[$key][$projectKey] ?? null;
+            $wildcard = $byKey[$key][AppSetting::WILDCARD] ?? null;
+            $hasProject = $projectKey !== AppSetting::WILDCARD && $project !== null;
 
-            $source = $projectKey !== AppSetting::WILDCARD && $project !== null
-                ? 'project'
-                : ($wildcard !== null ? 'tenant' : 'config');
+            $raw = $hasProject ? $project : ($wildcard ?? config((string) $d['config']));
+            $source = $hasProject ? 'project' : ($wildcard !== null ? 'tenant' : 'config');
 
             $out[] = [
                 'key' => $key,
@@ -85,7 +97,7 @@ final class AppSettingsResolver
                 'scope' => $d['scope'],
                 'deploy_only' => (bool) $d['deployOnly'],
                 'enum' => $d['enum'] ?? null,
-                'value' => $this->effective($key, $tenantId, $projectKey),
+                'value' => $this->cast($raw, (string) $d['type']),
                 'source' => $source,
             ];
         }
