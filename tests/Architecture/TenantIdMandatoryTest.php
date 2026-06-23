@@ -93,6 +93,8 @@ final class TenantIdMandatoryTest extends TestCase
         // v4.7/W1 — tabular review backend tables.
         \App\Models\TabularReview::class,
         \App\Models\TabularCell::class,
+        // v8.21/Ciclo 2 — connector sync-run observability.
+        \App\Models\ConnectorSyncRun::class,
         // v4.7/W2 — workflows backend. `workflow_shares` is an
         // association table whose FK to `workflows` carries the tenant
         // boundary transitively; it does NOT need its own tenant_id

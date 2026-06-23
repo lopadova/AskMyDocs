@@ -123,6 +123,12 @@ class AppServiceProvider extends ServiceProvider
             HostIngestionBridge::class,
         );
 
+        // v8.21 (Ciclo 2) — process-scoped holder for the in-flight connector
+        // sync run; the bridge bumps its discovered-doc counter and the recorder
+        // reads it when the job finishes. Singleton so the count survives across
+        // dispatch calls within one job.
+        $this->app->singleton(\App\Connectors\SyncRunContext::class);
+
         // v6.0 — AI Act compliance host scaffold. Bind the upstream
         // contracts only when the optional packages are actually installed;
         // this keeps Laravel 13 CI green while the v1 packages catch up.
@@ -154,6 +160,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(McpHostBridgeContract::class, HostBridge::class);
         $this->app->singleton(McpServerRegistryContract::class, EloquentMcpServerRegistry::class);
         $this->app->singleton(McpToolAuthorizerContract::class, McpToolAuthorizerAdapter::class);
+
+        // v8.21 (Ciclo 2) — observe ConnectorSyncJob via the queue lifecycle to
+        // record per-run rows in `connector_sync_runs` (the package job emits no
+        // events). Recording is best-effort and never breaks the sync path.
+        $this->app->make(\App\Connectors\ConnectorSyncRunRecorder::class)
+            ->subscribe($this->app->make(\Illuminate\Contracts\Events\Dispatcher::class));
 
         $this->registerCommands();
         $this->registerRateLimiters();
@@ -576,6 +588,8 @@ class AppServiceProvider extends ServiceProvider
             // ConfigureConnectorService.
             \App\Console\Commands\ConnectorsListCommand::class,
             \App\Console\Commands\ConnectorsInstallCommand::class,
+            // v8.21/Ciclo 2 — ingestion/sync observability PHP surface (R44).
+            \App\Console\Commands\IngestionStatusCommand::class,
         ]);
     }
 
