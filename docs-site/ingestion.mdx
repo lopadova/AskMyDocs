@@ -155,12 +155,16 @@ don't compete with the chat hot path or `default` background work
 |---|---|---|
 | Connector sync (`ConnectorSyncJob`) | `connectors` | `CONNECTOR_SYNC_JOB_QUEUE` |
 | Per-document ingestion (`IngestDocumentJob`) | `kb-ingest` | `KB_INGEST_QUEUE` |
-| Everything else | `default` | (queue connection default) |
+| Everything else | the connection's default queue | (e.g. `REDIS_QUEUE` / `DB_QUEUE` / `SQS_QUEUE`) |
 
 Run a worker per queue — e.g.
 `php artisan queue:work --queue=connectors`,
-`--queue=kb-ingest`, `--queue=default` — or, under Horizon, one
-auto-scaling supervisor per queue. The previous default (`CONNECTOR_SYNC_JOB_QUEUE=default`)
+`--queue=kb-ingest`, and one for the connection's **default** queue — or, under
+Horizon, one auto-scaling supervisor per queue. The "everything else" queue name
+is whatever your default connection is configured to use (it is **not** always
+the literal `default`: if you set e.g. `REDIS_QUEUE=high`, the default worker is
+`--queue=high`). The `/api/admin/ingestion/queue` endpoint resolves and reports
+the real name so you always know what to run. The previous default (`CONNECTOR_SYNC_JOB_QUEUE=default`)
 let a slow remote sync starve the rest of `default`; the v8.21 default is
 `connectors`.
 

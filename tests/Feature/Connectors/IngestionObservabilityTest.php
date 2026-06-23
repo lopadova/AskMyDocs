@@ -51,11 +51,14 @@ final class IngestionObservabilityTest extends TestCase
         config(['queue.default' => 'sync']);
         ConnectorSyncJob::dispatch($installation->id, 'default');
 
-        $run = ConnectorSyncRun::query()
+        $runs = ConnectorSyncRun::query()
             ->where('connector_installation_id', $installation->id)
-            ->first();
+            ->get();
 
-        $this->assertNotNull($run, 'A connector_sync_runs row must be recorded.');
+        // Exactly one — guards against the recorder being subscribed twice
+        // (which would create duplicate rows and leave one stuck in `running`).
+        $this->assertCount(1, $runs, 'Exactly one connector_sync_runs row must be recorded.');
+        $run = $runs->first();
         $this->assertSame(ConnectorSyncRun::STATUS_SUCCESS, $run->status);
         $this->assertSame('google-drive', $run->connector_name);
         $this->assertSame('support', $run->label);

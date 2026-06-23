@@ -26,7 +26,7 @@ use Throwable;
  *
  * Per-document ingestion status (derived from the package `flow_runs` table) is
  * a deliberate follow-up: `flow_runs` is not tenant-aware, so exposing it safely
- * needs a tenant-scoping design (R30) tracked separately — see ADR 0018.
+ * needs a tenant-scoping design (R30) tracked separately for a later Ciclo 2 PR.
  */
 final class IngestionObservabilityService
 {

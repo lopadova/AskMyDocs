@@ -114,9 +114,11 @@ return [
     | NOT `default`. Connector sync is bursty + slow (network IO to remote
     | providers) and previously shared `default` with autowiki + change-
     | analysis. Run a dedicated worker pool: `queue:work --queue=connectors`
-    | (sync), `--queue=kb-ingest` (per-doc ingestion, see kb.ingest.queue),
-    | `--queue=default` (everything else). See the Ingestion & Sync docs for
-    | the Horizon autoscaling note.
+    | (sync), `--queue=kb-ingest` (per-doc ingestion, see kb.ingest.queue), and
+    | one for your connection's DEFAULT queue (everything else). Note the default
+    | queue NAME is the connection's configured queue (`REDIS_QUEUE` / `DB_QUEUE`
+    | / ...), not necessarily the literal `default`. See the Ingestion & Sync
+    | docs for the Horizon autoscaling note.
     |
     */
     'sync_job_queue' => env('CONNECTOR_SYNC_JOB_QUEUE', 'connectors'),
