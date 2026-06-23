@@ -41,6 +41,9 @@ use App\Mcp\Tools\KbSearchByProjectTool;
 use App\Mcp\Tools\KbSetEvidenceTierTool;
 use App\Mcp\Tools\KbSuggestSupersessionChainTool;
 use App\Mcp\Tools\KbSynthesizeConceptsTool;
+use Padosoft\Invitations\Mcp\Tools\InviteGenerateCodesTool;
+use Padosoft\Invitations\Mcp\Tools\InviteMetricsTool;
+use Padosoft\Invitations\Mcp\Tools\InviteValidateCodeTool;
 use Laravel\Mcp\Server;
 use Laravel\Mcp\Server\Attributes\Description;
 use Laravel\Mcp\Server\Attributes\Name;
@@ -129,6 +132,16 @@ class KnowledgeBaseServer extends Server
         // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
         // governable settings with effective value + provenance, tenant-scoped (R30).
         AppSettingsTool::class,
+
+        // v8.x — padosoft/laravel-invitations tri-surface (R44 third surface).
+        // The invite engine's MCP tools over the SAME services the HTTP + PHP
+        // layers use, tenant-scoped via the host TenantResolver binding (R30):
+        //   - validate a code (read-only, writes nothing)
+        //   - generate codes for a campaign (write)
+        //   - read the invite funnel + virality metrics (read-only)
+        InviteValidateCodeTool::class,
+        InviteGenerateCodesTool::class,
+        InviteMetricsTool::class,
     ];
 
     protected function boot(): void

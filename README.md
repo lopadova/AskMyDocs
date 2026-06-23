@@ -198,6 +198,15 @@ tells buyers to demand:
   flag when the value isn't backed by cited evidence. A flagship **"Canonical KB Governance Audit"**
   preset turns the KB into an auditable, per-cell-cited matrix, with a 16-template ready-made library
   and an evidence side-panel. See the [doc-site](https://padosoft.mintlify.app/agentic-knowledge-reports).
+- **Invite-by-code & referral suite** (v8.22) — onboarding the way a growth team runs it: campaigns,
+  multi-use + vanity codes, **referrals + rewards + waitlist**, fail-open anti-abuse (HMAC'd PII), and
+  funnel analytics, powered by the standalone `padosoft/laravel-invitations` engine whose **atomic,
+  idempotent, concurrency-safe** redemption (a single conditional `UPDATE … WHERE current_uses <
+  max_uses`) makes seat-count safe under load. Each invite carries a per-tenant **grant** — a Spatie
+  role *and* KB project memberships — so one code provisions access across one or more tenants at
+  once (GRANT-never-REVOKE). Tri-surface (PHP + HTTP + 3 MCP tools), admin gated by
+  `can:manageInvitations`, and a closed-beta `INVITE_REQUIRED` signup gate that is **default-OFF**.
+  See the [doc-site](https://padosoft.mintlify.app/invitations).
 
 ---
 
@@ -649,6 +658,57 @@ v8.18 fixed-precision **8-dp decimal string** money shape under additive `*_deci
 keys (no float-rounding drift on small per-token costs). The three FinOps MCP read
 tools and `ChatTurnCostResolver` consume the new shape; the existing numeric keys
 stay in place (R27 additive).
+
+### Invitations — invite-by-code & referral suite (v8.22)
+
+Onboarding via invite codes + referrals is provided by the standalone
+[`padosoft/laravel-invitations`](https://github.com/padosoft/laravel-invitations)
+engine, wired tri-surface (R44) into AskMyDocs over its vendor-neutral seams.
+The package owns the 9 invite tables (campaigns / codes / invitations /
+redemptions / referrals / rewards / waitlist / abuse-signals / analytics) and
+the redemption engine; AskMyDocs binds the tenant + provisioning seams:
+
+- the package `TenantResolver` resolves the active **host** tenant
+  (`App\Support\TenantContext`), so every invite query/write is tenant-scoped (R30);
+- `App\Models\User` implements the package `InvitedAccount` contract;
+- `App\Invitations\ProjectMembershipProvisioner` turns an invite's per-tenant
+  **grant** into `project_memberships` rows — **GRANT-never-REVOKE** (never
+  downgrades an existing membership) and **best-effort** (a fault is logged,
+  never thrown). It runs alongside the package's Spatie-role provisioner, so one
+  code can grant a role **and** project access across one or more tenants.
+
+Routes auto-mount (no host route file): the admin surface
+`/api/admin/invitations/*` (campaigns / code generation / metrics / direct
+invitations) behind the SPA-session + `auth:sanctum` + `tenant.authorize` +
+`can:manageInvitations` stack (super-admin + admin, R32-matrix-locked); the user
+redeem surface `/api/invitations/*` behind the authenticated stack. Three MCP
+read/write tools (`Invite{ValidateCode,GenerateCodes,Metrics}Tool`) register on
+`KnowledgeBaseServer`.
+
+```bash
+# After composer install, create the invite_* tables:
+php artisan migrate
+```
+
+```env
+# Closed-beta signup gate. Default FALSE (R43 both-states): registration is
+# unchanged until you opt in; when true, signup requires a valid invite code.
+INVITE_REQUIRED=false
+
+# Dedicated HMAC secret for signed codes (falls back to APP_KEY-derived
+# material when unset). PRODUCTION MUST set its own.
+# INVITE_SIGNING_KEY=
+# Salt for the HMAC of redemption IP / fingerprint (PII is never plaintext).
+# INVITE_PII_SALT=
+# INVITE_CODE_LENGTH=8
+# INVITE_INVITATION_TTL_DAYS=7
+# INVITE_ANTI_ABUSE_ENABLED=true
+```
+
+The admin SPA screens (campaign builder, code table, funnel dashboard) ship in
+the separate `padosoft/laravel-invitations-admin` package and are a deferred
+AskMyDocs follow-up; this release wires the backend tri-surface. See the
+[doc-site page](https://padosoft.mintlify.app/invitations).
 
 ### Storage (Laravel disks)
 
@@ -1699,7 +1759,8 @@ For the full component map see [`CLAUDE.md`](CLAUDE.md) section 3.
 | **v8.19.0** | ✅ shipped 2026-06-22 | **laravel/ai 0.8 platform migration + AI Guardrails + Agentic Knowledge Reports** (W1–W6). **W1** the platform-wide SDK migration ([ADR 0016](docs/adr/0016-v819-laravel-ai-0.8-platform-migration.md)): `padosoft/laravel-ai-regolo` **v1.2.1** + `padosoft/laravel-ai-finops` **v1.4.0** released onto `laravel/ai` **^0.8**, then the host bumped `^0.6.8 → ^0.8.1` in one coherent resolve (no version skew — the only 0.6→0.8 break, `TranscriptionGateway`, is unused). **W2** **AI Guardrails** core (`padosoft/laravel-ai-guardrails` v1.1.0): input-screening + output-sanitization actively **enforce** on the live chat path via the `ChatGuardrails` adapter — a blocked prompt becomes a refusal (R26, never a 500), the answer is exfil-defanged before it reaches the client; tri-surface (R44) with a `KbGuardrailsInsightsTool` (roster **32 → 33**); host-secured 14-endpoint API behind a method-aware gate (`viewAiGuardrails`/`manageAiGuardrails`, R32-matrix-locked); flags both-states (R43). **W3** the **guardrails admin SPA** (`-admin` v1.0.0) mounts at `/admin/ai-guardrails` (default-OFF → clean 404, R43) behind admin RBAC. **W4** **Agentic Knowledge Reports** backend: agentic column kinds (`extract`/`graph`/`verify`) on the Tabular Review engine — a deterministic `GovernanceColumnResolver` (10 canonical-graph metrics, LLM-free) + a bounded anti-hallucination `verify` pass + a flagship **"Canonical KB Governance Audit"** preset in a 16-template ready-made library; tri-surface with `KbRunReportTool` (roster **33 → 34**). **W5** the rich agentic-report FE: agentic column editor (graph→governance-metric picker), per-cell **evidence side-panel** (reasoning + cited chunks), and a one-click **template gallery**; Vitest + real-data Playwright (R12/R13). **W6** README every-section + deep doc-site pages ([AI Guardrails](https://padosoft.mintlify.app/ai-guardrails) · [Agentic Knowledge Reports](https://padosoft.mintlify.app/agentic-knowledge-reports), R45). RC sequence then GA per R37/R39. |
 | **v8.20.0** | ✅ shipped 2026-06-23 | **Multi-account & project-scoped connectors** (Ciclo 1 of the connectors/observability/config/PII roadmap). A tenant now connects **N labelled accounts per connector** (multiple IMAP mailboxes, Drive accounts, Notion workspaces), each optionally **bound to a real KB project** (empty = the tenant default) — replacing the old one-account-per-connector cap + synthetic `connector-<key>` project. Data model in `padosoft/askmydocs-connector-base` **v1.3.1** (`label` + `project_key` columns, relaxed `UNIQUE(tenant_id, connector_name, label)`, `config_json`→column backfill, `resolveProjectKey()`); all 8 connectors adopted. Tri-surface (R44) over one core: **PHP** (`connectors:list` + `connectors:install` with a masked secret prompt), **HTTP** (`ConnectorAdminController` list/install/configure/**PATCH**/delete; `project_key` validated against the real project registry, R18; duplicate-label → 422, R21/R14), **MCP** (`ConnectorInstallationsTool`, roster **34 → 35**). Admin SPA becomes accounts-per-connector cards with label + project dropdown + add/edit/remove (R11/R15/R29). [ADR 0017](docs/adr/0017-v820-multi-account-connectors.md) + deep doc-site page ([multi-account connectors](https://padosoft.mintlify.app/connectors-multi-account), R45). |
 | **v8.21.0** | ✅ shipped 2026-06-23 | **Ingestion & sync observability + queue baseline** (Ciclo 2 of the connectors/observability/config/PII roadmap). Connector sync is isolated onto a dedicated `connectors` queue (was `default`, which carried autowiki/change-analysis; `KB_INGEST_QUEUE` stays `kb-ingest`) and every `ConnectorSyncJob` run is recorded **host-side** into tenant-scoped `connector_sync_runs` (started/finished, duration, documents discovered, status running/success/partial/failed) via the Laravel **queue lifecycle** — no connector-package change (the package job emits no events). Operators get queue backlog + per-account sync history; tri-surface (R44) over one `IngestionObservabilityService`: **PHP** (`ingestion:status`), **HTTP** (`GET /api/admin/ingestion/queue` + `GET /api/admin/connectors/{installationId}/sync-runs`, R32, R30-scoped), **MCP** (`KbIngestionStatusTool`, roster **35 → 36**). New "Ingestion & Sync" admin screen (queue-depth cards + per-account run table, explicit loading/error/empty + retry, R14). Per-document status via `flow_runs` deferred (not tenant-aware yet). [ADR 0018](docs/adr/0018-v821-ingestion-sync-observability.md). |
-| **v8.22.0** | ✅ shipped 2026-06-23 | **Runtime configuration governance** (Ciclo 3 of the connectors/observability/config/PII roadmap). A curated set of operational knobs becomes editable **per `(tenant, project)` at runtime — no deploy**, layered `config default ← tenant '*' ← exact-project` over one `AppSettingsResolver` (the `KbAnalysisSetting`/`ChangeAnalysisGate` pattern). Governable keys live in a closed `AppSettingRegistry`: `ai.provider` (per-tenant chat provider, wired into `AiManager` fully-guarded → falls back to `config('ai.default')`, R43), `connector.sync_cadence_minutes` (per-tenant **and** per-project), and the **deploy-managed** `ai_finops.enabled` (visible, read-only at runtime → 422). Reads honour scope like writes and **skip corrupt override rows** (no silent coercion, R14); secrets are never registered. Tri-surface (R44): **PHP** (`app-settings:list` / `app-settings:set`), **HTTP** (`GET`/`PUT /api/admin/app-settings`, `role:super-admin`, R32, R30-scoped), **MCP** (`AppSettingsTool`, roster **36 → 37**). New super-admin **Configuration** admin screen (per-row editor + provenance badge + project-scope selector). [ADR 0019](docs/adr/0019-v822-runtime-config-governance.md) + deep doc-site page ([runtime config governance](https://padosoft.mintlify.app/runtime-config-governance), R45). |
+| **v8.22.0** | ✅ shipped 2026-06-23 | **Runtime configuration governance** (Ciclo 3 of the connectors/observability/config/PII roadmap). A curated set of operational knobs becomes editable **per `(tenant, project)` at runtime — no deploy**, layered `config default ← tenant '*' ← exact-project` over one `AppSettingsResolver` (the `KbAnalysisSetting`/`ChangeAnalysisGate` pattern). Governable keys live in a closed `AppSettingRegistry`: `ai.provider` (per-tenant chat provider, wired into `AiManager` fully-guarded → falls back to `config('ai.default')`, R43), `connector.sync_cadence_minutes` (per-tenant **and** per-project), and the **deploy-managed** `ai_finops.enabled` (visible, read-only at runtime → 422). Reads honour scope like writes and **skip corrupt override rows** (no silent coercion, R14); secrets are never registered. Tri-surface (R44): **PHP** (`app-settings:list` / `app-settings:set`), **HTTP** (`GET`/`PUT /api/admin/app-settings`, `role:super-admin`, R32, R30-scoped), **MCP** (`AppSettingsTool`, roster **39 → 40**). New super-admin **Configuration** admin screen (per-row editor + provenance badge + project-scope selector). [ADR 0019](docs/adr/0019-v822-runtime-config-governance.md) + deep doc-site page ([runtime config governance](https://padosoft.mintlify.app/runtime-config-governance), R45). |
+| **v8.22.0** | ✅ shipped 2026-06-23 | **Invite-by-code & referral suite** — integrates the standalone `padosoft/laravel-invitations` engine tri-surface (R44) into AskMyDocs over the package's vendor-neutral seams. Atomic, idempotent, concurrency-safe redemption (single conditional `UPDATE … WHERE current_uses < max_uses` + `UNIQUE(code_id, redeemer_id)`) drives campaigns / multi-use & vanity codes / referrals / rewards / waitlist / fail-open anti-abuse (HMAC'd PII) / funnel analytics — each invite carrying a per-tenant **grant** (Spatie role + KB project memberships). `App\Models\User` implements the `InvitedAccount` contract; the package `TenantResolver` binds to the host `TenantContext` (R30); a host `ProjectMembershipProvisioner` (GRANT-never-REVOKE, best-effort) joins the package's role provisioner under the `invitations.provisioners` tag so one code provisions role **and** project access across one or more tenants. Admin surface `/api/admin/invitations/*` (campaigns / code generation / metrics) gated by `can:manageInvitations` (super-admin + admin, R32-matrix-locked); user redeem surface `/api/invitations/*` behind the authenticated stack. Three package MCP tools (`Invite{ValidateCode,GenerateCodes,Metrics}Tool`, roster **36 → 39**). Signup gate `INVITE_REQUIRED` default-**OFF** (R43 both-states — existing registration unchanged). Additive backend pass; native React admin screens + Playwright E2E deferred to a follow-up. |
 | **Future** | ⏳ planned for v8.x or v9.0 | **v8.23 (Ciclo 4):** PII-safe ingestion & reversible vault — tokenize PII at ingest, authorized on-demand re-identification, per-profile redaction settings, right-to-erasure, EU AI Act Art. 50(1) disclosure. Auto-Wiki follow-ups: navigator→chat wiring + benchmark-gated default-ON, source-retention wiring (save the converted markdown artifact). Agentic Knowledge Reports follow-ups: SSE progressive-paint generate + the Glide canvas grid (deferred for per-cell testability/a11y). SSO / SCIM enterprise auth + content export/portability — surfaced by the v8.8 Affine gap audit; #1 Semantic Time Travel + #8 v2 (answer drift replay) — parked from v8.0 |
 
 For the strategic reasoning behind v4.5+ see
@@ -1865,12 +1926,46 @@ rows** rather than silently coercing them (R14); secrets are never registered
 (vault-only). Delivered tri-surface (R44) over the one resolver: **PHP**
 (`app-settings:list` / `app-settings:set`), **HTTP** (`GET`/`PUT
 /api/admin/app-settings`, gated `role:super-admin`, R32 matrix row, R30-scoped),
-**MCP** (`AppSettingsTool` read surface, roster **36 → 37**). A super-admin
+**MCP** (`AppSettingsTool` read surface, roster **39 → 40**). A super-admin
 **Configuration** admin screen ships the UI: a per-row editor (enum/int/bool),
 a provenance badge (config / tenant / project), a project-scope selector, and
 inline 422s; deploy-only and tenant-scoped-under-project rows are read-only.
 `app_settings` is tenant-aware (`BelongsToTenant`, R30/R31) keyed
 `(tenant_id, project_key, setting_key)`. [ADR 0019](docs/adr/0019-v822-runtime-config-governance.md).
+
+**v8.22.0 — Invite-by-code & referral suite (GA, shipped 2026-06-23).**
+Integrates the standalone **`padosoft/laravel-invitations`** engine tri-surface
+(R44) into AskMyDocs as an additive feature — no existing behaviour changes
+until an operator opts in. The package ships an enterprise invite system:
+**atomic, idempotent, concurrency-safe redemption** (a single conditional
+`UPDATE … WHERE current_uses < max_uses` backed by `UNIQUE(code_id,
+redeemer_id)` — never a read-then-write), campaigns, multi-use + vanity codes,
+**referrals + rewards + waitlist**, fail-open generic **anti-abuse** (a detector
+fault degrades to no-block; PII is HMAC'd, never plaintext), and funnel /
+virality analytics. (Originally landed as the parallel PR #363 "in progress"
+entry; bundled into the v8.22.0 GA.) Each invite carries a per-tenant **grant** — a Spatie role
+plus KB **project memberships** — so one code provisions access across one or
+more tenants ("teams") at once. Host wiring over the package's vendor-neutral
+seams: `App\Models\User` implements the `InvitedAccount` contract; the package
+`TenantResolver` is bound to the host `App\Support\TenantContext` so every
+invite query/write is tenant-scoped (R30); a host **`ProjectMembershipProvisioner`**
+(GRANT-never-REVOKE — `firstOrCreate`, never downgrades an existing membership;
+best-effort — a fault is logged, never thrown, since the redemption is already
+committed) joins the package's role provisioner under the
+`invitations.provisioners` tag. The admin surface `/api/admin/invitations/*`
+(campaigns / code generation / metrics / direct invitations) is gated by a new
+`can:manageInvitations` gate (super-admin + admin, R32-matrix-locked) wired
+through `config/invitations.php`'s `admin_middleware`; the user redeem surface
+`/api/invitations/*` rides the authenticated stack. Exposed on all three
+surfaces: PHP (the package's services + `invite:*` console), HTTP (the routes
+above), and **MCP** — `Invite{ValidateCode,GenerateCodes,Metrics}Tool` on
+`KnowledgeBaseServer` (roster **36 → 39**). The closed-beta **signup gate**
+`INVITE_REQUIRED` defaults **OFF** (R43 both-states — existing registration is
+unchanged; flipping it on requires a valid code). The 9 invite tables are
+package-owned + tenant-aware (R30/R31 enforced in the package's own CI). Native
+React admin screens + Playwright E2E are deferred to a follow-up; this pass
+wires the package + the backend tri-surface with the full host suite green
+(3046 tests). Deep doc-site page: [Invitations & Referrals](https://padosoft.mintlify.app/invitations).
 
 **v8.21.0 — Ingestion & sync observability + queue baseline (GA, shipped 2026-06-23).**
 Ciclo 2 of the connectors / observability / config / PII roadmap. Connector sync
