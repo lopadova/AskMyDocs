@@ -218,10 +218,11 @@ baseTest.describe('Connectors — IMAP credential flow (super-admin)', () => {
         await addImapAccount(page, { label: 'Sales' });
         await expect(card).toHaveAttribute('data-account-count', '2', { timeout: 15_000 });
 
-        // Click Edit on the second account ("Sales").
-        const editBtns = card.locator('[data-testid$="-edit"]');
-        await expect(editBtns).toHaveCount(2);
-        await editBtns.nth(1).click();
+        // Edit the "Sales" account. Accounts render sorted by LABEL (Sales <
+        // Support), so target by label text rather than creation-order index.
+        await expect(card.locator('[data-testid$="-edit"]')).toHaveCount(2);
+        const salesRow = card.locator('li').filter({ hasText: 'Sales' });
+        await salesRow.locator('[data-testid$="-edit"]').click();
 
         const editForm = page.getByTestId('connector-imap-account-form');
         await expect(editForm).toBeVisible();
