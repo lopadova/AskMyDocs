@@ -108,6 +108,16 @@ final class AppSettingsResolver
             throw ValidationException::withMessages(['key' => ["'{$key}' is deploy-managed and cannot be set at runtime."]]);
         }
 
+        // A tenant-scoped key must not be overridden per project — otherwise
+        // provenance would report `source=project` for a key the registry says
+        // never varies by project. Reject loudly (R14) rather than silently
+        // accepting a no-op override.
+        if (($descriptor['scope'] ?? 'tenant') === 'tenant' && $projectKey !== AppSetting::WILDCARD) {
+            throw ValidationException::withMessages([
+                'project_key' => ["'{$key}' is tenant-scoped and cannot be overridden per project."],
+            ]);
+        }
+
         if ($value === null) {
             AppSetting::query()
                 ->where('tenant_id', $tenantId)->where('project_key', $projectKey)
@@ -156,7 +166,10 @@ final class AppSettingsResolver
         }
 
         if ($type === 'int') {
-            if (! is_numeric($value)) {
+            // Reject non-integers — a decimal like "12.5" must NOT be silently
+            // truncated to 12 (R14). Accept only whole numbers (int or numeric
+            // string with no fractional part).
+            if (! is_numeric($value) || floor((float) $value) != (float) $value) {
                 throw ValidationException::withMessages(['value' => ['Value must be an integer.']]);
             }
             $int = (int) $value;
@@ -170,7 +183,14 @@ final class AppSettingsResolver
         }
 
         if ($type === 'bool') {
-            return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+            // FILTER_NULL_ON_FAILURE so an unrecognised string ("maybe") is
+            // rejected with a 422 instead of silently coerced to false (R14).
+            $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($bool === null) {
+                throw ValidationException::withMessages(['value' => ['Value must be a boolean.']]);
+            }
+
+            return $bool;
         }
 
         return (string) $value;

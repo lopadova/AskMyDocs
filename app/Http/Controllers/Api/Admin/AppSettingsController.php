@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\Admin;
 
+use App\Models\AppSetting;
 use App\Services\Admin\AppSettingsResolver;
 use App\Support\TenantContext;
 use Illuminate\Http\JsonResponse;
@@ -30,7 +31,7 @@ final class AppSettingsController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $projectKey = (string) $request->query('project_key', '*');
+        $projectKey = (string) $request->query('project_key', AppSetting::WILDCARD);
 
         return response()->json([
             'data' => $this->resolver->all($this->tenants->current(), $projectKey),
@@ -47,7 +48,7 @@ final class AppSettingsController extends Controller
             'value' => ['present', 'nullable'],
         ]);
 
-        $projectKey = (string) ($validated['project_key'] ?? '*');
+        $projectKey = (string) ($validated['project_key'] ?? AppSetting::WILDCARD);
 
         // Resolver throws ValidationException (→ 422) on unknown / deploy-only
         // key or an invalid value for its type.

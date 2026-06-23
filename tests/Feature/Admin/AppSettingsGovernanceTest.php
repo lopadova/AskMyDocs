@@ -135,6 +135,25 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver->set('ai_finops.enabled', true, 'default');
     }
 
+    public function test_set_rejects_project_override_for_tenant_scoped_key(): void
+    {
+        $resolver = new AppSettingsResolver;
+
+        // ai.provider is tenant-scoped — a per-project override is rejected
+        // rather than silently accepted (would falsify provenance).
+        $this->expectExceptionMessageMatches('/tenant-scoped/');
+        $resolver->set('ai.provider', 'anthropic', 'default', 'engineering');
+    }
+
+    public function test_int_setting_rejects_decimal(): void
+    {
+        $resolver = new AppSettingsResolver;
+
+        // A decimal must NOT be silently truncated to an int.
+        $this->expectExceptionMessageMatches('/must be an integer/');
+        $resolver->set('connector.sync_cadence_minutes', '12.5', 'default');
+    }
+
     public function test_set_null_clears_the_override(): void
     {
         $resolver = new AppSettingsResolver;

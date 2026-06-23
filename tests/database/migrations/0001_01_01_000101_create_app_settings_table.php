@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * SQLite test-bench mirror of the production
- * `2026_06_23_000002_create_app_settings_table` migration (v8.22). Verbatim.
+ * `2026_06_23_000002_create_app_settings_table` migration (v8.22).
+ * Schema-equivalent (same columns, indexes, and composite unique); the
+ * production file carries extra explanatory comments not reproduced here.
  */
 return new class extends Migration
 {
