@@ -11,11 +11,19 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
+use Padosoft\Invitations\Concerns\InteractsWithInvitations;
+use Padosoft\Invitations\Contracts\InvitedAccount;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable
+class User extends Authenticatable implements InvitedAccount
 {
-    use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
+    // padosoft/laravel-invitations — the invite engine reads the account's
+    // email (abuse correlation, hashed) and auth guard (role provisioning)
+    // through the InvitedAccount contract. The trait's default reads the
+    // `email` column and pins the guard to `web` via the model's $guard_name
+    // below, so a redeemed invite grants roles against the same guard
+    // RbacSeeder seeds. No further wiring needed on the model.
+    use HasApiTokens, HasFactory, HasRoles, InteractsWithInvitations, Notifiable, SoftDeletes;
 
     // Pin Spatie HasRoles to the `web` guard regardless of the request
     // context. Without this, calls like `$user->syncRoles(['viewer'])`

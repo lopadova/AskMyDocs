@@ -129,6 +129,20 @@ $providers = [
     // package TenantResolver -> host TenantContext (R30) and the
     // EvidenceReviewerLlmContract -> AiManager adapter (default-OFF, R43).
     Padosoft\EvidenceRiskReview\EvidenceRiskReviewServiceProvider::class,
+    // v8.x — padosoft/laravel-invitations invite-by-code engine. Listed
+    // explicitly for the same auto-discovery brittleness rationale as the
+    // siblings above. The SP loadMigrationsFrom()s the 9 invite tables, binds
+    // the vendor-neutral TenantResolver default + tags the
+    // SpatiePermissionProvisioner under `invitations.provisioners`, and
+    // (config-gated, default ON) loads the invite route file. AppServiceProvider
+    // (first in this list) wins at boot() time with the host overrides:
+    // TenantResolver -> host TenantContext (R30), the AskMyDocs
+    // ProjectMembershipProvisioner appended to the tag (GRANT-never-REVOKE), and
+    // the manageInvitations gate (R32) backing the admin route middleware in
+    // config/invitations.php. The 3 invite MCP tools are registered on
+    // KnowledgeBaseServer. invitation_required defaults FALSE (R43) so existing
+    // signup is unchanged.
+    Padosoft\Invitations\InvitationsServiceProvider::class,
     // v4.2/W4 sub-PR 7 — Eval Harness UI SPA (padosoft/eval-harness-ui
     // v1.0.0). Listed explicitly because the package lives in
     // require-dev and Laravel's auto-discovery cache may exclude
