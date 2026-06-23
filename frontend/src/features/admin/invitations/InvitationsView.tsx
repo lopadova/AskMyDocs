@@ -86,6 +86,7 @@ export function InvitationsView() {
         <div
             data-testid="admin-invitations-host"
             data-state={state}
+            aria-busy={state === 'loading'}
             style={{
                 flex: 1,
                 display: 'flex',
@@ -157,9 +158,9 @@ export function InvitationsView() {
                     role="alert"
                     style={{ margin: '16px 22px', color: 'var(--danger-fg)', fontSize: 13, maxWidth: 640 }}
                 >
-                    The invitations panel is unavailable. Confirm <code>INVITATIONS_ADMIN_ENABLED=true</code> in the
-                    host environment and run <code>php artisan config:clear</code>. You can still try{' '}
-                    <strong>Open Invitations admin</strong> above.
+                    Couldn't load invitation metrics — check that you're signed in and the invitations API
+                    (<code style={{ fontFamily: 'var(--font-mono)' }}>/api/admin/invitations/metrics</code>) is
+                    reachable. You can still try <strong>Open Invitations admin</strong> above.
                 </div>
             )}
 
