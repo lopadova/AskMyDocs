@@ -116,6 +116,21 @@ describe('AppSettingsView', () => {
         expect(mutateMock).toHaveBeenCalledWith({ key: 'ai.provider', value: 'anthropic' });
     });
 
+    it('renders a null-valued enum with the unset option selected (no crash)', () => {
+        listMock.data = [setting({ value: null, source: 'config' })];
+        wrap(<AppSettingsView />);
+        const select = screen.getByTestId('app-setting-ai.provider-input') as HTMLSelectElement;
+        expect(select.value).toBe('');
+    });
+
+    it('clears an override by selecting the unset option (submits null)', () => {
+        listMock.data = [setting({ value: 'anthropic', source: 'tenant' })];
+        wrap(<AppSettingsView />);
+        fireEvent.change(screen.getByTestId('app-setting-ai.provider-input'), { target: { value: '' } });
+        fireEvent.click(screen.getByTestId('app-setting-ai.provider-save'));
+        expect(mutateMock).toHaveBeenCalledWith({ key: 'ai.provider', value: null });
+    });
+
     it('marks a tenant-scoped key read-only when a project scope is active', () => {
         listMock.data = [setting()];
         wrap(<AppSettingsView />);

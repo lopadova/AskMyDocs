@@ -53,14 +53,13 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
         // value like "-" or "1e" would become NaN, which JSON-serializes to null
         // and would silently CLEAR the override. Sending the string lets the BE
         // int validator reject it with a 422 instead. Empty → null = clear.
+        const trimmed = draft.trim();
         const raw: string | number | boolean | null =
-            setting.type === 'bool'
-                ? draft === 'true'
-                : setting.type === 'int'
-                  ? draft.trim() === ''
-                      ? null
-                      : draft.trim()
-                  : draft;
+            trimmed === ''
+                ? null // empty = "unset" → clear the override (every type)
+                : setting.type === 'bool'
+                  ? trimmed === 'true'
+                  : trimmed; // int + enum + string: send the string; BE validates
         mutation.mutate({ key: setting.key, value: raw });
     };
 
@@ -104,6 +103,10 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                         onChange={(e) => setDraft(e.target.value)}
                         style={inputStyle}
                     >
+                        {/* Explicit empty option so a null value renders
+                            deterministically (no React controlled-value warning)
+                            and can be cleared by selecting "unset". */}
+                        <option value="">— (unset)</option>
                         {(setting.enum ?? []).map((opt) => (
                             <option key={opt} value={opt}>
                                 {opt}
@@ -114,10 +117,13 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
                     <select
                         aria-label={`${setting.label} value`}
                         data-testid={`app-setting-${setting.key}-input`}
-                        value={draft === 'true' ? 'true' : 'false'}
+                        // Reflect draft directly; a null value shows "unset" rather
+                        // than masquerading as false.
+                        value={draft === 'true' || draft === 'false' ? draft : ''}
                         onChange={(e) => setDraft(e.target.value)}
                         style={inputStyle}
                     >
+                        <option value="">— (unset)</option>
                         <option value="true">true</option>
                         <option value="false">false</option>
                     </select>
