@@ -181,7 +181,8 @@ export function AppSettingsView() {
     const projectKey = scopeInput.trim() === '' ? WILDCARD : scopeInput.trim();
     const query = useAppSettings(projectKey);
 
-    // Full observable-state contract (R11): idle|loading|ready|empty|error.
+    // Observable-state contract (R11) — this view's reachable states:
+    // loading|ready|empty|error (no idle: the query starts fetching on mount).
     const state: 'loading' | 'ready' | 'empty' | 'error' = query.isLoading
         ? 'loading'
         : query.isError

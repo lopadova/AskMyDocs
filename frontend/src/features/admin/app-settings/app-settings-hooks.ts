@@ -23,19 +23,26 @@ export function useSetAppSetting(projectKey: string) {
     return useMutation<
         AppSettingDto[],
         Error,
-        { key: string; value: string | number | boolean | null }
+        { key: string; value: string | number | boolean | null },
+        { scope: string }
     >({
         mutationFn: ({ key, value }) => adminAppSettingsApi.set(key, value, projectKey),
-        onSuccess: (roster) => {
+        // Snapshot the scope the PUT was issued for — onMutate runs synchronously
+        // at mutate() time, so if the user changes the scope input while the
+        // request is in flight, onSuccess still writes the CORRECT cache entry
+        // (not the now-current closure value).
+        onMutate: () => ({ scope: projectKey }),
+        onSuccess: (roster, _vars, ctx) => {
+            const scope = ctx.scope;
             // The BE returns the refreshed roster for this scope — seed the cache
             // so the table reflects the new effective value + source immediately.
-            qc.setQueryData([...APP_SETTINGS_KEY, projectKey], roster);
+            qc.setQueryData([...APP_SETTINGS_KEY, scope], roster);
             // A change to ANY scope can shift the value a DIFFERENT scope inherits
             // (a tenant '*' change is inherited by every project view) — invalidate
             // the other cached scope rosters so they refetch when next shown.
             qc.invalidateQueries({
                 queryKey: APP_SETTINGS_KEY,
-                predicate: (q) => q.queryKey[2] !== projectKey,
+                predicate: (q) => q.queryKey[2] !== scope,
             });
         },
     });
