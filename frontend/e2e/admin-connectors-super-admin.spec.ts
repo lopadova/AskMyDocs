@@ -146,6 +146,16 @@ baseTest.describe('Admin Connectors — OAuth AccountMetaForm (multi-account, v8
 });
 
 baseTest.describe('Admin Connectors — super-admin', () => {
+    // Reset + seed + re-login per test so this block is not order-dependent on
+    // the v8.20 block above (which writes pending installations): every test
+    // starts from a clean seeded DB (migrate:fresh invalidates storageState, so
+    // we log in inline).
+    baseTest.beforeEach(async ({ page }) => {
+        await resetDb(page);
+        await seedDb(page);
+        await loginAs(page, 'super@demo.local');
+    });
+
     baseTest('lands on /app/admin/connectors with both reference connectors visible', async ({
         page,
     }) => {

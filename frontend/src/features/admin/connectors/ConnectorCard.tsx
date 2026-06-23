@@ -309,8 +309,9 @@ function AccountRow({
                         type="button"
                         data-testid={`connector-account-${account.id}-edit`}
                         className="focus-ring"
+                        disabled={locked}
                         onClick={() => onEdit(account)}
-                        style={ghostButton()}
+                        style={ghostButton(locked)}
                     >
                         Edit
                     </button>
