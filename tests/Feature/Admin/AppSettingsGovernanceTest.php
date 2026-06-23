@@ -208,6 +208,32 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver->set('connector.sync_cadence_minutes', '12.5', 'default');
     }
 
+    public function test_int_setting_rejects_float_and_scientific_strings(): void
+    {
+        $resolver = new AppSettingsResolver;
+
+        foreach (['60.0', '60e0', '6e1', ' 60.0 '] as $bad) {
+            try {
+                $resolver->set('connector.sync_cadence_minutes', $bad, 'default');
+                $this->fail("Expected '{$bad}' to be rejected as a non-integer.");
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $this->assertStringContainsString('must be an integer', $e->getMessage());
+            }
+        }
+
+        // A pure-digit string (and surrounding whitespace) is still accepted.
+        $resolver->set('connector.sync_cadence_minutes', ' 60 ', 'default');
+        $this->assertSame(60, $resolver->effective('connector.sync_cadence_minutes', 'default'));
+    }
+
+    public function test_set_rejects_overlong_project_key(): void
+    {
+        $resolver = new AppSettingsResolver;
+
+        $this->expectExceptionMessageMatches('/must not exceed 120/');
+        $resolver->set('connector.sync_cadence_minutes', 60, 'default', str_repeat('a', 121));
+    }
+
     public function test_set_null_clears_the_override(): void
     {
         $resolver = new AppSettingsResolver;

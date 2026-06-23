@@ -153,6 +153,15 @@ class AppSettingsResolver
             ]);
         }
 
+        // Guard the column cap (app_settings.project_key is 120 chars) at the
+        // core so EVERY write surface (HTTP + CLI) fails cleanly with a 422 /
+        // user-facing message instead of a raw DB error.
+        if (strlen($projectKey) > 120) {
+            throw ValidationException::withMessages([
+                'project_key' => ['Project key must not exceed 120 characters.'],
+            ]);
+        }
+
         if ($value === null) {
             AppSetting::query()
                 ->where('tenant_id', $tenantId)->where('project_key', $projectKey)
@@ -251,13 +260,15 @@ class AppSettingsResolver
         }
 
         if ($type === 'int') {
-            // Reject non-integers — a decimal like "12.5" must NOT be silently
-            // truncated to 12 (R14). Accept only whole numbers (int or numeric
-            // string with no fractional part).
-            if (! is_numeric($value) || floor((float) $value) != (float) $value) {
+            // Accept ONLY a real integer or a pure-digit string. A decimal
+            // ("12.5"), a float ("60.0"), or scientific notation ("60e0") are
+            // rejected rather than silently truncated (R14).
+            $isInt = is_int($value)
+                || (is_string($value) && preg_match('/^-?\d+$/', trim($value)) === 1);
+            if (! $isInt) {
                 throw ValidationException::withMessages(['value' => ['Value must be an integer.']]);
             }
-            $int = (int) $value;
+            $int = (int) (is_string($value) ? trim($value) : $value);
             $min = $descriptor['min'] ?? null;
             $max = $descriptor['max'] ?? null;
             if (($min !== null && $int < $min) || ($max !== null && $int > $max)) {
