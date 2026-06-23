@@ -52,8 +52,12 @@ export function IngestionView() {
     const connectorsLoaded = !connectorsQuery.isLoading && !connectorsQuery.isError;
 
     const [selectedId, setSelectedId] = useState<number | null>(null);
-    // Default the selection to the first account once they load.
-    const effectiveId = selectedId ?? accounts[0]?.installationId ?? null;
+    // Clamp to the CURRENT accounts: if the selected account was removed after a
+    // connectors refetch, fall back to the first available one (or null) so the
+    // runs query never keeps polling a stale installation id.
+    const selectedStillExists =
+        selectedId !== null && accounts.some((a) => a.installationId === selectedId);
+    const effectiveId = (selectedStillExists ? selectedId : accounts[0]?.installationId) ?? null;
     const runsQuery = useSyncRuns(effectiveId);
 
     const state: 'loading' | 'ready' | 'error' = queueQuery.isLoading
