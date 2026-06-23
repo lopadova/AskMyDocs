@@ -44,7 +44,9 @@ final class AppSettingsController extends Controller
     {
         $validated = $request->validate([
             'key' => ['required', 'string', 'max:120'],
-            'project_key' => ['sometimes', 'string', 'max:120'],
+            // Accept an explicit null ("no project selected" from the UI) — it
+            // normalises to the tenant-wide wildcard, so it must not 422.
+            'project_key' => ['sometimes', 'nullable', 'string', 'max:120'],
             // value is type-validated by the resolver against the registry; a
             // null clears the override (inherit the next level up).
             'value' => ['present', 'nullable'],

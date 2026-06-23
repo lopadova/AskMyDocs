@@ -286,6 +286,21 @@ final class AppSettingsGovernanceTest extends TestCase
             ->assertJsonPath('data.0.source', 'tenant');
     }
 
+    public function test_http_accepts_explicit_null_project_key(): void
+    {
+        // The UI sends project_key: null for "no project selected" — it must
+        // normalise to the tenant-wide wildcard, not 422.
+        $this->actingAs($this->superAdmin())
+            ->putJson('/api/admin/app-settings', ['key' => 'ai.provider', 'value' => 'anthropic', 'project_key' => null])
+            ->assertOk();
+
+        $this->assertDatabaseHas('app_settings', [
+            'tenant_id' => 'default',
+            'project_key' => '*',
+            'setting_key' => 'ai.provider',
+        ]);
+    }
+
     public function test_http_rejects_deploy_only_key_with_422(): void
     {
         $this->actingAs($this->superAdmin())
