@@ -20,7 +20,7 @@ interface AccountOption {
     label: string;
 }
 
-function statusColor(status: SyncRunStatus | string): { bg: string; border: string; fg: string } {
+function statusColor(status: SyncRunStatus): { bg: string; border: string; fg: string } {
     switch (status) {
         case 'success':
             return { bg: 'rgba(16,185,129,0.16)', border: 'rgba(16,185,129,0.45)', fg: '#34d399' };

@@ -9,12 +9,14 @@ import { api } from '../../../lib/api';
 
 export interface QueueDepth {
     name: string;
-    role: 'connector-sync' | 'kb-ingest' | 'default' | string;
+    // (string & {}) keeps the known-literal autocomplete while still accepting
+    // any future role — a bare `| string` would collapse the whole union.
+    role: 'connector-sync' | 'kb-ingest' | 'default' | (string & {});
     /** null when the queue driver has no usable size() (e.g. sync). */
     depth: number | null;
 }
 
-export type SyncRunStatus = 'running' | 'success' | 'partial' | 'failed';
+export type SyncRunStatus = 'running' | 'success' | 'partial' | 'failed' | (string & {});
 
 export interface SyncRunDto {
     id: number;
