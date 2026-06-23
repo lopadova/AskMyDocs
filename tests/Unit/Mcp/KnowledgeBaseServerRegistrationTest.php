@@ -29,15 +29,21 @@ class KnowledgeBaseServerRegistrationTest extends TestCase
         return $property->getDefaultValue();
     }
 
-    public function test_server_registers_exactly_thirty_six_tools(): void
+    public function test_server_registers_exactly_thirty_seven_tools(): void
     {
-        $this->assertCount(36, $this->registeredTools());
+        $this->assertCount(37, $this->registeredTools());
     }
 
     public function test_server_registers_the_ingestion_status_tool(): void
     {
         // v8.21/Ciclo 2 — the ingestion/sync observability MCP read surface.
         $this->assertContains(\App\Mcp\Tools\KbIngestionStatusTool::class, $this->registeredTools());
+    }
+
+    public function test_server_registers_the_app_settings_tool(): void
+    {
+        // v8.22/Ciclo 3 — the runtime config governance MCP read surface.
+        $this->assertContains(\App\Mcp\Tools\AppSettingsTool::class, $this->registeredTools());
     }
 
     public function test_server_registers_the_run_report_tool(): void

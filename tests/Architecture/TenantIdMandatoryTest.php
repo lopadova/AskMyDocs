@@ -95,6 +95,8 @@ final class TenantIdMandatoryTest extends TestCase
         \App\Models\TabularCell::class,
         // v8.21/Ciclo 2 — connector sync-run observability.
         \App\Models\ConnectorSyncRun::class,
+        // v8.22/Ciclo 3 — runtime configuration governance.
+        \App\Models\AppSetting::class,
         // v4.7/W2 — workflows backend. `workflow_shares` is an
         // association table whose FK to `workflows` carries the tenant
         // boundary transitively; it does NOT need its own tenant_id

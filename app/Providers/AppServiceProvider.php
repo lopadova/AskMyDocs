@@ -129,6 +129,10 @@ class AppServiceProvider extends ServiceProvider
         // dispatch calls within one job.
         $this->app->singleton(\App\Connectors\SyncRunContext::class);
 
+        // v8.22 (Ciclo 3) — runtime config governance resolver. Singleton so its
+        // per-request memo serves the AI hot path with at most one query per key.
+        $this->app->singleton(\App\Services\Admin\AppSettingsResolver::class);
+
         // v6.0 — AI Act compliance host scaffold. Bind the upstream
         // contracts only when the optional packages are actually installed;
         // this keeps Laravel 13 CI green while the v1 packages catch up.
@@ -590,6 +594,9 @@ class AppServiceProvider extends ServiceProvider
             \App\Console\Commands\ConnectorsInstallCommand::class,
             // v8.21/Ciclo 2 — ingestion/sync observability PHP surface (R44).
             \App\Console\Commands\IngestionStatusCommand::class,
+            // v8.22/Ciclo 3 — runtime config governance PHP surface (R44).
+            \App\Console\Commands\AppSettingsListCommand::class,
+            \App\Console\Commands\AppSettingsSetCommand::class,
         ]);
     }
 
