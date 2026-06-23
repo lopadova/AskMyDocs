@@ -6,6 +6,7 @@ use App\Mcp\Methods\ListCollectionResources;
 use App\Mcp\Methods\ReadCollectionResource;
 use App\Mcp\Tools\FinOpsBudgetStatusTool;
 use App\Mcp\Tools\ConnectorInstallationsTool;
+use App\Mcp\Tools\AppSettingsTool;
 use App\Mcp\Tools\KbIngestionStatusTool;
 use App\Mcp\Tools\FinOpsSpendSummaryTool;
 use App\Mcp\Tools\FinOpsTopModelsTool;
@@ -124,6 +125,10 @@ class KnowledgeBaseServer extends Server
         // v8.21 (Ciclo 2) — ingestion/sync observability read surface (R44):
         // queue depths + recent connector sync runs, tenant-scoped (R30).
         KbIngestionStatusTool::class,
+
+        // v8.22 (Ciclo 3) — runtime config governance read surface (R44):
+        // governable settings with effective value + provenance, tenant-scoped (R30).
+        AppSettingsTool::class,
     ];
 
     protected function boot(): void

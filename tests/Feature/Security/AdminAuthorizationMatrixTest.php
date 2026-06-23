@@ -98,6 +98,7 @@ final class AdminAuthorizationMatrixTest extends TestCase
             // ── Gate-based groups — Gate::define() in AppServiceProvider ──
             '/api/admin/connectors' => ['super-admin'],                 // manageConnectors
             '/api/admin/ingestion/queue' => ['super-admin'],            // manageConnectors (v8.21 Ciclo 2)
+            '/api/admin/app-settings' => ['super-admin'],               // role:super-admin (v8.22 Ciclo 3)
             '/api/admin/mcp-servers' => ['super-admin'],                // manageMcpTools
             '/api/admin/mcp/tokens' => ['super-admin'],                 // manageMcpTools
             '/api/admin/mcp-tool-call-audit' => ['admin', 'super-admin'], // viewMcpAudit

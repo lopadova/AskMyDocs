@@ -59,9 +59,32 @@ class AiManager
 
     public function provider(?string $name = null): AiProviderInterface
     {
-        $name ??= config('ai.default', 'openai');
+        $name ??= $this->tenantDefaultProviderName();
 
         return $this->resolved[$name] ??= $this->resolve($name);
+    }
+
+    /**
+     * v8.22 (Ciclo 3) — the chat provider for the active tenant: a runtime
+     * `ai.provider` governance override (app_settings) when set, else
+     * `config('ai.default')`. Resolved lazily (no constructor change) and
+     * fully guarded — a governance/DB hiccup must never break the chat path,
+     * so any failure falls back to the config default (R43 OFF path = the
+     * pre-v8.22 behaviour exactly).
+     */
+    private function tenantDefaultProviderName(): string
+    {
+        $configDefault = (string) config('ai.default', 'openai');
+
+        try {
+            $tenant = app(\App\Support\TenantContext::class)->current();
+            $override = app(\App\Services\Admin\AppSettingsResolver::class)
+                ->effective('ai.provider', $tenant);
+
+            return is_string($override) && $override !== '' ? $override : $configDefault;
+        } catch (\Throwable) {
+            return $configDefault;
+        }
     }
 
     public function embeddingsProvider(): AiProviderInterface
