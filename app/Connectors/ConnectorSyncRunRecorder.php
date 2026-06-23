@@ -34,9 +34,12 @@ final class ConnectorSyncRunRecorder
 
     public function subscribe(Dispatcher $events): void
     {
-        $events->listen(JobProcessing::class, [self::class, 'onProcessing']);
-        $events->listen(JobProcessed::class, [self::class, 'onProcessed']);
-        $events->listen(JobFailed::class, [self::class, 'onFailed']);
+        // Bind THIS resolved instance (not the class string) so the listeners
+        // run on it directly — unambiguous instance dispatch, and they share the
+        // singleton SyncRunContext injected into this recorder.
+        $events->listen(JobProcessing::class, [$this, 'onProcessing']);
+        $events->listen(JobProcessed::class, [$this, 'onProcessed']);
+        $events->listen(JobFailed::class, [$this, 'onFailed']);
     }
 
     public function onProcessing(JobProcessing $event): void
