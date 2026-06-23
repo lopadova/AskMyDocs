@@ -78,24 +78,29 @@ final class ConnectorSyncRunRecorder
             return;
         }
 
-        // A partial sync leaves error_json.partial_errors on the installation
-        // (ConnectorSyncJob::recordSuccess); reflect that as `partial`.
-        $installation = ConnectorInstallation::query()
-            ->where('id', $job->installationId)
-            ->where('tenant_id', $job->tenantId)
-            ->first();
-        $partialErrors = $installation?->error_json['partial_errors'] ?? null;
+        // Best-effort (class contract): a DB hiccup here must NOT crash the
+        // queue worker — guard the read + close in try/catch, ensuring the run
+        // context is always released.
+        try {
+            // A partial sync leaves error_json.partial_errors on the installation
+            // (ConnectorSyncJob::recordSuccess); reflect that as `partial`.
+            $installation = ConnectorInstallation::query()
+                ->where('id', $job->installationId)
+                ->where('tenant_id', $job->tenantId)
+                ->first();
+            $partialErrors = $installation?->error_json['partial_errors'] ?? null;
+            $isPartial = is_array($partialErrors) && $partialErrors !== [];
 
-        $this->close(
-            $job,
-            is_array($partialErrors) && $partialErrors !== []
-                ? ConnectorSyncRun::STATUS_PARTIAL
-                : ConnectorSyncRun::STATUS_SUCCESS,
-            errorJson: is_array($partialErrors) && $partialErrors !== []
-                ? ['partial_errors' => $partialErrors]
-                : null,
-            itemsFailed: is_array($partialErrors) ? count($partialErrors) : 0,
-        );
+            $this->close(
+                $job,
+                $isPartial ? ConnectorSyncRun::STATUS_PARTIAL : ConnectorSyncRun::STATUS_SUCCESS,
+                errorJson: $isPartial ? ['partial_errors' => $partialErrors] : null,
+                itemsFailed: is_array($partialErrors) ? count($partialErrors) : 0,
+            );
+        } catch (Throwable $e) {
+            $this->context->end();
+            $this->logFailure('onProcessed', $job, $e);
+        }
     }
 
     public function onFailed(JobFailed $event): void
@@ -165,7 +170,12 @@ final class ConnectorSyncRunRecorder
             if (($payload['data']['commandName'] ?? null) !== ConnectorSyncJob::class) {
                 return null;
             }
-            $command = unserialize($payload['data']['command']);
+            // Restrict allowed classes to prevent PHP object-injection from a
+            // tampered queue payload (the job carries only int + string props).
+            $command = unserialize(
+                $payload['data']['command'],
+                ['allowed_classes' => [ConnectorSyncJob::class]],
+            );
 
             return $command instanceof ConnectorSyncJob ? $command : null;
         } catch (Throwable) {

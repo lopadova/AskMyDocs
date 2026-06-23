@@ -10,6 +10,7 @@ use App\Services\Admin\IngestionObservabilityService;
 use App\Support\TenantContext;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
@@ -28,6 +29,9 @@ final class IngestionObservabilityTest extends TestCase
     {
         parent::setUp();
         $this->seed(RbacSeeder::class);
+        // Spatie's permission cache can survive the DB rollback under Testbench,
+        // making role checks order-dependent — flush it after seeding.
+        Cache::flush();
     }
 
     public function test_recorder_records_a_sync_run_off_the_queue_lifecycle(): void
