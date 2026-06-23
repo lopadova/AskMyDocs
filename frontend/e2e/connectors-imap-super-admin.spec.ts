@@ -43,7 +43,14 @@ async function addImapAccount(
     await expect(page.getByTestId('connector-imap-form')).toBeVisible();
     await page.getByTestId('connector-imap-form-label').fill(opts.label);
     if (opts.project) {
-        await page.getByTestId('connector-imap-form-project_key').selectOption(opts.project);
+        const projectSelect = page.getByTestId('connector-imap-form-project_key');
+        // The projects registry loads independently of the connectors list, so
+        // wait for the option to exist before selecting (avoids a select flake
+        // when the dropdown still has only the "Global" sentinel).
+        await expect(projectSelect.locator(`option[value="${opts.project}"]`)).toHaveCount(1, {
+            timeout: 15_000,
+        });
+        await projectSelect.selectOption(opts.project);
     }
     await page.getByTestId('connector-imap-form-host').fill(opts.host ?? 'imap.example.com');
     await page.getByTestId('connector-imap-form-username').fill('alice@example.com');
