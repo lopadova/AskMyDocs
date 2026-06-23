@@ -150,6 +150,45 @@ final class AppSettingsGovernanceTest extends TestCase
         $resolver->set('ai_finops.enabled', true, 'default');
     }
 
+    public function test_normalize_project_key_handles_non_scalar_and_whitespace(): void
+    {
+        $this->assertSame('*', AppSetting::normalizeProjectKey(['x']));
+        $this->assertSame('*', AppSetting::normalizeProjectKey(null));
+        $this->assertSame('*', AppSetting::normalizeProjectKey('   '));
+        // A real key — including the literal '0' — is preserved.
+        $this->assertSame('0', AppSetting::normalizeProjectKey('0'));
+        $this->assertSame('engineering', AppSetting::normalizeProjectKey('  engineering '));
+    }
+
+    public function test_read_skips_a_corrupt_override_row_and_falls_back(): void
+    {
+        // A manual/corrupt row that would NOT pass set()'s validation (below the
+        // min) must be ignored on read, falling back to the config default —
+        // never silently coerced to a bad value (R14).
+        config(['connectors.default_sync_cadence_minutes' => 15]);
+        AppSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => AppSetting::WILDCARD,
+            'setting_key' => 'connector.sync_cadence_minutes',
+            'value_json' => 3, // below min 5 → invalid
+        ]);
+        AppSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => AppSetting::WILDCARD,
+            'setting_key' => 'ai.provider',
+            'value_json' => 'bogus-provider', // not in enum → invalid
+        ]);
+
+        $resolver = new AppSettingsResolver;
+
+        $this->assertSame(15, $resolver->effective('connector.sync_cadence_minutes', 'default'));
+        $this->assertSame('openai', $resolver->effective('ai.provider', 'default'));
+
+        $rows = collect($resolver->all('default'))->keyBy('key');
+        $this->assertSame('config', $rows['connector.sync_cadence_minutes']['source']);
+        $this->assertSame('config', $rows['ai.provider']['source']);
+    }
+
     public function test_set_rejects_project_override_for_tenant_scoped_key(): void
     {
         $resolver = new AppSettingsResolver;

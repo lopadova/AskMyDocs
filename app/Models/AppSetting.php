@@ -43,10 +43,17 @@ class AppSetting extends Model
      */
     public static function normalizeProjectKey(mixed $value): string
     {
-        if ($value === null || $value === '') {
+        // Non-scalar (e.g. an array from project_key[]=) is never a valid
+        // scope → wildcard, rather than the "Array" string an unguarded cast
+        // would produce.
+        if (! is_scalar($value)) {
             return self::WILDCARD;
         }
 
-        return (string) $value;
+        $value = trim((string) $value);
+
+        // Empty / whitespace-only → tenant-wide; a real key (including '0') is
+        // returned unchanged.
+        return $value === '' ? self::WILDCARD : $value;
     }
 }

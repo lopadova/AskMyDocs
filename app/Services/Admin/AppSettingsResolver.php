@@ -64,12 +64,12 @@ class AppSettingsResolver
             ->get()
             ->keyBy('project_key');
 
-        // exact-project overrides tenant '*' overrides the config default.
-        $raw = $rows->get($projectKey)?->value_json
-            ?? $rows->get(AppSetting::WILDCARD)?->value_json
-            ?? $default;
+        // exact-project overrides tenant '*' overrides the config default —
+        // skipping any override row that fails validation (corrupt/manual data).
+        $projectRaw = $projectKey !== AppSetting::WILDCARD ? $rows->get($projectKey)?->value_json : null;
+        $wildcardRaw = $rows->get(AppSetting::WILDCARD)?->value_json;
 
-        $value = $this->cast($raw, (string) $descriptor['type']);
+        [$value] = $this->resolveLayered($projectRaw, $wildcardRaw, $default, $descriptor);
 
         if ($useMemo) {
             $this->memo[$memoKey] = $value;
@@ -104,16 +104,14 @@ class AppSettingsResolver
 
         $out = [];
         foreach (AppSettingRegistry::all() as $key => $d) {
-            $project = $byKey[$key][$projectKey] ?? null;
-            $wildcard = $byKey[$key][AppSetting::WILDCARD] ?? null;
-            // A tenant-scoped key never reports source=project, even if a stray
-            // project row exists — mirrors effective()'s read-side scope rule.
-            $hasProject = $this->allowsProjectScope($d)
-                && $projectKey !== AppSetting::WILDCARD
-                && $project !== null;
+            // A tenant-scoped key never considers a project row (even a stray
+            // one) — mirrors effective()'s read-side scope rule.
+            $projectRaw = ($this->allowsProjectScope($d) && $projectKey !== AppSetting::WILDCARD)
+                ? ($byKey[$key][$projectKey] ?? null)
+                : null;
+            $wildcardRaw = $byKey[$key][AppSetting::WILDCARD] ?? null;
 
-            $raw = $hasProject ? $project : ($wildcard ?? config((string) $d['config']));
-            $source = $hasProject ? 'project' : ($wildcard !== null ? 'tenant' : 'config');
+            [$value, $source] = $this->resolveLayered($projectRaw, $wildcardRaw, config((string) $d['config']), $d);
 
             $out[] = [
                 'key' => $key,
@@ -122,7 +120,7 @@ class AppSettingsResolver
                 'scope' => $d['scope'],
                 'deploy_only' => (bool) $d['deployOnly'],
                 'enum' => $d['enum'] ?? null,
-                'value' => $this->cast($raw, (string) $d['type']),
+                'value' => $value,
                 'source' => $source,
             ];
         }
@@ -182,6 +180,45 @@ class AppSettingsResolver
     private function allowsProjectScope(array $descriptor): bool
     {
         return ($descriptor['scope'] ?? 'tenant') === 'both';
+    }
+
+    /**
+     * Pick the effective value across the precedence layers (exact-project →
+     * tenant '*' → config default), SKIPPING any override row that fails
+     * validation for the key's type. A corrupt/manual DB value (e.g. an
+     * out-of-range int, an unknown enum) must not be silently coerced — it is
+     * ignored and the next layer wins (R14). The deploy-managed config default
+     * is trusted and cast leniently as the final fallback.
+     *
+     * @param  array<string,mixed>  $descriptor
+     * @return array{0: mixed, 1: string}  [casted value, source: project|tenant|config]
+     */
+    private function resolveLayered(mixed $projectRaw, mixed $wildcardRaw, mixed $default, array $descriptor): array
+    {
+        if ($projectRaw !== null && ($v = $this->tryCoerce($projectRaw, $descriptor)) !== null) {
+            return [$v, 'project'];
+        }
+
+        if ($wildcardRaw !== null && ($v = $this->tryCoerce($wildcardRaw, $descriptor)) !== null) {
+            return [$v, 'tenant'];
+        }
+
+        return [$this->cast($default, (string) $descriptor['type']), 'config'];
+    }
+
+    /**
+     * Validate + coerce a stored override value, or null if it is invalid for
+     * the key's type (so callers can fall through to the next layer).
+     *
+     * @param  array<string,mixed>  $descriptor
+     */
+    private function tryCoerce(mixed $raw, array $descriptor): mixed
+    {
+        try {
+            return $this->validateValue($raw, $descriptor);
+        } catch (ValidationException) {
+            return null;
+        }
     }
 
     private function cast(mixed $raw, string $type): mixed
