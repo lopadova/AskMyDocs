@@ -36,12 +36,13 @@ final class AppSettingRegistry
                 'deployOnly' => false,
                 'enum' => ['openai', 'anthropic', 'gemini', 'openrouter', 'regolo'],
             ],
-            // Connector sync cadence (minutes) — governable per tenant.
+            // Connector sync cadence (minutes) — governable per tenant AND
+            // per project (a project may legitimately sync at a different rate).
             'connector.sync_cadence_minutes' => [
                 'label' => 'Connector sync cadence (minutes)',
                 'type' => 'int',
                 'config' => 'connectors.default_sync_cadence_minutes',
-                'scope' => 'tenant',
+                'scope' => 'both',
                 'deployOnly' => false,
                 'min' => 5,
                 'max' => 1440,

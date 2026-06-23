@@ -20,7 +20,9 @@ use Illuminate\Validation\ValidationException;
  * re-querying the same key within a request (the resolver is a singleton, so
  * the AI hot path pays at most one query per key per request).
  */
-final class AppSettingsResolver
+// Intentionally not final — bound as a singleton and overridden with a test
+// double in AiManager OFF-path coverage (mirrors the non-final AiManager).
+class AppSettingsResolver
 {
     /** @var array<string, mixed> */
     private array $memo = [];
@@ -33,6 +35,14 @@ final class AppSettingsResolver
         $descriptor = AppSettingRegistry::get($key);
         if ($descriptor === null) {
             return null;
+        }
+
+        // A tenant-scoped key never varies by project: ignore the project row
+        // on READ too, so reads stay consistent with writes (set() rejects
+        // project overrides) and a stray/legacy project row can't silently
+        // change behaviour.
+        if (! $this->allowsProjectScope($descriptor)) {
+            $projectKey = AppSetting::WILDCARD;
         }
 
         $memoKey = "{$tenantId}\0{$projectKey}\0{$key}";
@@ -85,7 +95,11 @@ final class AppSettingsResolver
         foreach (AppSettingRegistry::all() as $key => $d) {
             $project = $byKey[$key][$projectKey] ?? null;
             $wildcard = $byKey[$key][AppSetting::WILDCARD] ?? null;
-            $hasProject = $projectKey !== AppSetting::WILDCARD && $project !== null;
+            // A tenant-scoped key never reports source=project, even if a stray
+            // project row exists — mirrors effective()'s read-side scope rule.
+            $hasProject = $this->allowsProjectScope($d)
+                && $projectKey !== AppSetting::WILDCARD
+                && $project !== null;
 
             $raw = $hasProject ? $project : ($wildcard ?? config((string) $d['config']));
             $source = $hasProject ? 'project' : ($wildcard !== null ? 'tenant' : 'config');
@@ -124,7 +138,7 @@ final class AppSettingsResolver
         // provenance would report `source=project` for a key the registry says
         // never varies by project. Reject loudly (R14) rather than silently
         // accepting a no-op override.
-        if (($descriptor['scope'] ?? 'tenant') === 'tenant' && $projectKey !== AppSetting::WILDCARD) {
+        if (! $this->allowsProjectScope($descriptor) && $projectKey !== AppSetting::WILDCARD) {
             throw ValidationException::withMessages([
                 'project_key' => ["'{$key}' is tenant-scoped and cannot be overridden per project."],
             ]);
@@ -146,6 +160,17 @@ final class AppSettingsResolver
             ['value_json' => $coerced],
         );
         $this->memo = [];
+    }
+
+    /**
+     * Whether a key may be overridden per project. Only `scope=both` keys
+     * layer per project; everything else is tenant-wide ('*') on read + write.
+     *
+     * @param  array<string,mixed>  $descriptor
+     */
+    private function allowsProjectScope(array $descriptor): bool
+    {
+        return ($descriptor['scope'] ?? 'tenant') === 'both';
     }
 
     private function cast(mixed $raw, string $type): mixed

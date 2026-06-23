@@ -40,7 +40,7 @@ class AppSettingsTool extends Tool
 
     public function handle(Request $request, AppSettingsResolver $resolver, TenantContext $tenants): Response
     {
-        $projectKey = (string) ($request->get('project_key') ?: AppSetting::WILDCARD);
+        $projectKey = AppSetting::normalizeProjectKey($request->get('project_key'));
 
         return Response::json([
             'tenant_id' => $tenants->current(),

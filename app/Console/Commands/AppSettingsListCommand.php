@@ -20,14 +20,14 @@ final class AppSettingsListCommand extends Command
 {
     protected $signature = 'app-settings:list
                             {--tenant=default : Tenant to report on}
-                            {--project=* : Project scope to resolve overrides for (defaults to the tenant-wide "*")}';
+                            {--project= : Project scope to resolve overrides for (defaults to the tenant-wide "*")}';
 
     protected $description = 'List governable runtime settings with their effective value + source for a tenant.';
 
     public function handle(AppSettingsResolver $resolver, TenantContext $tenants): int
     {
         $tenant = (string) $this->option('tenant');
-        $project = (string) ($this->option('project') ?: AppSetting::WILDCARD);
+        $project = AppSetting::normalizeProjectKey($this->option('project'));
 
         $previous = $tenants->current();
         $tenants->set($tenant);

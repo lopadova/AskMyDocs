@@ -63,6 +63,21 @@ final class AppSettingsGovernanceTest extends TestCase
 
     public function test_exact_project_override_beats_tenant_wildcard(): void
     {
+        // connector.sync_cadence_minutes is scope=both — genuinely project-layered.
+        $resolver = new AppSettingsResolver;
+        $resolver->set('connector.sync_cadence_minutes', 60, 'default');
+        $resolver->set('connector.sync_cadence_minutes', 30, 'default', 'engineering');
+
+        $this->assertSame(30, $resolver->effective('connector.sync_cadence_minutes', 'default', 'engineering'));
+        // A different project still sees the tenant-wide override, not the
+        // engineering one (R30 — overrides are per (tenant, project)).
+        $this->assertSame(60, $resolver->effective('connector.sync_cadence_minutes', 'default', 'sales'));
+    }
+
+    public function test_tenant_scoped_key_ignores_a_stray_project_row_on_read(): void
+    {
+        // ai.provider is scope=tenant: even a manually-inserted/legacy project
+        // row must NOT change the read (reads honour scope like writes, R16).
         AppSetting::create([
             'tenant_id' => 'default',
             'project_key' => AppSetting::WILDCARD,
@@ -78,10 +93,10 @@ final class AppSettingsGovernanceTest extends TestCase
 
         $resolver = new AppSettingsResolver;
 
-        $this->assertSame('gemini', $resolver->effective('ai.provider', 'default', 'engineering'));
-        // A different project still sees the tenant-wide override, not the
-        // engineering one (R30 — overrides are per (tenant, project)).
-        $this->assertSame('anthropic', $resolver->effective('ai.provider', 'default', 'sales'));
+        $this->assertSame('anthropic', $resolver->effective('ai.provider', 'default', 'engineering'));
+        $rows = collect($resolver->all('default', 'engineering'))->keyBy('key');
+        $this->assertSame('anthropic', $rows['ai.provider']['value']);
+        $this->assertSame('tenant', $rows['ai.provider']['source']);
     }
 
     public function test_overrides_are_isolated_per_tenant(): void
@@ -197,6 +212,23 @@ final class AppSettingsGovernanceTest extends TestCase
         app(TenantContext::class)->set('default');
 
         $this->assertInstanceOf(AnthropicProvider::class, (new AiManager)->provider());
+    }
+
+    public function test_aimanager_falls_back_to_config_default_when_resolver_throws(): void
+    {
+        // R43/R14 OFF-safe: a governance/DB failure must NEVER break the chat
+        // path — provider() resolves the config default regardless.
+        $throwing = new class extends AppSettingsResolver
+        {
+            public function effective(string $key, string $tenantId, string $projectKey = AppSetting::WILDCARD): mixed
+            {
+                throw new \RuntimeException('governance backend down');
+            }
+        };
+        $this->app->instance(AppSettingsResolver::class, $throwing);
+        app(TenantContext::class)->set('default');
+
+        $this->assertInstanceOf(OpenAiProvider::class, (new AiManager)->provider());
     }
 
     // ----- HTTP surface ----------------------------------------------------

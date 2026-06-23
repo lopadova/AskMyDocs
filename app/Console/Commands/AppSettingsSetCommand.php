@@ -25,7 +25,7 @@ final class AppSettingsSetCommand extends Command
                             {key : The governable setting key (see app-settings:list)}
                             {value? : The value to set (omit with --clear to remove the override)}
                             {--tenant=default : Tenant to write the override for}
-                            {--project=* : Project scope (defaults to the tenant-wide "*")}
+                            {--project= : Project scope (defaults to the tenant-wide "*")}
                             {--clear : Remove the override at this scope instead of setting it}';
 
     protected $description = 'Set or clear a governable runtime setting override for a (tenant, project).';
@@ -43,7 +43,7 @@ final class AppSettingsSetCommand extends Command
         }
 
         $tenant = (string) $this->option('tenant');
-        $project = (string) ($this->option('project') ?: AppSetting::WILDCARD);
+        $project = AppSetting::normalizeProjectKey($this->option('project'));
 
         $previous = $tenants->current();
         $tenants->set($tenant);

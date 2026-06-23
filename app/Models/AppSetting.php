@@ -35,4 +35,18 @@ class AppSetting extends Model
     protected $casts = [
         'value_json' => 'json',
     ];
+
+    /**
+     * Normalise a caller-supplied project scope: an absent (null) or empty
+     * string means "tenant-wide" → the wildcard. A real project key (including
+     * the string '0') is returned unchanged — never treat '0' as empty.
+     */
+    public static function normalizeProjectKey(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return self::WILDCARD;
+        }
+
+        return (string) $value;
+    }
 }

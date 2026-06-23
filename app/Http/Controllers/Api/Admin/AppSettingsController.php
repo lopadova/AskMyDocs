@@ -32,8 +32,8 @@ final class AppSettingsController extends Controller
     public function index(Request $request): JsonResponse
     {
         // Normalise an absent/empty ?project_key= back to the wildcard so it is
-        // never resolved as a literal empty project scope.
-        $projectKey = (string) ($request->query('project_key') ?: AppSetting::WILDCARD);
+        // never resolved as a literal empty project scope (but keep '0').
+        $projectKey = AppSetting::normalizeProjectKey($request->query('project_key'));
 
         return response()->json([
             'data' => $this->resolver->all($this->tenants->current(), $projectKey),
@@ -51,8 +51,8 @@ final class AppSettingsController extends Controller
         ]);
 
         // A present-but-empty project_key means "tenant-wide" — normalise to the
-        // wildcard rather than persisting an empty scope.
-        $projectKey = (string) ($validated['project_key'] ?? '') ?: AppSetting::WILDCARD;
+        // wildcard rather than persisting an empty scope (but keep '0').
+        $projectKey = AppSetting::normalizeProjectKey($validated['project_key'] ?? null);
 
         // Resolver throws ValidationException (→ 422) on unknown / deploy-only
         // key or an invalid value for its type.
