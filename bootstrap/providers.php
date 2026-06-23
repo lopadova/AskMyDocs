@@ -143,6 +143,15 @@ $providers = [
     // KnowledgeBaseServer. invitation_required defaults FALSE (R43) so existing
     // signup is unchanged.
     Padosoft\Invitations\InvitationsServiceProvider::class,
+    // v8.x — padosoft/laravel-invitations-admin SPA. Listed explicitly for the
+    // same auto-discovery brittleness rationale as the siblings above. The
+    // package serves its own prebuilt React panel (Blade shell + hashed Vite
+    // assets out of resources/dist) and gates route REGISTRATION on
+    // `invitations-admin.enabled` (default FALSE → clean 404, R43). When enabled,
+    // config/invitations-admin.php applies the host auth + manageInvitations gate
+    // and points api_base at the core invitations API. Same self-contained
+    // cross-mount model as ai-finops-admin / flow-admin.
+    Padosoft\Invitations\Admin\InvitationsAdminServiceProvider::class,
     // v4.2/W4 sub-PR 7 — Eval Harness UI SPA (padosoft/eval-harness-ui
     // v1.0.0). Listed explicitly because the package lives in
     // require-dev and Laravel's auto-discovery cache may exclude

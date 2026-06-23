@@ -158,6 +158,12 @@ abstract class TestCase extends OrchestraTestCase
         // overrides — TenantResolver → TenantContext, ProjectMembershipProvisioner
         // added to the tag, manageInvitations gate — win definitively.
         $app->register(\Padosoft\Invitations\InvitationsServiceProvider::class);
+        // padosoft/laravel-invitations-admin SPA. Same explicit-registration
+        // reason as the other vendor SPs. Routes register only when
+        // invitations-admin.enabled=true (default false), so the bare boot is a
+        // safe no-op for tests that don't opt in; the mounting test flips it on
+        // in its own getEnvironmentSetUp to prove the wired-and-secured route.
+        $app->register(\Padosoft\Invitations\Admin\InvitationsAdminServiceProvider::class);
 
         $app->register(\App\Providers\AiServiceProvider::class);
         $app->register(\App\Providers\ChatLogServiceProvider::class);
@@ -346,6 +352,16 @@ abstract class TestCase extends OrchestraTestCase
         $app['config']->set('invitations', array_merge(
             (array) $app['config']->get('invitations', []),
             require __DIR__.'/../config/invitations.php',
+        ));
+        // padosoft/laravel-invitations-admin host config. Like the other
+        // self-contained admin SPAs, route registration is gated on
+        // `enabled` (default false → clean 404, R43). Merge (host keys win) so
+        // any vendor-default key the host config doesn't restate survives; the
+        // mounting test flips `invitations-admin.enabled` on to prove the
+        // wired-and-secured Blade SPA route.
+        $app['config']->set('invitations-admin', array_merge(
+            (array) $app['config']->get('invitations-admin', []),
+            require __DIR__.'/../config/invitations-admin.php',
         ));
         // v8.0/W2.2 — askmydocs.* namespace (notifications subsystem).
         // Without this, `config('askmydocs.notifications.*')` returns
