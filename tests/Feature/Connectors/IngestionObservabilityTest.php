@@ -8,12 +8,18 @@ use App\Models\ConnectorSyncRun;
 use App\Models\User;
 use App\Services\Admin\IngestionObservabilityService;
 use App\Support\TenantContext;
+use Carbon\Carbon;
 use Database\Seeders\RbacSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Padosoft\AskMyDocsConnectorBase\ConnectorRegistry;
 use Padosoft\AskMyDocsConnectorBase\ConnectorSyncJob;
 use Padosoft\AskMyDocsConnectorBase\Models\ConnectorInstallation;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientFactoryInterface;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapClientInterface;
+use Padosoft\AskMyDocsConnectorImap\Imap\ImapMessage;
+use Padosoft\AskMyDocsConnectorImap\Imap\MailboxState;
 use Tests\TestCase;
 
 /**
@@ -65,6 +71,56 @@ final class IngestionObservabilityTest extends TestCase
         $this->assertSame(0, $run->items_discovered);
         $this->assertNotNull($run->started_at);
         $this->assertNotNull($run->finished_at);
+    }
+
+    public function test_recorder_records_a_partial_run_when_install_has_partial_errors(): void
+    {
+        // A PENDING install pre-seeded with partial_errors: handle() no-ops, but
+        // onProcessed reads error_json.partial_errors → status=partial.
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'google-drive',
+            'label' => 'support',
+            'status' => ConnectorInstallation::STATUS_PENDING,
+            'error_json' => ['partial_errors' => ['doc-1 failed', 'doc-2 failed']],
+            'created_by' => 1,
+        ]);
+
+        config(['queue.default' => 'sync']);
+        ConnectorSyncJob::dispatch($installation->id, 'default');
+
+        $run = ConnectorSyncRun::query()
+            ->where('connector_installation_id', $installation->id)->firstOrFail();
+        $this->assertSame(ConnectorSyncRun::STATUS_PARTIAL, $run->status);
+        $this->assertSame(2, $run->items_failed);
+        $this->assertSame(['doc-1 failed', 'doc-2 failed'], $run->error_json['partial_errors']);
+    }
+
+    public function test_recorder_records_a_failed_run_when_the_job_throws(): void
+    {
+        // Fake IMAP client throws on every sync op (no network) → syncIncremental
+        // throws → JobFailed → the recorder closes the run as failed.
+        $this->bindThrowingImapFactory();
+        $installation = ConnectorInstallation::create([
+            'tenant_id' => 'default',
+            'connector_name' => 'imap',
+            'label' => 'support',
+            'config_json' => ['auth_mode' => 'basic', 'connection' => ['host' => 'imap.example.com', 'username' => 'a@b.c']],
+            'status' => ConnectorInstallation::STATUS_ACTIVE,
+            'created_by' => 1,
+        ]);
+
+        config(['queue.default' => 'sync']);
+        try {
+            ConnectorSyncJob::dispatch($installation->id, 'default');
+        } catch (\Throwable) {
+            // Sync queue rethrows the job exception — expected.
+        }
+
+        $run = ConnectorSyncRun::query()
+            ->where('connector_installation_id', $installation->id)->firstOrFail();
+        $this->assertSame(ConnectorSyncRun::STATUS_FAILED, $run->status);
+        $this->assertNotNull($run->error_json);
     }
 
     public function test_service_recent_runs_is_tenant_scoped(): void
@@ -158,6 +214,56 @@ final class IngestionObservabilityTest extends TestCase
             'items_discovered' => 3,
             'items_failed' => 0,
         ]);
+    }
+
+    /**
+     * Bind a fake IMAP client factory whose client throws on every sync op, so
+     * a sync attempt fails deterministically without any network IO.
+     */
+    private function bindThrowingImapFactory(): void
+    {
+        $client = new class implements ImapClientInterface
+        {
+            public function ping(): bool
+            {
+                return true;
+            }
+
+            public function close(): void {}
+
+            public function listMailboxes(): array
+            {
+                throw new \RuntimeException('fake IMAP failure');
+            }
+
+            public function selectMailbox(string $name): MailboxState
+            {
+                throw new \RuntimeException('fake IMAP failure');
+            }
+
+            public function searchUids(string $mailbox, ?Carbon $since, ?int $sinceUid): array
+            {
+                throw new \RuntimeException('fake IMAP failure');
+            }
+
+            public function fetchMessage(string $mailbox, int $uid): ImapMessage
+            {
+                throw new \RuntimeException('fake IMAP failure');
+            }
+        };
+
+        $factory = new class($client) implements ImapClientFactoryInterface
+        {
+            public function __construct(private readonly ImapClientInterface $client) {}
+
+            public function make(array $connection, string $secret, string $authMode): ImapClientInterface
+            {
+                return $this->client;
+            }
+        };
+
+        $this->app->instance(ImapClientFactoryInterface::class, $factory);
+        $this->app->forgetInstance(ConnectorRegistry::class);
     }
 
     private function superAdmin(): User

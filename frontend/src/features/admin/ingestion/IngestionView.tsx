@@ -71,6 +71,7 @@ export function IngestionView() {
             <div
                 data-testid="admin-ingestion"
                 data-state={state}
+                aria-busy={state === 'loading'}
                 style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
             >
                 <div>
