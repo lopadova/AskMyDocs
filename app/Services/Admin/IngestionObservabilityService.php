@@ -40,7 +40,7 @@ final class IngestionObservabilityService
         $roles = [
             ['role' => 'connector-sync', 'name' => (string) config('connectors.sync_job_queue', 'connectors')],
             ['role' => 'kb-ingest', 'name' => (string) config('kb.ingest.queue', 'kb-ingest')],
-            ['role' => 'default', 'name' => 'default'],
+            ['role' => 'default', 'name' => $this->defaultQueueName()],
         ];
 
         // ALWAYS return all three logical roles (the documented contract), even
@@ -60,6 +60,18 @@ final class IngestionObservabilityService
         }
 
         return $out;
+    }
+
+    /**
+     * The physical queue name the `default` role maps to — derived from the
+     * active queue connection's configured queue (e.g. REDIS_QUEUE / DB_QUEUE),
+     * not hard-coded to the literal string 'default'.
+     */
+    private function defaultQueueName(): string
+    {
+        $connection = (string) config('queue.default', 'sync');
+
+        return (string) config("queue.connections.{$connection}.queue", 'default');
     }
 
     private function depthOf(string $queue): ?int

@@ -91,7 +91,10 @@ final class ConnectorSyncRunRecorder
                 ->where('id', $job->installationId)
                 ->where('tenant_id', $job->tenantId)
                 ->first();
-            $partialErrors = $installation?->error_json['partial_errors'] ?? null;
+            // data_get is null-safe: error_json is a nullable column, so a plain
+            // `?->error_json['partial_errors']` would warn (→ ErrorException →
+            // the run is never closed) on the common no-error path.
+            $partialErrors = data_get($installation, 'error_json.partial_errors');
             $isPartial = is_array($partialErrors) && $partialErrors !== [];
 
             $this->close(
