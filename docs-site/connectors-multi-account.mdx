@@ -24,7 +24,7 @@ every query (R30).
 
 ## Theory — what actually had to change
 
-The connectors were *already_ multi-account-capable where it counts: every
+The connectors were *already* multi-account-capable where it counts: every
 connector's sync logic is keyed on `installationId`, the credential vault stores
 one secret per `installationId`, the on-disk path includes `installation-%d`, and
 the scheduler already iterates **all** active installations. The blockers were
