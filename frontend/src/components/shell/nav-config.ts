@@ -43,6 +43,7 @@ export type SidebarSection =
     | 'widget'
     | 'logs'
     | 'maintenance'
+    | 'app-settings'
     | 'digest'
     | 'my-kb'
     | 'engagement';
@@ -126,6 +127,7 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: 'widget', label: 'Widget', icon: 'Chat', route: '/app/$teamHash/admin/widget' },
             { id: 'logs', label: 'Logs', icon: 'Activity', route: '/app/$teamHash/admin/logs' },
             { id: 'maintenance', label: 'Maintenance', icon: 'Wrench', route: '/app/$teamHash/admin/maintenance' },
+            { id: 'app-settings', label: 'Configuration', icon: 'Wrench', route: '/app/$teamHash/admin/app-settings' },
         ],
     },
 ];
