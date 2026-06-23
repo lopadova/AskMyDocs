@@ -181,11 +181,14 @@ export function AppSettingsView() {
     const projectKey = scopeInput.trim() === '' ? WILDCARD : scopeInput.trim();
     const query = useAppSettings(projectKey);
 
-    const state: 'loading' | 'ready' | 'error' = query.isLoading
+    // Full observable-state contract (R11): idle|loading|ready|empty|error.
+    const state: 'loading' | 'ready' | 'empty' | 'error' = query.isLoading
         ? 'loading'
         : query.isError
           ? 'error'
-          : 'ready';
+          : (query.data ?? []).length === 0
+            ? 'empty'
+            : 'ready';
 
     return (
         <AdminShell section="app-settings">
@@ -235,7 +238,7 @@ export function AppSettingsView() {
                         </button>
                     </div>
                 )}
-                {state === 'ready' && (query.data ?? []).length === 0 && (
+                {state === 'empty' && (
                     <div data-testid="admin-app-settings-empty" role="status" style={panelStyle}>
                         No governable settings are registered.
                     </div>

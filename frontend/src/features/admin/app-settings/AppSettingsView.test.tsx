@@ -77,6 +77,7 @@ describe('AppSettingsView', () => {
     it('shows the empty state when no settings are registered', () => {
         listMock.data = [];
         wrap(<AppSettingsView />);
+        expect(screen.getByTestId('admin-app-settings')).toHaveAttribute('data-state', 'empty');
         expect(screen.getByTestId('admin-app-settings-empty')).toBeInTheDocument();
         expect(screen.queryByTestId('admin-app-settings-table')).not.toBeInTheDocument();
     });
