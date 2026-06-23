@@ -85,12 +85,13 @@ next layer takes over).
 |---|---|---|---|
 | `ai.provider` | enum | tenant | `openai` / `anthropic` / `gemini` / `openrouter` / `regolo` — overrides `config('ai.default')` |
 | `connector.sync_cadence_minutes` | int (5–1440) | tenant **+ project** | a project may sync at a different cadence |
-| `ai_finops.enabled` | bool | — | **deploy-managed** — visible but read-only at runtime |
+| `ai_finops.enabled` | bool | tenant | **deploy-managed** — visible but read-only at runtime (registry `scope: tenant`, but `deployOnly` makes it unsettable here) |
 
 ## Decision rationale
 
 The full argument is recorded in
-[ADR 0019](/reference/adr-index). The load-bearing choices:
+[ADR 0019](https://github.com/lopadova/AskMyDocs/blob/main/docs/adr/0019-v822-runtime-config-governance.md).
+The load-bearing choices:
 
 - **Closed registry over open config.** The blast radius of "edit any config at
   runtime" is unbounded; a curated allow-list keeps the feature small and every
