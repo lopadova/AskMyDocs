@@ -32,11 +32,14 @@ function SettingRow({ setting, projectKey }: { setting: AppSettingDto; projectKe
     const mutation = useSetAppSetting(projectKey);
     const [draft, setDraft] = useState<string>(setting.value === null ? '' : String(setting.value));
 
-    // Re-sync the draft whenever the server value changes (after a save/refetch)
-    // so the editor never shows a stale value (R17 — sync cached state).
+    // Re-sync the draft to the server value whenever it changes (after a
+    // save/refetch) OR when the scope/key changes (R17 — sync cached state).
+    // projectKey is in the deps so switching scope always resets an unsaved
+    // draft to the new scope's value, even if the two values happen to match —
+    // otherwise a stale edit could be saved against the wrong scope.
     useEffect(() => {
         setDraft(setting.value === null ? '' : String(setting.value));
-    }, [setting.value]);
+    }, [setting.value, setting.key, projectKey]);
 
     const scopedToProject = projectKey !== WILDCARD;
     // A tenant-scoped key cannot be overridden per project — read-only there.

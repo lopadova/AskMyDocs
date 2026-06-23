@@ -58,7 +58,8 @@ pre-v8.22 (config-default) behaviour when no override exists (R43).
 5. **Tri-surface (R44) over the one resolver.** PHP (`app-settings:list` /
    `app-settings:set`), HTTP (`GET`/`PUT /api/admin/app-settings`, gated
    `role:super-admin`, R32 matrix row, R30-scoped), MCP (`AppSettingsTool`
-   read surface, roster 36→37). A super-admin **Configuration** admin screen
+   read surface — one tool added; the roster total is locked by
+   `KnowledgeBaseServerRegistrationTest`). A super-admin **Configuration** admin screen
    ships the UI (per-row editor, provenance badge, project-scope selector;
    deploy-only + tenant-scoped-under-project rows are read-only).
 
