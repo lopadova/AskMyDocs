@@ -48,6 +48,8 @@ const ENDPOINTS: ReadonlyArray<{ uri: string; allowed: readonly string[] }> = [
     // M6 — widget admin (gate: manageWidgetKeys / viewWidgetSessions)
     { uri: '/api/admin/widget-keys', allowed: ['super-admin'] },
     { uri: '/api/admin/widget-sessions', allowed: ['admin', 'super-admin'] },
+    // v8.x — invitations admin (gate: manageInvitations; core API mounted by PR #363)
+    { uri: '/api/admin/invitations/metrics', allowed: ['admin', 'super-admin'] },
 ];
 
 const ALL_ROLES = ['super-admin', 'admin', 'dpo', 'editor', 'viewer'] as const;

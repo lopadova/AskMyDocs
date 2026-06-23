@@ -123,6 +123,14 @@ export default defineConfig({
                   // viewAiGuardrails gate (admin allowed, viewer 403). Default-OFF
                   // clean-404 is covered by GuardrailsAdminMountingTest (phpunit), R43.
                   AI_GUARDRAILS_ADMIN_ENABLED: 'true',
+                  // v8.x — light up the Invitations admin SPA so
+                  // admin-invitations.spec.ts reaches the real package-served
+                  // Blade panel under /admin/invitations and proves the
+                  // manageInvitations gate (admin allowed; viewer 403 on the
+                  // package mount URL, not just the env=false 404). The
+                  // default-OFF clean-404 landing is covered by
+                  // InvitationsAdminDisabledTest (phpunit), per R43 (both states).
+                  INVITATIONS_ADMIN_ENABLED: 'true',
                   // v8.17 — OFFLINE IMAP seam so connectors-imap-super-admin.spec.ts
                   // can drive the real credential-connector flow end-to-end (the IMAP
                   // server is a BACKEND TCP dependency Playwright can't stub). The fake

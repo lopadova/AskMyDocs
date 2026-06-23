@@ -34,6 +34,7 @@ import { MaintenanceView } from '../features/admin/maintenance/MaintenanceView';
 import { InsightsView } from '../features/admin/insights/InsightsView';
 import { PiiRedactorView } from '../features/admin/pii-redactor/PiiRedactorView';
 import { FlowsView } from '../features/admin/flows/FlowsView';
+import { InvitationsView } from '../features/admin/invitations/InvitationsView';
 import { EvalHarnessView } from '../features/admin/eval-harness/EvalHarnessView';
 import { EvidenceRiskReviewView } from '../features/admin/evidence-risk-review/EvidenceRiskReviewView';
 import { ConnectorsView } from '../features/admin/connectors/ConnectorsView';
@@ -875,6 +876,28 @@ const adminIngestionRoute = createRoute({
     component: AdminIngestionRoute,
 });
 
+// v8.x — Invitations admin landing (cross-mount of padosoft/laravel-invitations-admin).
+// Same flat-RBAC pattern as AdminFlowsRoute: the RequireRole gate lives inside the
+// component so a viewer hitting /app/admin/invitations directly sees <AdminForbidden />
+// instead of a crash. The Spatie role allowlist (super-admin / admin) matches the BE
+// `manageInvitations` Gate that backs both the panel's Blade mount middleware
+// (config/invitations-admin.php) and the core API's admin_middleware (config/invitations.php),
+// AND the package's `invitations-admin.enabled` gate (404 when env=false) — so an
+// unprivileged user who somehow reaches the URL gets a 403 (or 404 when off) from Laravel.
+function AdminInvitationsRoute() {
+    return (
+        <RequireRole roles={['admin', 'super-admin']}>
+            <InvitationsView />
+        </RequireRole>
+    );
+}
+
+const adminInvitationsRoute = createRoute({
+    getParentRoute: () => teamRoute,
+    path: 'admin/invitations',
+    component: AdminInvitationsRoute,
+});
+
 // v4.7/W3 — Tabular Reviews + Workflows admin SPA routes.
 // `viewTabularReviews` / `viewWorkflows` BE Gates admit the `viewer`
 // role for READ-ONLY access (the BE controllers' denyMutationForViewer()
@@ -1174,6 +1197,7 @@ const teamChildren = [
     adminConnectorsRoute,
     adminConnectorCallbackRoute,
     adminIngestionRoute,
+    adminInvitationsRoute,
     adminTabularReviewsRoute,
     adminWorkflowsRoute,
     adminMcpToolsRoute,
