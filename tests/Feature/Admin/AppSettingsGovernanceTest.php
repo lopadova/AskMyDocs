@@ -203,6 +203,27 @@ final class AppSettingsGovernanceTest extends TestCase
         $this->assertSame('config', $rows['ai.provider']['source']);
     }
 
+    public function test_deploy_only_key_ignores_db_rows_on_read(): void
+    {
+        // A manual/corrupt app_settings row for a deploy-only key must NEVER
+        // flip the switch on read — it is always sourced from config (set()
+        // already rejects runtime writes, so a row can only be manual state).
+        config(['ai-finops.enabled' => true]);
+        AppSetting::create([
+            'tenant_id' => 'default',
+            'project_key' => AppSetting::WILDCARD,
+            'setting_key' => 'ai_finops.enabled',
+            'value_json' => false, // a sneaky manual override
+        ]);
+
+        $resolver = new AppSettingsResolver;
+
+        $this->assertTrue($resolver->effective('ai_finops.enabled', 'default'));
+        $rows = collect($resolver->all('default'))->keyBy('key');
+        $this->assertTrue($rows['ai_finops.enabled']['value']);
+        $this->assertSame('config', $rows['ai_finops.enabled']['source']);
+    }
+
     public function test_set_rejects_project_override_for_tenant_scoped_key(): void
     {
         $resolver = new AppSettingsResolver;

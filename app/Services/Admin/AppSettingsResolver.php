@@ -37,6 +37,13 @@ class AppSettingsResolver
             return null;
         }
 
+        // Deploy-managed keys are ALWAYS sourced from config on read — set()
+        // rejects runtime writes, so any DB row is manual/corrupt state and must
+        // never flip a deploy-only switch (R14 security invariant).
+        if ((bool) ($descriptor['deployOnly'] ?? false)) {
+            return $this->cast(config((string) $descriptor['config']), (string) $descriptor['type']);
+        }
+
         // Normalise at the core — this service is callable directly, not only
         // through the (already-normalising) surfaces (empty/whitespace → '*').
         $projectKey = AppSetting::normalizeProjectKey($projectKey);
@@ -110,12 +117,14 @@ class AppSettingsResolver
 
         $out = [];
         foreach (AppSettingRegistry::all() as $key => $d) {
-            // A tenant-scoped key never considers a project row (even a stray
-            // one) — mirrors effective()'s read-side scope rule.
-            $projectRaw = ($this->allowsProjectScope($d) && $projectKey !== AppSetting::WILDCARD)
+            // Deploy-managed keys ignore ALL DB rows on read (always config) —
+            // mirrors effective()'s deploy-only invariant. A tenant-scoped key
+            // never considers a project row (even a stray one).
+            $deployOnly = (bool) ($d['deployOnly'] ?? false);
+            $projectRaw = (! $deployOnly && $this->allowsProjectScope($d) && $projectKey !== AppSetting::WILDCARD)
                 ? ($byKey[$key][$projectKey] ?? null)
                 : null;
-            $wildcardRaw = $byKey[$key][AppSetting::WILDCARD] ?? null;
+            $wildcardRaw = $deployOnly ? null : ($byKey[$key][AppSetting::WILDCARD] ?? null);
 
             [$value, $source] = $this->resolveLayered($projectRaw, $wildcardRaw, config((string) $d['config']), $d);
 
