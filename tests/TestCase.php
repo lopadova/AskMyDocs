@@ -337,7 +337,16 @@ abstract class TestCase extends OrchestraTestCase
         // SECURE host config here is what lets AdminAuthorizationMatrixTest verify
         // the real `/api/admin/invitations/*` gate (R32). invitation_required
         // stays its config default (false) — R43 OFF path.
-        $app['config']->set('invitations', require __DIR__.'/../config/invitations.php');
+        //
+        // Merge (host keys win) instead of replace so any vendor-default key the
+        // host config does not restate still survives — mirrors the
+        // mergeConfigFrom pattern used for ai-act-compliance / ai-finops /
+        // ai-guardrails above (the package SP's hasConfigFile() already merged
+        // its default into the container by the time this runs).
+        $app['config']->set('invitations', array_merge(
+            (array) $app['config']->get('invitations', []),
+            require __DIR__.'/../config/invitations.php',
+        ));
         // v8.0/W2.2 — askmydocs.* namespace (notifications subsystem).
         // Without this, `config('askmydocs.notifications.*')` returns
         // null in tests and the preferences-grid endpoint ships an

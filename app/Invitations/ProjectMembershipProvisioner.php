@@ -60,11 +60,15 @@ final class ProjectMembershipProvisioner implements Provisioner
                     ],
                 );
             } catch (\Throwable $e) {
-                // Best-effort: never fail an already-committed redemption.
+                // Best-effort: never fail an already-committed redemption. Log
+                // the exception CLASS alongside the message so production triage
+                // isn't blind to the failure TYPE (a unique-constraint race vs a
+                // DB outage are very different signals).
                 Log::warning('invitations.provision.project_membership_failed', [
                     'account_id' => $userId,
                     'tenant_id' => $grant->tenantId,
                     'project_key' => $projectKey,
+                    'exception' => $e::class,
                     'error' => $e->getMessage(),
                 ]);
             }

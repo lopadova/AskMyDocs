@@ -89,6 +89,9 @@ final class InvitationsIntegrationTest extends TestCase
             'tenant_id' => 'acme',
             'user_id' => $user->getKey(),
             'project_key' => 'engineering',
+            // Assert the projectRole landed (not just the row's presence) so a
+            // wrong default role on the second project would fail the test (R16).
+            'role' => 'member',
         ]);
     }
 
@@ -117,8 +120,10 @@ final class InvitationsIntegrationTest extends TestCase
         app(ProjectMembershipProvisioner::class)->provision($user, $grant);
 
         // The existing 'owner' row is NEVER downgraded to 'member', and no
-        // duplicate row is created (firstOrCreate on the natural key).
+        // duplicate row is created (firstOrCreate on the natural key). The
+        // tenant_id is asserted so the row can't match another tenant's (R30).
         $this->assertDatabaseHas('project_memberships', [
+            'tenant_id' => 'acme',
             'user_id' => $user->getKey(),
             'project_key' => 'hr-portal',
             'role' => 'owner',
@@ -126,6 +131,7 @@ final class InvitationsIntegrationTest extends TestCase
         $this->assertSame(
             1,
             ProjectMembership::query()
+                ->where('tenant_id', 'acme')
                 ->where('user_id', $user->getKey())
                 ->where('project_key', 'hr-portal')
                 ->count(),

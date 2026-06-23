@@ -40,7 +40,6 @@ use Padosoft\EvidenceRiskReview\Contracts\EvidenceReviewerLlmContract;
 use Padosoft\EvidenceRiskReview\Contracts\TenantResolver as EvidenceTenantResolver;
 use App\Invitations\ProjectMembershipProvisioner;
 use Padosoft\Invitations\Contracts\TenantResolver as InvitationsTenantResolver;
-use Padosoft\Invitations\Provisioning\SpatiePermissionProvisioner;
 use Padosoft\Invitations\Services\AccountProvisioningService;
 use App\Policies\KnowledgeDocumentPolicy;
 use App\Services\Admin\Pdf\PdfRenderer;
