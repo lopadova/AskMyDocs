@@ -29,8 +29,6 @@ class MailSeedImapCommand extends Command
         {--project=* : project_key: espande a TUTTE le caselle dell\'azienda (ripetibile)}
         {--all : Popola tutte le caselle definite in TestEmailFixtures}
         {--purge : Prima elimina i messaggi di test già presenti (header X-AskMyDocs-Seed) — DISTRUTTIVO}
-        {--retries=2 : Tentativi extra su errori IMAP transitori (R42)}
-        {--retry-delay=60 : Secondi di attesa tra i retry}
         {--dry-run : Costruisce i messaggi senza inviare nulla (non serve la password)}';
 
     protected $description = 'Inietta via IMAP APPEND le e-mail di test nelle caselle delle aziende (per l\'ingest reale).';
@@ -64,8 +62,6 @@ class MailSeedImapCommand extends Command
                 mailboxKeys: $mailboxKeys,
                 dryRun: $dryRun,
                 purge: $purge,
-                retries: (int) $this->option('retries'),
-                retryDelaySeconds: (int) $this->option('retry-delay'),
                 onMessage: function (string $mailboxKey, int $index, string $subject): void {
                     $this->line(sprintf('  [%s] #%d %s', $mailboxKey, $index + 1, $subject));
                 },

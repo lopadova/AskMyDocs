@@ -26,9 +26,13 @@ final class RecordingMailboxAppender implements MailboxAppender
 
     public function __construct(private readonly int $purgeReturns = 0) {}
 
-    public function append(MailboxTarget $target, string $rawRfc822, DateTimeInterface $internalDate): void
+    public function appendBatch(MailboxTarget $target, array $rfc822Messages, DateTimeInterface $internalDate): int
     {
-        $this->appends[] = ['target' => $target, 'raw' => $rawRfc822, 'internalDate' => $internalDate];
+        foreach ($rfc822Messages as $raw) {
+            $this->appends[] = ['target' => $target, 'raw' => $raw, 'internalDate' => $internalDate];
+        }
+
+        return count($rfc822Messages);
     }
 
     public function purgeSeeded(MailboxTarget $target, string $headerName, string $value): int
