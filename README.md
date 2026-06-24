@@ -1947,6 +1947,17 @@ dry-run preview forces the side-effect-free mask (no vault tokens). Gated by
 `manageKbPiiPolicy` — dpo / super-admin; R32 matrix rows), **CLI**
 (`kb:pii-policy`), **MCP** (`KbPiiPolicyTool` read, roster **40 → 41**).
 Tenant-aware (R30/R31), `UNIQUE(tenant_id, project_key)`.
+*PR3:* **re-identification (detokenise)** of a tokenised KB document — JIT,
+gated, audited — tri-surface (R44) over one `DetokenizeService`: **HTTP**
+`POST /api/admin/pii/documents/{id}/detokenize` (`pii.detokenize` — dpo /
+super-admin), **CLI** `kb:detokenize-document`, **MCP** `KbDetokenizeTool` (net
+super-admin only — the LLM-facing PII surface carries the tightest gate; roster
+**41 → 42**). Every surface enforces the `tokenise` preflight, is tenant-scoped
+(R30 — no cross-tenant re-id by id), bypasses the per-project read ACL for this
+privileged compliance op while keeping the tenant + permission gates, and audits
+each completed unmask + permission-denied attempt (`admin_command_audit`,
+`command='pii.detokenize'`; the strategy preflight + not-found are not audited —
+no unmask is attempted).
 
 **v8.22.0 — Runtime configuration governance (GA, shipped 2026-06-23).**
 Ciclo 3 of the connectors / observability / config / PII roadmap. A curated set

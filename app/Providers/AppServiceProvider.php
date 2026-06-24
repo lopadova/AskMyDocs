@@ -629,6 +629,8 @@ class AppServiceProvider extends ServiceProvider
             KbRebuildGraphCommand::class,
             // v8.23 (Ciclo 4) — read the effective PII ingestion policy (R44 CLI surface).
             \App\Console\Commands\KbPiiPolicyCommand::class,
+            // v8.23 (Ciclo 4) — re-identify a tokenised KB document (R44 CLI surface).
+            \App\Console\Commands\KbDetokenizeDocumentCommand::class,
             // PR3 — RBAC
             AuthGrantCommand::class,
             // Operator helper: seed a demo user inside a tenant in the
