@@ -468,7 +468,10 @@ class DocumentIngestor
         // otherwise linger alongside the freshly re-redacted ones. Drop them
         // first so the re-embed REPLACES the chunk set under the new policy.
         if ($forceReembed) {
-            KnowledgeChunk::where('knowledge_document_id', $document->id)->delete();
+            // R30 — knowledge_chunks is tenant-aware; scope explicitly so a
+            // document_id collision across tenants (impossible today with
+            // auto-increment PKs, but the rule is unconditional) cannot bleed.
+            KnowledgeChunk::query()->forTenant($tenantId)->where('knowledge_document_id', $document->id)->delete();
         }
 
         $this->persistChunks($document, $projectKey, $chunkDrafts, $embeddingResponse);
